@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/staffly
+    username: app
+    password: app
+
+logging:
+  level:
+    ru.staffly: DEBUG
