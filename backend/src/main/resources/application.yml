@@ -1,6 +1,13 @@
 server:
   port: 8080
 
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-very-secret-key-change-me}
+    ttl-minutes: ${JWT_TTL_MINUTES:120}
+  creator:
+    phones: "+79999999999"
+
 spring:
   application:
     name: staffly-backend

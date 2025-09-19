@@ -1,0 +1,15 @@
+# Gradle/Maven
+target/
+**/target/
+
+# IDE
+.idea/
+*.iml
+
+# Git
+.git
+.gitignore
+
+# OS / misc
+.DS_Store
+Thumbs.db

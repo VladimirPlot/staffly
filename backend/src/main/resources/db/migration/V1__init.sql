@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS users (
     id             BIGSERIAL PRIMARY KEY,
     phone          VARCHAR(32)  NOT NULL,         -- +7...
     email          VARCHAR(255),
-    full_name      VARCHAR(255) NOT NULL,
+    first_name     VARCHAR(35)  NOT NULL,
+    last_name      VARCHAR(35)  NOT NULL,
+    full_name      VARCHAR(70) NOT NULL,
     password_hash  VARCHAR(255) NOT NULL,
     is_active      BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
