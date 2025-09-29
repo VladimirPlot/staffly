@@ -10,8 +10,13 @@ import java.nio.file.Paths;
 public class WebStaticConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        String dir = Paths.get("data/avatars").toAbsolutePath().toString() + "/";
+        String avatarsDir = Paths.get("data/avatars").toAbsolutePath().toString() + "/";
         registry.addResourceHandler("/static/avatars/**")
-                .addResourceLocations("file:" + dir);
+                .addResourceLocations("file:" + avatarsDir);
+
+        // NEW: изображения для training items
+        String trainingDir = Paths.get("data/training").toAbsolutePath().toString() + "/";
+        registry.addResourceHandler("/static/training/**")
+                .addResourceLocations("file:" + trainingDir);
     }
 }

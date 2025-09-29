@@ -7,6 +7,7 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.media.TrainingImageStorage;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
@@ -37,6 +38,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
     private final TrainingCategoryMapper catMapper;
     private final TrainingItemMapper itemMapper;
     private final SecurityService security;
+    private final TrainingImageStorage storage;
 
     /* ========== CATEGORY ========== */
 
@@ -71,30 +73,28 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
     public List<TrainingCategoryDto> listCategories(Long restaurantId, Long currentUserId, TrainingModule module, boolean allForManagers) {
         security.assertMember(currentUserId, restaurantId);
 
-        // базовый список активных в модуле
-        var list = categories.findByRestaurantIdAndModuleAndActiveTrueOrderBySortOrderAscNameAsc(restaurantId, module)
-                .stream().map(catMapper::toDto).toList();
+        var list = categories
+                .findByRestaurantIdAndModuleAndActiveTrueOrderBySortOrderAscNameAsc(restaurantId, module)
+                .stream()
+                .map(catMapper::toDto)
+                .toList();
 
-        // кто текущий участник и его позиция
-        Optional<RestaurantMember> memberOpt = members.findByUserIdAndRestaurantId(currentUserId, restaurantId);
-        if (memberOpt.isEmpty()) return List.of();
-        RestaurantMember member = memberOpt.get();
-        Position myPos = member.getPosition();
-        boolean isManagerOrAdmin = member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER;
+        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Membership not found"));
 
-        // MANAGER/ADMIN могут запросить "все" (для настройки), иначе фильтруем видимостью
-        if (isManagerOrAdmin && allForManagers) {
-            return list;
+        boolean managerOrAdmin = isManagerOrAdmin(member);
+
+        if (managerOrAdmin && allForManagers) {
+            return list; // менеджерам по запросу отдаём всё
         }
-        Long myPosId = myPos != null ? myPos.getId() : null;
+
+        Long myPosId = member.getPosition() != null ? member.getPosition().getId() : null;
 
         return list.stream()
                 .filter(dto -> {
                     var vis = dto.visiblePositionIds();
-                    // если список пустой/null — видно всем
-                    if (vis == null || vis.isEmpty()) return true;
-                    // если позиции нет у участника — считаем невидимой
-                    if (myPosId == null) return false;
+                    if (vis == null || vis.isEmpty()) return true;     // видно всем
+                    if (myPosId == null) return false;                 // у сотрудника нет позиции
                     return vis.contains(myPosId);
                 })
                 .toList();
@@ -144,7 +144,25 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
             throw new NotFoundException("Category not found in this restaurant");
         }
 
-        entity.setActive(false); // мягкое удаление
+        // 1) достаём все items категории (активные/неактивные — не важно, чистим всё)
+        var allItems = items.findByCategoryId(categoryId);
+
+        // 2) для каждого item — сносим папку и обнуляем imageUrl
+        for (TrainingItem it : allItems) {
+            try {
+                storage.deleteItemFolder(it.getId());
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to delete item files: " + it.getId(), e);
+            }
+            it.setImageUrl(null);
+            it.setActive(false);
+        }
+        if (!allItems.isEmpty()) {
+            items.saveAll(allItems);
+        }
+
+        // 3) деактивируем категорию
+        entity.setActive(false);
         categories.save(entity);
     }
 
@@ -182,7 +200,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
     public List<TrainingItemDto> listItems(Long restaurantId, Long currentUserId, Long categoryId) {
         security.assertMember(currentUserId, restaurantId);
 
-        TrainingCategory cat = categories.findById(categoryId)
+        TrainingCategory cat = categories.findWithPositionsById(categoryId)
                 .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
         if (!cat.getRestaurant().getId().equals(restaurantId) || !cat.isActive()) {
             throw new NotFoundException("Category not found in this restaurant");
@@ -195,8 +213,11 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
         if (!isManagerOrAdmin) {
             if (cat.getVisibleForPositions() != null && !cat.getVisibleForPositions().isEmpty()) {
                 Long myPosId = m.getPosition() != null ? m.getPosition().getId() : null;
-                if (myPosId == null || cat.getVisibleForPositions().stream().map(Position::getId).noneMatch(id -> id.equals(myPosId))) {
-                    throw new NotFoundException("Category not available for your position");
+                boolean allowed = myPosId != null && cat.getVisibleForPositions().stream()
+                        .map(Position::getId)
+                        .anyMatch(id -> id.equals(myPosId));
+                if (!allowed) {
+                    throw new NotFoundException("Category not available"); // короче и нейтральнее
                 }
             }
         }
@@ -252,10 +273,22 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
         if (!entity.getCategory().getRestaurant().getId().equals(restaurantId)) {
             throw new BadRequestException("Item belongs to another restaurant");
         }
+        try {
+            storage.deleteItemFolder(itemId);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to delete item files: " + itemId, e);
+        }
+
+        // 2) обнулить ссылку и пометить как удалённый
+        entity.setImageUrl(null);
         entity.setActive(false);
         items.save(entity);
     }
 
     /* helpers */
     private String norm(String s) { return s == null ? null : s.trim(); }
+
+    private boolean isManagerOrAdmin(RestaurantMember m) {
+        return m.getRole() == RestaurantRole.ADMIN || m.getRole() == RestaurantRole.MANAGER;
+    }
 }

@@ -29,7 +29,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/ping",
                                 "/api/auth/**",
+                                "/actuator/health",
+                                "/actuator/info",
                                 "/static/avatars/**",   // ← статика без авторизации
+                                "/static/training/**",
                                 "/error"                 // ← чтобы 401/403 не зацикливались
                         ).permitAll()
                         .anyRequest().authenticated()
