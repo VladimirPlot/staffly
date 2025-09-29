@@ -25,4 +25,6 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
              and (m.role = 'ADMIN' or m.role = 'MANAGER')
            """)
     List<RestaurantMember> findAdmins(Long restaurantId);
+
+    List<RestaurantMember> findByUserId(Long userId);
 }

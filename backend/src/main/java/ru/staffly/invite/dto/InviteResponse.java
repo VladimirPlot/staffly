@@ -1,6 +1,7 @@
 package ru.staffly.invite.dto;
 
 import ru.staffly.invite.model.InvitationStatus;
+import ru.staffly.restaurant.model.RestaurantRole;
 
 import java.time.Instant;
 
@@ -12,5 +13,7 @@ public record InviteResponse(
         InvitationStatus status,
         Instant expiresAt,
         Long invitedByUserId,
-        Instant createdAt
+        Instant createdAt,
+        RestaurantRole desiredRole,
+        Long positionId
 ) {}

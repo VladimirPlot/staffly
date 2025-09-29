@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import ru.staffly.dictionary.dto.PositionDto;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.model.RestaurantRole;
 
 @Component
 public class PositionMapper {
@@ -14,7 +15,8 @@ public class PositionMapper {
                 e.getId(),
                 e.getRestaurant() != null ? e.getRestaurant().getId() : null,
                 e.getName(),
-                e.isActive()
+                e.isActive(),
+                e.getLevel()
         );
     }
 
@@ -25,6 +27,7 @@ public class PositionMapper {
                 .restaurant(restaurant)
                 .name(dto.name())
                 .active(dto.active())
+                .level(dto.level() != null ? dto.level() : RestaurantRole.STAFF)
                 .build();
     }
 
@@ -32,5 +35,6 @@ public class PositionMapper {
         if (dto.name() != null) e.setName(dto.name());
         if (restaurant != null) e.setRestaurant(restaurant);
         e.setActive(dto.active());
+        if (dto.level() != null) e.setLevel(dto.level());
     }
 }

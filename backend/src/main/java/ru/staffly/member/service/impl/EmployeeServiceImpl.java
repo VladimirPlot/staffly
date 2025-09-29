@@ -5,7 +5,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
 import ru.staffly.invite.mapper.InvitationMapper;
@@ -38,6 +41,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final RestaurantMemberRepository members;
     private final RestaurantRepository restaurants;
     private final UserRepository users;
+    private final PositionRepository positions;
 
     private final InvitationMapper invitationMapper;
     private final MemberMapper memberMapper;
@@ -74,6 +78,30 @@ public class EmployeeServiceImpl implements EmployeeService {
             }
         });
 
+        if (req.role() == null) throw new BadRequestException("Role is required");
+        RestaurantRole desiredRole = req.role();
+
+        // права приглашающего: MANAGER может приглашать только STAFF
+        boolean inviterIsAdmin = security.isAdmin(currentUserId, restaurantId);
+        if (!inviterIsAdmin && desiredRole != RestaurantRole.STAFF) {
+            throw new ForbiddenException("Managers can invite only STAFF role");
+        }
+
+        Position desiredPosition = null;
+        if (req.positionId() != null) {
+            desiredPosition = positions.findById(req.positionId())
+                    .orElseThrow(() -> new NotFoundException("Position not found: " + req.positionId()));
+            if (!desiredPosition.getRestaurant().getId().equals(restaurantId) || !desiredPosition.isActive()) {
+                throw new BadRequestException("Position is not in this restaurant or inactive");
+            }
+
+            // согласованность уровней: позиция не должна быть «выше» роли
+            // ADMIN >= MANAGER >= STAFF
+            if (!isPositionCompatibleWithRole(desiredPosition.getLevel(), desiredRole)) {
+                throw new ConflictException("Position level is not compatible with invited role");
+            }
+        }
+
         String token = genToken(); // дефолт 24 байта
         Invitation inv = Invitation.builder()
                 .restaurant(restaurant)
@@ -83,6 +111,8 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .expiresAt(Instant.now().plus(INVITE_TTL))
                 .invitedBy(users.findById(currentUserId)
                         .orElseThrow(() -> new NotFoundException("Inviter not found: " + currentUserId)))
+                .desiredRole(desiredRole)
+                .position(desiredPosition)
                 .build();
 
         inv = invitations.save(inv);
@@ -141,6 +171,9 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         Long restaurantId = inv.getRestaurant().getId();
 
+        RestaurantRole roleToAssign = inv.getDesiredRole() != null ? inv.getDesiredRole() : RestaurantRole.STAFF;
+        Position positionToAssign = inv.getPosition();
+
         if (members.existsByRestaurantIdAndUserId(restaurantId, currentUserId)) {
             inv.setStatus(InvitationStatus.ACCEPTED);
             invitations.save(inv);
@@ -148,10 +181,16 @@ public class EmployeeServiceImpl implements EmployeeService {
             return memberMapper.toDto(m);
         }
 
+        // на всякий случай перепроверим согласованность, если инвайт старый
+        if (positionToAssign != null && !isPositionCompatibleWithRole(positionToAssign.getLevel(), roleToAssign)) {
+            throw new ConflictException("Stored invitation position is incompatible with role");
+        }
+
         RestaurantMember m = RestaurantMember.builder()
                 .user(user)
                 .restaurant(inv.getRestaurant())
-                .role(RestaurantRole.STAFF) // дефолт
+                .role(roleToAssign)
+                .position(positionToAssign)
                 .build();
         m = members.save(m);
 
@@ -212,5 +251,14 @@ public class EmployeeServiceImpl implements EmployeeService {
             }
         }
         members.deleteById(memberId);
+    }
+
+    private boolean isPositionCompatibleWithRole(RestaurantRole positionLevel, RestaurantRole role) {
+        // ADMIN >= MANAGER >= STAFF
+        return switch (role) {
+            case ADMIN -> true; // может иметь любую позицию
+            case MANAGER -> (positionLevel == RestaurantRole.MANAGER || positionLevel == RestaurantRole.STAFF);
+            case STAFF -> (positionLevel == RestaurantRole.STAFF);
+        };
     }
 }

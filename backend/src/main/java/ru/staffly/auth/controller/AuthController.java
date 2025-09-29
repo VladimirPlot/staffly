@@ -1,17 +1,23 @@
 package ru.staffly.auth.controller;
 
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.auth.dto.AuthResponse;
 import ru.staffly.auth.dto.LoginRequest;
 import ru.staffly.auth.dto.RegisterRequest;
+import ru.staffly.auth.dto.SwitchRestaurantRequest;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.JwtService;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
@@ -29,6 +35,7 @@ public class AuthController {
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
+    private final RestaurantMemberRepository memberRepository;
 
     // список телефонов с глобальной ролью CREATOR
     private final Set<String> creatorPhones;
@@ -38,10 +45,12 @@ public class AuthController {
     public AuthController(UserRepository users,
                           PasswordEncoder encoder,
                           JwtService jwt,
+                          RestaurantMemberRepository memberRepository,
                           @Value("${app.creator.phones:+79999999999}") String creatorPhonesCsv) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
+        this.memberRepository = memberRepository;
         this.creatorPhones = Arrays.stream(creatorPhonesCsv.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
@@ -85,6 +94,30 @@ public class AuthController {
 
         var principal = new UserPrincipal(u.getId(), u.getPhone(), null, roles);
         String token = jwt.generateToken(principal);
+        return ResponseEntity.ok(new AuthResponse(token));
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PostMapping("/switch-restaurant")
+    public ResponseEntity<AuthResponse> switchRestaurant(@AuthenticationPrincipal UserPrincipal principal,
+                                                         @RequestBody @Valid SwitchRestaurantRequest req) {
+        Long userId = principal.userId();
+        Long restaurantId = req.restaurantId();
+
+        // проверим членство
+        boolean member = memberRepository.findByUserIdAndRestaurantId(userId, restaurantId).isPresent();
+        if (!member) {
+            throw new ForbiddenException("Not a member of this restaurant");
+        }
+
+        // роли остаются глобальными (CREATOR или пусто); restaurantId — переключаем
+        var newPrincipal = new UserPrincipal(
+                userId,
+                principal.phone(),
+                restaurantId,
+                principal.roles() == null ? List.of() : principal.roles()
+        );
+        String token = jwt.generateToken(newPrincipal);
         return ResponseEntity.ok(new AuthResponse(token));
     }
 }

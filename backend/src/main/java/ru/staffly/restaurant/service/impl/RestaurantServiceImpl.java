@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.dto.CreateRestaurantRequest;
@@ -26,6 +28,7 @@ public class RestaurantServiceImpl implements RestaurantService {
     private final RestaurantRepository restaurants;
     private final UserRepository users;
     private final RestaurantMemberRepository members;
+    private final PositionRepository positions;
 
     @Override
     @Transactional
@@ -48,7 +51,10 @@ public class RestaurantServiceImpl implements RestaurantService {
                 .active(true)
                 .build();
 
-        return restaurants.save(r);
+        Restaurant saved = restaurants.save(r);
+        createBasePositionIfAbsent(saved, "Управляющий", RestaurantRole.ADMIN);
+        createBasePositionIfAbsent(saved, "Менеджер",    RestaurantRole.MANAGER);
+        return saved;
     }
 
     @Override
@@ -108,5 +114,17 @@ public class RestaurantServiceImpl implements RestaurantService {
         while (i < j && s.charAt(i) == '-') i++;
         while (j > i && s.charAt(j - 1) == '-') j--;
         return s.substring(i, j);
+    }
+
+    private void createBasePositionIfAbsent(Restaurant r, String name, RestaurantRole level) {
+        if (!positions.existsByRestaurantIdAndNameIgnoreCase(r.getId(), name)) {
+            Position p = Position.builder()
+                    .restaurant(r)
+                    .name(name)
+                    .level(level)
+                    .active(true)
+                    .build();
+            positions.save(p);
+        }
     }
 }

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.staffly.dictionary.dto.PositionDto;
 import ru.staffly.dictionary.dto.ShiftDto;
 import ru.staffly.dictionary.service.DictionaryService;
+import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.security.UserPrincipal;
 
 import java.util.List;
@@ -23,8 +24,13 @@ public class DictionaryController {
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @GetMapping("/positions")
     public List<PositionDto> listPositions(@PathVariable Long restaurantId,
-                                           @AuthenticationPrincipal UserPrincipal principal) {
-        return dictionaries.listPositions(restaurantId, principal.userId());
+                                           @AuthenticationPrincipal UserPrincipal principal,
+                                           @RequestParam(name = "role", required = false) RestaurantRole role) {
+        List<PositionDto> all = dictionaries.listPositions(restaurantId, principal.userId());
+        if (role == null) return all;
+        return all.stream()
+                .filter(p -> isPositionCompatibleWithRole(p.level(), role))
+                .toList();
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -83,5 +89,14 @@ public class DictionaryController {
                             @PathVariable Long shiftId,
                             @AuthenticationPrincipal UserPrincipal principal) {
         dictionaries.deleteShift(restaurantId, principal.userId(), shiftId);
+    }
+
+    private boolean isPositionCompatibleWithRole(RestaurantRole positionLevel, RestaurantRole role) {
+        // ADMIN >= MANAGER >= STAFF
+        return switch (role) {
+            case ADMIN -> true;
+            case MANAGER -> (positionLevel == RestaurantRole.MANAGER || positionLevel == RestaurantRole.STAFF);
+            case STAFF -> (positionLevel == RestaurantRole.STAFF);
+        };
     }
 }

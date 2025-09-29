@@ -2,7 +2,9 @@ package ru.staffly.invite.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.user.model.User;
 
 import java.time.Instant;
@@ -52,4 +54,12 @@ public class Invitation {
         if (createdAt == null) createdAt = Instant.now();
         if (status == null) status = InvitationStatus.PENDING;
     }
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "desired_role", nullable = false, length = 20)
+    private RestaurantRole desiredRole;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "position_id")
+    private Position position;
 }

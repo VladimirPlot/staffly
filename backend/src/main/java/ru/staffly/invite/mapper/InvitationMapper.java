@@ -17,7 +17,9 @@ public class InvitationMapper {
                 inv.getStatus(),
                 inv.getExpiresAt(),
                 inv.getInvitedBy() != null ? inv.getInvitedBy().getId() : null,
-                inv.getCreatedAt()
+                inv.getCreatedAt(),
+                inv.getDesiredRole(),
+                inv.getPosition() != null ? inv.getPosition().getId() : null
         );
     }
 }

@@ -3,6 +3,7 @@ package ru.staffly.dictionary.model;
 import jakarta.persistence.*;
 import lombok.*;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.model.RestaurantRole;
 
 @Entity
 @Table(name = "position",
@@ -26,4 +27,9 @@ public class Position {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "level", nullable = false, length = 20)
+    @Builder.Default
+    private RestaurantRole level = RestaurantRole.STAFF;
 }
