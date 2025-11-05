@@ -9,9 +9,9 @@ import java.util.List;
 
 public record TrainingCategoryDto(
         Long id,
-        @NotNull Long restaurantId,
-        @NotNull TrainingModule module,
-        @NotBlank @Size(max = 150) String name,
+        Long restaurantId,
+        TrainingModule module,
+        @Size(max = 150) String name,
         String description,
         Integer sortOrder,
         Boolean active,

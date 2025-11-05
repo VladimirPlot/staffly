@@ -40,7 +40,7 @@ public class TrainingController {
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody TrainingCategoryDto dto) {
         // модуль берём из пути, чтобы не полагаться на тело
-        var fixed = new TrainingCategoryDto(dto.id(), dto.restaurantId(), module,
+        var fixed = new TrainingCategoryDto(dto.id(), restaurantId, module,
                 dto.name(), dto.description(), dto.sortOrder(), dto.active(), dto.visiblePositionIds());
         return training.createCategory(restaurantId, principal.userId(), fixed);
     }
