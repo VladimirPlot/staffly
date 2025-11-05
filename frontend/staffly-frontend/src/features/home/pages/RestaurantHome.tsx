@@ -32,13 +32,6 @@ export default function RestaurantHome() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Link to="/dictionaries/positions" className="block">
-          <Card className="h-full hover:bg-zinc-50">
-            <div className="text-lg font-medium mb-1">Справочники</div>
-            <div className="text-sm text-zinc-600">Должности и др.</div>
-          </Card>
-        </Link>
-
         <Link
           to="/employees/invite"
           className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
