@@ -1,4 +1,5 @@
 import React from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
@@ -12,215 +13,281 @@ import {
   type TrainingCategoryDto,
   type TrainingModule,
 } from "../api";
+import {
+  getTrainingModuleConfig,
+  isConfigWithCategories,
+  type TrainingModuleConfig,
+} from "../config";
 
-export default function TrainingCategoriesPage() {
+function Breadcrumbs({ module }: { module: TrainingModuleConfig }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+      <BackToHome />
+      <span>→</span>
+      <Link to="/training" className="hover:underline">
+        Тренинг
+      </Link>
+      <span>→</span>
+      <span className="font-medium text-zinc-800">{module.title}</span>
+    </div>
+  );
+}
+
+function ServiceStub({ module }: { module: TrainingModuleConfig }) {
+  return (
+    <div className="mx-auto max-w-3xl">
+      <Breadcrumbs module={module} />
+      <Card>
+        <div className="text-lg font-semibold">{module.title}</div>
+        <div className="mt-2 text-sm text-zinc-600">
+          Раздел находится в разработке. Скоро здесь появятся материалы по сервису.
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function TrainingModuleCategoriesPage() {
+  const params = useParams<{ module: string }>();
+  const moduleConfig = getTrainingModuleConfig(params.module);
+
+  if (!moduleConfig) {
+    return <Navigate to="/training" replace />;
+  }
+
+  if (!isConfigWithCategories(moduleConfig)) {
+    return <ServiceStub module={moduleConfig} />;
+  }
+
+  const moduleCode: TrainingModule = moduleConfig.module;
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
 
-  // По умолчанию работаем с MENU. Переключатель на BAR добавим потом.
-  const [module, setModule] = React.useState<TrainingModule>("MENU");
+  const canManage = Boolean(
+    user?.roles?.some((role) => role === "ADMIN" || role === "MANAGER")
+  );
 
-  const [items, setItems] = React.useState<TrainingCategoryDto[]>([]);
+  const [categories, setCategories] = React.useState<TrainingCategoryDto[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Форма создания
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
-  // Менеджерский флаг: показать ВСЕ категории, игнорируя видимость по позициям (бэк сам проверит права)
   const [allForManagers, setAllForManagers] = React.useState(false);
 
-  // Разрешения UI: глобальный CREATOR — можно всё (иначе доверяем бэку)
-  const canManage = Boolean(user?.roles?.includes("CREATOR"));
+  React.useEffect(() => {
+    setAllForManagers(false);
+  }, [moduleCode]);
 
   const load = React.useCallback(async () => {
     if (!restaurantId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await listCategories(restaurantId, module, allForManagers);
-      setItems(data);
+      const data = await listCategories(restaurantId, moduleCode, allForManagers && canManage);
+      setCategories(data);
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Ошибка загрузки");
+      setError(e?.response?.data?.message || e?.message || "Ошибка загрузки категорий");
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, module, allForManagers]);
+  }, [restaurantId, moduleCode, allForManagers, canManage]);
 
   React.useEffect(() => {
     if (restaurantId) void load();
-  }, [restaurantId, module, allForManagers, load]);
+  }, [restaurantId, moduleCode, load]);
+
+  const handleCreate = React.useCallback(async () => {
+    if (!restaurantId || !name.trim()) return;
+    try {
+      setCreating(true);
+      await createCategory(restaurantId, moduleCode, {
+        name,
+        description: description.trim() || null,
+      });
+      setName("");
+      setDescription("");
+      await load();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || "Ошибка создания категории");
+    } finally {
+      setCreating(false);
+    }
+  }, [restaurantId, moduleCode, name, description, load]);
 
   if (!restaurantId) {
     return (
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-3xl">
+        <Breadcrumbs module={moduleConfig} />
         <Card>Сначала выберите ресторан.</Card>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-    <div className="mb-3"><BackToHome /></div>
+    <div className="mx-auto max-w-5xl">
+      <Breadcrumbs module={moduleConfig} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">Тренинг — Категории</h2>
-        <div className="flex items-center gap-3">
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-600">Модуль</span>
-            <select
-              className="rounded-2xl border border-zinc-300 p-2"
-              value={module}
-              onChange={(e) => setModule(e.target.value as TrainingModule)}
-            >
-              <option value="MENU">Меню</option>
-              <option value="BAR">Бар</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={allForManagers}
-              onChange={(e) => setAllForManagers(e.currentTarget.checked)}
-            />
-            Показать все (для менеджера)
-          </label>
-          <Button onClick={load} variant="outline">Обновить</Button>
+        <div>
+          <h2 className="text-2xl font-semibold">{moduleConfig.title}</h2>
+          <div className="mt-1 text-sm text-zinc-600">{moduleConfig.description}</div>
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          {canManage && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={allForManagers}
+                onChange={(e) => setAllForManagers(e.currentTarget.checked)}
+              />
+              Показать все категории
+            </label>
+          )}
+          <Button variant="outline" onClick={load}>
+            Обновить
+          </Button>
         </div>
       </div>
 
-      {/* Создание */}
-      <Card className="mb-4">
-        <div className="mb-3 text-sm font-medium">Добавить категорию</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Input
-            label="Название"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Паста"
-          />
-          <Input
-            label="Описание (опц.)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Короткое описание"
-          />
-          <div className="flex items-end">
-            <Button
-              disabled={!name.trim() || creating || !canManage}
-              onClick={async () => {
-                try {
-                  setCreating(true);
-                  await createCategory(restaurantId, module, {
-                    name,
-                    description: description.trim() || null,
-                  });
-                  setName("");
-                  setDescription("");
-                  await load();
-                } catch (e: any) {
-                  alert(e?.response?.data?.message || e?.message || "Ошибка создания");
-                } finally {
-                  setCreating(false);
-                }
-              }}
-            >
-              {creating ? "Создаём…" : "Создать"}
-            </Button>
+      {canManage && (
+        <Card className="mb-4">
+          <div className="mb-3 text-sm font-medium">Создать категорию</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Input
+              label="Название"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Салаты"
+            />
+            <Input
+              label="Описание (опционально)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Краткое описание"
+            />
+            <div className="flex items-end">
+              <Button
+                onClick={handleCreate}
+                disabled={!name.trim() || creating}
+              >
+                {creating ? "Создаём…" : "Создать"}
+              </Button>
+            </div>
           </div>
-        </div>
-        {!canManage && (
-          <div className="mt-2 text-xs text-zinc-500">
-            У вас может не быть прав на создание (нужен MANAGER или ADMIN). Бэкенд проверит.
-          </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
-      {/* Список */}
       <Card>
         {loading ? (
           <div>Загрузка…</div>
         ) : error ? (
           <div className="text-red-600">{error}</div>
-        ) : items.length === 0 ? (
-          <div className="text-zinc-600">Пока нет категорий.</div>
+        ) : categories.length === 0 ? (
+          <div className="text-zinc-600">Категории пока не созданы.</div>
         ) : (
-          <div className="divide-y">
-            {items.map((c) => (
-              <div key={c.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="truncate text-base font-medium">{c.name}</div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
-                    <span className="rounded-full border px-2 py-0.5">{c.module}</span>
-                    <span className={`rounded-full px-2 py-0.5 ${
-                      c.active !== false ? "border border-emerald-300 text-emerald-700" : "border border-zinc-300 text-zinc-600"
-                    }`}>
-                      {c.active !== false ? "Активна" : "Отключена"}
-                    </span>
-                  </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {categories.map((category) => (
+              <div
+                key={category.id}
+                className="flex h-full flex-col gap-3 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm"
+              >
+                <div>
+                  <div className="text-lg font-semibold text-zinc-900">{category.name}</div>
+                  {category.description && (
+                    <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
+                  )}
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={!canManage}
-                    onClick={async () => {
-                      const newName = prompt("Новое название категории:", c.name)?.trim();
-                      if (!newName || newName === c.name) return;
-                      try {
-                        await updateCategory(restaurantId, c.id, {
-                          name: newName,
-                          description: c.description ?? null,
-                          sortOrder: c.sortOrder ?? 0,
-                          active: c.active ?? true,
-                        });
-                        await load();
-                      } catch (e: any) {
-                        alert(e?.response?.data?.message || e?.message || "Ошибка переименования");
-                      }
-                    }}
-                  >
-                    Переименовать
-                  </Button>
+                <div className="flex flex-wrap gap-2 text-xs text-zinc-600">
+                  <span className="rounded-full border border-emerald-200 px-2 py-0.5 uppercase">
+                    {moduleCode === "MENU"
+                      ? "Меню"
+                      : moduleCode === "BAR"
+                      ? "Бар"
+                      : "Вино"}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 ${
+                      category.active !== false
+                        ? "border border-emerald-300 text-emerald-700"
+                        : "border border-zinc-300 text-zinc-600"
+                    }`}
+                    >
+                    {category.active !== false ? "Активна" : "Отключена"}
+                  </span>
+                </div>
 
-                  <Button
-                    variant="outline"
-                    disabled={!canManage}
-                    onClick={async () => {
-                      // Тогглим активность: на бэке deleteCategory тоже деактивирует,
-                      // но тут дадим “мягкий” переключатель через update.
-                      try {
-                        await updateCategory(restaurantId, c.id, {
-                          name: c.name,
-                          description: c.description ?? null,
-                          sortOrder: c.sortOrder ?? 0,
-                          active: !(c.active ?? true),
-                        });
-                        await load();
-                      } catch (e: any) {
-                        alert(e?.response?.data?.message || e?.message || "Ошибка переключения активности");
-                      }
-                    }}
-                  >
-                    {c.active !== false ? "Отключить" : "Включить"}
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    disabled={!canManage}
-                    onClick={async () => {
-                      if (!confirm(`Удалить (деактивировать) категорию «${c.name}»?`)) return;
-                      try {
-                        await deleteCategory(restaurantId, c.id);
-                        await load();
-                      } catch (e: any) {
-                        alert(e?.response?.data?.message || e?.message || "Ошибка удаления");
-                      }
-                    }}
-                  >
-                    Удалить
-                  </Button>
+                <div className="mt-auto flex flex-wrap gap-2">
+                  <Link to={`/training/${moduleConfig.slug}/categories/${category.id}`}>
+                    <Button variant="outline">Открыть</Button>
+                  </Link>
+                  {canManage && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          const newName = prompt("Новое название категории:", category.name)?.trim();
+                          if (!newName || newName === category.name) return;
+                          try {
+                            await updateCategory(restaurantId, category.id, {
+                              name: newName,
+                              description: category.description ?? null,
+                              sortOrder: category.sortOrder ?? 0,
+                              active: category.active ?? true,
+                            });
+                            await load();
+                          } catch (e: any) {
+                            alert(
+                              e?.response?.data?.message || e?.message || "Ошибка переименования"
+                            );
+                          }
+                        }}
+                      >
+                        Переименовать
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await updateCategory(restaurantId, category.id, {
+                              name: category.name,
+                              description: category.description ?? null,
+                              sortOrder: category.sortOrder ?? 0,
+                              active: !(category.active ?? true),
+                            });
+                            await load();
+                          } catch (e: any) {
+                            alert(
+                              e?.response?.data?.message || e?.message || "Ошибка смены статуса"
+                            );
+                          }
+                        }}
+                      >
+                        {category.active !== false ? "Отключить" : "Включить"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={async () => {
+                          if (
+                            !confirm(`Удалить (деактивировать) категорию «${category.name}»?`)
+                          )
+                            return;
+                          try {
+                            await deleteCategory(restaurantId, category.id);
+                            await load();
+                          } catch (e: any) {
+                            alert(
+                              e?.response?.data?.message || e?.message || "Ошибка удаления категории"
+                            );
+                          }
+                        }}
+                      >
+                        Удалить
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -230,3 +297,5 @@ export default function TrainingCategoriesPage() {
     </div>
   );
 }
+
+export default TrainingModuleCategoriesPage;

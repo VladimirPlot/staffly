@@ -174,10 +174,10 @@ export default function RestaurantHome() {
           </div>
         </Link>
 
-        <Link to="/training/categories" className="block">
+        <Link to="/training" className="block">
           <Card className="h-full hover:bg-zinc-50">
             <div className="text-lg font-medium mb-1">Тренинг</div>
-            <div className="text-sm text-zinc-600">Категории и позиции меню/бара</div>
+            <div className="text-sm text-zinc-600">Категории и карточки меню, бара, вина и сервиса</div>
           </Card>
         </Link>
       </div>

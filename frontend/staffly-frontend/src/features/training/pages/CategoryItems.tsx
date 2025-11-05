@@ -1,0 +1,368 @@
+import React from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
+import Card from "../../../shared/ui/Card";
+import Button from "../../../shared/ui/Button";
+import Input from "../../../shared/ui/Input";
+import Textarea from "../../../shared/ui/Textarea";
+import BackToHome from "../../../shared/ui/BackToHome";
+import { useAuth } from "../../../shared/providers/AuthProvider";
+import {
+  listCategories,
+  listItems,
+  createItem,
+  deleteItem,
+  uploadItemImage,
+  deleteItemImage,
+  type TrainingCategoryDto,
+  type TrainingItemDto,
+} from "../api";
+import { getTrainingModuleConfig, isConfigWithCategories } from "../config";
+import { toAbsoluteUrl } from "../../../shared/utils/url";
+
+const REQUIRED_MESSAGE = "Обязательное поле";
+
+type Params = { module: string; categoryId: string };
+
+export default function TrainingCategoryItemsPage() {
+  const params = useParams<Params>();
+  const moduleConfig = getTrainingModuleConfig(params.module);
+
+  if (!moduleConfig || !isConfigWithCategories(moduleConfig)) {
+    return <Navigate to="/training" replace />;
+  }
+
+  const categoryId = Number(params.categoryId);
+  if (!params.categoryId || Number.isNaN(categoryId)) {
+    return <Navigate to={`/training/${moduleConfig.slug}`} replace />;
+  }
+
+  const { user } = useAuth();
+  const restaurantId = user?.restaurantId ?? null;
+  const canManage = Boolean(
+    user?.roles?.some((role) => role === "ADMIN" || role === "MANAGER")
+  );
+
+  const [category, setCategory] = React.useState<TrainingCategoryDto | null>(null);
+  const [categoryError, setCategoryError] = React.useState<string | null>(null);
+  const [categoryLoading, setCategoryLoading] = React.useState(true);
+
+  const [items, setItems] = React.useState<TrainingItemDto[]>([]);
+  const [itemsLoading, setItemsLoading] = React.useState(true);
+  const [itemsError, setItemsError] = React.useState<string | null>(null);
+
+  const [name, setName] = React.useState("");
+  const [composition, setComposition] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [allergens, setAllergens] = React.useState("");
+  const [imageFile, setImageFile] = React.useState<File | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const [imageMutatingId, setImageMutatingId] = React.useState<number | null>(null);
+  const [deletingItemId, setDeletingItemId] = React.useState<number | null>(null);
+
+  const loadCategory = React.useCallback(async () => {
+    if (!restaurantId) return;
+    setCategoryLoading(true);
+    setCategoryError(null);
+    try {
+      const data = await listCategories(restaurantId, moduleConfig.module, canManage);
+      const found = data.find((c) => c.id === categoryId) ?? null;
+      if (!found) {
+        setCategoryError("Категория не найдена или недоступна.");
+        setCategory(null);
+      } else {
+        setCategory(found);
+      }
+    } catch (e: any) {
+      setCategoryError(e?.response?.data?.message || e?.message || "Не удалось загрузить категорию");
+      setCategory(null);
+    } finally {
+      setCategoryLoading(false);
+    }
+  }, [restaurantId, moduleConfig.module, canManage, categoryId]);
+
+  const loadItems = React.useCallback(async () => {
+    if (!restaurantId) return;
+    setItemsLoading(true);
+    setItemsError(null);
+    try {
+      const data = await listItems(restaurantId, categoryId);
+      setItems(data);
+    } catch (e: any) {
+      setItemsError(e?.response?.data?.message || e?.message || "Не удалось загрузить карточки");
+      setItems([]);
+    } finally {
+      setItemsLoading(false);
+    }
+  }, [restaurantId, categoryId]);
+
+  React.useEffect(() => {
+    if (!restaurantId) return;
+    void loadCategory();
+    void loadItems();
+  }, [restaurantId, loadCategory, loadItems]);
+
+  const resetForm = () => {
+    setName("");
+    setComposition("");
+    setDescription("");
+    setAllergens("");
+    setImageFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!restaurantId || !name.trim() || !composition.trim()) return;
+    try {
+      setCreating(true);
+      const created = await createItem(restaurantId, {
+        categoryId,
+        name,
+        composition,
+        description: description.trim() ? description.trim() : null,
+        allergens: allergens.trim() ? allergens.trim() : null,
+      });
+      if (imageFile) {
+        try {
+          await uploadItemImage(restaurantId, created.id, imageFile);
+        } catch (e: any) {
+          alert(e?.response?.data?.message || e?.message || "Не удалось загрузить фото");
+        }
+      }
+      resetForm();
+      await loadItems();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || "Не удалось создать карточку");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleUploadImage = async (itemId: number, file: File | null) => {
+    if (!restaurantId || !file) return;
+    try {
+      setImageMutatingId(itemId);
+      await uploadItemImage(restaurantId, itemId, file);
+      await loadItems();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || "Не удалось загрузить фото");
+    } finally {
+      setImageMutatingId(null);
+    }
+  };
+
+  const handleDeleteImage = async (itemId: number) => {
+    if (!restaurantId) return;
+    try {
+      setImageMutatingId(itemId);
+      await deleteItemImage(restaurantId, itemId);
+      await loadItems();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || "Не удалось удалить фото");
+    } finally {
+      setImageMutatingId(null);
+    }
+  };
+
+  const handleDeleteItem = async (itemId: number, name: string) => {
+    if (!restaurantId) return;
+    if (!confirm(`Удалить карточку «${name}»?`)) return;
+    try {
+      setDeletingItemId(itemId);
+      await deleteItem(restaurantId, itemId);
+      await loadItems();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || e?.message || "Не удалось удалить карточку");
+    } finally {
+      setDeletingItemId(null);
+    }
+  };
+
+  if (!restaurantId) {
+    return <Navigate to="/training" replace />;
+  }
+
+  const breadcrumbs = (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+      <BackToHome />
+      <span>→</span>
+      <Link to="/training" className="hover:underline">
+        Тренинг
+      </Link>
+      <span>→</span>
+      <Link to={`/training/${moduleConfig.slug}`} className="hover:underline">
+        {moduleConfig.title}
+      </Link>
+      {category && (
+        <>
+          <span>→</span>
+          <span className="font-medium text-zinc-800">{category.name}</span>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      {breadcrumbs}
+
+      <Card className="mb-4">
+        {categoryLoading ? (
+          <div>Загрузка категории…</div>
+        ) : categoryError ? (
+          <div className="text-red-600">{categoryError}</div>
+        ) : category ? (
+          <div>
+            <div className="text-2xl font-semibold text-zinc-900">{category.name}</div>
+            {category.description && (
+              <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
+            )}
+          </div>
+        ) : null}
+      </Card>
+
+      {canManage && (
+        <Card className="mb-4">
+          <div className="mb-3 text-sm font-medium">Создать карточку</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input
+              label="Название"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Цезарь"
+              required
+            />
+            <Textarea
+              label="Состав"
+              value={composition}
+              onChange={(e) => setComposition(e.target.value)}
+              placeholder="Курица, салат романо, соус цезарь"
+              rows={3}
+              required
+              error={!composition.trim() && creating ? REQUIRED_MESSAGE : undefined}
+            />
+            <Textarea
+              label="Описание (опционально)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+            <Textarea
+              label="Аллергены (опционально)"
+              value={allergens}
+              onChange={(e) => setAllergens(e.target.value)}
+              rows={3}
+            />
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600">Фото (опционально)</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !name.trim() || !composition.trim()}
+            >
+              {creating ? "Создаём…" : "Создать карточку"}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        {itemsLoading ? (
+          <div>Загрузка карточек…</div>
+        ) : itemsError ? (
+          <div className="text-red-600">{itemsError}</div>
+        ) : items.length === 0 ? (
+          <div className="text-zinc-600">В этой категории пока нет карточек.</div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="flex h-full flex-col gap-3 rounded-3xl border border-zinc-200 bg-white p-5"
+              >
+                {item.imageUrl && (
+                  <img
+                    src={toAbsoluteUrl(item.imageUrl)}
+                    alt={item.name}
+                    className="h-48 w-full rounded-2xl object-cover"
+                  />
+                )}
+                <div className="flex-1">
+                  <div className="text-lg font-semibold text-zinc-900">{item.name}</div>
+                  {item.description && (
+                    <div className="mt-1 text-sm text-zinc-600">{item.description}</div>
+                  )}
+                  <div className="mt-3">
+                    <div className="text-xs uppercase tracking-wide text-zinc-500">
+                      Состав
+                    </div>
+                    <div className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                      {item.composition || "Не указан"}
+                    </div>
+                  </div>
+                  {item.allergens && (
+                    <div className="mt-3">
+                      <div className="text-xs uppercase tracking-wide text-zinc-500">
+                        Аллергены
+                      </div>
+                      <div className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                        {item.allergens}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {canManage && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm text-zinc-600">
+                      Обновить фото
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="mt-1 block w-full text-sm"
+                        disabled={imageMutatingId === item.id}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          if (file) {
+                            void handleUploadImage(item.id, file);
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {item.imageUrl && (
+                      <Button
+                        variant="outline"
+                        onClick={() => handleDeleteImage(item.id)}
+                        disabled={imageMutatingId === item.id}
+                      >
+                        {imageMutatingId === item.id ? "Удаляем…" : "Удалить фото"}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleDeleteItem(item.id, item.name)}
+                      disabled={deletingItemId === item.id}
+                    >
+                      {deletingItemId === item.id ? "Удаляем…" : "Удалить карточку"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}

@@ -15,7 +15,9 @@ import Button from "./shared/ui/Button";
 
 import { fetchRestaurantName } from "./features/restaurants/api";
 import PositionsPage from "./features/dictionaries/pages/Positions";
-import TrainingCategoriesPage from "./features/training/pages/Categories";
+import TrainingLandingPage from "./features/training/pages/Landing";
+import TrainingModuleCategoriesPage from "./features/training/pages/Categories";
+import TrainingCategoryItemsPage from "./features/training/pages/CategoryItems";
 import RestaurantHome from "./features/home/pages/RestaurantHome";
 
 /* ===== TopBar ===== */
@@ -139,11 +141,31 @@ export default function App() {
               }
             />
             <Route
-              path="/training/categories"
+              path="/training"
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>
-                    <TrainingCategoriesPage />
+                    <TrainingLandingPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/:module"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingModuleCategoriesPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/:module/categories/:categoryId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCategoryItemsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

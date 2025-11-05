@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { clearToken, getToken, saveToken } from "../utils/storage";
 import { me as apiMe } from "../../features/auth/api";
 import type { MeResponse } from "../../entities/user/types";
+import { toAbsoluteUrl } from "../utils/url";
 
 export type UiUser = {
   id: number;
@@ -23,18 +24,6 @@ export type AuthContextValue = {
 };
 
 export const AuthContext = React.createContext<AuthContextValue | null>(null);
-
-// 👇 базовый URL бэкенда и хелпер абсолютных ссылок
-const API_BASE =
-  (import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") as string) ||
-  "http://localhost:8080";
-
-const toAbsoluteUrl = (url?: string | null) => {
-  if (!url) return undefined;
-  return url.startsWith("http://") || url.startsWith("https://")
-    ? url
-    : `${API_BASE}${url}`;
-};
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const navigate = useNavigate();
