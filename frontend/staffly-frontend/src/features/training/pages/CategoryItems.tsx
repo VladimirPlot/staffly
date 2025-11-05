@@ -18,6 +18,7 @@ import {
 } from "../api";
 import { getTrainingModuleConfig, isConfigWithCategories } from "../config";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
+import { hasTrainingManagementAccess } from "../../../shared/utils/access";
 
 const REQUIRED_MESSAGE = "Обязательное поле";
 
@@ -38,8 +39,9 @@ export default function TrainingCategoryItemsPage() {
 
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const canManage = Boolean(
-    user?.roles?.some((role) => role === "ADMIN" || role === "MANAGER")
+  const canManage = React.useMemo(
+    () => hasTrainingManagementAccess(user?.roles),
+    [user?.roles]
   );
 
   const [category, setCategory] = React.useState<TrainingCategoryDto | null>(null);
@@ -50,6 +52,7 @@ export default function TrainingCategoryItemsPage() {
   const [itemsLoading, setItemsLoading] = React.useState(true);
   const [itemsError, setItemsError] = React.useState<string | null>(null);
 
+  const [showCreateForm, setShowCreateForm] = React.useState(false);
   const [name, setName] = React.useState("");
   const [composition, setComposition] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -109,6 +112,7 @@ export default function TrainingCategoryItemsPage() {
     setDescription("");
     setAllergens("");
     setImageFile(null);
+    setShowCreateForm(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -225,8 +229,16 @@ export default function TrainingCategoryItemsPage() {
       </Card>
 
       {canManage && (
+        <div className="mb-4 flex justify-end">
+          <Button onClick={() => setShowCreateForm((prev) => !prev)}>
+            {showCreateForm ? "Скрыть форму" : "Создать карточку"}
+          </Button>
+        </div>
+      )}
+
+      {canManage && showCreateForm && (
         <Card className="mb-4">
-          <div className="mb-3 text-sm font-medium">Создать карточку</div>
+          <div className="mb-3 text-sm font-medium">Новая карточка</div>
           <div className="grid gap-3 md:grid-cols-2">
             <Input
               label="Название"
@@ -234,6 +246,7 @@ export default function TrainingCategoryItemsPage() {
               onChange={(e) => setName(e.target.value)}
               placeholder="Цезарь"
               required
+              error={!name.trim() && creating ? REQUIRED_MESSAGE : undefined}
             />
             <Textarea
               label="Состав"
@@ -266,12 +279,21 @@ export default function TrainingCategoryItemsPage() {
               />
             </label>
           </div>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-end gap-2">
             <Button
               onClick={handleCreate}
               disabled={creating || !name.trim() || !composition.trim()}
             >
-              {creating ? "Создаём…" : "Создать карточку"}
+              {creating ? "Создаём…" : "Создать"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                resetForm();
+              }}
+            >
+              Отмена
             </Button>
           </div>
         </Card>
@@ -283,14 +305,22 @@ export default function TrainingCategoryItemsPage() {
         ) : itemsError ? (
           <div className="text-red-600">{itemsError}</div>
         ) : items.length === 0 ? (
-          <div className="text-zinc-600">В этой категории пока нет карточек.</div>
+          <div className="flex flex-col items-start gap-3 text-zinc-600">
+            <div>В этой категории пока нет карточек.</div>
+            {canManage && (
+              <Button
+                onClick={() => {
+                  setShowCreateForm(true);
+                }}
+              >
+                Создать карточку
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {items.map((item) => (
-              <div
-                key={item.id}
-                className="flex h-full flex-col gap-3 rounded-3xl border border-zinc-200 bg-white p-5"
-              >
+              <Card key={item.id} className="flex h-full flex-col gap-3">
                 {item.imageUrl && (
                   <img
                     src={toAbsoluteUrl(item.imageUrl)}
@@ -358,7 +388,7 @@ export default function TrainingCategoryItemsPage() {
                     </Button>
                   </div>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         )}

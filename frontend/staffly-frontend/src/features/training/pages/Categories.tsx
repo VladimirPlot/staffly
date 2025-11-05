@@ -5,6 +5,7 @@ import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import { hasTrainingManagementAccess } from "../../../shared/utils/access";
 import {
   listCategories,
   createCategory,
@@ -63,14 +64,16 @@ function TrainingModuleCategoriesPage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
 
-  const canManage = Boolean(
-    user?.roles?.some((role) => role === "ADMIN" || role === "MANAGER")
+  const canManage = React.useMemo(
+    () => hasTrainingManagementAccess(user?.roles),
+    [user?.roles]
   );
 
   const [categories, setCategories] = React.useState<TrainingCategoryDto[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  const [showCreateForm, setShowCreateForm] = React.useState(false);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -109,6 +112,7 @@ function TrainingModuleCategoriesPage() {
       });
       setName("");
       setDescription("");
+      setShowCreateForm(false);
       await load();
     } catch (e: any) {
       alert(e?.response?.data?.message || e?.message || "Ошибка создания категории");
@@ -129,7 +133,7 @@ function TrainingModuleCategoriesPage() {
   return (
     <div className="mx-auto max-w-5xl">
       <Breadcrumbs module={moduleConfig} />
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">{moduleConfig.title}</h2>
           <div className="mt-1 text-sm text-zinc-600">{moduleConfig.description}</div>
@@ -152,14 +156,23 @@ function TrainingModuleCategoriesPage() {
       </div>
 
       {canManage && (
+        <div className="mb-4 flex justify-end">
+          <Button onClick={() => setShowCreateForm((prev) => !prev)}>
+            {showCreateForm ? "Скрыть форму" : "Создать категорию"}
+          </Button>
+        </div>
+      )}
+
+      {canManage && showCreateForm && (
         <Card className="mb-4">
-          <div className="mb-3 text-sm font-medium">Создать категорию</div>
+          <div className="mb-3 text-sm font-medium">Новая категория</div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Input
               label="Название"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Салаты"
+              autoFocus
             />
             <Input
               label="Описание (опционально)"
@@ -167,12 +180,23 @@ function TrainingModuleCategoriesPage() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Краткое описание"
             />
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Button
                 onClick={handleCreate}
                 disabled={!name.trim() || creating}
               >
                 {creating ? "Создаём…" : "Создать"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setName("");
+                  setDescription("");
+                }}
+              >
+                Отмена
               </Button>
             </div>
           </div>
@@ -189,11 +213,8 @@ function TrainingModuleCategoriesPage() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {categories.map((category) => (
-              <div
-                key={category.id}
-                className="flex h-full flex-col gap-3 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm"
-              >
-                <div>
+              <Card key={category.id} className="flex h-full flex-col gap-3 transition hover:-translate-y-0.5 hover:shadow-md">
+                <div className="flex-1">
                   <div className="text-lg font-semibold text-zinc-900">{category.name}</div>
                   {category.description && (
                     <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
@@ -214,7 +235,7 @@ function TrainingModuleCategoriesPage() {
                         ? "border border-emerald-300 text-emerald-700"
                         : "border border-zinc-300 text-zinc-600"
                     }`}
-                    >
+                  >
                     {category.active !== false ? "Активна" : "Отключена"}
                   </span>
                 </div>
@@ -289,7 +310,7 @@ function TrainingModuleCategoriesPage() {
                     </>
                   )}
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
