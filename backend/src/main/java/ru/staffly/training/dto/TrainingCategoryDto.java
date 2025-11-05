@@ -1,7 +1,5 @@
 package ru.staffly.training.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import ru.staffly.training.model.TrainingModule;
 
