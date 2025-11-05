@@ -50,3 +50,7 @@ export async function listMembers(restaurantId: number): Promise<MemberDto[]> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/members`);
   return data as MemberDto[];
 }
+
+export async function removeMember(restaurantId: number, memberId: number): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/members/${memberId}`);
+}

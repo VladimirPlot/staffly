@@ -283,16 +283,34 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public void removeMember(Long restaurantId, Long memberId, Long currentUserId) {
-        security.assertAtLeastManager(currentUserId, restaurantId);
+        security.assertMember(currentUserId, restaurantId);
 
-        RestaurantMember m = members.findById(memberId)
+        RestaurantMember targetMember = members.findById(memberId)
                 .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-        if (!m.getRestaurant().getId().equals(restaurantId)) {
+        if (!targetMember.getRestaurant().getId().equals(restaurantId)) {
             throw new BadRequestException("Member belongs to another restaurant");
         }
 
+        RestaurantMember actor = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+                .orElseThrow(() -> new ForbiddenException("Not a member"));
+
+        boolean selfRemoval = actor.getId().equals(targetMember.getId());
+
+        if (!selfRemoval) {
+            switch (actor.getRole()) {
+                case ADMIN -> {
+                }
+                case MANAGER -> {
+                    if (targetMember.getRole() != RestaurantRole.STAFF) {
+                        throw new ForbiddenException("Managers can remove only STAFF members");
+                    }
+                }
+                case STAFF -> throw new ForbiddenException("Staff can remove only themselves");
+            }
+        }
+
         // Нельзя удалить последнего ADMIN
-        if (m.getRole() == RestaurantRole.ADMIN) {
+        if (targetMember.getRole() == RestaurantRole.ADMIN) {
             long admins = members.countByRestaurantIdAndRole(restaurantId, RestaurantRole.ADMIN);
             if (admins <= 1) {
                 throw new ConflictException("Cannot remove the last ADMIN");

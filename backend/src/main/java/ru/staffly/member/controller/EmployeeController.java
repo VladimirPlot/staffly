@@ -59,8 +59,8 @@ public class EmployeeController {
         return employees.updateRole(restaurantId, memberId, newRole, principal.userId());
     }
 
-    // Удалить участника (MANAGER/OWNER)
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    // Удалить участника (правила зависят от роли — проверяются в сервисе)
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @DeleteMapping("/members/{memberId}")
     public void remove(@PathVariable Long restaurantId,
                        @PathVariable Long memberId,

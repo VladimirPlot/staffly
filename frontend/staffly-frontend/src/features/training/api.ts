@@ -1,5 +1,4 @@
 import api from "../../shared/api/apiClient";
-import type { RestaurantRole } from "../dictionaries/api"; // не используется здесь, просто чтобы было рядом
 
 export type TrainingModule = "MENU" | "BAR";
 

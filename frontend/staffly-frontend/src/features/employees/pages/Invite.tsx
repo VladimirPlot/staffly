@@ -4,6 +4,7 @@ import Card from "../../../shared/ui/Card";
 import Input from "../../../shared/ui/Input";
 import Button from "../../../shared/ui/Button";
 import BackToHome from "../../../shared/ui/BackToHome";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 
 import {
@@ -20,6 +21,7 @@ import {
 import {
   listMembers,
   fetchMyRoleIn,
+  removeMember as removeMemberApi,
   type MemberDto,
 } from "../../employees/api";
 
@@ -70,6 +72,9 @@ export default function InvitePage() {
   const [members, setMembers] = React.useState<MemberDto[]>([]);
   const [loadingMembers, setLoadingMembers] = React.useState(true);
   const [membersError, setMembersError] = React.useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = React.useState<MemberDto | null>(null);
+  const [removing, setRemoving] = React.useState(false);
+  const [removeError, setRemoveError] = React.useState<string | null>(null);
 
   // Должности
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
@@ -115,6 +120,89 @@ export default function InvitePage() {
     return () => { alive = false; };
   }, [restaurantId]);
 
+  const currentUserId = user?.id ?? null;
+  const adminsCount = React.useMemo(
+    () => members.filter((m) => m.role === "ADMIN").length,
+    [members]
+  );
+
+  const canRemoveMember = React.useCallback(
+    (member: MemberDto) => {
+      if (!myRole || !currentUserId) return false;
+      const isSelf = member.userId === currentUserId;
+
+      switch (myRole) {
+        case "ADMIN":
+          if (isSelf && member.role === "ADMIN" && adminsCount <= 1) {
+            return false;
+          }
+          return true;
+        case "MANAGER":
+          if (isSelf) return true;
+            return member.role === "STAFF";
+        case "STAFF":
+            return isSelf;
+        default:
+            return false;
+      }
+    },
+    [adminsCount, currentUserId, myRole]
+  );
+
+  const closeRemoveDialog = React.useCallback(() => {
+    if (removing) return;
+    setMemberToRemove(null);
+    setRemoveError(null);
+  }, [removing]);
+
+  const confirmRemoveMember = React.useCallback(async () => {
+    if (!restaurantId || !memberToRemove) return;
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await removeMemberApi(restaurantId, memberToRemove.id);
+      setMembers((prev) => prev.filter((m) => m.id !== memberToRemove.id));
+      if (memberToRemove.userId === currentUserId) {
+        setMyRole(null);
+      }
+      setMemberToRemove(null);
+    } catch (e: any) {
+      setRemoveError(
+        e?.response?.data?.message || e?.message || "Не удалось исключить участника"
+      );
+    } finally {
+      setRemoving(false);
+    }
+  }, [currentUserId, memberToRemove, restaurantId]);
+
+  const memberRemovalDescription = React.useMemo(() => {
+    if (!memberToRemove) return null;
+    const isSelf = currentUserId != null && memberToRemove.userId === currentUserId;
+    return (
+      <div className="space-y-3">
+        <p>
+          {isSelf
+            ? "Вы действительно хотите покинуть ресторан? После подтверждения вы потеряете доступ к его данным."
+            : `Вы действительно хотите исключить ${displayNameOf(memberToRemove)} из ресторана?`}
+        </p>
+        {removeError && <div className="text-sm text-red-600">{removeError}</div>}
+      </div>
+    );
+  }, [currentUserId, memberToRemove, removeError]);
+
+  const memberRemovalTitle = React.useMemo(() => {
+    if (!memberToRemove) return "";
+    return currentUserId != null && memberToRemove.userId === currentUserId
+      ? "Покинуть ресторан?"
+      : "Исключить участника?";
+  }, [currentUserId, memberToRemove]);
+
+  const memberRemovalConfirmText = React.useMemo(() => {
+    if (!memberToRemove) return "Исключить";
+    return currentUserId != null && memberToRemove.userId === currentUserId
+      ? "Покинуть"
+      : "Исключить";
+  }, [currentUserId, memberToRemove]);
   // 2) тянем должности (активные). Сервер может уметь фильтровать по роли — пробуем прокинуть.
   const loadPositions = React.useCallback(async (filterByRole?: InviteRole) => {
     if (!restaurantId) return;
@@ -166,9 +254,17 @@ export default function InvitePage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-semibold">Участники</h2>
           {canInvite && (
-            <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
-              {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/dictionaries/positions"
+                className="rounded-2xl border border-zinc-300 px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
+              >
+                Справочники
+              </Link>
+              <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
+                {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -181,8 +277,11 @@ export default function InvitePage() {
         ) : (
           <div className="divide-y">
             {members.map((m) => (
-              <div key={m.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
+              <div
+                key={m.id}
+                className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 flex-1">
                   <div className="truncate text-base font-medium">{displayNameOf(m)}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
                     <span className="rounded-full border px-2 py-0.5">
@@ -190,8 +289,23 @@ export default function InvitePage() {
                     </span>
                   </div>
                 </div>
-                <div className="text-sm text-zinc-700">
-                  День рождения: <span className="font-medium">{formatBirthday(m.birthDate)}</span>
+                <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="text-sm text-zinc-700">
+                    День рождения: <span className="font-medium">{formatBirthday(m.birthDate)}</span>
+                  </div>
+                  {canRemoveMember(m) && (
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={() => {
+                        setRemoveError(null);
+                        setMemberToRemove(m);
+                      }}
+                      disabled={removing && memberToRemove?.id === m.id}
+                    >
+                      Исключить
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -292,6 +406,16 @@ export default function InvitePage() {
           )}
         </Card>
       )}
+      <ConfirmDialog
+        open={!!memberToRemove}
+        title={memberRemovalTitle}
+        description={memberRemovalDescription}
+        confirmText={memberRemovalConfirmText}
+        cancelText="Отмена"
+        confirming={removing}
+        onConfirm={confirmRemoveMember}
+        onCancel={closeRemoveDialog}
+      />
     </div>
   );
 }
