@@ -116,6 +116,11 @@ function TrainingModuleCategoriesPage() {
 
   const [allForManagers, setAllForManagers] = React.useState(false);
 
+  const [editingCategoryId, setEditingCategoryId] = React.useState<number | null>(null);
+  const [editCategoryName, setEditCategoryName] = React.useState("");
+  const [editCategoryDescription, setEditCategoryDescription] = React.useState("");
+  const [savingCategory, setSavingCategory] = React.useState(false);
+
   React.useEffect(() => {
     setAllForManagers(false);
   }, [moduleCode]);
@@ -251,9 +256,27 @@ function TrainingModuleCategoriesPage() {
             {categories.map((category) => (
               <Card key={category.id} className="flex h-full flex-col gap-3 transition hover:-translate-y-0.5 hover:shadow-md">
                 <div className="flex-1">
-                  <div className="text-lg font-semibold text-zinc-900">{category.name}</div>
-                  {category.description && (
-                    <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
+                  {editingCategoryId === category.id ? (
+                    <div className="grid gap-3">
+                      <Input
+                        label="Название"
+                        value={editCategoryName}
+                        onChange={(e) => setEditCategoryName(e.target.value)}
+                        autoFocus
+                      />
+                      <Input
+                        label="Описание (опционально)"
+                        value={editCategoryDescription}
+                        onChange={(e) => setEditCategoryDescription(e.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-lg font-semibold text-zinc-900">{category.name}</div>
+                      {category.description && (
+                        <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -282,67 +305,89 @@ function TrainingModuleCategoriesPage() {
                   </Link>
                   {canManage && (
                     <>
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          const newName = prompt("Новое название категории:", category.name)?.trim();
-                          if (!newName || newName === category.name) return;
-                          try {
-                            await updateCategory(restaurantId, category.id, {
-                              name: newName,
-                              description: category.description ?? null,
-                              sortOrder: category.sortOrder ?? 0,
-                              active: category.active ?? true,
-                            });
-                            await load();
-                          } catch (e: any) {
-                            alert(
-                              e?.response?.data?.message || e?.message || "Ошибка переименования"
-                            );
-                          }
-                        }}
-                      >
-                        Переименовать
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          try {
-                            await updateCategory(restaurantId, category.id, {
-                              name: category.name,
-                              description: category.description ?? null,
-                              sortOrder: category.sortOrder ?? 0,
-                              active: !(category.active ?? true),
-                            });
-                            await load();
-                          } catch (e: any) {
-                            alert(
-                              e?.response?.data?.message || e?.message || "Ошибка смены статуса"
-                            );
-                          }
-                        }}
-                      >
-                        {category.active !== false ? "Отключить" : "Включить"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={async () => {
-                          if (
-                            !confirm(`Удалить (деактивировать) категорию «${category.name}»?`)
-                          )
-                            return;
-                          try {
-                            await deleteCategory(restaurantId, category.id);
-                            await load();
-                          } catch (e: any) {
-                            alert(
-                              e?.response?.data?.message || e?.message || "Ошибка удаления категории"
-                            );
-                          }
-                        }}
-                      >
-                        Удалить
-                      </Button>
+                      {editingCategoryId === category.id ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            onClick={async () => {
+                              if (!restaurantId) return;
+                              const trimmedName = editCategoryName.trim();
+                              if (!trimmedName) {
+                                alert("Название не может быть пустым");
+                                return;
+                              }
+                              try {
+                                setSavingCategory(true);
+                                await updateCategory(restaurantId, category.id, {
+                                  name: trimmedName,
+                                  description: editCategoryDescription.trim()
+                                    ? editCategoryDescription.trim()
+                                    : null,
+                                  sortOrder: category.sortOrder ?? 0,
+                                  active: category.active ?? true,
+                                });
+                                setEditingCategoryId(null);
+                                await load();
+                              } catch (e: any) {
+                                alert(
+                                  e?.response?.data?.message || e?.message || "Ошибка сохранения"
+                                );
+                              } finally {
+                                setSavingCategory(false);
+                              }
+                            }}
+                            disabled={savingCategory}
+                          >
+                            {savingCategory ? "Сохраняем…" : "Сохранить"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingCategoryId(null);
+                              setEditCategoryName("");
+                              setEditCategoryDescription("");
+                            }}
+                            disabled={savingCategory}
+                          >
+                            Отмена
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setEditingCategoryId(category.id);
+                              setEditCategoryName(category.name);
+                              setEditCategoryDescription(category.description ?? "");
+                            }}
+                          >
+                            Редактировать
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={async () => {
+                              if (
+                                !confirm(`Удалить (деактивировать) категорию «${category.name}»?`)
+                              )
+                                return;
+                              if (!restaurantId) return;
+                              try {
+                                await deleteCategory(restaurantId, category.id);
+                                await load();
+                              } catch (e: any) {
+                                alert(
+                                  e?.response?.data?.message || e?.message ||
+                                  "Ошибка удаления категории"
+                                );
+                              }
+                            }}
+                          >
+                            Удалить
+                          </Button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
