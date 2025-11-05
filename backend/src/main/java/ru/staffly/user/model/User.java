@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -24,7 +25,8 @@ public class User {
     @Column(nullable = false, length = 32, unique = true)
     private String phone;
 
-    @Column(length = 255, unique = true)
+    // <-- стало NOT NULL
+    @Column(nullable = false, length = 255, unique = true)
     @Email
     private String email;
 
@@ -36,6 +38,12 @@ public class User {
 
     @Column(name = "full_name", nullable = false, length = 70)
     private String fullName;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
@@ -52,10 +60,8 @@ public class User {
     @PrePersist
     @PreUpdate
     public void updateFullName() {
-        this.fullName = firstName + " " + lastName;
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
-        }
+        this.fullName = (firstName == null ? "" : firstName) + " " + (lastName == null ? "" : lastName);
+        if (createdAt == null) createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }
 }

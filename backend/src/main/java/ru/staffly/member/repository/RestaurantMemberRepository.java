@@ -2,6 +2,7 @@ package ru.staffly.member.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import ru.staffly.member.dto.MyMembershipDto;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.RestaurantRole;
 
@@ -27,4 +28,15 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findAdmins(Long restaurantId);
 
     List<RestaurantMember> findByUserId(Long userId);
+
+    @Query("""
+   select new ru.staffly.member.dto.MyMembershipDto(
+     m.restaurant.id,
+     m.role
+   )
+   from RestaurantMember m
+   where m.user.id = :userId
+   order by m.restaurant.id asc
+""")
+    List<MyMembershipDto> findMembershipsDtoByUserId(Long userId);
 }

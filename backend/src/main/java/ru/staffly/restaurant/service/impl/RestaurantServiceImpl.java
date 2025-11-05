@@ -37,13 +37,15 @@ public class RestaurantServiceImpl implements RestaurantService {
         if (name.isBlank()) throw new ConflictException("Name is required");
 
         String code = req.code() == null || req.code().isBlank()
-                ? slugify(name)
+                ? nextFreeCode(slugify(name))
                 : normalizeCode(req.code());
 
         // обеспечить уникальность кода (регистр неважен)
-        restaurants.findByCode(code).ifPresent(r -> {
-            throw new ConflictException("Restaurant code already exists: " + code);
-        });
+        if (req.code() != null && !req.code().isBlank()) {
+            restaurants.findByCode(code).ifPresent(r -> {
+                throw new ConflictException("Restaurant code already exists: " + code);
+            });
+        }
 
         Restaurant r = Restaurant.builder()
                 .name(name)
@@ -126,5 +128,16 @@ public class RestaurantServiceImpl implements RestaurantService {
                     .build();
             positions.save(p);
         }
+    }
+
+    private String nextFreeCode(String base) {
+        String c = base;
+        int i = 2;
+        while (restaurants.findByCode(c).isPresent()) {
+            c = base + "-" + i;
+            i++;
+            if (i > 1000) throw new ConflictException("Cannot generate unique code");
+        }
+        return c;
     }
 }

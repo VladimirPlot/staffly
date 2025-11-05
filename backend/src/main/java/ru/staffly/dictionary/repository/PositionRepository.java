@@ -10,4 +10,6 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
     List<Position> findByRestaurantIdAndActiveTrue(Long restaurantId);
 
     boolean existsByRestaurantIdAndNameIgnoreCase(Long restaurantId, String name);
+
+    List<Position> findByRestaurantId(Long restaurantId);
 }

@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface DictionaryService {
     PositionDto createPosition(Long restaurantId, Long currentUserId, PositionDto dto);
-    List<PositionDto> listPositions(Long restaurantId, Long currentUserId);
+    List<PositionDto> listPositions(Long restaurantId, Long currentUserId, boolean includeInactive);
     PositionDto updatePosition(Long restaurantId, Long currentUserId, Long positionId, PositionDto dto);
     void deletePosition(Long restaurantId, Long currentUserId, Long positionId);
 

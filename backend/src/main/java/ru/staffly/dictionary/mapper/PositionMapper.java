@@ -34,7 +34,7 @@ public class PositionMapper {
     public void updateEntity(Position e, PositionDto dto, Restaurant restaurant) {
         if (dto.name() != null) e.setName(dto.name());
         if (restaurant != null) e.setRestaurant(restaurant);
-        e.setActive(dto.active());
+        if (dto.active() != null) e.setActive(dto.active());
         if (dto.level() != null) e.setLevel(dto.level());
     }
 }

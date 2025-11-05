@@ -7,6 +7,9 @@ app:
     ttl-minutes: ${JWT_TTL_MINUTES:120}
   creator:
     phones: "+79999999999"
+  hide-creator-emails:
+    - admin@staffly.local
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
 
 spring:
   application:

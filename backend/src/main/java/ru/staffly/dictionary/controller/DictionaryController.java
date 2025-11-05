@@ -25,8 +25,9 @@ public class DictionaryController {
     @GetMapping("/positions")
     public List<PositionDto> listPositions(@PathVariable Long restaurantId,
                                            @AuthenticationPrincipal UserPrincipal principal,
-                                           @RequestParam(name = "role", required = false) RestaurantRole role) {
-        List<PositionDto> all = dictionaries.listPositions(restaurantId, principal.userId());
+                                           @RequestParam(name = "role", required = false) RestaurantRole role,
+                                           @RequestParam(name = "includeInactive", defaultValue = "false") boolean includeInactive) {
+        List<PositionDto> all = dictionaries.listPositions(restaurantId, principal.userId(), includeInactive);
         if (role == null) return all;
         return all.stream()
                 .filter(p -> isPositionCompatibleWithRole(p.level(), role))

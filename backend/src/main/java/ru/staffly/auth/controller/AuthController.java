@@ -1,7 +1,6 @@
 package ru.staffly.auth.controller;
 
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -15,7 +14,6 @@ import ru.staffly.auth.dto.LoginRequest;
 import ru.staffly.auth.dto.RegisterRequest;
 import ru.staffly.auth.dto.SwitchRestaurantRequest;
 import ru.staffly.common.exception.BadRequestException;
-import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.JwtService;
@@ -23,8 +21,11 @@ import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,11 +37,8 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final RestaurantMemberRepository memberRepository;
-
-    // список телефонов с глобальной ролью CREATOR
     private final Set<String> creatorPhones;
 
-    // внедрение через конструктор
     @Autowired
     public AuthController(UserRepository users,
                           PasswordEncoder encoder,
@@ -59,21 +57,42 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@RequestBody @Valid RegisterRequest req) {
-        users.findByPhone(req.phone()).ifPresent(u -> { throw new BadRequestException("Phone already registered"); });
-        if (req.email() != null && !req.email().isBlank()) {
-            users.findByEmail(req.email()).ifPresent(u -> { throw new BadRequestException("Email already registered"); });
+        // нормализация
+        String phone = req.phone().trim();
+        String email = req.email().trim().toLowerCase(Locale.ROOT);
+        String firstName = req.firstName().trim();
+        String lastName  = req.lastName().trim();
+
+        // проверки уникальности
+        if (users.existsByPhone(phone)) {
+            throw new BadRequestException("Phone already registered");
+        }
+        if (users.existsByEmailIgnoreCase(email)) {
+            throw new BadRequestException("Email already registered");
+        }
+        LocalDate bd = null;
+        if (req.birthDate() != null && !req.birthDate().isBlank()) {
+            try {
+                bd = LocalDate.parse(req.birthDate());
+                if (bd.isAfter(LocalDate.now())) {
+                    throw new BadRequestException("Birth date cannot be in the future");
+                }
+            } catch (DateTimeParseException e) {
+                throw new BadRequestException("Invalid birthDate format (expected yyyy-MM-dd)");
+            }
         }
 
         User u = users.save(User.builder()
-                .phone(req.phone())
-                .email(req.email())
-                .firstName(req.firstName())
-                .lastName(req.lastName())
+                .phone(phone)
+                .email(email)
+                .firstName(firstName)
+                .lastName(lastName)
                 .passwordHash(encoder.encode(req.password()))
+                .birthDate(bd)
                 .active(true)
                 .build());
 
-        // опционально — авто-логин после регистрации
+        // авто-логин
         List<String> roles = creatorPhones.contains(u.getPhone()) ? List.of("CREATOR") : List.of();
         var principal = new UserPrincipal(u.getId(), u.getPhone(), null, roles);
         String token = jwt.generateToken(principal);
@@ -88,10 +107,7 @@ public class AuthController {
         if (!encoder.matches(req.password(), u.getPasswordHash())) {
             throw new BadRequestException("Bad credentials");
         }
-
-        // Глобальные роли (только CREATOR). Роли в ресторане — НЕ сюда.
         List<String> roles = creatorPhones.contains(u.getPhone()) ? List.of("CREATOR") : List.of();
-
         var principal = new UserPrincipal(u.getId(), u.getPhone(), null, roles);
         String token = jwt.generateToken(principal);
         return ResponseEntity.ok(new AuthResponse(token));
@@ -104,13 +120,9 @@ public class AuthController {
         Long userId = principal.userId();
         Long restaurantId = req.restaurantId();
 
-        // проверим членство
         boolean member = memberRepository.findByUserIdAndRestaurantId(userId, restaurantId).isPresent();
-        if (!member) {
-            throw new ForbiddenException("Not a member of this restaurant");
-        }
+        if (!member) throw new ru.staffly.common.exception.ForbiddenException("Not a member of this restaurant");
 
-        // роли остаются глобальными (CREATOR или пусто); restaurantId — переключаем
         var newPrincipal = new UserPrincipal(
                 userId,
                 principal.phone(),

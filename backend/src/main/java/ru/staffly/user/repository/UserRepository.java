@@ -8,8 +8,15 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByPhone(String phone);
-    Optional<User> findByEmail(String email);
-    // Поиск либо по телефону, либо по email
+    Optional<User> findByEmailIgnoreCase(String email);
+
+    boolean existsByPhone(String phone);
+    boolean existsByEmailIgnoreCase(String email);
+
+    // НОВОЕ: проверки уникальности, исключая текущего пользователя (id != :id)
+    boolean existsByEmailIgnoreCaseAndIdNot(String email, Long id);
+    boolean existsByPhoneAndIdNot(String phone, Long id);
+
     @Query("""
        select u from User u
        where u.phone = :value

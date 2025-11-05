@@ -1,7 +1,9 @@
 package ru.staffly.member.service.impl;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
@@ -29,7 +31,10 @@ import ru.staffly.user.repository.UserRepository;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static ru.staffly.common.util.InviteUtils.*;
 
@@ -47,7 +52,23 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final MemberMapper memberMapper;
     private final SecurityService security;
 
+    @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
+    private List<String> hiddenCreatorEmails;
+
+    @Value("${app.creator.phones:+79999999999}")
+    private String creatorPhonesCsv;
+
+    private Set<String> creatorPhones;
+
     private static final Duration INVITE_TTL = Duration.ofHours(48);
+
+    @PostConstruct
+    void initCreatorPhones() {
+        creatorPhones = Arrays.stream(creatorPhonesCsv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+    }
 
     @Override
     @Transactional
@@ -204,8 +225,35 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Transactional(Transactional.TxType.SUPPORTS)
     public List<MemberDto> listMembers(Long restaurantId, Long currentUserId) {
         security.assertMember(currentUserId, restaurantId);
+
+        // является ли смотрящий создателем?
+        boolean viewerIsCreator = users.findById(currentUserId)
+                .map(u -> {
+                    String ph = u.getPhone();
+                    return ph != null && creatorPhones.contains(ph.trim());
+                })
+                .orElse(false);
+
         return members.findByRestaurantId(restaurantId)
-                .stream().map(memberMapper::toDto).toList();
+                .stream()
+                .filter(m -> {
+                    if (viewerIsCreator) return true; // создателю показываем всех
+
+                    var u = m.getUser();
+                    if (u == null) return true;
+
+                    String ph = u.getPhone();
+                    if (ph != null && creatorPhones.contains(ph.trim())) return false;
+
+                    String em = u.getEmail();
+                    if (em != null && hiddenCreatorEmails != null &&
+                            hiddenCreatorEmails.stream().anyMatch(x -> x.equalsIgnoreCase(em))) {
+                        return false;
+                    }
+                    return true;
+                })
+                .map(memberMapper::toDto)
+                .toList();
     }
 
     @Override
