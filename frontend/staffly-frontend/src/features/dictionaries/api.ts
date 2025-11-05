@@ -1,6 +1,7 @@
 import api from "../../shared/api/apiClient";
+import type { RestaurantRole } from "../../shared/types/restaurant";
 
-export type RestaurantRole = "ADMIN" | "MANAGER" | "STAFF";
+export type { RestaurantRole } from "../../shared/types/restaurant";
 
 export type PositionDto = {
   id: number;

@@ -1,5 +1,6 @@
 import api from "../../shared/api/apiClient";
-import type { RestaurantRole } from "../dictionaries/api";
+import { getMyRoleIn } from "../../shared/api/memberships";
+import type { RestaurantRole } from "../../shared/types/restaurant";
 
 /* ===== Приглашения (оставляем как было) ===== */
 export type InviteRequest = {
@@ -23,10 +24,7 @@ export async function sendInvite(restaurantId: number, payload: InviteRequest): 
 
 /* ===== Помощник: узнать мою роль в текущем ресторане ===== */
 export async function fetchMyRoleIn(restaurantId: number): Promise<RestaurantRole | null> {
-  const { data } = await api.get("/api/me/memberships");
-  if (!Array.isArray(data)) return null;
-  const row = data.find((m: any) => Number(m.restaurantId) === Number(restaurantId));
-  return row?.role ?? null;
+  return getMyRoleIn(restaurantId);
 }
 
 /* ===== Список участников ===== */

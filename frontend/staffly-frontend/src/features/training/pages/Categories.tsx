@@ -5,7 +5,9 @@ import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import { getMyRoleIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
+import type { RestaurantRole } from "../../../shared/types/restaurant";
 import {
   listCategories,
   createCategory,
@@ -64,10 +66,44 @@ function TrainingModuleCategoriesPage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
 
+  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+
   const canManage = React.useMemo(
-    () => hasTrainingManagementAccess(user?.roles),
-    [user?.roles]
+    () => hasTrainingManagementAccess(user?.roles, myRole),
+    [user?.roles, myRole]
   );
+
+  React.useEffect(() => {
+    if (restaurantId == null) {
+      setMyRole(null);
+      return;
+    }
+
+    if (hasTrainingManagementAccess(user?.roles)) {
+      setMyRole(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const role = await getMyRoleIn(restaurantId);
+        if (!cancelled) {
+          setMyRole(role);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load membership role", error);
+          setMyRole(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, user?.roles]);
 
   const [categories, setCategories] = React.useState<TrainingCategoryDto[]>([]);
   const [loading, setLoading] = React.useState(true);
