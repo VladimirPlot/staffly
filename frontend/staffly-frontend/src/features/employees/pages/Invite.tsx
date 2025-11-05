@@ -166,17 +166,9 @@ export default function InvitePage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-semibold">Участники</h2>
           {canInvite && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                to="/dictionaries/positions"
-                className="rounded-2xl border border-zinc-300 px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
-              >
-                Справочники
-              </Link>
-              <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
-                {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
-              </Button>
-            </div>
+            <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
+              {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
+            </Button>
           )}
         </div>
 

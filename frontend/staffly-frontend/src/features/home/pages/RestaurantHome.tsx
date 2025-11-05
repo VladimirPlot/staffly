@@ -4,10 +4,64 @@ import Button from "../../../shared/ui/Button";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchRestaurantName } from "../../restaurants/api";
+import { listMembers, type MemberDto } from "../../employees/api";
+
+type UpcomingBirthday = {
+  id: number;
+  name: string;
+  formattedDate: string;
+  nextOccurrence: Date;
+};
+
+function displayNameOf(m: MemberDto): string {
+  if (m.fullName && m.fullName.trim()) return m.fullName.trim();
+  const ln = (m.lastName || "").trim();
+  const fn = (m.firstName || "").trim();
+  const both = [ln, fn].filter(Boolean).join(" ").trim();
+  return both || "Без имени";
+}
+
+function computeUpcomingBirthdays(members: MemberDto[]): UpcomingBirthday[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const formatter = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+  });
+
+  return members
+    .map((member) => {
+      if (!member.birthDate) return null;
+      const birth = new Date(member.birthDate);
+      if (Number.isNaN(birth.getTime())) return null;
+
+      const next = new Date(today.getFullYear(), birth.getMonth(), birth.getDate());
+      if (next < today) {
+        next.setFullYear(next.getFullYear() + 1);
+      }
+
+      const diffMs = next.getTime() - today.getTime();
+      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      const MAX_DAYS_AHEAD = 7;
+      if (diffDays < 0 || diffDays > MAX_DAYS_AHEAD) return null;
+
+      return {
+        id: member.id,
+        name: displayNameOf(member),
+        formattedDate: formatter.format(next),
+        nextOccurrence: next,
+      } satisfies UpcomingBirthday;
+    })
+    .filter((v): v is UpcomingBirthday => Boolean(v))
+    .sort((a, b) => a.nextOccurrence.getTime() - b.nextOccurrence.getTime());
+}
 
 export default function RestaurantHome() {
   const { user } = useAuth();
   const [name, setName] = React.useState<string>("");
+  const [upcomingBirthdays, setUpcomingBirthdays] = React.useState<UpcomingBirthday[]>([]);
+  const [birthdaysHidden, setBirthdaysHidden] = React.useState(false);
 
   React.useEffect(() => {
     let alive = true;
@@ -24,12 +78,90 @@ export default function RestaurantHome() {
     return () => { alive = false; };
   }, [user?.restaurantId]);
 
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!user?.restaurantId) {
+        if (alive) setUpcomingBirthdays([]);
+        return;
+      }
+      try {
+        const members = await listMembers(user.restaurantId);
+        if (!alive) return;
+        setUpcomingBirthdays(computeUpcomingBirthdays(members));
+      } catch {
+        if (!alive) return;
+        setUpcomingBirthdays([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user?.restaurantId]);
+
+  React.useEffect(() => {
+    if (!user?.restaurantId) {
+      setBirthdaysHidden(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const key = `restaurant:${user.restaurantId}:birthdaysHidden`;
+    setBirthdaysHidden(window.localStorage.getItem(key) === "1");
+  }, [user?.restaurantId]);
+
+  const hideBirthdays = React.useCallback(() => {
+    setBirthdaysHidden(true);
+    if (typeof window !== "undefined" && user?.restaurantId) {
+      const key = `restaurant:${user.restaurantId}:birthdaysHidden`;
+      window.localStorage.setItem(key, "1");
+    }
+  }, [user?.restaurantId]);
+
+  const showBirthdays = React.useCallback(() => {
+    setBirthdaysHidden(false);
+    if (typeof window !== "undefined" && user?.restaurantId) {
+      const key = `restaurant:${user.restaurantId}:birthdaysHidden`;
+      window.localStorage.removeItem(key);
+    }
+  }, [user?.restaurantId]);
+
   return (
     <div className="mx-auto max-w-3xl">
       <Card className="mb-4">
         <div className="text-sm text-zinc-500">Ресторан</div>
         <h2 className="text-2xl font-semibold">{name || "…"}</h2>
       </Card>
+
+      {upcomingBirthdays.length > 0 && (
+        birthdaysHidden ? (
+          <div className="mb-4 flex justify-end">
+            <Button variant="ghost" className="text-sm text-zinc-600" onClick={showBirthdays}>
+              Показать дни рождения
+            </Button>
+          </div>
+        ) : (
+          <Card className="mb-4 bg-amber-50/70 border-amber-200">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-medium uppercase tracking-wide text-amber-600">
+                  Скоро день рождения!
+                </div>
+                <ul className="mt-3 space-y-2 text-sm text-amber-900">
+                  {upcomingBirthdays.map((item) => (
+                    <li key={item.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="font-semibold">{item.name}</span>
+                      <span className="text-amber-700">{item.formattedDate}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Button variant="ghost" className="text-sm text-amber-700" onClick={hideBirthdays}>
+                Скрыть
+              </Button>
+            </div>
+          </Card>
+        )
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
