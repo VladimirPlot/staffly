@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Input from "../../../shared/ui/Input";
 import Button from "../../../shared/ui/Button";
@@ -163,12 +163,20 @@ export default function InvitePage() {
       <div className="mb-3"><BackToHome /></div>
       {/* Блок: Участники */}
       <Card className="mb-4">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-semibold">Участники</h2>
           {canInvite && (
-            <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
-              {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/dictionaries/positions"
+                className="rounded-2xl border border-zinc-300 px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
+              >
+                Справочники
+              </Link>
+              <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
+                {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
+              </Button>
+            </div>
           )}
         </div>
 
