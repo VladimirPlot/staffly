@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
@@ -66,7 +67,15 @@ export default function PositionsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-    <div className="mb-3"><BackToHome /></div>
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-700">
+        <BackToHome className="text-sm" />
+        <Link
+          to="/employees/invite"
+          className="inline-flex items-center text-zinc-700 hover:underline"
+        >
+          ← Участники
+        </Link>
+      </div>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Должности</h2>
         <div className="flex items-center gap-3">
