@@ -7,6 +7,7 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import ScheduleTable from "../components/ScheduleTable";
+import { fetchSchedule, listSavedSchedules, saveSchedule, type ScheduleSummary } from "../api";
 import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { memberDisplayName } from "../utils/names";
@@ -51,6 +52,13 @@ const SchedulePage: React.FC = () => {
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [schedule, setSchedule] = React.useState<ScheduleData | null>(null);
+  const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
+  const [selectedSavedId, setSelectedSavedId] = React.useState<number | null>(null);
+  const [scheduleReadOnly, setScheduleReadOnly] = React.useState(false);
+  const [scheduleLoading, setScheduleLoading] = React.useState(false);
+  const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
+  const [scheduleError, setScheduleError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
 
   React.useEffect(() => {
@@ -60,30 +68,49 @@ const SchedulePage: React.FC = () => {
       setMyRole(null);
       setPositions([]);
       setMembers([]);
+      setSchedule(null);
+      setSavedSchedules([]);
+      setSelectedSavedId(null);
+      setScheduleReadOnly(false);
+      setScheduleLoading(false);
+      setScheduleMessage(null);
+      setScheduleError(null);
+      setSaving(false);
       return;
     }
 
     let alive = true;
     setLoading(true);
     setError(null);
+    setSchedule(null);
+    setSavedSchedules([]);
+    setSelectedSavedId(null);
+    setScheduleReadOnly(false);
+    setScheduleMessage(null);
+    setScheduleError(null);
+    setScheduleLoading(false);
+    setSaving(false);
 
     (async () => {
       try {
-        const [role, posList, memList] = await Promise.all([
+        const [role, posList, memList, savedList] = await Promise.all([
           fetchMyRoleIn(restaurantId),
           listPositions(restaurantId, { includeInactive: true }),
           listMembers(restaurantId),
+          listSavedSchedules(restaurantId),
         ]);
         if (!alive) return;
         setMyRole(role);
         setPositions(posList);
         setMembers(memList);
+        setSavedSchedules(savedList);
       } catch (e: any) {
         if (!alive) return;
         setError(e?.response?.data?.message || e?.message || "Не удалось загрузить данные");
         setMyRole(null);
         setPositions([]);
         setMembers([]);
+        setSavedSchedules([]);
       } finally {
         if (alive) setLoading(false);
       }
@@ -120,6 +147,8 @@ const SchedulePage: React.FC = () => {
       }));
 
       const rows = sortedMembers.map((member) => ({
+        id: undefined,
+        memberId: member.id,
         member,
         displayName: memberDisplayName(member, config.showFullName),
         positionId: member.positionId,
@@ -132,12 +161,18 @@ const SchedulePage: React.FC = () => {
       );
 
       setSchedule({
+        id: undefined,
         title,
         config,
         days,
         rows,
         cellValues: {},
       });
+      setScheduleReadOnly(false);
+      setSelectedSavedId(null);
+      setScheduleMessage(null);
+      setScheduleError(null);
+      setScheduleLoading(false);
       setLastRange({ start: config.startDate, end: config.endDate });
     },
     [members, positions]
@@ -163,6 +198,78 @@ const SchedulePage: React.FC = () => {
     },
     []
   );
+
+  const handleSaveSchedule = React.useCallback(async () => {
+    if (!restaurantId || !schedule) return;
+    setSaving(true);
+    setScheduleMessage(null);
+    setScheduleError(null);
+    try {
+      const normalizedCells: Record<string, string> = {};
+      Object.entries(schedule.cellValues).forEach(([key, rawValue]) => {
+        const normalized = normalizeCellValue(rawValue, schedule.config.shiftMode);
+        if (normalized) {
+          normalizedCells[key] = normalized;
+        }
+      });
+
+      const payload = {
+        title: schedule.title,
+        config: schedule.config,
+        rows: schedule.rows.map((row) => ({
+          memberId: row.memberId,
+          displayName: row.displayName,
+          positionId: row.positionId ?? null,
+          positionName: row.positionName ?? null,
+        })),
+        cellValues: normalizedCells,
+      };
+
+      const saved = await saveSchedule(restaurantId, payload);
+      setSchedule(saved);
+      setScheduleReadOnly(true);
+      setSelectedSavedId(saved.id ?? null);
+      setLastRange({ start: saved.config.startDate, end: saved.config.endDate });
+      const savedList = await listSavedSchedules(restaurantId);
+      setSavedSchedules(savedList);
+      setScheduleMessage("График сохранён");
+    } catch (e: any) {
+      setScheduleError(e?.response?.data?.message || e?.message || "Не удалось сохранить график");
+    } finally {
+      setSaving(false);
+    }
+  }, [restaurantId, schedule]);
+
+  const handleOpenSavedSchedule = React.useCallback(
+    async (id: number) => {
+      if (!restaurantId) return;
+      setSelectedSavedId(id);
+      setScheduleReadOnly(true);
+      setScheduleLoading(true);
+      setSchedule(null);
+      setScheduleMessage(null);
+      setScheduleError(null);
+      try {
+        const data = await fetchSchedule(restaurantId, id);
+        setSchedule(data);
+        setLastRange({ start: data.config.startDate, end: data.config.endDate });
+      } catch (e: any) {
+        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось загрузить график");
+      } finally {
+        setScheduleLoading(false);
+      }
+    },
+    [restaurantId]
+  );
+
+  const handleCloseSavedSchedule = React.useCallback(() => {
+    setSchedule(null);
+    setSelectedSavedId(null);
+    setScheduleReadOnly(false);
+    setScheduleMessage(null);
+    setScheduleError(null);
+    setScheduleLoading(false);
+  }, []);
 
   const openDialog = React.useCallback(() => {
     setDialogOpen(true);
@@ -198,15 +305,61 @@ const SchedulePage: React.FC = () => {
       {loading && <Card>Загрузка…</Card>}
       {!loading && error && <Card className="text-red-600">{error}</Card>}
 
-      {!loading && !error && !canManage && (
+      {!loading && !error && (savedSchedules.length > 0 || !canManage) && (
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-zinc-700">Сохранённые графики</div>
+              <div className="mt-1 text-xs text-zinc-500">
+                {savedSchedules.length > 0
+                  ? "Выберите график, чтобы открыть его в режиме просмотра."
+                  : canManage
+                  ? "Пока список пуст. Сохраните график, чтобы увидеть его здесь."
+                  : "Пока нет сохранённых графиков. Дождитесь, когда менеджер добавит новый график."}
+              </div>
+            </div>
+            {selectedSavedId && (
+              <Button variant="ghost" onClick={handleCloseSavedSchedule}>
+                Скрыть
+              </Button>
+            )}
+          </div>
+          {savedSchedules.length > 0 && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {savedSchedules.map((item) => {
+                const isActive = selectedSavedId === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleOpenSavedSchedule(item.id)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                      isActive
+                        ? "border-black bg-zinc-50"
+                        : "border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50"
+                    }`}
+                  >
+                    <div className="font-medium text-zinc-800">{item.title}</div>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      {item.startDate} — {item.endDate}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {!loading && !error && !canManage && savedSchedules.length === 0 && !schedule && !scheduleLoading && (
         <Card>
           <div className="text-sm text-zinc-600">
-            Раздел доступен только администраторам и менеджерам ресторана.
+            Раздел доступен для просмотра. Как только менеджер сохранит график, он появится в списке выше.
           </div>
         </Card>
       )}
 
-      {!loading && !error && canManage && !schedule && (
+      {!loading && !error && canManage && !schedule && !scheduleLoading && (
         <Card>
           <div className="space-y-2 text-sm text-zinc-600">
             <p>Пока график не создан. Нажмите «Создать график», чтобы настроить таблицу.</p>
@@ -215,14 +368,41 @@ const SchedulePage: React.FC = () => {
         </Card>
       )}
 
-      {!loading && !error && canManage && schedule && (
+      {!loading && !error && scheduleLoading && <Card>Загрузка сохранённого графика…</Card>}
+
+      {!loading && !error && scheduleError && (
+        <Card className="border-red-200 bg-red-50 text-red-700">{scheduleError}</Card>
+      )}
+
+      {!loading && !error && scheduleMessage && (
+        <Card className="border-emerald-200 bg-emerald-50 text-emerald-700">{scheduleMessage}</Card>
+      )}
+
+      {canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading && (
+        <div className="flex justify-end">
+          <Button
+            onClick={handleSaveSchedule}
+            disabled={saving}
+            className={saving ? "cursor-wait opacity-70" : ""}
+          >
+            {saving ? "Сохранение…" : "Сохранить график"}
+          </Button>
+        </div>
+      )}
+
+      {!loading && !error && schedule && !scheduleLoading && (
         <Card className="overflow-hidden">
+          {scheduleReadOnly && (
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Просмотр сохранённого графика
+            </div>
+          )}
           {schedule.rows.length === 0 ? (
             <div className="text-sm text-zinc-600">
               В выбранных должностях пока нет сотрудников. Попробуйте выбрать другие должности.
             </div>
           ) : (
-            <ScheduleTable data={schedule} onChange={handleCellChange} />
+            <ScheduleTable data={schedule} onChange={handleCellChange} readOnly={scheduleReadOnly} />
           )}
           {schedule.rows.length > 0 && monthFallback && (
             <div className="mt-3 text-xs text-zinc-500">

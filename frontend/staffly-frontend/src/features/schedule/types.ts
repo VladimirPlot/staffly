@@ -17,13 +17,16 @@ export type ScheduleDay = {
 };
 
 export type ScheduleRow = {
-  member: MemberDto;
+  id?: number;
+  memberId: number;
+  member?: MemberDto;
   displayName: string;
   positionId: number | null | undefined;
   positionName: string | null;
 };
 
 export type ScheduleData = {
+  id?: number;
   title: string;
   config: ScheduleConfig;
   days: ScheduleDay[];
