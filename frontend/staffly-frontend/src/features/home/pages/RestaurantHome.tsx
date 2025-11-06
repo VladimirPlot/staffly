@@ -4,7 +4,8 @@ import Button from "../../../shared/ui/Button";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchRestaurantName } from "../../restaurants/api";
-import { listMembers, type MemberDto } from "../../employees/api";
+import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
+import type { RestaurantRole } from "../../../shared/types/restaurant";
 
 type UpcomingBirthday = {
   id: number;
@@ -62,6 +63,7 @@ export default function RestaurantHome() {
   const [name, setName] = React.useState<string>("");
   const [upcomingBirthdays, setUpcomingBirthdays] = React.useState<UpcomingBirthday[]>([]);
   const [birthdaysHidden, setBirthdaysHidden] = React.useState(false);
+  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -76,6 +78,25 @@ export default function RestaurantHome() {
       }
     })();
     return () => { alive = false; };
+  }, [user?.restaurantId]);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!user?.restaurantId) {
+        if (alive) setMyRole(null);
+        return;
+      }
+      try {
+        const role = await fetchMyRoleIn(user.restaurantId);
+        if (alive) setMyRole(role);
+      } catch {
+        if (alive) setMyRole(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [user?.restaurantId]);
 
   React.useEffect(() => {
@@ -125,6 +146,8 @@ export default function RestaurantHome() {
     }
   }, [user?.restaurantId]);
 
+  const canManageSchedules = myRole === "ADMIN" || myRole === "MANAGER";
+
   return (
     <div className="mx-auto max-w-3xl">
       <Card className="mb-4">
@@ -173,6 +196,18 @@ export default function RestaurantHome() {
             Приглашайте сотрудников и назначайте роли/позиции.
           </div>
         </Link>
+
+        {canManageSchedules && (
+          <Link
+            to="/schedule"
+            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
+          >
+            <div className="text-lg font-semibold">График</div>
+            <div className="mt-1 text-sm text-zinc-600">
+              Создавайте смены и распределяйте сотрудников по дням.
+            </div>
+          </Link>
+        )}
 
         <Link to="/training" className="block">
           <Card className="h-full hover:bg-zinc-50">

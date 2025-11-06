@@ -19,6 +19,7 @@ import TrainingLandingPage from "./features/training/pages/Landing";
 import TrainingModuleCategoriesPage from "./features/training/pages/Categories";
 import TrainingCategoryItemsPage from "./features/training/pages/CategoryItems";
 import RestaurantHome from "./features/home/pages/RestaurantHome";
+import SchedulePage from "./features/schedule/pages/SchedulePage";
 
 /* ===== TopBar ===== */
 function TopBar() {
@@ -166,6 +167,17 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TrainingCategoryItemsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/schedule"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <SchedulePage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
