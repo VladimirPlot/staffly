@@ -62,7 +62,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         String baseTitle = Optional.ofNullable(request.title()).map(String::trim).filter(s -> !s.isEmpty())
                 .orElse("График");
-        String title = makeUniqueTitle(restaurantId, baseTitle);
+        String title = makeUniqueTitle(restaurantId, baseTitle, null);
 
         Schedule schedule = Schedule.builder()
                 .restaurant(restaurant)
@@ -105,6 +105,63 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.getRows().forEach(row -> row.getCells().size());
         List<LocalDate> days = collectDays(schedule.getStartDate(), schedule.getEndDate());
         return toDto(schedule, days);
+    }
+
+    @Override
+    public ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, SaveScheduleRequest request) {
+        securityService.assertAtLeastManager(userId, restaurantId);
+
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+
+        ScheduleConfigDto config = Objects.requireNonNull(request.config(), "config");
+        LocalDate startDate = parseDate(config.startDate(), "startDate");
+        LocalDate endDate = parseDate(config.endDate(), "endDate");
+        if (endDate.isBefore(startDate)) {
+            throw new BadRequestException("endDate must not be before startDate");
+        }
+        long length = startDate.datesUntil(endDate.plusDays(1)).count();
+        if (length > 32) {
+            throw new BadRequestException("Schedule cannot be longer than 32 days");
+        }
+
+        ScheduleShiftMode shiftMode = Objects.requireNonNull(config.shiftMode(), "shiftMode");
+
+        List<Long> positionIds = config.positionIds() != null
+                ? config.positionIds()
+                : List.of();
+        validatePositions(restaurantId, positionIds);
+
+        List<LocalDate> days = collectDays(startDate, endDate);
+
+        String baseTitle = Optional.ofNullable(request.title()).map(String::trim).filter(s -> !s.isEmpty())
+                .orElse("График");
+        String title = makeUniqueTitle(restaurantId, baseTitle, schedule.getTitle());
+
+        schedule.setTitle(title);
+        schedule.setStartDate(startDate);
+        schedule.setEndDate(endDate);
+        schedule.setShiftMode(shiftMode);
+        schedule.setShowFullName(config.showFullName());
+        schedule.setPositionIds(new ArrayList<>(positionIds));
+
+        schedule.getRows().clear();
+        List<ScheduleRow> rowEntities = buildRows(schedule, request.rows(), request.cellValues(), days);
+        schedule.getRows().addAll(rowEntities);
+
+        Schedule saved = schedules.save(schedule);
+        saved.getRows().forEach(row -> row.getCells().size());
+        return toDto(saved, days);
+    }
+
+    @Override
+    public void delete(Long restaurantId, Long scheduleId, Long userId) {
+        securityService.assertAtLeastManager(userId, restaurantId);
+
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+
+        schedules.delete(schedule);
     }
 
     private List<ScheduleRow> buildRows(Schedule schedule,
@@ -241,8 +298,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
     }
 
-    private String makeUniqueTitle(Long restaurantId, String baseTitle) {
-        List<String> existing = schedules.findTitlesByRestaurantId(restaurantId);
+    private String makeUniqueTitle(Long restaurantId, String baseTitle, String currentTitleToIgnore) {
+        List<String> existing = new ArrayList<>(schedules.findTitlesByRestaurantId(restaurantId));
+        if (currentTitleToIgnore != null) {
+            existing.removeIf(title -> title.equals(currentTitleToIgnore));
+        }
         if (!existing.contains(baseTitle)) {
             return baseTitle;
         }

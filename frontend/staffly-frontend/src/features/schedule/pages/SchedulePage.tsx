@@ -7,13 +7,21 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import ScheduleTable from "../components/ScheduleTable";
-import { fetchSchedule, listSavedSchedules, saveSchedule, type ScheduleSummary } from "../api";
+import {
+  createSchedule,
+  deleteSchedule,
+  fetchSchedule,
+  listSavedSchedules,
+  updateSchedule,
+  type ScheduleSummary,
+} from "../api";
 import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { memberDisplayName } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
+import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
 function buildTitle(positionNames: string[], monthNames: string[]): string {
   const positionsPart = positionNames.join(" - ");
@@ -59,7 +67,10 @@ const SchedulePage: React.FC = () => {
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
+
+  const scheduleId = schedule?.id ?? null;
 
   React.useEffect(() => {
     if (!restaurantId) {
@@ -93,9 +104,10 @@ const SchedulePage: React.FC = () => {
 
     (async () => {
       try {
-        const [role, posList, memList, savedList] = await Promise.all([
-          fetchMyRoleIn(restaurantId),
-          listPositions(restaurantId, { includeInactive: true }),
+        const role = await fetchMyRoleIn(restaurantId);
+        const accessNow = resolveRestaurantAccess(user?.roles, role);
+        const [posList, memList, savedList] = await Promise.all([
+          listPositions(restaurantId, { includeInactive: accessNow.isManagerLike }),
           listMembers(restaurantId),
           listSavedSchedules(restaurantId),
         ]);
@@ -119,9 +131,14 @@ const SchedulePage: React.FC = () => {
     return () => {
       alive = false;
     };
-  }, [restaurantId]);
+  }, [restaurantId, user?.roles]);
 
-  const canManage = myRole === "ADMIN" || myRole === "MANAGER";
+  const access = React.useMemo(
+    () => resolveRestaurantAccess(user?.roles, myRole),
+    [user?.roles, myRole]
+  );
+
+  const canManage = access.isManagerLike;
 
   const handleCreateSchedule = React.useCallback(
     (config: ScheduleConfig) => {
@@ -225,14 +242,16 @@ const SchedulePage: React.FC = () => {
         cellValues: normalizedCells,
       };
 
-      const saved = await saveSchedule(restaurantId, payload);
+      const saved = schedule.id
+        ? await updateSchedule(restaurantId, schedule.id, payload)
+        : await createSchedule(restaurantId, payload);
       setSchedule(saved);
       setScheduleReadOnly(true);
       setSelectedSavedId(saved.id ?? null);
       setLastRange({ start: saved.config.startDate, end: saved.config.endDate });
       const savedList = await listSavedSchedules(restaurantId);
       setSavedSchedules(savedList);
-      setScheduleMessage("График сохранён");
+      setScheduleMessage(schedule.id ? "График обновлён" : "График сохранён");
     } catch (e: any) {
       setScheduleError(e?.response?.data?.message || e?.message || "Не удалось сохранить график");
     } finally {
@@ -270,6 +289,57 @@ const SchedulePage: React.FC = () => {
     setScheduleError(null);
     setScheduleLoading(false);
   }, []);
+
+  const handleEnterEditMode = React.useCallback(() => {
+    if (!canManage) return;
+    setScheduleReadOnly(false);
+    setScheduleMessage(null);
+    setScheduleError(null);
+  }, [canManage]);
+
+  const handleCancelEdit = React.useCallback(async () => {
+    if (!restaurantId) return;
+    if (!scheduleId) {
+      handleCloseSavedSchedule();
+      return;
+    }
+    setScheduleLoading(true);
+    setScheduleError(null);
+    setScheduleMessage(null);
+    try {
+      const data = await fetchSchedule(restaurantId, scheduleId);
+      setSchedule(data);
+      setScheduleReadOnly(true);
+      setLastRange({ start: data.config.startDate, end: data.config.endDate });
+    } catch (e: any) {
+      setScheduleError(e?.response?.data?.message || e?.message || "Не удалось загрузить график");
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, [handleCloseSavedSchedule, restaurantId, scheduleId]);
+
+  const handleDeleteSchedule = React.useCallback(async () => {
+    if (!restaurantId || !scheduleId) return;
+    if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
+      return;
+    }
+    setDeleting(true);
+    setScheduleError(null);
+    setScheduleMessage(null);
+    try {
+      await deleteSchedule(restaurantId, scheduleId);
+      const savedList = await listSavedSchedules(restaurantId);
+      setSavedSchedules(savedList);
+      setSchedule(null);
+      setSelectedSavedId(null);
+      setScheduleReadOnly(false);
+      setScheduleMessage("График удалён");
+    } catch (e: any) {
+      setScheduleError(e?.response?.data?.message || e?.message || "Не удалось удалить график");
+    } finally {
+      setDeleting(false);
+    }
+  }, [restaurantId, scheduleId]);
 
   const openDialog = React.useCallback(() => {
     setDialogOpen(true);
@@ -379,13 +449,23 @@ const SchedulePage: React.FC = () => {
       )}
 
       {canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          {scheduleId && (
+            <Button
+              variant="ghost"
+              onClick={handleCancelEdit}
+              disabled={saving}
+              className={saving ? "cursor-not-allowed opacity-60" : ""}
+            >
+              Отменить
+            </Button>
+          )}
           <Button
             onClick={handleSaveSchedule}
             disabled={saving}
             className={saving ? "cursor-wait opacity-70" : ""}
           >
-            {saving ? "Сохранение…" : "Сохранить график"}
+            {saving ? "Сохранение…" : scheduleId ? "Сохранить изменения" : "Сохранить график"}
           </Button>
         </div>
       )}
@@ -395,6 +475,23 @@ const SchedulePage: React.FC = () => {
           {scheduleReadOnly && (
             <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
               Просмотр сохранённого графика
+            </div>
+          )}
+          {canManage && scheduleReadOnly && scheduleId && (
+            <div className="mb-4 flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={handleEnterEditMode} disabled={deleting}>
+                Редактировать
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleDeleteSchedule}
+                disabled={deleting}
+                className={`border-red-200 text-red-600 hover:bg-red-50 ${
+                  deleting ? "cursor-wait opacity-60" : ""
+                }`}
+              >
+                {deleting ? "Удаление…" : "Удалить"}
+              </Button>
             </div>
           )}
           {schedule.rows.length === 0 ? (

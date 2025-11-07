@@ -42,4 +42,21 @@ public class ScheduleController {
                            @AuthenticationPrincipal UserPrincipal principal) {
         return schedules.get(restaurantId, scheduleId, principal.userId());
     }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PutMapping("/schedules/{scheduleId}")
+    public ScheduleDto update(@PathVariable Long restaurantId,
+                              @PathVariable Long scheduleId,
+                              @AuthenticationPrincipal UserPrincipal principal,
+                              @Valid @RequestBody SaveScheduleRequest request) {
+        return schedules.update(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @DeleteMapping("/schedules/{scheduleId}")
+    public void delete(@PathVariable Long restaurantId,
+                       @PathVariable Long scheduleId,
+                       @AuthenticationPrincipal UserPrincipal principal) {
+        schedules.delete(restaurantId, scheduleId, principal.userId());
+    }
 }

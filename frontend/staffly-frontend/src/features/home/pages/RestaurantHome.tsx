@@ -6,6 +6,7 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchRestaurantName } from "../../restaurants/api";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
+import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
 type UpcomingBirthday = {
   id: number;
@@ -146,7 +147,12 @@ export default function RestaurantHome() {
     }
   }, [user?.restaurantId]);
 
-  const canManageSchedules = myRole === "ADMIN" || myRole === "MANAGER";
+  const access = React.useMemo(
+    () => resolveRestaurantAccess(user?.roles, myRole),
+    [user?.roles, myRole]
+  );
+
+  const canManageSchedules = access.isManagerLike;
 
   return (
     <div className="mx-auto max-w-3xl">

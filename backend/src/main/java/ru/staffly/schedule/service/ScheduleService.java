@@ -13,4 +13,8 @@ public interface ScheduleService {
     List<ScheduleSummaryDto> list(Long restaurantId, Long userId);
 
     ScheduleDto get(Long restaurantId, Long scheduleId, Long userId);
+
+    ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, SaveScheduleRequest request);
+
+    void delete(Long restaurantId, Long scheduleId, Long userId);
 }

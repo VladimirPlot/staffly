@@ -6,6 +6,7 @@ import Button from "../../../shared/ui/Button";
 import BackToHome from "../../../shared/ui/BackToHome";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
 import {
   listPositions,
@@ -89,8 +90,15 @@ export default function InvitePage() {
   const [inviteError, setInviteError] = React.useState<string | null>(null);
   const [inviteDone, setInviteDone] = React.useState(false);
 
-  const canInvite = myRole === "ADMIN" || myRole === "MANAGER";
-  const roleOptions: InviteRole[] = myRole === "ADMIN" ? ["ADMIN", "MANAGER", "STAFF"] : ["STAFF"];
+  const access = React.useMemo(
+    () => resolveRestaurantAccess(user?.roles, myRole),
+    [user?.roles, myRole]
+  );
+
+  const canInvite = access.isManagerLike;
+  const roleOptions: InviteRole[] = access.isAdminLike
+    ? ["ADMIN", "MANAGER", "STAFF"]
+    : ["STAFF"];
 
   // 1) тянем мою роль и участников
   React.useEffect(() => {
@@ -128,25 +136,24 @@ export default function InvitePage() {
 
   const canRemoveMember = React.useCallback(
     (member: MemberDto) => {
-      if (!myRole || !currentUserId) return false;
+      if (!currentUserId) return false;
       const isSelf = member.userId === currentUserId;
 
-      switch (myRole) {
-        case "ADMIN":
-          if (isSelf && member.role === "ADMIN" && adminsCount <= 1) {
-            return false;
-          }
-          return true;
-        case "MANAGER":
-          if (isSelf) return true;
-            return member.role === "STAFF";
-        case "STAFF":
-            return isSelf;
-        default:
-            return false;
+      if (!access.isManagerLike) {
+        return isSelf;
       }
+
+      if (access.isAdminLike) {
+        if (!access.isCreator && isSelf && member.role === "ADMIN" && adminsCount <= 1) {
+          return false;
+        }
+        return true;
+      }
+
+      if (isSelf) return true;
+      return member.role === "STAFF";
     },
-    [adminsCount, currentUserId, myRole]
+    [access.isAdminLike, access.isCreator, access.isManagerLike, adminsCount, currentUserId]
   );
 
   const closeRemoveDialog = React.useCallback(() => {

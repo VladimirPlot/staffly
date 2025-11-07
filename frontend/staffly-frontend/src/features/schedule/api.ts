@@ -55,9 +55,28 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
   };
 }
 
-export async function saveSchedule(restaurantId: number, payload: SaveSchedulePayload): Promise<ScheduleData> {
+export async function createSchedule(
+  restaurantId: number,
+  payload: SaveSchedulePayload
+): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules`, payload);
   return mapSchedule(data);
+}
+
+export async function updateSchedule(
+  restaurantId: number,
+  scheduleId: number,
+  payload: SaveSchedulePayload
+): Promise<ScheduleData> {
+  const { data } = await api.put<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}`,
+    payload
+  );
+  return mapSchedule(data);
+}
+
+export async function deleteSchedule(restaurantId: number, scheduleId: number): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`);
 }
 
 export async function listSavedSchedules(restaurantId: number): Promise<ScheduleSummary[]> {

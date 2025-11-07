@@ -69,20 +69,21 @@ public class DictionaryServiceImpl implements DictionaryService {
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
     public List<PositionDto> listPositions(Long restaurantId, Long currentUserId, boolean includeInactive) {
-        if (includeInactive) {
-            // видеть неактивные могут только менеджеры/админы
-            security.assertAtLeastManager(currentUserId, restaurantId);
-            return positions.findByRestaurantId(restaurantId).stream()
-                    .map(positionMapper::toDto)
-                    .sorted(Comparator.comparing(PositionDto::name, String.CASE_INSENSITIVE_ORDER))
-                    .toList();
-        } else {
+        boolean allowInactive = includeInactive && security.hasAtLeastManager(currentUserId, restaurantId);
+
+        if (!allowInactive) {
+            // даже если фронт по ошибке запросил includeInactive=true, участнику всё равно
+            // нужно видеть активные должности без ошибки доступа
             security.assertMember(currentUserId, restaurantId);
-            return positions.findByRestaurantIdAndActiveTrue(restaurantId).stream()
-                    .map(positionMapper::toDto)
-                    .sorted(Comparator.comparing(PositionDto::name, String.CASE_INSENSITIVE_ORDER))
-                    .toList();
         }
+
+        return (allowInactive
+                ? positions.findByRestaurantId(restaurantId)
+                : positions.findByRestaurantIdAndActiveTrue(restaurantId))
+                .stream()
+                .map(positionMapper::toDto)
+                .sorted(Comparator.comparing(PositionDto::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     @Override
