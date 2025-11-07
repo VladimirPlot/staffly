@@ -23,6 +23,11 @@ import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api"
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
+function normalizeRole(role: string | null | undefined): string | null {
+  if (!role) return null;
+  return role.toString().toUpperCase().replace(/^ROLE_/, "");
+}
+
 function buildTitle(positionNames: string[], monthNames: string[]): string {
   const positionsPart = positionNames.join(" - ");
   const monthsPart = monthNames.join("/");
@@ -138,7 +143,33 @@ const SchedulePage: React.FC = () => {
     [user?.roles, myRole]
   );
 
-  const canManage = access.isManagerLike;
+  const normalizedUserRoles = React.useMemo(() => {
+    const result = new Set<string>();
+    user?.roles?.forEach((role) => {
+      const normalized = normalizeRole(role);
+      if (normalized) {
+        result.add(normalized);
+      }
+    });
+    return result;
+  }, [user?.roles]);
+
+  const canManage = React.useMemo(() => {
+    if (access.isCreator) {
+      return true;
+    }
+
+    const allowedRoles = ["CREATOR", "ADMIN", "MANAGER"] as const;
+
+    if (allowedRoles.some((role) => normalizedUserRoles.has(role))) {
+      return true;
+    }
+
+    return (
+      access.normalizedRestaurantRole != null &&
+      allowedRoles.some((role) => role === access.normalizedRestaurantRole)
+    );
+  }, [access.isCreator, access.normalizedRestaurantRole, normalizedUserRoles]);
 
   const handleCreateSchedule = React.useCallback(
     (config: ScheduleConfig) => {
