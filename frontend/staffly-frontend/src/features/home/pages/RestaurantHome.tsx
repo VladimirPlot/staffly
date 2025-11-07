@@ -152,7 +152,7 @@ export default function RestaurantHome() {
     [user?.roles, myRole]
   );
 
-  const canManageSchedules = access.isManagerLike;
+  const canAccessSchedules = access.isAdminLike || Boolean(access.normalizedRestaurantRole);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -203,7 +203,7 @@ export default function RestaurantHome() {
           </div>
         </Link>
 
-        {canManageSchedules && (
+        {canAccessSchedules && (
           <Link
             to="/schedule"
             className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
