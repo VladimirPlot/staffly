@@ -154,7 +154,25 @@ const SchedulePage: React.FC = () => {
     return result;
   }, [user?.roles]);
 
+  const normalizedMembershipRole = React.useMemo(() => {
+    if (!user?.id) return normalizeRole(myRole);
+    const member = members.find((item) => item.userId === user.id);
+    return normalizeRole(member?.role ?? myRole);
+  }, [members, myRole, user?.id]);
+
   const canManage = React.useMemo(() => {
+    if (normalizedMembershipRole === "STAFF") {
+      return false;
+    }
+
+    if (normalizedMembershipRole === "ADMIN" || normalizedMembershipRole === "MANAGER") {
+      return true;
+    }
+
+    if (access.normalizedRestaurantRole === "STAFF") {
+      return false;
+    }
+
     if (access.isCreator) {
       return true;
     }
@@ -169,10 +187,23 @@ const SchedulePage: React.FC = () => {
       access.normalizedRestaurantRole != null &&
       allowedRoles.some((role) => role === access.normalizedRestaurantRole)
     );
-  }, [access.isCreator, access.normalizedRestaurantRole, normalizedUserRoles]);
+  }, [
+    access.isCreator,
+    access.normalizedRestaurantRole,
+    normalizedMembershipRole,
+    normalizedUserRoles,
+  ]);
+
+  React.useEffect(() => {
+    if (!canManage) {
+      setDialogOpen(false);
+      setScheduleReadOnly(true);
+    }
+  }, [canManage]);
 
   const handleCreateSchedule = React.useCallback(
     (config: ScheduleConfig) => {
+      if (!canManage) return;
       const dateList = daysBetween(config.startDate, config.endDate);
       const months = monthLabelsBetween(dateList);
       const selectedPositions = positions.filter((position) =>
@@ -223,7 +254,7 @@ const SchedulePage: React.FC = () => {
       setScheduleLoading(false);
       setLastRange({ start: config.startDate, end: config.endDate });
     },
-    [members, positions]
+    [canManage, members, positions]
   );
 
   const handleCellChange = React.useCallback(
@@ -248,7 +279,7 @@ const SchedulePage: React.FC = () => {
   );
 
   const handleSaveSchedule = React.useCallback(async () => {
-    if (!restaurantId || !schedule) return;
+    if (!canManage || !restaurantId || !schedule) return;
     setSaving(true);
     setScheduleMessage(null);
     setScheduleError(null);
@@ -288,7 +319,7 @@ const SchedulePage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [restaurantId, schedule]);
+  }, [canManage, restaurantId, schedule]);
 
   const handleOpenSavedSchedule = React.useCallback(
     async (id: number) => {
@@ -350,7 +381,7 @@ const SchedulePage: React.FC = () => {
   }, [handleCloseSavedSchedule, restaurantId, scheduleId]);
 
   const handleDeleteSchedule = React.useCallback(async () => {
-    if (!restaurantId || !scheduleId) return;
+    if (!canManage || !restaurantId || !scheduleId) return;
     if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
       return;
     }
@@ -370,7 +401,7 @@ const SchedulePage: React.FC = () => {
     } finally {
       setDeleting(false);
     }
-  }, [restaurantId, scheduleId]);
+  }, [canManage, restaurantId, scheduleId]);
 
   const openDialog = React.useCallback(() => {
     setDialogOpen(true);
