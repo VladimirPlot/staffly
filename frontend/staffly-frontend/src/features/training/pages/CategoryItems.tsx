@@ -27,6 +27,24 @@ const REQUIRED_MESSAGE = "Обязательное поле";
 
 type Params = { module: string; categoryId: string };
 
+function PencilIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M16.862 5.487a2.25 2.25 0 1 1 3.182 3.182L9.75 18.963l-4.5 1.318 1.318-4.5L16.862 5.487z" />
+      <path d="M15.75 6.6 17.4 8.25" />
+    </svg>
+  );
+}
+
 export default function TrainingCategoryItemsPage() {
   const params = useParams<Params>();
   const moduleConfig = getTrainingModuleConfig(params.module);
@@ -101,6 +119,7 @@ export default function TrainingCategoryItemsPage() {
   const [imageMutatingId, setImageMutatingId] = React.useState<number | null>(null);
   const [deletingItemId, setDeletingItemId] = React.useState<number | null>(null);
   const [editingItemId, setEditingItemId] = React.useState<number | null>(null);
+  const [openActionsItemId, setOpenActionsItemId] = React.useState<number | null>(null);
   const [editItemName, setEditItemName] = React.useState("");
   const [editItemComposition, setEditItemComposition] = React.useState("");
   const [editItemDescription, setEditItemDescription] = React.useState("");
@@ -201,6 +220,21 @@ export default function TrainingCategoryItemsPage() {
     }
   };
 
+  const triggerImagePicker = (itemId: number) => {
+    if (imageMutatingId === itemId) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = (event) => {
+      const target = event.target as HTMLInputElement | null;
+      const file = target?.files?.[0] ?? null;
+      if (file) {
+        void handleUploadImage(itemId, file);
+      }
+    };
+    input.click();
+  };
+
   const handleDeleteImage = async (itemId: number) => {
     if (!restaurantId) return;
     try {
@@ -216,6 +250,7 @@ export default function TrainingCategoryItemsPage() {
 
   const handleDeleteItem = async (itemId: number, name: string) => {
     if (!restaurantId) return;
+    setOpenActionsItemId(null);
     if (!confirm(`Удалить карточку «${name}»?`)) return;
     try {
       setDeletingItemId(itemId);
@@ -229,6 +264,7 @@ export default function TrainingCategoryItemsPage() {
   };
 
   const startEditItem = (item: TrainingItemDto) => {
+    setOpenActionsItemId(null);
     setEditingItemId(item.id);
     setEditItemName(item.name);
     setEditItemComposition(item.composition ?? "");
@@ -408,8 +444,36 @@ export default function TrainingCategoryItemsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             {items.map((item) => {
               const isEditing = editingItemId === item.id;
+              const imageMutating = imageMutatingId === item.id;
+              const actionsOpen = openActionsItemId === item.id;
               return (
-                <Card key={item.id} className="flex h-full flex-col gap-3">
+                <Card key={item.id} className="relative flex h-full flex-col gap-3">
+                  {canManage && !isEditing && (
+                    <button
+                      type="button"
+                      className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:bg-zinc-50"
+                      onClick={() =>
+                        setOpenActionsItemId((prev) => (prev === item.id ? null : item.id))
+                      }
+                      aria-label="Действия с карточкой"
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                  {canManage && actionsOpen && !isEditing && (
+                    <div className="absolute right-3 top-14 z-10 flex w-60 flex-col gap-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl">
+                      <Button variant="outline" onClick={() => startEditItem(item)}>
+                        Редактировать карточку
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleDeleteItem(item.id, item.name)}
+                        disabled={deletingItemId === item.id}
+                      >
+                        {deletingItemId === item.id ? "Удаляем…" : "Удалить карточку"}
+                      </Button>
+                    </div>
+                  )}
                   {item.imageUrl && (
                     <img
                       src={toAbsoluteUrl(item.imageUrl)}
@@ -444,6 +508,40 @@ export default function TrainingCategoryItemsPage() {
                           onChange={(e) => setEditItemAllergens(e.target.value)}
                           rows={3}
                         />
+                        <div className="rounded-2xl border border-dashed border-zinc-200 p-3">
+                          <div className="text-sm font-medium text-zinc-700">Фото</div>
+                          <div className="mt-2 flex flex-col gap-2">
+                            {item.imageUrl ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => triggerImagePicker(item.id)}
+                                  disabled={imageMutating}
+                                >
+                                  {imageMutating ? "Обновляем…" : "Изменить фото"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteImage(item.id)}
+                                  disabled={imageMutating}
+                                >
+                                  {imageMutating ? "Удаляем…" : "Удалить фото"}
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => triggerImagePicker(item.id)}
+                                disabled={imageMutating}
+                              >
+                                {imageMutating ? "Загружаем…" : "Добавить фото"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -472,65 +570,23 @@ export default function TrainingCategoryItemsPage() {
                       </>
                     )}
                   </div>
-                  {canManage && (
+                  {canManage && isEditing && (
                     <div className="flex flex-col gap-2">
-                      <label className="text-sm text-zinc-600">
-                        Обновить фото
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="mt-1 block w-full text-sm"
-                          disabled={imageMutatingId === item.id}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] ?? null;
-                            if (file) {
-                              void handleUploadImage(item.id, file);
-                            }
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
-                      {item.imageUrl && (
-                        <Button
-                          variant="outline"
-                          onClick={() => handleDeleteImage(item.id)}
-                          disabled={imageMutatingId === item.id}
-                        >
-                          {imageMutatingId === item.id ? "Удаляем…" : "Удалить фото"}
-                        </Button>
-                      )}
-                      {isEditing ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            onClick={() => handleSaveItem(item)}
-                            disabled={savingItemId === item.id}
-                          >
-                            {savingItemId === item.id ? "Сохраняем…" : "Сохранить"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={cancelEditItem}
-                            disabled={savingItemId === item.id}
-                          >
-                            Отмена
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button variant="outline" onClick={() => startEditItem(item)}>
-                            Редактировать
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={() => handleDeleteItem(item.id, item.name)}
-                            disabled={deletingItemId === item.id}
-                          >
-                            {deletingItemId === item.id ? "Удаляем…" : "Удалить карточку"}
-                          </Button>
-                        </>
-                      )}
+                      <Button
+                        variant="outline"
+                        onClick={() => handleSaveItem(item)}
+                        disabled={savingItemId === item.id}
+                      >
+                        {savingItemId === item.id ? "Сохраняем…" : "Сохранить"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={cancelEditItem}
+                        disabled={savingItemId === item.id}
+                      >
+                        Отмена
+                      </Button>
                     </div>
                   )}
                 </Card>
