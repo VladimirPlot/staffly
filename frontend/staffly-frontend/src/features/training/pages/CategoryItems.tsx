@@ -399,7 +399,20 @@ export default function TrainingCategoryItemsPage() {
                 type="file"
                 accept="image/*"
                 onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                className="hidden"
               />
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Выберите файл
+                </Button>
+                <span className="text-sm text-zinc-500">
+                  {imageFile ? imageFile.name : "Файл не выбран"}
+                </span>
+              </div>
             </label>
           </div>
           <div className="mt-4 flex justify-end gap-2">
