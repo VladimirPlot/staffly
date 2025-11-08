@@ -19,6 +19,7 @@ import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { memberDisplayName } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
+import { exportScheduleToJpeg, exportScheduleToXlsx } from "../utils/exporters";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
@@ -74,6 +75,9 @@ const SchedulePage: React.FC = () => {
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
+  const [downloading, setDownloading] = React.useState<{ id: number; type: "xlsx" | "jpg" } | null>(
+    null
+  );
 
   const scheduleId = schedule?.id ?? null;
 
@@ -352,6 +356,63 @@ const SchedulePage: React.FC = () => {
     setScheduleLoading(false);
   }, []);
 
+  const fetchScheduleForActions = React.useCallback(
+    async (id: number) => {
+      if (!restaurantId) {
+        throw new Error("Не выбран ресторан");
+      }
+      if (schedule && schedule.id === id) {
+        return schedule;
+      }
+      return await fetchSchedule(restaurantId, id);
+    },
+    [restaurantId, schedule]
+  );
+
+  const handleDownloadXlsx = React.useCallback(
+    async (id: number) => {
+      if (!restaurantId) {
+        return;
+      }
+      setDownloading({ id, type: "xlsx" });
+      try {
+        const data = await fetchScheduleForActions(id);
+        exportScheduleToXlsx(data);
+      } catch (e: any) {
+        console.error(e);
+        const message =
+          e?.response?.data?.message || e?.message || "Не удалось скачать график";
+        setScheduleMessage(null);
+        setScheduleError(message);
+      } finally {
+        setDownloading((prev) => (prev && prev.id === id ? null : prev));
+      }
+    },
+    [fetchScheduleForActions, restaurantId]
+  );
+
+  const handleDownloadJpg = React.useCallback(
+    async (id: number) => {
+      if (!restaurantId) {
+        return;
+      }
+      setDownloading({ id, type: "jpg" });
+      try {
+        const data = await fetchScheduleForActions(id);
+        await exportScheduleToJpeg(data);
+      } catch (e: any) {
+        console.error(e);
+        const message =
+          e?.response?.data?.message || e?.message || "Не удалось скачать график";
+        setScheduleMessage(null);
+        setScheduleError(message);
+      } finally {
+        setDownloading((prev) => (prev && prev.id === id ? null : prev));
+      }
+    },
+    [fetchScheduleForActions, restaurantId]
+  );
+
   const handleEnterEditMode = React.useCallback(() => {
     if (!canManage) return;
     setScheduleReadOnly(false);
@@ -444,7 +505,7 @@ const SchedulePage: React.FC = () => {
               <div className="text-sm font-medium text-zinc-700">Сохранённые графики</div>
               <div className="mt-1 text-xs text-zinc-500">
                 {savedSchedules.length > 0
-                  ? "Выберите график, чтобы открыть его в режиме просмотра."
+                  ? "Нажмите «Открыть», чтобы посмотреть график или скачайте файл."
                   : canManage
                   ? "Пока список пуст. Сохраните график, чтобы увидеть его здесь."
                   : "Пока нет сохранённых графиков. Дождитесь, когда менеджер добавит новый график."}
@@ -460,22 +521,49 @@ const SchedulePage: React.FC = () => {
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {savedSchedules.map((item) => {
                 const isActive = selectedSavedId === item.id;
+                const isOpening = scheduleLoading && selectedSavedId === item.id;
+                const isDownloading = downloading?.id === item.id;
+                const isDownloadingXlsx = isDownloading && downloading?.type === "xlsx";
+                const isDownloadingJpg = isDownloading && downloading?.type === "jpg";
                 return (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
-                    onClick={() => handleOpenSavedSchedule(item.id)}
-                    className={`w-full rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                    className={`flex h-full flex-col justify-between rounded-2xl border px-4 py-3 text-sm transition ${
                       isActive
                         ? "border-black bg-zinc-50"
                         : "border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50"
                     }`}
                   >
-                    <div className="font-medium text-zinc-800">{item.title}</div>
-                    <div className="mt-1 text-xs text-zinc-500">
-                      {item.startDate} — {item.endDate}
+                    <div>
+                      <div className="font-medium text-zinc-800">{item.title}</div>
+                      <div className="mt-1 text-xs text-zinc-500">
+                        {item.startDate} — {item.endDate}
+                      </div>
                     </div>
-                  </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleOpenSavedSchedule(item.id)}
+                        disabled={isActive || isOpening}
+                      >
+                        {isOpening ? "Открывается…" : isActive ? "Открыт" : "Открыть"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleDownloadXlsx(item.id)}
+                        disabled={isDownloading}
+                      >
+                        {isDownloadingXlsx ? "Скачивание…" : "Скачать .xlsx"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleDownloadJpg(item.id)}
+                        disabled={isDownloading}
+                      >
+                        {isDownloadingJpg ? "Скачивание…" : "Скачать .jpg"}
+                      </Button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
