@@ -95,7 +95,9 @@ export default function InvitePage() {
     [user?.roles, myRole]
   );
 
-  const canInvite = access.isManagerLike;
+ const isStaffInCurrentRestaurant = myRole === "STAFF";
+
+  const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
   const roleOptions: InviteRole[] = access.isAdminLike
     ? ["ADMIN", "MANAGER", "STAFF"]
     : ["STAFF"];
@@ -139,7 +141,7 @@ export default function InvitePage() {
       if (!currentUserId) return false;
       const isSelf = member.userId === currentUserId;
 
-      if (!access.isManagerLike) {
+      if (!access.isManagerLike || isStaffInCurrentRestaurant) {
         return isSelf;
       }
 
@@ -153,7 +155,14 @@ export default function InvitePage() {
       if (isSelf) return true;
       return member.role === "STAFF";
     },
-    [access.isAdminLike, access.isCreator, access.isManagerLike, adminsCount, currentUserId]
+    [
+      access.isAdminLike,
+      access.isCreator,
+      access.isManagerLike,
+      adminsCount,
+      currentUserId,
+      isStaffInCurrentRestaurant,
+    ]
   );
 
   const closeRemoveDialog = React.useCallback(() => {
