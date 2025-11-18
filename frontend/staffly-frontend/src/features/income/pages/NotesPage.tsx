@@ -3,7 +3,8 @@ import PersonalNav from "../components/PersonalNav";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
-import { PersonalNote, createNote, deleteNote, listNotes, updateNote } from "../api";
+import type { PersonalNote } from "../api";
+import { createNote, deleteNote, listNotes, updateNote } from "../api";
 
 export default function NotesPage() {
   const [notes, setNotes] = React.useState<PersonalNote[]>([]);

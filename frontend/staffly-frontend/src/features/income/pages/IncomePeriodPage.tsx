@@ -3,14 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import PersonalNav from "../components/PersonalNav";
-import {
-  IncomePeriodDetail,
-  IncomeShift,
-  SaveIncomeShiftPayload,
-  createIncomeShift,
-  deleteIncomeShift,
-  getIncomePeriod,
-} from "../api";
+import type { IncomePeriodDetail, IncomeShift, SaveIncomeShiftPayload } from "../api";
+import { createIncomeShift, deleteIncomeShift, getIncomePeriod } from "../api";
 
 const today = () => new Date().toISOString().slice(0, 10);
 

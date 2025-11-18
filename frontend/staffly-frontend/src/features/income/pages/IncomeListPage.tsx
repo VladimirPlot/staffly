@@ -1,11 +1,7 @@
 import React from "react";
 import PersonalNav from "../components/PersonalNav";
-import {
-  IncomePeriodSummary,
-  createIncomePeriod,
-  deleteIncomePeriod,
-  listIncomePeriods,
-} from "../api";
+import type { IncomePeriodSummary } from "../api";
+import { createIncomePeriod, deleteIncomePeriod, listIncomePeriods } from "../api";
 import { Link } from "react-router-dom";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
