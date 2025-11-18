@@ -153,7 +153,13 @@ export default function TrainingCategoryItemsPage() {
     setItemsError(null);
     try {
       const data = await listItems(restaurantId, categoryId);
-      setItems(data);
+      const sorted = [...data].sort((a, b) => {
+        const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const orderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.id - b.id;
+      });
+      setItems(sorted);
     } catch (e: any) {
       setItemsError(e?.response?.data?.message || e?.message || "Не удалось загрузить карточки");
       setItems([]);
@@ -184,12 +190,15 @@ export default function TrainingCategoryItemsPage() {
     if (!restaurantId || !name.trim() || !composition.trim()) return;
     try {
       setCreating(true);
+      const nextSortOrder =
+        items.reduce((max, item) => Math.max(max, item.sortOrder ?? 0), -1) + 1;
       const created = await createItem(restaurantId, {
         categoryId,
         name,
         composition,
         description: description.trim() ? description.trim() : null,
         allergens: allergens.trim() ? allergens.trim() : null,
+        sortOrder: nextSortOrder,
       });
       if (imageFile) {
         try {

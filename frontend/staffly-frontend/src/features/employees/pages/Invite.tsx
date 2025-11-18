@@ -32,6 +32,12 @@ const ROLE_LABEL: Record<RestaurantRole, string> = {
   STAFF: "Сотрудник",
 };
 
+const ROLE_PRIORITY: Record<RestaurantRole, number> = {
+  ADMIN: 0,
+  MANAGER: 1,
+  STAFF: 2,
+};
+
 function formatBirthday(b?: string | null): string {
   if (!b) return "—";
   const d = new Date(b);
@@ -46,6 +52,13 @@ function displayNameOf(m: MemberDto): string {
   const fn = (m.firstName || "").trim();
   const both = [ln, fn].filter(Boolean).join(" ").trim();
   return both || "Без имени";
+}
+
+function positionKeyOf(member: MemberDto): string | null {
+  const label = (member.positionName ?? "").trim();
+  if (member.positionId != null) return `id:${member.positionId}`;
+  if (label) return `name:${label}`;
+  return null;
 }
 
 // какие уровни позиций разрешены для выбранной роли
@@ -76,6 +89,7 @@ export default function InvitePage() {
   const [memberToRemove, setMemberToRemove] = React.useState<MemberDto | null>(null);
   const [removing, setRemoving] = React.useState(false);
   const [removeError, setRemoveError] = React.useState<string | null>(null);
+  const [positionFilter, setPositionFilter] = React.useState<string | null>(null);
 
   // Должности
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
@@ -95,7 +109,7 @@ export default function InvitePage() {
     [user?.roles, myRole]
   );
 
- const isStaffInCurrentRestaurant = myRole === "STAFF";
+  const isStaffInCurrentRestaurant = myRole === "STAFF";
 
   const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
   const roleOptions: InviteRole[] = access.isAdminLike
@@ -134,6 +148,86 @@ export default function InvitePage() {
   const adminsCount = React.useMemo(
     () => members.filter((m) => m.role === "ADMIN").length,
     [members]
+  );
+
+  const positionOptions = React.useMemo(
+    () => {
+      const unique = new Map<string, string>();
+      members.forEach((member) => {
+        const key = positionKeyOf(member);
+        const label = (member.positionName ?? "").trim();
+        if (!key || !label) return;
+        if (!unique.has(key)) unique.set(key, label);
+      });
+
+      const options = Array.from(unique.entries())
+        .map(([key, label]) => ({ key, label }))
+        .sort((a, b) => a.label.localeCompare(b.label, "ru-RU", { sensitivity: "base" }));
+
+      const hasWithoutPosition = members.some((m) => !m.positionName || !m.positionName.trim());
+      if (hasWithoutPosition) {
+        options.push({ key: "none", label: "Без должности" });
+      }
+
+      return options;
+    },
+    [members]
+  );
+
+  React.useEffect(() => {
+    if (!positionFilter) return;
+    const optionKeys = positionOptions.map((o) => o.key);
+    const hasNoneOption = optionKeys.includes("none");
+
+    if (positionFilter === "none" && !hasNoneOption) {
+      setPositionFilter(null);
+      return;
+    }
+
+    if (positionFilter !== "none" && !optionKeys.includes(positionFilter)) {
+      setPositionFilter(null);
+    }
+  }, [positionFilter, positionOptions]);
+
+  const filteredMembers = React.useMemo(
+    () => {
+      if (!positionFilter) return members;
+
+      return members.filter((member) => {
+        const label = (member.positionName ?? "").trim();
+        if (positionFilter === "none") {
+          return !label;
+        }
+        return positionKeyOf(member) === positionFilter;
+      });
+    },
+    [members, positionFilter]
+  );
+
+  const sortedMembers = React.useMemo(
+    () => {
+      return [...filteredMembers].sort((a, b) => {
+        const roleDiff = ROLE_PRIORITY[a.role] - ROLE_PRIORITY[b.role];
+        if (roleDiff !== 0) return roleDiff;
+
+        const positionA = (a.positionName ?? "").trim();
+        const positionB = (b.positionName ?? "").trim();
+        const hasPosA = positionA !== "";
+        const hasPosB = positionB !== "";
+
+        if (hasPosA && hasPosB) {
+          const positionCompare = positionA.localeCompare(positionB, "ru-RU", { sensitivity: "base" });
+          if (positionCompare !== 0) return positionCompare;
+        } else if (hasPosA !== hasPosB) {
+          return hasPosA ? -1 : 1;
+        }
+
+        const nameA = displayNameOf(a).toLocaleLowerCase("ru-RU");
+        const nameB = displayNameOf(b).toLocaleLowerCase("ru-RU");
+        return nameA.localeCompare(nameB, "ru-RU");
+      });
+    },
+    [filteredMembers]
   );
 
   const canRemoveMember = React.useCallback(
@@ -284,15 +378,42 @@ export default function InvitePage() {
           )}
         </div>
 
+        {positionOptions.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-zinc-700">
+              <span>Фильтр по должности:</span>
+              <select
+                className="rounded-2xl border border-zinc-300 px-3 py-2 outline-none transition focus:ring-2 focus:ring-zinc-300"
+                value={positionFilter ?? ""}
+                onChange={(e) => setPositionFilter(e.target.value ? e.target.value : null)}
+              >
+                <option value="">Все должности</option>
+                {positionOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {positionFilter && (
+              <Button variant="ghost" className="text-sm" onClick={() => setPositionFilter(null)}>
+                Сбросить фильтр
+              </Button>
+            )}
+          </div>
+        )}
+
         {loadingMembers ? (
           <div>Загрузка участников…</div>
         ) : membersError ? (
           <div className="text-red-600">{membersError}</div>
-        ) : members.length === 0 ? (
-          <div className="text-zinc-600">Пока нет участников.</div>
+        ) : sortedMembers.length === 0 ? (
+          <div className="text-zinc-600">
+            {members.length === 0 ? "Пока нет участников." : "Нет участников с выбранной должностью."}
+          </div>
         ) : (
           <div className="divide-y">
-            {members.map((m) => (
+            {sortedMembers.map((m) => (
               <div
                 key={m.id}
                 className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"

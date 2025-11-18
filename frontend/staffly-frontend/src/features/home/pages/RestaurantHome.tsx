@@ -221,6 +221,19 @@ export default function RestaurantHome() {
             <div className="text-sm text-zinc-600">Категории и карточки меню, бара, вина и сервиса</div>
           </Card>
         </Link>
+
+        <Link to="/checklists" className="block">
+          <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-medium mb-1">Чек-листы</div>
+                <div className="text-sm text-zinc-600">
+                  Готовые инструкции для сотрудников
+                </div>
+              </div>
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );

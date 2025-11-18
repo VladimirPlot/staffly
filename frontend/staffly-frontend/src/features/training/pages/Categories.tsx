@@ -131,7 +131,13 @@ function TrainingModuleCategoriesPage() {
     setError(null);
     try {
       const data = await listCategories(restaurantId, moduleCode, allForManagers && canManage);
-      setCategories(data);
+      const sorted = [...data].sort((a, b) => {
+        const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        const orderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.id - b.id;
+      });
+      setCategories(sorted);
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || "Ошибка загрузки категорий");
     } finally {
@@ -147,9 +153,12 @@ function TrainingModuleCategoriesPage() {
     if (!restaurantId || !name.trim()) return;
     try {
       setCreating(true);
+      const nextSortOrder =
+        categories.reduce((max, category) => Math.max(max, category.sortOrder ?? 0), -1) + 1;
       await createCategory(restaurantId, moduleCode, {
         name,
         description: description.trim() || null,
+        sortOrder: nextSortOrder,
       });
       setName("");
       setDescription("");
@@ -160,7 +169,7 @@ function TrainingModuleCategoriesPage() {
     } finally {
       setCreating(false);
     }
-  }, [restaurantId, moduleCode, name, description, load]);
+  }, [restaurantId, moduleCode, name, description, load, categories]);
 
   if (!restaurantId) {
     return (
