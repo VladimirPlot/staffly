@@ -2,7 +2,6 @@ package ru.staffly.income.dto;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import ru.staffly.income.model.IncomeShiftType;
 
@@ -17,7 +16,6 @@ public record SaveIncomeShiftRequest(
         @NotNull(message = "Тип смены обязателен")
         IncomeShiftType type,
 
-        @Positive(message = "Оплата за смену должна быть больше 0")
         BigDecimal fixedAmount,
 
         LocalTime startTime,

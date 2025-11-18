@@ -18,7 +18,6 @@ export default function IncomePeriodPage() {
   const [form, setForm] = React.useState<SaveIncomeShiftPayload>({
     date: today(),
     type: "SHIFT",
-    fixedAmount: 0,
   });
 
   React.useEffect(() => {
@@ -43,10 +42,30 @@ export default function IncomePeriodPage() {
     e.preventDefault();
     if (!periodId) return;
     setSaving(true);
+    const payload: SaveIncomeShiftPayload =
+      type === "SHIFT"
+        ? {
+            date: form.date,
+            type: "SHIFT",
+            fixedAmount: form.fixedAmount,
+            tipsAmount: form.tipsAmount,
+            personalRevenue: form.personalRevenue,
+            comment: form.comment,
+          }
+        : {
+            date: form.date,
+            type: "HOURLY",
+            startTime: form.startTime,
+            endTime: form.endTime,
+            hourlyRate: form.hourlyRate,
+            tipsAmount: form.tipsAmount,
+            personalRevenue: form.personalRevenue,
+            comment: form.comment,
+          };
     try {
-      const created = await createIncomeShift(Number(periodId), { ...form, type });
+      const created = await createIncomeShift(Number(periodId), payload);
       setData((prev) => (prev ? { ...prev, shifts: [created, ...prev.shifts] } : prev));
-      setForm({ date: today(), type, fixedAmount: 0 });
+      setForm({ date: today(), type });
     } finally {
       setSaving(false);
     }
@@ -109,7 +128,7 @@ export default function IncomePeriodPage() {
                   checked={type === "SHIFT"}
                   onChange={() => {
                     setType("SHIFT");
-                    onChange({ type: "SHIFT" });
+                    onChange({ type: "SHIFT", startTime: undefined, endTime: undefined, hourlyRate: undefined });
                   }}
                 />
                 По смене
@@ -122,7 +141,7 @@ export default function IncomePeriodPage() {
                   checked={type === "HOURLY"}
                   onChange={() => {
                     setType("HOURLY");
-                    onChange({ type: "HOURLY" });
+                    onChange({ type: "HOURLY", fixedAmount: undefined });
                   }}
                 />
                 Почасовая
@@ -134,10 +153,12 @@ export default function IncomePeriodPage() {
             <Input
               label="Оплата за смену"
               type="number"
-              min={0}
+              min={0.01}
               step={0.01}
-              value={form.fixedAmount ?? 0}
-              onChange={(e) => onChange({ fixedAmount: Number(e.target.value) })}
+              value={form.fixedAmount ?? ""}
+              onChange={(e) =>
+                onChange({ fixedAmount: e.target.value === "" ? undefined : Number(e.target.value) })
+              }
               required
               className="md:col-span-2"
             />
@@ -165,7 +186,9 @@ export default function IncomePeriodPage() {
                 min={0}
                 step={0.01}
                 value={form.hourlyRate ?? ""}
-                onChange={(e) => onChange({ hourlyRate: Number(e.target.value) })}
+                onChange={(e) =>
+                  onChange({ hourlyRate: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
                 required
               />
               <div className="rounded-xl border border-dashed border-zinc-200 p-3 text-sm text-zinc-600">

@@ -112,6 +112,9 @@ public class IncomeService {
             if (request.fixedAmount() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Оплата за смену обязательна для фиксированного типа");
             }
+            if (request.fixedAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Оплата за смену должна быть больше 0");
+            }
             shift.setType(IncomeShiftType.SHIFT);
             shift.setFixedAmount(request.fixedAmount());
             shift.setStartTime(null);
@@ -123,6 +126,8 @@ public class IncomeService {
             if (start == null || end == null || !end.isAfter(start)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Время начала/окончания заполнено некорректно");
             }
+            validateQuarterHour(start);
+            validateQuarterHour(end);
             if (request.hourlyRate() == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ставка обязательна для почасового типа");
             }
@@ -201,6 +206,12 @@ public class IncomeService {
 
     private BigDecimal safeValue(BigDecimal value) {
         return value == null ? ZERO : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void validateQuarterHour(LocalTime time) {
+        if (time.getMinute() % 15 != 0 || time.getSecond() != 0 || time.getNano() != 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Время должно быть кратно 15 минутам");
+        }
     }
 
     private class SummaryAccumulator {
