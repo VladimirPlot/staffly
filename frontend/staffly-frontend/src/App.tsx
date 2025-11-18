@@ -9,6 +9,9 @@ import Restaurants from "./features/restaurants/pages/Restaurants";
 import CreateRestaurant from "./features/restaurants/pages/CreateRestaurant";
 import Profile from "./features/profile/pages/Profile";
 import InvitePage from "./features/employees/pages/Invite";
+import IncomeListPage from "./features/income/pages/IncomeListPage";
+import IncomePeriodPage from "./features/income/pages/IncomePeriodPage";
+import NotesPage from "./features/income/pages/NotesPage";
 
 import Avatar from "./shared/ui/Avatar";
 import Button from "./shared/ui/Button";
@@ -87,6 +90,9 @@ function TopBar() {
           )}
 
           {/* ВЕРХНЕЕ меню минималистичное: оставили только профиль и выход */}
+          <Link to="/me/income">
+            <Button variant="outline">Мои доходы</Button>
+          </Link>
           <Link to="/profile">
             <Button variant="outline">Профиль</Button>
           </Link>
@@ -228,6 +234,31 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Profile />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/me/income"
+              element={
+                <ProtectedRoute>
+                  <IncomeListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/me/income/periods/:periodId"
+              element={
+                <ProtectedRoute>
+                  <IncomePeriodPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/me/notes"
+              element={
+                <ProtectedRoute>
+                  <NotesPage />
                 </ProtectedRoute>
               }
             />
