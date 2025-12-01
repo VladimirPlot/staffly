@@ -7,7 +7,7 @@ import { fetchRestaurantName } from "../../restaurants/api";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
-import RestaurantNotifications from "../../notifications/components/RestaurantNotifications";
+import { listNotifications, type NotificationDto } from "../../notifications/api";
 
 type UpcomingBirthday = {
   id: number;
@@ -60,6 +60,21 @@ function computeUpcomingBirthdays(members: MemberDto[]): UpcomingBirthday[] {
     .sort((a, b) => a.nextOccurrence.getTime() - b.nextOccurrence.getTime());
 }
 
+function isActiveNotification(n: NotificationDto): boolean {
+  const expires = new Date(n.expiresAt);
+  if (Number.isNaN(expires.getTime())) return true;
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return expires.getTime() >= now.getTime();
+}
+
+function formatNotificationDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(d);
+}
+
 export default function RestaurantHome() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
@@ -67,6 +82,9 @@ export default function RestaurantHome() {
   const [upcomingBirthdays, setUpcomingBirthdays] = React.useState<UpcomingBirthday[]>([]);
   const [birthdaysHidden, setBirthdaysHidden] = React.useState(false);
   const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+  const [notifications, setNotifications] = React.useState<NotificationDto[]>([]);
+  const [notificationsHidden, setNotificationsHidden] = React.useState(false);
+  const [myMembership, setMyMembership] = React.useState<MemberDto | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -107,17 +125,46 @@ export default function RestaurantHome() {
     (async () => {
       if (!restaurantId) {
         if (alive) setUpcomingBirthdays([]);
+        if (alive) setMyMembership(null);
         return;
       }
       try {
         const members = await listMembers(restaurantId);
         if (!alive) return;
         setUpcomingBirthdays(computeUpcomingBirthdays(members));
+        const self = members.find((member) => member.userId === user?.id) ?? null;
+        setMyMembership(self);
       } catch {
         if (!alive) return;
         setUpcomingBirthdays([]);
+        setMyMembership(null);
       }
     })();
+    return () => {
+      alive = false;
+    };
+  }, [restaurantId, user?.id]);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!restaurantId) {
+      setNotifications([]);
+      return () => {
+        alive = false;
+      };
+    }
+
+    (async () => {
+      try {
+        const notifications = await listNotifications(restaurantId);
+        if (!alive) return;
+        setNotifications(notifications.filter(isActiveNotification));
+      } catch {
+        if (!alive) return;
+        setNotifications([]);
+      }
+    })();
+
     return () => {
       alive = false;
     };
@@ -149,12 +196,54 @@ export default function RestaurantHome() {
     }
   }, [restaurantId]);
 
+  React.useEffect(() => {
+    if (!user?.restaurantId || !user?.id) {
+      setNotificationsHidden(false);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
+    setNotificationsHidden(window.localStorage.getItem(key) === "1");
+  }, [restaurantId, user?.id]);
+
+  const hideNotifications = React.useCallback(() => {
+    if (!restaurantId || !user?.id) return;
+    setNotificationsHidden(true);
+    if (typeof window !== "undefined") {
+      const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
+      window.localStorage.setItem(key, "1");
+    }
+  }, [restaurantId, user?.id]);
+
+  const showNotifications = React.useCallback(() => {
+    if (!restaurantId || !user?.id) return;
+    setNotificationsHidden(false);
+    if (typeof window !== "undefined") {
+      const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
+      window.localStorage.removeItem(key);
+    }
+  }, [restaurantId, user?.id]);
+
   const access = React.useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
     [user?.roles, myRole]
   );
 
   const canAccessSchedules = access.isAdminLike || Boolean(access.normalizedRestaurantRole);
+  const canManageNotifications = access.isAdminLike || access.normalizedRestaurantRole === "MANAGER";
+  const relevantNotifications = React.useMemo(() => {
+    if (canManageNotifications) return notifications;
+    if (!notifications.length) return [];
+    const positionId = myMembership?.positionId;
+    return notifications.filter((item) => {
+      if (item.positions.length === 0) return true;
+      if (!positionId) return false;
+      return item.positions.some((p) => p.id === positionId);
+    });
+  }, [canManageNotifications, notifications, myMembership?.positionId]);
+
+  const hasRelevantNotifications = relevantNotifications.length > 0;
+  const shouldShowNotificationsEntry = canManageNotifications;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -162,14 +251,6 @@ export default function RestaurantHome() {
         <div className="text-sm text-zinc-500">Ресторан</div>
         <h2 className="text-2xl font-semibold">{name || "…"}</h2>
       </Card>
-
-      {restaurantId && (
-        <RestaurantNotifications
-          restaurantId={restaurantId}
-          canManage={access.isManagerLike}
-          viewerId={user?.id ?? null}
-        />
-      )}
 
       {upcomingBirthdays.length > 0 && (
         birthdaysHidden ? (
@@ -202,6 +283,40 @@ export default function RestaurantHome() {
         )
       )}
 
+      {!canManageNotifications && hasRelevantNotifications && (
+        notificationsHidden ? (
+          <div className="mb-4 flex justify-end">
+            <Button variant="ghost" className="text-sm text-zinc-600" onClick={showNotifications}>
+              Показать уведомления
+            </Button>
+          </div>
+        ) : (
+          <Card className="mb-4 border-emerald-200 bg-emerald-50/70">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-3">
+                <div className="text-sm font-medium uppercase tracking-wide text-emerald-700">
+                  Новые уведомления
+                </div>
+                <ul className="space-y-3 text-sm text-emerald-900">
+                  {relevantNotifications.map((item) => (
+                    <li key={item.id} className="rounded-2xl border border-emerald-100 bg-white/60 p-3 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-700">
+                        <span>{item.createdBy?.name ?? "Руководство"}</span>
+                        <span>до {formatNotificationDate(item.expiresAt)}</span>
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap text-base text-emerald-900">{item.content}</div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Button variant="ghost" className="text-sm text-emerald-700" onClick={hideNotifications}>
+                Скрыть
+              </Button>
+            </div>
+          </Card>
+        )
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
           to="/employees/invite"
@@ -212,6 +327,25 @@ export default function RestaurantHome() {
             Приглашайте сотрудников и назначайте роли/позиции.
           </div>
         </Link>
+
+        {shouldShowNotificationsEntry && (
+          <Link
+            to="/notifications"
+            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
+          >
+            <div className="text-lg font-semibold">Уведомления</div>
+            <div className="mt-1 text-sm text-zinc-600">
+              {canManageNotifications
+                ? "Создавайте и редактируйте сообщения для сотрудников."
+                : "Посмотрите новые сообщения от руководства."}
+            </div>
+            {!canManageNotifications && hasRelevantNotifications && (
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                Есть новые уведомления
+              </div>
+            )}
+          </Link>
+        )}
 
         {canAccessSchedules && (
           <Link

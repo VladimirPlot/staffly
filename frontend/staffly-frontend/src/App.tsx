@@ -24,6 +24,7 @@ import TrainingCategoryItemsPage from "./features/training/pages/CategoryItems";
 import RestaurantHome from "./features/home/pages/RestaurantHome";
 import SchedulePage from "./features/schedule/pages/SchedulePage";
 import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
+import NotificationsPage from "./features/notifications/pages/NotificationsPage";
 
 /* ===== TopBar ===== */
 function TopBar() {
@@ -185,6 +186,17 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <SchedulePage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <NotificationsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
