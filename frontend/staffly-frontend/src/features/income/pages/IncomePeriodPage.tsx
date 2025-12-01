@@ -15,6 +15,7 @@ export default function IncomePeriodPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [type, setType] = React.useState<"SHIFT" | "HOURLY">("SHIFT");
+  const [showAddShift, setShowAddShift] = React.useState(false);
   const [form, setForm] = React.useState<SaveIncomeShiftPayload>({
     date: today(),
     type: "SHIFT",
@@ -108,129 +109,136 @@ export default function IncomePeriodPage() {
       </div>
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
-        <div className="mb-2 text-base font-semibold">Добавить смену</div>
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={onCreateShift}>
-          <Input
-            label="Дата"
-            type="date"
-            value={form.date}
-            onChange={(e) => onChange({ date: e.target.value })}
-            required
-          />
-          <div className="flex flex-col gap-2 text-sm text-zinc-700">
-            <span className="text-zinc-600">Тип оплаты</span>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="type"
-                  value="SHIFT"
-                  checked={type === "SHIFT"}
-                  onChange={() => {
-                    setType("SHIFT");
-                    onChange({ type: "SHIFT", startTime: undefined, endTime: undefined, hourlyRate: undefined });
-                  }}
-                />
-                По смене
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="type"
-                  value="HOURLY"
-                  checked={type === "HOURLY"}
-                  onChange={() => {
-                    setType("HOURLY");
-                    onChange({ type: "HOURLY", fixedAmount: undefined });
-                  }}
-                />
-                Почасовая
-              </label>
-            </div>
-          </div>
-
-          {type === "SHIFT" ? (
+        <div className="mb-2 flex items-center justify-between gap-2 text-base font-semibold">
+          <span>Добавить смену</span>
+          <Button variant="outline" onClick={() => setShowAddShift((prev) => !prev)}>
+            {showAddShift ? "Скрыть" : "Добавить смену"}
+          </Button>
+        </div>
+        {showAddShift && (
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={onCreateShift}>
             <Input
-              label="Оплата за смену"
-              type="number"
-              min={0.01}
-              step={0.01}
-              value={form.fixedAmount ?? ""}
-              onChange={(e) =>
-                onChange({ fixedAmount: e.target.value === "" ? undefined : Number(e.target.value) })
-              }
+              label="Дата"
+              type="date"
+              value={form.date}
+              onChange={(e) => onChange({ date: e.target.value })}
               required
-              className="md:col-span-2"
             />
-          ) : (
-            <div className="md:col-span-2 grid gap-3 md:grid-cols-2">
-              <Input
-                label="Начало смены"
-                type="time"
-                step={900}
-                value={form.startTime ?? ""}
-                onChange={(e) => onChange({ startTime: e.target.value })}
-                required
-              />
-              <Input
-                label="Окончание смены"
-                type="time"
-                step={900}
-                value={form.endTime ?? ""}
-                onChange={(e) => onChange({ endTime: e.target.value })}
-                required
-              />
-              <Input
-                label="Ставка в час"
-                type="number"
-                min={0}
-                step={0.01}
-                value={form.hourlyRate ?? ""}
-                onChange={(e) =>
-                  onChange({ hourlyRate: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
-                required
-              />
-              <div className="rounded-xl border border-dashed border-zinc-200 p-3 text-sm text-zinc-600">
-                Итого часов: {hours.toFixed(2)}
+            <div className="flex flex-col gap-2 text-sm text-zinc-700">
+              <span className="text-zinc-600">Тип оплаты</span>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="type"
+                    value="SHIFT"
+                    checked={type === "SHIFT"}
+                    onChange={() => {
+                      setType("SHIFT");
+                      onChange({ type: "SHIFT", startTime: undefined, endTime: undefined, hourlyRate: undefined });
+                    }}
+                  />
+                  По смене
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="type"
+                    value="HOURLY"
+                    checked={type === "HOURLY"}
+                    onChange={() => {
+                      setType("HOURLY");
+                      onChange({ type: "HOURLY", fixedAmount: undefined });
+                    }}
+                  />
+                  Почасовая
+                </label>
               </div>
             </div>
-          )}
 
-          <details className="md:col-span-2 rounded-xl border border-zinc-200 p-3 text-sm">
-            <summary className="cursor-pointer font-medium">Дополнительно</summary>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {type === "SHIFT" ? (
               <Input
-                label="Чаевые"
+                label="Оплата за смену"
                 type="number"
-                min={0}
+                min={0.01}
                 step={0.01}
-                value={form.tipsAmount ?? ""}
-                onChange={(e) => onChange({ tipsAmount: Number(e.target.value) })}
+                value={form.fixedAmount ?? ""}
+                onChange={(e) =>
+                  onChange({ fixedAmount: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
+                required
+                className="md:col-span-2"
               />
-              <Input
-                label="Личная выручка"
-                type="number"
-                min={0}
-                step={0.01}
-                value={form.personalRevenue ?? ""}
-                onChange={(e) => onChange({ personalRevenue: Number(e.target.value) })}
-              />
-              <Input
-                label="Комментарий"
-                placeholder='Например: "Банкет"'
-                value={form.comment ?? ""}
-                onChange={(e) => onChange({ comment: e.target.value })}
-              />
+            ) : (
+              <div className="md:col-span-2 grid gap-3 md:grid-cols-2">
+                <Input
+                  label="Начало смены"
+                  type="time"
+                  step={900}
+                  value={form.startTime ?? ""}
+                  onChange={(e) => onChange({ startTime: e.target.value })}
+                  required
+                />
+                <Input
+                  label="Окончание смены"
+                  type="time"
+                  step={900}
+                  value={form.endTime ?? ""}
+                  onChange={(e) => onChange({ endTime: e.target.value })}
+                  required
+                />
+                <Input
+                  label="Ставка в час"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={form.hourlyRate ?? ""}
+                  onChange={(e) =>
+                    onChange({ hourlyRate: e.target.value === "" ? undefined : Number(e.target.value) })
+                  }
+                  required
+                />
+                <div className="rounded-xl border border-dashed border-zinc-200 p-3 text-sm text-zinc-600">
+                  Итого часов: {hours.toFixed(2)}
+                </div>
+              </div>
+            )}
+
+            <details className="md:col-span-2 rounded-xl border border-zinc-200 p-3 text-sm">
+              <summary className="cursor-pointer font-medium">Дополнительно</summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <Input
+                  label="Чаевые"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={form.tipsAmount ?? ""}
+                  onChange={(e) => onChange({ tipsAmount: Number(e.target.value) })}
+                />
+                <Input
+                  label="Личная выручка"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={form.personalRevenue ?? ""}
+                  onChange={(e) => onChange({ personalRevenue: Number(e.target.value) })}
+                />
+                <Input
+                  label="Комментарий"
+                  placeholder='Например: "Банкет"'
+                  value={form.comment ?? ""}
+                  onChange={(e) => onChange({ comment: e.target.value })}
+                />
+              </div>
+            </details>
+
+            <div className="md:col-span-2 flex justify-end">
+              <Button type="submit" disabled={saving}>
+                {saving ? "Сохраняем..." : "Сохранить"}
+              </Button>
             </div>
-          </details>
-
-          <div className="md:col-span-2 flex justify-end">
-            <Button type="submit" disabled={saving}>
-              {saving ? "Сохраняем..." : "Сохранить"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
@@ -256,13 +264,29 @@ export default function IncomePeriodPage() {
                     </div>
                     {shift.comment && <div className="text-zinc-500">{shift.comment}</div>}
                   </div>
-                  <button
+                  <Button
                     type="button"
-                    className="text-xs text-red-500 hover:underline"
+                    variant="outline"
+                    className="flex items-center gap-2 text-xs"
                     onClick={() => onDeleteShift(shift)}
+                    aria-label="Удалить смену"
                   >
-                    удалить
-                  </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="h-4 w-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6.75 7.5h10.5M9.75 7.5V6.75c0-.414.336-.75.75-.75h3c.414 0 .75.336.75.75v.75m-7.5 0h7.5m-7.5 0V17.25c0 .414.336.75.75.75h6c.414 0 .75-.336.75-.75V7.5m-6 0v-.75c0-.414.336-.75.75-.75h3c.414 0 .75.336.75.75v.75"
+                      />
+                    </svg>
+                    Удалить
+                  </Button>
                 </div>
               </div>
             ))}
