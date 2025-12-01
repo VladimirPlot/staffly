@@ -7,6 +7,7 @@ import { fetchRestaurantName } from "../../restaurants/api";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
+import RestaurantNotifications from "../../notifications/components/RestaurantNotifications";
 
 type UpcomingBirthday = {
   id: number;
@@ -61,6 +62,7 @@ function computeUpcomingBirthdays(members: MemberDto[]): UpcomingBirthday[] {
 
 export default function RestaurantHome() {
   const { user } = useAuth();
+  const restaurantId = user?.restaurantId ?? null;
   const [name, setName] = React.useState<string>("");
   const [upcomingBirthdays, setUpcomingBirthdays] = React.useState<UpcomingBirthday[]>([]);
   const [birthdaysHidden, setBirthdaysHidden] = React.useState(false);
@@ -69,9 +71,9 @@ export default function RestaurantHome() {
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (user?.restaurantId) {
+      if (restaurantId) {
         try {
-          const n = await fetchRestaurantName(user.restaurantId);
+          const n = await fetchRestaurantName(restaurantId);
           if (alive) setName(n);
         } catch {
           if (alive) setName("");
@@ -79,17 +81,17 @@ export default function RestaurantHome() {
       }
     })();
     return () => { alive = false; };
-  }, [user?.restaurantId]);
+  }, [restaurantId]);
 
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (!user?.restaurantId) {
+      if (!restaurantId) {
         if (alive) setMyRole(null);
         return;
       }
       try {
-        const role = await fetchMyRoleIn(user.restaurantId);
+        const role = await fetchMyRoleIn(restaurantId);
         if (alive) setMyRole(role);
       } catch {
         if (alive) setMyRole(null);
@@ -98,17 +100,17 @@ export default function RestaurantHome() {
     return () => {
       alive = false;
     };
-  }, [user?.restaurantId]);
+  }, [restaurantId]);
 
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (!user?.restaurantId) {
+      if (!restaurantId) {
         if (alive) setUpcomingBirthdays([]);
         return;
       }
       try {
-        const members = await listMembers(user.restaurantId);
+        const members = await listMembers(restaurantId);
         if (!alive) return;
         setUpcomingBirthdays(computeUpcomingBirthdays(members));
       } catch {
@@ -119,7 +121,7 @@ export default function RestaurantHome() {
     return () => {
       alive = false;
     };
-  }, [user?.restaurantId]);
+  }, [restaurantId]);
 
   React.useEffect(() => {
     if (!user?.restaurantId) {
@@ -127,25 +129,25 @@ export default function RestaurantHome() {
       return;
     }
     if (typeof window === "undefined") return;
-    const key = `restaurant:${user.restaurantId}:birthdaysHidden`;
+    const key = `restaurant:${restaurantId}:birthdaysHidden`;
     setBirthdaysHidden(window.localStorage.getItem(key) === "1");
-  }, [user?.restaurantId]);
+  }, [restaurantId]);
 
   const hideBirthdays = React.useCallback(() => {
     setBirthdaysHidden(true);
-    if (typeof window !== "undefined" && user?.restaurantId) {
-      const key = `restaurant:${user.restaurantId}:birthdaysHidden`;
+    if (typeof window !== "undefined" && restaurantId) {
+      const key = `restaurant:${restaurantId}:birthdaysHidden`;
       window.localStorage.setItem(key, "1");
     }
-  }, [user?.restaurantId]);
+  }, [restaurantId]);
 
   const showBirthdays = React.useCallback(() => {
     setBirthdaysHidden(false);
-    if (typeof window !== "undefined" && user?.restaurantId) {
-      const key = `restaurant:${user.restaurantId}:birthdaysHidden`;
+    if (typeof window !== "undefined" && restaurantId) {
+      const key = `restaurant:${restaurantId}:birthdaysHidden`;
       window.localStorage.removeItem(key);
     }
-  }, [user?.restaurantId]);
+  }, [restaurantId]);
 
   const access = React.useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
@@ -160,6 +162,14 @@ export default function RestaurantHome() {
         <div className="text-sm text-zinc-500">Ресторан</div>
         <h2 className="text-2xl font-semibold">{name || "…"}</h2>
       </Card>
+
+      {restaurantId && (
+        <RestaurantNotifications
+          restaurantId={restaurantId}
+          canManage={access.isManagerLike}
+          viewerId={user?.id ?? null}
+        />
+      )}
 
       {upcomingBirthdays.length > 0 && (
         birthdaysHidden ? (
