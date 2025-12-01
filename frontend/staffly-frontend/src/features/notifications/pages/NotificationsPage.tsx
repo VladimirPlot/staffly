@@ -11,7 +11,7 @@ const NotificationsPage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
-  const [loadingRole, setLoadingRole] = React.useState<boolean>(false);
+  const [loadingRole, setLoadingRole] = React.useState<boolean>(true);
 
   React.useEffect(() => {
     let alive = true;
@@ -47,7 +47,7 @@ const NotificationsPage: React.FC = () => {
     [user?.roles, myRole]
   );
 
-  const canManageNotifications = access.isAdminLike || access.normalizedRestaurantRole === "MANAGER";
+  const canManageNotifications = access.isManagerLike;
 
   if (!restaurantId) return null;
 
