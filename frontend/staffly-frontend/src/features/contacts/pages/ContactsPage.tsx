@@ -12,20 +12,25 @@ const ContactsPage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+  const [roleLoading, setRoleLoading] = React.useState<boolean>(!!restaurantId);
 
   React.useEffect(() => {
     if (!restaurantId) {
       setMyRole(null);
+      setRoleLoading(false);
       return;
     }
 
     let alive = true;
+    setRoleLoading(true);
     (async () => {
       try {
         const role = await fetchMyRoleIn(restaurantId);
         if (alive) setMyRole(role);
       } catch {
         if (alive) setMyRole(null);
+      } finally {
+        if (alive) setRoleLoading(false);
       }
     })();
 
@@ -35,6 +40,10 @@ const ContactsPage: React.FC = () => {
   }, [restaurantId]);
 
   if (!restaurantId) {
+    return null;
+  }
+
+  if (roleLoading) {
     return null;
   }
 
