@@ -25,6 +25,7 @@ import RestaurantHome from "./features/home/pages/RestaurantHome";
 import SchedulePage from "./features/schedule/pages/SchedulePage";
 import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
 import NotificationsPage from "./features/notifications/pages/NotificationsPage";
+import ContactsPage from "./features/contacts/pages/ContactsPage";
 
 /* ===== TopBar ===== */
 function TopBar() {
@@ -208,6 +209,17 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <ChecklistsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/contacts"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <ContactsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

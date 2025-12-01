@@ -244,6 +244,7 @@ export default function RestaurantHome() {
 
   const hasRelevantNotifications = relevantNotifications.length > 0;
   const shouldShowNotificationsEntry = canManageNotifications;
+  const canAccessContacts = access.isManagerLike;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -378,6 +379,19 @@ export default function RestaurantHome() {
             </div>
           </Card>
         </Link>
+
+        {canAccessContacts && (
+          <Link to="/contacts" className="block">
+            <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-medium mb-1">Контакты</div>
+                  <div className="text-sm text-zinc-600">Список важных номеров и заметок ресторана</div>
+                </div>
+              </div>
+            </Card>
+          </Link>
+        )}
       </div>
     </div>
   );
