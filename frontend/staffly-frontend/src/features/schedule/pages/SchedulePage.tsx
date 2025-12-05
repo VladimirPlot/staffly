@@ -7,8 +7,12 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import ScheduleTable from "../components/ScheduleTable";
+import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
+import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import {
   createSchedule,
+  createReplacement,
+  createSwap,
   deleteSchedule,
   fetchSchedule,
   listSavedSchedules,
@@ -78,6 +82,8 @@ const SchedulePage: React.FC = () => {
   const [downloading, setDownloading] = React.useState<{ id: number; type: "xlsx" | "jpg" } | null>(
     null
   );
+  const [replacementOpen, setReplacementOpen] = React.useState(false);
+  const [swapOpen, setSwapOpen] = React.useState(false);
 
   const scheduleId = schedule?.id ?? null;
 
@@ -163,6 +169,24 @@ const SchedulePage: React.FC = () => {
     const member = members.find((item) => item.userId === user.id);
     return normalizeRole(member?.role ?? myRole);
   }, [members, myRole, user?.id]);
+
+  const currentMember = React.useMemo(() => {
+    if (!user?.id) return null;
+    return members.find((item) => item.userId === user.id) ?? null;
+  }, [members, user?.id]);
+
+  const currentMemberInSchedule = React.useMemo(() => {
+    if (!schedule || !currentMember) return false;
+    return schedule.rows.some((row) => row.memberId === currentMember.id);
+  }, [currentMember, schedule]);
+
+  const hasMyShift = React.useMemo(() => {
+    if (!schedule || !currentMember || !currentMemberInSchedule) return false;
+    return schedule.days.some((day) => {
+      const value = schedule.cellValues[`${currentMember.id}:${day.date}`];
+      return Boolean(value && value.trim());
+    });
+  }, [currentMember, currentMemberInSchedule, schedule]);
 
   const canManage = React.useMemo(() => {
     if (normalizedMembershipRole === "STAFF") {
@@ -472,12 +496,65 @@ const SchedulePage: React.FC = () => {
     setDialogOpen(false);
   }, []);
 
+  const handleOpenReplacement = React.useCallback(() => {
+    setReplacementOpen(true);
+  }, []);
+
+  const handleCloseReplacement = React.useCallback(() => {
+    setReplacementOpen(false);
+  }, []);
+
+  const handleOpenSwap = React.useCallback(() => {
+    setSwapOpen(true);
+  }, []);
+
+  const handleCloseSwap = React.useCallback(() => {
+    setSwapOpen(false);
+  }, []);
+
+  const handleSubmitReplacement = React.useCallback(
+    async (payload: { day: string; toMemberId: number; reason?: string }) => {
+      if (!restaurantId || !scheduleId) return;
+      setScheduleError(null);
+      setScheduleMessage(null);
+      try {
+        await createReplacement(restaurantId, scheduleId, payload);
+        setScheduleMessage("Заявка на замену отправлена");
+        setReplacementOpen(false);
+      } catch (e: any) {
+        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось создать заявку на замену");
+      }
+    },
+    [restaurantId, scheduleId]
+  );
+
+  const handleSubmitSwap = React.useCallback(
+    async (payload: { myDay: string; targetMemberId: number; targetDay: string; reason?: string }) => {
+      if (!restaurantId || !scheduleId) return;
+      setScheduleError(null);
+      setScheduleMessage(null);
+      try {
+        await createSwap(restaurantId, scheduleId, payload);
+        setScheduleMessage("Заявка на обмен отправлена");
+        setSwapOpen(false);
+      } catch (e: any) {
+        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось создать заявку на обмен");
+      }
+    },
+    [restaurantId, scheduleId]
+  );
+
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;
     const months = monthLabelsBetween(schedule.days.map((day) => day.date));
     if (months.length > 0) return months.join("/");
     return null;
   }, [schedule]);
+
+  const canCreateShiftRequest = React.useMemo(
+    () => Boolean(schedule && scheduleId && currentMember && currentMemberInSchedule && hasMyShift),
+    [currentMember, currentMemberInSchedule, hasMyShift, schedule, scheduleId]
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -598,6 +675,17 @@ const SchedulePage: React.FC = () => {
         <Card className="border-emerald-200 bg-emerald-50 text-emerald-700">{scheduleMessage}</Card>
       )}
 
+      {!loading && !error && canCreateShiftRequest && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={handleOpenReplacement}>
+            Создать замену
+          </Button>
+          <Button variant="outline" onClick={handleOpenSwap}>
+            Создать обмен сменами
+          </Button>
+        </div>
+      )}
+
       {canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading && (
         <div className="flex flex-wrap justify-end gap-2">
           {scheduleId && (
@@ -657,6 +745,27 @@ const SchedulePage: React.FC = () => {
             </div>
           )}
         </Card>
+      )}
+
+      {schedule && currentMember && (
+        <>
+          <ShiftReplacementDialog
+            open={replacementOpen}
+            onClose={handleCloseReplacement}
+            schedule={schedule}
+            currentMember={currentMember}
+            members={members}
+            onSubmit={handleSubmitReplacement}
+          />
+          <ShiftSwapDialog
+            open={swapOpen}
+            onClose={handleCloseSwap}
+            schedule={schedule}
+            currentMember={currentMember}
+            members={members}
+            onSubmit={handleSubmitSwap}
+          />
+        </>
       )}
 
       <CreateScheduleDialog
