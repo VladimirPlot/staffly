@@ -13,7 +13,9 @@ import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftMode;
+import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.security.SecurityService;
 
@@ -31,6 +33,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final ScheduleRepository schedules;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
+    private final ScheduleShiftRequestRepository shiftRequests;
     private final SecurityService securityService;
 
     @Override
@@ -91,7 +94,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getTitle(),
                         s.getStartDate().toString(),
                         s.getEndDate().toString(),
-                        s.getCreatedAt()
+                        s.getCreatedAt(),
+                        shiftRequests.existsByScheduleIdAndStatus(s.getId(), ScheduleShiftRequestStatus.PENDING_MANAGER)
                 ))
                 .toList();
     }

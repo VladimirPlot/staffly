@@ -13,11 +13,14 @@ import {
   createSchedule,
   createReplacement,
   createSwap,
+  decideAsManager,
   deleteSchedule,
   fetchSchedule,
   listSavedSchedules,
+  listShiftRequests,
   updateSchedule,
   type ScheduleSummary,
+  type ShiftRequestDto,
 } from "../api";
 import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
@@ -84,6 +87,9 @@ const SchedulePage: React.FC = () => {
   );
   const [replacementOpen, setReplacementOpen] = React.useState(false);
   const [swapOpen, setSwapOpen] = React.useState(false);
+  const [shiftRequests, setShiftRequests] = React.useState<ShiftRequestDto[]>([]);
+  const [shiftRequestsLoading, setShiftRequestsLoading] = React.useState(false);
+  const [shiftRequestsError, setShiftRequestsError] = React.useState<string | null>(null);
 
   const scheduleId = schedule?.id ?? null;
 
@@ -102,6 +108,9 @@ const SchedulePage: React.FC = () => {
       setScheduleMessage(null);
       setScheduleError(null);
       setSaving(false);
+      setShiftRequests([]);
+      setShiftRequestsError(null);
+      setShiftRequestsLoading(false);
       return;
     }
 
@@ -116,6 +125,9 @@ const SchedulePage: React.FC = () => {
     setScheduleError(null);
     setScheduleLoading(false);
     setSaving(false);
+    setShiftRequests([]);
+    setShiftRequestsError(null);
+    setShiftRequestsLoading(false);
 
     (async () => {
       try {
@@ -306,6 +318,30 @@ const SchedulePage: React.FC = () => {
     []
   );
 
+  const loadShiftRequests = React.useCallback(
+    async (targetScheduleId?: number) => {
+      if (!restaurantId || !(targetScheduleId ?? scheduleId)) {
+        setShiftRequests([]);
+        return;
+      }
+      const scheduleForLoad = targetScheduleId ?? scheduleId;
+      setShiftRequestsLoading(true);
+      setShiftRequestsError(null);
+      try {
+        const data = await listShiftRequests(restaurantId, scheduleForLoad as number);
+        setShiftRequests(data);
+      } catch (e: any) {
+        setShiftRequestsError(
+          e?.response?.data?.message || e?.message || "Не удалось загрузить заявки"
+        );
+        setShiftRequests([]);
+      } finally {
+        setShiftRequestsLoading(false);
+      }
+    },
+    [restaurantId, scheduleId]
+  );
+
   const handleSaveSchedule = React.useCallback(async () => {
     if (!canManage || !restaurantId || !schedule) return;
     setSaving(true);
@@ -341,13 +377,14 @@ const SchedulePage: React.FC = () => {
       setLastRange({ start: saved.config.startDate, end: saved.config.endDate });
       const savedList = await listSavedSchedules(restaurantId);
       setSavedSchedules(savedList);
+      await loadShiftRequests(saved.id ?? undefined);
       setScheduleMessage(schedule.id ? "График обновлён" : "График сохранён");
     } catch (e: any) {
       setScheduleError(e?.response?.data?.message || e?.message || "Не удалось сохранить график");
     } finally {
       setSaving(false);
     }
-  }, [canManage, restaurantId, schedule]);
+  }, [canManage, loadShiftRequests, restaurantId, schedule]);
 
   const handleOpenSavedSchedule = React.useCallback(
     async (id: number) => {
@@ -362,13 +399,14 @@ const SchedulePage: React.FC = () => {
         const data = await fetchSchedule(restaurantId, id);
         setSchedule(data);
         setLastRange({ start: data.config.startDate, end: data.config.endDate });
+        await loadShiftRequests(id);
       } catch (e: any) {
         setScheduleError(e?.response?.data?.message || e?.message || "Не удалось загрузить график");
       } finally {
         setScheduleLoading(false);
       }
     },
-    [restaurantId]
+    [loadShiftRequests, restaurantId]
   );
 
   const handleCloseSavedSchedule = React.useCallback(() => {
@@ -378,6 +416,7 @@ const SchedulePage: React.FC = () => {
     setScheduleMessage(null);
     setScheduleError(null);
     setScheduleLoading(false);
+    setShiftRequests([]);
   }, []);
 
   const fetchScheduleForActions = React.useCallback(
@@ -458,12 +497,13 @@ const SchedulePage: React.FC = () => {
       setSchedule(data);
       setScheduleReadOnly(true);
       setLastRange({ start: data.config.startDate, end: data.config.endDate });
+      await loadShiftRequests(scheduleId);
     } catch (e: any) {
       setScheduleError(e?.response?.data?.message || e?.message || "Не удалось загрузить график");
     } finally {
       setScheduleLoading(false);
     }
-  }, [handleCloseSavedSchedule, restaurantId, scheduleId]);
+  }, [handleCloseSavedSchedule, loadShiftRequests, restaurantId, scheduleId]);
 
   const handleDeleteSchedule = React.useCallback(async () => {
     if (!canManage || !restaurantId || !scheduleId) return;
@@ -480,6 +520,7 @@ const SchedulePage: React.FC = () => {
       setSchedule(null);
       setSelectedSavedId(null);
       setScheduleReadOnly(false);
+      setShiftRequests([]);
       setScheduleMessage("График удалён");
     } catch (e: any) {
       setScheduleError(e?.response?.data?.message || e?.message || "Не удалось удалить график");
@@ -521,11 +562,12 @@ const SchedulePage: React.FC = () => {
         await createReplacement(restaurantId, scheduleId, payload);
         setScheduleMessage("Заявка на замену отправлена");
         setReplacementOpen(false);
+        await loadShiftRequests();
       } catch (e: any) {
         setScheduleError(e?.response?.data?.message || e?.message || "Не удалось создать заявку на замену");
       }
     },
-    [restaurantId, scheduleId]
+    [loadShiftRequests, restaurantId, scheduleId]
   );
 
   const handleSubmitSwap = React.useCallback(
@@ -537,11 +579,32 @@ const SchedulePage: React.FC = () => {
         await createSwap(restaurantId, scheduleId, payload);
         setScheduleMessage("Заявка на обмен отправлена");
         setSwapOpen(false);
+        await loadShiftRequests();
       } catch (e: any) {
         setScheduleError(e?.response?.data?.message || e?.message || "Не удалось создать заявку на обмен");
       }
     },
-    [restaurantId, scheduleId]
+    [loadShiftRequests, restaurantId, scheduleId]
+  );
+
+  const handleManagerDecision = React.useCallback(
+    async (requestId: number, accepted: boolean) => {
+      if (!restaurantId || !scheduleId) return;
+      setScheduleError(null);
+      setScheduleMessage(null);
+      try {
+        await decideAsManager(restaurantId, scheduleId, requestId, accepted);
+        const data = await fetchSchedule(restaurantId, scheduleId);
+        setSchedule(data);
+        setScheduleReadOnly(true);
+        setLastRange({ start: data.config.startDate, end: data.config.endDate });
+        await loadShiftRequests(scheduleId);
+        setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
+      } catch (e: any) {
+        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось обработать заявку");
+      }
+    },
+    [decideAsManager, fetchSchedule, loadShiftRequests, restaurantId, scheduleId]
   );
 
   const monthFallback = React.useMemo(() => {
@@ -555,6 +618,36 @@ const SchedulePage: React.FC = () => {
     () => Boolean(schedule && scheduleId && currentMember && currentMemberInSchedule && hasMyShift),
     [currentMember, currentMemberInSchedule, hasMyShift, schedule, scheduleId]
   );
+
+  const hasPendingSavedSchedules = React.useMemo(
+    () => savedSchedules.some((item) => item.hasPendingShiftRequests),
+    [savedSchedules]
+  );
+
+  const shiftDisplay = React.useCallback(
+    (memberId: number, day: string | null) => {
+      if (!schedule || !day) return day ?? "";
+      const value = schedule.cellValues[`${memberId}:${day}`];
+      if (value) {
+        return `${day} (${value})`;
+      }
+      return day;
+    },
+    [schedule]
+  );
+
+  const humanStatus = React.useCallback((status: ShiftRequestDto["status"]) => {
+    switch (status) {
+      case "PENDING_MANAGER":
+        return "Ожидает решения менеджера";
+      case "APPROVED":
+        return "Одобрено";
+      case "REJECTED_BY_MANAGER":
+        return "Отклонено";
+      default:
+        return status;
+    }
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -579,7 +672,15 @@ const SchedulePage: React.FC = () => {
         <Card>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-medium text-zinc-700">Сохранённые графики</div>
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                <span>Сохранённые графики</span>
+                {hasPendingSavedSchedules && (
+                  <span
+                    className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+                    aria-label="Есть необработанные заявки"
+                  />
+                )}
+              </div>
               <div className="mt-1 text-xs text-zinc-500">
                 {savedSchedules.length > 0
                   ? "Нажмите «Открыть», чтобы посмотреть график или скачайте файл."
@@ -605,12 +706,18 @@ const SchedulePage: React.FC = () => {
                 return (
                   <div
                     key={item.id}
-                    className={`flex h-full flex-col justify-between rounded-2xl border px-4 py-3 text-sm transition ${
+                    className={`relative flex h-full flex-col justify-between rounded-2xl border px-4 py-3 text-sm transition ${
                       isActive
                         ? "border-black bg-zinc-50"
                         : "border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50"
                     }`}
                   >
+                    {item.hasPendingShiftRequests && (
+                      <span
+                        className="absolute right-2 top-2 inline-block h-2 w-2 rounded-full bg-emerald-500"
+                        aria-label="Есть необработанные заявки"
+                      />
+                    )}
                     <div>
                       <div className="font-medium text-zinc-800">{item.title}</div>
                       <div className="mt-1 text-xs text-zinc-500">
@@ -745,6 +852,80 @@ const SchedulePage: React.FC = () => {
             </div>
           )}
         </Card>
+      )}
+
+      {!loading && !error && schedule && !scheduleLoading && (
+        <div className="space-y-2">
+          <div className="text-lg font-semibold text-zinc-800">Заявки на смены</div>
+          {shiftRequestsLoading && <Card>Заявки на смены загружаются…</Card>}
+          {!shiftRequestsLoading && shiftRequestsError && (
+            <Card className="border-red-200 bg-red-50 text-red-700">{shiftRequestsError}</Card>
+          )}
+          {!shiftRequestsLoading && !shiftRequestsError && shiftRequests.length === 0 && (
+            <Card>Пока нет заявок по этому графику.</Card>
+          )}
+          {!shiftRequestsLoading && !shiftRequestsError && shiftRequests.length > 0 && (
+            <div className="space-y-3">
+              {shiftRequests.map((request) => (
+                <Card key={request.id} className="border-zinc-200">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1 text-sm text-zinc-700">
+                      <div className="flex flex-wrap items-center gap-2 font-medium text-zinc-900">
+                        <span>{request.type === "REPLACEMENT" ? "Замена" : "Обмен сменами"}</span>
+                        <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-normal text-zinc-700">
+                          {humanStatus(request.status)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-zinc-600">
+                        {request.type === "REPLACEMENT" ? "От" : "Первый"}: {request.fromMember.displayName}
+                        {request.dayFrom && (
+                          <>
+                            {" "}• {shiftDisplay(request.fromMember.id, request.dayFrom)}
+                          </>
+                        )}
+                      </div>
+                      <div className="text-xs text-zinc-600">
+                        {request.type === "REPLACEMENT" ? "Кому" : "Второй"}: {request.toMember.displayName}
+                        {request.dayTo && (
+                          <>
+                            {" "}• {shiftDisplay(request.toMember.id, request.dayTo)}
+                          </>
+                        )}
+                        {request.type === "REPLACEMENT" && request.dayFrom && !request.dayTo && (
+                          <>
+                            {" "}• {shiftDisplay(request.toMember.id, request.dayFrom)}
+                          </>
+                        )}
+                      </div>
+                      {request.reason && (
+                        <div className="text-xs text-zinc-600">Причина: {request.reason}</div>
+                      )}
+                      <div className="text-xs text-zinc-500">Создано: {new Date(request.createdAt).toLocaleString("ru-RU")}</div>
+                    </div>
+                    {canManage && request.status === "PENDING_MANAGER" && (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleManagerDecision(request.id, true)}
+                          className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                        >
+                          Подтвердить
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => handleManagerDecision(request.id, false)}
+                          className="border-red-200 text-red-700 hover:bg-red-50"
+                        >
+                          Отказать
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {schedule && currentMember && (

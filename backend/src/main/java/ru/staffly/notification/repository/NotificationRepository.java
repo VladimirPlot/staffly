@@ -9,9 +9,9 @@ import java.util.Optional;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
-    @EntityGraph(attributePaths = {"positions", "creator", "restaurant"})
+    @EntityGraph(attributePaths = {"positions", "members", "creator", "restaurant"})
     List<Notification> findAllByRestaurantIdOrderByCreatedAtDesc(Long restaurantId);
 
-    @EntityGraph(attributePaths = {"positions", "creator", "restaurant"})
+    @EntityGraph(attributePaths = {"positions", "members", "creator", "restaurant"})
     Optional<Notification> findByIdAndRestaurantId(Long id, Long restaurantId);
 }

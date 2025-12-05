@@ -15,6 +15,8 @@ public interface ScheduleShiftRequestRepository extends JpaRepository<ScheduleSh
 
     Optional<ScheduleShiftRequest> findByIdAndScheduleRestaurantId(Long id, Long restaurantId);
 
+    boolean existsByScheduleIdAndStatus(Long scheduleId, ScheduleShiftRequestStatus status);
+
     @Query("""
             select r from ScheduleShiftRequest r
             where r.schedule.id = :scheduleId

@@ -7,5 +7,6 @@ public record ScheduleSummaryDto(
         String title,
         String startDate,
         String endDate,
-        Instant createdAt
+        Instant createdAt,
+        boolean hasPendingShiftRequests
 ) {}

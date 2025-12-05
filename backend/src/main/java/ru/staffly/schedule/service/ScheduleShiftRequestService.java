@@ -12,8 +12,6 @@ public interface ScheduleShiftRequestService {
 
     ShiftRequestDto createSwap(Long restaurantId, Long scheduleId, Long userId, CreateSwapShiftRequest request);
 
-    ShiftRequestDto decideAsTarget(Long restaurantId, Long requestId, Long userId, boolean accepted);
-
     ShiftRequestDto decideAsManager(Long restaurantId, Long requestId, Long userId, boolean accepted);
 
     List<ShiftRequestDto> listForSchedule(Long restaurantId, Long scheduleId, Long userId);

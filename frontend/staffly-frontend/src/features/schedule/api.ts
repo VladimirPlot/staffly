@@ -3,12 +3,9 @@ import type { ScheduleConfig, ScheduleData } from "./types";
 
 export type ShiftRequestType = "REPLACEMENT" | "SWAP";
 export type ShiftRequestStatus =
-  | "PENDING_TARGET"
   | "PENDING_MANAGER"
   | "APPROVED"
-  | "REJECTED_BY_TARGET"
-  | "REJECTED_BY_MANAGER"
-  | "CANCELLED";
+  | "REJECTED_BY_MANAGER";
 
 export type ShiftRequestMemberDto = {
   id: number;
@@ -34,6 +31,7 @@ export type ScheduleSummary = {
   startDate: string;
   endDate: string;
   createdAt: string;
+  hasPendingShiftRequests: boolean;
 };
 
 type ScheduleRowResponse = {
@@ -146,19 +144,6 @@ export async function listShiftRequests(
 ): Promise<ShiftRequestDto[]> {
   const { data } = await api.get<ShiftRequestDto[]>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests`
-  );
-  return data;
-}
-
-export async function decideAsTarget(
-  restaurantId: number,
-  scheduleId: number,
-  requestId: number,
-  accepted: boolean
-): Promise<ShiftRequestDto> {
-  const { data } = await api.post<ShiftRequestDto>(
-    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/${requestId}/target-decision`,
-    { accepted }
   );
   return data;
 }

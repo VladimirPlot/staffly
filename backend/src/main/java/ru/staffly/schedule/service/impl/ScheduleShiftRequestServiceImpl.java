@@ -6,8 +6,6 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
-import ru.staffly.dictionary.model.Position;
-import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.notification.model.Notification;
@@ -30,9 +28,7 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -45,7 +41,6 @@ import java.util.Set;
 public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestService {
 
     private static final List<ScheduleShiftRequestStatus> ACTIVE_STATUSES = List.of(
-            ScheduleShiftRequestStatus.PENDING_TARGET,
             ScheduleShiftRequestStatus.PENDING_MANAGER
     );
 
@@ -53,7 +48,6 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private final ScheduleShiftRequestRepository requests;
     private final RestaurantMemberRepository members;
     private final NotificationRepository notifications;
-    private final PositionRepository positions;
     private final SecurityService securityService;
 
     @Override
@@ -86,11 +80,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .fromMemberId(fromRow.getMemberId())
                 .toMemberId(toRow.getMemberId())
                 .reason(request.reason())
-                .status(ScheduleShiftRequestStatus.PENDING_TARGET)
+                .status(ScheduleShiftRequestStatus.PENDING_MANAGER)
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
-        notifyTarget(schedule, initiator, saved);
         return toDto(saved);
     }
 
@@ -132,33 +125,11 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .fromMemberId(fromRow.getMemberId())
                 .toMemberId(toRow.getMemberId())
                 .reason(request.reason())
-                .status(ScheduleShiftRequestStatus.PENDING_TARGET)
+                .status(ScheduleShiftRequestStatus.PENDING_MANAGER)
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
-        notifyTarget(schedule, initiator, saved);
         return toDto(saved);
-    }
-
-    @Override
-    public ShiftRequestDto decideAsTarget(Long restaurantId, Long requestId, Long userId, boolean accepted) {
-        ScheduleShiftRequest entity = loadRequest(requestId, restaurantId);
-        if (entity.getStatus() != ScheduleShiftRequestStatus.PENDING_TARGET) {
-            throw new BadRequestException("Заявка уже обработана сотрудником");
-        }
-
-        RestaurantMember member = requireMember(userId, restaurantId);
-        if (!member.getId().equals(entity.getToMemberId())) {
-            throw new ForbiddenException("Вы не являетесь целевым сотрудником");
-        }
-
-        if (accepted) {
-            entity.setStatus(ScheduleShiftRequestStatus.PENDING_MANAGER);
-            notifyManagers(entity);
-        } else {
-            entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_TARGET);
-        }
-        return toDto(entity);
     }
 
     @Override
@@ -181,6 +152,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
         LocalDate dayFrom = entity.getDayFrom();
         LocalDate dayTo = entity.getDayTo();
+        String fromShiftValue = findCellValue(fromRow, dayFrom).orElse(null);
+        String toShiftValue = dayTo != null ? findCellValue(toRow, dayTo).orElse(null) : null;
 
         if (entity.getType() == ScheduleShiftRequestType.REPLACEMENT) {
             transferShift(fromRow, toRow, dayFrom);
@@ -192,6 +165,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
+        notifyParticipantsOnApproval(entity, fromShiftValue, toShiftValue);
         return toDto(entity);
     }
 
@@ -240,67 +214,53 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 });
     }
 
-    private void notifyTarget(Schedule schedule, RestaurantMember initiator, ScheduleShiftRequest request) {
-        Long positionId = request.getToRow().getPositionId();
-        if (positionId == null) {
-            return;
-        }
-        Position position = positions.findById(positionId).orElse(null);
-        if (position == null) {
-            return;
-        }
-        String content = request.getType() == ScheduleShiftRequestType.REPLACEMENT
-                ? String.format("%s запросил вашу замену %s", request.getFromRow().getDisplayName(), request.getDayFrom())
-                : String.format("%s предлагает обмен сменами %s ↔ %s", request.getFromRow().getDisplayName(), request.getDayFrom(), request.getDayTo());
+    private void notifyParticipantsOnApproval(ScheduleShiftRequest request, String fromShiftValue, String toShiftValue) {
+        RestaurantMember initiator = members.findById(request.getInitiatorMemberId()).orElse(null);
+        RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
+        RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
 
-        createNotification(schedule, initiator.getUser(), content, Set.of(position));
-    }
-
-    private void notifyManagers(ScheduleShiftRequest request) {
-        Schedule schedule = request.getSchedule();
-        List<RestaurantMember> managers = members.findByRestaurantId(schedule.getRestaurant().getId())
-                .stream()
-                .filter(m -> m.getRole() != RestaurantRole.STAFF)
-                .toList();
-        if (managers.isEmpty()) {
+        if (fromMember == null || toMember == null) {
             return;
         }
 
-        Set<Position> managerPositions = managers.stream()
-                .map(RestaurantMember::getPosition)
-                .filter(Objects::nonNull)
-                .collect(HashSet::new, HashSet::add, HashSet::addAll);
-
-        String content = request.getType() == ScheduleShiftRequestType.REPLACEMENT
-                ? String.format("Нужна проверка заявки на замену %s → %s (%s)",
-                request.getFromRow().getDisplayName(),
-                request.getToRow().getDisplayName(),
-                request.getDayFrom())
-                : String.format("Нужна проверка заявки на обмен %s (%s) ↔ %s (%s)",
-                request.getFromRow().getDisplayName(),
-                request.getDayFrom(),
-                request.getToRow().getDisplayName(),
-                request.getDayTo());
-
-        RestaurantMember initiator = members.findById(request.getInitiatorMemberId())
-                .orElse(managers.get(0));
-
-        createNotification(schedule, initiator.getUser(), content, managerPositions);
-    }
-
-    private void createNotification(Schedule schedule, User creator, String content, Collection<Position> targetPositions) {
-        LocalDate expiresAt = Optional.ofNullable(schedule.getEndDate())
-                .orElse(LocalDate.now().plus(14, ChronoUnit.DAYS));
+        String content;
+        if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
+            content = String.format(
+                    "%s передал смену %s %s%s",
+                    request.getFromRow().getDisplayName(),
+                    request.getToRow().getDisplayName(),
+                    request.getDayFrom(),
+                    formatShiftValue(fromShiftValue)
+            );
+        } else {
+            content = String.format(
+                    "%s и %s обменялись сменами %s%s ↔ %s%s",
+                    request.getFromRow().getDisplayName(),
+                    request.getToRow().getDisplayName(),
+                    request.getDayFrom(),
+                    formatShiftValue(fromShiftValue),
+                    request.getDayTo(),
+                    formatShiftValue(toShiftValue)
+            );
+        }
 
         Notification notification = Notification.builder()
-                .restaurant(schedule.getRestaurant())
-                .creator(creator)
+                .restaurant(request.getSchedule().getRestaurant())
+                .creator(initiator != null ? initiator.getUser() : fromMember.getUser())
                 .content(content)
-                .expiresAt(expiresAt)
-                .positions(new HashSet<>(targetPositions))
+                .expiresAt(Optional.ofNullable(request.getSchedule().getEndDate())
+                        .orElse(request.getSchedule().getStartDate()))
+                .members(new HashSet<>(Set.of(fromMember, toMember)))
                 .build();
 
         notifications.save(notification);
+    }
+
+    private String formatShiftValue(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return " (" + value + ")";
     }
 
     private Optional<ScheduleRow> findRowForMember(Schedule schedule, Long memberId) {

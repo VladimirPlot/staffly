@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +52,12 @@ public class NotificationServiceImpl implements NotificationService {
         return notifications.findAllByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
                 .filter(n -> !n.getExpiresAt().isBefore(today))
                 .filter(n -> {
+                    boolean hasRecipients = n.getMembers() != null && !n.getMembers().isEmpty();
+                    boolean isRecipient = member != null && n.getMembers().stream()
+                            .anyMatch(m -> Objects.equals(m.getId(), member.getId()));
+                    if (hasRecipients) {
+                        return isRecipient || Objects.equals(n.getCreator().getId(), currentUserId);
+                    }
                     if (canManage) return true;
                     if (myPositionId == null) return false;
                     return n.getPositions().stream().anyMatch(p -> p.getId().equals(myPositionId));

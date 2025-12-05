@@ -47,16 +47,6 @@ public class ScheduleShiftRequestController {
         return service.listForSchedule(restaurantId, scheduleId, principal.userId());
     }
 
-    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @PostMapping("/{id}/target-decision")
-    public ShiftRequestDto targetDecision(@PathVariable Long restaurantId,
-                                          @PathVariable Long scheduleId,
-                                          @PathVariable Long id,
-                                          @AuthenticationPrincipal UserPrincipal principal,
-                                          @Valid @RequestBody ShiftDecisionRequest request) {
-        return service.decideAsTarget(restaurantId, id, principal.userId(), request.accepted());
-    }
-
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/{id}/manager-decision")
     public ShiftRequestDto managerDecision(@PathVariable Long restaurantId,
