@@ -147,9 +147,12 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
       try {
         await dismissNotification(restaurantId, notification.id);
         setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to dismiss notification", e);
-        const message = e?.response?.data?.message || e?.message;
+        const message =
+          e?.response?.data?.message ||
+          e?.message ||
+          (e instanceof Error ? e.message : "");
         if (message) {
           window.alert(message);
         }
@@ -173,13 +176,19 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="text-xs text-zinc-500">{createdLabel}</div>
           <div className="flex items-center gap-2 text-xs text-zinc-600">
-            <span className="rounded-full bg-zinc-100 px-2 py-1">До {formatDate(notification.expiresAt)}</span>
+            <span className="rounded-full bg-zinc-100 px-2 py-1">
+              До {formatDate(notification.expiresAt)}
+            </span>
             {canManage ? (
               <>
                 <Button variant="ghost" className="text-sm" onClick={() => openEdit(notification)}>
                   Изменить
                 </Button>
-                <Button variant="ghost" className="text-sm text-red-600" onClick={() => openDelete(notification)}>
+                <Button
+                  variant="ghost"
+                  className="text-sm text-red-600"
+                  onClick={() => openDelete(notification)}
+                >
                   Удалить
                 </Button>
                 <Button
@@ -209,7 +218,11 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
             {notification.positions.map((p) => (
               <span
                 key={p.id}
-                className={`rounded-full border px-2 py-1 ${p.active ? "border-zinc-200 bg-zinc-100" : "border-amber-200 bg-amber-50 text-amber-800"}`}
+                className={`rounded-full border px-2 py-1 ${
+                  p.active
+                    ? "border-zinc-200 bg-zinc-100"
+                    : "border-amber-200 bg-amber-50 text-amber-800"
+                }`}
               >
                 {p.name}
                 {!p.active ? " (неактивна)" : ""}

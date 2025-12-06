@@ -103,7 +103,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
         setDialogSubmitting(false);
       }
     },
-    [editing, restaurantId, loadContacts]
+    [editing, restaurantId, loadContacts],
   );
 
   const toggleMenu = React.useCallback((id: number) => {
@@ -153,7 +153,9 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
           <div className="flex items-center justify-between">
             <div>
               <div className="font-medium">Контактов пока нет</div>
-              <div className="text-sm text-zinc-600">Создайте первый контакт, чтобы сотрудники могли его увидеть.</div>
+              <div className="text-sm text-zinc-600">
+                Создайте первый контакт, чтобы сотрудники могли его увидеть.
+              </div>
             </div>
             <Button variant="outline" onClick={openCreateDialog}>
               Добавить
@@ -168,13 +170,15 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
                 <div className="space-y-1">
                   <div className="text-lg font-semibold">{contact.name}</div>
                   <div className="text-sm text-zinc-700">
-                    Телефон: {" "}
+                    Телефон:{" "}
                     <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
                       {contact.phone}
                     </a>
                   </div>
                   {contact.description && (
-                    <div className="whitespace-pre-wrap text-sm text-zinc-700">{contact.description}</div>
+                    <div className="whitespace-pre-wrap text-sm text-zinc-700">
+                      {contact.description}
+                    </div>
                   )}
                 </div>
 
@@ -227,12 +231,13 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        onClose={closeDeleteDialog}
-        onConfirm={confirmDelete}
-        confirmLabel={deleting ? "Удаляем…" : "Удалить"}
-        cancelLabel="Отмена"
         title="Удалить контакт"
         description="Вы уверены, что хотите удалить этот контакт?"
+        confirming={deleting}
+        confirmText={deleting ? "Удаляем…" : "Удалить"}
+        cancelText="Отмена"
+        onCancel={closeDeleteDialog}
+        onConfirm={confirmDelete}
       />
     </div>
   );
