@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: staffly-db
+    environment:
+      POSTGRES_DB: staffly
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ../backend
+    container_name: staffly-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+      # БД – ходим к сервису db
+      DB_URL: jdbc:postgresql://db:5432/staffly
+      DB_USER: app
+      DB_PASSWORD: app
+
+      # JWT – в проде ОБЯЗАТЕЛЬНО поменяй на что-то своё
+      JWT_SECRET: prod-very-secret-key-change-me-32+chars-long!!_0123456789
+      JWT_TTL_MINUTES: 120
+
+      # Публичный URL – пригодится, если будешь генерить ссылки
+      PUBLIC_BASE_URL: http://staffly.store
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ../frontend/staffly-frontend
+    container_name: staffly-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"   # фронт + /api доступны снаружи на 80 порту
+
+volumes:
+  pgdata:

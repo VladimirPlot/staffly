@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    # В проде всё равно перетирается через env DB_URL/DB_USER/DB_PASSWORD,
+    # но файл пусть будет на будущее
+    url: jdbc:postgresql://db:5432/staffly
+    username: app
+    password: app
+
+logging:
+  level:
+    ru.staffly: INFO
