@@ -18,6 +18,7 @@ import {
   fetchSchedule,
   listSavedSchedules,
   listShiftRequests,
+  cancelShiftRequest,
   updateSchedule,
   type ScheduleSummary,
   type ShiftRequestDto,
@@ -607,6 +608,26 @@ const SchedulePage: React.FC = () => {
     [decideAsManager, fetchSchedule, loadShiftRequests, restaurantId, scheduleId]
   );
 
+  const handleCancelMyShiftRequest = React.useCallback(
+    async (requestId: number) => {
+      if (!restaurantId || !scheduleId) return;
+      setScheduleError(null);
+      setScheduleMessage(null);
+      try {
+        await cancelShiftRequest(restaurantId, scheduleId, requestId);
+        await loadShiftRequests();
+        const savedList = await listSavedSchedules(restaurantId);
+        setSavedSchedules(savedList);
+        setScheduleMessage("Заявка отменена");
+      } catch (e: any) {
+        setScheduleError(
+          e?.response?.data?.message || e?.message || "Не удалось отменить заявку"
+        );
+      }
+    },
+    [restaurantId, scheduleId, loadShiftRequests]
+  );
+
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;
     const months = monthLabelsBetween(schedule.days.map((day) => day.date));
@@ -648,6 +669,15 @@ const SchedulePage: React.FC = () => {
         return status;
     }
   }, []);
+
+  const canCancelOwnRequest = React.useCallback(
+    (request: ShiftRequestDto) => {
+      if (!currentMember) return false;
+      if (request.status !== "PENDING_MANAGER") return false;
+      return request.fromMember.id === currentMember.id;
+    },
+    [currentMember]
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -902,22 +932,37 @@ const SchedulePage: React.FC = () => {
                       )}
                       <div className="text-xs text-zinc-500">Создано: {new Date(request.createdAt).toLocaleString("ru-RU")}</div>
                     </div>
-                    {canManage && request.status === "PENDING_MANAGER" && (
+                    {((canManage && request.status === "PENDING_MANAGER") ||
+                      canCancelOwnRequest(request)) && (
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <Button
-                          variant="outline"
-                          onClick={() => handleManagerDecision(request.id, true)}
-                          className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                        >
-                          Подтвердить
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleManagerDecision(request.id, false)}
-                          className="border-red-200 text-red-700 hover:bg-red-50"
-                        >
-                          Отказать
-                        </Button>
+                        {canManage && request.status === "PENDING_MANAGER" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              onClick={() => handleManagerDecision(request.id, true)}
+                              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                            >
+                              Подтвердить
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => handleManagerDecision(request.id, false)}
+                              className="border-red-200 text-red-700 hover:bg-red-50"
+                            >
+                              Отказать
+                            </Button>
+                          </>
+                        )}
+
+                        {canCancelOwnRequest(request) && (
+                          <Button
+                            variant="outline"
+                            onClick={() => handleCancelMyShiftRequest(request.id)}
+                            className="border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                          >
+                            Отменить заявку
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>

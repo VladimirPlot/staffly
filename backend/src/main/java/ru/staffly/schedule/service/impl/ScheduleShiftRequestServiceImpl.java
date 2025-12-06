@@ -191,6 +191,28 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         return all;
     }
 
+    @Override
+    public void cancelOwn(Long restaurantId, Long scheduleId, Long userId, Long requestId) {
+        RestaurantMember member = requireMember(userId, restaurantId);
+
+        ScheduleShiftRequest request = requests.findByIdAndScheduleRestaurantId(requestId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Заявка не найдена"));
+
+        if (!Objects.equals(request.getSchedule().getId(), scheduleId)) {
+            throw new BadRequestException("Заявка не относится к этому графику");
+        }
+
+        if (!Objects.equals(request.getInitiatorMemberId(), member.getId())) {
+            throw new ForbiddenException("Можно отменять только свои заявки");
+        }
+
+        if (request.getStatus() != ScheduleShiftRequestStatus.PENDING_MANAGER) {
+            throw new BadRequestException("Можно отменить только заявку, ожидающую решения менеджера");
+        }
+
+        requests.delete(request);
+    }
+
     private ScheduleShiftRequest loadRequest(Long requestId, Long restaurantId) {
         return requests.findByIdAndScheduleRestaurantId(requestId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Запрос не найден"));

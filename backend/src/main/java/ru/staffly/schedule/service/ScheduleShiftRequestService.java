@@ -15,4 +15,6 @@ public interface ScheduleShiftRequestService {
     ShiftRequestDto decideAsManager(Long restaurantId, Long requestId, Long userId, boolean accepted);
 
     List<ShiftRequestDto> listForSchedule(Long restaurantId, Long scheduleId, Long userId);
+
+    void cancelOwn(Long restaurantId, Long scheduleId, Long userId, Long requestId);
 }

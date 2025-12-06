@@ -56,4 +56,13 @@ public class ScheduleShiftRequestController {
                                            @Valid @RequestBody ShiftDecisionRequest request) {
         return service.decideAsManager(restaurantId, id, principal.userId(), request.accepted());
     }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @DeleteMapping("/{requestId}")
+    public void cancelOwn(@PathVariable Long restaurantId,
+                          @PathVariable Long scheduleId,
+                          @PathVariable Long requestId,
+                          @AuthenticationPrincipal UserPrincipal principal) {
+        service.cancelOwn(restaurantId, scheduleId, principal.userId(), requestId);
+    }
 }

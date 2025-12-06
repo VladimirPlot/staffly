@@ -160,3 +160,13 @@ export async function decideAsManager(
   );
   return data;
 }
+
+export async function cancelShiftRequest(
+  restaurantId: number,
+  scheduleId: number,
+  requestId: number
+): Promise<void> {
+  await api.delete(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/${requestId}`
+  );
+}
