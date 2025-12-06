@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
@@ -12,7 +13,9 @@ import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.notification.dto.NotificationDto;
 import ru.staffly.notification.dto.NotificationRequest;
 import ru.staffly.notification.mapper.NotificationMapper;
+import ru.staffly.notification.model.NotificationDismiss;
 import ru.staffly.notification.model.Notification;
+import ru.staffly.notification.repository.NotificationDismissRepository;
 import ru.staffly.notification.repository.NotificationRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
@@ -20,11 +23,13 @@ import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +42,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserRepository users;
     private final NotificationMapper mapper;
     private final SecurityService security;
+    private final NotificationDismissRepository dismisses;
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
@@ -49,8 +55,15 @@ public class NotificationServiceImpl implements NotificationService {
 
         LocalDate today = LocalDate.now();
 
+        Set<Long> dismissedIds = member != null
+                ? dismisses.findByMemberId(member.getId()).stream()
+                .map(d -> d.getNotification().getId())
+                .collect(Collectors.toSet())
+                : Set.of();
+
         return notifications.findAllByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
                 .filter(n -> !n.getExpiresAt().isBefore(today))
+                .filter(n -> !dismissedIds.contains(n.getId()))
                 .filter(n -> {
                     boolean hasRecipients = n.getMembers() != null && !n.getMembers().isEmpty();
                     boolean isRecipient = member != null && n.getMembers().stream()
@@ -141,6 +154,30 @@ public class NotificationServiceImpl implements NotificationService {
         notifications.delete(notification);
     }
 
+    @Override
+    @Transactional
+    public void dismiss(Long restaurantId, Long userId, Long notificationId) {
+        security.assertMember(userId, restaurantId);
+
+        Notification notification = notifications.findByIdAndRestaurantId(notificationId, restaurantId)
+                .orElse(null);
+        if (notification == null) {
+            return;
+        }
+
+        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+                .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
+
+        if (dismisses.existsByNotificationIdAndMemberId(notification.getId(), member.getId())) {
+            return;
+        }
+
+        dismisses.save(NotificationDismiss.builder()
+                .notification(notification)
+                .member(member)
+                .dismissedAt(Instant.now())
+                .build());
+    }
     private List<Position> resolvePositions(Long restaurantId, List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
             throw new BadRequestException("Нужна хотя бы одна должность");

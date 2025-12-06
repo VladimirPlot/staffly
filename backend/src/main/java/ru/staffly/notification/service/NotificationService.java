@@ -10,4 +10,5 @@ public interface NotificationService {
     NotificationDto create(Long restaurantId, Long currentUserId, NotificationRequest request);
     NotificationDto update(Long restaurantId, Long currentUserId, Long notificationId, NotificationRequest request);
     void delete(Long restaurantId, Long currentUserId, Long notificationId);
+    void dismiss(Long restaurantId, Long userId, Long notificationId);
 }

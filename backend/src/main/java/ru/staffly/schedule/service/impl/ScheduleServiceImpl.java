@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
@@ -34,6 +35,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleShiftRequestRepository shiftRequests;
+    private final RestaurantMemberRepository members;
     private final SecurityService securityService;
 
     @Override
@@ -88,6 +90,14 @@ public class ScheduleServiceImpl implements ScheduleService {
     @Transactional(readOnly = true)
     public List<ScheduleSummaryDto> list(Long restaurantId, Long userId) {
         securityService.assertMember(userId, restaurantId);
+
+        final boolean canManage = securityService.hasAtLeastManager(userId, restaurantId);
+        final Long memberId = !canManage
+                ? members.findByUserIdAndRestaurantId(userId, restaurantId)
+                .map(m -> m.getId())
+                .orElse(null)
+                : null;
+
         return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
                 .map(s -> new ScheduleSummaryDto(
                         s.getId(),
@@ -95,7 +105,16 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getStartDate().toString(),
                         s.getEndDate().toString(),
                         s.getCreatedAt(),
-                        shiftRequests.existsByScheduleIdAndStatus(s.getId(), ScheduleShiftRequestStatus.PENDING_MANAGER)
+                        canManage
+                                ? shiftRequests.existsByScheduleIdAndStatus(
+                                s.getId(),
+                                ScheduleShiftRequestStatus.PENDING_MANAGER
+                        )
+                                : memberId != null && shiftRequests.existsActiveForMember(
+                                s.getId(),
+                                ScheduleShiftRequestStatus.PENDING_MANAGER,
+                                memberId
+                        )
                 ))
                 .toList();
     }

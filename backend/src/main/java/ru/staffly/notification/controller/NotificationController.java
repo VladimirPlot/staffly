@@ -50,4 +50,12 @@ public class NotificationController {
                        @AuthenticationPrincipal UserPrincipal principal) {
         notifications.delete(restaurantId, principal.userId(), notificationId);
     }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @DeleteMapping("/{id}/dismiss")
+    public void dismiss(@PathVariable Long restaurantId,
+                        @PathVariable Long id,
+                        @AuthenticationPrincipal UserPrincipal principal) {
+        notifications.dismiss(restaurantId, principal.userId(), id);
+    }
 }

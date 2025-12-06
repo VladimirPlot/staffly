@@ -28,4 +28,15 @@ public interface ScheduleShiftRequestRepository extends JpaRepository<ScheduleSh
                                                                            Long memberId,
                                                                            LocalDate dayFrom,
                                                                            List<ScheduleShiftRequestStatus> statuses);
+
+    @Query("""
+            select case when count(r) > 0 then true else false end
+            from ScheduleShiftRequest r
+            where r.schedule.id = :scheduleId
+              and r.status = :status
+              and (r.fromMemberId = :memberId or r.toMemberId = :memberId)
+            """)
+    boolean existsActiveForMember(Long scheduleId,
+                                  ScheduleShiftRequestStatus status,
+                                  Long memberId);
 }

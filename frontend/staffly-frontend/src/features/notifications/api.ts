@@ -63,3 +63,10 @@ export async function deleteNotification(
 ): Promise<void> {
   await api.delete(`/api/restaurants/${restaurantId}/notifications/${notificationId}`);
 }
+
+export async function dismissNotification(
+  restaurantId: number,
+  notificationId: number,
+): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/notifications/${notificationId}/dismiss`);
+}

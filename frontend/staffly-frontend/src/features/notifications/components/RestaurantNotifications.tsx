@@ -7,6 +7,7 @@ import type { NotificationDto, NotificationRequest } from "../api";
 import {
   createNotification,
   deleteNotification,
+  dismissNotification,
   listNotifications,
   updateNotification,
 } from "../api";
@@ -30,18 +31,10 @@ type RestaurantNotificationsProps = {
   viewerId?: number | null;
 };
 
-type HiddenMap = Record<number, string>;
-
 const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
   restaurantId,
   canManage,
-  viewerId,
 }) => {
-  const hiddenKey = React.useMemo(
-    () => (viewerId ? `restaurant:${restaurantId}:notifications:hidden:${viewerId}` : null),
-    [restaurantId, viewerId],
-  );
-
   const [loading, setLoading] = React.useState<boolean>(true);
   const [notifications, setNotifications] = React.useState<NotificationDto[]>([]);
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
@@ -51,52 +44,7 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
   const [dialogError, setDialogError] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<NotificationDto | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-  const [hidden, setHidden] = React.useState<HiddenMap>({});
-
-  const signatureOf = React.useCallback((n: NotificationDto) => n.updatedAt || n.createdAt, []);
-
-  React.useEffect(() => {
-    if (!hiddenKey) {
-      setHidden({});
-      return;
-    }
-    const raw = typeof window !== "undefined" ? window.localStorage.getItem(hiddenKey) : null;
-    if (!raw) {
-      setHidden({});
-      return;
-    }
-    try {
-      const parsed = JSON.parse(raw) as HiddenMap;
-      setHidden(parsed || {});
-    } catch {
-      setHidden({});
-    }
-  }, [hiddenKey]);
-
-  React.useEffect(() => {
-    if (!hiddenKey) return;
-    setHidden((prev) => {
-      const next: HiddenMap = {};
-      notifications.forEach((n) => {
-        const signature = signatureOf(n);
-        if (prev[n.id] && prev[n.id] === signature) {
-          next[n.id] = signature;
-        }
-      });
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(hiddenKey, JSON.stringify(next));
-      }
-      return next;
-    });
-  }, [notifications, signatureOf, hiddenKey]);
-
-  const visibleNotifications = React.useMemo(() => {
-    if (!notifications.length) return [];
-    return notifications.filter((item) => {
-      const signature = signatureOf(item);
-      return !hidden[item.id] || hidden[item.id] !== signature;
-    });
-  }, [notifications, hidden, signatureOf]);
+  const [dismissingId, setDismissingId] = React.useState<number | null>(null);
 
   const loadNotifications = React.useCallback(async () => {
     setLoading(true);
@@ -194,26 +142,23 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
   }, [deleteTarget, restaurantId, loadNotifications]);
 
   const hideNotification = React.useCallback(
-    (notification: NotificationDto) => {
-      if (!hiddenKey) return;
-      const signature = signatureOf(notification);
-      setHidden((prev) => {
-        const next = { ...prev, [notification.id]: signature };
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(hiddenKey, JSON.stringify(next));
+    async (notification: NotificationDto) => {
+      setDismissingId(notification.id);
+      try {
+        await dismissNotification(restaurantId, notification.id);
+        setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
+      } catch (e) {
+        console.error("Failed to dismiss notification", e);
+        const message = e?.response?.data?.message || e?.message;
+        if (message) {
+          window.alert(message);
         }
-        return next;
-      });
+      } finally {
+        setDismissingId(null);
+      }
     },
-    [hiddenKey, signatureOf],
+    [restaurantId],
   );
-
-  const resetHidden = React.useCallback(() => {
-    setHidden({});
-    if (hiddenKey && typeof window !== "undefined") {
-      window.localStorage.removeItem(hiddenKey);
-    }
-  }, [hiddenKey]);
 
   const renderNotification = (notification: NotificationDto) => {
     const createdLabel = notification.createdAt
@@ -240,18 +185,20 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
                 <Button
                   variant="ghost"
                   className="text-sm text-zinc-600"
-                  onClick={() => hideNotification(notification)}
+                  onClick={() => void hideNotification(notification)}
+                  disabled={dismissingId === notification.id}
                 >
-                  Скрыть
+                  {dismissingId === notification.id ? "Скрываем…" : "Скрыть"}
                 </Button>
               </>
             ) : (
               <Button
                 variant="ghost"
                 className="text-sm text-zinc-600"
-                onClick={() => hideNotification(notification)}
+                onClick={() => void hideNotification(notification)}
+                disabled={dismissingId === notification.id}
               >
-                Скрыть
+                {dismissingId === notification.id ? "Скрываем…" : "Скрыть"}
               </Button>
             )}
           </div>
@@ -293,16 +240,8 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
       </div>
 
       <div className="mt-4 space-y-3">
-        {visibleNotifications.length > 0 ? visibleNotifications.map(renderNotification) : emptyState}
+        {notifications.length > 0 ? notifications.map(renderNotification) : emptyState}
       </div>
-
-      {hiddenKey && notifications.length > 0 && visibleNotifications.length === 0 && Object.keys(hidden).length > 0 && (
-        <div className="mt-4 text-right">
-          <Button variant="ghost" className="text-sm text-zinc-600" onClick={resetHidden}>
-            Показать скрытые уведомления
-          </Button>
-        </div>
-      )}
 
       <NotificationDialog
         open={dialogOpen}

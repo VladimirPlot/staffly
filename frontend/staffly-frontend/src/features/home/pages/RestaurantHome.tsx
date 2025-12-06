@@ -7,7 +7,12 @@ import { fetchRestaurantName } from "../../restaurants/api";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
-import { listNotifications, type NotificationDto } from "../../notifications/api";
+import {
+  listNotifications,
+  type NotificationDto,
+  dismissNotification,
+} from "../../notifications/api";
+import { listSavedSchedules, type ScheduleSummary } from "../../schedule/api";
 
 type UpcomingBirthday = {
   id: number;
@@ -85,7 +90,9 @@ export default function RestaurantHome() {
   const [notifications, setNotifications] = React.useState<NotificationDto[]>([]);
   const [notificationsHidden, setNotificationsHidden] = React.useState(false);
   const [myMembership, setMyMembership] = React.useState<MemberDto | null>(null);
+  const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
 
+  // Название ресторана
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -98,9 +105,12 @@ export default function RestaurantHome() {
         }
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [restaurantId]);
 
+  // Моя роль в ресторане
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -120,6 +130,7 @@ export default function RestaurantHome() {
     };
   }, [restaurantId]);
 
+  // Участники, дни рождения и моя membership-запись
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -145,6 +156,7 @@ export default function RestaurantHome() {
     };
   }, [restaurantId, user?.id]);
 
+  // Уведомления из бэкенда
   React.useEffect(() => {
     let alive = true;
     if (!restaurantId) {
@@ -170,6 +182,7 @@ export default function RestaurantHome() {
     };
   }, [restaurantId]);
 
+  // Скрытие дней рождения (localStorage)
   React.useEffect(() => {
     if (!user?.restaurantId) {
       setBirthdaysHidden(false);
@@ -178,7 +191,7 @@ export default function RestaurantHome() {
     if (typeof window === "undefined") return;
     const key = `restaurant:${restaurantId}:birthdaysHidden`;
     setBirthdaysHidden(window.localStorage.getItem(key) === "1");
-  }, [restaurantId]);
+  }, [restaurantId, user?.restaurantId]);
 
   const hideBirthdays = React.useCallback(() => {
     setBirthdaysHidden(true);
@@ -196,6 +209,7 @@ export default function RestaurantHome() {
     }
   }, [restaurantId]);
 
+  // Скрытие блока уведомлений (localStorage)
   React.useEffect(() => {
     if (!user?.restaurantId || !user?.id) {
       setNotificationsHidden(false);
@@ -204,7 +218,7 @@ export default function RestaurantHome() {
     if (typeof window === "undefined") return;
     const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
     setNotificationsHidden(window.localStorage.getItem(key) === "1");
-  }, [restaurantId, user?.id]);
+  }, [restaurantId, user?.restaurantId, user?.id]);
 
   const hideNotifications = React.useCallback(() => {
     if (!restaurantId || !user?.id) return;
@@ -231,6 +245,12 @@ export default function RestaurantHome() {
 
   const canAccessSchedules = access.isAdminLike || Boolean(access.normalizedRestaurantRole);
   const canManageNotifications = access.isAdminLike || access.normalizedRestaurantRole === "MANAGER";
+
+  const hasPendingSavedSchedules = React.useMemo(
+    () => savedSchedules.some((item) => item.hasPendingShiftRequests),
+    [savedSchedules]
+  );
+
   const relevantNotifications = React.useMemo(() => {
     if (canManageNotifications) return notifications;
     if (!notifications.length) return [];
@@ -246,6 +266,58 @@ export default function RestaurantHome() {
   const shouldShowNotificationsEntry = canManageNotifications;
   const canAccessContacts = access.isManagerLike;
 
+  // Сохранённые графики (для индикатора зелёной точки)
+  React.useEffect(() => {
+    let alive = true;
+    if (!restaurantId || !canAccessSchedules) {
+      setSavedSchedules([]);
+      return () => {
+        alive = false;
+      };
+    }
+
+    (async () => {
+      try {
+        const schedules = await listSavedSchedules(restaurantId);
+        if (!alive) return;
+        setSavedSchedules(schedules);
+      } catch {
+        if (!alive) return;
+        setSavedSchedules([]);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [restaurantId, canAccessSchedules]);
+
+  // Разовое скрытие уведомлений сотрудником:
+  // помечаем их dismissed на бэкенде + убираем из локального стейта + прячем блок через localStorage
+  const hideAndDismissNotifications = React.useCallback(async () => {
+    if (!restaurantId) return;
+    if (!relevantNotifications.length) {
+      hideNotifications();
+      return;
+    }
+
+    const toDismiss = relevantNotifications;
+
+    try {
+      await Promise.all(
+        toDismiss.map((n) => dismissNotification(restaurantId, n.id))
+      );
+
+      setNotifications((prev) =>
+        prev.filter((item) => !toDismiss.some((n) => n.id === item.id))
+      );
+    } catch (e) {
+      console.error("Failed to dismiss notifications", e);
+    }
+
+    hideNotifications();
+  }, [restaurantId, relevantNotifications, hideNotifications]);
+
   return (
     <div className="mx-auto max-w-3xl">
       <Card className="mb-4">
@@ -253,8 +325,8 @@ export default function RestaurantHome() {
         <h2 className="text-2xl font-semibold">{name || "…"}</h2>
       </Card>
 
-      {upcomingBirthdays.length > 0 && (
-        birthdaysHidden ? (
+      {upcomingBirthdays.length > 0 &&
+        (birthdaysHidden ? (
           <div className="mb-4 flex justify-end">
             <Button variant="ghost" className="text-sm text-zinc-600" onClick={showBirthdays}>
               Показать дни рождения
@@ -269,7 +341,10 @@ export default function RestaurantHome() {
                 </div>
                 <ul className="mt-3 space-y-2 text-sm text-amber-900">
                   {upcomingBirthdays.map((item) => (
-                    <li key={item.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <li
+                      key={item.id}
+                      className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                    >
                       <span className="font-semibold">{item.name}</span>
                       <span className="text-amber-700">{item.formattedDate}</span>
                     </li>
@@ -281,11 +356,10 @@ export default function RestaurantHome() {
               </Button>
             </div>
           </Card>
-        )
-      )}
+        ))}
 
-      {!canManageNotifications && hasRelevantNotifications && (
-        notificationsHidden ? (
+      {!canManageNotifications && hasRelevantNotifications &&
+        (notificationsHidden ? (
           <div className="mb-4 flex justify-end">
             <Button variant="ghost" className="text-sm text-zinc-600" onClick={showNotifications}>
               Показать уведомления
@@ -300,23 +374,31 @@ export default function RestaurantHome() {
                 </div>
                 <ul className="space-y-3 text-sm text-emerald-900">
                   {relevantNotifications.map((item) => (
-                    <li key={item.id} className="rounded-2xl border border-emerald-100 bg-white/60 p-3 shadow-sm">
+                    <li
+                      key={item.id}
+                      className="rounded-2xl border border-emerald-100 bg-white/60 p-3 shadow-sm"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-700">
                         <span>{item.createdBy?.name ?? "Руководство"}</span>
                         <span>до {formatNotificationDate(item.expiresAt)}</span>
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap text-base text-emerald-900">{item.content}</div>
+                      <div className="mt-2 whitespace-pre-wrap text-base text-emerald-900">
+                        {item.content}
+                      </div>
                     </li>
                   ))}
                 </ul>
               </div>
-              <Button variant="ghost" className="text-sm text-emerald-700" onClick={hideNotifications}>
+              <Button
+                variant="ghost"
+                className="text-sm text-emerald-700"
+                onClick={() => void hideAndDismissNotifications()}
+              >
                 Скрыть
               </Button>
             </div>
           </Card>
-        )
-      )}
+        ))}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
@@ -351,9 +433,17 @@ export default function RestaurantHome() {
         {canAccessSchedules && (
           <Link
             to="/schedule"
-            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
+            className="relative block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
           >
-            <div className="text-lg font-semibold">График</div>
+            <div className="flex items-center gap-2 text-lg font-semibold">
+              <span>График</span>
+              {hasPendingSavedSchedules && (
+                <span
+                  className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+                  aria-label="Есть необработанные заявки"
+                />
+              )}
+            </div>
             <div className="mt-1 text-sm text-zinc-600">
               Создавайте смены и распределяйте сотрудников по дням.
             </div>
@@ -363,7 +453,9 @@ export default function RestaurantHome() {
         <Link to="/training" className="block">
           <Card className="h-full hover:bg-zinc-50">
             <div className="text-lg font-medium mb-1">Тренинг</div>
-            <div className="text-sm text-zinc-600">Категории и карточки меню, бара, вина и сервиса</div>
+            <div className="text-sm text-zinc-600">
+              Категории и карточки меню, бара, вина и сервиса
+            </div>
           </Card>
         </Link>
 
@@ -386,7 +478,9 @@ export default function RestaurantHome() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-lg font-medium mb-1">Контакты</div>
-                  <div className="text-sm text-zinc-600">Список важных номеров и заметок ресторана</div>
+                  <div className="text-sm text-zinc-600">
+                    Список важных номеров и заметок ресторана
+                  </div>
                 </div>
               </div>
             </Card>

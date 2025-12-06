@@ -141,11 +141,6 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             throw new BadRequestException("Заявка не требует решения менеджера");
         }
 
-        if (!accepted) {
-            entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_MANAGER);
-            return toDto(entity);
-        }
-
         Schedule schedule = loadSchedule(entity.getSchedule().getId(), restaurantId);
         ScheduleRow fromRow = requireRow(schedule, entity.getFromRow().getId());
         ScheduleRow toRow = requireRow(schedule, entity.getToRow().getId());
@@ -154,6 +149,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         LocalDate dayTo = entity.getDayTo();
         String fromShiftValue = findCellValue(fromRow, dayFrom).orElse(null);
         String toShiftValue = dayTo != null ? findCellValue(toRow, dayTo).orElse(null) : null;
+
+        if (!accepted) {
+            entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_MANAGER);
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            return toDto(entity);
+        }
 
         if (entity.getType() == ScheduleShiftRequestType.REPLACEMENT) {
             transferShift(fromRow, toRow, dayFrom);
@@ -165,7 +166,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
-        notifyParticipantsOnApproval(entity, fromShiftValue, toShiftValue);
+        notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true);
         return toDto(entity);
     }
 
@@ -214,7 +215,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 });
     }
 
-    private void notifyParticipantsOnApproval(ScheduleShiftRequest request, String fromShiftValue, String toShiftValue) {
+    private void notifyParticipantsOnDecision(ScheduleShiftRequest request,
+                                              String fromShiftValue,
+                                              String toShiftValue,
+                                              boolean accepted) {
         RestaurantMember initiator = members.findById(request.getInitiatorMemberId()).orElse(null);
         RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
         RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
@@ -225,15 +229,24 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
         String content;
         if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
-            content = String.format(
+            content = accepted
+                    ? String.format(
                     "%s передал смену %s %s%s",
+                    request.getFromRow().getDisplayName(),
+                    request.getToRow().getDisplayName(),
+                    request.getDayFrom(),
+                    formatShiftValue(fromShiftValue)
+            )
+                    : String.format(
+                    "Заявка на передачу смены %s → %s %s%s была отклонена менеджером",
                     request.getFromRow().getDisplayName(),
                     request.getToRow().getDisplayName(),
                     request.getDayFrom(),
                     formatShiftValue(fromShiftValue)
             );
         } else {
-            content = String.format(
+            content = accepted
+                    ? String.format(
                     "%s и %s обменялись сменами %s%s ↔ %s%s",
                     request.getFromRow().getDisplayName(),
                     request.getToRow().getDisplayName(),
@@ -241,6 +254,15 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                     formatShiftValue(fromShiftValue),
                     request.getDayTo(),
                     formatShiftValue(toShiftValue)
+            )
+                    : String.format(
+                    "Заявка на обмен сменами %s%s ↔ %s%s между %s и %s была отклонена менеджером",
+                    request.getDayFrom(),
+                    formatShiftValue(fromShiftValue),
+                    request.getDayTo(),
+                    formatShiftValue(toShiftValue),
+                    request.getFromRow().getDisplayName(),
+                    request.getToRow().getDisplayName()
             );
         }
 
