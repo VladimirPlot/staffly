@@ -13,7 +13,9 @@ public interface ChecklistService {
 
     ChecklistDto update(Long restaurantId, Long currentUserId, Long checklistId, ChecklistRequest request);
 
-    void delete(Long restaurantId, Long currentUserId, Long checklistId);
+    ChecklistDto updateProgress(Long restaurantId, Long currentUserId, Long checklistId, List<Long> itemIds);
 
-    byte[] download(Long restaurantId, Long currentUserId, Long checklistId, String format);
+    ChecklistDto reset(Long restaurantId, Long currentUserId, Long checklistId);
+
+    void delete(Long restaurantId, Long currentUserId, Long checklistId);
 }

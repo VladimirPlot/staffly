@@ -6,7 +6,10 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -32,11 +35,34 @@ public class Checklist {
     @Column(nullable = false, length = 200)
     private String name;
 
-    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", nullable = false)
+    private ChecklistKind kind;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "periodicity")
+    private ChecklistPeriodicity periodicity;
+
+    @Column(name = "reset_time")
+    private LocalTime resetTime;
+
+    @Column(name = "reset_day_of_week")
+    private Integer resetDayOfWeek;
+
+    @Column(name = "reset_day_of_month")
+    private Integer resetDayOfMonth;
+
+    @Column(name = "last_reset_at")
+    private Instant lastResetAt;
+
+    @Column(name = "completed", nullable = false)
+    private boolean completed;
 
     @Builder.Default
     @ManyToMany
@@ -45,10 +71,18 @@ public class Checklist {
             inverseJoinColumns = @JoinColumn(name = "position_id"))
     private Set<Position> positions = new HashSet<>();
 
+    @Builder.Default
+    @OneToMany(mappedBy = "checklist", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("itemOrder ASC")
+    private List<ChecklistItem> items = new ArrayList<>();
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
             createdAt = Instant.now();
+        }
+        if (kind == null) {
+            kind = ChecklistKind.INFO;
         }
     }
 }

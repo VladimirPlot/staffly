@@ -5,17 +5,40 @@ export type ChecklistPositionDto = {
   name: string;
 };
 
+export type ChecklistItemDto = {
+  id: number;
+  text: string;
+  done: boolean;
+};
+
+export type ChecklistKind = "INFO" | "TRACKABLE";
+export type ChecklistPeriodicity = "DAILY" | "WEEKLY" | "MONTHLY" | "MANUAL";
+
 export type ChecklistDto = {
   id: number;
   restaurantId: number;
   name: string;
   content: string;
+  kind: ChecklistKind;
+  periodicity?: ChecklistPeriodicity;
+  completed: boolean;
+  periodLabel?: string | null;
+  resetTime?: string | null;
+  resetDayOfWeek?: number | null;
+  resetDayOfMonth?: number | null;
+  items: ChecklistItemDto[];
   positions: ChecklistPositionDto[];
 };
 
 export type ChecklistRequest = {
   name: string;
-  content: string;
+  content?: string;
+  kind: ChecklistKind;
+  periodicity?: ChecklistPeriodicity;
+  resetTime?: string;
+  resetDayOfWeek?: number;
+  resetDayOfMonth?: number;
+  items?: string[];
   positionIds: number[];
 };
 
@@ -38,6 +61,12 @@ export async function createChecklist(
   const body = {
     name: payload.name.trim(),
     content: payload.content,
+    kind: payload.kind,
+    periodicity: payload.periodicity,
+    resetTime: payload.resetTime,
+    resetDayOfWeek: payload.resetDayOfWeek,
+    resetDayOfMonth: payload.resetDayOfMonth,
+    items: payload.items,
     positionIds: payload.positionIds,
   };
   const { data } = await api.post(`/api/restaurants/${restaurantId}/checklists`, body);
@@ -52,6 +81,12 @@ export async function updateChecklist(
   const body = {
     name: payload.name.trim(),
     content: payload.content,
+    kind: payload.kind,
+    periodicity: payload.periodicity,
+    resetTime: payload.resetTime,
+    resetDayOfWeek: payload.resetDayOfWeek,
+    resetDayOfMonth: payload.resetDayOfMonth,
+    items: payload.items,
     positionIds: payload.positionIds,
   };
   const { data } = await api.put(`/api/restaurants/${restaurantId}/checklists/${checklistId}`, body);
@@ -62,14 +97,19 @@ export async function deleteChecklist(restaurantId: number, checklistId: number)
   await api.delete(`/api/restaurants/${restaurantId}/checklists/${checklistId}`);
 }
 
-export async function downloadChecklist(
+export async function updateChecklistProgress(
   restaurantId: number,
   checklistId: number,
-  format: "txt" | "docx"
-): Promise<Blob> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/checklists/${checklistId}/download`, {
-    params: { format },
-    responseType: "blob",
-  });
-  return data as Blob;
+  itemIds: number[]
+): Promise<ChecklistDto> {
+  const { data } = await api.post(`/api/restaurants/${restaurantId}/checklists/${checklistId}/progress`, itemIds);
+  return data as ChecklistDto;
+}
+
+export async function resetChecklist(
+  restaurantId: number,
+  checklistId: number
+): Promise<ChecklistDto> {
+  const { data } = await api.post(`/api/restaurants/${restaurantId}/checklists/${checklistId}/reset`);
+  return data as ChecklistDto;
 }
