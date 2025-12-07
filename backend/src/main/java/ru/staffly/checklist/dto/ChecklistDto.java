@@ -7,6 +7,14 @@ public record ChecklistDto(
         Long restaurantId,
         String name,
         String content,
+        String kind,
+        String periodicity,
+        boolean completed,
+        String periodLabel,
+        String resetTime,
+        Integer resetDayOfWeek,
+        Integer resetDayOfMonth,
+        List<ChecklistItemDto> items,
         List<ChecklistPositionDto> positions
 ) {
 }

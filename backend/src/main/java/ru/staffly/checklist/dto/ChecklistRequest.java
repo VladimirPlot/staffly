@@ -10,8 +10,19 @@ public record ChecklistRequest(
         @Size(max = 200, message = "Название не должно превышать 200 символов")
         String name,
 
-        @NotBlank(message = "Содержимое обязательно")
         String content,
+
+        String kind,
+
+        String periodicity,
+
+        String resetTime,
+
+        Integer resetDayOfWeek,
+
+        Integer resetDayOfMonth,
+
+        List<String> items,
 
         List<Long> positionIds
 ) {

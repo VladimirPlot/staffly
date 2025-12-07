@@ -2,9 +2,6 @@ package ru.staffly.checklist.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -56,22 +53,19 @@ public class ChecklistController {
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @GetMapping(value = "/{checklistId}/download")
-    public ResponseEntity<byte[]> download(@PathVariable Long restaurantId,
-                                           @PathVariable Long checklistId,
-                                           @AuthenticationPrincipal UserPrincipal principal,
-                                           @RequestParam(name = "format", defaultValue = "txt") String format) {
-        byte[] data = service.download(restaurantId, principal.userId(), checklistId, format);
-        String filename = switch (format == null ? "" : format.trim().toLowerCase()) {
-            case "docx" -> "checklist-" + checklistId + ".docx";
-            default -> "checklist-" + checklistId + ".txt";
-        };
-        MediaType mediaType = filename.endsWith(".docx")
-                ? MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                : MediaType.TEXT_PLAIN;
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .contentType(mediaType)
-                .body(data);
+    @PostMapping("/{checklistId}/progress")
+    public ChecklistDto updateProgress(@PathVariable Long restaurantId,
+                                       @PathVariable Long checklistId,
+                                       @AuthenticationPrincipal UserPrincipal principal,
+                                       @RequestBody List<Long> itemIds) {
+        return service.updateProgress(restaurantId, principal.userId(), checklistId, itemIds);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/{checklistId}/reset")
+    public ChecklistDto reset(@PathVariable Long restaurantId,
+                              @PathVariable Long checklistId,
+                              @AuthenticationPrincipal UserPrincipal principal) {
+        return service.reset(restaurantId, principal.userId(), checklistId);
     }
 }
