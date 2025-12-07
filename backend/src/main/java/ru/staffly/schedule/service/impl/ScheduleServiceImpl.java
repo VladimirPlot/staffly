@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
@@ -92,13 +93,18 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertMember(userId, restaurantId);
 
         final boolean canManage = securityService.hasAtLeastManager(userId, restaurantId);
-        final Long memberId = !canManage
+        Optional<RestaurantMember> membership = !canManage
                 ? members.findByUserIdAndRestaurantId(userId, restaurantId)
-                .map(m -> m.getId())
-                .orElse(null)
-                : null;
+                : Optional.<RestaurantMember>empty();
+
+        final Long memberId = membership.map(m -> m.getId()).orElse(null);
+        final Long positionId = membership
+                .map(m -> m.getPosition())
+                .map(p -> p.getId())
+                .orElse(null);
 
         return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
+                .filter(schedule -> canManage || (positionId != null && schedule.getPositionIds().contains(positionId)))
                 .map(s -> new ScheduleSummaryDto(
                         s.getId(),
                         s.getTitle(),
@@ -114,7 +120,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                                 s.getId(),
                                 ScheduleShiftRequestStatus.PENDING_MANAGER,
                                 memberId
-                        )
+                        ),
+                        s.getPositionIds()
                 ))
                 .toList();
     }

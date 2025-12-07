@@ -32,6 +32,7 @@ export type ScheduleSummary = {
   endDate: string;
   createdAt: string;
   hasPendingShiftRequests: boolean;
+  positionIds: number[];
 };
 
 type ScheduleRowResponse = {
