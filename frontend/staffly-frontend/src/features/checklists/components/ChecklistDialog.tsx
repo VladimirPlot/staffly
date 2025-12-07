@@ -402,6 +402,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                 {items.map((item) => (
                   <div key={item.id} className="flex items-start gap-3">
                     <Textarea
+                      label="Пункт чек-листа"
                       value={item.value}
                       onChange={(event) => handleItemChange(item.id, event.target.value)}
                       rows={2}

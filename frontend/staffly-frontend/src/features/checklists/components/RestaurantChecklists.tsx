@@ -246,7 +246,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
       if (!node) return;
       setDownloading(checklist.id);
       try {
-        const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, bgcolor: "#ffffff" });
+        const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, backgroundColor: "#ffffff" });
         const link = document.createElement("a");
         link.href = dataUrl;
         link.download = `${sanitizeFileName(checklist.name)}.jpg`;
