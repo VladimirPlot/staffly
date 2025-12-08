@@ -31,6 +31,8 @@ services:
       PUBLIC_BASE_URL: http://staffly.store
     depends_on:
       - db
+    volumes:
+      - avatars:/app/data/avatars
 
   frontend:
     build:
@@ -43,3 +45,4 @@ services:
 
 volumes:
   pgdata:
+  avatars:
