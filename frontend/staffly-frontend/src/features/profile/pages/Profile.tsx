@@ -6,11 +6,7 @@ import Input from "../../../shared/ui/Input";
 import Avatar from "../../../shared/ui/Avatar";
 import { uploadMyAvatar, getMyProfile, updateMyProfile, changeMyPassword, type UserProfile } from "../api";
 import { useAuth } from "../../../shared/providers/AuthProvider";
-
-// 👇 базовый URL бэкенда (для превью сразу после аплоада)
-const API_BASE =
-  (import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") as string) ||
-  "http://localhost:8080";
+import { API_BASE } from "../../../shared/utils/url";
 
 function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = React.useState<File | null>(null);

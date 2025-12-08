@@ -1,6 +1,7 @@
-const API_BASE =
-  (import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") as string) ||
-  "http://localhost:8080";
+const envBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") as string | undefined;
+const browserOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
+
+const API_BASE = envBase && envBase.length > 0 ? envBase : browserOrigin || "http://localhost:8080";
 
 export function toAbsoluteUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
