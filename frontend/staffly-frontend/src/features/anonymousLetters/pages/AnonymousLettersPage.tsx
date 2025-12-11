@@ -369,7 +369,17 @@ export default function AnonymousLettersPage() {
               <option value="">Выберите администратора</option>
               {recipients.map((recipient) => (
                 <option key={recipient.id} value={recipient.id}>
-                  {recipient.positionName || recipient.fullName || `Администратор #${recipient.id}`}
+                  {(() => {
+                    const name =
+                      recipient.fullName?.trim() ||
+                      [recipient.firstName, recipient.lastName].filter(Boolean).join(" ").trim();
+                    const position = recipient.positionName?.trim();
+
+                    if (name && position) return `${name} (${position})`;
+                    if (name) return name;
+                    if (position) return `${position} #${recipient.id}`;
+                    return `Администратор #${recipient.id}`;
+                  })()}
                 </option>
               ))}
             </select>

@@ -1,6 +1,7 @@
 import api from "../../shared/api/apiClient";
 import { getMyRoleIn } from "../../shared/api/memberships";
 import type { RestaurantRole } from "../../shared/types/restaurant";
+import { toAbsoluteUrl } from "../../shared/utils/url";
 
 /* ===== Приглашения (оставляем как было) ===== */
 export type InviteRequest = {
@@ -34,6 +35,7 @@ export type MemberDto = {
   role: RestaurantRole;      // роль доступа в ресторане
   positionId?: number | null;
   positionName?: string | null;
+  avatarUrl?: string | null;
 
   // Имена: используем то, что вернёт бэк. Любое из этих полей — опционально.
   fullName?: string | null;
@@ -46,7 +48,11 @@ export type MemberDto = {
 
 export async function listMembers(restaurantId: number): Promise<MemberDto[]> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/members`);
-  return data as MemberDto[];
+  const members = data as MemberDto[];
+  return members.map((member) => ({
+    ...member,
+    avatarUrl: toAbsoluteUrl(member.avatarUrl),
+  }));
 }
 
 export async function removeMember(restaurantId: number, memberId: number): Promise<void> {

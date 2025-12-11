@@ -4,6 +4,9 @@ import org.springframework.stereotype.Component;
 import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.model.RestaurantMember;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+
 @Component
 public class MemberMapper {
 
@@ -19,6 +22,14 @@ public class MemberMapper {
                 ? user.getFullName().trim()
                 : joinTwo(last, first);
 
+        String avatar = m.getAvatarUrl();
+        if (avatar == null && user != null) {
+            avatar = user.getAvatarUrl();
+        }
+        if (avatar != null && user != null) {
+            avatar = withBust(avatar, user.getUpdatedAt());
+        }
+
         return new MemberDto(
                 m.getId(),
                 user != null ? user.getId() : null,
@@ -26,7 +37,7 @@ public class MemberMapper {
                 m.getRole(),
                 pos != null ? pos.getId() : null,
                 pos != null ? pos.getName() : null,
-                m.getAvatarUrl(),
+                avatar,
                 first,
                 last,
                 full,
@@ -44,5 +55,12 @@ public class MemberMapper {
         if (notBlank(aa)) return aa;
         if (notBlank(bb)) return bb;
         return null;
+    }
+
+    private static String withBust(String url, LocalDateTime updatedAt) {
+        long v = (updatedAt == null)
+                ? System.currentTimeMillis() / 1000
+                : updatedAt.atZone(ZoneId.systemDefault()).toEpochSecond();
+        return url + (url.contains("?") ? "&" : "?") + "v=" + v;
     }
 }

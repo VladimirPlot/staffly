@@ -7,6 +7,7 @@ import BackToHome from "../../../shared/ui/BackToHome";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
+import Avatar from "../../../shared/ui/Avatar";
 
 import {
   listPositions,
@@ -367,7 +368,7 @@ export default function InvitePage() {
                 to="/dictionaries/positions"
                 className="rounded-2xl border border-zinc-300 px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
               >
-                Справочники
+                Должности
               </Link>
               <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
                 {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
@@ -375,6 +376,99 @@ export default function InvitePage() {
             </div>
           )}
         </div>
+
+        {canInvite && inviteOpen && (
+          <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            {inviteDone ? (
+              <div className="space-y-4">
+                <div className="text-emerald-700">
+                  Приглашение отправлено! Пользователь увидит его в разделе «Мои приглашения».
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => { setInviteDone(false); setPhoneOrEmail(""); }}>Отправить ещё</Button>
+                  <Button variant="outline" onClick={() => setInviteOpen(false)}>Готово</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                <Input
+                  label="Телефон или Email приглашённого"
+                  value={phoneOrEmail}
+                  onChange={(e) => setPhoneOrEmail(e.target.value)}
+                  placeholder="+79990000000 или name@example.com"
+                />
+
+                {/* Селект роли: админ видит все, менеджер — только STAFF */}
+                <label className="block text-sm">
+                  <span className="mb-1 block text-zinc-600">Роль доступа</span>
+                  <select
+                    className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as InviteRole)}
+                  >
+                    {roleOptions.map((r) => (
+                      <option key={r} value={r}>{ROLE_LABEL[r as RestaurantRole] || r}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Селект должности: список автоматически фильтруется под выбранную роль */}
+                <label className="block text-sm">
+                  <span className="mb-1 block text-zinc-600">Должность</span>
+                  <select
+                    className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
+                    value={positionId ?? ""}
+                    onChange={(e) => setPositionId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    {loadingPositions ? (
+                      <option value="">Загрузка…</option>
+                    ) : positions.length === 0 ? (
+                      <option value="">Нет подходящих должностей</option>
+                    ) : (
+                      positions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({ROLE_LABEL[p.level]})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </label>
+
+                {inviteError && <div className="text-sm text-red-600">{inviteError}</div>}
+
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    disabled={!phoneOrEmail.trim() || submitting}
+                    onClick={async () => {
+                      setSubmitting(true);
+                      setInviteError(null);
+                      try {
+                        await inviteEmployee(restaurantId, {
+                          phoneOrEmail: phoneOrEmail.trim(),
+                          role,
+                          positionId: positionId ?? undefined, // опционально
+                        });
+                        setInviteDone(true);
+                      } catch (e: any) {
+                        setInviteError(e?.friendlyMessage || "Не удалсь отправить приглашение");
+                      } finally {
+                        setSubmitting(false);
+                      }
+                    }}
+                  >
+                    {submitting ? "Отправляем…" : "Отправить приглашение"}
+                  </Button>
+
+                  <Button variant="outline" onClick={() => setInviteOpen(false)}>Отмена</Button>
+                </div>
+
+                <div className="text-xs text-zinc-500">
+                  Права на отправку приглашений проверяются на бэке: MANAGER может приглашать только STAFF.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {positionOptions.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
@@ -416,12 +510,19 @@ export default function InvitePage() {
                 key={m.id}
                 className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-base font-medium">{displayNameOf(m)}</div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
-                    <span className="rounded-full border px-2 py-0.5">
-                      {m.positionName || ROLE_LABEL[m.role]}
-                    </span>
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <Avatar
+                    name={displayNameOf(m)}
+                    imageUrl={m.avatarUrl ?? undefined}
+                    className="flex-shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-base font-medium">{displayNameOf(m)}</div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+                      <span className="rounded-full border px-2 py-0.5">
+                        {m.positionName || ROLE_LABEL[m.role]}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
@@ -447,100 +548,6 @@ export default function InvitePage() {
           </div>
         )}
       </Card>
-
-      {/* Блок: Форма приглашения (только MANAGER / ADMIN, только по кнопке) */}
-      {canInvite && inviteOpen && (
-        <Card>
-          {inviteDone ? (
-            <div className="space-y-4">
-              <div className="text-emerald-700">
-                Приглашение отправлено! Пользователь увидит его в разделе «Мои приглашения».
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={() => { setInviteDone(false); setPhoneOrEmail(""); }}>Отправить ещё</Button>
-                <Button variant="outline" onClick={() => setInviteOpen(false)}>Готово</Button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              <Input
-                label="Телефон или Email приглашённого"
-                value={phoneOrEmail}
-                onChange={(e) => setPhoneOrEmail(e.target.value)}
-                placeholder="+79990000000 или name@example.com"
-              />
-
-              {/* Селект роли: админ видит все, менеджер — только STAFF */}
-              <label className="block text-sm">
-                <span className="mb-1 block text-zinc-600">Роль доступа</span>
-                <select
-                  className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as InviteRole)}
-                >
-                  {roleOptions.map((r) => (
-                    <option key={r} value={r}>{ROLE_LABEL[r as RestaurantRole] || r}</option>
-                  ))}
-                </select>
-              </label>
-
-              {/* Селект должности: список автоматически фильтруется под выбранную роль */}
-              <label className="block text-sm">
-                <span className="mb-1 block text-zinc-600">Должность</span>
-                <select
-                  className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
-                  value={positionId ?? ""}
-                  onChange={(e) => setPositionId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  {loadingPositions ? (
-                    <option value="">Загрузка…</option>
-                  ) : positions.length === 0 ? (
-                    <option value="">Нет подходящих должностей</option>
-                  ) : (
-                    positions.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({ROLE_LABEL[p.level]})
-                      </option>
-                    ))
-                  )}
-                </select>
-              </label>
-
-              {inviteError && <div className="text-sm text-red-600">{inviteError}</div>}
-
-              <div className="mt-2 flex gap-2">
-                <Button
-                  disabled={!phoneOrEmail.trim() || submitting}
-                  onClick={async () => {
-                    setSubmitting(true);
-                    setInviteError(null);
-                  try {
-                    await inviteEmployee(restaurantId, {
-                      phoneOrEmail: phoneOrEmail.trim(),
-                      role,
-                      positionId: positionId ?? undefined, // опционально
-                    });
-                    setInviteDone(true);
-                  } catch (e: any) {
-                    setInviteError(e?.friendlyMessage || "Не удалось отправить приглашение");
-                  } finally {
-                    setSubmitting(false);
-                  }
-                }}
-                >
-                  {submitting ? "Отправляем…" : "Отправить приглашение"}
-                </Button>
-
-                <Button variant="outline" onClick={() => setInviteOpen(false)}>Отмена</Button>
-              </div>
-
-              <div className="text-xs text-zinc-500">
-                Права на отправку приглашений проверяются на бэке: MANAGER может приглашать только STAFF.
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
       <ConfirmDialog
         open={!!memberToRemove}
         title={memberRemovalTitle}
