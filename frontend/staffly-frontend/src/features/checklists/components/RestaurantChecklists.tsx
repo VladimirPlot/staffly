@@ -129,22 +129,22 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
       if (!restaurantId) return;
       setDialogSubmitting(true);
       setDialogError(null);
-      try {
-        if (editing) {
-          await updateChecklist(restaurantId, editing.id, payload);
-        } else {
-          await createChecklist(restaurantId, payload);
-        }
-        setDialogOpen(false);
-        setEditing(null);
-        await loadChecklists();
-      } catch (e: any) {
-        console.error("Failed to save checklist", e);
-        const message = e?.response?.data?.message || "Не удалось сохранить чек-лист";
-        setDialogError(message);
-      } finally {
-        setDialogSubmitting(false);
+    try {
+      if (editing) {
+        await updateChecklist(restaurantId, editing.id, payload);
+      } else {
+        await createChecklist(restaurantId, payload);
       }
+      setDialogOpen(false);
+      setEditing(null);
+      await loadChecklists();
+    } catch (e: any) {
+      console.error("Failed to save checklist", e);
+      const message = e?.friendlyMessage || "Не удалось сохранить чек-лист";
+      setDialogError(message);
+    } finally {
+      setDialogSubmitting(false);
+    }
     },
     [restaurantId, editing, loadChecklists]
   );

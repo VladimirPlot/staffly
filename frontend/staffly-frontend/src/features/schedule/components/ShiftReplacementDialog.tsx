@@ -74,7 +74,7 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
       await onSubmit({ day: selectedDay, toMemberId: Number(selectedMember), reason: reason || undefined });
       onClose();
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Не удалось отправить запрос");
+      setError(e?.friendlyMessage || "Не удалось отправить запрос");
     } finally {
       setSubmitting(false);
     }

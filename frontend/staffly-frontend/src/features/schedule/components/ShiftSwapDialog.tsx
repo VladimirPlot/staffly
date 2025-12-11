@@ -122,7 +122,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
       });
       onClose();
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Не удалось отправить запрос");
+      setError(e?.friendlyMessage || "Не удалось отправить запрос");
     } finally {
       setSubmitting(false);
     }

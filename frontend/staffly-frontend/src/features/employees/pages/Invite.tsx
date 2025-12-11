@@ -125,21 +125,21 @@ export default function InvitePage() {
         setLoadingMembers(true);
         setMembersError(null);
 
-        const [r, mems] = await Promise.all([
-          fetchMyRoleIn(restaurantId),
-          listMembers(restaurantId),
-        ]);
+      const [r, mems] = await Promise.all([
+        fetchMyRoleIn(restaurantId),
+        listMembers(restaurantId),
+      ]);
 
-        if (!alive) return;
-        setMyRole(r);
-        setMembers(mems);
-      } catch (e: any) {
-        if (!alive) return;
-        setMembers([]);
-        setMembersError(e?.response?.data?.message || e?.message || "Не удалось загрузить участников");
-      } finally {
-        if (alive) setLoadingMembers(false);
-      }
+      if (!alive) return;
+      setMyRole(r);
+      setMembers(mems);
+    } catch (e: any) {
+      if (!alive) return;
+      setMembers([]);
+      setMembersError(e?.friendlyMessage || "Не удалось загрузить участников");
+    } finally {
+      if (alive) setLoadingMembers(false);
+    }
     })();
     return () => { alive = false; };
   }, [restaurantId]);
@@ -277,9 +277,7 @@ export default function InvitePage() {
       }
       setMemberToRemove(null);
     } catch (e: any) {
-      setRemoveError(
-        e?.response?.data?.message || e?.message || "Не удалось исключить участника"
-      );
+      setRemoveError(e?.friendlyMessage || "Не удалось исключить участника");
     } finally {
       setRemoving(false);
     }
@@ -516,19 +514,19 @@ export default function InvitePage() {
                   onClick={async () => {
                     setSubmitting(true);
                     setInviteError(null);
-                    try {
-                      await inviteEmployee(restaurantId, {
-                        phoneOrEmail: phoneOrEmail.trim(),
-                        role,
-                        positionId: positionId ?? undefined, // опционально
-                      });
-                      setInviteDone(true);
-                    } catch (e: any) {
-                      setInviteError(e?.response?.data?.message || e?.message || "Не удалось отправить приглашение");
-                    } finally {
-                      setSubmitting(false);
-                    }
-                  }}
+                  try {
+                    await inviteEmployee(restaurantId, {
+                      phoneOrEmail: phoneOrEmail.trim(),
+                      role,
+                      positionId: positionId ?? undefined, // опционально
+                    });
+                    setInviteDone(true);
+                  } catch (e: any) {
+                    setInviteError(e?.friendlyMessage || "Не удалось отправить приглашение");
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
                 >
                   {submitting ? "Отправляем…" : "Отправить приглашение"}
                 </Button>

@@ -98,23 +98,23 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
     async (payload: NotificationRequest) => {
       setSubmitting(true);
       setDialogError(null);
-      try {
-        if (editing) {
-          await updateNotification(restaurantId, editing.id, payload);
-        } else {
-          await createNotification(restaurantId, payload);
-        }
-        setDialogOpen(false);
-        setEditing(null);
-        await loadNotifications();
-      } catch (e: any) {
-        console.error("Failed to save notification", e);
-        const message = e?.response?.data?.message || e?.message || "Не удалось сохранить";
-        setDialogError(message);
-      } finally {
-        setSubmitting(false);
+    try {
+      if (editing) {
+        await updateNotification(restaurantId, editing.id, payload);
+      } else {
+        await createNotification(restaurantId, payload);
       }
-    },
+      setDialogOpen(false);
+      setEditing(null);
+      await loadNotifications();
+    } catch (e: any) {
+      console.error("Failed to save notification", e);
+      const message = e?.friendlyMessage || "Не удалось сохранить";
+      setDialogError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  },
     [editing, loadNotifications, restaurantId],
   );
 
@@ -144,20 +144,17 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
   const hideNotification = React.useCallback(
     async (notification: NotificationDto) => {
       setDismissingId(notification.id);
-      try {
-        await dismissNotification(restaurantId, notification.id);
-        setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
-      } catch (e: any) {
-        console.error("Failed to dismiss notification", e);
-        const message =
-          e?.response?.data?.message ||
-          e?.message ||
-          (e instanceof Error ? e.message : "");
-        if (message) {
-          window.alert(message);
-        }
-      } finally {
-        setDismissingId(null);
+    try {
+      await dismissNotification(restaurantId, notification.id);
+      setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
+    } catch (e: any) {
+      console.error("Failed to dismiss notification", e);
+      const message = e?.friendlyMessage || (e instanceof Error ? e.message : "");
+      if (message) {
+        window.alert(message);
+      }
+    } finally {
+      setDismissingId(null);
       }
     },
     [restaurantId],

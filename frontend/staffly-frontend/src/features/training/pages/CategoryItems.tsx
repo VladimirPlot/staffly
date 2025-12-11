@@ -140,7 +140,7 @@ export default function TrainingCategoryItemsPage() {
         setCategory(found);
       }
     } catch (e: any) {
-      setCategoryError(e?.response?.data?.message || e?.message || "Не удалось загрузить категорию");
+      setCategoryError(e?.friendlyMessage || "Не удалось загрузить категорию");
       setCategory(null);
     } finally {
       setCategoryLoading(false);
@@ -161,7 +161,7 @@ export default function TrainingCategoryItemsPage() {
       });
       setItems(sorted);
     } catch (e: any) {
-      setItemsError(e?.response?.data?.message || e?.message || "Не удалось загрузить карточки");
+      setItemsError(e?.friendlyMessage || "Не удалось загрузить карточки");
       setItems([]);
     } finally {
       setItemsLoading(false);
@@ -204,13 +204,13 @@ export default function TrainingCategoryItemsPage() {
         try {
           await uploadItemImage(restaurantId, created.id, imageFile);
         } catch (e: any) {
-          alert(e?.response?.data?.message || e?.message || "Не удалось загрузить фото");
+          alert(e?.friendlyMessage || "Не удалось загрузить фото");
         }
       }
       resetForm();
       await loadItems();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "Не удалось создать карточку");
+      alert(e?.friendlyMessage || "Не удалось создать карточку");
     } finally {
       setCreating(false);
     }
@@ -223,7 +223,7 @@ export default function TrainingCategoryItemsPage() {
       await uploadItemImage(restaurantId, itemId, file);
       await loadItems();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "Не удалось загрузить фото");
+      alert(e?.friendlyMessage || "Не удалось загрузить фото");
     } finally {
       setImageMutatingId(null);
     }
@@ -251,7 +251,7 @@ export default function TrainingCategoryItemsPage() {
       await deleteItemImage(restaurantId, itemId);
       await loadItems();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "Не удалось удалить фото");
+      alert(e?.friendlyMessage || "Не удалось удалить фото");
     } finally {
       setImageMutatingId(null);
     }
@@ -266,7 +266,7 @@ export default function TrainingCategoryItemsPage() {
       await deleteItem(restaurantId, itemId);
       await loadItems();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "Не удалось удалить карточку");
+      alert(e?.friendlyMessage || "Не удалось удалить карточку");
     } finally {
       setDeletingItemId(null);
     }
@@ -311,7 +311,7 @@ export default function TrainingCategoryItemsPage() {
       cancelEditItem();
       await loadItems();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "Не удалось сохранить карточку");
+      alert(e?.friendlyMessage || "Не удалось сохранить карточку");
     } finally {
       setSavingItemId(null);
     }

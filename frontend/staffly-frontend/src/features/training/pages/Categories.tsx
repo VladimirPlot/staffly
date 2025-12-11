@@ -139,7 +139,7 @@ function TrainingModuleCategoriesPage() {
       });
       setCategories(sorted);
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Ошибка загрузки категорий");
+      setError(e?.friendlyMessage || "Ошибка загрузки категорий");
     } finally {
       setLoading(false);
     }
@@ -165,7 +165,7 @@ function TrainingModuleCategoriesPage() {
       setShowCreateForm(false);
       await load();
     } catch (e: any) {
-      alert(e?.response?.data?.message || e?.message || "Ошибка создания категории");
+      alert(e?.friendlyMessage || "Ошибка создания категории");
     } finally {
       setCreating(false);
     }
@@ -339,7 +339,7 @@ function TrainingModuleCategoriesPage() {
                                 await load();
                               } catch (e: any) {
                                 alert(
-                                  e?.response?.data?.message || e?.message || "Ошибка сохранения"
+                                  e?.friendlyMessage || "Ошибка сохранения"
                                 );
                               } finally {
                                 setSavingCategory(false);
@@ -387,8 +387,7 @@ function TrainingModuleCategoriesPage() {
                                 await load();
                               } catch (e: any) {
                                 alert(
-                                  e?.response?.data?.message || e?.message ||
-                                  "Ошибка удаления категории"
+                                  e?.friendlyMessage || "Ошибка удаления категории"
                                 );
                               }
                             }}

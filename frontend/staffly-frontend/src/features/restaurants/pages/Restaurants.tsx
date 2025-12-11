@@ -118,40 +118,36 @@ export default function Restaurants() {
                     <Button
                       onClick={async () => {
                         try {
-                          await acceptInvite(inv.token);
-                          await switchRestaurant(inv.restaurantId);
-                          await refreshMe();
-                          navigate("/app", { replace: true });
-                        } catch (e: any) {
-                          alert(
-                            e?.response?.data?.message ||
-                              e?.message ||
-                              "Не удалось принять приглашение"
-                          );
-                        }
-                      }}
-                    >
-                      Принять
+                      await acceptInvite(inv.token);
+                      await switchRestaurant(inv.restaurantId);
+                      await refreshMe();
+                      navigate("/app", { replace: true });
+                    } catch (e: any) {
+                      alert(
+                        e?.friendlyMessage || "Не удалось принять приглашение"
+                      );
+                    }
+                  }}
+                >
+                  Принять
                     </Button>
 
                     <Button
                       variant="outline"
                       onClick={async () => {
-                        try {
-                          await declineInvite(inv.token);
-                          setInvites((prev) =>
-                            prev.filter((x) => x.token !== inv.token)
-                          );
-                        } catch (e: any) {
-                          alert(
-                            e?.response?.data?.message ||
-                              e?.message ||
-                              "Не удалось отклонить"
-                          );
-                        }
-                      }}
-                    >
-                      Отклонить
+                      try {
+                        await declineInvite(inv.token);
+                        setInvites((prev) =>
+                          prev.filter((x) => x.token !== inv.token)
+                        );
+                      } catch (e: any) {
+                        alert(
+                          e?.friendlyMessage || "Не удалось отклонить"
+                        );
+                      }
+                    }}
+                  >
+                    Отклонить
                     </Button>
                   </div>
                 </div>

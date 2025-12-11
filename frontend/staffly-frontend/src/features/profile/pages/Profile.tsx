@@ -72,7 +72,7 @@ function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
               setFile(null);
               alert("Аватар обновлён");
             } catch (e: any) {
-              setError(e?.message || "Ошибка загрузки");
+              setError(e?.friendlyMessage || (e as Error)?.message || "Ошибка загрузки");
             } finally {
               setBusy(false);
             }
@@ -126,7 +126,7 @@ export default function Profile() {
         setLoadErr(null);
       } catch (e: any) {
         if (!alive) return;
-        setLoadErr(e?.response?.data?.message || e?.message || "Не удалось загрузить профиль");
+        setLoadErr(e?.friendlyMessage || "Не удалось загрузить профиль");
       } finally {
         if (alive) setLoading(false);
       }
@@ -181,16 +181,16 @@ export default function Profile() {
                       lastName: lastName.trim(),
                       phone: phone.trim(),
                       email: email.trim(),
-                      birthDate: birthDate.trim() ? birthDate.trim() : null,
-                    });
-                    await refreshMe();
-                    setSaveMsg("Сохранено");
-                  } catch (e: any) {
-                    setSaveMsg(null);
-                    alert(e?.response?.data?.message || e?.message || "Не удалось сохранить профиль");
-                  } finally {
-                    setSaving(false);
-                  }
+                    birthDate: birthDate.trim() ? birthDate.trim() : null,
+                  });
+                  await refreshMe();
+                  setSaveMsg("Сохранено");
+                } catch (e: any) {
+                  setSaveMsg(null);
+                  alert(e?.friendlyMessage || "Не удалось сохранить профиль");
+                } finally {
+                  setSaving(false);
+                }
                 }}
                 disabled={saving}
               >
@@ -221,7 +221,7 @@ export default function Profile() {
                     setPwdMsg("Пароль изменён");
                   } catch (e: any) {
                     setPwdMsg(null);
-                    alert(e?.response?.data?.message || e?.message || "Не удалось изменить пароль");
+                    alert(e?.friendlyMessage || "Не удалось изменить пароль");
                   } finally {
                     setPwdBusy(false);
                   }

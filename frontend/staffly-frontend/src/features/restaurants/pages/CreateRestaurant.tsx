@@ -63,19 +63,19 @@ export default function CreateRestaurant() {
               setBusy(true);
               setError(null);
               try {
-                const created = await createRestaurant({
-                  name: name.trim(),
-                  code: code.trim() || undefined,
-                });
-                // сразу "проваливаемся" в ресторан (новый токен c restaurantId)
-                await switchRestaurant(created.id);
-                await refreshMe();
-                navigate("/app", { replace: true });
-              } catch (e: any) {
-                setError(e?.response?.data?.message || e?.message || "Не удалось создать ресторан");
-              } finally {
-                setBusy(false);
-              }
+              const created = await createRestaurant({
+                name: name.trim(),
+                code: code.trim() || undefined,
+              });
+              // сразу "проваливаемся" в ресторан (новый токен c restaurantId)
+              await switchRestaurant(created.id);
+              await refreshMe();
+              navigate("/app", { replace: true });
+            } catch (e: any) {
+              setError(e?.friendlyMessage || "Не удалось создать ресторан");
+            } finally {
+              setBusy(false);
+            }
             }}
           >
             {busy ? "Создаём…" : "Создать"}

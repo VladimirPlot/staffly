@@ -1,6 +1,7 @@
 import axios from "axios";
 import { getToken /*, clearToken*/ } from "../utils/storage";
 import { API_BASE } from "../utils/url";
+import { getErrorMessage } from "../utils/errors";
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -17,11 +18,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ВАЖНО: НЕ чистим токен тут. Пусть обработка 401 будет в AuthProvider.refreshMe()
+// Глобальная обработка ошибок
 api.interceptors.response.use(
   (r) => r,
   (error) => {
-    // Можно просто пробросить ошибку — AuthProvider сам разрулит редирект на /login
+    // прикручиваем "дружественное" сообщение
+    (error as any).friendlyMessage = getErrorMessage(error, "Ошибка при запросе к серверу");
     return Promise.reject(error);
   }
 );

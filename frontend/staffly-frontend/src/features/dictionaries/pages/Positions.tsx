@@ -47,7 +47,7 @@ export default function PositionsPage() {
       const data = await listPositions(restaurantId, { includeInactive: showInactive });
       setItems(data);
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Ошибка загрузки");
+      setError(e?.friendlyMessage || "Ошибка загрузки");
     } finally {
       setLoading(false);
     }
@@ -126,7 +126,7 @@ export default function PositionsPage() {
                   setLevel("STAFF");
                   await load();
                 } catch (e: any) {
-                  alert(e?.response?.data?.message || e?.message || "Ошибка создания");
+                  alert(e?.friendlyMessage || "Ошибка создания");
                 } finally {
                   setCreating(false);
                 }
@@ -190,7 +190,7 @@ export default function PositionsPage() {
                         });
                         await load();
                       } catch (e: any) {
-                        alert(e?.response?.data?.message || e?.message || "Ошибка обновления");
+                        alert(e?.friendlyMessage || "Ошибка обновления");
                       }
                     }}
                   >
@@ -212,7 +212,7 @@ export default function PositionsPage() {
                         });
                         await load();
                       } catch (e: any) {
-                        alert(e?.response?.data?.message || e?.message || "Ошибка переименования");
+                        alert(e?.friendlyMessage || "Ошибка переименования");
                       }
                     }}
                   >
@@ -229,7 +229,7 @@ export default function PositionsPage() {
                         await deletePosition(restaurantId, p.id);
                         await load();
                       } catch (e: any) {
-                        alert(e?.response?.data?.message || e?.message || "Ошибка удаления");
+                        alert(e?.friendlyMessage || "Ошибка удаления");
                       }
                     }}
                   >

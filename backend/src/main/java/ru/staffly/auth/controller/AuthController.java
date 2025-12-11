@@ -14,6 +14,7 @@ import ru.staffly.auth.dto.LoginRequest;
 import ru.staffly.auth.dto.RegisterRequest;
 import ru.staffly.auth.dto.SwitchRestaurantRequest;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.JwtService;
@@ -65,20 +66,20 @@ public class AuthController {
 
         // проверки уникальности
         if (users.existsByPhone(phone)) {
-            throw new BadRequestException("Phone already registered");
+            throw new BadRequestException("Номер телефона уже используется");
         }
         if (users.existsByEmailIgnoreCase(email)) {
-            throw new BadRequestException("Email already registered");
+            throw new BadRequestException("Email уже используется");
         }
         LocalDate bd = null;
         if (req.birthDate() != null && !req.birthDate().isBlank()) {
             try {
                 bd = LocalDate.parse(req.birthDate());
                 if (bd.isAfter(LocalDate.now())) {
-                    throw new BadRequestException("Birth date cannot be in the future");
+                    throw new BadRequestException("День рождение не может быть в будущем");
                 }
             } catch (DateTimeParseException e) {
-                throw new BadRequestException("Invalid birthDate format (expected yyyy-MM-dd)");
+                throw new BadRequestException("Неверный формат даты(expected yyyy-MM-dd)");
             }
         }
 
@@ -103,9 +104,9 @@ public class AuthController {
     @Transactional(readOnly = true)
     public ResponseEntity<AuthResponse> login(@RequestBody @Valid LoginRequest req) {
         var u = users.findByPhone(req.phone())
-                .orElseThrow(() -> new NotFoundException("User not found"));
+                .orElseThrow(() -> new NotFoundException("Пользователь не найдет"));
         if (!encoder.matches(req.password(), u.getPasswordHash())) {
-            throw new BadRequestException("Bad credentials");
+            throw new BadRequestException("Неверные учетные данные");
         }
         List<String> roles = creatorPhones.contains(u.getPhone()) ? List.of("CREATOR") : List.of();
         var principal = new UserPrincipal(u.getId(), u.getPhone(), null, roles);
@@ -121,7 +122,7 @@ public class AuthController {
         Long restaurantId = req.restaurantId();
 
         boolean member = memberRepository.findByUserIdAndRestaurantId(userId, restaurantId).isPresent();
-        if (!member) throw new ru.staffly.common.exception.ForbiddenException("Not a member of this restaurant");
+        if (!member) throw new ForbiddenException("Не является сотрудником ресторана");
 
         var newPrincipal = new UserPrincipal(
                 userId,

@@ -149,7 +149,7 @@ const SchedulePage: React.FC = () => {
         setSavedSchedules(savedList);
       } catch (e: any) {
         if (!alive) return;
-        setError(e?.response?.data?.message || e?.message || "Не удалось загрузить данные");
+        setError(e?.friendlyMessage || "Не удалось загрузить данные");
         setMyRole(null);
         setPositions([]);
         setMembers([]);
@@ -335,9 +335,7 @@ const SchedulePage: React.FC = () => {
         const data = await listShiftRequests(restaurantId, scheduleForLoad as number);
         setShiftRequests(data);
       } catch (e: any) {
-        setShiftRequestsError(
-          e?.response?.data?.message || e?.message || "Не удалось загрузить заявки"
-        );
+        setShiftRequestsError(e?.friendlyMessage || "Не удалось загрузить заявки");
         setShiftRequests([]);
       } finally {
         setShiftRequestsLoading(false);
@@ -384,7 +382,7 @@ const SchedulePage: React.FC = () => {
       await loadShiftRequests(saved.id ?? undefined);
       setScheduleMessage(schedule.id ? "График обновлён" : "График сохранён");
     } catch (e: any) {
-      setScheduleError(e?.response?.data?.message || e?.message || "Не удалось сохранить график");
+      setScheduleError(e?.friendlyMessage || "Не удалось сохранить график");
     } finally {
       setSaving(false);
     }
@@ -405,7 +403,7 @@ const SchedulePage: React.FC = () => {
         setLastRange({ start: data.config.startDate, end: data.config.endDate });
         await loadShiftRequests(id);
       } catch (e: any) {
-        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось загрузить график");
+        setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
       } finally {
         setScheduleLoading(false);
       }
@@ -447,8 +445,7 @@ const SchedulePage: React.FC = () => {
         exportScheduleToXlsx(data);
       } catch (e: any) {
         console.error(e);
-        const message =
-          e?.response?.data?.message || e?.message || "Не удалось скачать график";
+        const message = e?.friendlyMessage || "Не удалось скачать график";
         setScheduleMessage(null);
         setScheduleError(message);
       } finally {
@@ -469,8 +466,7 @@ const SchedulePage: React.FC = () => {
         await exportScheduleToJpeg(data);
       } catch (e: any) {
         console.error(e);
-        const message =
-          e?.response?.data?.message || e?.message || "Не удалось скачать график";
+        const message = e?.friendlyMessage || "Не удалось скачать график";
         setScheduleMessage(null);
         setScheduleError(message);
       } finally {
@@ -503,7 +499,7 @@ const SchedulePage: React.FC = () => {
       setLastRange({ start: data.config.startDate, end: data.config.endDate });
       await loadShiftRequests(scheduleId);
     } catch (e: any) {
-      setScheduleError(e?.response?.data?.message || e?.message || "Не удалось загрузить график");
+      setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
     } finally {
       setScheduleLoading(false);
     }
@@ -527,7 +523,7 @@ const SchedulePage: React.FC = () => {
       setShiftRequests([]);
       setScheduleMessage("График удалён");
     } catch (e: any) {
-      setScheduleError(e?.response?.data?.message || e?.message || "Не удалось удалить график");
+      setScheduleError(e?.friendlyMessage || "Не удалось удалить график");
     } finally {
       setDeleting(false);
     }
@@ -562,74 +558,72 @@ const SchedulePage: React.FC = () => {
       if (!restaurantId || !scheduleId) return;
       setScheduleError(null);
       setScheduleMessage(null);
-      try {
-        await createReplacement(restaurantId, scheduleId, payload);
-        setScheduleMessage("Заявка на замену отправлена");
-        setReplacementOpen(false);
-        await loadShiftRequests();
-      } catch (e: any) {
-        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось создать заявку на замену");
-      }
-    },
-    [loadShiftRequests, restaurantId, scheduleId]
-  );
+    try {
+      await createReplacement(restaurantId, scheduleId, payload);
+      setScheduleMessage("Заявка на замену отправлена");
+      setReplacementOpen(false);
+      await loadShiftRequests();
+    } catch (e: any) {
+      setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на замену");
+    }
+  },
+  [loadShiftRequests, restaurantId, scheduleId]
+);
 
   const handleSubmitSwap = React.useCallback(
     async (payload: { myDay: string; targetMemberId: number; targetDay: string; reason?: string }) => {
       if (!restaurantId || !scheduleId) return;
       setScheduleError(null);
       setScheduleMessage(null);
-      try {
-        await createSwap(restaurantId, scheduleId, payload);
-        setScheduleMessage("Заявка на обмен отправлена");
-        setSwapOpen(false);
-        await loadShiftRequests();
-      } catch (e: any) {
-        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось создать заявку на обмен");
-      }
-    },
-    [loadShiftRequests, restaurantId, scheduleId]
-  );
+    try {
+      await createSwap(restaurantId, scheduleId, payload);
+      setScheduleMessage("Заявка на обмен отправлена");
+      setSwapOpen(false);
+      await loadShiftRequests();
+    } catch (e: any) {
+      setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на обмен");
+    }
+  },
+  [loadShiftRequests, restaurantId, scheduleId]
+);
 
   const handleManagerDecision = React.useCallback(
     async (requestId: number, accepted: boolean) => {
       if (!restaurantId || !scheduleId) return;
       setScheduleError(null);
       setScheduleMessage(null);
-      try {
-        await decideAsManager(restaurantId, scheduleId, requestId, accepted);
-        const data = await fetchSchedule(restaurantId, scheduleId);
-        setSchedule(data);
-        setScheduleReadOnly(true);
-        setLastRange({ start: data.config.startDate, end: data.config.endDate });
-        await loadShiftRequests(scheduleId);
-        setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
-      } catch (e: any) {
-        setScheduleError(e?.response?.data?.message || e?.message || "Не удалось обработать заявку");
-      }
-    },
-    [decideAsManager, fetchSchedule, loadShiftRequests, restaurantId, scheduleId]
-  );
+    try {
+      await decideAsManager(restaurantId, scheduleId, requestId, accepted);
+      const data = await fetchSchedule(restaurantId, scheduleId);
+      setSchedule(data);
+      setScheduleReadOnly(true);
+      setLastRange({ start: data.config.startDate, end: data.config.endDate });
+      await loadShiftRequests(scheduleId);
+      setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
+    } catch (e: any) {
+      setScheduleError(e?.friendlyMessage || "Не удалось обработать заявку");
+    }
+  },
+  [decideAsManager, fetchSchedule, loadShiftRequests, restaurantId, scheduleId]
+);
 
   const handleCancelMyShiftRequest = React.useCallback(
     async (requestId: number) => {
       if (!restaurantId || !scheduleId) return;
       setScheduleError(null);
       setScheduleMessage(null);
-      try {
-        await cancelShiftRequest(restaurantId, scheduleId, requestId);
-        await loadShiftRequests();
-        const savedList = await listSavedSchedules(restaurantId);
-        setSavedSchedules(savedList);
-        setScheduleMessage("Заявка отменена");
-      } catch (e: any) {
-        setScheduleError(
-          e?.response?.data?.message || e?.message || "Не удалось отменить заявку"
-        );
-      }
-    },
-    [restaurantId, scheduleId, loadShiftRequests]
-  );
+    try {
+      await cancelShiftRequest(restaurantId, scheduleId, requestId);
+      await loadShiftRequests();
+      const savedList = await listSavedSchedules(restaurantId);
+      setSavedSchedules(savedList);
+      setScheduleMessage("Заявка отменена");
+    } catch (e: any) {
+      setScheduleError(e?.friendlyMessage || "Не удалось отменить заявку");
+    }
+  },
+  [restaurantId, scheduleId, loadShiftRequests]
+);
 
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;

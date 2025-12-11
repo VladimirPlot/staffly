@@ -86,22 +86,22 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
     async (payload: ContactRequest) => {
       setDialogSubmitting(true);
       setDialogError(null);
-      try {
-        if (editing) {
-          await updateContact(restaurantId, editing.id, payload);
-        } else {
-          await createContact(restaurantId, payload);
-        }
-        setDialogOpen(false);
-        setEditing(null);
-        await loadContacts();
-      } catch (e: any) {
-        console.error("Failed to save contact", e);
-        const message = e?.response?.data?.message || "Не удалось сохранить контакт";
-        setDialogError(message);
-      } finally {
-        setDialogSubmitting(false);
+    try {
+      if (editing) {
+        await updateContact(restaurantId, editing.id, payload);
+      } else {
+        await createContact(restaurantId, payload);
       }
+      setDialogOpen(false);
+      setEditing(null);
+      await loadContacts();
+    } catch (e: any) {
+      console.error("Failed to save contact", e);
+      const message = e?.friendlyMessage || "Не удалось сохранить контакт";
+      setDialogError(message);
+    } finally {
+      setDialogSubmitting(false);
+    }
     },
     [editing, restaurantId, loadContacts]
   );

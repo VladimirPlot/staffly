@@ -32,7 +32,7 @@ export default function LoginRegister() {
       const { token } = await login({ phone: lPhone.trim(), password: lPassword });
       await loginWithToken(token);
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Ошибка входа");
+      setError(e?.friendlyMessage || "Ошибка входа");
     } finally {
       setBusy(false);
     }
@@ -52,7 +52,7 @@ export default function LoginRegister() {
       });
       await loginWithToken(token);
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || "Ошибка регистрации");
+      setError(e?.friendlyMessage || "Ошибка регистрации");
     } finally {
       setBusy(false);
     }
