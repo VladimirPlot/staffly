@@ -6,9 +6,14 @@ import Card from "../../../shared/ui/Card";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
-import ScheduleTable from "../components/ScheduleTable";
+import SavedSchedulesSection from "../components/SavedSchedulesSection";
+import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
+import ScheduleTableSection from "../components/ScheduleTableSection";
+import ScheduleTabsNav from "../components/ScheduleTabsNav";
 import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
+import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
+import TodayShiftsCard from "../components/TodayShiftsCard";
 import {
   createSchedule,
   createReplacement,
@@ -766,123 +771,22 @@ const SchedulePage: React.FC = () => {
       )}
 
       {!loading && !error && !schedule && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-sm font-medium text-zinc-700">
-                <span>Сохранённые графики</span>
-                {hasPendingSavedSchedules && (
-                  <span
-                    className="inline-block h-2 w-2 rounded-full bg-emerald-500"
-                    aria-label="Есть необработанные заявки"
-                  />
-                )}
-              </div>
-              <div className="text-xs text-zinc-500">
-                {filteredSavedSchedules.length > 0
-                  ? "Нажмите «Открыть», чтобы посмотреть график или скачайте файл."
-                  : canManage
-                  ? "Пока список пуст. Сохраните график, чтобы увидеть его здесь."
-                  : "Пока нет сохранённых графиков. Дождитесь, когда менеджер добавит новый график."}
-              </div>
-            </div>
-            {canManage && (
-              <div className="flex items-center gap-2 text-sm text-zinc-700">
-                <span>Должность:</span>
-                <select
-                  className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:border-black focus:outline-none"
-                  value={positionFilter}
-                  onChange={(e) =>
-                    setPositionFilter(e.target.value === "all" ? "all" : Number(e.target.value))
-                  }
-                >
-                  <option value="all">Все</option>
-                  {positions.map((position) => (
-                    <option key={position.id} value={position.id}>
-                      {position.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {filteredSavedSchedules.length > 0 && (
-            <Card>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {filteredSavedSchedules.map((item) => {
-                  const isActive = selectedSavedId === item.id;
-                  const isOpening = scheduleLoading && selectedSavedId === item.id;
-                  const isDownloading = downloading?.id === item.id;
-                  const menuOpen = downloadMenuFor === item.id;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`relative flex h-full flex-col justify-between rounded-2xl border px-4 py-3 text-sm transition ${
-                        isActive
-                          ? "border-black bg-zinc-50"
-                          : "border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50"
-                      }`}
-                    >
-                      {item.hasPendingShiftRequests && (
-                        <span
-                          className="absolute right-2 top-2 inline-block h-2 w-2 rounded-full bg-emerald-500"
-                          aria-label="Есть необработанные заявки"
-                        />
-                      )}
-                      <div>
-                        <div className="font-medium text-zinc-800">{item.title}</div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          {item.startDate} — {item.endDate}
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => handleOpenSavedSchedule(item.id)}
-                          disabled={isActive || isOpening}
-                        >
-                          {isOpening ? "Открывается…" : isActive ? "Открыт" : "Открыть"}
-                        </Button>
-                        <div className="relative">
-                          <Button
-                            variant="outline"
-                            onClick={() => setDownloadMenuFor(menuOpen ? null : item.id)}
-                            disabled={isDownloading}
-                          >
-                            Скачать
-                          </Button>
-                          {menuOpen && (
-                            <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-zinc-200 bg-white shadow-lg">
-                              <button
-                                className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                                onClick={() => {
-                                  handleDownloadXlsx(item.id);
-                                  setDownloadMenuFor(null);
-                                }}
-                              >
-                                Скачать .xlsx
-                              </button>
-                              <button
-                                className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                                onClick={() => {
-                                  handleDownloadJpg(item.id);
-                                  setDownloadMenuFor(null);
-                                }}
-                              >
-                                Скачать .jpg
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
-        </div>
+        <SavedSchedulesSection
+          canManage={canManage}
+          savedSchedules={filteredSavedSchedules}
+          positions={positions}
+          positionFilter={positionFilter}
+          onPositionFilterChange={setPositionFilter}
+          onOpenSavedSchedule={handleOpenSavedSchedule}
+          onDownloadXlsx={handleDownloadXlsx}
+          onDownloadJpg={handleDownloadJpg}
+          downloadMenuFor={downloadMenuFor}
+          onToggleDownloadMenu={setDownloadMenuFor}
+          downloading={downloading}
+          selectedSavedId={selectedSavedId}
+          scheduleLoading={scheduleLoading}
+          hasPendingSavedSchedules={hasPendingSavedSchedules}
+        />
       )}
 
       {!loading && !error && !canManage && filteredSavedSchedules.length === 0 && !schedule && !scheduleLoading && (
@@ -904,269 +808,64 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && schedule && !scheduleLoading && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <Button variant="ghost" onClick={handleCloseSavedSchedule}>
-                ← Ко всем графикам
-              </Button>
-              <div className="space-y-1">
-                <div className="text-xl font-semibold text-zinc-900">{schedule.title}</div>
-                <div className="text-sm text-zinc-600">
-                  {schedule.config.startDate} — {schedule.config.endDate}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {canManage && scheduleReadOnly && scheduleId && (
-                <>
-                  <Button variant="outline" onClick={handleEnterEditMode} disabled={deleting}>
-                    Редактировать
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleDeleteSchedule}
-                    disabled={deleting}
-                    className={`border-red-200 text-red-600 hover:bg-red-50 ${
-                      deleting ? "cursor-wait opacity-60" : ""
-                    }`}
-                  >
-                    {deleting ? "Удаление…" : "Удалить"}
-                  </Button>
-                </>
-              )}
-              {canManage && scheduleId && (
-                <div className="relative">
-                  <Button
-                    variant="outline"
-                    onClick={() => setDownloadMenuFor(downloadMenuFor === scheduleId ? null : scheduleId)}
-                    disabled={Boolean(downloading)}
-                  >
-                    Скачать
-                  </Button>
-                  {downloadMenuFor === scheduleId && (
-                    <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-zinc-200 bg-white shadow-lg">
-                      <button
-                        className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                        onClick={() => {
-                          handleDownloadXlsx(scheduleId);
-                          setDownloadMenuFor(null);
-                        }}
-                      >
-                        Скачать .xlsx
-                      </button>
-                      <button
-                        className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
-                        onClick={() => {
-                          handleDownloadJpg(scheduleId);
-                          setDownloadMenuFor(null);
-                        }}
-                      >
-                        Скачать .jpg
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {!canManage && canCreateShiftRequest && (
-                <>
-                  <Button variant="outline" onClick={handleOpenReplacement}>
-                    Создать замену
-                  </Button>
-                  <Button variant="outline" onClick={handleOpenSwap}>
-                    Создать обмен сменами
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
+          <ScheduleDetailHeader
+            schedule={schedule}
+            canManage={canManage}
+            scheduleReadOnly={scheduleReadOnly}
+            scheduleId={scheduleId}
+            deleting={deleting}
+            onEnterEditMode={handleEnterEditMode}
+            onDelete={handleDeleteSchedule}
+            downloadMenuFor={downloadMenuFor}
+            onToggleDownloadMenu={setDownloadMenuFor}
+            downloading={downloading}
+            onDownloadXlsx={handleDownloadXlsx}
+            onDownloadJpg={handleDownloadJpg}
+            canCreateShiftRequest={canCreateShiftRequest}
+            onOpenReplacement={handleOpenReplacement}
+            onOpenSwap={handleOpenSwap}
+            onCloseSavedSchedule={handleCloseSavedSchedule}
+          />
 
-          <div className="flex flex-wrap gap-2 border-b border-zinc-200 text-sm font-medium text-zinc-700">
-            <button
-              className={`rounded-t-xl px-4 py-2 transition ${
-                activeTab === "today"
-                  ? "border-b-2 border-black text-black"
-                  : hasTodayShifts
-                  ? "text-zinc-600 hover:text-black"
-                  : "cursor-not-allowed text-zinc-400"
-              }`}
-              disabled={!hasTodayShifts}
-              onClick={() => hasTodayShifts && setActiveTab("today")}
-            >
-              Состав сегодня
-            </button>
-            <button
-              className={`rounded-t-xl px-4 py-2 transition ${
-                activeTab === "table" ? "border-b-2 border-black text-black" : "text-zinc-600 hover:text-black"
-              }`}
-              onClick={() => setActiveTab("table")}
-            >
-              График
-            </button>
-            <button
-              className={`rounded-t-xl px-4 py-2 transition ${
-                activeTab === "requests"
-                  ? "border-b-2 border-black text-black"
-                  : "text-zinc-600 hover:text-black"
-              }`}
-              onClick={() => setActiveTab("requests")}
-            >
-              Заявки
-            </button>
-          </div>
+          <ScheduleTabsNav
+            activeTab={activeTab}
+            hasTodayShifts={hasTodayShifts}
+            onChange={setActiveTab}
+          />
 
           {activeTab === "today" && hasTodayShifts && (
-            <Card className="space-y-3">
-              <div className="text-lg font-semibold text-zinc-900">Сегодня по этому графику работают:</div>
-              <div className="space-y-2 text-sm text-zinc-700">
-                {todaysShifts.map((item) => (
-                  <div
-                    key={item.memberId}
-                    className={
-                      currentMember && item.memberId === currentMember.id ? "font-semibold text-zinc-900" : ""
-                    }
-                  >
-                    {item.displayName} — {item.shift}
-                  </div>
-                ))}
-              </div>
-            </Card>
+            <TodayShiftsCard todaysShifts={todaysShifts} currentMemberId={currentMember?.id ?? null} />
           )}
 
           {activeTab === "table" && (
-            <>
-              {canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading && (
-                <div className="flex flex-wrap justify-end gap-2">
-                  {scheduleId && (
-                    <Button
-                      variant="ghost"
-                      onClick={handleCancelEdit}
-                      disabled={saving}
-                      className={saving ? "cursor-not-allowed opacity-60" : ""}
-                    >
-                      Отменить
-                    </Button>
-                  )}
-                  <Button
-                    onClick={handleSaveSchedule}
-                    disabled={saving}
-                    className={saving ? "cursor-wait opacity-70" : ""}
-                  >
-                    {saving ? "Сохранение…" : scheduleId ? "Сохранить изменения" : "Сохранить график"}
-                  </Button>
-                </div>
-              )}
-
-              <Card className="overflow-hidden">
-                {scheduleReadOnly && (
-                  <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    Просмотр сохранённого графика
-                  </div>
-                )}
-                {schedule.rows.length === 0 ? (
-                  <div className="text-sm text-zinc-600">
-                    В выбранных должностях пока нет сотрудников. Попробуйте выбрать другие должности.
-                  </div>
-                ) : (
-                  <ScheduleTable data={schedule} onChange={handleCellChange} readOnly={scheduleReadOnly} />
-                )}
-                {schedule.rows.length > 0 && monthFallback && (
-                  <div className="mt-3 text-xs text-zinc-500">
-                    Период: {schedule.config.startDate} — {schedule.config.endDate} ({monthFallback})
-                  </div>
-                )}
-              </Card>
-            </>
+            <ScheduleTableSection
+              schedule={schedule}
+              scheduleReadOnly={scheduleReadOnly}
+              scheduleId={scheduleId}
+              saving={saving}
+              monthFallback={monthFallback}
+              canManage={canManage}
+              loading={loading}
+              error={error}
+              scheduleLoading={scheduleLoading}
+              onCancelEdit={handleCancelEdit}
+              onSave={handleSaveSchedule}
+              onCellChange={handleCellChange}
+            />
           )}
 
           {activeTab === "requests" && (
-            <div className="space-y-3">
-              <div className="text-lg font-semibold text-zinc-900">
-                {canManage ? "Заявки по этому графику" : "Мои заявки по этому графику"}
-              </div>
-              {shiftRequestsLoading && <Card>Заявки на смены загружаются…</Card>}
-              {!shiftRequestsLoading && shiftRequestsError && (
-                <Card className="border-red-200 bg-red-50 text-red-700">{shiftRequestsError}</Card>
-              )}
-              {!shiftRequestsLoading && !shiftRequestsError && sortedShiftRequests.length === 0 && (
-                <Card>Пока нет заявок по этому графику.</Card>
-              )}
-              {!shiftRequestsLoading && !shiftRequestsError && sortedShiftRequests.length > 0 && (
-                <div className="space-y-3">
-                  {sortedShiftRequests.map((request) => (
-                    <Card key={request.id} className="border-zinc-200">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="space-y-1 text-sm text-zinc-700">
-                          <div className="flex flex-wrap items-center gap-2 font-medium text-zinc-900">
-                            <span>{request.type === "REPLACEMENT" ? "Замена" : "Обмен сменами"}</span>
-                            <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-normal text-zinc-700">
-                              {humanStatus(request.status)}
-                            </span>
-                          </div>
-                          <div className="text-xs text-zinc-600">
-                            {request.type === "REPLACEMENT" ? "От" : "Первый"}: {request.fromMember.displayName}
-                            {request.dayFrom && (
-                              <>
-                                {" "}• {shiftDisplay(request.fromMember.id, request.dayFrom)}
-                              </>
-                            )}
-                          </div>
-                          <div className="text-xs text-zinc-600">
-                            {request.type === "REPLACEMENT" ? "Кому" : "Ворой"}: {request.toMember.displayName}
-                            {request.dayTo && (
-                              <>
-                                {" "}• {shiftDisplay(request.toMember.id, request.dayTo)}
-                              </>
-                            )}
-                            {request.type === "REPLACEMENT" && request.dayFrom && !request.dayTo && (
-                              <>
-                                {" "}• {shiftDisplay(request.toMember.id, request.dayFrom)}
-                              </>
-                            )}
-                          </div>
-                          {request.reason && (
-                            <div className="text-xs text-zinc-600">Причина: {request.reason}</div>
-                          )}
-                          <div className="text-xs text-zinc-500">Создано: {new Date(request.createdAt).toLocaleString("ru-RU")}</div>
-                        </div>
-                        {((canManage && request.status === "PENDING_MANAGER") ||
-                          canCancelOwnRequest(request)) && (
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                            {canManage && request.status === "PENDING_MANAGER" && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => handleManagerDecision(request.id, true)}
-                                  className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                                >
-                                  Подтвердить
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => handleManagerDecision(request.id, false)}
-                                  className="border-red-200 text-red-700 hover:bg-red-50"
-                                >
-                                  Отказать
-                                </Button>
-                              </>
-                            )}
-
-                            {canCancelOwnRequest(request) && (
-                              <Button
-                                variant="outline"
-                                onClick={() => handleCancelMyShiftRequest(request.id)}
-                                className="border-zinc-200 text-zinc-700 hover:bg-zinc-50"
-                              >
-                                Отменить заявку
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ShiftRequestsSection
+              canManage={canManage}
+              loading={shiftRequestsLoading}
+              error={shiftRequestsError}
+              requests={sortedShiftRequests}
+              humanStatus={humanStatus}
+              shiftDisplay={shiftDisplay}
+              canCancelOwnRequest={canCancelOwnRequest}
+              onManagerDecision={handleManagerDecision}
+              onCancel={handleCancelMyShiftRequest}
+            />
           )}
         </div>
       )}
