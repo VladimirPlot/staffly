@@ -13,6 +13,7 @@ import {
   dismissNotification,
 } from "../../notifications/api";
 import { listSavedSchedules, type ScheduleSummary } from "../../schedule/api";
+import { fetchUnreadAnonymousLetters } from "../../anonymousLetters/api";
 
 type UpcomingBirthday = {
   id: number;
@@ -91,6 +92,7 @@ export default function RestaurantHome() {
   const [notificationsHidden, setNotificationsHidden] = React.useState(false);
   const [myMembership, setMyMembership] = React.useState<MemberDto | null>(null);
   const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
+  const [hasUnreadAnonymousLetters, setHasUnreadAnonymousLetters] = React.useState(false);
 
   // Название ресторана
   React.useEffect(() => {
@@ -292,6 +294,31 @@ export default function RestaurantHome() {
     };
   }, [restaurantId, canAccessSchedules]);
 
+  React.useEffect(() => {
+    let alive = true;
+    if (!restaurantId || access.normalizedRestaurantRole !== "ADMIN") {
+      setHasUnreadAnonymousLetters(false);
+      return () => {
+        alive = false;
+      };
+    }
+
+    (async () => {
+      try {
+        const { hasUnread } = await fetchUnreadAnonymousLetters(restaurantId);
+        if (!alive) return;
+        setHasUnreadAnonymousLetters(hasUnread);
+      } catch {
+        if (!alive) return;
+        setHasUnreadAnonymousLetters(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [restaurantId, access.normalizedRestaurantRole]);
+
   // Разовое скрытие уведомлений сотрудником:
   // помечаем их dismissed на бэкенде + убираем из локального стейта + прячем блок через localStorage
   const hideAndDismissNotifications = React.useCallback(async () => {
@@ -429,6 +456,24 @@ export default function RestaurantHome() {
             )}
           </Link>
         )}
+
+        <Link
+          to="/anonymous-letter"
+          className="relative block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
+        >
+          <div className="flex items-center gap-2 text-lg font-semibold">
+            <span>Анонимное письмо</span>
+            {hasUnreadAnonymousLetters && (
+              <span
+                className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+                aria-label="Есть непрочитанные письма"
+              />
+            )}
+          </div>
+          <div className="mt-1 text-sm text-zinc-600">
+            Отправьте обращение руководителю ресторана или прочитайте новые письма.
+          </div>
+        </Link>
 
         {canAccessSchedules && (
           <Link

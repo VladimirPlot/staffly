@@ -26,6 +26,7 @@ import SchedulePage from "./features/schedule/pages/SchedulePage";
 import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
 import NotificationsPage from "./features/notifications/pages/NotificationsPage";
 import ContactsPage from "./features/contacts/pages/ContactsPage";
+import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLettersPage";
 
 /* ===== TopBar ===== */
 function TopBar() {
@@ -220,6 +221,17 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <ContactsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/anonymous-letter"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <AnonymousLettersPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
