@@ -358,10 +358,10 @@ export default function InvitePage() {
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-3"><BackToHome /></div>
-      {/* Блок: Участники */}
+      {/* Блок: Сотрудники */}
       <Card className="mb-4">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-semibold">Участники</h2>
+          <h2 className="text-xl font-semibold">Сотрудники</h2>
           {canInvite && (
             <div className="flex flex-wrap items-center gap-2">
               <Link

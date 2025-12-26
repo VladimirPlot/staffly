@@ -32,6 +32,7 @@ import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLet
 function TopBar() {
   const { user, token, logout } = useAuth();
   const [restName, setRestName] = React.useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
 
   React.useEffect(() => {
     let alive = true;
@@ -52,61 +53,136 @@ function TopBar() {
     };
   }, [user?.restaurantId]);
 
+  // закрывать меню при смене токена/пользователя/ресторана
+  React.useEffect(() => {
+    setMobileOpen(false);
+  }, [token, user?.restaurantId]);
+
   const homeHref = token ? (user?.restaurantId ? "/app" : "/restaurants") : "/login";
 
   return (
-    <header className="mb-6 flex items-center justify-between">
-      <Link to={homeHref} className="flex items-center gap-2">
-        <span className="text-xl font-semibold">Staffly</span>
-        <span className="rounded-full bg-zinc-900 px-2 py-1 text-xs font-medium text-white">
-          alpha
-        </span>
-      </Link>
+    <div className="mb-6">
+      <header className="flex items-center justify-between gap-3">
+        <Link to={homeHref} className="flex items-center gap-2">
+          <span className="text-xl font-semibold">Staffly</span>
+          <span className="rounded-full bg-zinc-900 px-2 py-1 text-xs font-medium text-white">
+            alpha
+          </span>
+        </Link>
 
-      {token ? (
-        <div className="flex items-center gap-3">
+        {token ? (
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            {/* ====== DESKTOP (sm+) ====== */}
+            {user?.restaurantId && restName && (
+              <div className="hidden items-center gap-2 sm:flex">
+                <Link
+                  to="/app"
+                  title="Дом ресторана"
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-50"
+                >
+                  {restName}
+                </Link>
+                <Link to="/restaurants" className="text-xs text-zinc-600 hover:underline">
+                  Сменить ресторан
+                </Link>
+              </div>
+            )}
+
+            {user && (
+              <>
+                <Avatar name={user.name} imageUrl={user.avatarUrl} />
+                <div className="hidden text-sm leading-tight sm:block">
+                  <div className="font-medium">{user.name}</div>
+                  <div className="text-zinc-500">{user.phone}</div>
+                </div>
+              </>
+            )}
+
+            <div className="hidden items-center gap-3 sm:flex">
+              <Link to="/me/income">
+                <Button variant="outline">Мои доходы</Button>
+              </Link>
+              <Link to="/profile">
+                <Button variant="outline">Профиль</Button>
+              </Link>
+              <Button variant="ghost" onClick={logout}>
+                Выйти
+              </Button>
+            </div>
+
+            {/* ====== MOBILE (до sm) ====== */}
+            <button
+              type="button"
+              className="sm:hidden rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50"
+              aria-label="Открыть меню"
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen((v) => !v)}
+            >
+              ☰
+            </button>
+          </div>
+        ) : (
+          <div className="text-sm text-zinc-600">Войдите, чтобы продолжить</div>
+        )}
+      </header>
+
+      {/* ===== Mobile dropdown menu ===== */}
+      {token && mobileOpen && (
+        <div className="mt-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:hidden">
           {user?.restaurantId && restName && (
-            <div className="hidden items-center gap-2 sm:flex">
-              {/* бейдж теперь ведёт на «дом ресторана» */}
+            <div className="mb-3 flex items-center justify-between gap-2">
               <Link
                 to="/app"
-                title="Дом ресторана"
                 className="rounded-full border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-50"
+                onClick={() => setMobileOpen(false)}
               >
                 {restName}
               </Link>
-              {/* тонкая ссылка для смены ресторана */}
-              <Link to="/restaurants" className="text-xs text-zinc-600 hover:underline">
-                сменить
+              <Link
+                to="/restaurants"
+                className="text-xs text-zinc-600 hover:underline"
+                onClick={() => setMobileOpen(false)}
+              >
+                Сменить ресторан
               </Link>
             </div>
           )}
 
           {user && (
-            <>
-              <Avatar name={user.name} imageUrl={user.avatarUrl} />
-              <div className="hidden text-sm leading-tight sm:block">
-                <div className="font-medium">{user.name}</div>
-                <div className="text-zinc-500">{user.phone}</div>
-              </div>
-            </>
+            <div className="mb-3 text-sm">
+              <div className="font-medium">{user.name}</div>
+              <div className="text-zinc-500">{user.phone}</div>
+            </div>
           )}
 
-          {/* ВЕРХНЕЕ меню минималистичное: оставили только профиль и выход */}
-          <Link to="/me/income">
-            <Button variant="outline">Мои доходы</Button>
-          </Link>
-          <Link to="/profile">
-            <Button variant="outline">Профиль</Button>
-          </Link>
-          <Button variant="ghost" onClick={logout}>
-            Выйти
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Link
+              to="/me/income"
+              className="rounded-xl px-3 py-2 hover:bg-zinc-50"
+              onClick={() => setMobileOpen(false)}
+            >
+              Мои доходы
+            </Link>
+            <Link
+              to="/profile"
+              className="rounded-xl px-3 py-2 hover:bg-zinc-50"
+              onClick={() => setMobileOpen(false)}
+            >
+              Профиль
+            </Link>
+            <button
+              className="rounded-xl px-3 py-2 text-left hover:bg-zinc-50"
+              onClick={() => {
+                setMobileOpen(false);
+                logout();
+              }}
+            >
+              Выйти
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="text-sm text-zinc-600">Войдите, чтобы продолжить</div>
       )}
-    </header>
+    </div>
   );
 }
 
@@ -121,7 +197,7 @@ function LandingRedirect() {
 export default function App() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 p-4">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto w-full max-w-5xl">
         <AuthProvider>
           <TopBar />
 

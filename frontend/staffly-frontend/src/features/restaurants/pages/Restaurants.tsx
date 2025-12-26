@@ -114,8 +114,9 @@ export default function Restaurants() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                     <Button
+                      className="w-full sm:w-auto"
                       onClick={async () => {
                         try {
                       await acceptInvite(inv.token);
@@ -133,6 +134,7 @@ export default function Restaurants() {
                     </Button>
 
                     <Button
+                      className="w-full sm:w-auto"
                       variant="outline"
                       onClick={async () => {
                       try {

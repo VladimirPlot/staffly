@@ -48,10 +48,11 @@ type ArrivalSelectorProps = {
   onCommit: (value: string) => void;
 };
 
+const STICKY_COL_SHADOW = "shadow-[8px_0_10px_-10px_rgba(0,0,0,0.45)]"; // справа тень у липкого столбца
+const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // снизу тень у липких строк
+
 const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) => {
-  if (!data) {
-    return null;
-  }
+  if (!data) return null;
 
   const { days, rows, title, config } = data;
 
@@ -74,16 +75,20 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
   );
 
   const gridTemplateColumns = React.useMemo(() => {
-    const dayColumns = days.map(() => "minmax(3.5rem, 1fr)").join(" ");
-    return `max-content ${dayColumns}`;
+    // первый столбец фиксируем в адекватных рамках (чтобы телефон не умирал)
+    const firstCol = "minmax(8.5rem, 9rem)";
+    const dayCols = days.map(() => "minmax(3.5rem, 1fr)").join(" ");
+    return `${firstCol} ${dayCols}`;
   }, [days]);
 
   return (
-    <div className="overflow-x-auto">
+    // ❗️скролл только в ScheduleTableSection (overflow-auto)
+    <div className="inline-block min-w-full align-top">
       <div
         className="grid border border-zinc-300 bg-white"
-        style={{ gridTemplateColumns, minWidth: "100%" }}
+        style={{ gridTemplateColumns, width: "max-content", minWidth: "100%" }}
       >
+        {/* Заголовок таблицы (НЕ sticky) */}
         <div
           className="flex items-center justify-center border-b border-zinc-300 px-3 py-3 text-center font-semibold"
           style={{ gridColumn: `1 / span ${days.length + 1}` }}
@@ -91,39 +96,87 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
           {title}
         </div>
 
-        <div className="border-b border-zinc-200" />
+        {/* ====== Линия 1: День недели (sticky top-0) ====== */}
+        <div
+          className={[
+            "sticky left-0 top-0 z-50 flex h-10 items-center justify-start",
+            "border-b border-r border-zinc-200 bg-white px-3",
+            "text-xs font-semibold text-zinc-700",
+            STICKY_COL_SHADOW,
+            STICKY_ROW_SHADOW,
+          ].join(" ")}
+        >
+          День недели
+        </div>
+
         {days.map((day) => (
           <div
             key={`weekday-${day.date}`}
-            className="flex items-center justify-center border-b border-l border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-600"
+            className={[
+              "sticky top-0 z-40 flex h-10 items-center justify-center",
+              "border-b border-l border-zinc-200 bg-white px-2",
+              "text-xs font-medium text-zinc-600",
+              STICKY_ROW_SHADOW,
+            ].join(" ")}
           >
             {day.weekdayLabel}
           </div>
         ))}
 
-        <div className="border-b border-zinc-200" />
+        {/* ====== Линия 2: День месяца (sticky top-10) ====== */}
+        <div
+          className={[
+            "sticky left-0 top-10 z-50 flex h-10 items-center justify-start",
+            "border-b border-r border-zinc-200 bg-white px-3",
+            "text-xs font-semibold text-zinc-700",
+            STICKY_COL_SHADOW,
+            STICKY_ROW_SHADOW,
+          ].join(" ")}
+        >
+          День месяца
+        </div>
+
         {days.map((day) => (
           <div
             key={`day-${day.date}`}
-            className="flex items-center justify-center border-b border-l border-zinc-200 px-2 py-1.5 text-xs text-zinc-700"
+            className={[
+              "sticky top-10 z-40 flex h-10 items-center justify-center",
+              "border-b border-l border-zinc-200 bg-white px-2",
+              "text-xs text-zinc-700",
+              STICKY_ROW_SHADOW,
+            ].join(" ")}
           >
             {day.dayNumber}
           </div>
         ))}
 
+        {/* ====== Данные ====== */}
         {rows.map((row, rowIndex) => {
           const rowKey = row.id ?? row.memberId ?? rowIndex;
+
           return (
             <React.Fragment key={rowKey}>
-              <div className="flex flex-col justify-center border-b border-zinc-200 px-3 py-3 text-sm font-medium text-zinc-800">
-                <span>{row.displayName}</span>
+              {/* Липкий столбец с именем */}
+              <div
+                className={[
+                  "sticky left-0 z-30 flex flex-col justify-center",
+                  "border-b border-r border-zinc-200 bg-white px-3 py-3",
+                  "text-sm font-medium text-zinc-800",
+                  STICKY_COL_SHADOW,
+                ].join(" ")}
+              >
+                <span className="truncate">{row.displayName}</span>
                 {row.positionName && (
-                  <span className="text-xs font-normal text-zinc-500">{row.positionName}</span>
+                  <span className="truncate text-xs font-normal text-zinc-500">
+                    {row.positionName}
+                  </span>
                 )}
               </div>
+
               {days.map((day) => {
                 const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
                 const value = data.cellValues[key] ?? "";
+
                 return (
                   <div
                     key={key}
@@ -152,7 +205,14 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
   );
 };
 
-function EditableCell({ value, shiftMode, placeholder, onInputChange, onCommit, onBlur }: EditableCellProps) {
+function EditableCell({
+  value,
+  shiftMode,
+  placeholder,
+  onInputChange,
+  onCommit,
+  onBlur,
+}: EditableCellProps) {
   switch (shiftMode) {
     case "ARRIVAL_ONLY":
       return <ArrivalSelector value={value} onCommit={onCommit} />;
@@ -175,8 +235,8 @@ function EditableCell({ value, shiftMode, placeholder, onInputChange, onCommit, 
 function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMode }) {
   if (!value) {
     return (
-      <div className="flex min-h-[2.5rem] items-center justify-center rounded-xl bg-white px-1.5 text-center text-xs leading-tight text-zinc-800">
-        &nbsp;
+      <div className="flex min-h-[2.5rem] items-center justify-center rounded-xl bg-white px-1.5 text-center text-xs leading-tight text-zinc-400">
+        —
       </div>
     );
   }
@@ -210,7 +270,6 @@ function ArrivalSelector({ value, onCommit }: ArrivalSelectorProps) {
       onCommit("");
       return;
     }
-
     const minute = normalizeMinute(hour, time.minute ?? 0);
     onCommit(formatTime(hour, minute));
   };
@@ -273,15 +332,13 @@ function TimeSelector({ value, onHourChange, onMinuteChange }: TimeSelectorProps
           </option>
         ))}
       </select>
+
       <select
         value={selectedMinute}
         onChange={(event) => {
           const rawValue = event.target.value;
-          if (rawValue === "") {
-            onMinuteChange(null);
-          } else {
-            onMinuteChange(Number(rawValue));
-          }
+          if (rawValue === "") onMinuteChange(null);
+          else onMinuteChange(Number(rawValue));
         }}
         disabled={value.hour === null}
         className="h-8 w-full min-w-[3.25rem] rounded-lg border border-zinc-200 bg-white px-1 text-center text-xs focus:border-zinc-400 focus:outline-none disabled:cursor-not-allowed disabled:bg-zinc-100"
@@ -319,10 +376,7 @@ function parseTimeRange(value: string): { from: TimeValue; to: TimeValue } {
     .map((part) => part.trim())
     .slice(0, 2);
 
-  return {
-    from: parseTime(from ?? ""),
-    to: parseTime(to ?? ""),
-  };
+  return { from: parseTime(from ?? ""), to: parseTime(to ?? "") };
 }
 
 function formatRange(from: TimeValue, to: TimeValue): string {

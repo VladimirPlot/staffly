@@ -73,7 +73,7 @@ export default function PositionsPage() {
           to="/employees/invite"
           className="inline-flex items-center text-zinc-700 hover:underline"
         >
-          ← Участники
+          ← Сотрудники
         </Link>
       </div>
       <div className="mb-4 flex items-center justify-between">

@@ -34,7 +34,8 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onSave,
   onCellChange,
 }) => {
-  const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
+  const showControls =
+    canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
 
   return (
     <>
@@ -50,29 +51,35 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
               Отменить
             </Button>
           )}
-          <Button
-            onClick={onSave}
-            disabled={saving}
-            className={saving ? "cursor-wait opacity-70" : ""}
-          >
+          <Button onClick={onSave} disabled={saving} className={saving ? "cursor-wait opacity-70" : ""}>
             {saving ? "Сохранение…" : scheduleId ? "Сохранить изменения" : "Сохранить график"}
           </Button>
         </div>
       )}
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-visible">
         {scheduleReadOnly && (
           <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Просмотр сохранённого графика
           </div>
         )}
+
         {schedule.rows.length === 0 ? (
           <div className="text-sm text-zinc-600">
             В выбранных должностях пока нет сотрудников. Попробуйте выбрать другие должности.
           </div>
         ) : (
-          <ScheduleTable data={schedule} onChange={onCellChange} readOnly={scheduleReadOnly} />
+          <div className="-mx-6 max-h-[70vh] overflow-auto [webkit-overflow-scrolling:touch]">
+            <div className="inline-block min-w-full px-6 align-top">
+              <ScheduleTable
+                data={schedule}
+                onChange={onCellChange}
+                readOnly={scheduleReadOnly}
+              />
+            </div>
+          </div>
         )}
+
         {schedule.rows.length > 0 && monthFallback && (
           <div className="mt-3 text-xs text-zinc-500">
             Период: {schedule.config.startDate} — {schedule.config.endDate} ({monthFallback})

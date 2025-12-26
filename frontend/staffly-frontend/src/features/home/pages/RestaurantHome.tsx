@@ -432,7 +432,7 @@ export default function RestaurantHome() {
           to="/employees/invite"
           className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
         >
-          <div className="text-lg font-semibold">Участники</div>
+          <div className="text-lg font-semibold">Сотрудники</div>
           <div className="mt-1 text-sm text-zinc-600">
             Приглашайте сотрудников и назначайте роли/позиции.
           </div>

@@ -744,8 +744,20 @@ const SchedulePage: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <BackToHome />
+    <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-700">
+      <BackToHome className="text-sm" />
 
+      {schedule && (
+        <button
+          type="button"
+          onClick={handleCloseSavedSchedule}
+          className="inline-flex items-center text-zinc-700 hover:underline"
+          title="Ко всем графикам"
+        >
+          ← Ко всем графикам
+        </button>
+      )}
+    </div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-900">Графики</h1>
@@ -824,7 +836,6 @@ const SchedulePage: React.FC = () => {
             canCreateShiftRequest={canCreateShiftRequest}
             onOpenReplacement={handleOpenReplacement}
             onOpenSwap={handleOpenSwap}
-            onCloseSavedSchedule={handleCloseSavedSchedule}
           />
 
           <ScheduleTabsNav

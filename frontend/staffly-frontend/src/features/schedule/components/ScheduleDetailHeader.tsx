@@ -19,7 +19,6 @@ type ScheduleDetailHeaderProps = {
   canCreateShiftRequest: boolean;
   onOpenReplacement: () => void;
   onOpenSwap: () => void;
-  onCloseSavedSchedule: () => void;
 };
 
 const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
@@ -38,21 +37,16 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   canCreateShiftRequest,
   onOpenReplacement,
   onOpenSwap,
-  onCloseSavedSchedule,
 }) => {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-start gap-3">
-        <Button variant="ghost" onClick={onCloseSavedSchedule}>
-          ← Ко всем графикам
-        </Button>
-        <div className="space-y-1">
-          <div className="text-xl font-semibold text-zinc-900">{schedule.title}</div>
-          <div className="text-sm text-zinc-600">
-            {schedule.config.startDate} — {schedule.config.endDate}
-          </div>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0 space-y-1">
+        <div className="text-xl font-semibold text-zinc-900">{schedule.title}</div>
+        <div className="text-sm text-zinc-600">
+          {schedule.config.startDate} — {schedule.config.endDate}
         </div>
       </div>
+
       <div className="flex flex-wrap items-center gap-2">
         {canManage && scheduleReadOnly && scheduleId && (
           <>
@@ -71,6 +65,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             </Button>
           </>
         )}
+
         {canManage && scheduleId && (
           <div className="relative">
             <Button
@@ -80,6 +75,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             >
               Скачать
             </Button>
+
             {downloadMenuFor === scheduleId && (
               <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-zinc-200 bg-white shadow-lg">
                 <button
@@ -104,6 +100,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             )}
           </div>
         )}
+
         {!canManage && canCreateShiftRequest && (
           <>
             <Button variant="outline" onClick={onOpenReplacement}>
