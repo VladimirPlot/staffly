@@ -8,6 +8,7 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 import { getMyRoleIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
+import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import {
   listCategories,
   createCategory,
@@ -22,24 +23,23 @@ import {
   type TrainingModuleConfig,
 } from "../config";
 
-function Breadcrumbs({ module }: { module: TrainingModuleConfig }) {
+function BreadcrumbsBlock({ module }: { module: TrainingModuleConfig }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
-      <BackToHome />
-      <span>→</span>
-      <Link to="/training" className="hover:underline">
-        Тренинг
-      </Link>
-      <span>→</span>
-      <span className="font-medium text-zinc-800">{module.title}</span>
-    </div>
+    <Breadcrumbs
+      home={<BackToHome className="text-sm" />}
+      items={[
+        { label: "Тренинг", to: "/training" },
+        { label: module.title },
+      ]}
+      className="mb-3"
+    />
   );
 }
 
 function ServiceStub({ module }: { module: TrainingModuleConfig }) {
   return (
     <div className="mx-auto max-w-3xl">
-      <Breadcrumbs module={module} />
+      <BreadcrumbsBlock module={module} />
       <Card>
         <div className="text-lg font-semibold">{module.title}</div>
         <div className="mt-2 text-sm text-zinc-600">
@@ -174,7 +174,7 @@ function TrainingModuleCategoriesPage() {
   if (!restaurantId) {
     return (
       <div className="mx-auto max-w-3xl">
-        <Breadcrumbs module={moduleConfig} />
+        <BreadcrumbsBlock module={moduleConfig} />
         <Card>Сначала выберите ресторан.</Card>
       </div>
     );
@@ -182,7 +182,7 @@ function TrainingModuleCategoriesPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Breadcrumbs module={moduleConfig} />
+      <BreadcrumbsBlock module={moduleConfig} />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">{moduleConfig.title}</h2>

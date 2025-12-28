@@ -5,6 +5,9 @@ import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import { ArrowLeft } from "lucide-react";
+import Icon from "../../../shared/ui/Icon";
+
 import {
   listPositions,
   createPosition,
@@ -71,9 +74,16 @@ export default function PositionsPage() {
         <BackToHome className="text-sm" />
         <Link
           to="/employees/invite"
-          className="inline-flex items-center text-zinc-700 hover:underline"
+          title="Сотрудники"
+          aria-label="Сотрудники"
+          className={
+            "inline-flex items-center gap-0 rounded-2xl border border-zinc-200 " +
+            "bg-white px-2 py-1 text-sm font-medium text-zinc-700 shadow-sm " +
+            "transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+          }
         >
-          ← Сотрудники
+          <Icon icon={ArrowLeft} size="xs" decorative />
+          <span>Сотрудники</span>
         </Link>
       </div>
       <div className="mb-4 flex items-center justify-between">

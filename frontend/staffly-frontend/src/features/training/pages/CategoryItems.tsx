@@ -23,27 +23,13 @@ import { getMyRoleIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 
+import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
+import Icon from "../../../shared/ui/Icon";
+import { Pencil } from "lucide-react";
+
 const REQUIRED_MESSAGE = "Обязательное поле";
 
 type Params = { module: string; categoryId: string };
-
-function PencilIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M16.862 5.487a2.25 2.25 0 1 1 3.182 3.182L9.75 18.963l-4.5 1.318 1.318-4.5L16.862 5.487z" />
-      <path d="M15.75 6.6 17.4 8.25" />
-    </svg>
-  );
-}
 
 export default function TrainingCategoryItemsPage() {
   const params = useParams<Params>();
@@ -321,29 +307,19 @@ export default function TrainingCategoryItemsPage() {
     return <Navigate to="/training" replace />;
   }
 
-  const breadcrumbs = (
-    <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
-      <BackToHome />
-      <span>→</span>
-      <Link to="/training" className="hover:underline">
-        Тренинг
-      </Link>
-      <span>→</span>
-      <Link to={`/training/${moduleConfig.slug}`} className="hover:underline">
-        {moduleConfig.title}
-      </Link>
-      {category && (
-        <>
-          <span>→</span>
-          <span className="font-medium text-zinc-800">{category.name}</span>
-        </>
-      )}
-    </div>
-  );
 
   return (
     <div className="mx-auto max-w-5xl">
-      {breadcrumbs}
+      <Breadcrumbs
+        className="mb-3"
+        homeTo="/app"
+        homeLabel="Главная"
+        items={[
+          { label: "Тренинг", to: "/training" },
+          { label: moduleConfig.title, to: `/training/${moduleConfig.slug}` },
+          { label: category?.name ?? "Категория" },
+        ]}
+      />
 
       <Card className="mb-4">
         {categoryLoading ? (
@@ -473,13 +449,11 @@ export default function TrainingCategoryItemsPage() {
                   {canManage && !isEditing && (
                     <button
                       type="button"
-                      className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:bg-zinc-50"
-                      onClick={() =>
-                        setOpenActionsItemId((prev) => (prev === item.id ? null : item.id))
-                      }
                       aria-label="Действия с карточкой"
+                      className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 shadow-sm transition hover:bg-zinc-50"
+                      onClick={() => setOpenActionsItemId((prev) => (prev === item.id ? null : item.id))}
                     >
-                      <PencilIcon className="h-4 w-4" />
+                      <Icon icon={Pencil} size="sm" className="text-zinc-700" decorative />
                     </button>
                   )}
                   {canManage && actionsOpen && !isEditing && (
@@ -488,7 +462,7 @@ export default function TrainingCategoryItemsPage() {
                         Редактировать карточку
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         onClick={() => handleDeleteItem(item.id, item.name)}
                         disabled={deletingItemId === item.id}
                       >

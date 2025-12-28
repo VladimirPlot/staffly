@@ -5,6 +5,9 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 
+import { ArrowLeft } from "lucide-react";
+import Icon from "../../../shared/ui/Icon";
+
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
@@ -751,10 +754,16 @@ const SchedulePage: React.FC = () => {
         <button
           type="button"
           onClick={handleCloseSavedSchedule}
-          className="inline-flex items-center text-zinc-700 hover:underline"
+          className={
+            "inline-flex items-center gap-0 rounded-2xl border border-zinc-200 " +
+            "bg-white px-2 py-1 text-sm font-medium text-zinc-700 shadow-sm " +
+            "transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+          }
           title="Ко всем графикам"
+          aria-label="Ко всем графикам"
         >
-          ← Ко всем графикам
+          <Icon icon={ArrowLeft} size="xs" decorative />
+          <span>Ко всем графикам</span>
         </button>
       )}
     </div>

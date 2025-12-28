@@ -28,6 +28,9 @@ import NotificationsPage from "./features/notifications/pages/NotificationsPage"
 import ContactsPage from "./features/contacts/pages/ContactsPage";
 import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLettersPage";
 
+import { Menu } from "lucide-react";
+import Icon from "./shared/ui/Icon";
+
 /* ===== TopBar ===== */
 function TopBar() {
   const { user, token, logout } = useAuth();
@@ -113,12 +116,12 @@ function TopBar() {
             {/* ====== MOBILE (до sm) ====== */}
             <button
               type="button"
-              className="sm:hidden rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50"
+              className="sm:hidden rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50 inline-flex items-center justify-center"
               aria-label="Открыть меню"
               aria-expanded={mobileOpen}
               onClick={() => setMobileOpen((v) => !v)}
             >
-              ☰
+              <Icon icon={Menu} size={20} className="text-zinc-900" />
             </button>
           </div>
         ) : (
