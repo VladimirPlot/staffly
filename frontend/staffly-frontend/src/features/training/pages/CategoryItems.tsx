@@ -313,7 +313,6 @@ export default function TrainingCategoryItemsPage() {
       <Breadcrumbs
         className="mb-3"
         homeTo="/app"
-        homeLabel="Главная"
         items={[
           { label: "Тренинг", to: "/training" },
           { label: moduleConfig.title, to: `/training/${moduleConfig.slug}` },

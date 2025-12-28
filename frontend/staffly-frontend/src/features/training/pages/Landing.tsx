@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
-import BackToHome from "../../../shared/ui/BackToHome";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import { TRAINING_MODULES } from "../config";
 
@@ -8,10 +7,7 @@ export default function TrainingLandingPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-3">
-        <Breadcrumbs
-          home={<BackToHome className="text-sm" />}
-          items={[{ label: "Тренинг" }]}
-        />
+        <Breadcrumbs items={[{ label: "Тренинг" }]} />
       </div>
 
       <h2 className="mb-4 text-2xl font-semibold">Тренинг</h2>

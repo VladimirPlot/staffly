@@ -9,6 +9,7 @@ export type BreadcrumbItem = {
 };
 
 type Props = {
+  home?: React.ReactNode;
   homeTo?: string;
   homeLabel?: string;
   items: BreadcrumbItem[];
@@ -16,8 +17,9 @@ type Props = {
 };
 
 export default function Breadcrumbs({
+  home,
   homeTo = "/app",
-  homeLabel = "Главная",
+  homeLabel = "На главную",
   items,
   className = "",
 }: Props) {
@@ -34,8 +36,10 @@ export default function Breadcrumbs({
 
   const sep = <Icon icon={ChevronRight} size="xs" className="text-zinc-400" decorative />;
 
+  const depth = items.length;
+
   // parent = предпоследний элемент (если есть)
-  const parent = items.length >= 2 ? items[items.length - 2] : undefined;
+  const parent = depth >= 2 ? items[depth - 2] : undefined;
   const parentTo = parent?.to;
 
   const handleBack = () => {
@@ -46,34 +50,41 @@ export default function Breadcrumbs({
   // label для кнопки "Назад"
   const backLabel = parent?.label ? `${parent.label}` : "Назад";
 
+  const homeButton =
+    home ?? (
+      <Link to={homeTo} className={pillBase + " shrink-0"} title={homeLabel}>
+        <Icon icon={ArrowLeft} size="xs" decorative />
+        <span className="truncate">{homeLabel}</span>
+      </Link>
+    );
+
+  const shouldShowBack = depth >= 2;
+
   return (
     <>
       {/* Mobile: Home + Back(with parent) */}
       <div className={`flex min-w-0 items-center gap-2 text-sm text-zinc-700 sm:hidden ${className}`}>
         {/* Home фиксированный, не сжимается */}
-        <Link
-          to={homeTo}
-          className={pillBase + " shrink-0"}
-          title={homeLabel}
-        >
-          <Icon icon={ArrowLeft} size="xs" decorative />
-          <span className="truncate">{homeLabel}</span>
-        </Link>
+        {homeButton}
 
         {/* Back занимает оставшееся место и красиво обрезается */}
-        <button
-          type="button"
-          onClick={handleBack}
-          className={pillBase + " shrink-0 max-w-[60vw]"}
-          title={backLabel}
-        >
-          <Icon icon={ArrowLeft} size="xs" decorative />
-          <span className="min-w-0 truncate">{backLabel}</span>
-        </button>
+        {shouldShowBack && (
+          <button
+            type="button"
+            onClick={handleBack}
+            className={pillBase + " shrink-0 max-w-[60vw]"}
+            title={backLabel}
+          >
+            <Icon icon={ArrowLeft} size="xs" decorative />
+            <span className="min-w-0 truncate">{backLabel}</span>
+          </button>
+        )}
       </div>
 
-      {/* Desktop: full breadcrumbs */}
+      {/* Desktop: home + full breadcrumbs */}
       <div className={`hidden flex-wrap items-center gap-1 text-sm text-zinc-700 sm:flex ${className}`}>
+        {homeButton}
+        {items.length > 0 && sep}
         {items.map((it, i) => {
           const isLast = i === items.length - 1;
 

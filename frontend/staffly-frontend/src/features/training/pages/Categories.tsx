@@ -3,7 +3,6 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { getMyRoleIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
@@ -26,7 +25,6 @@ import {
 function BreadcrumbsBlock({ module }: { module: TrainingModuleConfig }) {
   return (
     <Breadcrumbs
-      home={<BackToHome className="text-sm" />}
       items={[
         { label: "Тренинг", to: "/training" },
         { label: module.title },
