@@ -7,11 +7,11 @@ import type { NotificationDto, NotificationRequest } from "../api";
 import {
   createNotification,
   deleteNotification,
-  dismissNotification,
   listNotifications,
   updateNotification,
 } from "../api";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
+import { Pencil, Trash2 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -44,7 +44,6 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
   const [dialogError, setDialogError] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<NotificationDto | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-  const [dismissingId, setDismissingId] = React.useState<number | null>(null);
 
   const loadNotifications = React.useCallback(async () => {
     setLoading(true);
@@ -141,25 +140,6 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
     }
   }, [deleteTarget, restaurantId, loadNotifications]);
 
-  const hideNotification = React.useCallback(
-    async (notification: NotificationDto) => {
-      setDismissingId(notification.id);
-    try {
-      await dismissNotification(restaurantId, notification.id);
-      setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
-    } catch (e: any) {
-      console.error("Failed to dismiss notification", e);
-      const message = e?.friendlyMessage || (e instanceof Error ? e.message : "");
-      if (message) {
-        window.alert(message);
-      }
-    } finally {
-      setDismissingId(null);
-      }
-    },
-    [restaurantId],
-  );
-
   const renderNotification = (notification: NotificationDto) => {
     const createdLabel = notification.createdAt
       ? `${notification.createdBy?.name ?? "Без имени"}, ${formatShortDate(notification.createdAt)}`
@@ -170,63 +150,56 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
         key={notification.id}
         className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-2">
           <div className="text-xs text-zinc-500">{createdLabel}</div>
-          <div className="flex items-center gap-2 text-xs text-zinc-600">
-            <span className="rounded-full bg-zinc-100 px-2 py-1">
-              До {formatDate(notification.expiresAt)}
-            </span>
-            {canManage ? (
-              <>
-                <Button variant="ghost" className="text-sm" onClick={() => openEdit(notification)}>
-                  Изменить
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="text-sm text-red-600"
-                  onClick={() => openDelete(notification)}
-                >
-                  Удалить
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="text-sm text-zinc-600"
-                  onClick={() => void hideNotification(notification)}
-                  disabled={dismissingId === notification.id}
-                >
-                  {dismissingId === notification.id ? "Скрываем…" : "Скрыть"}
-                </Button>
-              </>
-            ) : (
+          {canManage && (
+            <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
-                className="text-sm text-zinc-600"
-                onClick={() => void hideNotification(notification)}
-                disabled={dismissingId === notification.id}
+                size="icon"
+                aria-label="Изменить"
+                onClick={() => openEdit(notification)}
               >
-                {dismissingId === notification.id ? "Скрываем…" : "Скрыть"}
+                <Pencil className="h-4 w-4" />
               </Button>
-            )}
-          </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-red-600"
+                aria-label="Удалить"
+                onClick={() => openDelete(notification)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
         <div className="mt-2 whitespace-pre-wrap text-base text-zinc-900">{notification.content}</div>
         {notification.positions.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-zinc-700">
-            {notification.positions.map((p) => (
-              <span
-                key={p.id}
-                className={`rounded-full border px-2 py-1 ${
-                  p.active
-                    ? "border-zinc-200 bg-zinc-100"
-                    : "border-amber-200 bg-amber-50 text-amber-800"
-                }`}
-              >
-                {p.name}
-                {!p.active ? " (неактивна)" : ""}
-              </span>
-            ))}
+          <div className="mt-3 flex flex-col gap-1 text-xs text-zinc-700">
+            <div className="text-[11px] font-semibold uppercase text-zinc-500">Должности</div>
+            <div className="flex flex-wrap gap-2">
+              {notification.positions.map((p) => (
+                <span
+                  key={p.id}
+                  className={`rounded-full border px-2 py-1 ${
+                    p.active
+                      ? "border-zinc-200 bg-zinc-100"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  {p.name}
+                  {!p.active ? " (неактивна)" : ""}
+                </span>
+              ))}
+            </div>
           </div>
         )}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-800">
+            Уведомление до {formatDate(notification.expiresAt)}
+          </span>
+        </div>
       </div>
     );
   };

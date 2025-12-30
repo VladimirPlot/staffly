@@ -46,6 +46,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   const [progressSaving, setProgressSaving] = React.useState<number | null>(null);
   const [resetting, setResetting] = React.useState<number | null>(null);
   const [downloading, setDownloading] = React.useState<number | null>(null);
+  const [createKind, setCreateKind] = React.useState<ChecklistKind>("TRACKABLE");
 
   const checklistRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
 
@@ -93,12 +94,21 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     void loadChecklists();
   }, [loadChecklists]);
 
-  const openCreateDialog = React.useCallback((kind: ChecklistKind) => {
+  const openCreateDialog = React.useCallback(() => {
     setEditing(null);
     setDialogError(null);
-    setDialogInitial({ kind, name: "", positionIds: [], items: [""], periodicity: kind === "TRACKABLE" ? "DAILY" : undefined });
+
+    setDialogInitial({
+      kind: createKind,
+      name: "",
+      content: "",
+      positionIds: [],
+      periodicity: createKind === "TRACKABLE" ? "DAILY" : undefined,
+      items: [""],
+    });
+
     setDialogOpen(true);
-  }, []);
+  }, [createKind]);
 
   const openEditDialog = React.useCallback((checklist: ChecklistDto) => {
     setEditing(checklist);
@@ -129,22 +139,25 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
       if (!restaurantId) return;
       setDialogSubmitting(true);
       setDialogError(null);
-    try {
-      if (editing) {
-        await updateChecklist(restaurantId, editing.id, payload);
-      } else {
-        await createChecklist(restaurantId, payload);
+
+      try {
+        if (editing) {
+          await updateChecklist(restaurantId, editing.id, payload);
+        } else {
+          await createChecklist(restaurantId, payload);
+          setCreateKind(payload.kind); // запомнили последний выбранный тип
+        }
+
+        setDialogOpen(false);
+        setEditing(null);
+        await loadChecklists();
+      } catch (e: any) {
+        console.error("Failed to save checklist", e);
+        const message = e?.friendlyMessage || "Не удалось сохранить чек-лист";
+        setDialogError(message);
+      } finally {
+        setDialogSubmitting(false);
       }
-      setDialogOpen(false);
-      setEditing(null);
-      await loadChecklists();
-    } catch (e: any) {
-      console.error("Failed to save checklist", e);
-      const message = e?.friendlyMessage || "Не удалось сохранить чек-лист";
-      setDialogError(message);
-    } finally {
-      setDialogSubmitting(false);
-    }
     },
     [restaurantId, editing, loadChecklists]
   );
@@ -267,21 +280,13 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   return (
     <Card className="mt-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="text-lg font-semibold text-zinc-900">Чек-листы</div>
-          <div className="text-sm text-zinc-600">Готовые инструкции для сотрудников по должностям</div>
-        </div>
         {canManage && (
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => openCreateDialog("TRACKABLE")} className="bg-amber-500 text-white hover:bg-amber-600">
-              Чек-лист с отметками
-            </Button>
-            <Button onClick={() => openCreateDialog("INFO")} variant="outline">
-              Обычный чек-лист
-            </Button>
+              <div className="flex flex-wrap gap-2">
+                {/* ОДНА кнопка */}
+                <Button onClick={openCreateDialog}>Создать чек-лист</Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
       {canManage && (
         <div className="mt-4 flex flex-wrap items-center gap-3">

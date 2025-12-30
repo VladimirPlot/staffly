@@ -47,6 +47,9 @@ const ChecklistsPage: React.FC = () => {
         <BackToHome />
       </div>
       <h2 className="mb-4 text-2xl font-semibold">Чек-листы</h2>
+      <div>
+                <div className="text-sm text-zinc-600">Готовые инструкции для сотрудников по должностям</div>
+              </div>
       <RestaurantChecklists restaurantId={restaurantId} canManage={access.isManagerLike} />
     </div>
   );

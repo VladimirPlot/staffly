@@ -745,6 +745,8 @@ const SchedulePage: React.FC = () => {
     );
   }, [canManage, currentMember, shiftRequests]);
 
+  const showCreateScheduleButton = canManage && (!schedule || schedule.id != null);
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
     <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-700">
@@ -774,7 +776,7 @@ const SchedulePage: React.FC = () => {
             Создавайте и редактируйте графики для выбранных должностей.
           </p>
         </div>
-        {canManage && (
+        {showCreateScheduleButton && (
           <Button onClick={openDialog} disabled={loading}>
             Создать график
           </Button>

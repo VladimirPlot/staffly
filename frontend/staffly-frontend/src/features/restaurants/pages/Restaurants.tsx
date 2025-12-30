@@ -52,13 +52,10 @@ export default function Restaurants() {
     return (
       <div className="mx-auto max-w-3xl">
         <Card>
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold">Выбор ресторана</h2>
-              <p className="text-sm text-zinc-600">Загружаем ваши рестораны…</p>
-            </div>
-            <div className="animate-pulse rounded-full border border-zinc-300 px-3 py-1 text-xs">
-              Загрузка
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-semibold">Выбор ресторана</h2>
+            <div className="w-fit animate-pulse rounded-full border border-zinc-300 px-3 py-1 text-xs">
+              Загружаем рестораны…
             </div>
           </div>
         </Card>
@@ -69,27 +66,18 @@ export default function Restaurants() {
   return (
     <div className="mx-auto max-w-3xl">
       <Card>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Выбор ресторана</h2>
-            <p className="text-sm text-zinc-600">
-              Выберите ресторан для работы. Позже добавим поиск и фильтры.
-            </p>
-          </div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-semibold">Выбор ресторана</h2>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={reload}>
-              Обновить
+          {isCreator && (
+            <Button
+              className="w-full sm:w-auto"
+              variant="outline"
+              onClick={() => navigate("/restaurants/new")}
+            >
+              Создать ресторан
             </Button>
-            {isCreator && (
-              <Button
-                variant="outline"
-                onClick={() => navigate("/restaurants/new")}
-              >
-                Создать ресторан
-              </Button>
-            )}
-          </div>
+          )}
         </div>
 
         {invites.length > 0 && (
@@ -102,13 +90,12 @@ export default function Restaurants() {
                   key={inv.token}
                   className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm">
-                      <span className="font-medium">{inv.restaurantName}</span>
-                      {" · роль: "}
-                      {inv.desiredRole}
-                      {inv.positionName ? ` · позиция: ${inv.positionName}` : ""}
-                    </div>
+                  <div className="min-w-0 space-y-1 text-sm leading-snug">
+                    <div className="font-medium break-words">{inv.restaurantName}</div>
+                    <div className="text-zinc-700">Права: {inv.desiredRole}</div>
+                    {inv.positionName && (
+                      <div className="text-zinc-700">Дольжность: {inv.positionName}</div>
+                    )}
                     <div className="text-xs text-zinc-500">
                       истекает: {new Date(inv.expiresAt).toLocaleString()}
                     </div>
@@ -162,16 +149,16 @@ export default function Restaurants() {
           {restaurants.map((r) => (
             <div
               key={r.id}
-              className="flex items-center justify-between rounded-2xl border border-zinc-200 p-4 hover:bg-zinc-50"
+              className="flex flex-col gap-3 rounded-2xl border border-zinc-200 p-4 hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <div className="text-sm text-zinc-500">#{r.id}</div>
                 <div className="text-lg font-medium">{r.name}</div>
                 <div className="text-sm text-zinc-600">
                   {(r.city || "") + " · Роль: " + r.role}
                 </div>
               </div>
               <Button
+                className="w-full sm:w-auto"
                 onClick={async () => {
                   await switchRestaurant(r.id);
                   await refreshMe();

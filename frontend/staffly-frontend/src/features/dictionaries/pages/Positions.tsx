@@ -7,6 +7,7 @@ import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { ArrowLeft } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
+import { listMembers, type MemberDto } from "../../employees/api";
 
 import {
   listPositions,
@@ -30,14 +31,12 @@ export default function PositionsPage() {
   const [items, setItems] = React.useState<PositionDto[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [members, setMembers] = React.useState<MemberDto[]>([]);
 
   // форма создания
   const [name, setName] = React.useState("");
   const [level, setLevel] = React.useState<RestaurantRole>("STAFF");
   const [creating, setCreating] = React.useState(false);
-
-  // NEW: показывать ли неактивные
-  const [showInactive, setShowInactive] = React.useState(false);
 
   // Показываем UI всем, а права проверит бэкенд (403 при отсутствии прав).
   const canManage = true;
@@ -47,14 +46,18 @@ export default function PositionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listPositions(restaurantId, { includeInactive: showInactive });
-      setItems(data);
+      const [positions, restaurantMembers] = await Promise.all([
+        listPositions(restaurantId),
+        listMembers(restaurantId),
+      ]);
+      setItems(positions);
+      setMembers(restaurantMembers);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка загрузки");
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, showInactive]);
+  }, [restaurantId]);
 
   React.useEffect(() => {
     if (restaurantId) void load();
@@ -88,18 +91,6 @@ export default function PositionsPage() {
       </div>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Должности</h2>
-        <div className="flex items-center gap-3">
-          {/* NEW: переключатель показа неактивных */}
-          <label className="flex select-none items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-            />
-            Показать неактивные
-          </label>
-          <Button onClick={load} variant="outline">Обновить</Button>
-        </div>
       </div>
 
       {/* Создание */}
@@ -174,39 +165,10 @@ export default function PositionsPage() {
                     <span className="rounded-full border px-2 py-0.5">
                       {ROLE_LABEL[p.level]}
                     </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 ${
-                        p.active
-                          ? "border border-emerald-300 text-emerald-700"
-                          : "border border-zinc-300 text-zinc-600"
-                      }`}
-                    >
-                      {p.active ? "Активна" : "Отключена"}
-                    </span>
                   </div>
                 </div>
 
-                <div className="flex gap-2">
-                  {/* Переключить активность */}
-                  <Button
-                    variant="outline"
-                    disabled={!canManage}
-                    onClick={async () => {
-                      try {
-                        await updatePosition(restaurantId, p.id, {
-                          active: !p.active,  // обязательно
-                          name: p.name,       // не теряем имя
-                          level: p.level,     // и уровень
-                        });
-                        await load();
-                      } catch (e: any) {
-                        alert(e?.friendlyMessage || "Ошибка обновления");
-                      }
-                    }}
-                  >
-                    {p.active ? "Отключить" : "Включить"}
-                  </Button>
-
+                <div className="flex flex-wrap gap-2">
                   {/* Переименовать */}
                   <Button
                     variant="outline"
@@ -229,11 +191,18 @@ export default function PositionsPage() {
                     Переименовать
                   </Button>
 
-                  {/* Удалить (де-факто деактивация на бэке) */}
+                  {/* Удалить */}
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     disabled={!canManage}
                     onClick={async () => {
+                      const hasEmployees = members.some(
+                        (member) => member.positionId === p.id,
+                      );
+                      if (hasEmployees) {
+                        alert("В ресторане есть сотрудники с этой должностью");
+                        return;
+                      }
                       if (!confirm(`Удалить должность «${p.name}»?`)) return;
                       try {
                         await deletePosition(restaurantId, p.id);
