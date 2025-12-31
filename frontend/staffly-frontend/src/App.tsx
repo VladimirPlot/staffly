@@ -121,7 +121,7 @@ function TopBar() {
               aria-expanded={mobileOpen}
               onClick={() => setMobileOpen((v) => !v)}
             >
-              <Icon icon={Menu} size={20} className="text-zinc-900" />
+              <Icon icon={Menu} size="md" className="text-zinc-900" />
             </button>
           </div>
         ) : (

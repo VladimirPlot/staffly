@@ -1,10 +1,9 @@
 import React from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
-import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   listCategories,

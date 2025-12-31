@@ -36,6 +36,7 @@ export type MemberDto = {
   positionId?: number | null;
   positionName?: string | null;
   avatarUrl?: string | null;
+  phone?: string | null;
 
   // Имена: используем то, что вернёт бэк. Любое из этих полей — опционально.
   fullName?: string | null;
@@ -57,4 +58,15 @@ export async function listMembers(restaurantId: number): Promise<MemberDto[]> {
 
 export async function removeMember(restaurantId: number, memberId: number): Promise<void> {
   await api.delete(`/api/restaurants/${restaurantId}/members/${memberId}`);
+}
+
+export async function updateMemberPosition(
+  restaurantId: number,
+  memberId: number,
+  positionId: number | null
+): Promise<MemberDto> {
+  const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/position`, {
+    positionId,
+  });
+  return data as MemberDto;
 }

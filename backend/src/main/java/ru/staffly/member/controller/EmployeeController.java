@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
 import ru.staffly.member.dto.MemberDto;
+import ru.staffly.member.dto.UpdateMemberPositionRequest;
 import ru.staffly.member.dto.UpdateMemberRoleRequest;
 import ru.staffly.member.service.EmployeeService;
 import ru.staffly.restaurant.model.RestaurantRole;
@@ -57,6 +58,16 @@ public class EmployeeController {
                                 @Valid @RequestBody UpdateMemberRoleRequest req) {
         RestaurantRole newRole = req.role();
         return employees.updateRole(restaurantId, memberId, newRole, principal.userId());
+    }
+
+    // Обновить должность (MANAGER/OWNER)
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PatchMapping("/members/{memberId}/position")
+    public MemberDto updatePosition(@PathVariable Long restaurantId,
+                                    @PathVariable Long memberId,
+                                    @AuthenticationPrincipal UserPrincipal principal,
+                                    @RequestBody UpdateMemberPositionRequest req) {
+        return employees.updatePosition(restaurantId, memberId, req.positionId(), principal.userId());
     }
 
     // Удалить участника (правила зависят от роли — проверяются в сервисе)

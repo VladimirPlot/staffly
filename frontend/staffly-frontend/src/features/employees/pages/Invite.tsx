@@ -8,6 +8,9 @@ import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import Avatar from "../../../shared/ui/Avatar";
+import Modal from "../../../shared/ui/Modal";
+import Icon from "../../../shared/ui/Icon";
+import { Pencil, Trash2 } from "lucide-react";
 
 import {
   listPositions,
@@ -24,6 +27,7 @@ import {
   listMembers,
   fetchMyRoleIn,
   removeMember as removeMemberApi,
+  updateMemberPosition,
   type MemberDto,
 } from "../../employees/api";
 
@@ -95,6 +99,9 @@ export default function InvitePage() {
   // Должности
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
   const [loadingPositions, setLoadingPositions] = React.useState(true);
+  const [allPositions, setAllPositions] = React.useState<PositionDto[]>([]);
+  const [loadingAllPositions, setLoadingAllPositions] = React.useState(true);
+  const [positionsError, setPositionsError] = React.useState<string | null>(null);
 
   // Форма приглашения (показываем только по кнопке и только если есть права)
   const [inviteOpen, setInviteOpen] = React.useState(false);
@@ -105,6 +112,12 @@ export default function InvitePage() {
   const [inviteError, setInviteError] = React.useState<string | null>(null);
   const [inviteDone, setInviteDone] = React.useState(false);
 
+  // Редактирование участника
+  const [memberToEdit, setMemberToEdit] = React.useState<MemberDto | null>(null);
+  const [editPositionId, setEditPositionId] = React.useState<number | null>(null);
+  const [savingPosition, setSavingPosition] = React.useState(false);
+  const [updatePositionError, setUpdatePositionError] = React.useState<string | null>(null);
+
   const access = React.useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
     [user?.roles, myRole]
@@ -113,6 +126,7 @@ export default function InvitePage() {
   const isStaffInCurrentRestaurant = myRole === "STAFF";
 
   const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
+  const canEditMembers = myRole === "ADMIN";
   const roleOptions: InviteRole[] = access.isAdminLike
     ? ["ADMIN", "MANAGER", "STAFF"]
     : ["STAFF"];
@@ -143,6 +157,29 @@ export default function InvitePage() {
     }
     })();
     return () => { alive = false; };
+  }, [restaurantId]);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!restaurantId) return;
+      try {
+        setLoadingAllPositions(true);
+        setPositionsError(null);
+        const data = await listPositions(restaurantId, { includeInactive: false });
+        if (!alive) return;
+        setAllPositions(data);
+      } catch (e: any) {
+        if (!alive) return;
+        setPositionsError(e?.friendlyMessage || "Не удалось загрузить должности");
+      } finally {
+        if (alive) setLoadingAllPositions(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [restaurantId]);
 
   const currentUserId = user?.id ?? null;
@@ -312,6 +349,32 @@ export default function InvitePage() {
       ? "Покинуть"
       : "Исключить";
   }, [currentUserId, memberToRemove]);
+
+  const editOptions = React.useMemo(() => {
+    if (!memberToEdit) return [] as PositionDto[];
+    return allPositions.filter((p) => p.active && p.level === memberToEdit.role);
+  }, [allPositions, memberToEdit]);
+
+  const closeEditDialog = React.useCallback(() => {
+    if (savingPosition) return;
+    setMemberToEdit(null);
+    setUpdatePositionError(null);
+  }, [savingPosition]);
+
+  const saveMemberPosition = React.useCallback(async () => {
+    if (!restaurantId || !memberToEdit) return;
+    setSavingPosition(true);
+    setUpdatePositionError(null);
+    try {
+      const updated = await updateMemberPosition(restaurantId, memberToEdit.id, editPositionId);
+      setMembers((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+      setMemberToEdit(null);
+    } catch (e: any) {
+      setUpdatePositionError(e?.friendlyMessage || "Не удалось сохранить должность");
+    } finally {
+      setSavingPosition(false);
+    }
+  }, [editPositionId, memberToEdit, restaurantId]);
   // 2) тянем должности (активные). Сервер может уметь фильтровать по роли — пробуем прокинуть.
   const loadPositions = React.useCallback(async (filterByRole?: InviteRole) => {
     if (!restaurantId) return;
@@ -529,25 +592,95 @@ export default function InvitePage() {
                   <div className="text-sm text-zinc-700">
                     День рождения: <span className="font-medium">{formatBirthday(m.birthDate)}</span>
                   </div>
-                  {canRemoveMember(m) && (
-                    <Button
-                      variant="outline"
-                      className="w-full sm:w-auto"
-                      onClick={() => {
-                        setRemoveError(null);
-                        setMemberToRemove(m);
-                      }}
-                      disabled={removing && memberToRemove?.id === m.id}
-                    >
-                      Исключить
-                    </Button>
-                  )}
+                  <div className="text-sm text-zinc-700">
+                    Телефон: <span className="font-medium">{m.phone || "—"}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {canEditMembers && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label="Редактировать должность"
+                        onClick={() => {
+                          setMemberToEdit(m);
+                          setEditPositionId(m.positionId ?? null);
+                          setUpdatePositionError(null);
+                        }}
+                        disabled={savingPosition && memberToEdit?.id === m.id}
+                        leftIcon={<Icon icon={Pencil} decorative={false} title="Редактировать" />}
+                      />
+                    )}
+                    {canRemoveMember(m) && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        aria-label="Исключить"
+                        onClick={() => {
+                          setRemoveError(null);
+                          setMemberToRemove(m);
+                        }}
+                        disabled={removing && memberToRemove?.id === m.id}
+                        leftIcon={<Icon icon={Trash2} decorative={false} title="Исключить" />}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </Card>
+      <Modal
+        open={!!memberToEdit}
+        title="Редактировать должность"
+        description={
+          memberToEdit
+            ? `Укажите должность для ${displayNameOf(memberToEdit)}. Доступны только активные должности для роли ${ROLE_LABEL[memberToEdit.role]}.`
+            : undefined
+        }
+        onClose={closeEditDialog}
+        footer={
+          memberToEdit ? (
+            <>
+              <Button variant="ghost" onClick={closeEditDialog} disabled={savingPosition}>
+                Отменить
+              </Button>
+              <Button
+                onClick={saveMemberPosition}
+                disabled={savingPosition || loadingAllPositions}
+                isLoading={savingPosition}
+              >
+                Сохранить
+              </Button>
+            </>
+          ) : null
+        }
+      >
+        {loadingAllPositions ? (
+          <div className="text-sm text-zinc-700">Загрузка должностей…</div>
+        ) : positionsError ? (
+          <div className="text-sm text-red-600">{positionsError}</div>
+        ) : !memberToEdit ? null : editOptions.length === 0 ? (
+          <div className="text-sm text-zinc-700">Нет доступных активных должностей для этой роли.</div>
+        ) : (
+          <label className="block text-sm">
+            <span className="mb-1 block text-zinc-600">Должность</span>
+            <select
+              className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
+              value={editPositionId ?? ""}
+              onChange={(e) => setEditPositionId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Без должности</option>
+              {editOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {updatePositionError && <div className="mt-2 text-sm text-red-600">{updatePositionError}</div>}
+      </Modal>
       <ConfirmDialog
         open={!!memberToRemove}
         title={memberRemovalTitle}

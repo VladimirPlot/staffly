@@ -89,7 +89,7 @@ const SchedulePage: React.FC = () => {
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [deleting, setDeleting] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
   const [downloading, setDownloading] = React.useState<{ id: number; type: "xlsx" | "jpg" } | null>(
     null
@@ -120,6 +120,7 @@ const SchedulePage: React.FC = () => {
       setScheduleMessage(null);
       setScheduleError(null);
       setSaving(false);
+      setDeletingId(null);
       setShiftRequests([]);
       setShiftRequestsError(null);
       setShiftRequestsLoading(false);
@@ -419,6 +420,29 @@ const SchedulePage: React.FC = () => {
     [loadShiftRequests, restaurantId]
   );
 
+  const handleEditSavedSchedule = React.useCallback(
+    async (id: number) => {
+      if (!restaurantId || !canManage) return;
+      setSelectedSavedId(id);
+      setScheduleReadOnly(false);
+      setScheduleLoading(true);
+      setSchedule(null);
+      setScheduleMessage(null);
+      setScheduleError(null);
+      try {
+        const data = await fetchSchedule(restaurantId, id);
+        setSchedule(data);
+        setLastRange({ start: data.config.startDate, end: data.config.endDate });
+        await loadShiftRequests(id);
+      } catch (e: any) {
+        setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
+      } finally {
+        setScheduleLoading(false);
+      }
+    },
+    [canManage, loadShiftRequests, restaurantId]
+  );
+
   const handleCloseSavedSchedule = React.useCallback(() => {
     setSchedule(null);
     setSelectedSavedId(null);
@@ -513,29 +537,39 @@ const SchedulePage: React.FC = () => {
     }
   }, [handleCloseSavedSchedule, loadShiftRequests, restaurantId, scheduleId]);
 
-  const handleDeleteSchedule = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !scheduleId) return;
-    if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
-      return;
-    }
-    setDeleting(true);
-    setScheduleError(null);
-    setScheduleMessage(null);
-    try {
-      await deleteSchedule(restaurantId, scheduleId);
-      const savedList = await listSavedSchedules(restaurantId);
-      setSavedSchedules(savedList);
-      setSchedule(null);
-      setSelectedSavedId(null);
-      setScheduleReadOnly(false);
-      setShiftRequests([]);
-      setScheduleMessage("График удалён");
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось удалить график");
-    } finally {
-      setDeleting(false);
-    }
-  }, [canManage, restaurantId, scheduleId]);
+  const handleDeleteSavedSchedule = React.useCallback(
+    async (id: number) => {
+      if (!canManage || !restaurantId) return;
+      if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
+        return;
+      }
+      setDeletingId(id);
+      setScheduleError(null);
+      setScheduleMessage(null);
+      try {
+        await deleteSchedule(restaurantId, id);
+        const savedList = await listSavedSchedules(restaurantId);
+        setSavedSchedules(savedList);
+        if (scheduleId === id) {
+          setSchedule(null);
+          setSelectedSavedId(null);
+          setScheduleReadOnly(false);
+          setShiftRequests([]);
+        }
+        setScheduleMessage("График удалён");
+      } catch (e: any) {
+        setScheduleError(e?.friendlyMessage || "Не удалось удалить график");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [canManage, restaurantId, scheduleId]
+  );
+
+  const handleDeleteSchedule = React.useCallback(() => {
+    if (!scheduleId) return;
+    void handleDeleteSavedSchedule(scheduleId);
+  }, [handleDeleteSavedSchedule, scheduleId]);
 
   const openDialog = React.useCallback(() => {
     setDialogOpen(true);
@@ -801,6 +835,8 @@ const SchedulePage: React.FC = () => {
           positionFilter={positionFilter}
           onPositionFilterChange={setPositionFilter}
           onOpenSavedSchedule={handleOpenSavedSchedule}
+          onEditSavedSchedule={handleEditSavedSchedule}
+          onDeleteSavedSchedule={handleDeleteSavedSchedule}
           onDownloadXlsx={handleDownloadXlsx}
           onDownloadJpg={handleDownloadJpg}
           downloadMenuFor={downloadMenuFor}
@@ -809,6 +845,7 @@ const SchedulePage: React.FC = () => {
           selectedSavedId={selectedSavedId}
           scheduleLoading={scheduleLoading}
           hasPendingSavedSchedules={hasPendingSavedSchedules}
+          deletingId={deletingId}
         />
       )}
 
@@ -836,7 +873,7 @@ const SchedulePage: React.FC = () => {
             canManage={canManage}
             scheduleReadOnly={scheduleReadOnly}
             scheduleId={scheduleId}
-            deleting={deleting}
+            deleting={deletingId === scheduleId}
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
             downloadMenuFor={downloadMenuFor}

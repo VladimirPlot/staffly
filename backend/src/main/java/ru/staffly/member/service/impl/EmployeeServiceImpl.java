@@ -282,6 +282,36 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional
+    public MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+
+        RestaurantMember member = members.findById(memberId)
+                .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
+        if (!member.getRestaurant().getId().equals(restaurantId)) {
+            throw new BadRequestException("Member belongs to another restaurant");
+        }
+
+        Position position = null;
+        if (positionId != null) {
+            position = positions.findById(positionId)
+                    .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
+
+            if (!position.getRestaurant().getId().equals(restaurantId) || !position.isActive()) {
+                throw new BadRequestException("Position is not in this restaurant or inactive");
+            }
+
+            if (!isPositionCompatibleWithRole(position.getLevel(), member.getRole())) {
+                throw new ConflictException("Position level is not compatible with member role");
+            }
+        }
+
+        member.setPosition(position);
+        member = members.save(member);
+        return memberMapper.toDto(member);
+    }
+
+    @Override
+    @Transactional
     public void removeMember(Long restaurantId, Long memberId, Long currentUserId) {
         security.assertMember(currentUserId, restaurantId);
 

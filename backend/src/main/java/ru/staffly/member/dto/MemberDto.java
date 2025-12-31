@@ -12,6 +12,7 @@ public record MemberDto(
         Long positionId,
         String positionName,
         String avatarUrl,
+        String phone,
         String firstName,
         String lastName,
         String fullName,

@@ -16,6 +16,7 @@ public class MemberMapper {
 
         String first = user != null ? safe(user.getFirstName()) : null;
         String last  = user != null ? safe(user.getLastName())  : null;
+        String phone = user != null ? safe(user.getPhone()) : null;
 
         // Берём fullName из юзера, если есть; иначе склеиваем "Фамилия Имя"
         String full  = (user != null && notBlank(user.getFullName()))
@@ -38,6 +39,7 @@ public class MemberMapper {
                 pos != null ? pos.getId() : null,
                 pos != null ? pos.getName() : null,
                 avatar,
+                phone,
                 first,
                 last,
                 full,

@@ -4,6 +4,8 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import { type PositionDto } from "../../dictionaries/api";
 import { type ScheduleSummary } from "../api";
+import Icon from "../../../shared/ui/Icon";
+import { Download, Pencil, Trash2 } from "lucide-react";
 
 type SavedSchedulesSectionProps = {
   canManage: boolean;
@@ -12,6 +14,8 @@ type SavedSchedulesSectionProps = {
   positionFilter: number | "all";
   onPositionFilterChange: (value: number | "all") => void;
   onOpenSavedSchedule: (id: number) => void;
+  onEditSavedSchedule: (id: number) => void;
+  onDeleteSavedSchedule: (id: number) => void;
   onDownloadXlsx: (id: number) => void;
   onDownloadJpg: (id: number) => void;
   downloadMenuFor: number | null;
@@ -20,6 +24,7 @@ type SavedSchedulesSectionProps = {
   selectedSavedId: number | null;
   scheduleLoading: boolean;
   hasPendingSavedSchedules: boolean;
+  deletingId: number | null;
 };
 
 const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
@@ -29,6 +34,8 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
   positionFilter,
   onPositionFilterChange,
   onOpenSavedSchedule,
+  onEditSavedSchedule,
+  onDeleteSavedSchedule,
   onDownloadXlsx,
   onDownloadJpg,
   downloadMenuFor,
@@ -37,6 +44,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
   selectedSavedId,
   scheduleLoading,
   hasPendingSavedSchedules,
+  deletingId,
 }) => {
   const hasSchedules = savedSchedules.length > 0;
 
@@ -89,6 +97,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               const isActive = selectedSavedId === item.id;
               const isOpening = scheduleLoading && selectedSavedId === item.id;
               const isDownloading = downloading?.id === item.id;
+              const isDeleting = deletingId === item.id;
               const menuOpen = downloadMenuFor === item.id;
               return (
                 <div
@@ -119,13 +128,40 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                     >
                       {isOpening ? "Открывается…" : isActive ? "Открыт" : "Открыть"}
                     </Button>
+                    {canManage && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEditSavedSchedule(item.id)}
+                          aria-label="Редактировать график"
+                          disabled={isOpening || isDeleting}
+                        >
+                          <Icon icon={Pencil} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onDeleteSavedSchedule(item.id)}
+                          aria-label="Удалить график"
+                          disabled={isDeleting}
+                          className={`text-red-600 hover:bg-red-50 ${
+                            isDeleting ? "cursor-wait opacity-60" : ""
+                          }`}
+                        >
+                          <Icon icon={Trash2} />
+                        </Button>
+                      </>
+                    )}
                     <div className="relative">
                       <Button
                         variant="outline"
+                        size="icon"
                         onClick={() => onToggleDownloadMenu(menuOpen ? null : item.id)}
                         disabled={isDownloading}
+                        aria-label="Скачать график"
                       >
-                        Скачать
+                        <Icon icon={Download} />
                       </Button>
                       {menuOpen && (
                         <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-zinc-200 bg-white shadow-lg">
