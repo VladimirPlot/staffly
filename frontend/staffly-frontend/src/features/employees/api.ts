@@ -60,6 +60,17 @@ export async function removeMember(restaurantId: number, memberId: number): Prom
   await api.delete(`/api/restaurants/${restaurantId}/members/${memberId}`);
 }
 
+export async function updateMemberRole(
+  restaurantId: number,
+  memberId: number,
+  role: RestaurantRole
+): Promise<MemberDto> {
+  const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/role`, {
+    role,
+  });
+  return data as MemberDto;
+}
+
 export async function updateMemberPosition(
   restaurantId: number,
   memberId: number,

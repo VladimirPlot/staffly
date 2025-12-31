@@ -27,6 +27,7 @@ import {
   listMembers,
   fetchMyRoleIn,
   removeMember as removeMemberApi,
+  updateMemberRole,
   updateMemberPosition,
   type MemberDto,
 } from "../../employees/api";
@@ -352,8 +353,17 @@ export default function InvitePage() {
 
   const editOptions = React.useMemo(() => {
     if (!memberToEdit) return [] as PositionDto[];
-    return allPositions.filter((p) => p.active && p.level === memberToEdit.role);
+    return allPositions.filter((p) => p.active);
   }, [allPositions, memberToEdit]);
+
+  React.useEffect(() => {
+    if (!memberToEdit || loadingAllPositions) return;
+
+    const fallbackPositionId =
+      memberToEdit.positionId ?? allPositions.find((p) => p.active)?.id ?? null;
+
+    setEditPositionId((prev) => (prev == null ? fallbackPositionId : prev));
+  }, [allPositions, loadingAllPositions, memberToEdit]);
 
   const closeEditDialog = React.useCallback(() => {
     if (savingPosition) return;
@@ -363,10 +373,27 @@ export default function InvitePage() {
 
   const saveMemberPosition = React.useCallback(async () => {
     if (!restaurantId || !memberToEdit) return;
+    if (editPositionId == null) {
+      setUpdatePositionError("Выберите должность");
+      return;
+    }
+
+    const selectedPosition = allPositions.find((p) => p.id === editPositionId);
+
+    if (!selectedPosition) {
+      setUpdatePositionError("Выберите должность");
+      return;
+    }
+
     setSavingPosition(true);
     setUpdatePositionError(null);
     try {
-      const updated = await updateMemberPosition(restaurantId, memberToEdit.id, editPositionId);
+      if (selectedPosition.level !== memberToEdit.role) {
+        await updateMemberRole(restaurantId, memberToEdit.id, selectedPosition.level);
+      }
+
+      const updated = await updateMemberPosition(restaurantId, memberToEdit.id, selectedPosition.id);
+
       setMembers((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
       setMemberToEdit(null);
     } catch (e: any) {
@@ -374,7 +401,7 @@ export default function InvitePage() {
     } finally {
       setSavingPosition(false);
     }
-  }, [editPositionId, memberToEdit, restaurantId]);
+  }, [allPositions, editPositionId, memberToEdit, restaurantId]);
   // 2) тянем должности (активные). Сервер может уметь фильтровать по роли — пробуем прокинуть.
   const loadPositions = React.useCallback(async (filterByRole?: InviteRole) => {
     if (!restaurantId) return;
@@ -635,7 +662,7 @@ export default function InvitePage() {
         title="Редактировать должность"
         description={
           memberToEdit
-            ? `Укажите должность для ${displayNameOf(memberToEdit)}. Доступны только активные должности для роли ${ROLE_LABEL[memberToEdit.role]}.`
+            ? `Укажите должность для ${displayNameOf(memberToEdit)}. Доступны только активные должности ресторана.`
             : undefined
         }
         onClose={closeEditDialog}
@@ -647,7 +674,7 @@ export default function InvitePage() {
               </Button>
               <Button
                 onClick={saveMemberPosition}
-                disabled={savingPosition || loadingAllPositions}
+                disabled={savingPosition || loadingAllPositions || editPositionId == null}
                 isLoading={savingPosition}
               >
                 Сохранить
@@ -668,9 +695,8 @@ export default function InvitePage() {
             <select
               className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
               value={editPositionId ?? ""}
-              onChange={(e) => setEditPositionId(e.target.value ? Number(e.target.value) : null)}
+              onChange={(e) => setEditPositionId(Number(e.target.value))}
             >
-              <option value="">Без должности</option>
               {editOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
