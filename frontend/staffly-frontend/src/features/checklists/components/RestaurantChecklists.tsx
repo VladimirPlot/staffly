@@ -1,8 +1,10 @@
 import React from "react";
+import { Download, Pencil, Trash2 } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import Icon from "../../../shared/ui/Icon";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import {
   createChecklist,
@@ -46,9 +48,11 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   const [progressSaving, setProgressSaving] = React.useState<number | null>(null);
   const [resetting, setResetting] = React.useState<number | null>(null);
   const [downloading, setDownloading] = React.useState<number | null>(null);
+  const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
   const [createKind, setCreateKind] = React.useState<ChecklistKind>("TRACKABLE");
 
   const checklistRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
+  const downloadMenuRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
 
   const loadPositions = React.useCallback(async () => {
     if (!restaurantId) return;
@@ -257,6 +261,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     async (checklist: ChecklistDto) => {
       const node = checklistRefs.current.get(checklist.id);
       if (!node) return;
+      setDownloadMenuFor(null);
       setDownloading(checklist.id);
       try {
         const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, backgroundColor: "#ffffff" });
@@ -276,6 +281,37 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   const setChecklistRef = React.useCallback((id: number, node: HTMLDivElement | null) => {
     checklistRefs.current.set(id, node);
   }, []);
+
+  const setDownloadMenuRef = React.useCallback((id: number, node: HTMLDivElement | null) => {
+    downloadMenuRefs.current.set(id, node);
+  }, []);
+
+  const toggleDownloadMenu = React.useCallback((checklistId: number) => {
+    setDownloadMenuFor((current) => (current === checklistId ? null : checklistId));
+  }, []);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (downloadMenuFor === null) return;
+      const menuNode = downloadMenuRefs.current.get(downloadMenuFor);
+      if (menuNode && !menuNode.contains(event.target as Node)) {
+        setDownloadMenuFor(null);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setDownloadMenuFor(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [downloadMenuFor]);
 
   return (
     <Card className="mt-4">
@@ -365,23 +401,63 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                       {isExpanded ? "Свернуть" : "Открыть"}
                     </Button>
                     {canManage && (
-                      <Button
-                        variant="outline"
-                        onClick={() => handleDownloadJpg(checklist)}
-                        className="text-sm"
-                        disabled={isDownloading}
+                      <div
+                        className="relative"
+                        ref={(node) => setDownloadMenuRef(checklist.id, node)}
                       >
-                        {isDownloading ? "Готовим..." : "Скачать JPG"}
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => toggleDownloadMenu(checklist.id)}
+                          disabled={isDownloading}
+                          className="text-zinc-700"
+                          aria-haspopup="menu"
+                          aria-expanded={downloadMenuFor === checklist.id}
+                          aria-controls={downloadMenuFor === checklist.id ? `download-menu-${checklist.id}` : undefined}
+                        >
+                          <Icon icon={Download} />
+                          <span className="sr-only">Скачать</span>
+                        </Button>
+                        {downloadMenuFor === checklist.id && (
+                          <div
+                            id={`download-menu-${checklist.id}`}
+                            role="menu"
+                            className="absolute right-0 z-10 mt-2 w-36 rounded-2xl border border-zinc-200 bg-white p-1 shadow-lg"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start text-sm text-zinc-700"
+                              onClick={() => handleDownloadJpg(checklist)}
+                              disabled={isDownloading}
+                              role="menuitem"
+                            >
+                              Скачать .jpg
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditDialog(checklist)}
+                        className="text-zinc-600"
+                        aria-label="Редактировать"
+                      >
+                        <Icon icon={Pencil} />
                       </Button>
                     )}
                     {canManage && (
-                      <Button variant="ghost" onClick={() => openEditDialog(checklist)} className="text-sm text-zinc-600">
-                        Редактировать
-                      </Button>
-                    )}
-                    {canManage && (
-                      <Button variant="ghost" onClick={() => openDeleteDialog(checklist)} className="text-sm text-red-600">
-                        Удалить
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openDeleteDialog(checklist)}
+                        className="text-red-600 hover:bg-red-50"
+                        aria-label="Удалить"
+                      >
+                        <Icon icon={Trash2} />
                       </Button>
                     )}
                   </div>
