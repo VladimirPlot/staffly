@@ -4,13 +4,7 @@ import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import type { PositionDto } from "../../dictionaries/api";
-import type { ScheduleConfig, ShiftMode } from "../types";
-
-const SHIFT_MODE_LABEL: Record<ShiftMode, string> = {
-  ARRIVAL_ONLY: "Только время прихода",
-  FULL: "Время прихода и ухода",
-  NONE: "Не указывать",
-};
+import type { ScheduleConfig } from "../types";
 
 type Props = {
   open: boolean;
@@ -43,8 +37,6 @@ const CreateScheduleDialog: React.FC<Props> = ({
   const [startDate, setStartDate] = React.useState(defaultStart ?? "");
   const [endDate, setEndDate] = React.useState(defaultEnd ?? "");
   const [positionFields, setPositionFields] = React.useState<PositionField[]>([]);
-  const [showFullName, setShowFullName] = React.useState(false);
-  const [shiftMode, setShiftMode] = React.useState<ShiftMode>("ARRIVAL_ONLY");
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -52,8 +44,6 @@ const CreateScheduleDialog: React.FC<Props> = ({
     setStartDate(defaultStart ?? "");
     setEndDate(defaultEnd ?? "");
     setPositionFields([{ id: createId(), value: "" }]);
-    setShowFullName(false);
-    setShiftMode("ARRIVAL_ONLY");
     setError(null);
   }, [open, defaultStart, defaultEnd]);
 
@@ -121,10 +111,10 @@ const CreateScheduleDialog: React.FC<Props> = ({
       startDate,
       endDate,
       positionIds: uniqueIds,
-      showFullName,
-      shiftMode,
+      showFullName: false,
+      shiftMode: "FULL",
     };
-  }, [startDate, endDate, positionFields, showFullName, shiftMode, availablePositions]);
+  }, [startDate, endDate, positionFields, availablePositions]);
 
   const handleSubmit = React.useCallback(() => {
     const config = validate();
@@ -191,50 +181,6 @@ const CreateScheduleDialog: React.FC<Props> = ({
             ))}
           </div>
         </div>
-
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-zinc-700">Отображать фамилию и имя полностью</legend>
-          <div className="flex flex-wrap gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="fullname"
-                value="yes"
-                checked={showFullName}
-                onChange={() => setShowFullName(true)}
-              />
-              <span>Да</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="fullname"
-                value="no"
-                checked={!showFullName}
-                onChange={() => setShowFullName(false)}
-              />
-              <span>Нет</span>
-            </label>
-          </div>
-        </fieldset>
-
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-zinc-700">Смены</legend>
-          <div className="space-y-2 text-sm">
-            {(Object.keys(SHIFT_MODE_LABEL) as ShiftMode[]).map((mode) => (
-              <label key={mode} className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="shift-mode"
-                  value={mode}
-                  checked={shiftMode === mode}
-                  onChange={() => setShiftMode(mode)}
-                />
-                <span>{SHIFT_MODE_LABEL[mode]}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
 
         {error && <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       </div>

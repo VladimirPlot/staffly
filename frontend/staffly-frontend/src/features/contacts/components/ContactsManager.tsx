@@ -1,4 +1,5 @@
 import React from "react";
+import { Pencil } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
@@ -181,11 +182,12 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
                 <div className="relative" data-contact-menu>
                   <Button
                     variant="ghost"
-                    className="text-sm"
+                    size="icon"
                     onClick={() => toggleMenu(contact.id)}
                     data-contact-trigger
+                    aria-label="Открыть меню контакта"
                   >
-                    ✏️
+                    <Pencil className="h-4 w-4" />
                   </Button>
                   {menuFor === contact.id && (
                     <div className="absolute right-0 z-10 mt-2 w-48 rounded-2xl border border-zinc-200 bg-white p-2 shadow-lg">

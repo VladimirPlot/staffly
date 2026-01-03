@@ -5,7 +5,7 @@ import Button from "../../../shared/ui/Button";
 import Textarea from "../../../shared/ui/Textarea";
 import type { MemberDto } from "../../employees/api";
 import type { ScheduleData } from "../types";
-import { memberDisplayName } from "../utils/names";
+import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 
 type Props = {
   open: boolean;
@@ -58,6 +58,11 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
       .map((row) => members.find((m) => m.id === row.memberId))
       .filter((item): item is MemberDto => Boolean(item));
   }, [currentMember, members, schedule, selectedDay]);
+
+  const displayNames = React.useMemo(
+    () => buildMemberDisplayNameMap(candidateMembers),
+    [candidateMembers]
+  );
 
   const handleSubmit = React.useCallback(async () => {
     if (!selectedDay) {
@@ -123,7 +128,7 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
             <option value="">Выберите сотрудника</option>
             {candidateMembers.map((member) => (
               <option key={member.id} value={member.id}>
-                {memberDisplayName(member, schedule.config.showFullName)}
+                {memberDisplayName(member, displayNames)}
               </option>
             ))}
           </select>

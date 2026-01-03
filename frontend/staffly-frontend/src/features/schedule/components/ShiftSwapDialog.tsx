@@ -5,7 +5,7 @@ import Button from "../../../shared/ui/Button";
 import Textarea from "../../../shared/ui/Textarea";
 import type { MemberDto } from "../../employees/api";
 import type { ScheduleData } from "../types";
-import { memberDisplayName } from "../utils/names";
+import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 
 type Props = {
   open: boolean;
@@ -59,6 +59,11 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
       .map((row) => members.find((m) => m.id === row.memberId))
       .filter((item): item is MemberDto => Boolean(item));
   }, [currentMember, members, schedule]);
+
+  const displayNames = React.useMemo(
+    () => buildMemberDisplayNameMap(availableMembers),
+    [availableMembers]
+  );
 
   const targetShifts = React.useMemo(() => {
     if (!targetMemberId) return [] as { date: string; value: string }[];
@@ -168,7 +173,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
             <option value="">Выберите сотрудника</option>
             {availableMembers.map((member) => (
               <option key={member.id} value={member.id}>
-                {memberDisplayName(member, schedule.config.showFullName)}
+                {memberDisplayName(member, displayNames)}
               </option>
             ))}
           </select>

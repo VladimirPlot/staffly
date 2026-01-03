@@ -33,7 +33,7 @@ import {
 } from "../api";
 import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
-import { memberDisplayName } from "../utils/names";
+import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { exportScheduleToJpeg, exportScheduleToXlsx } from "../utils/exporters";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
@@ -55,15 +55,15 @@ function buildTitle(positionNames: string[], monthNames: string[]): string {
 function sortMembers(
   members: MemberDto[],
   positionOrder: Map<number, number>,
-  showFullName: boolean
+  displayNames: Record<number, string>
 ): MemberDto[] {
   return [...members].sort((a, b) => {
     const orderA = positionOrder.get(a.positionId ?? -1) ?? Number.MAX_SAFE_INTEGER;
     const orderB = positionOrder.get(b.positionId ?? -1) ?? Number.MAX_SAFE_INTEGER;
     if (orderA !== orderB) return orderA - orderB;
 
-    const nameA = memberDisplayName(a, showFullName).toLocaleLowerCase("ru-RU");
-    const nameB = memberDisplayName(b, showFullName).toLocaleLowerCase("ru-RU");
+    const nameA = memberDisplayName(a, displayNames).toLocaleLowerCase("ru-RU");
+    const nameB = memberDisplayName(b, displayNames).toLocaleLowerCase("ru-RU");
     if (nameA < nameB) return -1;
     if (nameA > nameB) return 1;
     return 0;
@@ -257,20 +257,26 @@ const SchedulePage: React.FC = () => {
   const handleCreateSchedule = React.useCallback(
     (config: ScheduleConfig) => {
       if (!canManage) return;
+      const normalizedConfig: ScheduleConfig = {
+        ...config,
+        showFullName: false,
+        shiftMode: "FULL",
+      };
       const dateList = daysBetween(config.startDate, config.endDate);
       const months = monthLabelsBetween(dateList);
       const selectedPositions = positions.filter((position) =>
-        config.positionIds.includes(position.id)
+        normalizedConfig.positionIds.includes(position.id)
       );
       const positionOrder = new Map<number, number>();
-      config.positionIds.forEach((id, index) => {
+      normalizedConfig.positionIds.forEach((id, index) => {
         positionOrder.set(id, index);
       });
 
       const filteredMembers = members.filter(
         (member) => member.positionId != null && positionOrder.has(member.positionId)
       );
-      const sortedMembers = sortMembers(filteredMembers, positionOrder, config.showFullName);
+      const displayNames = buildMemberDisplayNameMap(filteredMembers);
+      const sortedMembers = sortMembers(filteredMembers, positionOrder, displayNames);
 
       const days = dateList.map((iso) => ({
         date: iso,
@@ -282,7 +288,7 @@ const SchedulePage: React.FC = () => {
         id: undefined,
         memberId: member.id,
         member,
-        displayName: memberDisplayName(member, config.showFullName),
+        displayName: memberDisplayName(member, displayNames),
         positionId: member.positionId,
         positionName: selectedPositions.find((p) => p.id === member.positionId)?.name ?? null,
       }));
@@ -295,7 +301,7 @@ const SchedulePage: React.FC = () => {
       setSchedule({
         id: undefined,
         title,
-        config,
+        config: normalizedConfig,
         days,
         rows,
         cellValues: {},
@@ -308,6 +314,38 @@ const SchedulePage: React.FC = () => {
       setLastRange({ start: config.startDate, end: config.endDate });
     },
     [canManage, members, positions]
+  );
+
+  const prepareSchedule = React.useCallback(
+    (data: ScheduleData): ScheduleData => {
+      const memberMap = new Map(members.map((item) => [item.id, item] as const));
+
+      const uniqueMembers = new Map<number, MemberDto>();
+      data.rows.forEach((row) => {
+        const candidate = row.member ?? memberMap.get(row.memberId);
+        if (candidate) {
+          uniqueMembers.set(candidate.id, candidate);
+        }
+      });
+
+      const displayNames = buildMemberDisplayNameMap(Array.from(uniqueMembers.values()));
+
+      const rows = data.rows.map((row) => {
+        const member = row.member ?? memberMap.get(row.memberId) ?? undefined;
+        return {
+          ...row,
+          member,
+          displayName: displayNames[row.memberId] ?? row.displayName,
+        };
+      });
+
+      return {
+        ...data,
+        config: { ...data.config, showFullName: false, shiftMode: "FULL" },
+        rows,
+      };
+    },
+    [members]
   );
 
   const handleCellChange = React.useCallback(
@@ -382,7 +420,7 @@ const SchedulePage: React.FC = () => {
       const saved = schedule.id
         ? await updateSchedule(restaurantId, schedule.id, payload)
         : await createSchedule(restaurantId, payload);
-      setSchedule(saved);
+      setSchedule(prepareSchedule(saved));
       setScheduleReadOnly(true);
       setSelectedSavedId(saved.id ?? null);
       setLastRange({ start: saved.config.startDate, end: saved.config.endDate });
@@ -408,8 +446,9 @@ const SchedulePage: React.FC = () => {
       setScheduleError(null);
       try {
         const data = await fetchSchedule(restaurantId, id);
-        setSchedule(data);
-        setLastRange({ start: data.config.startDate, end: data.config.endDate });
+        const prepared = prepareSchedule(data);
+        setSchedule(prepared);
+        setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
       } catch (e: any) {
         setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
@@ -431,8 +470,9 @@ const SchedulePage: React.FC = () => {
       setScheduleError(null);
       try {
         const data = await fetchSchedule(restaurantId, id);
-        setSchedule(data);
-        setLastRange({ start: data.config.startDate, end: data.config.endDate });
+        const prepared = prepareSchedule(data);
+        setSchedule(prepared);
+        setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
       } catch (e: any) {
         setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
@@ -526,16 +566,17 @@ const SchedulePage: React.FC = () => {
     setScheduleMessage(null);
     try {
       const data = await fetchSchedule(restaurantId, scheduleId);
-      setSchedule(data);
+      const prepared = prepareSchedule(data);
+      setSchedule(prepared);
       setScheduleReadOnly(true);
-      setLastRange({ start: data.config.startDate, end: data.config.endDate });
+      setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
       await loadShiftRequests(scheduleId);
     } catch (e: any) {
       setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
     } finally {
       setScheduleLoading(false);
     }
-  }, [handleCloseSavedSchedule, loadShiftRequests, restaurantId, scheduleId]);
+  }, [handleCloseSavedSchedule, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]);
 
   const handleDeleteSavedSchedule = React.useCallback(
     async (id: number) => {
@@ -637,16 +678,17 @@ const SchedulePage: React.FC = () => {
     try {
       await decideAsManager(restaurantId, scheduleId, requestId, accepted);
       const data = await fetchSchedule(restaurantId, scheduleId);
-      setSchedule(data);
+      const prepared = prepareSchedule(data);
+      setSchedule(prepared);
       setScheduleReadOnly(true);
-      setLastRange({ start: data.config.startDate, end: data.config.endDate });
+      setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
       await loadShiftRequests(scheduleId);
       setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
     } catch (e: any) {
       setScheduleError(e?.friendlyMessage || "Не удалось обработать заявку");
     }
   },
-  [decideAsManager, fetchSchedule, loadShiftRequests, restaurantId, scheduleId]
+  [decideAsManager, fetchSchedule, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]
 );
 
   const handleCancelMyShiftRequest = React.useCallback(
