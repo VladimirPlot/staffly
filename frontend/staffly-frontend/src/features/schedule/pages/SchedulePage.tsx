@@ -35,6 +35,7 @@ import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
+import { hasStartWithoutEndValue } from "../utils/timeValues";
 import { exportScheduleToJpeg, exportScheduleToXlsx } from "../utils/exporters";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
@@ -397,6 +398,18 @@ const SchedulePage: React.FC = () => {
     setScheduleMessage(null);
     setScheduleError(null);
     try {
+      if (schedule.config.shiftMode === "FULL") {
+        const hasIncompleteShifts = Object.values(schedule.cellValues).some((value) =>
+          hasStartWithoutEndValue(value)
+        );
+
+        if (hasIncompleteShifts) {
+          setScheduleError("Нельзя создать график без времени окончания смены сотрудника");
+          setSaving(false);
+          return;
+        }
+      }
+
       const normalizedCells: Record<string, string> = {};
       Object.entries(schedule.cellValues).forEach(([key, rawValue]) => {
         const normalized = normalizeCellValue(rawValue, schedule.config.shiftMode);
