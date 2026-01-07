@@ -1,2 +1,41 @@
 @import "tailwindcss";
 @import "react-phone-number-input/style.css";
+
+@layer components {
+  .staffly-phone {
+    @apply flex items-stretch gap-2;
+  }
+
+  .staffly-phone .PhoneInputCountry {
+    @apply relative flex items-center justify-center rounded-2xl border border-zinc-300 px-3 shadow-sm;
+  }
+
+  /* селект остаётся кликабельным, но визуально “чистый” */
+  .staffly-phone .PhoneInputCountrySelect {
+    @apply absolute inset-0 h-full w-full cursor-pointer opacity-0;
+  }
+
+  .staffly-phone .PhoneInputCountryIcon {
+    @apply h-4 w-6 overflow-hidden rounded-sm;
+  }
+
+  .staffly-phone .PhoneInputInput {
+    @apply w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300;
+  }
+
+  .staffly-phone.is-error .PhoneInputInput {
+    @apply border-red-500 ring-red-200;
+  }
+
+  .staffly-phone.is-error .PhoneInputCountry {
+    @apply border-red-500;
+  }
+
+  .staffly-phone .PhoneInputInput:disabled {
+    @apply bg-zinc-100;
+  }
+
+  .staffly-phone:has(.PhoneInputInput:focus) .PhoneInputCountry {
+    @apply ring-2 ring-zinc-300;
+  }
+}

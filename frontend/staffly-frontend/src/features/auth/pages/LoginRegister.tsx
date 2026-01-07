@@ -1,11 +1,23 @@
 import React from "react";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
+import PhoneInputField from "../../../shared/ui/PhoneInputField";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { login, register } from "../../auth/api";
 
 type Mode = "login" | "register";
+
+const PHONE_ERROR = "Введите корректный номер телефона";
+
+const getStoredPhone = () => {
+  const stored = localStorage.getItem("auth.lastPhone");
+  if (stored && isValidPhoneNumber(stored)) {
+    return stored;
+  }
+  return undefined;
+};
 
 export default function LoginRegister() {
   const { loginWithToken } = useAuth();
@@ -14,26 +26,32 @@ export default function LoginRegister() {
   const [error, setError] = React.useState<string | null>(null);
 
   // login form
-  const [lPhone, setLPhone] = React.useState(
-    () => localStorage.getItem("auth.lastPhone") || "+7"
-  );
+  const [lPhone, setLPhone] = React.useState<string | undefined>(() => getStoredPhone());
   const [lPassword, setLPassword] = React.useState("");
 
   // register form
   const [rFirstName, setRFirstName] = React.useState("");
   const [rLastName, setRLastName] = React.useState("");
-  const [rPhone, setRPhone] = React.useState("");
+  const [rPhone, setRPhone] = React.useState<string | undefined>(undefined);
   const [rEmail, setREmail] = React.useState("");
   const [rPassword, setRPassword] = React.useState("");
   const [rBirthDate, setRBirthDate] = React.useState("");
 
   const onLogin = async () => {
-    setBusy(true);
     setError(null);
+    if (!lPhone || !isValidPhoneNumber(lPhone)) {
+      setError(PHONE_ERROR);
+      return;
+    }
+    if (!lPassword.trim()) {
+      setError("Введите пароль");
+      return;
+    }
+
+    setBusy(true);
     try {
-      const normalizedPhone = lPhone.trim();
-      const { token } = await login({ phone: normalizedPhone, password: lPassword });
-      localStorage.setItem("auth.lastPhone", normalizedPhone);
+      const { token } = await login({ phone: lPhone, password: lPassword });
+      localStorage.setItem("auth.lastPhone", lPhone);
       await loginWithToken(token);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка входа");
@@ -43,11 +61,16 @@ export default function LoginRegister() {
   };
 
   const onRegister = async () => {
-    setBusy(true);
     setError(null);
+    if (!rPhone || !isValidPhoneNumber(rPhone)) {
+      setError(PHONE_ERROR);
+      return;
+    }
+
+    setBusy(true);
     try {
       const { token } = await register({
-        phone: rPhone.trim(),
+        phone: rPhone,
         email: rEmail.trim(), // <-- обязателен
         firstName: rFirstName.trim(),
         lastName: rLastName.trim(),
@@ -66,11 +89,14 @@ export default function LoginRegister() {
     !!(
       rFirstName.trim() &&
       rLastName.trim() &&
-      rPhone.trim() &&
+      rPhone &&
+      isValidPhoneNumber(rPhone) &&
       rEmail.trim() &&
       rPassword.trim() &&
       rBirthDate.trim()
     ) && !busy;
+
+  const phoneError = error === PHONE_ERROR ? error : undefined;
 
   return (
     <div className="mx-auto max-w-md">
@@ -86,15 +112,14 @@ export default function LoginRegister() {
 
         {mode === "login" ? (
           <div className="grid gap-3">
-            <Input
+            <PhoneInputField
               label="Телефон"
-              type="tel"
-              name="username"
               autoComplete="username"
-              inputMode="tel"
-              placeholder="999 888-77-66"
+              defaultCountry="RU"
               value={lPhone}
-              onChange={(e) => setLPhone(e.target.value)}
+              onChange={setLPhone}
+              error={phoneError}
+              disabled={busy}
             />
             <Input
               label="Пароль"
@@ -103,21 +128,49 @@ export default function LoginRegister() {
               autoComplete="current-password"
               value={lPassword}
               onChange={(e) => setLPassword(e.target.value)}
+              disabled={busy}
             />
-            {error && <div className="text-sm text-red-600">{error}</div>}
-            <Button onClick={onLogin} disabled={busy || !lPhone.trim() || !lPassword.trim()}>
+            {error && error !== PHONE_ERROR && <div className="text-sm text-red-600">{error}</div>}
+            <Button onClick={onLogin} disabled={busy || !lPhone || !lPassword.trim()}>
               {busy ? "Входим…" : "Войти"}
             </Button>
           </div>
         ) : (
           <div className="grid gap-3">
-            <Input label="Имя" value={rFirstName} onChange={(e) => setRFirstName(e.target.value)} />
-            <Input label="Фамилия" value={rLastName} onChange={(e) => setRLastName(e.target.value)} />
-            <Input label="Телефон" type="tel" value={rPhone} onChange={(e) => setRPhone(e.target.value)} />
-            <Input label="Email" type="email" value={rEmail} onChange={(e) => setREmail(e.target.value)} placeholder="name@example.com" />
-            <Input label="Дата рождения" type="date" value={rBirthDate} onChange={(e) => setRBirthDate(e.target.value)} />
-            <Input label="Пароль" type="password" value={rPassword} onChange={(e) => setRPassword(e.target.value)} />
-            {error && <div className="text-sm text-red-600">{error}</div>}
+            <Input label="Имя" value={rFirstName} onChange={(e) => setRFirstName(e.target.value)} disabled={busy} />
+            <Input label="Фамилия" value={rLastName} onChange={(e) => setRLastName(e.target.value)} disabled={busy} />
+            <PhoneInputField
+              label="Телефон"
+              defaultCountry="RU"
+              autoComplete="tel"
+              value={rPhone}
+              onChange={setRPhone}
+              error={phoneError}
+              disabled={busy}
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={rEmail}
+              onChange={(e) => setREmail(e.target.value)}
+              placeholder="name@example.com"
+              disabled={busy}
+            />
+            <Input
+              label="Дата рождения"
+              type="date"
+              value={rBirthDate}
+              onChange={(e) => setRBirthDate(e.target.value)}
+              disabled={busy}
+            />
+            <Input
+              label="Пароль"
+              type="password"
+              value={rPassword}
+              onChange={(e) => setRPassword(e.target.value)}
+              disabled={busy}
+            />
+            {error && error !== PHONE_ERROR && <div className="text-sm text-red-600">{error}</div>}
             <Button onClick={onRegister} disabled={!canRegister}>
               {busy ? "Регистрируем…" : "Зарегистрироваться"}
             </Button>
