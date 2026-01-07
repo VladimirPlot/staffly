@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Link } from "react-router-dom";
 import { AuthProvider, useAuth } from "./shared/providers/AuthProvider";
 import ProtectedRoute from "./shared/routes/ProtectedRoute";
 import RequireRestaurant from "./shared/routes/RequireRestaurant";
+import PublicOnlyRoute from "./shared/routes/PublicOnlyRoute";
 
 import LoginRegister from "./features/auth/pages/LoginRegister";
 import Restaurants from "./features/restaurants/pages/Restaurants";
@@ -205,7 +206,14 @@ export default function App() {
           <TopBar />
 
           <Routes>
-            <Route path="/login" element={<LoginRegister />} />
+            <Route
+              path="/login"
+              element={
+                <PublicOnlyRoute>
+                  <LoginRegister />
+                </PublicOnlyRoute>
+              }
+            />
 
             {/* Дом выбранного ресторана */}
             <Route

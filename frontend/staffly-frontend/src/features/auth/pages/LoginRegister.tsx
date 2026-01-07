@@ -14,8 +14,10 @@ export default function LoginRegister() {
   const [error, setError] = React.useState<string | null>(null);
 
   // login form
-  const [lPhone, setLPhone] = React.useState("+79999999999");
-  const [lPassword, setLPassword] = React.useState("admin123");
+  const [lPhone, setLPhone] = React.useState(
+    () => localStorage.getItem("auth.lastPhone") || "+7"
+  );
+  const [lPassword, setLPassword] = React.useState("");
 
   // register form
   const [rFirstName, setRFirstName] = React.useState("");
@@ -29,7 +31,9 @@ export default function LoginRegister() {
     setBusy(true);
     setError(null);
     try {
-      const { token } = await login({ phone: lPhone.trim(), password: lPassword });
+      const normalizedPhone = lPhone.trim();
+      const { token } = await login({ phone: normalizedPhone, password: lPassword });
+      localStorage.setItem("auth.lastPhone", normalizedPhone);
       await loginWithToken(token);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка входа");
@@ -82,10 +86,26 @@ export default function LoginRegister() {
 
         {mode === "login" ? (
           <div className="grid gap-3">
-            <Input label="Телефон" type="tel" value={lPhone} onChange={(e) => setLPhone(e.target.value)} />
-            <Input label="Пароль" type="password" value={lPassword} onChange={(e) => setLPassword(e.target.value)} />
+            <Input
+              label="Телефон"
+              type="tel"
+              name="username"
+              autoComplete="username"
+              inputMode="tel"
+              placeholder="999 888-77-66"
+              value={lPhone}
+              onChange={(e) => setLPhone(e.target.value)}
+            />
+            <Input
+              label="Пароль"
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              value={lPassword}
+              onChange={(e) => setLPassword(e.target.value)}
+            />
             {error && <div className="text-sm text-red-600">{error}</div>}
-            <Button onClick={onLogin} disabled={busy}>
+            <Button onClick={onLogin} disabled={busy || !lPhone.trim() || !lPassword.trim()}>
               {busy ? "Входим…" : "Войти"}
             </Button>
           </div>

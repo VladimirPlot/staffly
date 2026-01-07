@@ -20,7 +20,7 @@ public class JwtService {
     private final long ttlMinutes;
 
     public JwtService(@Value("${app.jwt.secret}") String secret,
-                      @Value("${app.jwt.ttl-minutes}") long ttlMinutes) {
+                      @Value("${app.auth.access-ttl-minutes}") long ttlMinutes) {
         this.key = deriveHmacKey(secret);
         this.ttlMinutes = ttlMinutes;
     }
@@ -81,4 +81,5 @@ public class JwtService {
         out.put("exp", claims.getExpiration());
         return out;
     }
+
 }

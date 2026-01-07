@@ -1,10 +1,15 @@
 server:
   port: 8080
+  forward-headers-strategy: framework
 
 app:
   jwt:
     secret: ${JWT_SECRET:dev-very-secret-key-change-me}
-    ttl-minutes: ${JWT_TTL_MINUTES:120}
+  auth:
+    access-ttl-minutes: ${ACCESS_TTL_MINUTES:15}
+    refresh-ttl-days: ${REFRESH_TTL_DAYS:30}
+    refresh-cookie-name: "refreshToken"
+    refresh-cookie-path: "/api/auth"
   creator:
     phones: "+79999999999"
   hide-creator-emails:

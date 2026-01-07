@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { clearToken, getToken, saveToken } from "../utils/storage";
-import { me as apiMe } from "../../features/auth/api";
+import { logout as apiLogout, me as apiMe, refresh as apiRefresh } from "../../features/auth/api";
 import type { MeResponse } from "../../entities/user/types";
 import { toAbsoluteUrl } from "../utils/url";
 
@@ -29,7 +29,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const navigate = useNavigate();
   const [token, setToken] = React.useState<string | null>(getToken());
   const [user, setUser] = React.useState<UiUser | null>(null);
-  const [loading, setLoading] = React.useState<boolean>(!!token);
+  const [loading, setLoading] = React.useState<boolean>(true);
 
   const toUiUser = (m: MeResponse): UiUser => {
     const fullName = [m.firstName, m.lastName].filter(Boolean).join(" ").trim();
@@ -38,27 +38,35 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       phone: m.phone,
       name: fullName || (m.isCreator ? "Создатель" : "Пользователь"),
       roles: m.roles,
-      avatarUrl: toAbsoluteUrl(m.avatarUrl), // ✅ делаем абсолютным
+      avatarUrl: toAbsoluteUrl(m.avatarUrl),
       restaurantId: m.restaurantId ?? null,
     };
   };
 
+  /**
+   * Loads /api/me using current access token.
+   * Important: token can be rotated by apiClient's auto-refresh, so we must read it again from storage after the call.
+   */
   const refreshMe = React.useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
+    const t = getToken();
+    if (!t) {
+      setToken(null);
+      setUser(null);
+      return;
+    }
+
     try {
       const me = await apiMe();
       setUser(toUiUser(me));
+      setToken(getToken()); // ✅ актуальный токен после возможного refresh в interceptor
     } catch (e) {
       console.error("/api/me failed", e);
       clearToken();
       setToken(null);
       setUser(null);
       navigate("/login", { replace: true });
-    } finally {
-      setLoading(false);
     }
-  }, [token, navigate]);
+  }, [navigate]);
 
   const loginWithToken = React.useCallback(
     async (newToken: string) => {
@@ -71,15 +79,69 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   );
 
   const logout = React.useCallback(() => {
-    clearToken();
-    setToken(null);
-    setUser(null);
-    navigate("/login", { replace: true });
+    void (async () => {
+      try {
+        await apiLogout();
+      } catch (e) {
+        console.warn("Logout failed", e);
+      } finally {
+        clearToken();
+        setToken(null);
+        setUser(null);
+        setLoading(false);
+        navigate("/login", { replace: true });
+      }
+    })();
   }, [navigate]);
 
   React.useEffect(() => {
-    if (token) void refreshMe();
-  }, [token, refreshMe]);
+    let active = true;
+
+    const init = async () => {
+      setLoading(true);
+      try {
+        // 1) If we already have access token — try to load /me
+        if (getToken()) {
+          await refreshMe();
+          return;
+        }
+
+        // 2) Otherwise try to restore session by refresh cookie
+        try {
+          await apiRefresh(); // saves new access token
+        } catch {
+          if (active) {
+            clearToken();
+            setToken(null);
+            setUser(null);
+          }
+          return;
+        }
+
+        await refreshMe();
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void init();
+    return () => {
+      active = false;
+    };
+  }, [refreshMe]);
+
+  React.useEffect(() => {
+    const handleLogout = () => {
+      clearToken();
+      setToken(null);
+      setUser(null);
+      setLoading(false);
+      navigate("/login", { replace: true });
+    };
+
+    window.addEventListener("auth:logout", handleLogout);
+    return () => window.removeEventListener("auth:logout", handleLogout);
+  }, [navigate]);
 
   return (
     <AuthContext.Provider value={{ token, user, loading, loginWithToken, logout, refreshMe }}>

@@ -18,16 +18,18 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
 
-      # БД – ходим к сервису db
+      # DB
       DB_URL: jdbc:postgresql://db:5432/staffly
       DB_USER: app
       DB_PASSWORD: app
 
-      # JWT – в проде ОБЯЗАТЕЛЬНО поменяй на что-то своё
+      # JWT secret (in prod обязательно свой)
       JWT_SECRET: prod-very-secret-key-change-me-32+chars-long!!_0123456789
-      JWT_TTL_MINUTES: 120
 
-      # Публичный URL – пригодится, если будешь генерить ссылки
+      ACCESS_TTL_MINUTES: 15
+      REFRESH_TTL_DAYS: 30
+
+      # Public URL (optional)
       PUBLIC_BASE_URL: http://staffly.store
     depends_on:
       - db
@@ -41,7 +43,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "80:80"   # фронт + /api доступны снаружи на 80 порту
+      - "80:80"
 
 volumes:
   pgdata:
