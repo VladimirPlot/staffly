@@ -1,6 +1,5 @@
-import React from "react";
 import PhoneInput from "react-phone-number-input";
-import type { CountryCode } from "react-phone-number-input";
+import type { CountryCode } from "libphonenumber-js";
 
 type Props = {
   label: string;
@@ -10,7 +9,6 @@ type Props = {
   defaultCountry?: CountryCode;
   autoComplete?: string;
   disabled?: boolean;
-  placeholder?: string;
 };
 
 export default function PhoneInputField({
@@ -18,11 +16,14 @@ export default function PhoneInputField({
   value,
   onChange,
   error,
-  defaultCountry = "RU",
+  defaultCountry,
   autoComplete,
   disabled,
-  placeholder = "999 888-77-66",
 }: Props) {
+  const inputClassName = `w-full rounded-2xl border p-3 outline-none transition focus:ring-2 ${
+    error ? "border-red-500 ring-red-200" : "border-zinc-300 focus:ring-zinc-300"
+  }`;
+
   return (
     <label className="block text-sm">
       <span className="mb-1 block text-zinc-600">{label}</span>
@@ -31,16 +32,11 @@ export default function PhoneInputField({
         value={value}
         onChange={onChange}
         defaultCountry={defaultCountry}
+        autoComplete={autoComplete}
         disabled={disabled}
-        international
-        withCountryCallingCode
-        countryCallingCodeEditable={false}
-        className={`staffly-phone ${error ? "is-error" : ""}`}
-        numberInputProps={{
-          autoComplete,
-          inputMode: "tel",
-          placeholder,
-        }}
+        className="w-full staffly-phone"
+        inputClassName={inputClassName}
+        numberInputProps={{ placeholder: "999 888-77-66" }}
       />
 
       {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
