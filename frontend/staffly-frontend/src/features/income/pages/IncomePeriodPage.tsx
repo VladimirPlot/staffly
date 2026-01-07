@@ -27,7 +27,7 @@ export default function IncomePeriodPage() {
       try {
         const detail = await getIncomePeriod(Number(periodId));
         setData(detail);
-      } catch (e) {
+      } catch {
         navigate("/me/income");
       } finally {
         setLoading(false);

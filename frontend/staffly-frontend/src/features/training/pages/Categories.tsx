@@ -50,18 +50,10 @@ function ServiceStub({ module }: { module: TrainingModuleConfig }) {
 
 function TrainingModuleCategoriesPage() {
   const params = useParams<{ module: string }>();
-  const moduleConfig = getTrainingModuleConfig(params.module);
-
-  if (!moduleConfig) {
-    return <Navigate to="/training" replace />;
-  }
-
-  if (!isConfigWithCategories(moduleConfig)) {
-    return <ServiceStub module={moduleConfig} />;
-  }
-
-  const moduleCode: TrainingModule = moduleConfig.module;
   const { user } = useAuth();
+  const moduleConfig = getTrainingModuleConfig(params.module);
+  const hasCategories = isConfigWithCategories(moduleConfig);
+  const moduleCode: TrainingModule = hasCategories ? moduleConfig.module : "MENU";
   const restaurantId = user?.restaurantId ?? null;
 
   const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
@@ -120,11 +112,12 @@ function TrainingModuleCategoriesPage() {
   const [savingCategory, setSavingCategory] = React.useState(false);
 
   React.useEffect(() => {
+    if (!hasCategories) return;
     setAllForManagers(false);
-  }, [moduleCode]);
+  }, [hasCategories, moduleCode]);
 
   const load = React.useCallback(async () => {
-    if (!restaurantId) return;
+    if (!restaurantId || !hasCategories) return;
     setLoading(true);
     setError(null);
     try {
@@ -141,14 +134,14 @@ function TrainingModuleCategoriesPage() {
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, moduleCode, allForManagers, canManage]);
+  }, [restaurantId, hasCategories, moduleCode, allForManagers, canManage]);
 
   React.useEffect(() => {
     if (restaurantId) void load();
-  }, [restaurantId, moduleCode, load]);
+  }, [restaurantId, load]);
 
   const handleCreate = React.useCallback(async () => {
-    if (!restaurantId || !name.trim()) return;
+    if (!restaurantId || !hasCategories || !name.trim()) return;
     try {
       setCreating(true);
       const nextSortOrder =
@@ -167,7 +160,15 @@ function TrainingModuleCategoriesPage() {
     } finally {
       setCreating(false);
     }
-  }, [restaurantId, moduleCode, name, description, load, categories]);
+  }, [restaurantId, hasCategories, moduleCode, name, description, load, categories]);
+
+  if (!moduleConfig) {
+    return <Navigate to="/training" replace />;
+  }
+
+  if (!hasCategories) {
+    return <ServiceStub module={moduleConfig} />;
+  }
 
   if (!restaurantId) {
     return (

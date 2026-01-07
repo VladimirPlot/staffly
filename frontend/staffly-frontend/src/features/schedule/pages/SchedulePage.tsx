@@ -446,7 +446,7 @@ const SchedulePage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [canManage, loadShiftRequests, restaurantId, schedule]);
+  }, [canManage, loadShiftRequests, prepareSchedule, restaurantId, schedule]);
 
   const handleOpenSavedSchedule = React.useCallback(
     async (id: number) => {
@@ -469,7 +469,7 @@ const SchedulePage: React.FC = () => {
         setScheduleLoading(false);
       }
     },
-    [loadShiftRequests, restaurantId]
+    [loadShiftRequests, prepareSchedule, restaurantId]
   );
 
   const handleEditSavedSchedule = React.useCallback(
@@ -493,7 +493,7 @@ const SchedulePage: React.FC = () => {
         setScheduleLoading(false);
       }
     },
-    [canManage, loadShiftRequests, restaurantId]
+    [canManage, loadShiftRequests, prepareSchedule, restaurantId]
   );
 
   const handleCloseSavedSchedule = React.useCallback(() => {
@@ -701,7 +701,7 @@ const SchedulePage: React.FC = () => {
       setScheduleError(e?.friendlyMessage || "Не удалось обработать заявку");
     }
   },
-  [decideAsManager, fetchSchedule, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]
+  [loadShiftRequests, prepareSchedule, restaurantId, scheduleId]
 );
 
   const handleCancelMyShiftRequest = React.useCallback(
@@ -819,7 +819,7 @@ const SchedulePage: React.FC = () => {
       return;
     }
     setActiveTab(hasTodayShifts ? "today" : "table");
-  }, [hasTodayShifts, schedule?.id]);
+  }, [hasTodayShifts, schedule]);
 
   const sortedShiftRequests = React.useMemo(() => {
     let requests = [...shiftRequests];

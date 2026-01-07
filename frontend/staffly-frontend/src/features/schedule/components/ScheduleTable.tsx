@@ -60,27 +60,39 @@ const STICKY_COL_SHADOW = "shadow-[8px_0_10px_-10px_rgba(0,0,0,0.45)]"; // сп�
 const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // снизу тень у липких строк
 
 const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) => {
-  if (!data) return null;
+  const safeData: ScheduleData = data ?? {
+    title: "",
+    config: {
+      startDate: "",
+      endDate: "",
+      positionIds: [],
+      showFullName: false,
+      shiftMode: "FULL",
+    },
+    days: [],
+    rows: [],
+    cellValues: {},
+  };
 
-  const { days, rows, title, config } = data;
+  const { days, rows, title, config } = safeData;
 
   const memberShiftCounts = React.useMemo(() => {
     return rows.map((row) =>
       days.reduce((acc, day) => {
-        const value = data.cellValues[`${row.memberId}:${day.date}`] ?? "";
+        const value = safeData.cellValues[`${row.memberId}:${day.date}`] ?? "";
         return acc + (hasCompleteRangeValue(value) ? 1 : 0);
       }, 0)
     );
-  }, [data.cellValues, days, rows]);
+  }, [days, rows, safeData.cellValues]);
 
   const dayShiftCounts = React.useMemo(() => {
     return days.map((day) =>
       rows.reduce((acc, row) => {
-        const value = data.cellValues[`${row.memberId}:${day.date}`] ?? "";
+        const value = safeData.cellValues[`${row.memberId}:${day.date}`] ?? "";
         return acc + (hasCompleteRangeValue(value) ? 1 : 0);
       }, 0)
     );
-  }, [data.cellValues, days, rows]);
+  }, [days, rows, safeData.cellValues]);
 
   const totalShifts = React.useMemo(
     () => dayShiftCounts.reduce((acc, value) => acc + value, 0),
@@ -125,6 +137,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
       : "minmax(4.5rem, 5.5rem)";
     return `${firstCol} ${dayCols} ${shiftsCol}`;
   }, [days, readOnly]);
+
+  if (!data) return null;
 
   return (
     // ❗️скролл только в ScheduleTableSection (overflow-auto)

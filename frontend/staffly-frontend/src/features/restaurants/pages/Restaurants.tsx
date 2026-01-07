@@ -46,7 +46,7 @@ export default function Restaurants() {
   React.useEffect(() => {
     if (!user) return;
     void reload();
-  }, [user?.id, reload]);
+  }, [user, reload]);
 
   if (loading) {
     return (

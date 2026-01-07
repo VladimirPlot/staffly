@@ -32,18 +32,12 @@ type Params = { module: string; categoryId: string };
 
 export default function TrainingCategoryItemsPage() {
   const params = useParams<Params>();
-  const moduleConfig = getTrainingModuleConfig(params.module);
-
-  if (!moduleConfig || !isConfigWithCategories(moduleConfig)) {
-    return <Navigate to="/training" replace />;
-  }
-
-  const categoryId = Number(params.categoryId);
-  if (!params.categoryId || Number.isNaN(categoryId)) {
-    return <Navigate to={`/training/${moduleConfig.slug}`} replace />;
-  }
-
   const { user } = useAuth();
+  const moduleConfig = getTrainingModuleConfig(params.module);
+  const hasCategories = isConfigWithCategories(moduleConfig);
+  const categoryId = Number(params.categoryId);
+  const hasValidCategoryId = Boolean(params.categoryId) && !Number.isNaN(categoryId);
+  const moduleCode = hasCategories ? moduleConfig.module : "MENU";
   const restaurantId = user?.restaurantId ?? null;
   const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
 
@@ -112,11 +106,11 @@ export default function TrainingCategoryItemsPage() {
   const [savingItemId, setSavingItemId] = React.useState<number | null>(null);
 
   const loadCategory = React.useCallback(async () => {
-    if (!restaurantId) return;
+    if (!restaurantId || !hasCategories || !hasValidCategoryId) return;
     setCategoryLoading(true);
     setCategoryError(null);
     try {
-      const data = await listCategories(restaurantId, moduleConfig.module, canManage);
+      const data = await listCategories(restaurantId, moduleCode, canManage);
       const found = data.find((c) => c.id === categoryId) ?? null;
       if (!found) {
         setCategoryError("Категория не найдена или недоступна.");
@@ -130,10 +124,10 @@ export default function TrainingCategoryItemsPage() {
     } finally {
       setCategoryLoading(false);
     }
-  }, [restaurantId, moduleConfig.module, canManage, categoryId]);
+  }, [restaurantId, hasCategories, hasValidCategoryId, moduleCode, canManage, categoryId]);
 
   const loadItems = React.useCallback(async () => {
-    if (!restaurantId) return;
+    if (!restaurantId || !hasValidCategoryId) return;
     setItemsLoading(true);
     setItemsError(null);
     try {
@@ -151,7 +145,7 @@ export default function TrainingCategoryItemsPage() {
     } finally {
       setItemsLoading(false);
     }
-  }, [restaurantId, categoryId]);
+  }, [restaurantId, hasValidCategoryId, categoryId]);
 
   React.useEffect(() => {
     if (!restaurantId) return;
@@ -172,7 +166,7 @@ export default function TrainingCategoryItemsPage() {
   };
 
   const handleCreate = async () => {
-    if (!restaurantId || !name.trim() || !composition.trim()) return;
+    if (!restaurantId || !hasValidCategoryId || !name.trim() || !composition.trim()) return;
     try {
       setCreating(true);
       const nextSortOrder =
@@ -301,6 +295,14 @@ export default function TrainingCategoryItemsPage() {
       setSavingItemId(null);
     }
   };
+
+  if (!moduleConfig || !hasCategories) {
+    return <Navigate to="/training" replace />;
+  }
+
+  if (!hasValidCategoryId) {
+    return <Navigate to={`/training/${moduleConfig.slug}`} replace />;
+  }
 
   if (!restaurantId) {
     return <Navigate to="/training" replace />;

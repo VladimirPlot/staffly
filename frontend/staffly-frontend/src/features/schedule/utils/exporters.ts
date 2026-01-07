@@ -3,7 +3,7 @@ import type { ScheduleData } from "../types";
 function sanitizeFileName(name: string, extension: string): string {
   const fallback = "График";
   const trimmed = name?.trim() || fallback;
-  const sanitized = trimmed.replace(/[\/:*?"<>|]+/g, "_");
+  const sanitized = trimmed.replace(/[/:*?"<>|]+/g, "_");
   return `${sanitized}.${extension}`;
 }
 
