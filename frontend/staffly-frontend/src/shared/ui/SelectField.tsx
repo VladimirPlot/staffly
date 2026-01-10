@@ -7,10 +7,10 @@ type Props = React.SelectHTMLAttributes<HTMLSelectElement> & {
 
 export default function SelectField({ label, error, className = "", children, ...rest }: Props) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-1 block text-sm text-zinc-600">{label}</span>
       <select
-        className={`w-full rounded-2xl border p-3 text-base outline-none transition focus:ring-2 ${
+        className={`w-full max-w-full truncate rounded-2xl border p-3 pr-10 text-base outline-none transition focus:ring-2 ${
           error ? "border-red-500 ring-red-200" : "border-zinc-300 focus:ring-zinc-300"
         } ${className}`}
         {...rest}
