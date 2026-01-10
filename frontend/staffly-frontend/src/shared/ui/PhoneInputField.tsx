@@ -20,13 +20,9 @@ export default function PhoneInputField({
   autoComplete,
   disabled,
 }: Props) {
-  const inputClassName = `w-full rounded-2xl border p-3 outline-none transition focus:ring-2 ${
-    error ? "border-red-500 ring-red-200" : "border-zinc-300 focus:ring-zinc-300"
-  }`;
-
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block text-zinc-600">{label}</span>
+    <label className="block">
+      <span className="mb-1 block text-sm text-zinc-600">{label}</span>
 
       <PhoneInput
         value={value}
@@ -34,8 +30,7 @@ export default function PhoneInputField({
         defaultCountry={defaultCountry}
         autoComplete={autoComplete}
         disabled={disabled}
-        className="w-full staffly-phone"
-        inputClassName={inputClassName}
+        className={`w-full staffly-phone ${error ? "is-error" : ""}`}
         numberInputProps={{ placeholder: "999 888-77-66" }}
       />
 

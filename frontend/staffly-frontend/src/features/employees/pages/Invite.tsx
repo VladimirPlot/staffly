@@ -551,10 +551,6 @@ export default function InvitePage() {
 
                   <Button variant="outline" onClick={() => setInviteOpen(false)}>Отмена</Button>
                 </div>
-
-                <div className="text-xs text-zinc-500">
-                  Права на отправку приглашений проверяются на бэке: MANAGER может приглашать только STAFF.
-                </div>
               </div>
             )}
           </div>

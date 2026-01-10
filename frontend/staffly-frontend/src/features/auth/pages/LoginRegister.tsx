@@ -13,9 +13,7 @@ const PHONE_ERROR = "Введите корректный номер телефо
 
 const getStoredPhone = () => {
   const stored = localStorage.getItem("auth.lastPhone");
-  if (stored && isValidPhoneNumber(stored)) {
-    return stored;
-  }
+  if (stored && isValidPhoneNumber(stored)) return stored;
   return undefined;
 };
 
@@ -37,8 +35,14 @@ export default function LoginRegister() {
   const [rPassword, setRPassword] = React.useState("");
   const [rBirthDate, setRBirthDate] = React.useState("");
 
+  // ✅ сбрасываем ошибки при смене вкладки, чтобы не “тянулось” между режимами
+  React.useEffect(() => {
+    setError(null);
+  }, [mode]);
+
   const onLogin = async () => {
     setError(null);
+
     if (!lPhone || !isValidPhoneNumber(lPhone)) {
       setError(PHONE_ERROR);
       return;
@@ -51,7 +55,10 @@ export default function LoginRegister() {
     setBusy(true);
     try {
       const { token } = await login({ phone: lPhone, password: lPassword });
+
+      // ✅ сохраняем телефон сразу после успеха
       localStorage.setItem("auth.lastPhone", lPhone);
+
       await loginWithToken(token);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка входа");
@@ -62,6 +69,7 @@ export default function LoginRegister() {
 
   const onRegister = async () => {
     setError(null);
+
     if (!rPhone || !isValidPhoneNumber(rPhone)) {
       setError(PHONE_ERROR);
       return;
@@ -71,12 +79,16 @@ export default function LoginRegister() {
     try {
       const { token } = await register({
         phone: rPhone,
-        email: rEmail.trim(), // <-- обязателен
+        email: rEmail.trim(),
         firstName: rFirstName.trim(),
         lastName: rLastName.trim(),
         password: rPassword,
         birthDate: rBirthDate.trim(),
       });
+
+      // ✅ тоже сохраняем телефон после успешной регистрации
+      localStorage.setItem("auth.lastPhone", rPhone);
+
       await loginWithToken(token);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка регистрации");
@@ -102,10 +114,18 @@ export default function LoginRegister() {
     <div className="mx-auto max-w-md">
       <Card>
         <div className="mb-4 flex gap-2">
-          <Button variant={mode === "login" ? "primary" : "outline"} onClick={() => setMode("login")}>
+          <Button
+            variant={mode === "login" ? "primary" : "outline"}
+            onClick={() => setMode("login")}
+            disabled={busy}
+          >
             Вход
           </Button>
-          <Button variant={mode === "register" ? "primary" : "outline"} onClick={() => setMode("register")}>
+          <Button
+            variant={mode === "register" ? "primary" : "outline"}
+            onClick={() => setMode("register")}
+            disabled={busy}
+          >
             Регистрация
           </Button>
         </div>
@@ -121,6 +141,7 @@ export default function LoginRegister() {
               error={phoneError}
               disabled={busy}
             />
+
             <Input
               label="Пароль"
               type="password"
@@ -130,15 +151,28 @@ export default function LoginRegister() {
               onChange={(e) => setLPassword(e.target.value)}
               disabled={busy}
             />
+
             {error && error !== PHONE_ERROR && <div className="text-sm text-red-600">{error}</div>}
+
             <Button onClick={onLogin} disabled={busy || !lPhone || !lPassword.trim()}>
               {busy ? "Входим…" : "Войти"}
             </Button>
           </div>
         ) : (
           <div className="grid gap-3">
-            <Input label="Имя" value={rFirstName} onChange={(e) => setRFirstName(e.target.value)} disabled={busy} />
-            <Input label="Фамилия" value={rLastName} onChange={(e) => setRLastName(e.target.value)} disabled={busy} />
+            <Input
+              label="Имя"
+              value={rFirstName}
+              onChange={(e) => setRFirstName(e.target.value)}
+              disabled={busy}
+            />
+            <Input
+              label="Фамилия"
+              value={rLastName}
+              onChange={(e) => setRLastName(e.target.value)}
+              disabled={busy}
+            />
+
             <PhoneInputField
               label="Телефон"
               defaultCountry="RU"
@@ -148,6 +182,7 @@ export default function LoginRegister() {
               error={phoneError}
               disabled={busy}
             />
+
             <Input
               label="Email"
               type="email"
@@ -156,6 +191,7 @@ export default function LoginRegister() {
               placeholder="name@example.com"
               disabled={busy}
             />
+
             <Input
               label="Дата рождения"
               type="date"
@@ -163,6 +199,7 @@ export default function LoginRegister() {
               onChange={(e) => setRBirthDate(e.target.value)}
               disabled={busy}
             />
+
             <Input
               label="Пароль"
               type="password"
@@ -170,7 +207,9 @@ export default function LoginRegister() {
               onChange={(e) => setRPassword(e.target.value)}
               disabled={busy}
             />
+
             {error && error !== PHONE_ERROR && <div className="text-sm text-red-600">{error}</div>}
+
             <Button onClick={onRegister} disabled={!canRegister}>
               {busy ? "Регистрируем…" : "Зарегистрироваться"}
             </Button>
