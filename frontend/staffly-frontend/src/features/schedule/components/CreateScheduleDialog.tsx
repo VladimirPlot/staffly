@@ -152,7 +152,7 @@ const CreateScheduleDialog: React.FC<Props> = ({
             {positionFields.map((field, index) => (
               <div key={field.id} className="flex items-center gap-3">
                 <select
-                  className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-sm"
+                  className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
                   value={field.value.toString()}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
                 >

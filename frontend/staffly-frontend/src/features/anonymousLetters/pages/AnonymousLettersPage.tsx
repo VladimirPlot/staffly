@@ -6,6 +6,7 @@ import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
+import SelectField from "../../../shared/ui/SelectField";
 import Modal from "../../../shared/ui/Modal";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
@@ -356,39 +357,36 @@ export default function AnonymousLettersPage() {
             placeholder="Кратко опишите тему"
           />
 
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-600">Получатель</span>
-            <select
-              className="w-full rounded-2xl border border-zinc-300 p-3 text-sm outline-none transition focus:ring-2 focus:ring-zinc-300"
-              value={formState.recipientMemberId ?? ""}
-              onChange={(e) =>
-                setFormState((prev) => ({ ...prev, recipientMemberId: Number(e.target.value) || null }))
-              }
-              disabled={submitting || recipients.length === 0}
-            >
-              <option value="">Выберите администратора</option>
-              {recipients.map((recipient) => (
-                <option key={recipient.id} value={recipient.id}>
-                  {(() => {
-                    const name =
-                      recipient.fullName?.trim() ||
-                      [recipient.firstName, recipient.lastName].filter(Boolean).join(" ").trim();
-                    const position = recipient.positionName?.trim();
+          <SelectField
+            label="Получатель"
+            value={formState.recipientMemberId ?? ""}
+            onChange={(e) =>
+              setFormState((prev) => ({ ...prev, recipientMemberId: Number(e.target.value) || null }))
+            }
+            disabled={submitting || recipients.length === 0}
+          >
+            <option value="">Выберите администратора</option>
+            {recipients.map((recipient) => (
+              <option key={recipient.id} value={recipient.id}>
+                {(() => {
+                  const name =
+                    recipient.fullName?.trim() ||
+                    [recipient.firstName, recipient.lastName].filter(Boolean).join(" ").trim();
+                  const position = recipient.positionName?.trim();
 
-                    if (name && position) return `${name} (${position})`;
-                    if (name) return name;
-                    if (position) return `${position} #${recipient.id}`;
-                    return `Администратор #${recipient.id}`;
-                  })()}
-                </option>
-              ))}
-            </select>
-            {recipients.length === 0 && (
-              <span className="mt-1 block text-xs text-zinc-500">
-                В ресторане пока нет участников с ролью ADMIN.
-              </span>
-            )}
-          </label>
+                  if (name && position) return `${name} (${position})`;
+                  if (name) return name;
+                  if (position) return `${position} #${recipient.id}`;
+                  return `Администратор #${recipient.id}`;
+                })()}
+              </option>
+            ))}
+          </SelectField>
+          {recipients.length === 0 && (
+            <span className="mt-1 block text-xs text-zinc-500">
+              В ресторане пока нет участников с ролью ADMIN.
+            </span>
+          )}
 
           <Textarea
             label="Наполнение"

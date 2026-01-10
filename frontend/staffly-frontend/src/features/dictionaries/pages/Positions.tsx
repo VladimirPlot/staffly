@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
+import SelectField from "../../../shared/ui/SelectField";
 import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { ArrowLeft } from "lucide-react";
@@ -103,18 +104,17 @@ export default function PositionsPage() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Официант"
           />
-          <label className="block text-sm sm:w-56">
-            <span className="mb-1 block text-zinc-600">Уровень</span>
-            <select
-              className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
+          <div className="sm:w-56">
+            <SelectField
+              label="Уровень"
               value={level}
               onChange={(e) => setLevel(e.target.value as RestaurantRole)}
             >
               <option value="STAFF">Сотрудник</option>
               <option value="MANAGER">Менеджер</option>
               <option value="ADMIN">Админ</option>
-            </select>
-          </label>
+            </SelectField>
+          </div>
           <div className="flex items-end">
             <Button
               disabled={!name.trim() || creating || !canManage}

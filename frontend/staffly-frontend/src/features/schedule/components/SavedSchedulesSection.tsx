@@ -73,7 +73,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
           <div className="flex items-center gap-2 text-sm text-zinc-700">
             <span>Должность:</span>
             <select
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 focus:border-black focus:outline-none"
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-base text-zinc-800 focus:border-black focus:outline-none"
               value={positionFilter}
               onChange={(e) =>
                 onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))

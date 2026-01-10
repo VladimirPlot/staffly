@@ -327,7 +327,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
       {canManage && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <select
-            className="rounded-2xl border border-zinc-300 bg-white p-2 text-sm"
+            className="rounded-2xl border border-zinc-300 bg-white p-2 text-base"
             value={positionFilter ?? ""}
             onChange={(event) => setPositionFilter(event.target.value ? Number(event.target.value) : null)}
           >

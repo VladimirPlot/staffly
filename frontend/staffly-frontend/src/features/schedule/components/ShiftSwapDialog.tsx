@@ -149,7 +149,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
         <div className="space-y-2">
           <div className="text-sm font-medium text-zinc-700">Моя смена</div>
           <select
-            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-sm"
+            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
             value={myDay}
             onChange={(e) => setMyDay(e.target.value)}
           >
@@ -165,7 +165,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
         <div className="space-y-2">
           <div className="text-sm font-medium text-zinc-700">С кем обменяться</div>
           <select
-            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-sm"
+            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
             value={targetMemberId}
             onChange={(e) => setTargetMemberId(e.target.value)}
             disabled={!myDay}
@@ -184,7 +184,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
           <div className="space-y-2">
             <div className="text-sm font-medium text-zinc-700">Смена коллеги</div>
             <select
-              className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-sm"
+              className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
               value={targetDay}
               onChange={(e) => setTargetDay(e.target.value)}
             >

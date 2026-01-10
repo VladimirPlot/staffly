@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Input from "../../../shared/ui/Input";
+import SelectField from "../../../shared/ui/SelectField";
 import Button from "../../../shared/ui/Button";
 import BackToHome from "../../../shared/ui/BackToHome";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
@@ -489,40 +490,36 @@ export default function InvitePage() {
                 />
 
                 {/* Селект роли: админ видит все, менеджер — только STAFF */}
-                <label className="block text-sm">
-                  <span className="mb-1 block text-zinc-600">Роль доступа</span>
-                  <select
-                    className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as InviteRole)}
-                  >
-                    {roleOptions.map((r) => (
-                      <option key={r} value={r}>{ROLE_LABEL[r as RestaurantRole] || r}</option>
-                    ))}
-                  </select>
-                </label>
+                <SelectField
+                  label="Роль доступа"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as InviteRole)}
+                >
+                  {roleOptions.map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABEL[r as RestaurantRole] || r}
+                    </option>
+                  ))}
+                </SelectField>
 
                 {/* Селект должности: список автоматически фильтруется под выбранную роль */}
-                <label className="block text-sm">
-                  <span className="mb-1 block text-zinc-600">Должность</span>
-                  <select
-                    className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
-                    value={positionId ?? ""}
-                    onChange={(e) => setPositionId(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    {loadingPositions ? (
-                      <option value="">Загрузка…</option>
-                    ) : positions.length === 0 ? (
-                      <option value="">Нет подходящих должностей</option>
-                    ) : (
-                      positions.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({ROLE_LABEL[p.level]})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </label>
+                <SelectField
+                  label="Должность"
+                  value={positionId ?? ""}
+                  onChange={(e) => setPositionId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  {loadingPositions ? (
+                    <option value="">Загрузка…</option>
+                  ) : positions.length === 0 ? (
+                    <option value="">Нет подходящих должностей</option>
+                  ) : (
+                    positions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({ROLE_LABEL[p.level]})
+                      </option>
+                    ))
+                  )}
+                </SelectField>
 
                 {inviteError && <div className="text-sm text-red-600">{inviteError}</div>}
 
@@ -561,7 +558,7 @@ export default function InvitePage() {
             <label className="flex items-center gap-2 text-zinc-700">
               <span>Фильтр по должности:</span>
               <select
-                className="rounded-2xl border border-zinc-300 px-3 py-2 outline-none transition focus:ring-2 focus:ring-zinc-300"
+                className="rounded-2xl border border-zinc-300 px-3 py-2 text-base outline-none transition focus:ring-2 focus:ring-zinc-300"
                 value={positionFilter ?? ""}
                 onChange={(e) => setPositionFilter(e.target.value ? e.target.value : null)}
               >
@@ -686,20 +683,17 @@ export default function InvitePage() {
         ) : !memberToEdit ? null : editOptions.length === 0 ? (
           <div className="text-sm text-zinc-700">Нет доступных активных должностей для этой роли.</div>
         ) : (
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-600">Должность</span>
-            <select
-              className="w-full rounded-2xl border border-zinc-300 p-3 outline-none transition focus:ring-2 focus:ring-zinc-300"
-              value={editPositionId ?? ""}
-              onChange={(e) => setEditPositionId(Number(e.target.value))}
-            >
-              {editOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectField
+            label="Должность"
+            value={editPositionId ?? ""}
+            onChange={(e) => setEditPositionId(Number(e.target.value))}
+          >
+            {editOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </SelectField>
         )}
         {updatePositionError && <div className="mt-2 text-sm text-red-600">{updatePositionError}</div>}
       </Modal>

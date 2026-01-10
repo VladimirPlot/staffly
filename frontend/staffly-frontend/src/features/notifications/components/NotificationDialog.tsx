@@ -138,7 +138,7 @@ const NotificationDialog: React.FC<NotificationDialogProps> = ({
             {fields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
                 <select
-                  className="flex-1 rounded-2xl border border-zinc-300 p-2 text-sm"
+                  className="flex-1 rounded-2xl border border-zinc-300 p-2 text-base"
                   value={field.value}
                   onChange={(event) => handleChange(field.id, event.target.value)}
                   disabled={submitting}

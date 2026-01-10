@@ -104,7 +104,7 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
         <div className="space-y-2">
           <div className="text-sm font-medium text-zinc-700">Моя смена</div>
           <select
-            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-sm"
+            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
             value={selectedDay}
             onChange={(e) => setSelectedDay(e.target.value)}
           >
@@ -120,7 +120,7 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
         <div className="space-y-2">
           <div className="text-sm font-medium text-zinc-700">Кто меня заменяет</div>
           <select
-            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-sm"
+            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
             value={selectedMember}
             onChange={(e) => setSelectedMember(e.target.value)}
             disabled={!selectedDay}

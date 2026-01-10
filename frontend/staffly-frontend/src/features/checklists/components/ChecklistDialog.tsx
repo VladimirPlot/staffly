@@ -277,7 +277,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
                 <select
-                  className="flex-1 rounded-2xl border border-zinc-300 p-2 text-sm"
+                  className="flex-1 rounded-2xl border border-zinc-300 p-2 text-base"
                   value={field.value}
                   onChange={(event) => handlePositionChange(field.id, event.target.value)}
                   disabled={submitting}
@@ -311,7 +311,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
             <div>
               <div className="mb-1 text-sm text-zinc-700">Периодичность</div>
               <select
-                className="w-full rounded-2xl border border-zinc-300 p-2 text-sm"
+                className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
                 value={periodicity ?? ""}
                 onChange={(event) => setPeriodicity((event.target.value || undefined) as ChecklistPeriodicity | undefined)}
                 disabled={submitting}
@@ -330,7 +330,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                   <div className="mb-1 text-sm text-zinc-700">Время сброса</div>
                   <div className="flex gap-2">
                     <select
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-sm"
+                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
                       value={resetHour}
                       onChange={(event) => setResetHour(event.target.value === "" ? "" : Number(event.target.value))}
                       disabled={submitting}
@@ -343,7 +343,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                       ))}
                     </select>
                     <select
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-sm"
+                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
                       value={resetMinute}
                       onChange={(event) => setResetMinute(event.target.value === "" ? "" : Number(event.target.value))}
                       disabled={submitting}
@@ -362,7 +362,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                   <div>
                     <div className="mb-1 text-sm text-zinc-700">День недели</div>
                     <select
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-sm"
+                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
                       value={resetDayOfWeek}
                       onChange={(event) => setResetDayOfWeek(event.target.value ? Number(event.target.value) : "")}
                       disabled={submitting}
@@ -386,7 +386,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                       type="number"
                       min={1}
                       max={31}
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-sm"
+                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
                       value={resetDayOfMonth}
                       onChange={(event) => setResetDayOfMonth(event.target.value ? Number(event.target.value) : "")}
                       disabled={submitting}

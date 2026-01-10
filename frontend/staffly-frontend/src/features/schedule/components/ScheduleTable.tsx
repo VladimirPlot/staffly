@@ -345,7 +345,7 @@ function EditableCell({
           onChange={(event) => onInputChange(event.target.value)}
           onBlur={(event) => onBlur(event.target.value)}
           placeholder={placeholder}
-          className="h-10 w-full rounded-lg border border-transparent bg-zinc-50 px-2 text-center text-xs text-zinc-800 focus:border-zinc-400 focus:bg-white focus:outline-none"
+          className="h-10 w-full rounded-lg border border-transparent bg-zinc-50 px-2 text-center text-base text-zinc-800 focus:border-zinc-400 focus:bg-white focus:outline-none"
         />
       );
   }
@@ -442,7 +442,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
     value.hour === null ? "" : normalizeMinuteValue(value.hour, value.minute ?? 0);
 
   const baseClasses =
-    "h-8 w-full min-w-[3.25rem] rounded-lg border border-zinc-200 bg-white px-1 text-center text-xs focus:border-zinc-400 focus:outline-none";
+    "h-8 w-full min-w-[3.25rem] rounded-lg border border-zinc-200 bg-white px-1 text-center text-base focus:border-zinc-400 focus:outline-none";
   const highlightClasses = highlight
     ? "border-amber-400 bg-amber-50 ring-1 ring-amber-200"
     : "";

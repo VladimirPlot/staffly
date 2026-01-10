@@ -377,8 +377,8 @@ export default function TrainingCategoryItemsPage() {
               onChange={(e) => setAllergens(e.target.value)}
               rows={3}
             />
-            <label className="block text-sm">
-              <span className="mb-1 block text-zinc-600">Фото (опционально)</span>
+            <label className="block">
+              <span className="mb-1 block text-sm text-zinc-600">Фото (опционально)</span>
               <input
                 ref={fileInputRef}
                 type="file"
