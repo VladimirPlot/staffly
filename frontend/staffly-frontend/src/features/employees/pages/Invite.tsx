@@ -523,7 +523,7 @@ export default function InvitePage() {
 
                 {inviteError && <div className="text-sm text-red-600">{inviteError}</div>}
 
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <Button
                     disabled={!phoneOrEmail.trim() || submitting}
                     onClick={async () => {
