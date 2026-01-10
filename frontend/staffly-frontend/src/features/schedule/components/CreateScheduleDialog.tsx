@@ -3,8 +3,11 @@ import React from "react";
 import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
+import { Trash2 } from "lucide-react";
+
 import type { PositionDto } from "../../dictionaries/api";
 import type { ScheduleConfig } from "../types";
+import Icon from "../../../shared/ui/Icon";
 
 type Props = {
   open: boolean;
@@ -149,11 +152,11 @@ const CreateScheduleDialog: React.FC<Props> = ({
         <div className="space-y-3">
           <div className="text-sm font-medium text-zinc-700">Выберите должности</div>
           <div className="space-y-3">
-            {positionFields.map((field, index) => (
-              <div key={field.id} className="flex items-center gap-3">
+            {positionFields.map((field) => (
+              <div key={field.id} className="flex items-center gap-2">
                 <select
-                  className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
-                  value={field.value.toString()}
+                  className="flex-1 min-w-0 rounded-2xl border border-zinc-300 p-3 text-base outline-none transition focus:ring-2 focus:ring-zinc-300"
+                  value={field.value === "" ? "" : String(field.value)}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
                 >
                   <option value="">Не выбрано</option>
@@ -163,22 +166,25 @@ const CreateScheduleDialog: React.FC<Props> = ({
                     </option>
                   ))}
                 </select>
+
                 {positionFields.length > 1 && (
                   <Button
+                    type="button"
                     variant="outline"
+                    size="icon"
                     onClick={() => handleRemoveField(field.id)}
                     aria-label="Удалить должность"
+                    className="shrink-0 text-red-600 hover:bg-red-50"
                   >
-                    Удалить
-                  </Button>
-                )}
-                {index === positionFields.length - 1 && (
-                  <Button variant="ghost" onClick={handleAddField}>
-                    Добавить должность
+                    <Icon icon={Trash2} />
                   </Button>
                 )}
               </div>
             ))}
+
+            <Button type="button" variant="outline" onClick={handleAddField} className="w-full sm:w-auto">
+              Добавить должность
+            </Button>
           </div>
         </div>
 
