@@ -25,18 +25,22 @@ import TrainingCategoryItemsPage from "./features/training/pages/CategoryItems";
 import RestaurantHome from "./features/home/pages/RestaurantHome";
 import SchedulePage from "./features/schedule/pages/SchedulePage";
 import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
-import NotificationsPage from "./features/notifications/pages/NotificationsPage";
+import AnnouncementsPage from "./features/announcements/pages/AnnouncementsPage";
+import InboxPage from "./features/inbox/pages/InboxPage";
 import ContactsPage from "./features/contacts/pages/ContactsPage";
 import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLettersPage";
 
-import { Menu } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
 import Icon from "./shared/ui/Icon";
+import IconButton from "./shared/ui/IconButton";
+import { fetchInboxUnreadCount } from "./features/inbox/api";
 
 /* ===== TopBar ===== */
 function TopBar() {
   const { user, token, logout } = useAuth();
   const [restName, setRestName] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [unreadCount, setUnreadCount] = React.useState<number>(0);
 
   React.useEffect(() => {
     let alive = true;
@@ -61,6 +65,31 @@ function TopBar() {
   React.useEffect(() => {
     setMobileOpen(false);
   }, [token, user?.restaurantId]);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!user?.restaurantId) {
+      setUnreadCount(0);
+      return () => {
+        alive = false;
+      };
+    }
+
+    (async () => {
+      try {
+        const data = await fetchInboxUnreadCount(user.restaurantId);
+        if (!alive) return;
+        setUnreadCount(data.count);
+      } catch {
+        if (!alive) return;
+        setUnreadCount(0);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.restaurantId]);
 
   const homeHref = token ? (user?.restaurantId ? "/app" : "/restaurants") : "/login";
 
@@ -103,6 +132,13 @@ function TopBar() {
             )}
 
             <div className="hidden items-center gap-3 sm:flex">
+              {user?.restaurantId && (
+                <Link to="/inbox" aria-label="Входящие">
+                  <IconButton badge={unreadCount}>
+                    <Icon icon={Bell} size="md" className="text-zinc-900" />
+                  </IconButton>
+                </Link>
+              )}
               <Link to="/me/income">
                 <Button variant="outline">Мои доходы</Button>
               </Link>
@@ -160,6 +196,15 @@ function TopBar() {
           )}
 
           <div className="flex flex-col gap-2">
+            {user?.restaurantId && (
+              <Link
+                to="/inbox"
+                className="rounded-xl px-3 py-2 hover:bg-zinc-50"
+                onClick={() => setMobileOpen(false)}
+              >
+                Входящие
+              </Link>
+            )}
             <Link
               to="/me/income"
               className="rounded-xl px-3 py-2 hover:bg-zinc-50"
@@ -281,11 +326,22 @@ export default function App() {
             />
 
             <Route
-              path="/notifications"
+              path="/inbox"
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>
-                    <NotificationsPage />
+                    <InboxPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/announcements"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <AnnouncementsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

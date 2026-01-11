@@ -8,8 +8,8 @@ import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
-import ru.staffly.notification.model.Notification;
-import ru.staffly.notification.repository.NotificationRepository;
+import ru.staffly.inbox.model.InboxEventSubtype;
+import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.schedule.dto.CreateReplacementShiftRequest;
 import ru.staffly.schedule.dto.CreateSwapShiftRequest;
 import ru.staffly.schedule.dto.ShiftRequestDto;
@@ -29,7 +29,6 @@ import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -47,7 +46,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private final ScheduleRepository schedules;
     private final ScheduleShiftRequestRepository requests;
     private final RestaurantMemberRepository members;
-    private final NotificationRepository notifications;
+    private final InboxMessageService inboxMessages;
     private final SecurityService securityService;
 
     @Override
@@ -288,16 +287,16 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             );
         }
 
-        Notification notification = Notification.builder()
-                .restaurant(request.getSchedule().getRestaurant())
-                .creator(initiator != null ? initiator.getUser() : fromMember.getUser())
-                .content(content)
-                .expiresAt(Optional.ofNullable(request.getSchedule().getEndDate())
-                        .orElse(request.getSchedule().getStartDate()))
-                .members(new HashSet<>(Set.of(fromMember, toMember)))
-                .build();
-
-        notifications.save(notification);
+        inboxMessages.createEvent(
+                request.getSchedule().getRestaurant(),
+                initiator != null ? initiator.getUser() : fromMember.getUser(),
+                content,
+                InboxEventSubtype.SCHEDULE_DECISION,
+                "scheduleRequest:" + request.getId(),
+                new ArrayList<>(Set.of(fromMember, toMember)),
+                Optional.ofNullable(request.getSchedule().getEndDate())
+                        .orElse(request.getSchedule().getStartDate())
+        );
     }
 
     private String formatShiftValue(String value) {

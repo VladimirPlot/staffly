@@ -15,6 +15,15 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
 
     List<RestaurantMember> findByRestaurantId(Long restaurantId);
 
+    @Query("""
+           select m from RestaurantMember m
+           join fetch m.user u
+           where m.restaurant.id = :restaurantId
+           """)
+    List<RestaurantMember> findWithUserByRestaurantId(Long restaurantId);
+
+    List<RestaurantMember> findByRestaurantIdAndPositionIdIn(Long restaurantId, List<Long> positionIds);
+
     long countByRestaurantIdAndRole(Long restaurantId, RestaurantRole role);
 
     boolean existsByRestaurantIdAndUserId(Long restaurantId, Long userId);
