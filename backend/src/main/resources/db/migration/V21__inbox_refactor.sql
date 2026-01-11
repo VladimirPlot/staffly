@@ -51,7 +51,11 @@ SELECT id,
        'legacy:' || id
 FROM notifications;
 
-SELECT setval('inbox_messages_id_seq', (SELECT COALESCE(MAX(id), 0) FROM inbox_messages));
+SELECT setval(
+  'inbox_messages_id_seq',
+  COALESCE((SELECT MAX(id) FROM inbox_messages), 1),
+  (SELECT MAX(id) FROM inbox_messages) IS NOT NULL
+);
 
 INSERT INTO inbox_message_positions (message_id, position_id)
 SELECT notification_id, position_id
