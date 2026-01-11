@@ -4,6 +4,7 @@ import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
+import ContentText from "../../../shared/ui/ContentText";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   listCategories,
@@ -330,7 +331,7 @@ export default function TrainingCategoryItemsPage() {
           <div>
             <div className="text-2xl font-semibold text-zinc-900">{category.name}</div>
             {category.description && (
-              <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
+              <ContentText className="mt-1 text-sm text-zinc-600">{category.description}</ContentText>
             )}
           </div>
         ) : null}
@@ -543,24 +544,24 @@ export default function TrainingCategoryItemsPage() {
                       <>
                         <div className="text-lg font-semibold text-zinc-900">{item.name}</div>
                         {item.description && (
-                          <div className="mt-1 text-sm text-zinc-600">{item.description}</div>
+                          <ContentText className="mt-1 text-sm text-zinc-600">{item.description}</ContentText>
                         )}
                         <div className="mt-3">
                           <div className="text-xs uppercase tracking-wide text-zinc-500">
                             Состав
                           </div>
-                          <div className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                          <ContentText className="mt-1 text-sm text-zinc-700">
                             {item.composition || "Не указан"}
-                          </div>
+                          </ContentText>
                         </div>
                         {item.allergens && (
                           <div className="mt-3">
                             <div className="text-xs uppercase tracking-wide text-zinc-500">
                               Аллергены
                             </div>
-                            <div className="mt-1 whitespace-pre-line text-sm text-zinc-700">
+                            <ContentText className="mt-1 text-sm text-zinc-700">
                               {item.allergens}
-                            </div>
+                            </ContentText>
                           </div>
                         )}
                       </>

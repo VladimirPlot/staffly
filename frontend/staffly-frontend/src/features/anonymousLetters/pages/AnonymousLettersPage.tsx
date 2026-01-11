@@ -8,6 +8,7 @@ import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
 import SelectField from "../../../shared/ui/SelectField";
 import Modal from "../../../shared/ui/Modal";
+import ContentText from "../../../shared/ui/ContentText";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
@@ -282,13 +283,13 @@ export default function AnonymousLettersPage() {
               return (
                 <Card key={letter.id} className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
+                    <div className="min-w-0 space-y-1">
                       <div className="text-xs uppercase tracking-wide text-zinc-500">
                         Дата письма: {formatDate(letter.createdAt)}
                       </div>
-                      <div className="text-lg font-semibold text-zinc-900">
+                      <ContentText className="text-lg font-semibold text-zinc-900">
                         {letter.subject || "Без темы"}
-                      </div>
+                      </ContentText>
                       {!isAdmin && (
                         <div className="text-sm text-zinc-600">
                           <span className="font-medium">Получатель:</span>{" "}
@@ -310,9 +311,9 @@ export default function AnonymousLettersPage() {
                   </div>
 
                   {isExpanded && (
-                    <div className="rounded-2xl bg-zinc-50 p-3 text-sm text-zinc-800">
+                    <ContentText className="rounded-2xl bg-zinc-50 p-3 text-sm text-zinc-800">
                       {detail ? detail.content : "Загружаем письмо…"}
-                    </div>
+                    </ContentText>
                   )}
                 </Card>
               );

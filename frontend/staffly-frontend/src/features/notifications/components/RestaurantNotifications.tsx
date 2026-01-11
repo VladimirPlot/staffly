@@ -2,6 +2,7 @@ import React from "react";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import ContentText from "../../../shared/ui/ContentText";
 import NotificationDialog from "./NotificationDialog";
 import type { NotificationDto, NotificationRequest } from "../api";
 import {
@@ -174,7 +175,7 @@ const RestaurantNotifications: React.FC<RestaurantNotificationsProps> = ({
             </div>
           )}
         </div>
-        <div className="mt-2 whitespace-pre-wrap text-base text-zinc-900">{notification.content}</div>
+        <ContentText className="mt-2 text-base text-zinc-900">{notification.content}</ContentText>
         {notification.positions.length > 0 && (
           <div className="mt-3 flex flex-col gap-1 text-xs text-zinc-700">
             <div className="text-[11px] font-semibold uppercase text-zinc-500">Должности</div>

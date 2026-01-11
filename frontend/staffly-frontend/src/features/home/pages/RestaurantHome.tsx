@@ -1,6 +1,7 @@
 import React from "react";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
+import ContentText from "../../../shared/ui/ContentText";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchRestaurantName } from "../../restaurants/api";
@@ -395,7 +396,7 @@ export default function RestaurantHome() {
         ) : (
           <Card className="mb-4 border-emerald-200 bg-emerald-50/70">
             <div className="flex items-start justify-between gap-4">
-              <div className="space-y-3">
+              <div className="min-w-0 space-y-3">
                 <div className="text-sm font-medium uppercase tracking-wide text-emerald-700">
                   Новые уведомления
                 </div>
@@ -409,9 +410,9 @@ export default function RestaurantHome() {
                         <span>{item.createdBy?.name ?? "Руководство"}</span>
                         <span>до {formatNotificationDate(item.expiresAt)}</span>
                       </div>
-                      <div className="mt-2 whitespace-pre-wrap text-base text-emerald-900">
+                      <ContentText className="mt-2 text-base text-emerald-900">
                         {item.content}
-                      </div>
+                      </ContentText>
                     </li>
                   ))}
                 </ul>

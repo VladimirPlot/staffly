@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
+import ContentText from "../../../shared/ui/ContentText";
 import PersonalNav from "../components/PersonalNav";
 import type { IncomePeriodDetail, IncomeShift, SaveIncomeShiftPayload } from "../api";
 import { createIncomeShift, deleteIncomeShift, getIncomePeriod } from "../api";
@@ -250,7 +251,7 @@ export default function IncomePeriodPage() {
             {data.shifts.map((shift) => (
               <div key={shift.id} className="rounded-xl border border-zinc-200 p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium">{shift.date}</div>
                     <div className="text-zinc-600">
                       {shift.type === "SHIFT"
@@ -262,7 +263,7 @@ export default function IncomePeriodPage() {
                       {Number(shift.tipsAmount ?? 0) > 0 && ` • Чаевые: ${shift.tipsAmount} ₽`}
                       {Number(shift.personalRevenue ?? 0) > 0 && ` • Личная выручка: ${shift.personalRevenue} ₽`}
                     </div>
-                    {shift.comment && <div className="text-zinc-500">{shift.comment}</div>}
+                    {shift.comment && <ContentText className="text-zinc-500">{shift.comment}</ContentText>}
                   </div>
                   <Button
                     type="button"

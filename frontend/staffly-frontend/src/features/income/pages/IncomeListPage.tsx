@@ -5,6 +5,7 @@ import { createIncomePeriod, deleteIncomePeriod, listIncomePeriods } from "../ap
 import { Link } from "react-router-dom";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
+import ContentText from "../../../shared/ui/ContentText";
 
 export default function IncomeListPage() {
   const [periods, setPeriods] = React.useState<IncomePeriodSummary[]>([]);
@@ -85,11 +86,13 @@ export default function IncomeListPage() {
           {periods.map((period) => (
             <div key={period.id} className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <Link to={`/me/income/periods/${period.id}`} className="text-lg font-semibold hover:underline">
                     {period.name}
                   </Link>
-                  {period.description && <div className="text-sm text-zinc-500">{period.description}</div>}
+                  {period.description && (
+                    <ContentText className="text-sm text-zinc-500">{period.description}</ContentText>
+                  )}
                 </div>
                 <button
                   className="text-xs text-red-500 hover:underline"

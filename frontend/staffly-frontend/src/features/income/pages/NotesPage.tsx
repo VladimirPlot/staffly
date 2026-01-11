@@ -3,6 +3,7 @@ import PersonalNav from "../components/PersonalNav";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
+import ContentText from "../../../shared/ui/ContentText";
 import type { PersonalNote } from "../api";
 import { createNote, deleteNote, listNotes, updateNote } from "../api";
 
@@ -104,9 +105,9 @@ export default function NotesPage() {
             {notes.map((note) => (
               <div key={note.id} className="rounded-xl border border-zinc-200 p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">{note.title || "Без названия"}</div>
-                    {note.content && <div className="whitespace-pre-line text-zinc-700">{note.content}</div>}
+                  <div className="min-w-0">
+                    <ContentText className="font-semibold">{note.title || "Без названия"}</ContentText>
+                    {note.content && <ContentText className="text-zinc-700">{note.content}</ContentText>}
                     <div className="text-xs text-zinc-500">Обновлено: {new Date(note.updatedAt).toLocaleString()}</div>
                   </div>
                   <div className="flex gap-2 text-xs">

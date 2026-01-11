@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
+import ContentText from "../../../shared/ui/ContentText";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { getMyRoleIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
@@ -282,7 +283,7 @@ function TrainingModuleCategoriesPage() {
                     <>
                       <div className="text-lg font-semibold text-zinc-900">{category.name}</div>
                       {category.description && (
-                        <div className="mt-1 text-sm text-zinc-600">{category.description}</div>
+                        <ContentText className="mt-1 text-sm text-zinc-600">{category.description}</ContentText>
                       )}
                     </>
                   )}

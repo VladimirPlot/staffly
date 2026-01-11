@@ -2,6 +2,7 @@ import React from "react";
 import { Download, Pencil, Trash2 } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
+import ContentText from "../../../shared/ui/ContentText";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
@@ -477,7 +478,11 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                                 onChange={() => handleToggleItem(checklist.id, item.id, item.done)}
                                 className="mt-0.5 h-4 w-4 rounded border-zinc-400 text-amber-500 focus:ring-amber-500"
                               />
-                              <span className={item.done ? "text-zinc-400 line-through" : "text-zinc-800"}>{item.text}</span>
+                              <ContentText
+                                className={`min-w-0 ${item.done ? "text-zinc-400 line-through" : "text-zinc-800"}`}
+                              >
+                                {item.text}
+                              </ContentText>
                             </label>
                           );
                         })}
@@ -502,7 +507,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                         </div>
                       </div>
                     ) : (
-                      <div className="whitespace-pre-wrap">{checklist.content ?? ""}</div>
+                      <ContentText>{checklist.content ?? ""}</ContentText>
                     )}
                   </div>
                 )}

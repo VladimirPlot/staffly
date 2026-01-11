@@ -4,6 +4,7 @@ import { Pencil } from "lucide-react";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import ContentText from "../../../shared/ui/ContentText";
 import {
   createContact,
   deleteContact,
@@ -166,8 +167,8 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
           {contacts.map((contact) => (
             <Card key={contact.id} className="relative" data-contact-card>
               <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="text-lg font-semibold">{contact.name}</div>
+                <div className="min-w-0 space-y-1">
+                  <ContentText className="text-lg font-semibold">{contact.name}</ContentText>
                   <div className="text-sm text-zinc-700">
                     Телефон: {" "}
                     <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
@@ -175,7 +176,7 @@ const ContactsManager: React.FC<ContactsManagerProps> = ({ restaurantId }) => {
                     </a>
                   </div>
                   {contact.description && (
-                    <div className="whitespace-pre-wrap text-sm text-zinc-700">{contact.description}</div>
+                    <ContentText className="text-sm text-zinc-700">{contact.description}</ContentText>
                   )}
                 </div>
 

@@ -104,6 +104,8 @@ const SchedulePage: React.FC = () => {
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
 
+  const autoTabDoneRef = React.useRef(false);
+
   const scheduleId = schedule?.id ?? null;
 
   React.useEffect(() => {
@@ -258,6 +260,9 @@ const SchedulePage: React.FC = () => {
   const handleCreateSchedule = React.useCallback(
     (config: ScheduleConfig) => {
       if (!canManage) return;
+
+      autoTabDoneRef.current = false;
+
       const normalizedConfig: ScheduleConfig = {
         ...config,
         showFullName: false,
@@ -451,6 +456,9 @@ const SchedulePage: React.FC = () => {
   const handleOpenSavedSchedule = React.useCallback(
     async (id: number) => {
       if (!restaurantId) return;
+
+      autoTabDoneRef.current = false;
+
       setSelectedSavedId(id);
       setScheduleReadOnly(true);
       setScheduleLoading(true);
@@ -475,6 +483,9 @@ const SchedulePage: React.FC = () => {
   const handleEditSavedSchedule = React.useCallback(
     async (id: number) => {
       if (!restaurantId || !canManage) return;
+
+      autoTabDoneRef.current = false;
+
       setSelectedSavedId(id);
       setScheduleReadOnly(false);
       setScheduleLoading(true);
@@ -504,6 +515,8 @@ const SchedulePage: React.FC = () => {
     setScheduleError(null);
     setScheduleLoading(false);
     setShiftRequests([]);
+
+    autoTabDoneRef.current = false;
   }, []);
 
   const fetchScheduleForActions = React.useCallback(
@@ -816,10 +829,16 @@ const SchedulePage: React.FC = () => {
   React.useEffect(() => {
     if (!schedule) {
       setActiveTab("table");
+      autoTabDoneRef.current = false;
       return;
     }
+
+    if (!scheduleReadOnly) return;
+    if (autoTabDoneRef.current) return;
+
     setActiveTab(hasTodayShifts ? "today" : "table");
-  }, [hasTodayShifts, schedule]);
+    autoTabDoneRef.current = true;
+  }, [schedule?.id, scheduleReadOnly, hasTodayShifts]);
 
   const sortedShiftRequests = React.useMemo(() => {
     let requests = [...shiftRequests];
