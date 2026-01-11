@@ -9,6 +9,7 @@ import ru.staffly.announcement.dto.AnnouncementPositionDto;
 import ru.staffly.announcement.dto.AnnouncementRequest;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.inbox.model.InboxMessage;
@@ -37,6 +38,7 @@ public class AnnouncementService {
     private final RestaurantMemberRepository members;
     private final UserRepository users;
     private final SecurityService security;
+    private final RestaurantTimeService restaurantTime;
 
     @Transactional(readOnly = true)
     public List<AnnouncementDto> list(Long restaurantId, Long userId) {
@@ -60,7 +62,7 @@ public class AnnouncementService {
             throw new BadRequestException("Текст объявления обязателен");
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = restaurantTime.today(restaurant);
         LocalDate expiresAt = request.expiresAt();
         if (expiresAt != null && expiresAt.isBefore(today)) {
             throw new BadRequestException("Дата окончания не может быть в прошлом");
@@ -92,7 +94,7 @@ public class AnnouncementService {
             throw new BadRequestException("Текст объявления обязателен");
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = restaurantTime.today(existing.getRestaurant());
         LocalDate expiresAt = request.expiresAt();
         if (expiresAt != null && expiresAt.isBefore(today)) {
             throw new BadRequestException("Дата окончания не может быть в прошлом");

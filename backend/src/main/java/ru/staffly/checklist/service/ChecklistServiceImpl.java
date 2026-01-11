@@ -13,6 +13,7 @@ import ru.staffly.checklist.model.ChecklistPeriodicity;
 import ru.staffly.checklist.repository.ChecklistRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
@@ -22,14 +23,10 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 
-import java.time.DayOfWeek;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAdjusters;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -41,14 +38,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChecklistServiceImpl implements ChecklistService {
 
-    private static final ZoneId RESET_ZONE = ZoneId.of("UTC");
-
     private final ChecklistRepository checklists;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final RestaurantMemberRepository members;
     private final ChecklistMapper mapper;
     private final SecurityService security;
+    private final RestaurantTimeService restaurantTime;
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
@@ -129,7 +125,7 @@ public class ChecklistServiceImpl implements ChecklistService {
                 .resetTime(resetTime)
                 .resetDayOfWeek(resetDayOfWeek)
                 .resetDayOfMonth(resetDayOfMonth)
-                .lastResetAt(Instant.now())
+                .lastResetAt(restaurantTime.nowInstant())
                 .completed(false)
                 .build();
         mapper.applyPositions(entity, new HashSet<>(targetPositions));
@@ -184,7 +180,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         entity.setResetDayOfWeek(resetDayOfWeek);
         entity.setResetDayOfMonth(resetDayOfMonth);
         if (entity.getLastResetAt() == null) {
-            entity.setLastResetAt(Instant.now());
+            entity.setLastResetAt(restaurantTime.nowInstant());
         }
         if (kind == ChecklistKind.INFO) {
             entity.getItems().clear();
@@ -232,7 +228,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             throw new BadRequestException("Некоторые пункты не найдены");
         }
 
-        Instant now = Instant.now();
+        Instant now = restaurantTime.nowInstant();
         for (ChecklistItem item : checklist.getItems()) {
             if (!item.isDone() && targetIds.contains(item.getId())) {
                 item.setDone(true);
@@ -258,7 +254,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         if (checklist.getKind() != ChecklistKind.TRACKABLE) {
             throw new BadRequestException("Можно сбросить только проверяемый чек-лист");
         }
-        resetChecklist(checklist, Instant.now());
+        resetChecklist(checklist, restaurantTime.nowInstant());
         checklist = checklists.save(checklist);
         return mapper.toDto(checklist);
     }
@@ -414,11 +410,11 @@ public class ChecklistServiceImpl implements ChecklistService {
         }
         Instant last = checklist.getLastResetAt() != null ? checklist.getLastResetAt() : checklist.getCreatedAt();
         if (last == null) {
-            last = Instant.now();
+            last = restaurantTime.nowInstant();
         }
         Instant next = computeNextReset(last, checklist);
         boolean updated = false;
-        Instant now = Instant.now();
+        Instant now = restaurantTime.nowInstant();
         while (next != null && !next.isAfter(now)) {
             resetChecklist(checklist, next);
             updated = true;
@@ -436,48 +432,14 @@ public class ChecklistServiceImpl implements ChecklistService {
             item.setDoneAt(null);
         }
         checklist.setCompleted(false);
-        checklist.setLastResetAt(moment != null ? moment : Instant.now());
+        checklist.setLastResetAt(moment != null ? moment : restaurantTime.nowInstant());
     }
 
     private Instant computeNextReset(Instant base, Checklist checklist) {
-        ChecklistPeriodicity periodicity = checklist.getPeriodicity();
-        LocalTime resetTime = checklist.getResetTime();
-        if (periodicity == null || periodicity == ChecklistPeriodicity.MANUAL || resetTime == null) {
+        if (base == null) {
             return null;
         }
-
-        ZonedDateTime from = base.atZone(RESET_ZONE);
-        return switch (periodicity) {
-            case DAILY -> ZonedDateTime.of(from.toLocalDate().plusDays(1), resetTime, RESET_ZONE).toInstant();
-            case WEEKLY -> {
-                Integer dow = checklist.getResetDayOfWeek();
-                if (dow == null || dow < 1 || dow > 7) {
-                    yield null;
-                }
-                DayOfWeek target = DayOfWeek.of(dow);
-                ZonedDateTime candidate = ZonedDateTime.of(from.toLocalDate(), resetTime, RESET_ZONE)
-                        .with(TemporalAdjusters.nextOrSame(target));
-                if (!candidate.toInstant().isAfter(base)) {
-                    candidate = candidate.plusWeeks(1);
-                }
-                yield candidate.toInstant();
-            }
-            case MONTHLY -> {
-                Integer dom = checklist.getResetDayOfMonth();
-                if (dom == null || dom < 1 || dom > 31) {
-                    yield null;
-                }
-                LocalDate startDate = from.toLocalDate();
-                int day = Math.min(dom, startDate.lengthOfMonth());
-                ZonedDateTime candidate = ZonedDateTime.of(startDate.withDayOfMonth(day), resetTime, RESET_ZONE);
-                if (!candidate.toInstant().isAfter(base)) {
-                    LocalDate nextMonth = startDate.plusMonths(1);
-                    int nextDay = Math.min(dom, nextMonth.lengthOfMonth());
-                    candidate = ZonedDateTime.of(nextMonth.withDayOfMonth(nextDay), resetTime, RESET_ZONE);
-                }
-                yield candidate.toInstant();
-            }
-            case MANUAL -> null;
-        };
+        ZoneId zone = restaurantTime.zoneFor(checklist.getRestaurant());
+        return ChecklistResetCalculator.computeNextReset(base, checklist, zone);
     }
 }

@@ -15,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.media.AvatarStorage;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
@@ -117,7 +118,7 @@ public class UserProfileController {
             } else {
                 try {
                     LocalDate bd = LocalDate.parse(req.birthDate()); // ожидаем ISO yyyy-MM-dd
-                    if (bd.isAfter(LocalDate.now())) {
+                    if (bd.isAfter(TimeProvider.todayUtc())) {
                         throw new BadRequestException("Birth date cannot be in the future");
                     }
                     if (!bd.equals(u.getBirthDate())) { u.setBirthDate(bd); changed = true; }

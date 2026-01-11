@@ -7,6 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.ForbiddenException;
+import ru.staffly.common.time.RestaurantTimeService;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.inbox.dto.InboxAuthorDto;
 import ru.staffly.inbox.dto.InboxMarkerDto;
 import ru.staffly.inbox.dto.InboxMessageDto;
@@ -20,13 +22,10 @@ import ru.staffly.inbox.model.InboxState;
 import ru.staffly.inbox.repository.InboxRecipientRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
-import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -42,8 +41,8 @@ public class InboxService {
 
     private final InboxRecipientRepository recipients;
     private final RestaurantMemberRepository members;
-    private final RestaurantRepository restaurants;
     private final SecurityService security;
+    private final RestaurantTimeService restaurantTime;
 
     @Transactional(readOnly = true)
     public InboxPageDto list(Long restaurantId,
@@ -56,7 +55,7 @@ public class InboxService {
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
-        LocalDate today = LocalDate.now(resolveZone(restaurantId));
+        LocalDate today = restaurantTime.today(restaurantId);
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
         List<InboxMessageType> types = resolveTypes(typeFilter);
 
@@ -87,7 +86,7 @@ public class InboxService {
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
-        LocalDate today = LocalDate.now(resolveZone(restaurantId));
+        LocalDate today = restaurantTime.today(restaurantId);
         long total = recipients.countUnread(member.getId(), restaurantId, today);
         long events = recipients.countUnreadByType(member.getId(), restaurantId, InboxMessageType.EVENT, today);
         long scheduleEvents = recipients.countUnreadEventsBySubtypes(
@@ -106,7 +105,7 @@ public class InboxService {
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
-        LocalDate today = LocalDate.now(resolveZone(restaurantId));
+        LocalDate today = restaurantTime.today(restaurantId);
         boolean hasScheduleEvents = recipients.countUnreadEventsBySubtypes(
                 member.getId(),
                 restaurantId,
@@ -128,7 +127,7 @@ public class InboxService {
             return;
         }
         if (recipient.getReadAt() == null) {
-            recipient.setReadAt(Instant.now());
+            recipient.setReadAt(TimeProvider.now());
             recipients.save(recipient);
         }
     }
@@ -144,7 +143,7 @@ public class InboxService {
             return;
         }
         if (recipient.getArchivedAt() == null) {
-            recipient.setArchivedAt(Instant.now());
+            recipient.setArchivedAt(TimeProvider.now());
             recipients.save(recipient);
         }
     }
@@ -203,9 +202,4 @@ public class InboxService {
         });
     }
 
-    private ZoneId resolveZone(Long restaurantId) {
-        return restaurants.findById(restaurantId)
-                .map(r -> ZoneId.of(r.getTimezone()))
-                .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
-    }
 }

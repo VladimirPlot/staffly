@@ -23,6 +23,7 @@ import ru.staffly.auth.session.RefreshCookieService;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.SecurityService;
 import ru.staffly.security.JwtService;
@@ -96,7 +97,7 @@ public class AuthController {
         if (req.birthDate() != null && !req.birthDate().isBlank()) {
             try {
                 bd = LocalDate.parse(req.birthDate());
-                if (bd.isAfter(LocalDate.now())) {
+                if (bd.isAfter(TimeProvider.todayUtc())) {
                     throw new BadRequestException("День рождение не может быть в будущем");
                 }
             } catch (DateTimeParseException e) {

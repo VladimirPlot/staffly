@@ -1,11 +1,12 @@
 package ru.staffly.member.mapper;
 
 import org.springframework.stereotype.Component;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.model.RestaurantMember;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 
 @Component
 public class MemberMapper {
@@ -61,8 +62,8 @@ public class MemberMapper {
 
     private static String withBust(String url, LocalDateTime updatedAt) {
         long v = (updatedAt == null)
-                ? System.currentTimeMillis() / 1000
-                : updatedAt.atZone(ZoneId.systemDefault()).toEpochSecond();
+                ? TimeProvider.now().getEpochSecond()
+                : updatedAt.toInstant(ZoneOffset.UTC).getEpochSecond();
         return url + (url.contains("?") ? "&" : "?") + "v=" + v;
     }
 }

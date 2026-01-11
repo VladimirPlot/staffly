@@ -2,6 +2,7 @@ package ru.staffly.restaurant.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.common.time.TimeProvider;
 
 import java.time.LocalDateTime;
 
@@ -41,14 +42,14 @@ public class Restaurant {
     private boolean locked = false;
 
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = TimeProvider.nowUtc();
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt = TimeProvider.nowUtc();
 
     @PrePersist
     public void prePersist() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = TimeProvider.nowUtc();
         if (createdAt == null) createdAt = now;
         if (updatedAt == null) updatedAt = now;
         if (timezone == null || timezone.isBlank()) timezone = DEFAULT_TIMEZONE;
@@ -56,6 +57,6 @@ public class Restaurant {
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = TimeProvider.nowUtc();
     }
 }

@@ -2,6 +2,7 @@ package ru.staffly.contact.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
@@ -45,7 +46,7 @@ public class Contact {
 
     @PrePersist
     void prePersist() {
-        Instant now = Instant.now();
+        Instant now = TimeProvider.now();
         if (createdAt == null) {
             createdAt = now;
         }
@@ -54,6 +55,6 @@ public class Contact {
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = TimeProvider.now();
     }
 }

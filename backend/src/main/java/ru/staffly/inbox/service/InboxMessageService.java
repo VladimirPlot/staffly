@@ -3,6 +3,7 @@ package ru.staffly.inbox.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.model.InboxMessage;
@@ -33,7 +34,7 @@ public class InboxMessageService {
                                            LocalDate expiresAt,
                                            List<Position> positions,
                                            List<RestaurantMember> targets) {
-        String meta = ensureMeta("announcement:" + Instant.now().toEpochMilli() + ":" + creator.getId());
+        String meta = ensureMeta("announcement:" + TimeProvider.now().toEpochMilli() + ":" + creator.getId());
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.ANNOUNCEMENT)
@@ -58,7 +59,7 @@ public class InboxMessageService {
                                     List<RestaurantMember> targets,
                                     LocalDate expiresAt) {
         String resolvedMeta = meta == null || meta.isBlank()
-                ? "event:" + Instant.now().toEpochMilli() + ":" + restaurant.getId()
+                ? "event:" + TimeProvider.now().toEpochMilli() + ":" + restaurant.getId()
                 : meta.trim();
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
@@ -82,7 +83,7 @@ public class InboxMessageService {
                                               String meta,
                                               List<RestaurantMember> recipientsList) {
         String resolvedMeta = meta == null || meta.isBlank()
-                ? "birthday:" + Instant.now().toEpochMilli()
+                ? "birthday:" + TimeProvider.now().toEpochMilli()
                 : meta.trim();
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
@@ -107,7 +108,7 @@ public class InboxMessageService {
         recipients.save(InboxRecipient.builder()
                 .message(message)
                 .member(member)
-                .deliveredAt(Instant.now())
+                .deliveredAt(TimeProvider.now())
                 .build());
     }
 
@@ -127,7 +128,7 @@ public class InboxMessageService {
     }
 
     private void saveRecipients(InboxMessage message, List<RestaurantMember> targets) {
-        Instant now = Instant.now();
+        Instant now = TimeProvider.now();
         List<InboxRecipient> newRecipients = targets.stream()
                 .map(member -> InboxRecipient.builder()
                         .message(message)

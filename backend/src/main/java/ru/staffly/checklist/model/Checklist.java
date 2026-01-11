@@ -2,6 +2,7 @@ package ru.staffly.checklist.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 
@@ -79,7 +80,7 @@ public class Checklist {
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = TimeProvider.now();
         }
         if (kind == null) {
             kind = ChecklistKind.INFO;

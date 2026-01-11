@@ -9,6 +9,7 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.invite.dto.InviteRequest;
@@ -129,7 +130,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .phoneOrEmail(contact)
                 .token(token)
                 .status(InvitationStatus.PENDING)
-                .expiresAt(Instant.now().plus(INVITE_TTL))
+                .expiresAt(TimeProvider.now().plus(INVITE_TTL))
                 .invitedBy(users.findById(currentUserId)
                         .orElseThrow(() -> new NotFoundException("Inviter not found: " + currentUserId)))
                 .desiredRole(desiredRole)
@@ -167,7 +168,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (inv.getStatus() != InvitationStatus.PENDING) {
             throw new ConflictException("Invite is not pending");
         }
-        if (Instant.now().isAfter(inv.getExpiresAt())) {
+        if (TimeProvider.now().isAfter(inv.getExpiresAt())) {
             inv.setStatus(InvitationStatus.EXPIRED);
             invitations.save(inv);
             throw new BadRequestException("Invite expired");

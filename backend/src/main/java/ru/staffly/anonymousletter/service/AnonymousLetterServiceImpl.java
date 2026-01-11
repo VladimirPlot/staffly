@@ -13,6 +13,7 @@ import ru.staffly.anonymousletter.repository.AnonymousLetterRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
@@ -24,7 +25,6 @@ import ru.staffly.user.repository.UserRepository;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -37,6 +37,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
     private final RestaurantMemberRepository members;
     private final AnonymousLetterMapper mapper;
     private final SecurityService security;
+    private final RestaurantTimeService restaurantTime;
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
@@ -73,7 +74,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
                 throw new ForbiddenException("Нет доступа к письму");
             }
             if (letter.getReadAt() == null) {
-                letter.setReadAt(Instant.now());
+                letter.setReadAt(restaurantTime.nowInstant());
                 letters.save(letter);
             }
             return mapper.toDto(letter);
@@ -121,9 +122,9 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
             throw new BadRequestException("Напишите письмо");
         }
 
-        LocalDate today = LocalDate.now();
-        Instant dayStart = today.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant dayEnd = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+        LocalDate today = restaurantTime.today(restaurant);
+        Instant dayStart = restaurantTime.startOfDay(restaurant, today);
+        Instant dayEnd = restaurantTime.startOfDay(restaurant, today.plusDays(1));
 
         if (letters.existsByRestaurantIdAndSenderIdAndCreatedAtBetween(restaurantId, currentUserId, dayStart, dayEnd)) {
             throw new BadRequestException("Можно отправлять только одно письмо в день");

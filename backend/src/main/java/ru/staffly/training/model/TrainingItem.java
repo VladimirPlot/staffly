@@ -3,6 +3,8 @@ package ru.staffly.training.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import ru.staffly.common.time.TimeProvider;
+
 import java.time.Instant;
 
 @Entity
@@ -47,20 +49,20 @@ public class TrainingItem {
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default
-    private Instant createdAt = Instant.now();
+    private Instant createdAt = TimeProvider.now();
 
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
-    private Instant updatedAt = Instant.now();
+    private Instant updatedAt = TimeProvider.now();
 
     @PrePersist
     void prePersist() {
-        if (createdAt == null) createdAt = Instant.now();
-        if (updatedAt == null) updatedAt = Instant.now();
+        if (createdAt == null) createdAt = TimeProvider.now();
+        if (updatedAt == null) updatedAt = TimeProvider.now();
     }
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = TimeProvider.now();
     }
 }

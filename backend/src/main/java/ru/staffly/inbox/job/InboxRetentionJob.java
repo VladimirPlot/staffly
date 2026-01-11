@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.inbox.model.InboxMessageType;
 import ru.staffly.inbox.repository.InboxMessageRepository;
 import ru.staffly.inbox.repository.InboxRecipientRepository;
@@ -25,18 +26,19 @@ public class InboxRetentionJob {
     private final InboxMessageRepository messages;
     private final InboxRecipientRepository recipients;
     private final RestaurantRepository restaurants;
+    private final RestaurantTimeService restaurantTime;
 
     @Scheduled(cron = "0 45 * * * *")
     @Transactional
     public void cleanupInbox() {
-        Instant now = Instant.now();
+        Instant now = restaurantTime.nowInstant();
         int announcementsRemoved = 0;
         int eventsRemoved = 0;
         int birthdaysRemoved = 0;
 
         for (Restaurant restaurant : restaurants.findAll()) {
-            ZoneId zone = ZoneId.of(restaurant.getTimezone());
-            LocalDate today = LocalDate.now(zone);
+            ZoneId zone = restaurantTime.zoneFor(restaurant);
+            LocalDate today = restaurantTime.today(restaurant);
             if (now.atZone(zone).getHour() != 2) {
                 continue;
             }

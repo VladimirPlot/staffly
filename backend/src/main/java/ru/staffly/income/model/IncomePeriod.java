@@ -3,6 +3,8 @@ package ru.staffly.income.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import ru.staffly.common.time.TimeProvider;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,14 +39,14 @@ public class IncomePeriod {
     private List<IncomeShift> shifts = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt = TimeProvider.now();
 
     @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt = Instant.now();
+    private Instant updatedAt = TimeProvider.now();
 
     @PrePersist
     void prePersist() {
-        Instant now = Instant.now();
+        Instant now = TimeProvider.now();
         if (createdAt == null) {
             createdAt = now;
         }
@@ -55,6 +57,6 @@ public class IncomePeriod {
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = TimeProvider.now();
     }
 }

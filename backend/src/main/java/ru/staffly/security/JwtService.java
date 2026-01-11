@@ -5,6 +5,7 @@ import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.SignatureAlgorithm;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import ru.staffly.common.time.TimeProvider;
 
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
@@ -39,7 +40,7 @@ public class JwtService {
     }
 
     public String generateToken(UserPrincipal principal) {
-        Instant now = Instant.now();
+        Instant now = TimeProvider.now();
         Instant exp = now.plusSeconds(ttlMinutes * 60);
 
         var builder = Jwts.builder()

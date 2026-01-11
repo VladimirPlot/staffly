@@ -3,6 +3,7 @@ package ru.staffly.schedule.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
@@ -61,14 +62,14 @@ public class Schedule {
     private List<ScheduleRow> rows = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt = TimeProvider.now();
 
     @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt = Instant.now();
+    private Instant updatedAt = TimeProvider.now();
 
     @PrePersist
     void prePersist() {
-        Instant now = Instant.now();
+        Instant now = TimeProvider.now();
         if (createdAt == null) {
             createdAt = now;
         }
@@ -79,6 +80,6 @@ public class Schedule {
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = TimeProvider.now();
     }
 }

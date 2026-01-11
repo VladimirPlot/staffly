@@ -2,6 +2,7 @@ package ru.staffly.invite.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
@@ -51,7 +52,7 @@ public class Invitation {
 
     @PrePersist
     void prePersist() {
-        if (createdAt == null) createdAt = Instant.now();
+        if (createdAt == null) createdAt = TimeProvider.now();
         if (status == null) status = InvitationStatus.PENDING;
     }
 

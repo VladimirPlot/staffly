@@ -2,6 +2,7 @@ package ru.staffly.inbox.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
@@ -74,13 +75,13 @@ public class InboxMessage {
 
     @PrePersist
     void prePersist() {
-        Instant now = Instant.now();
+        Instant now = TimeProvider.now();
         if (createdAt == null) createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = TimeProvider.now();
     }
 }

@@ -14,11 +14,12 @@ import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.UserPrincipal;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,8 +74,8 @@ public class MeController {
 
     private static String withBust(String url, LocalDateTime updatedAt) {
         long v = (updatedAt == null)
-                ? System.currentTimeMillis() / 1000
-                : updatedAt.atZone(ZoneId.systemDefault()).toEpochSecond();
+                ? TimeProvider.now().getEpochSecond()
+                : updatedAt.toInstant(ZoneOffset.UTC).getEpochSecond();
         return url + (url.contains("?") ? "&" : "?") + "v=" + v;
     }
 }

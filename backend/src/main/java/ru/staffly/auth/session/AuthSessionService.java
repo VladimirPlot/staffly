@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.auth.config.AuthProperties;
+import ru.staffly.common.time.TimeProvider;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,7 +26,7 @@ public class AuthSessionService {
     public String createSession(Long userId, String userAgent, String ip) {
         String refreshToken = generateRefreshToken();
         String refreshHash = hash(refreshToken);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = TimeProvider.nowUtc();
         LocalDateTime expiresAt = now.plusDays(authProperties.refreshTtlDays());
         AuthSession session = AuthSession.builder()
                 .userId(userId)
@@ -44,7 +45,7 @@ public class AuthSessionService {
         String refreshHash = hash(refreshToken);
         AuthSession session = repository.findByRefreshHashAndRevokedAtIsNull(refreshHash)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = TimeProvider.nowUtc();
         if (!session.getExpiresAt().isAfter(now)) {
             session.setRevokedAt(now);
             repository.save(session);
@@ -61,7 +62,7 @@ public class AuthSessionService {
         String refreshHash = hash(refreshToken);
         repository.findByRefreshHashAndRevokedAtIsNull(refreshHash)
                 .ifPresent(session -> {
-                    session.setRevokedAt(LocalDateTime.now());
+                    session.setRevokedAt(TimeProvider.nowUtc());
                     repository.save(session);
                 });
     }

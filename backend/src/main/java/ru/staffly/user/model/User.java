@@ -3,6 +3,7 @@ package ru.staffly.user.model;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import lombok.*;
+import ru.staffly.common.time.TimeProvider;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -52,16 +53,16 @@ public class User {
     private boolean active = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = TimeProvider.nowUtc();
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt = TimeProvider.nowUtc();
 
     @PrePersist
     @PreUpdate
     public void updateFullName() {
         this.fullName = (firstName == null ? "" : firstName) + " " + (lastName == null ? "" : lastName);
-        if (createdAt == null) createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        if (createdAt == null) createdAt = TimeProvider.nowUtc();
+        updatedAt = TimeProvider.nowUtc();
     }
 }

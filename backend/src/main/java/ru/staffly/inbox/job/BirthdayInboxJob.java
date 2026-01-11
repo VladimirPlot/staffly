@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.inbox.model.InboxMessage;
 import ru.staffly.inbox.model.InboxMessageType;
 import ru.staffly.inbox.repository.InboxMessageRepository;
@@ -31,14 +32,15 @@ public class BirthdayInboxJob {
     private final RestaurantMemberRepository members;
     private final InboxMessageRepository messages;
     private final InboxMessageService inboxMessages;
+    private final RestaurantTimeService restaurantTime;
 
     @Scheduled(cron = "0 15 * * * *")
     @Transactional
     public void generateBirthdays() {
         List<Restaurant> allRestaurants = restaurants.findAll();
         for (Restaurant restaurant : allRestaurants) {
-            ZoneId zone = ZoneId.of(restaurant.getTimezone());
-            ZonedDateTime now = ZonedDateTime.now(zone);
+            ZoneId zone = restaurantTime.zoneFor(restaurant);
+            ZonedDateTime now = restaurantTime.nowInstant().atZone(zone);
             if (now.getHour() != 1) {
                 continue;
             }

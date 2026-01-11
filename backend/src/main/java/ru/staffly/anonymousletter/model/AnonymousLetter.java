@@ -5,6 +5,7 @@ import lombok.*;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
+import ru.staffly.common.time.TimeProvider;
 
 import java.time.Instant;
 
@@ -52,6 +53,6 @@ public class AnonymousLetter {
 
     @PrePersist
     void prePersist() {
-        if (createdAt == null) createdAt = Instant.now();
+        if (createdAt == null) createdAt = TimeProvider.now();
     }
 }

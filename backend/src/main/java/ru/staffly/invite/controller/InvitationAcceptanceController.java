@@ -6,6 +6,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.invite.dto.MyInviteDto;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
@@ -16,7 +17,6 @@ import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
-import java.time.Instant;
 import java.util.List;
 
 import static ru.staffly.common.util.InviteUtils.*;
@@ -39,7 +39,7 @@ public class InvitationAcceptanceController {
         String phone = me.getPhone() != null ? normalizePhone(me.getPhone()) : null;
         String email = me.getEmail() != null ? normalizeEmail(me.getEmail()) : null;
 
-        return invitations.findMyPendingDtos(phone, email, Instant.now(), InvitationStatus.PENDING);
+        return invitations.findMyPendingDtos(phone, email, TimeProvider.now(), InvitationStatus.PENDING);
     }
 
     // Принять инвайт по токену
