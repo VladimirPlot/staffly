@@ -15,6 +15,10 @@ services:
     build:
       context: ../backend
     container_name: staffly-backend
+
+    env_file:
+      - .env
+
     environment:
       SPRING_PROFILES_ACTIVE: prod
 
@@ -30,7 +34,12 @@ services:
       REFRESH_TTL_DAYS: 30
 
       # Public URL (optional)
-      PUBLIC_BASE_URL: http://staffly.store
+      PUBLIC_BASE_URL: https://staffly.store
+
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+
     depends_on:
       - db
     volumes:
@@ -42,9 +51,26 @@ services:
     container_name: staffly-frontend
     depends_on:
       - backend
+    # ВАЖНО: наружу порт больше не публикуем — это делает Caddy
+    # ports:
+    #   - "80:80"
+
+  caddy:
+    image: caddy:2
+    container_name: staffly-caddy
+    depends_on:
+      - frontend
+      - backend
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   pgdata:
   avatars:
+  caddy_data:
+  caddy_config:
