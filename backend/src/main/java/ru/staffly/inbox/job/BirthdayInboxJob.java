@@ -17,6 +17,7 @@ import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
 import java.time.MonthDay;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,6 +25,8 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class BirthdayInboxJob {
+
+    private static final ZoneId MOSCOW_ZONE = ZoneId.of("Europe/Moscow");
 
     private final RestaurantRepository restaurants;
     private final RestaurantMemberRepository members;
@@ -33,7 +36,7 @@ public class BirthdayInboxJob {
     @Scheduled(cron = "0 15 1 * * *")
     @Transactional
     public void generateBirthdays() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MOSCOW_ZONE);
         LocalDate weekAhead = today.plusDays(7);
         LocalDate tomorrow = today.plusDays(1);
 

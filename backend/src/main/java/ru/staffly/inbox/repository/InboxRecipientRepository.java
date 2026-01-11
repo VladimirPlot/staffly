@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.model.InboxMessageType;
@@ -136,4 +137,17 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
                                      @Param("today") LocalDate today);
 
     void deleteByMessageIdIn(List<Long> messageIds);
+
+    @Modifying
+    @Query(value = """
+        with ranked as (
+            select r.id,
+                   row_number() over (partition by r.member_id order by m.created_at desc) as rn
+            from inbox_recipients r
+            join inbox_messages m on m.id = r.message_id
+        )
+        delete from inbox_recipients
+        where id in (select id from ranked where rn > :limit)
+        """, nativeQuery = true)
+    int deleteOverflowRecipients(@Param("limit") int limit);
 }

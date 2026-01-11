@@ -12,6 +12,7 @@ import java.time.Instant;
         indexes = {
                 @Index(name = "idx_inbox_recipients_member", columnList = "member_id"),
                 @Index(name = "idx_inbox_recipients_message", columnList = "message_id"),
+                @Index(name = "idx_inbox_recipients_member_message", columnList = "member_id,message_id"),
                 @Index(name = "idx_inbox_recipients_member_archived", columnList = "member_id,archived_at"),
                 @Index(name = "idx_inbox_recipients_member_read_archived", columnList = "member_id,read_at,archived_at")
         })

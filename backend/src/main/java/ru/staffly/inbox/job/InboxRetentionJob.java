@@ -11,6 +11,7 @@ import ru.staffly.inbox.repository.InboxRecipientRepository;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -19,13 +20,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class InboxRetentionJob {
 
+    private static final ZoneId MOSCOW_ZONE = ZoneId.of("Europe/Moscow");
+
     private final InboxMessageRepository messages;
     private final InboxRecipientRepository recipients;
 
     @Scheduled(cron = "0 45 2 * * *")
     @Transactional
     public void cleanupInbox() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MOSCOW_ZONE);
         Instant now = Instant.now();
 
         LocalDate announcementExpiresBefore = today.minusDays(30);

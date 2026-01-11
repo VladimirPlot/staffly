@@ -25,6 +25,7 @@ import ru.staffly.user.model.User;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -37,6 +38,8 @@ public class InboxService {
         EVENT,
         ANNOUNCEMENT
     }
+
+    private static final ZoneId MOSCOW_ZONE = ZoneId.of("Europe/Moscow");
 
     private final InboxRecipientRepository recipients;
     private final RestaurantMemberRepository members;
@@ -53,7 +56,7 @@ public class InboxService {
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MOSCOW_ZONE);
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
         List<InboxMessageType> types = resolveTypes(typeFilter);
 
@@ -84,7 +87,7 @@ public class InboxService {
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MOSCOW_ZONE);
         long total = recipients.countUnread(member.getId(), restaurantId, today);
         long events = recipients.countUnreadByType(member.getId(), restaurantId, InboxMessageType.EVENT, today);
         long scheduleEvents = recipients.countUnreadEventsBySubtypes(
@@ -103,7 +106,7 @@ public class InboxService {
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(MOSCOW_ZONE);
         boolean hasScheduleEvents = recipients.countUnreadEventsBySubtypes(
                 member.getId(),
                 restaurantId,

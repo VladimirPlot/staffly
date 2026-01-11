@@ -50,6 +50,11 @@ const InboxPage: React.FC = () => {
   const [page, setPage] = React.useState(0);
   const [hasNext, setHasNext] = React.useState(false);
 
+  const notifyInboxChanged = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(new CustomEvent("inbox:changed"));
+  }, []);
+
   const loadPage = React.useCallback(
     async (targetPage: number, replace = false) => {
       if (!restaurantId) return;
@@ -88,12 +93,18 @@ const InboxPage: React.FC = () => {
       if (!restaurantId) return;
       try {
         await markInboxRead(restaurantId, id);
-        await loadPage(0, true);
+        setMessages((prev) => {
+          if (state === "UNREAD") {
+            return prev.filter((item) => item.id !== id);
+          }
+          return prev.map((item) => (item.id === id ? { ...item, isRead: true } : item));
+        });
+        notifyInboxChanged();
       } catch (e) {
         console.error("Failed to mark read", e);
       }
     },
-    [restaurantId, loadPage],
+    [restaurantId, state, notifyInboxChanged],
   );
 
   const handleHide = React.useCallback(
@@ -102,11 +113,12 @@ const InboxPage: React.FC = () => {
       try {
         await hideInboxMessage(restaurantId, id);
         await loadPage(0, true);
+        notifyInboxChanged();
       } catch (e) {
         console.error("Failed to hide", e);
       }
     },
-    [restaurantId, loadPage],
+    [restaurantId, loadPage, notifyInboxChanged],
   );
 
   const handleRestore = React.useCallback(
@@ -115,11 +127,12 @@ const InboxPage: React.FC = () => {
       try {
         await restoreInboxMessage(restaurantId, id);
         await loadPage(0, true);
+        notifyInboxChanged();
       } catch (e) {
         console.error("Failed to restore", e);
       }
     },
-    [restaurantId, loadPage],
+    [restaurantId, loadPage, notifyInboxChanged],
   );
 
   const emptyLabel = loading ? "Загружаем сообщения…" : "Сообщений нет";
@@ -210,24 +223,28 @@ const InboxPage: React.FC = () => {
               >
                 {message.content}
               </ContentText>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {!message.isRead && state !== "HIDDEN" && (
-                  <Button variant="outline" onClick={() => void handleRead(message.id)}>
-                    Прочитано
-                  </Button>
-                )}
-                {state === "HIDDEN" ? (
-                  <Button variant="outline" onClick={() => void handleRestore(message.id)}>
-                    Вернуть
-                  </Button>
-                ) : (
-                  !message.isHidden && (
-                    <Button variant="ghost" onClick={() => void handleHide(message.id)}>
-                      Скрыть
+              {!(state === "HIDDEN" && message.isExpired && !message.isHidden) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {!message.isRead && state !== "HIDDEN" && (
+                    <Button variant="outline" onClick={() => void handleRead(message.id)}>
+                      Прочитано
                     </Button>
-                  )
-                )}
-              </div>
+                  )}
+                  {state === "HIDDEN" ? (
+                    message.isHidden && (
+                      <Button variant="outline" onClick={() => void handleRestore(message.id)}>
+                        Вернуть
+                      </Button>
+                    )
+                  ) : (
+                    !message.isHidden && (
+                      <Button variant="ghost" onClick={() => void handleHide(message.id)}>
+                        Скрыть
+                      </Button>
+                    )
+                  )}
+                </div>
+              )}
             </Card>
           ))
         )}

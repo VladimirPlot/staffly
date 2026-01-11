@@ -70,14 +70,13 @@ function TopBar() {
 
   React.useEffect(() => {
     let alive = true;
-    if (!hasRestaurant) {
-      setUnreadCount(0);
-      return () => {
-        alive = false;
-      };
-    }
-
-    (async () => {
+    const loadUnreadCount = async () => {
+      if (!hasRestaurant) {
+        if (alive) {
+          setUnreadCount(0);
+        }
+        return;
+      }
       try {
         const data = await fetchInboxUnreadCount(restaurantId);
         if (!alive) return;
@@ -86,10 +85,23 @@ function TopBar() {
         if (!alive) return;
         setUnreadCount(0);
       }
-    })();
+    };
+
+    void loadUnreadCount();
+
+    const handleInboxChanged = () => {
+      void loadUnreadCount();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("inbox:changed", handleInboxChanged);
+    }
 
     return () => {
       alive = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("inbox:changed", handleInboxChanged);
+      }
     };
   }, [hasRestaurant, restaurantId]);
 
