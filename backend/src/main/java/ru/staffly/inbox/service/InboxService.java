@@ -16,6 +16,7 @@ import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.model.InboxMessage;
 import ru.staffly.inbox.model.InboxMessageType;
 import ru.staffly.inbox.model.InboxRecipient;
+import ru.staffly.inbox.model.InboxState;
 import ru.staffly.inbox.repository.InboxRecipientRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
@@ -30,16 +31,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class InboxService {
 
-    public enum InboxTab {
+    public enum InboxTypeFilter {
+        ALL,
         BIRTHDAY,
         EVENT,
         ANNOUNCEMENT
-    }
-
-    public enum InboxView {
-        UNREAD,
-        ALL,
-        ARCHIVED
     }
 
     private final InboxRecipientRepository recipients;
@@ -49,8 +45,8 @@ public class InboxService {
     @Transactional(readOnly = true)
     public InboxPageDto list(Long restaurantId,
                              Long userId,
-                             InboxTab tab,
-                             InboxView view,
+                             InboxTypeFilter typeFilter,
+                             InboxState state,
                              int page,
                              int size) {
         security.assertMember(userId, restaurantId);
@@ -59,17 +55,16 @@ public class InboxService {
 
         LocalDate today = LocalDate.now();
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
-        InboxMessageType type = switch (tab) {
-            case BIRTHDAY -> InboxMessageType.BIRTHDAY;
-            case EVENT -> InboxMessageType.EVENT;
-            case ANNOUNCEMENT -> InboxMessageType.ANNOUNCEMENT;
-        };
+        List<InboxMessageType> types = resolveTypes(typeFilter);
 
-        Page<InboxRecipient> inboxPage = switch (view) {
-            case UNREAD -> recipients.findUnread(member.getId(), restaurantId, type, today, pageable);
-            case ALL -> recipients.findActive(member.getId(), restaurantId, type, today, pageable);
-            case ARCHIVED -> recipients.findArchivedOrExpired(member.getId(), restaurantId, type, today, pageable);
-        };
+        Page<InboxRecipient> inboxPage = recipients.findByState(
+                member.getId(),
+                restaurantId,
+                types,
+                state,
+                today,
+                pageable
+        );
 
         Page<InboxMessageDto> mapped = inboxPage.map(recipient -> toDto(recipient, today));
 
@@ -136,7 +131,7 @@ public class InboxService {
     }
 
     @Transactional
-    public void archive(Long restaurantId, Long userId, Long messageId) {
+    public void hide(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
         RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
@@ -147,6 +142,22 @@ public class InboxService {
         }
         if (recipient.getArchivedAt() == null) {
             recipient.setArchivedAt(Instant.now());
+            recipients.save(recipient);
+        }
+    }
+
+    @Transactional
+    public void restore(Long restaurantId, Long userId, Long messageId) {
+        security.assertMember(userId, restaurantId);
+        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+                .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
+
+        InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);
+        if (recipient == null) {
+            return;
+        }
+        if (recipient.getArchivedAt() != null) {
+            recipient.setArchivedAt(null);
             recipients.save(recipient);
         }
     }
@@ -175,5 +186,17 @@ public class InboxService {
                 recipient.getArchivedAt() != null,
                 expired
         );
+    }
+
+    private List<InboxMessageType> resolveTypes(InboxTypeFilter typeFilter) {
+        if (typeFilter == null || typeFilter == InboxTypeFilter.ALL) {
+            return List.of(InboxMessageType.BIRTHDAY, InboxMessageType.EVENT, InboxMessageType.ANNOUNCEMENT);
+        }
+        return List.of(switch (typeFilter) {
+            case BIRTHDAY -> InboxMessageType.BIRTHDAY;
+            case EVENT -> InboxMessageType.EVENT;
+            case ANNOUNCEMENT -> InboxMessageType.ANNOUNCEMENT;
+            case ALL -> throw new IllegalStateException("Unexpected value: " + typeFilter);
+        });
     }
 }

@@ -1,0 +1,2 @@
+CREATE INDEX idx_inbox_recipients_member_read_archived ON inbox_recipients(member_id, read_at, archived_at);
+CREATE INDEX idx_inbox_messages_restaurant_type_created ON inbox_messages(restaurant_id, type, created_at);

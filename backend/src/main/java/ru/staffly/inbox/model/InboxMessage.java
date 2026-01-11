@@ -17,7 +17,8 @@ import java.util.Set;
                 @Index(name = "idx_inbox_messages_restaurant", columnList = "restaurant_id"),
                 @Index(name = "idx_inbox_messages_type", columnList = "type"),
                 @Index(name = "idx_inbox_messages_expires", columnList = "expires_at"),
-                @Index(name = "idx_inbox_messages_restaurant_type", columnList = "restaurant_id,type")
+                @Index(name = "idx_inbox_messages_restaurant_type", columnList = "restaurant_id,type"),
+                @Index(name = "idx_inbox_messages_restaurant_type_created", columnList = "restaurant_id,type,created_at")
         },
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_inbox_message_restaurant_type_meta", columnNames = {"restaurant_id", "type", "meta"})

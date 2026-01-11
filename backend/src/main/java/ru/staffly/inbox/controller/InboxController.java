@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.staffly.inbox.dto.InboxPageDto;
 import ru.staffly.inbox.dto.InboxMarkerDto;
 import ru.staffly.inbox.dto.InboxUnreadCountDto;
+import ru.staffly.inbox.model.InboxState;
 import ru.staffly.inbox.service.InboxService;
 import ru.staffly.security.UserPrincipal;
 
@@ -20,12 +21,12 @@ public class InboxController {
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @GetMapping
     public InboxPageDto list(@PathVariable Long restaurantId,
-                             @RequestParam(defaultValue = "ANNOUNCEMENT") InboxService.InboxTab tab,
-                             @RequestParam(defaultValue = "UNREAD") InboxService.InboxView view,
+                             @RequestParam(defaultValue = "ALL") InboxService.InboxTypeFilter type,
+                             @RequestParam(defaultValue = "UNREAD") InboxState state,
                              @RequestParam(defaultValue = "0") int page,
                              @RequestParam(defaultValue = "20") int size,
                              @AuthenticationPrincipal UserPrincipal principal) {
-        return inbox.list(restaurantId, principal.userId(), tab, view, page, size);
+        return inbox.list(restaurantId, principal.userId(), type, state, page, size);
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -51,10 +52,18 @@ public class InboxController {
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @PostMapping("/{messageId}/archive")
-    public void archive(@PathVariable Long restaurantId,
+    @PostMapping("/{messageId}/hide")
+    public void hide(@PathVariable Long restaurantId,
+                     @PathVariable Long messageId,
+                     @AuthenticationPrincipal UserPrincipal principal) {
+        inbox.hide(restaurantId, principal.userId(), messageId);
+    }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @PostMapping("/{messageId}/restore")
+    public void restore(@PathVariable Long restaurantId,
                         @PathVariable Long messageId,
                         @AuthenticationPrincipal UserPrincipal principal) {
-        inbox.archive(restaurantId, principal.userId(), messageId);
+        inbox.restore(restaurantId, principal.userId(), messageId);
     }
 }

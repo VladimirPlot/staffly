@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.model.InboxMessageType;
 import ru.staffly.inbox.model.InboxRecipient;
+import ru.staffly.inbox.model.InboxState;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -30,17 +31,17 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
         join r.message m
         where r.member.id = :memberId
           and m.restaurant.id = :restaurantId
-          and m.type = :type
+          and m.type in :types
           and r.archivedAt is null
           and r.readAt is null
           and (m.expiresAt is null or m.expiresAt >= :today)
         order by m.createdAt desc
         """)
-    Page<InboxRecipient> findUnread(@Param("memberId") Long memberId,
-                                    @Param("restaurantId") Long restaurantId,
-                                    @Param("type") InboxMessageType type,
-                                    @Param("today") LocalDate today,
-                                    Pageable pageable);
+    Page<InboxRecipient> findUnreadByTypes(@Param("memberId") Long memberId,
+                                           @Param("restaurantId") Long restaurantId,
+                                           @Param("types") List<InboxMessageType> types,
+                                           @Param("today") LocalDate today,
+                                           Pageable pageable);
 
     @EntityGraph(attributePaths = {"message", "message.createdBy", "message.positions"})
     @Query("""
@@ -48,16 +49,17 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
         join r.message m
         where r.member.id = :memberId
           and m.restaurant.id = :restaurantId
-          and m.type = :type
+          and m.type in :types
           and r.archivedAt is null
+          and r.readAt is not null
           and (m.expiresAt is null or m.expiresAt >= :today)
         order by m.createdAt desc
         """)
-    Page<InboxRecipient> findActive(@Param("memberId") Long memberId,
-                                    @Param("restaurantId") Long restaurantId,
-                                    @Param("type") InboxMessageType type,
-                                    @Param("today") LocalDate today,
-                                    Pageable pageable);
+    Page<InboxRecipient> findReadByTypes(@Param("memberId") Long memberId,
+                                         @Param("restaurantId") Long restaurantId,
+                                         @Param("types") List<InboxMessageType> types,
+                                         @Param("today") LocalDate today,
+                                         Pageable pageable);
 
     @EntityGraph(attributePaths = {"message", "message.createdBy", "message.positions"})
     @Query("""
@@ -65,16 +67,29 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
         join r.message m
         where r.member.id = :memberId
           and m.restaurant.id = :restaurantId
-          and m.type = :type
+          and m.type in :types
           and (r.archivedAt is not null
             or (m.expiresAt is not null and m.expiresAt < :today))
         order by m.createdAt desc
         """)
-    Page<InboxRecipient> findArchivedOrExpired(@Param("memberId") Long memberId,
-                                               @Param("restaurantId") Long restaurantId,
-                                               @Param("type") InboxMessageType type,
-                                               @Param("today") LocalDate today,
-                                               Pageable pageable);
+    Page<InboxRecipient> findHiddenByTypes(@Param("memberId") Long memberId,
+                                           @Param("restaurantId") Long restaurantId,
+                                           @Param("types") List<InboxMessageType> types,
+                                           @Param("today") LocalDate today,
+                                           Pageable pageable);
+
+    default Page<InboxRecipient> findByState(Long memberId,
+                                             Long restaurantId,
+                                             List<InboxMessageType> types,
+                                             InboxState state,
+                                             LocalDate today,
+                                             Pageable pageable) {
+        return switch (state) {
+            case UNREAD -> findUnreadByTypes(memberId, restaurantId, types, today, pageable);
+            case READ -> findReadByTypes(memberId, restaurantId, types, today, pageable);
+            case HIDDEN -> findHiddenByTypes(memberId, restaurantId, types, today, pageable);
+        };
+    }
 
     @Query("""
         select count(r) from InboxRecipient r
@@ -119,4 +134,6 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
                                      @Param("restaurantId") Long restaurantId,
                                      @Param("subtypes") List<InboxEventSubtype> subtypes,
                                      @Param("today") LocalDate today);
+
+    void deleteByMessageIdIn(List<Long> messageIds);
 }

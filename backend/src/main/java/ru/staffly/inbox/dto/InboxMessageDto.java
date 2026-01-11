@@ -15,7 +15,7 @@ public record InboxMessageDto(
         Instant createdAt,
         InboxAuthorDto createdBy,
         boolean isRead,
-        boolean isArchived,
+        boolean isHidden,
         boolean isExpired
 ) {
 }

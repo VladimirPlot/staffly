@@ -153,15 +153,24 @@ function TopBar() {
             </div>
 
             {/* ====== MOBILE (до sm) ====== */}
-            <button
-              type="button"
-              className="sm:hidden rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50 inline-flex items-center justify-center"
-              aria-label="Открыть меню"
-              aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen((v) => !v)}
-            >
-              <Icon icon={Menu} size="md" className="text-zinc-900" />
-            </button>
+            <div className="flex items-center gap-2 sm:hidden">
+              {hasRestaurant && (
+                <Link to="/inbox" aria-label="Входящие">
+                  <IconButton badge={unreadCount}>
+                    <Icon icon={Bell} size="md" className="text-zinc-900" />
+                  </IconButton>
+                </Link>
+              )}
+              <button
+                type="button"
+                className="rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50 inline-flex items-center justify-center"
+                aria-label="Открыть меню"
+                aria-expanded={mobileOpen}
+                onClick={() => setMobileOpen((v) => !v)}
+              >
+                <Icon icon={Menu} size="md" className="text-zinc-900" />
+              </button>
+            </div>
           </div>
         ) : (
           <div className="text-sm text-zinc-600">Войдите, чтобы продолжить</div>
@@ -198,15 +207,6 @@ function TopBar() {
           )}
 
           <div className="flex flex-col gap-2">
-            {hasRestaurant && (
-              <Link
-                to="/inbox"
-                className="rounded-xl px-3 py-2 hover:bg-zinc-50"
-                onClick={() => setMobileOpen(false)}
-              >
-                Входящие
-              </Link>
-            )}
             <Link
               to="/me/income"
               className="rounded-xl px-3 py-2 hover:bg-zinc-50"

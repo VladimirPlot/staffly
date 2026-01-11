@@ -23,10 +23,9 @@ export default function RestaurantHome() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const [name, setName] = React.useState<string>("");
-  const [birthdaysHidden, setBirthdaysHidden] = React.useState(false);
   const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
-  const [notifications, setNotifications] = React.useState<InboxMessageDto[]>([]);
-  const [notificationsHidden, setNotificationsHidden] = React.useState(false);
+  const [announcementsPreview, setAnnouncementsPreview] = React.useState<InboxMessageDto[]>([]);
+  const [announcementsPreviewHidden, setAnnouncementsPreviewHidden] = React.useState(false);
   const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
   const [hasUnreadAnonymousLetters, setHasUnreadAnonymousLetters] = React.useState(false);
   const [hasUnreadScheduleEvents, setHasUnreadScheduleEvents] = React.useState(false);
@@ -73,7 +72,7 @@ export default function RestaurantHome() {
   React.useEffect(() => {
     let alive = true;
     if (!restaurantId) {
-      setNotifications([]);
+      setAnnouncementsPreview([]);
       return () => {
         alive = false;
       };
@@ -82,16 +81,16 @@ export default function RestaurantHome() {
     (async () => {
       try {
         const { items } = await fetchInbox(restaurantId, {
-          tab: "ANNOUNCEMENT",
-          view: "UNREAD",
+          type: "ANNOUNCEMENT",
+          state: "UNREAD",
           page: 0,
           size: 3,
         });
         if (!alive) return;
-        setNotifications(items);
+        setAnnouncementsPreview(items);
       } catch {
         if (!alive) return;
-        setNotifications([]);
+        setAnnouncementsPreview([]);
       }
     })();
 
@@ -100,58 +99,31 @@ export default function RestaurantHome() {
     };
   }, [restaurantId]);
 
-  // Скрытие дней рождения (localStorage)
-  React.useEffect(() => {
-    if (!user?.restaurantId) {
-      setBirthdaysHidden(false);
-      return;
-    }
-    if (typeof window === "undefined") return;
-    const key = `restaurant:${restaurantId}:birthdaysHidden`;
-    setBirthdaysHidden(window.localStorage.getItem(key) === "1");
-  }, [restaurantId, user?.restaurantId]);
-
-  const hideBirthdays = React.useCallback(() => {
-    setBirthdaysHidden(true);
-    if (typeof window !== "undefined" && restaurantId) {
-      const key = `restaurant:${restaurantId}:birthdaysHidden`;
-      window.localStorage.setItem(key, "1");
-    }
-  }, [restaurantId]);
-
-  const showBirthdays = React.useCallback(() => {
-    setBirthdaysHidden(false);
-    if (typeof window !== "undefined" && restaurantId) {
-      const key = `restaurant:${restaurantId}:birthdaysHidden`;
-      window.localStorage.removeItem(key);
-    }
-  }, [restaurantId]);
-
   // Скрытие блока объявлений (localStorage)
   React.useEffect(() => {
     if (!user?.restaurantId || !user?.id) {
-      setNotificationsHidden(false);
+      setAnnouncementsPreviewHidden(false);
       return;
     }
     if (typeof window === "undefined") return;
-    const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
-    setNotificationsHidden(window.localStorage.getItem(key) === "1");
+    const key = `restaurant:${restaurantId}:announcementsPreviewHidden:${user.id}`;
+    setAnnouncementsPreviewHidden(window.localStorage.getItem(key) === "1");
   }, [restaurantId, user?.restaurantId, user?.id]);
 
   const hideNotifications = React.useCallback(() => {
     if (!restaurantId || !user?.id) return;
-    setNotificationsHidden(true);
+    setAnnouncementsPreviewHidden(true);
     if (typeof window !== "undefined") {
-      const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
+      const key = `restaurant:${restaurantId}:announcementsPreviewHidden:${user.id}`;
       window.localStorage.setItem(key, "1");
     }
   }, [restaurantId, user?.id]);
 
   const showNotifications = React.useCallback(() => {
     if (!restaurantId || !user?.id) return;
-    setNotificationsHidden(false);
+    setAnnouncementsPreviewHidden(false);
     if (typeof window !== "undefined") {
-      const key = `restaurant:${restaurantId}:notificationsHidden:${user.id}`;
+      const key = `restaurant:${restaurantId}:announcementsPreviewHidden:${user.id}`;
       window.localStorage.removeItem(key);
     }
   }, [restaurantId, user?.id]);
@@ -169,7 +141,7 @@ export default function RestaurantHome() {
     [savedSchedules]
   );
 
-  const hasRelevantNotifications = notifications.length > 0;
+  const hasRelevantNotifications = announcementsPreview.length > 0;
   const shouldShowNotificationsEntry = canManageNotifications;
   const canAccessContacts = access.isManagerLike;
 
@@ -262,35 +234,8 @@ export default function RestaurantHome() {
         <h2 className="text-2xl font-semibold">{name || "…"}</h2>
       </Card>
 
-      {birthdaysHidden ? (
-        <div className="mb-4 flex justify-end">
-          <Button variant="ghost" className="text-sm text-zinc-600" onClick={showBirthdays}>
-            Показать ДР
-          </Button>
-        </div>
-      ) : (
-        <Card className="mb-4 border-amber-200 bg-amber-50/70">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-sm font-medium uppercase tracking-wide text-amber-600">
-                Дни рождения перенесены во входящие
-              </div>
-              <div className="mt-2 text-sm text-amber-900">
-                Теперь все события про дни рождения доступны во вкладке “ДР” в колокольчике.
-              </div>
-              <Link to="/inbox" className="mt-3 inline-flex text-sm text-amber-700 underline">
-                Открыть входящие
-              </Link>
-            </div>
-            <Button variant="ghost" className="text-sm text-amber-700" onClick={hideBirthdays}>
-              Скрыть
-            </Button>
-          </div>
-        </Card>
-      )}
-
       {!canManageNotifications && hasRelevantNotifications &&
-        (notificationsHidden ? (
+        (announcementsPreviewHidden ? (
           <div className="mb-4 flex justify-end">
             <Button variant="ghost" className="text-sm text-zinc-600" onClick={showNotifications}>
               Показать объявления
@@ -304,7 +249,7 @@ export default function RestaurantHome() {
                   Новые объявления
                 </div>
                 <ul className="space-y-3 text-sm text-emerald-900">
-                  {notifications.map((item) => (
+                  {announcementsPreview.map((item) => (
                     <li
                       key={item.id}
                       className="rounded-2xl border border-emerald-100 bg-white/60 p-3 shadow-sm"

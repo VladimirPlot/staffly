@@ -5,24 +5,26 @@ import Card from "../../../shared/ui/Card";
 import ContentText from "../../../shared/ui/ContentText";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
-  archiveInboxMessage,
   fetchInbox,
+  hideInboxMessage,
   markInboxRead,
+  restoreInboxMessage,
   type InboxMessageDto,
-  type InboxTab,
-  type InboxView,
+  type InboxStateFilter,
+  type InboxTypeFilter,
 } from "../api";
 
-const tabs: { id: InboxTab; label: string }[] = [
+const typeFilters: { id: InboxTypeFilter; label: string }[] = [
+  { id: "ALL", label: "Все" },
   { id: "BIRTHDAY", label: "ДР" },
   { id: "EVENT", label: "События" },
   { id: "ANNOUNCEMENT", label: "Объявления" },
 ];
 
-const views: { id: InboxView; label: string }[] = [
+const stateFilters: { id: InboxStateFilter; label: string }[] = [
   { id: "UNREAD", label: "Новые" },
-  { id: "ALL", label: "Все" },
-  { id: "ARCHIVED", label: "Архив" },
+  { id: "READ", label: "Прочитанные" },
+  { id: "HIDDEN", label: "Скрытые" },
 ];
 
 function formatDate(dateStr?: string | null): string {
@@ -41,53 +43,83 @@ function formatCreated(dateStr: string): string {
 const InboxPage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const [tab, setTab] = React.useState<InboxTab>("BIRTHDAY");
-  const [view, setView] = React.useState<InboxView>("UNREAD");
+  const [typeFilter, setTypeFilter] = React.useState<InboxTypeFilter>("ALL");
+  const [state, setState] = React.useState<InboxStateFilter>("UNREAD");
   const [loading, setLoading] = React.useState(false);
   const [messages, setMessages] = React.useState<InboxMessageDto[]>([]);
+  const [page, setPage] = React.useState(0);
+  const [hasNext, setHasNext] = React.useState(false);
 
-  const load = React.useCallback(async () => {
-    if (!restaurantId) return;
-    setLoading(true);
-    try {
-      const data = await fetchInbox(restaurantId, { tab, view, page: 0, size: 50 });
-      setMessages(data.items);
-    } catch (e) {
-      console.error("Failed to load inbox", e);
-      setMessages([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [restaurantId, tab, view]);
+  const loadPage = React.useCallback(
+    async (targetPage: number, replace = false) => {
+      if (!restaurantId) return;
+      setLoading(true);
+      try {
+        const data = await fetchInbox(restaurantId, {
+          type: typeFilter,
+          state,
+          page: targetPage,
+          size: 20,
+        });
+        setMessages((prev) => (replace ? data.items : [...prev, ...data.items]));
+        setPage(data.page);
+        setHasNext(data.hasNext);
+      } catch (e) {
+        console.error("Failed to load inbox", e);
+        if (replace) {
+          setMessages([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [restaurantId, state, typeFilter],
+  );
 
   React.useEffect(() => {
-    void load();
-  }, [load]);
+    setMessages([]);
+    setPage(0);
+    setHasNext(false);
+    void loadPage(0, true);
+  }, [loadPage]);
 
   const handleRead = React.useCallback(
     async (id: number) => {
       if (!restaurantId) return;
       try {
         await markInboxRead(restaurantId, id);
-        await load(); // <-- важно
+        await loadPage(0, true);
       } catch (e) {
         console.error("Failed to mark read", e);
       }
     },
-    [restaurantId, load],
+    [restaurantId, loadPage],
   );
 
-  const handleArchive = React.useCallback(
+  const handleHide = React.useCallback(
     async (id: number) => {
       if (!restaurantId) return;
       try {
-        await archiveInboxMessage(restaurantId, id);
-        await load(); // <-- важно
+        await hideInboxMessage(restaurantId, id);
+        await loadPage(0, true);
       } catch (e) {
-        console.error("Failed to archive", e);
+        console.error("Failed to hide", e);
       }
     },
-    [restaurantId, load],
+    [restaurantId, loadPage],
+  );
+
+  const handleRestore = React.useCallback(
+    async (id: number) => {
+      if (!restaurantId) return;
+      try {
+        await restoreInboxMessage(restaurantId, id);
+        await loadPage(0, true);
+      } catch (e) {
+        console.error("Failed to restore", e);
+      }
+    },
+    [restaurantId, loadPage],
   );
 
   const emptyLabel = loading ? "Загружаем сообщения…" : "Сообщений нет";
@@ -99,31 +131,32 @@ const InboxPage: React.FC = () => {
       </div>
       <h2 className="text-2xl font-semibold">Входящие</h2>
       <p className="mb-4 text-sm text-zinc-600">
-        Все уведомления собраны по вкладкам. Отмечайте прочитанными или архивируйте.
+        Единый список сообщений с фильтрами по типам и статусам.
       </p>
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((item) => (
-          <Button
-            key={item.id}
-            variant={tab === item.id ? "primary" : "outline"}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </Button>
-        ))}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {views.map((item) => (
-          <Button
-            key={item.id}
-            variant={view === item.id ? "primary" : "outline"}
-            onClick={() => setView(item.id)}
-          >
-            {item.label}
-          </Button>
-        ))}
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {stateFilters.map((item) => (
+            <Button
+              key={item.id}
+              variant={state === item.id ? "primary" : "outline"}
+              onClick={() => setState(item.id)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {typeFilters.map((item) => (
+            <Button
+              key={item.id}
+              variant={typeFilter === item.id ? "primary" : "outline"}
+              onClick={() => setTypeFilter(item.id)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -131,7 +164,14 @@ const InboxPage: React.FC = () => {
           <div className="text-sm text-zinc-600">{emptyLabel}</div>
         ) : (
           messages.map((message) => (
-            <Card key={message.id} className="border-zinc-200">
+            <Card
+              key={message.id}
+              className={
+                state === "HIDDEN"
+                  ? "border-zinc-200 bg-zinc-50/70"
+                  : "border-zinc-200"
+              }
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-xs text-zinc-500">
@@ -152,28 +192,58 @@ const InboxPage: React.FC = () => {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  {!message.isRead && <span className="rounded-full bg-emerald-50 px-2 py-1">Новые</span>}
-                  {message.isArchived && <span className="rounded-full bg-zinc-100 px-2 py-1">Архив</span>}
-                  {message.isExpired && <span className="rounded-full bg-zinc-100 px-2 py-1">Истекло</span>}
+                  {!message.isRead && state !== "HIDDEN" && (
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                      Новые
+                    </span>
+                  )}
+                  {state === "HIDDEN" && message.isHidden && (
+                    <span className="rounded-full bg-zinc-100 px-2 py-1">Скрыто</span>
+                  )}
+                  {state === "HIDDEN" && message.isExpired && (
+                    <span className="rounded-full bg-zinc-100 px-2 py-1">Истекло</span>
+                  )}
                 </div>
               </div>
-              <ContentText className="mt-2 text-base text-zinc-900">{message.content}</ContentText>
+              <ContentText
+                className={`mt-2 text-base ${state === "HIDDEN" ? "text-zinc-700" : "text-zinc-900"}`}
+              >
+                {message.content}
+              </ContentText>
               <div className="mt-4 flex flex-wrap gap-2">
-                {!message.isRead && view !== "ARCHIVED" && (
+                {!message.isRead && state !== "HIDDEN" && (
                   <Button variant="outline" onClick={() => void handleRead(message.id)}>
                     Прочитано
                   </Button>
                 )}
-                {!message.isArchived && (
-                  <Button variant="ghost" onClick={() => void handleArchive(message.id)}>
-                    Архивировать
+                {state === "HIDDEN" ? (
+                  <Button variant="outline" onClick={() => void handleRestore(message.id)}>
+                    Вернуть
                   </Button>
+                ) : (
+                  !message.isHidden && (
+                    <Button variant="ghost" onClick={() => void handleHide(message.id)}>
+                      Скрыть
+                    </Button>
+                  )
                 )}
               </div>
             </Card>
           ))
         )}
       </div>
+
+      {hasNext && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            variant="outline"
+            disabled={loading}
+            onClick={() => void loadPage(page + 1)}
+          >
+            Загрузить ещё
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

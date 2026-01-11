@@ -17,6 +17,7 @@ import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
 import java.time.MonthDay;
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -33,53 +34,122 @@ public class BirthdayInboxJob {
     @Transactional
     public void generateBirthdays() {
         LocalDate today = LocalDate.now();
-        LocalDate end = today.plusDays(7);
+        LocalDate weekAhead = today.plusDays(7);
+        LocalDate tomorrow = today.plusDays(1);
 
         List<Restaurant> allRestaurants = restaurants.findAll();
         for (Restaurant restaurant : allRestaurants) {
             List<RestaurantMember> membersList = members.findWithUserByRestaurantId(restaurant.getId());
-            for (RestaurantMember celebrant : membersList) {
-                User celebrantUser = celebrant.getUser();
-                if (celebrantUser == null || celebrantUser.getBirthDate() == null) {
-                    continue;
-                }
+            List<RestaurantMember> todaysCelebrants = findCelebrantsByDate(membersList, today);
+            List<RestaurantMember> tomorrowCelebrants = findCelebrantsByDate(membersList, tomorrow);
+            List<RestaurantMember> weekCelebrants = findCelebrantsByDate(membersList, weekAhead);
 
-                MonthDay birthDay = MonthDay.from(celebrantUser.getBirthDate());
-                LocalDate computedBirthday = birthDay.atYear(today.getYear());
-                if (computedBirthday.isBefore(today)) {
-                    computedBirthday = computedBirthday.plusYears(1);
-                }
-                if (computedBirthday.isAfter(end)) {
-                    continue;
-                }
+            for (RestaurantMember celebrant : weekCelebrants) {
+                createBirthdayMessage(
+                        restaurant,
+                        celebrant,
+                        membersList,
+                        weekAhead,
+                        BirthdayKind.WEEK,
+                        String.format("Через неделю у %s день рождения", celebrant.getUser().getFullName())
+                );
+            }
 
-                final LocalDate nextBirthday = computedBirthday;
+            for (RestaurantMember celebrant : tomorrowCelebrants) {
+                createBirthdayMessage(
+                        restaurant,
+                        celebrant,
+                        membersList,
+                        tomorrow,
+                        BirthdayKind.TOMORROW,
+                        String.format("Завтра у %s день рождения", celebrant.getUser().getFullName())
+                );
+            }
 
-                String meta = "birthday:" + celebrant.getId() + ":" + nextBirthday.getYear();
-                List<RestaurantMember> recipients = membersList.stream()
-                        .filter(recipient -> !recipient.getId().equals(celebrant.getId()))
-                        .toList();
-
-                InboxMessage message = messages.findByRestaurantIdAndTypeAndMeta(
-                        restaurant.getId(),
-                        InboxMessageType.BIRTHDAY,
-                        meta
-                ).orElse(null);
-
-                if (message == null) {
-                    inboxMessages.createBirthdayMessage(
-                            restaurant,
-                            String.format("Скоро день рождения у %s", celebrantUser.getFullName()),
-                            nextBirthday,
-                            meta,
-                            recipients
-                    );
-                } else {
-                    inboxMessages.ensureRecipientsBulk(message, recipients);
-                }
+            for (RestaurantMember celebrant : todaysCelebrants) {
+                createBirthdayMessage(
+                        restaurant,
+                        celebrant,
+                        membersList,
+                        today,
+                        BirthdayKind.TODAY,
+                        String.format("Сегодня у %s день рождения 🎉", celebrant.getUser().getFullName())
+                );
+                createBirthdayMessage(
+                        restaurant,
+                        celebrant,
+                        List.of(celebrant),
+                        today,
+                        BirthdayKind.GREET,
+                        "С днём рождения! Здоровья, любви, успехов!"
+                );
             }
         }
 
         log.info("Birthday inbox job completed");
+    }
+
+    private List<RestaurantMember> findCelebrantsByDate(List<RestaurantMember> membersList, LocalDate targetDate) {
+        MonthDay targetMonthDay = MonthDay.from(targetDate);
+        List<RestaurantMember> celebrants = new ArrayList<>();
+        for (RestaurantMember member : membersList) {
+            User user = member.getUser();
+            if (user == null || user.getBirthDate() == null) {
+                continue;
+            }
+            if (MonthDay.from(user.getBirthDate()).equals(targetMonthDay)) {
+                celebrants.add(member);
+            }
+        }
+        return celebrants;
+    }
+
+    private void createBirthdayMessage(Restaurant restaurant,
+                                       RestaurantMember celebrant,
+                                       List<RestaurantMember> allRecipients,
+                                       LocalDate targetDate,
+                                       BirthdayKind kind,
+                                       String content) {
+        List<RestaurantMember> recipients = allRecipients.stream()
+                .filter(member -> member.getUser() != null)
+                .filter(member -> kind == BirthdayKind.GREET || !member.getId().equals(celebrant.getId()))
+                .toList();
+        if (recipients.isEmpty()) {
+            return;
+        }
+
+        String meta = String.format(
+                "birthday:%d:%s:%s",
+                celebrant.getId(),
+                targetDate,
+                kind.name()
+        );
+
+        InboxMessage message = messages.findByRestaurantIdAndTypeAndMeta(
+                restaurant.getId(),
+                InboxMessageType.BIRTHDAY,
+                meta
+        ).orElse(null);
+
+        if (message == null) {
+            inboxMessages.createBirthdayMessage(
+                    restaurant,
+                    content,
+                    targetDate,
+                    meta,
+                    recipients
+            );
+        } else if (kind == BirthdayKind.GREET) {
+            inboxMessages.ensureRecipient(message, celebrant);
+        } else {
+            inboxMessages.ensureRecipientsBulk(message, recipients);
+        }
+    }
+
+    private enum BirthdayKind {
+        WEEK,
+        TOMORROW,
+        TODAY,
+        GREET
     }
 }
