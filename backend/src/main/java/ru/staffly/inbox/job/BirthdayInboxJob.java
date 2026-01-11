@@ -56,23 +56,26 @@ public class BirthdayInboxJob {
                 final LocalDate nextBirthday = computedBirthday;
 
                 String meta = "birthday:" + celebrant.getId() + ":" + nextBirthday.getYear();
+                List<RestaurantMember> recipients = membersList.stream()
+                        .filter(recipient -> !recipient.getId().equals(celebrant.getId()))
+                        .toList();
+
                 InboxMessage message = messages.findByRestaurantIdAndTypeAndMeta(
                         restaurant.getId(),
                         InboxMessageType.BIRTHDAY,
                         meta
-                ).orElseGet(() -> inboxMessages.createBirthdayMessage(
-                        restaurant,
-                        String.format("Скоро день рождения у %s", celebrantUser.getFullName()),
-                        nextBirthday,
-                        meta,
-                        List.of()
-                ));
+                ).orElse(null);
 
-                for (RestaurantMember recipient : membersList) {
-                    if (recipient.getId().equals(celebrant.getId())) {
-                        continue;
-                    }
-                    inboxMessages.ensureRecipient(message, recipient);
+                if (message == null) {
+                    inboxMessages.createBirthdayMessage(
+                            restaurant,
+                            String.format("Скоро день рождения у %s", celebrantUser.getFullName()),
+                            nextBirthday,
+                            meta,
+                            recipients
+                    );
+                } else {
+                    inboxMessages.ensureRecipientsBulk(message, recipients);
                 }
             }
         }

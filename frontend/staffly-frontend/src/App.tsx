@@ -38,6 +38,8 @@ import { fetchInboxUnreadCount } from "./features/inbox/api";
 /* ===== TopBar ===== */
 function TopBar() {
   const { user, token, logout } = useAuth();
+  const restaurantId = user?.restaurantId;
+  const hasRestaurant = typeof restaurantId === "number";
   const [restName, setRestName] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState<number>(0);
@@ -45,9 +47,9 @@ function TopBar() {
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (user?.restaurantId) {
+      if (hasRestaurant) {
         try {
-          const name = await fetchRestaurantName(user.restaurantId);
+          const name = await fetchRestaurantName(restaurantId);
           if (alive) setRestName(name);
         } catch {
           if (alive) setRestName(null);
@@ -59,16 +61,16 @@ function TopBar() {
     return () => {
       alive = false;
     };
-  }, [user?.restaurantId]);
+  }, [hasRestaurant, restaurantId]);
 
   // закрывать меню при смене токена/пользователя/ресторана
   React.useEffect(() => {
     setMobileOpen(false);
-  }, [token, user?.restaurantId]);
+  }, [token, restaurantId]);
 
   React.useEffect(() => {
     let alive = true;
-    if (!user?.restaurantId) {
+    if (!hasRestaurant) {
       setUnreadCount(0);
       return () => {
         alive = false;
@@ -77,7 +79,7 @@ function TopBar() {
 
     (async () => {
       try {
-        const data = await fetchInboxUnreadCount(user.restaurantId);
+        const data = await fetchInboxUnreadCount(restaurantId);
         if (!alive) return;
         setUnreadCount(data.count);
       } catch {
@@ -89,9 +91,9 @@ function TopBar() {
     return () => {
       alive = false;
     };
-  }, [user?.restaurantId]);
+  }, [hasRestaurant, restaurantId]);
 
-  const homeHref = token ? (user?.restaurantId ? "/app" : "/restaurants") : "/login";
+  const homeHref = token ? (hasRestaurant ? "/app" : "/restaurants") : "/login";
 
   return (
     <div className="mb-6">
@@ -106,7 +108,7 @@ function TopBar() {
         {token ? (
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             {/* ====== DESKTOP (sm+) ====== */}
-            {user?.restaurantId && restName && (
+            {hasRestaurant && restName && (
               <div className="hidden items-center gap-2 sm:flex">
                 <Link
                   to="/app"
@@ -132,7 +134,7 @@ function TopBar() {
             )}
 
             <div className="hidden items-center gap-3 sm:flex">
-              {user?.restaurantId && (
+              {hasRestaurant && (
                 <Link to="/inbox" aria-label="Входящие">
                   <IconButton badge={unreadCount}>
                     <Icon icon={Bell} size="md" className="text-zinc-900" />
@@ -169,7 +171,7 @@ function TopBar() {
       {/* ===== Mobile dropdown menu ===== */}
       {token && mobileOpen && (
         <div className="mt-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:hidden">
-          {user?.restaurantId && restName && (
+          {hasRestaurant && restName && (
             <div className="mb-3 flex items-center justify-between gap-2">
               <Link
                 to="/app"
@@ -196,7 +198,7 @@ function TopBar() {
           )}
 
           <div className="flex flex-col gap-2">
-            {user?.restaurantId && (
+            {hasRestaurant && (
               <Link
                 to="/inbox"
                 className="rounded-xl px-3 py-2 hover:bg-zinc-50"

@@ -825,9 +825,10 @@ const SchedulePage: React.FC = () => {
   }, [schedule, todayIso]);
 
   const hasTodayShifts = todaysShifts.length > 0;
+  const hasSchedule = schedule != null;
 
   React.useEffect(() => {
-    if (!schedule) {
+    if (!hasSchedule) {
       setActiveTab("table");
       autoTabDoneRef.current = false;
       return;
@@ -838,7 +839,7 @@ const SchedulePage: React.FC = () => {
 
     setActiveTab(hasTodayShifts ? "today" : "table");
     autoTabDoneRef.current = true;
-  }, [schedule?.id, scheduleReadOnly, hasTodayShifts]);
+  }, [hasSchedule, scheduleReadOnly, hasTodayShifts]);
 
   const sortedShiftRequests = React.useMemo(() => {
     let requests = [...shiftRequests];

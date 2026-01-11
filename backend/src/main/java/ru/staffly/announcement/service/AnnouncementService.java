@@ -60,8 +60,9 @@ public class AnnouncementService {
             throw new BadRequestException("Текст объявления обязателен");
         }
 
+        LocalDate today = LocalDate.now();
         LocalDate expiresAt = request.expiresAt();
-        if (expiresAt != null && expiresAt.isBefore(LocalDate.now())) {
+        if (expiresAt != null && expiresAt.isBefore(today)) {
             throw new BadRequestException("Дата окончания не может быть в прошлом");
         }
 
@@ -91,8 +92,9 @@ public class AnnouncementService {
             throw new BadRequestException("Текст объявления обязателен");
         }
 
+        LocalDate today = LocalDate.now();
         LocalDate expiresAt = request.expiresAt();
-        if (expiresAt != null && expiresAt.isBefore(LocalDate.now())) {
+        if (expiresAt != null && expiresAt.isBefore(today)) {
             throw new BadRequestException("Дата окончания не может быть в прошлом");
         }
 
@@ -101,7 +103,7 @@ public class AnnouncementService {
         Restaurant restaurant = existing.getRestaurant();
         User creator = existing.getCreatedBy();
 
-        existing.setExpiresAt(LocalDate.now().minusDays(1));
+        existing.setExpiresAt(today.minusDays(1));
         messages.save(existing);
 
         InboxMessage message = inboxMessages.createAnnouncement(

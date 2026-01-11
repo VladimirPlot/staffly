@@ -18,6 +18,12 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
 
     Optional<InboxRecipient> findByMessageIdAndMemberId(Long messageId, Long memberId);
 
+    @Query("""
+        select r.member.id from InboxRecipient r
+        where r.message.id = :messageId
+        """)
+    List<Long> findMemberIdsByMessageId(@Param("messageId") Long messageId);
+
     @EntityGraph(attributePaths = {"message", "message.createdBy", "message.positions"})
     @Query("""
         select r from InboxRecipient r
@@ -61,7 +67,7 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
           and m.restaurant.id = :restaurantId
           and m.type = :type
           and (r.archivedAt is not null
-            or (m.type = 'ANNOUNCEMENT' and m.expiresAt is not null and m.expiresAt < :today))
+            or (m.expiresAt is not null and m.expiresAt < :today))
         order by m.createdAt desc
         """)
     Page<InboxRecipient> findArchivedOrExpired(@Param("memberId") Long memberId,

@@ -33,13 +33,14 @@ public class InboxMessageService {
                                            LocalDate expiresAt,
                                            List<Position> positions,
                                            List<RestaurantMember> targets) {
+        String meta = ensureMeta("announcement:" + Instant.now().toEpochMilli() + ":" + creator.getId());
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.ANNOUNCEMENT)
                 .content(content)
                 .expiresAt(expiresAt)
                 .createdBy(creator)
-                .meta("announcement:" + Instant.now().toEpochMilli() + ":" + creator.getId())
+                .meta(meta)
                 .positions(new HashSet<>(positions))
                 .build();
 
@@ -56,15 +57,15 @@ public class InboxMessageService {
                                     String meta,
                                     List<RestaurantMember> targets,
                                     LocalDate expiresAt) {
-        String resolvedMeta = meta == null
+        String resolvedMeta = meta == null || meta.isBlank()
                 ? "event:" + Instant.now().toEpochMilli() + ":" + restaurant.getId()
-                : meta;
+                : meta.trim();
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.EVENT)
                 .eventSubtype(subtype)
                 .content(content)
-                .meta(resolvedMeta)
+                .meta(ensureMeta(resolvedMeta))
                 .expiresAt(expiresAt)
                 .createdBy(creator)
                 .build();
@@ -80,12 +81,15 @@ public class InboxMessageService {
                                               LocalDate birthday,
                                               String meta,
                                               List<RestaurantMember> recipientsList) {
+        String resolvedMeta = meta == null || meta.isBlank()
+                ? "birthday:" + Instant.now().toEpochMilli()
+                : meta.trim();
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.BIRTHDAY)
                 .content(content)
                 .expiresAt(birthday)
-                .meta(meta == null ? "birthday:" + Instant.now().toEpochMilli() : meta)
+                .meta(ensureMeta(resolvedMeta))
                 .build();
 
         message = messages.save(message);
@@ -107,6 +111,21 @@ public class InboxMessageService {
                 .build());
     }
 
+    @Transactional
+    public void ensureRecipientsBulk(InboxMessage message, List<RestaurantMember> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return;
+        }
+        HashSet<Long> existingIds = new HashSet<>(recipients.findMemberIdsByMessageId(message.getId()));
+        List<RestaurantMember> missingRecipients = targets.stream()
+                .filter(member -> member.getId() != null && !existingIds.contains(member.getId()))
+                .toList();
+        if (missingRecipients.isEmpty()) {
+            return;
+        }
+        saveRecipients(message, missingRecipients);
+    }
+
     private void saveRecipients(InboxMessage message, List<RestaurantMember> targets) {
         Instant now = Instant.now();
         List<InboxRecipient> newRecipients = targets.stream()
@@ -117,5 +136,11 @@ public class InboxMessageService {
                         .build())
                 .toList();
         recipients.saveAll(newRecipients);
+    }
+    private String ensureMeta(String meta) {
+        if (meta == null || meta.isBlank()) {
+            throw new IllegalArgumentException("Inbox message meta must be provided");
+        }
+        return meta.trim();
     }
 }
