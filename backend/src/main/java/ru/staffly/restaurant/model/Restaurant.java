@@ -16,6 +16,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class Restaurant {
+    public static final String DEFAULT_TIMEZONE = "Europe/Moscow";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -26,8 +28,17 @@ public class Restaurant {
     @Column(nullable = false, length = 64, unique = true)
     private String code;
 
+    @Column(length = 500)
+    private String description;
+
+    @Column(name = "timezone", nullable = false, length = 64)
+    private String timezone = DEFAULT_TIMEZONE;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    @Column(name = "is_locked", nullable = false)
+    private boolean locked = false;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -40,6 +51,7 @@ public class Restaurant {
         LocalDateTime now = LocalDateTime.now();
         if (createdAt == null) createdAt = now;
         if (updatedAt == null) updatedAt = now;
+        if (timezone == null || timezone.isBlank()) timezone = DEFAULT_TIMEZONE;
     }
 
     @PreUpdate

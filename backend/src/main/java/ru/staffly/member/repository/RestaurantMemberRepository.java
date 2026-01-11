@@ -26,6 +26,8 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
 
     long countByRestaurantIdAndRole(Long restaurantId, RestaurantRole role);
 
+    boolean existsByRestaurantIdAndUserIdNot(Long restaurantId, Long userId);
+
     boolean existsByRestaurantIdAndUserId(Long restaurantId, Long userId);
 
     // ADMIN или MANAGER
@@ -41,6 +43,10 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     @Query("""
    select new ru.staffly.member.dto.MyMembershipDto(
      m.restaurant.id,
+     m.restaurant.name,
+     m.restaurant.description,
+     m.restaurant.timezone,
+     m.restaurant.locked,
      m.role
    )
    from RestaurantMember m

@@ -18,6 +18,7 @@ import ru.staffly.user.model.User;
 import java.time.LocalDate;
 import java.time.MonthDay;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,22 +27,25 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BirthdayInboxJob {
 
-    private static final ZoneId MOSCOW_ZONE = ZoneId.of("Europe/Moscow");
-
     private final RestaurantRepository restaurants;
     private final RestaurantMemberRepository members;
     private final InboxMessageRepository messages;
     private final InboxMessageService inboxMessages;
 
-    @Scheduled(cron = "0 15 1 * * *")
+    @Scheduled(cron = "0 15 * * * *")
     @Transactional
     public void generateBirthdays() {
-        LocalDate today = LocalDate.now(MOSCOW_ZONE);
-        LocalDate weekAhead = today.plusDays(7);
-        LocalDate tomorrow = today.plusDays(1);
-
         List<Restaurant> allRestaurants = restaurants.findAll();
         for (Restaurant restaurant : allRestaurants) {
+            ZoneId zone = ZoneId.of(restaurant.getTimezone());
+            ZonedDateTime now = ZonedDateTime.now(zone);
+            if (now.getHour() != 1) {
+                continue;
+            }
+            LocalDate today = now.toLocalDate();
+            LocalDate weekAhead = today.plusDays(7);
+            LocalDate tomorrow = today.plusDays(1);
+
             List<RestaurantMember> membersList = members.findWithUserByRestaurantId(restaurant.getId());
             List<RestaurantMember> todaysCelebrants = findCelebrantsByDate(membersList, today);
             List<RestaurantMember> tomorrowCelebrants = findCelebrantsByDate(membersList, tomorrow);

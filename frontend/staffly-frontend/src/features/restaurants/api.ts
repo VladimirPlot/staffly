@@ -1,38 +1,55 @@
 import api from "../../shared/api/apiClient";
 import type { UiRestaurant } from "../../entities/restaurant/types";
 
-const nameCache = new Map<number, string>();
+const restaurantCache = new Map<number, RestaurantDto>();
+
+export async function fetchRestaurant(id: number): Promise<RestaurantDto> {
+  if (restaurantCache.has(id)) return restaurantCache.get(id)!;
+  const { data } = await api.get(`/api/restaurants/${id}`);
+  if (!data?.id) {
+    throw new Error("Некорректный ответ сервера");
+  }
+  const restaurant = data as RestaurantDto;
+  restaurantCache.set(id, restaurant);
+  return restaurant;
+}
 
 export async function fetchRestaurantName(id: number): Promise<string> {
-  if (nameCache.has(id)) return nameCache.get(id)!;
-  const { data } = await api.get(`/api/restaurants/${id}`);
-  const name = data?.name ?? `#${id}`;
-  nameCache.set(id, name);
-  return name;
+  const restaurant = await fetchRestaurant(id);
+  return restaurant.name ?? `#${id}`;
 }
 
 export async function loadMyRestaurants(): Promise<UiRestaurant[]> {
   const { data } = await api.get("/api/me/memberships");
   if (!Array.isArray(data)) throw new Error("Некорректный ответ сервера");
 
-  const items: UiRestaurant[] = await Promise.all(
-    data.map(async (m: any) => {
-      const id = Number(m.restaurantId);
-      const role = String(m.role || "");
-      const name = await fetchRestaurantName(id);
-      return { id, name, city: "", role };
-    })
-  );
+  const items: UiRestaurant[] = data.map((m: any) => ({
+    id: Number(m.restaurantId),
+    name: String(m.restaurantName || `#${m.restaurantId}`),
+    description: m.restaurantDescription ?? null,
+    timezone: String(m.restaurantTimezone || "Europe/Moscow"),
+    locked: Boolean(m.restaurantLocked),
+    city: "",
+    role: String(m.role || ""),
+  }));
   return items;
 }
 
-export type CreateRestaurantBody = { name: string; code?: string };
+export type CreateRestaurantBody = {
+  name: string;
+  code?: string;
+  description?: string;
+  timezone: string;
+};
 
 export type RestaurantDto = {
   id: number;
   name: string;
   code: string;
+  description?: string | null;
+  timezone: string;
   active: boolean;
+  locked: boolean;
 };
 
 export async function createRestaurant(
@@ -40,4 +57,30 @@ export async function createRestaurant(
 ): Promise<RestaurantDto> {
   const { data } = await api.post("/api/restaurants", body);
   return data as RestaurantDto;
+}
+
+export type UpdateRestaurantBody = {
+  name: string;
+  description?: string;
+  timezone: string;
+};
+
+export async function updateRestaurant(
+  id: number,
+  body: UpdateRestaurantBody
+): Promise<RestaurantDto> {
+  const { data } = await api.put(`/api/restaurants/${id}`, body);
+  restaurantCache.set(id, data as RestaurantDto);
+  return data as RestaurantDto;
+}
+
+export async function toggleRestaurantLock(id: number): Promise<RestaurantDto> {
+  const { data } = await api.post(`/api/restaurants/${id}/lock`);
+  restaurantCache.set(id, data as RestaurantDto);
+  return data as RestaurantDto;
+}
+
+export async function deleteRestaurant(id: number): Promise<void> {
+  await api.delete(`/api/restaurants/${id}`);
+  restaurantCache.delete(id);
 }

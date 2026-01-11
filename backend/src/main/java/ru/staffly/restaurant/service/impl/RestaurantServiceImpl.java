@@ -10,6 +10,7 @@ import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.dto.CreateRestaurantRequest;
+import ru.staffly.restaurant.dto.UpdateRestaurantRequest;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
@@ -18,6 +19,7 @@ import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
 import java.text.Normalizer;
+import java.time.ZoneId;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -50,6 +52,8 @@ public class RestaurantServiceImpl implements RestaurantService {
         Restaurant r = Restaurant.builder()
                 .name(name)
                 .code(code)
+                .description(req.description())
+                .timezone(normalizeTimezone(req.timezone()))
                 .active(true)
                 .build();
 
@@ -57,6 +61,44 @@ public class RestaurantServiceImpl implements RestaurantService {
         createBasePositionIfAbsent(saved, "Управляющий", RestaurantRole.ADMIN);
         createBasePositionIfAbsent(saved, "Менеджер",    RestaurantRole.MANAGER);
         return saved;
+    }
+
+    @Override
+    @Transactional
+    public Restaurant update(Long restaurantId, UpdateRestaurantRequest req) {
+        Restaurant restaurant = restaurants.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
+
+        String name = req.name().trim();
+        if (name.isBlank()) throw new ConflictException("Name is required");
+
+        restaurant.setName(name);
+        restaurant.setDescription(req.description());
+        restaurant.setTimezone(normalizeTimezone(req.timezone()));
+        return restaurants.save(restaurant);
+    }
+
+    @Override
+    @Transactional
+    public Restaurant toggleLock(Long restaurantId) {
+        Restaurant restaurant = restaurants.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
+        restaurant.setLocked(!restaurant.isLocked());
+        return restaurants.save(restaurant);
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long restaurantId, Long creatorUserId) {
+        Restaurant restaurant = restaurants.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
+
+        boolean hasOtherMembers = members.existsByRestaurantIdAndUserIdNot(restaurantId, creatorUserId);
+        if (hasOtherMembers) {
+            throw new ConflictException("Cannot delete restaurant with other participants");
+        }
+
+        restaurants.delete(restaurant);
     }
 
     @Override
@@ -109,6 +151,19 @@ public class RestaurantServiceImpl implements RestaurantService {
         c = trimDashes(c);
         if (c.isBlank()) throw new ConflictException("Invalid code");
         return c.length() > 64 ? c.substring(0, 64) : c;
+    }
+
+    private String normalizeTimezone(String timezone) {
+        String tz = timezone == null ? "" : timezone.trim();
+        if (tz.isBlank()) {
+            return Restaurant.DEFAULT_TIMEZONE;
+        }
+        try {
+            ZoneId.of(tz);
+        } catch (Exception e) {
+            throw new ConflictException("Invalid timezone: " + tz);
+        }
+        return tz;
     }
 
     private String trimDashes(String s) {

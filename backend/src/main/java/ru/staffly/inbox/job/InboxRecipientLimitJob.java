@@ -16,7 +16,7 @@ public class InboxRecipientLimitJob {
 
     private final InboxRecipientRepository recipients;
 
-    @Scheduled(cron = "0 10 3 * * *")
+    @Scheduled(cron = "0 10 3 * * *", zone = "UTC")
     @Transactional
     public void enforceInboxRecipientLimit() {
         int removed = recipients.deleteOverflowRecipients(INBOX_LIMIT);

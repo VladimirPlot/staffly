@@ -13,6 +13,7 @@ export default function CreateRestaurant() {
 
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
+  const [timezone, setTimezone] = React.useState("Europe/Moscow");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -52,6 +53,12 @@ export default function CreateRestaurant() {
             onChange={(e) => setCode(e.target.value)}
             placeholder="Если пусто — сгенерируется"
           />
+          <Input
+            label="Часовой пояс (IANA)"
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            placeholder="Напр. Europe/Moscow"
+          />
         </div>
 
         {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
@@ -63,14 +70,15 @@ export default function CreateRestaurant() {
               setBusy(true);
               setError(null);
               try {
-              const created = await createRestaurant({
-                name: name.trim(),
-                code: code.trim() || undefined,
-              });
-              // сразу "проваливаемся" в ресторан (новый токен c restaurantId)
-              await switchRestaurant(created.id);
-              await refreshMe();
-              navigate("/app", { replace: true });
+                const created = await createRestaurant({
+                  name: name.trim(),
+                  code: code.trim() || undefined,
+                  timezone: timezone.trim() || "Europe/Moscow",
+                });
+                // сразу "проваливаемся" в ресторан (новый токен c restaurantId)
+                await switchRestaurant(created.id);
+                await refreshMe();
+                navigate("/app", { replace: true });
             } catch (e: any) {
               setError(e?.friendlyMessage || "Не удалось создать ресторан");
             } finally {

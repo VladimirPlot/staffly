@@ -7,6 +7,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.restaurant.dto.CreateRestaurantRequest;
+import ru.staffly.restaurant.dto.RestaurantDto;
+import ru.staffly.restaurant.dto.UpdateRestaurantRequest;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.restaurant.service.RestaurantService;
@@ -23,14 +25,14 @@ public class RestaurantController {
     // только СОЗДАТЕЛЬ
     @PreAuthorize("hasRole('CREATOR')")
     @PostMapping
-    public Restaurant create(@AuthenticationPrincipal UserPrincipal principal,
-                             @RequestBody @Valid CreateRestaurantRequest req) {
+    public RestaurantDto create(@AuthenticationPrincipal UserPrincipal principal,
+                                @RequestBody @Valid CreateRestaurantRequest req) {
         // 1) создаём ресторан (код либо из req, либо сгенерируем уникальный)
         Restaurant saved = service.create(req);
         // 2) сразу делаем текущего пользователя (CREATOR) админом этого ресторана
         service.assignAdmin(saved.getId(), principal.userId());
         // 3) возвращаем созданный ресторан
-        return saved;
+        return RestaurantDto.from(saved);
     }
 
     // только СОЗДАТЕЛЬ — назначить существующего пользователя как ADMIN
@@ -42,17 +44,29 @@ public class RestaurantController {
         service.assignAdmin(restaurantId, req.userId());
     }
 
-    public record RestaurantDto(Long id, String name, String code, boolean active) {
-        public static RestaurantDto from(Restaurant r) {
-            return new RestaurantDto(r.getId(), r.getName(), r.getCode(), r.isActive());
-        }
-    }
-
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("@securityService.isMember(principal.userId, #id)")
     @GetMapping("/{id}")
     public RestaurantDto getById(@PathVariable Long id) {
         var r = restaurants.findById(id)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + id));
         return RestaurantDto.from(r);
+    }
+
+    @PreAuthorize("hasRole('CREATOR')")
+    @PutMapping("/{id}")
+    public RestaurantDto update(@PathVariable Long id, @RequestBody @Valid UpdateRestaurantRequest req) {
+        return RestaurantDto.from(service.update(id, req));
+    }
+
+    @PreAuthorize("hasRole('CREATOR')")
+    @PostMapping("/{id}/lock")
+    public RestaurantDto toggleLock(@PathVariable Long id) {
+        return RestaurantDto.from(service.toggleLock(id));
+    }
+
+    @PreAuthorize("hasRole('CREATOR')")
+    @DeleteMapping("/{id}")
+    public void delete(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id) {
+        service.delete(id, principal.userId());
     }
 }

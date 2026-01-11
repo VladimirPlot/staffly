@@ -24,6 +24,7 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.security.SecurityService;
 import ru.staffly.security.JwtService;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
@@ -45,6 +46,7 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final RestaurantMemberRepository memberRepository;
+    private final SecurityService securityService;
     private final Set<String> creatorPhones;
     private final AuthSessionService authSessionService;
     private final RefreshCookieService refreshCookieService;
@@ -55,6 +57,7 @@ public class AuthController {
                           PasswordEncoder encoder,
                           JwtService jwt,
                           RestaurantMemberRepository memberRepository,
+                          SecurityService securityService,
                           AuthSessionService authSessionService,
                           RefreshCookieService refreshCookieService,
                           AuthProperties authProperties,
@@ -63,6 +66,7 @@ public class AuthController {
         this.encoder = encoder;
         this.jwt = jwt;
         this.memberRepository = memberRepository;
+        this.securityService = securityService;
         this.authSessionService = authSessionService;
         this.refreshCookieService = refreshCookieService;
         this.authProperties = authProperties;
@@ -180,6 +184,7 @@ public class AuthController {
         Long userId = principal.userId();
         Long restaurantId = req.restaurantId();
 
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
         boolean member = memberRepository.findByUserIdAndRestaurantId(userId, restaurantId).isPresent();
         if (!member) throw new ForbiddenException("Не является сотрудником ресторана");
 
