@@ -55,4 +55,17 @@ public interface PushDeviceRepository extends JpaRepository<PushDevice, Long> {
             where id = :id and disabled_at is null
             """, nativeQuery = true)
     int disableById(@Param("id") Long id, @Param("now") Instant now);
+
+    @Modifying
+    @Query(value = """
+        update push_devices
+        set disabled_at = :now,
+            updated_at = :now
+        where endpoint = :endpoint
+          and user_id = :userId
+          and disabled_at is null
+        """, nativeQuery = true)
+    int disableByEndpointAndUserId(@Param("endpoint") String endpoint,
+                                   @Param("userId") Long userId,
+                                   @Param("now") Instant now);
 }

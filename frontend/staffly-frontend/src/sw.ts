@@ -1,5 +1,4 @@
 /// <reference lib="webworker" />
-/* eslint-disable no-restricted-globals */
 import { createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
 import { NetworkOnly } from "workbox-strategies";
@@ -38,7 +37,6 @@ self.addEventListener("push", (event) => {
       data: payload,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      renotify: false,
     }),
   );
 });

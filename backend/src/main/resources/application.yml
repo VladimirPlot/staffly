@@ -18,7 +18,7 @@ app:
   push:
     enabled: ${PUSH_ENABLED:true}
     worker:
-      enabled: ${PUSH_WORKER_ENABLED:true}
+      enabled: ${PUSH_WORKER_ENABLED:false}
     vapid:
       public-key: ${VAPID_PUBLIC_KEY:}
       private-key: ${VAPID_PRIVATE_KEY:}

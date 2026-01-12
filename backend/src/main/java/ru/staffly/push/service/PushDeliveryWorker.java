@@ -21,8 +21,12 @@ import java.util.UUID;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "app.push.worker.enabled", havingValue = "true", matchIfMissing = true)
-@ConditionalOnProperty(name = "app.push.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+        prefix = "app.push",
+        name = {"enabled", "worker.enabled"},
+        havingValue = "true",
+        matchIfMissing = true
+)
 public class PushDeliveryWorker {
 
     private static final int BATCH_SIZE = 50;

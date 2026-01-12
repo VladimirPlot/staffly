@@ -38,7 +38,7 @@ public class PushController {
             return ResponseEntity.badRequest().build();
         }
         deviceService.upsertDevice(
-                principal.getUserId(),
+                principal.userId(),
                 request.endpoint(),
                 request.keys().p256dh(),
                 request.keys().auth(),
@@ -55,7 +55,7 @@ public class PushController {
         if (request == null || request.endpoint() == null || request.endpoint().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-        deviceService.disableByEndpoint(request.endpoint());
+        deviceService.disableByEndpoint(principal.userId(), request.endpoint());
         return ResponseEntity.ok().build();
     }
 

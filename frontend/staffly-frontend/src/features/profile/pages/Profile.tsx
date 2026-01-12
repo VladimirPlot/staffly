@@ -7,13 +7,7 @@ import Avatar from "../../../shared/ui/Avatar";
 import { uploadMyAvatar, getMyProfile, updateMyProfile, changeMyPassword, type UserProfile } from "../api";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { API_BASE } from "../../../shared/utils/url";
-import {
-  base64UrlToUint8Array,
-  getVapidPublicKey,
-  subscribePush,
-  subscriptionToDto,
-  unsubscribePush,
-} from "../../push/api";
+import { base64UrlToArrayBuffer, getVapidPublicKey, subscribePush, subscriptionToDto, unsubscribePush } from "../../push/api";
 
 function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = React.useState<File | null>(null);
@@ -273,7 +267,7 @@ export default function Profile() {
                           const publicKey = await getVapidPublicKey();
                           const subscription = await reg.pushManager.subscribe({
                             userVisibleOnly: true,
-                            applicationServerKey: base64UrlToUint8Array(publicKey),
+                            applicationServerKey: base64UrlToArrayBuffer(publicKey),
                           });
                           await subscribePush(subscriptionToDto(subscription));
                           setPushEnabled(true);

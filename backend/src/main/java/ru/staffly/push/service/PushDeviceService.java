@@ -41,4 +41,9 @@ public class PushDeviceService {
     public void disableById(Long deviceId) {
         repository.disableById(deviceId, TimeProvider.now());
     }
+
+    @Transactional
+    public void disableByEndpoint(Long userId, String endpoint) {
+        repository.disableByEndpointAndUserId(endpoint, userId, TimeProvider.now());
+    }
 }
