@@ -8,6 +8,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
       registerType: "autoUpdate",
       manifest: {
         id: "/", // убирает warning в DevTools
@@ -29,21 +32,8 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        // важно для SPA + react-router
-        navigateFallback: "/index.html",
-
-        // ВАЖНО: не кэшируем запросы к бэку
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
-            handler: "NetworkOnly",
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith("/static/"),
-            handler: "NetworkOnly",
-          },
-        ],
+      injectManifest: {
+        swSrc: "src/sw.ts",
       },
     }),
   ],

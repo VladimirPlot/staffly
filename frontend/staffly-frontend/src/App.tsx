@@ -29,6 +29,7 @@ import AnnouncementsPage from "./features/announcements/pages/AnnouncementsPage"
 import InboxPage from "./features/inbox/pages/InboxPage";
 import ContactsPage from "./features/contacts/pages/ContactsPage";
 import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLettersPage";
+import PushRedirectPage from "./features/push/pages/PushRedirectPage";
 
 import { Bell, Menu } from "lucide-react";
 import Icon from "./shared/ui/Icon";
@@ -427,6 +428,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Profile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/push"
+              element={
+                <ProtectedRoute>
+                  <PushRedirectPage />
                 </ProtectedRoute>
               }
             />

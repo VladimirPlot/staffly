@@ -4,6 +4,7 @@ import { clearToken, getToken, saveToken } from "../utils/storage";
 import { logout as apiLogout, me as apiMe, refresh as apiRefresh } from "../../features/auth/api";
 import type { MeResponse } from "../../entities/user/types";
 import { toAbsoluteUrl } from "../utils/url";
+import { subscribePush, subscriptionToDto } from "../../features/push/api";
 
 export type UiUser = {
   id: number;
@@ -43,6 +44,21 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     };
   };
 
+  const syncPushSubscription = React.useCallback(async () => {
+    try {
+      if (typeof window === "undefined") return;
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+      if (Notification.permission !== "granted") return;
+      const reg = await navigator.serviceWorker.ready;
+      const subscription = await reg.pushManager.getSubscription();
+      if (subscription) {
+        await subscribePush(subscriptionToDto(subscription));
+      }
+    } catch (e) {
+      console.warn("Push subscription sync failed", e);
+    }
+  }, []);
+
   /**
    * Loads /api/me using current access token.
    * Important: token can be rotated by apiClient's auto-refresh, so we must read it again from storage after the call.
@@ -59,6 +75,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       const me = await apiMe();
       setUser(toUiUser(me));
       setToken(getToken()); // ✅ актуальный токен после возможного refresh в interceptor
+      void syncPushSubscription();
     } catch (e) {
       console.error("/api/me failed", e);
       clearToken();
@@ -66,7 +83,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setUser(null);
       navigate("/login", { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, syncPushSubscription]);
 
   const loginWithToken = React.useCallback(
     async (newToken: string) => {

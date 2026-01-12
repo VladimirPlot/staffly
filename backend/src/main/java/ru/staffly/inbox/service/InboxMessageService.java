@@ -12,6 +12,7 @@ import ru.staffly.inbox.model.InboxRecipient;
 import ru.staffly.inbox.repository.InboxMessageRepository;
 import ru.staffly.inbox.repository.InboxRecipientRepository;
 import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.push.service.PushEnqueueService;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
 
@@ -26,6 +27,7 @@ public class InboxMessageService {
 
     private final InboxMessageRepository messages;
     private final InboxRecipientRepository recipients;
+    private final PushEnqueueService pushEnqueueService;
 
     @Transactional
     public InboxMessage createAnnouncement(Restaurant restaurant,
@@ -46,7 +48,8 @@ public class InboxMessageService {
                 .build();
 
         message = messages.save(message);
-        saveRecipients(message, targets);
+        List<RestaurantMember> savedRecipients = saveRecipients(message, targets);
+        pushEnqueueService.enqueueForMessage(message, savedRecipients);
         return message;
     }
 
@@ -72,7 +75,8 @@ public class InboxMessageService {
                 .build();
 
         message = messages.save(message);
-        saveRecipients(message, targets);
+        List<RestaurantMember> savedRecipients = saveRecipients(message, targets);
+        pushEnqueueService.enqueueForMessage(message, savedRecipients);
         return message;
     }
 
@@ -95,7 +99,8 @@ public class InboxMessageService {
 
         message = messages.save(message);
         if (!recipientsList.isEmpty()) {
-            saveRecipients(message, recipientsList);
+            List<RestaurantMember> savedRecipients = saveRecipients(message, recipientsList);
+            pushEnqueueService.enqueueForMessage(message, savedRecipients);
         }
         return message;
     }
@@ -110,6 +115,7 @@ public class InboxMessageService {
                 .member(member)
                 .deliveredAt(TimeProvider.now())
                 .build());
+        pushEnqueueService.enqueueForMessage(message, List.of(member));
     }
 
     @Transactional
@@ -124,10 +130,11 @@ public class InboxMessageService {
         if (missingRecipients.isEmpty()) {
             return;
         }
-        saveRecipients(message, missingRecipients);
+        List<RestaurantMember> savedRecipients = saveRecipients(message, missingRecipients);
+        pushEnqueueService.enqueueForMessage(message, savedRecipients);
     }
 
-    private void saveRecipients(InboxMessage message, List<RestaurantMember> targets) {
+    private List<RestaurantMember> saveRecipients(InboxMessage message, List<RestaurantMember> targets) {
         Instant now = TimeProvider.now();
         List<InboxRecipient> newRecipients = targets.stream()
                 .map(member -> InboxRecipient.builder()
@@ -137,6 +144,7 @@ public class InboxMessageService {
                         .build())
                 .toList();
         recipients.saveAll(newRecipients);
+        return targets;
     }
     private String ensureMeta(String meta) {
         if (meta == null || meta.isBlank()) {
