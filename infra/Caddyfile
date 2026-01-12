@@ -1,9 +1,9 @@
-staffly.store {
-  handle_path /api/* {
+staffly.store, www.staffly.store {
+  handle /api/* {
     reverse_proxy backend:8080
   }
 
-  handle_path /static/* {
+  handle /static/* {
     reverse_proxy backend:8080
   }
 
