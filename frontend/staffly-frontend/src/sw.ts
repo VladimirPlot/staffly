@@ -1,15 +1,29 @@
 /// <reference lib="webworker" />
+
 import { createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
 import { NetworkOnly } from "workbox-strategies";
 
-declare let self: ServiceWorkerGlobalScope;
+declare let self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: any[];
+};
 
 precacheAndRoute(self.__WB_MANIFEST);
 
-registerRoute(({ request }) => request.mode === "navigate", createHandlerBoundToURL("/index.html"));
-registerRoute(({ url }) => url.pathname.startsWith("/api/"), new NetworkOnly());
-registerRoute(({ url }) => url.pathname.startsWith("/static/"), new NetworkOnly());
+registerRoute(
+  ({ request }: { request: Request }) => request.mode === "navigate",
+  createHandlerBoundToURL("/index.html"),
+);
+
+registerRoute(
+  ({ url }: { url: URL }) => url.pathname.startsWith("/api/"),
+  new NetworkOnly(),
+);
+
+registerRoute(
+  ({ url }: { url: URL }) => url.pathname.startsWith("/static/"),
+  new NetworkOnly(),
+);
 
 self.addEventListener("push", (event) => {
   const data = (() => {
@@ -37,6 +51,7 @@ self.addEventListener("push", (event) => {
       data: payload,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
+      // renotify: false, // если TS опять ругнётся — просто держим выключенным (по умолчанию и так false)
     }),
   );
 });
