@@ -41,6 +41,7 @@ public class PushDeliveryWorker {
     private final String lockOwner = "worker-" + UUID.randomUUID();
 
     @Scheduled(fixedDelayString = "PT5S")
+    @Transactional
     public void run() {
         if (!properties.enabled()) {
             return;
