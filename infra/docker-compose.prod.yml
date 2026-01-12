@@ -45,6 +45,30 @@ services:
     volumes:
       - avatars:/app/data/avatars
 
+  backend-worker:
+    build:
+      context: ../backend
+    container_name: staffly-backend-worker
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod,worker
+      DB_URL: jdbc:postgresql://db:5432/staffly
+      DB_USER: app
+      DB_PASSWORD: app
+      JWT_SECRET: prod-very-secret-key-change-me-32+chars-long!!_0123456789
+      ACCESS_TTL_MINUTES: 15
+      REFRESH_TTL_DAYS: 30
+      PUBLIC_BASE_URL: https://staffly.store
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+    depends_on:
+      - db
+    volumes:
+      - avatars:/app/data/avatars
+    command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod,worker"]
+
   frontend:
     build:
       context: ../frontend/staffly-frontend

@@ -7,6 +7,13 @@ import Avatar from "../../../shared/ui/Avatar";
 import { uploadMyAvatar, getMyProfile, updateMyProfile, changeMyPassword, type UserProfile } from "../api";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { API_BASE } from "../../../shared/utils/url";
+import {
+  base64UrlToUint8Array,
+  getVapidPublicKey,
+  subscribePush,
+  subscriptionToDto,
+  unsubscribePush,
+} from "../../push/api";
 
 function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = React.useState<File | null>(null);
@@ -111,6 +118,14 @@ export default function Profile() {
   const [pwdBusy, setPwdBusy] = React.useState(false);
   const [pwdMsg, setPwdMsg] = React.useState<string | null>(null);
 
+  const [pushSupported, setPushSupported] = React.useState(false);
+  const [pushEnabled, setPushEnabled] = React.useState(false);
+  const [pushBusy, setPushBusy] = React.useState(false);
+  const [pushError, setPushError] = React.useState<string | null>(null);
+  const [pushPermission, setPushPermission] = React.useState<NotificationPermission>("default");
+  const [isStandalone, setIsStandalone] = React.useState(true);
+  const [isIOS, setIsIOS] = React.useState(false);
+
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -132,6 +147,26 @@ export default function Profile() {
       }
     })();
     return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const supported = "serviceWorker" in navigator && "PushManager" in window;
+    setPushSupported(supported);
+    setPushPermission(Notification.permission);
+    setIsStandalone(
+      window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as any).standalone),
+    );
+    setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent));
+    if (!supported || Notification.permission !== "granted") {
+      setPushEnabled(false);
+      return;
+    }
+    void (async () => {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      setPushEnabled(Boolean(sub));
+    })();
   }, []);
 
   return (
@@ -181,16 +216,16 @@ export default function Profile() {
                       lastName: lastName.trim(),
                       phone: phone.trim(),
                       email: email.trim(),
-                    birthDate: birthDate.trim() ? birthDate.trim() : null,
-                  });
-                  await refreshMe();
-                  setSaveMsg("Сохранено");
-                } catch (e: any) {
-                  setSaveMsg(null);
-                  alert(e?.friendlyMessage || "Не удалось сохранить профиль");
-                } finally {
-                  setSaving(false);
-                }
+                      birthDate: birthDate.trim() ? birthDate.trim() : null,
+                    });
+                    await refreshMe();
+                    setSaveMsg("Сохранено");
+                  } catch (e: any) {
+                    setSaveMsg(null);
+                    alert(e?.friendlyMessage || "Не удалось сохранить профиль");
+                  } finally {
+                    setSaving(false);
+                  }
                 }}
                 disabled={saving}
               >
@@ -198,6 +233,78 @@ export default function Profile() {
               </Button>
               <Button variant="outline" onClick={() => navigate("/restaurants")}>Отмена</Button>
             </div>
+
+            <hr className="my-6 border-zinc-200" />
+
+            {/* Push уведомления */}
+            <div className="mb-2 text-sm font-medium">Push уведомления</div>
+            {!pushSupported && (
+              <div className="text-xs text-zinc-600">
+                Ваш браузер не поддерживает push-уведомления.
+              </div>
+            )}
+            {pushSupported && (
+              <div className="rounded-2xl border border-zinc-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">
+                      {pushEnabled ? "Включены" : "Выключены"}
+                    </div>
+                    <div className="text-xs text-zinc-600">
+                      Разрешение: {pushPermission}
+                    </div>
+                  </div>
+                  <Button
+                    variant={pushEnabled ? "outline" : "primary"}
+                    disabled={pushBusy}
+                    onClick={async () => {
+                      setPushBusy(true);
+                      setPushError(null);
+                      try {
+                        if (!pushEnabled) {
+                          const permission = await Notification.requestPermission();
+                          setPushPermission(permission);
+                          if (permission !== "granted") {
+                            setPushEnabled(false);
+                            setPushError("Разрешение на уведомления не выдано");
+                            return;
+                          }
+                          const reg = await navigator.serviceWorker.ready;
+                          const publicKey = await getVapidPublicKey();
+                          const subscription = await reg.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: base64UrlToUint8Array(publicKey),
+                          });
+                          await subscribePush(subscriptionToDto(subscription));
+                          setPushEnabled(true);
+                        } else {
+                          const reg = await navigator.serviceWorker.ready;
+                          const subscription = await reg.pushManager.getSubscription();
+                          if (subscription) {
+                            const endpoint = subscription.endpoint;
+                            await subscription.unsubscribe();
+                            await unsubscribePush(endpoint);
+                          }
+                          setPushEnabled(false);
+                        }
+                      } catch (e: any) {
+                        setPushError(e?.friendlyMessage || (e as Error)?.message || "Ошибка настройки push");
+                      } finally {
+                        setPushBusy(false);
+                      }
+                    }}
+                  >
+                    {pushBusy ? "Подождите…" : pushEnabled ? "Выключить" : "Включить"}
+                  </Button>
+                </div>
+                {pushError && <div className="mt-2 text-xs text-red-600">{pushError}</div>}
+                {isIOS && !isStandalone && (
+                  <div className="mt-2 text-xs text-zinc-600">
+                    Добавьте приложение на экран «Домой», иначе push не работают на iOS.
+                  </div>
+                )}
+              </div>
+            )}
 
             <hr className="my-6 border-zinc-200" />
 

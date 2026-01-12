@@ -15,6 +15,14 @@ app:
   hide-creator-emails:
     - admin@staffly.local
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  push:
+    enabled: ${PUSH_ENABLED:true}
+    worker:
+      enabled: ${PUSH_WORKER_ENABLED:true}
+    vapid:
+      public-key: ${VAPID_PUBLIC_KEY:}
+      private-key: ${VAPID_PRIVATE_KEY:}
+      subject: ${VAPID_SUBJECT:}
 
 spring:
   application:
