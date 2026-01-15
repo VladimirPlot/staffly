@@ -19,8 +19,11 @@ type TaskDetailModalProps = {
   comments: TaskCommentDto[];
   commentValue: string;
   commentLoading: boolean;
+  commentHasNext: boolean;
+  commentLoadingMore: boolean;
   onCommentChange: (value: string) => void;
   onAddComment: () => void;
+  onLoadMoreComments: () => void;
   onComplete: (task: TaskDto) => void;
   onDelete: (task: TaskDto) => void;
   onClose: () => void;
@@ -33,8 +36,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   comments,
   commentValue,
   commentLoading,
+  commentHasNext,
+  commentLoadingMore,
   onCommentChange,
   onAddComment,
+  onLoadMoreComments,
   onComplete,
   onDelete,
   onClose,
@@ -227,6 +233,17 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   ))
                 )}
               </div>
+              {commentHasNext && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={onLoadMoreComments}
+                    disabled={commentLoadingMore}
+                  >
+                    {commentLoadingMore ? "Загружаем…" : "Загрузить ещё"}
+                  </Button>
+                </div>
+              )}
 
               <div className="rounded-2xl border border-zinc-100 p-4 space-y-3">
                 <textarea

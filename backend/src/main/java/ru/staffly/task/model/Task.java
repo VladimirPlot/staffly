@@ -29,6 +29,9 @@ public class Task {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    private long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
     private Restaurant restaurant;
@@ -53,14 +56,17 @@ public class Task {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    // Конкретный исполнитель для этой задачи. Должно быть null, если значение assignedToAll равно true.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_user_id")
     private User assignedUser;
 
+    // Назначенный на должность сотрудник для этой задачи. Должно быть null, если значение assignedToAll равно true.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_position_id")
     private Position assignedPosition;
 
+    // Если значение равно true, то задача назначается всем участникам, а значение assignedUser/assignedPosition должно быть равно null.
     @Column(name = "assigned_to_all", nullable = false)
     private boolean assignedToAll;
 

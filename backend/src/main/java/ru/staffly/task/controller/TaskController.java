@@ -7,6 +7,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.task.dto.TaskCommentDto;
+import ru.staffly.task.dto.TaskCommentPageDto;
 import ru.staffly.task.dto.TaskCommentRequest;
 import ru.staffly.task.dto.TaskCreateRequest;
 import ru.staffly.task.dto.TaskDto;
@@ -71,8 +72,10 @@ public class TaskController {
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/tasks/{taskId}/comments")
-    public List<TaskCommentDto> listComments(@PathVariable Long taskId,
-                                             @AuthenticationPrincipal UserPrincipal principal) {
-        return service.listComments(taskId, principal.userId());
+    public TaskCommentPageDto listComments(@PathVariable Long taskId,
+                                           @AuthenticationPrincipal UserPrincipal principal,
+                                           @RequestParam(name = "page", defaultValue = "0") int page,
+                                           @RequestParam(name = "size", defaultValue = "10") int size) {
+        return service.listComments(taskId, principal.userId(), page, size);
     }
 }

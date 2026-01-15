@@ -52,6 +52,15 @@ export type TaskCommentDto = {
   createdAt: string;
 };
 
+export type TaskCommentPageDto = {
+  items: TaskCommentDto[];
+  page: number;
+  size: number;
+  totalItems: number;
+  totalPages: number;
+  hasNext: boolean;
+};
+
 export type TaskCommentRequest = {
   text: string;
 };
@@ -95,9 +104,12 @@ export async function deleteTask(taskId: number): Promise<void> {
   await api.delete(`/api/tasks/${taskId}`);
 }
 
-export async function listTaskComments(taskId: number): Promise<TaskCommentDto[]> {
-  const { data } = await api.get(`/api/tasks/${taskId}/comments`);
-  return data as TaskCommentDto[];
+export async function listTaskComments(
+  taskId: number,
+  params?: { page?: number; size?: number }
+): Promise<TaskCommentPageDto> {
+  const { data } = await api.get(`/api/tasks/${taskId}/comments`, { params });
+  return data as TaskCommentPageDto;
 }
 
 export async function createTaskComment(

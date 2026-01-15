@@ -29,7 +29,6 @@ import ru.staffly.user.repository.UserRepository;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -64,26 +63,19 @@ public class TaskService {
         RestaurantMember member = resolveMember(userId, restaurantId);
         boolean isManager = isManager(member);
         boolean viewAll = isManager && scope == TaskScope.ALL;
+        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
 
-        List<Task> tasksList = tasks.findActiveByRestaurantId(restaurantId);
-        if (!viewAll) {
-            tasksList = tasksList.stream()
-                    .filter(task -> isVisibleForMember(task, member))
-                    .toList();
-        }
-
-        if (status != null) {
-            tasksList = tasksList.stream()
-                    .filter(task -> task.getStatus() == status)
-                    .toList();
-        }
-
-        if (Boolean.TRUE.equals(overdue)) {
-            LocalDate today = restaurantTime.today(restaurantId);
-            tasksList = tasksList.stream()
-                    .filter(task -> task.getDueDate() != null && task.getDueDate().isBefore(today))
-                    .toList();
-        }
+        boolean overdueFilter = Boolean.TRUE.equals(overdue);
+        LocalDate today = restaurantTime.today(restaurantId);
+        List<Task> tasksList = tasks.findActiveByFilters(
+                restaurantId,
+                userId,
+                positionId,
+                viewAll,
+                status,
+                overdueFilter,
+                today
+        );
 
         Map<Long, RestaurantMember> memberByUser = members.findByRestaurantId(restaurantId)
                 .stream()
@@ -93,12 +85,7 @@ public class TaskService {
                         (first, second) -> first
                 ));
 
-        Comparator<Task> comparator = Comparator
-                .comparing((Task task) -> priorityWeight(task.getPriority()))
-                .thenComparing(task -> task.getDueDate(), Comparator.nullsLast(Comparator.naturalOrder()));
-
         return tasksList.stream()
-                .sorted(comparator)
                 .map(task -> toDto(task, memberByUser.get(task.getAssignedUser() != null ? task.getAssignedUser().getId() : null),
                         memberByUser.get(task.getCreatedBy() != null ? task.getCreatedBy().getId() : null)))
                 .toList();
@@ -142,6 +129,7 @@ public class TaskService {
         Long assignedUserId = request.assignedUserId();
         Long assignedPositionId = request.assignedPositionId();
 
+        // assignedToAll является доминирующим и взаимоисключающим с assignedUserId/assignedPositionId.
         if (assignedToAll && (assignedUserId != null || assignedPositionId != null)) {
             throw new BadRequestException("Нельзя одновременно назначить всем и конкретному ответственному");
         }
@@ -254,7 +242,7 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
-    public List<TaskCommentDto> listComments(Long taskId, Long userId) {
+    public TaskCommentPageDto listComments(Long taskId, Long userId, int page, int size) {
         Task task = tasks.findActiveById(taskId)
                 .orElseThrow(() -> new NotFoundException("Task not found: " + taskId));
         securityService.assertMember(userId, task.getRestaurant().getId());
@@ -262,7 +250,12 @@ public class TaskService {
         if (!isManager(member) && !isVisibleForMember(task, member)) {
             throw new NotFoundException("Task not found: " + taskId);
         }
-        List<TaskComment> commentList = comments.findByTaskId(taskId);
+        var pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(page, 0),
+                Math.max(size, 1),
+                org.springframework.data.domain.Sort.by("createdAt").ascending()
+        );
+        var commentPage = comments.findByTaskId(taskId, pageable);
         Map<Long, RestaurantMember> memberByUser = members.findByRestaurantId(task.getRestaurant().getId())
                 .stream()
                 .collect(Collectors.toMap(
@@ -270,9 +263,17 @@ public class TaskService {
                         m -> m,
                         (first, second) -> first
                 ));
-        return commentList.stream()
+        List<TaskCommentDto> items = commentPage.stream()
                 .map(comment -> toCommentDto(comment, memberByUser.get(comment.getAuthor().getId())))
                 .toList();
+        return new TaskCommentPageDto(
+                items,
+                commentPage.getNumber(),
+                commentPage.getSize(),
+                commentPage.getTotalElements(),
+                commentPage.getTotalPages(),
+                commentPage.hasNext()
+        );
     }
 
     private TaskCommentDto toCommentDto(TaskComment comment, RestaurantMember authorMember) {
@@ -287,6 +288,7 @@ public class TaskService {
     }
 
     private TaskDto toDto(Task task, RestaurantMember assignedMember, RestaurantMember creatorMember) {
+        // assignedToAll является доминирующим и подразумевает, что assignedUser/assignedPosition равны нулю.
         TaskPositionDto assignedPosition = task.getAssignedPosition() == null
                 ? null
                 : new TaskPositionDto(task.getAssignedPosition().getId(), task.getAssignedPosition().getName());
@@ -390,17 +392,6 @@ public class TaskService {
         } catch (DateTimeParseException ex) {
             throw new BadRequestException("Некорректный срок");
         }
-    }
-
-    private int priorityWeight(TaskPriority priority) {
-        if (priority == null) {
-            return 99;
-        }
-        return switch (priority) {
-            case HIGH -> 0;
-            case MEDIUM -> 1;
-            case LOW -> 2;
-        };
     }
 
     private String normalize(String value) {

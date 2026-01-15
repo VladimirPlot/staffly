@@ -12,6 +12,9 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
+import jakarta.persistence.OptimisticLockException;
 
 import java.util.stream.Collectors;
 
@@ -69,6 +72,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
         return buildResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler({ OptimisticLockException.class, ObjectOptimisticLockingFailureException.class })
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(Exception ex) {
+        return buildResponse("Задача была изменена другим пользователем. Обновите страницу.", HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(Exception.class)

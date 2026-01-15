@@ -1,18 +1,13 @@
 package ru.staffly.task.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import ru.staffly.task.model.TaskComment;
-
-import java.util.List;
 
 public interface TaskCommentRepository extends JpaRepository<TaskComment, Long> {
 
-    @Query("""
-           select c from TaskComment c
-           join fetch c.author
-           where c.task.id = :taskId
-           order by c.createdAt asc
-           """)
-    List<TaskComment> findByTaskId(Long taskId);
+    @EntityGraph(attributePaths = "author")
+    Page<TaskComment> findByTaskId(Long taskId, Pageable pageable);
 }

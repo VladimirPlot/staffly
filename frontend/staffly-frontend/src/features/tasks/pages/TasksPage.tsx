@@ -1,7 +1,9 @@
 import React from "react";
+import { Plus } from "lucide-react";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import Icon from "../../../shared/ui/Icon";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
@@ -18,10 +20,24 @@ import {
   listTasks,
   createTaskComment,
   type TaskCommentDto,
+  type TaskCommentPageDto,
   type TaskDto,
   type TaskScope,
 } from "../api";
 import { isOverdue, sortTasks } from "../utils";
+
+const COMMENTS_PAGE_SIZE = 10;
+
+const readStoredGroupState = (key: string) => {
+  if (typeof window === "undefined") return false;
+  const stored = window.localStorage.getItem(key);
+  return stored === "true";
+};
+
+const writeStoredGroupState = (key: string, value: boolean) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, value ? "true" : "false");
+};
 
 const TasksPage: React.FC = () => {
   const { user } = useAuth();
@@ -35,9 +51,21 @@ const TasksPage: React.FC = () => {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [selectedTask, setSelectedTask] = React.useState<TaskDto | null>(null);
   const [comments, setComments] = React.useState<TaskCommentDto[]>([]);
+  const [commentPage, setCommentPage] = React.useState(0);
+  const [commentHasNext, setCommentHasNext] = React.useState(false);
+  const [commentLoadingMore, setCommentLoadingMore] = React.useState(false);
   const [commentValue, setCommentValue] = React.useState("");
   const [commentLoading, setCommentLoading] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<TaskDto | null>(null);
+  const [activeOpen, setActiveOpen] = React.useState(() =>
+    readStoredGroupState("tasks:groupOpen:active")
+  );
+  const [overdueOpen, setOverdueOpen] = React.useState(() =>
+    readStoredGroupState("tasks:groupOpen:overdue")
+  );
+  const [completedOpen, setCompletedOpen] = React.useState(() =>
+    readStoredGroupState("tasks:groupOpen:completed")
+  );
 
   const access = React.useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
@@ -183,16 +211,24 @@ const TasksPage: React.FC = () => {
     let alive = true;
     if (!selectedTask) {
       setComments([]);
+      setCommentPage(0);
+      setCommentHasNext(false);
       setCommentValue("");
       return;
     }
     (async () => {
       try {
-        const data = await listTaskComments(selectedTask.id);
-        if (alive) setComments(data);
+        const data = await listTaskComments(selectedTask.id, { page: 0, size: COMMENTS_PAGE_SIZE });
+        if (!alive) return;
+        setComments(data.items);
+        setCommentPage(data.page);
+        setCommentHasNext(data.hasNext);
       } catch (err) {
         console.error("Failed to load comments", err);
-        if (alive) setComments([]);
+        if (!alive) return;
+        setComments([]);
+        setCommentPage(0);
+        setCommentHasNext(false);
       }
     })();
     return () => {
@@ -213,6 +249,25 @@ const TasksPage: React.FC = () => {
       setCommentLoading(false);
     }
   }, [selectedTask, commentValue]);
+
+  const handleLoadMoreComments = React.useCallback(async () => {
+    if (!selectedTask || !commentHasNext || commentLoadingMore) return;
+    setCommentLoadingMore(true);
+    try {
+      const nextPage = commentPage + 1;
+      const data: TaskCommentPageDto = await listTaskComments(selectedTask.id, {
+        page: nextPage,
+        size: COMMENTS_PAGE_SIZE,
+      });
+      setComments((prev) => [...prev, ...data.items]);
+      setCommentPage(data.page);
+      setCommentHasNext(data.hasNext);
+    } catch (err) {
+      console.error("Failed to load more comments", err);
+    } finally {
+      setCommentLoadingMore(false);
+    }
+  }, [selectedTask, commentHasNext, commentLoadingMore, commentPage]);
 
   const activeTasks = React.useMemo(
     () =>
@@ -243,7 +298,7 @@ const TasksPage: React.FC = () => {
         </div>
         {canManage && (
           <Button onClick={() => setCreateOpen(true)} aria-label="Создать задачу">
-            +
+            <Icon icon={Plus} size="sm" />
           </Button>
         )}
       </div>
@@ -267,7 +322,16 @@ const TasksPage: React.FC = () => {
         <div className="text-sm text-zinc-500">Загружаем задачи…</div>
       ) : (
         <div className="space-y-4">
-          <TaskGroup title="Активные" count={activeTasks.length}>
+          <TaskGroup
+            title="Активные"
+            count={activeTasks.length}
+            defaultOpen={false}
+            open={activeOpen}
+            onToggle={(openValue) => {
+              setActiveOpen(openValue);
+              writeStoredGroupState("tasks:groupOpen:active", openValue);
+            }}
+          >
             {activeTasks.length === 0 ? (
               <div className="text-sm text-zinc-500">Активных задач нет.</div>
             ) : (
@@ -286,7 +350,16 @@ const TasksPage: React.FC = () => {
             )}
           </TaskGroup>
 
-          <TaskGroup title="Просрочено" count={overdueTasks.length}>
+          <TaskGroup
+            title="Просрочено"
+            count={overdueTasks.length}
+            defaultOpen={false}
+            open={overdueOpen}
+            onToggle={(openValue) => {
+              setOverdueOpen(openValue);
+              writeStoredGroupState("tasks:groupOpen:overdue", openValue);
+            }}
+          >
             {overdueTasks.length === 0 ? (
               <div className="text-sm text-zinc-500">Просроченных задач нет.</div>
             ) : (
@@ -305,7 +378,16 @@ const TasksPage: React.FC = () => {
             )}
           </TaskGroup>
 
-          <TaskGroup title="Выполнено" count={completedTasks.length}>
+          <TaskGroup
+            title="Выполнено"
+            count={completedTasks.length}
+            defaultOpen={false}
+            open={completedOpen}
+            onToggle={(openValue) => {
+              setCompletedOpen(openValue);
+              writeStoredGroupState("tasks:groupOpen:completed", openValue);
+            }}
+          >
             {completedTasks.length === 0 ? (
               <div className="text-sm text-zinc-500">Выполненных задач нет.</div>
             ) : (
@@ -344,8 +426,11 @@ const TasksPage: React.FC = () => {
         comments={comments}
         commentValue={commentValue}
         commentLoading={commentLoading}
+        commentHasNext={commentHasNext}
+        commentLoadingMore={commentLoadingMore}
         onCommentChange={setCommentValue}
         onAddComment={handleAddComment}
+        onLoadMoreComments={handleLoadMoreComments}
         onComplete={handleComplete}
         onDelete={handleDelete}
         onClose={() => setSelectedTask(null)}
