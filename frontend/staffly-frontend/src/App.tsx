@@ -30,6 +30,7 @@ import InboxPage from "./features/inbox/pages/InboxPage";
 import ContactsPage from "./features/contacts/pages/ContactsPage";
 import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLettersPage";
 import PushRedirectPage from "./features/push/pages/PushRedirectPage";
+import TasksPage from "./features/tasks/pages/TasksPage";
 
 import { Bell, Menu } from "lucide-react";
 import Icon from "./shared/ui/Icon";
@@ -368,6 +369,17 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <ChecklistsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/tasks"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TasksPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

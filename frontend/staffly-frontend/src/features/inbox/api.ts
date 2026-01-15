@@ -1,7 +1,7 @@
 import api from "../../shared/api/apiClient";
 
 export type InboxMessageType = "BIRTHDAY" | "EVENT" | "ANNOUNCEMENT";
-export type InboxEventSubtype = "SCHEDULE_DECISION" | null;
+export type InboxEventSubtype = "SCHEDULE_DECISION" | "TASK" | null;
 
 export type InboxAuthorDto = {
   id: number;

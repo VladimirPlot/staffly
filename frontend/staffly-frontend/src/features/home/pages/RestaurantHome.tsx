@@ -363,6 +363,19 @@ export default function RestaurantHome() {
           </Card>
         </Link>
 
+        <Link to="/tasks" className="block">
+          <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-medium mb-1">Доска задач</div>
+                <div className="text-sm text-zinc-600">
+                  Назначайте задачи сотрудникам и следите за сроками.
+                </div>
+              </div>
+            </div>
+          </Card>
+        </Link>
+
         <Link to="/checklists" className="block">
           <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-start justify-between gap-3">
