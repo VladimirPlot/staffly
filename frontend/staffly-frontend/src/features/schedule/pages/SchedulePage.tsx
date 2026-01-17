@@ -857,7 +857,7 @@ const SchedulePage: React.FC = () => {
   const showCreateScheduleButton = canManage && (!schedule || schedule.id != null);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-screen-2xl space-y-6">
     <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-700">
       <BackToHome className="text-sm" />
 

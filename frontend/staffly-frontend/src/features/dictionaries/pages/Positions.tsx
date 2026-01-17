@@ -5,8 +5,9 @@ import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import SelectField from "../../../shared/ui/SelectField";
 import BackToHome from "../../../shared/ui/BackToHome";
+import Modal from "../../../shared/ui/Modal";
 import { useAuth } from "../../../shared/providers/AuthProvider";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 import { listMembers, type MemberDto } from "../../employees/api";
 
@@ -16,6 +17,7 @@ import {
   updatePosition,
   deletePosition,
   type PositionDto,
+  type PayType,
   type RestaurantRole,
 } from "../api";
 
@@ -33,6 +35,12 @@ export default function PositionsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [members, setMembers] = React.useState<MemberDto[]>([]);
+  const [editing, setEditing] = React.useState<PositionDto | null>(null);
+  const [editName, setEditName] = React.useState("");
+  const [editLevel, setEditLevel] = React.useState<RestaurantRole>("STAFF");
+  const [editPayType, setEditPayType] = React.useState<PayType>("HOURLY");
+  const [editPayRate, setEditPayRate] = React.useState("");
+  const [editNormHours, setEditNormHours] = React.useState("");
 
   // форма создания
   const [name, setName] = React.useState("");
@@ -63,6 +71,15 @@ export default function PositionsPage() {
   React.useEffect(() => {
     if (restaurantId) void load();
   }, [restaurantId, load]);
+
+  React.useEffect(() => {
+    if (!editing) return;
+    setEditName(editing.name);
+    setEditLevel(editing.level);
+    setEditPayType(editing.payType);
+    setEditPayRate(editing.payRate?.toString() ?? "");
+    setEditNormHours(editing.normHours?.toString() ?? "");
+  }, [editing]);
 
   if (!restaurantId) {
     return (
@@ -169,31 +186,19 @@ export default function PositionsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {/* Переименовать */}
-                  <Button
-                    variant="outline"
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
                     disabled={!canManage}
-                    onClick={async () => {
-                      const newName = prompt("Новое название должности:", p.name)?.trim();
-                      if (!newName || newName === p.name) return;
-                      try {
-                        await updatePosition(restaurantId, p.id, {
-                          name: newName,
-                          level: p.level,
-                          active: p.active, // обязателен
-                        });
-                        await load();
-                      } catch (e: any) {
-                        alert(e?.friendlyMessage || "Ошибка переименования");
-                      }
-                    }}
+                    onClick={() => setEditing(p)}
+                    aria-label="Редактировать должность"
                   >
-                    Переименовать
-                  </Button>
+                    <Icon icon={Pencil} size="xs" />
+                  </button>
 
-                  {/* Удалить */}
-                  <Button
-                    variant="outline"
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
                     disabled={!canManage}
                     onClick={async () => {
                       const hasEmployees = members.some(
@@ -211,15 +216,96 @@ export default function PositionsPage() {
                         alert(e?.friendlyMessage || "Ошибка удаления");
                       }
                     }}
+                    aria-label="Удалить должность"
                   >
-                    Удалить
-                  </Button>
+                    <Icon icon={Trash2} size="xs" />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </Card>
+
+      <Modal
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title="Редактировать должность"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" onClick={() => setEditing(null)}>
+              Отмена
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!editing || !restaurantId) return;
+                try {
+                  await updatePosition(restaurantId, editing.id, {
+                    name: editName.trim(),
+                    level: editLevel,
+                    active: editing.active,
+                    payType: editPayType,
+                    payRate: editPayRate ? Number(editPayRate) : null,
+                    normHours:
+                      editPayType === "SALARY" && editNormHours
+                        ? Number(editNormHours)
+                        : null,
+                  });
+                  setEditing(null);
+                  await load();
+                } catch (e: any) {
+                  alert(e?.friendlyMessage || "Ошибка обновления");
+                }
+              }}
+              disabled={!editName.trim()}
+            >
+              Сохранить
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Название"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+          <SelectField
+            label="Уровень"
+            value={editLevel}
+            onChange={(e) => setEditLevel(e.target.value as RestaurantRole)}
+          >
+            <option value="STAFF">Сотрудник</option>
+            <option value="MANAGER">Менеджер</option>
+            <option value="ADMIN">Админ</option>
+          </SelectField>
+          <SelectField
+            label="Тип оплаты"
+            value={editPayType}
+            onChange={(e) => setEditPayType(e.target.value as PayType)}
+          >
+            <option value="HOURLY">Почасовая</option>
+            <option value="SHIFT">Сменная</option>
+            <option value="SALARY">Оклад</option>
+          </SelectField>
+          <Input
+            label="Ставка"
+            type="number"
+            inputMode="decimal"
+            value={editPayRate}
+            onChange={(e) => setEditPayRate(e.target.value)}
+          />
+          {editPayType === "SALARY" && (
+            <Input
+              label="Норматив часов"
+              type="number"
+              inputMode="numeric"
+              value={editNormHours}
+              onChange={(e) => setEditNormHours(e.target.value)}
+            />
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

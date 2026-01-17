@@ -1,6 +1,5 @@
 import React from "react";
 import { createPortal } from "react-dom";
-
 import Button from "./Button";
 import { getFocusableElements } from "./dialogUtils";
 
@@ -25,18 +24,29 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const lastActiveElementRef = React.useRef<HTMLElement | null>(null);
+
+  // ✅ держим актуальный onClose без перезапуска эффектов
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   const titleId = React.useId();
   const descriptionId = React.useId();
 
   React.useEffect(() => {
     if (!open) return;
+
     lastActiveElementRef.current = document.activeElement as HTMLElement | null;
+
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
       }
     };
+
     window.addEventListener("keydown", handler);
+
     const focusTimer = window.setTimeout(() => {
       const focusable = getFocusableElements(dialogRef.current);
       if (focusable.length > 0) {
@@ -45,11 +55,12 @@ const Modal: React.FC<ModalProps> = ({
         dialogRef.current?.focus();
       }
     }, 0);
+
     return () => {
       window.removeEventListener("keydown", handler);
       window.clearTimeout(focusTimer);
     };
-  }, [open, onClose]);
+  }, [open]); // ✅ только open
 
   React.useEffect(() => {
     if (!open) return;
@@ -62,20 +73,23 @@ const Modal: React.FC<ModalProps> = ({
 
   const handleBackdropMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
-      onClose();
+      onCloseRef.current();
     }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
+
     const focusable = getFocusableElements(dialogRef.current);
     if (focusable.length === 0) {
       event.preventDefault();
       return;
     }
+
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     const current = document.activeElement as HTMLElement | null;
+
     if (event.shiftKey) {
       if (current === first || !dialogRef.current?.contains(current)) {
         event.preventDefault();
@@ -88,10 +102,7 @@ const Modal: React.FC<ModalProps> = ({
   };
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 bg-black/40"
-      onMouseDown={handleBackdropMouseDown}
-    >
+    <div className="fixed inset-0 z-50 bg-black/40" onMouseDown={handleBackdropMouseDown}>
       <div className="flex min-h-[100vh] items-center justify-center p-4 supports-[height:100dvh]:min-h-[100dvh]">
         <div
           ref={dialogRef}
@@ -116,13 +127,15 @@ const Modal: React.FC<ModalProps> = ({
                 </div>
               )}
             </div>
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={() => onCloseRef.current()}>
               Закрыть
             </Button>
           </div>
+
           {children && (
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
           )}
+
           {footer && (
             <div className="border-t border-zinc-100 px-6 py-4">
               <div className="flex justify-end gap-2">{footer}</div>

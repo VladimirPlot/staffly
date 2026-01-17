@@ -59,7 +59,7 @@ public class DictionaryServiceImpl implements DictionaryService {
         }
 
         Position p = positionMapper.toEntity(
-                new PositionDto(dto.id(), restaurantId, name, Boolean.TRUE, level),
+                new PositionDto(dto.id(), restaurantId, name, Boolean.TRUE, level, dto.payType(), dto.payRate(), dto.normHours()),
                 r
         );
         p = positions.save(p);
@@ -118,7 +118,10 @@ public class DictionaryServiceImpl implements DictionaryService {
                 new PositionDto(dto.id(), restaurantId,
                         newName != null ? newName : p.getName(),
                         dto.active(),
-                        newLevel),
+                        newLevel,
+                        dto.payType(),
+                        dto.payRate(),
+                        dto.normHours()),
                 p.getRestaurant()
         );
         p = positions.save(p);

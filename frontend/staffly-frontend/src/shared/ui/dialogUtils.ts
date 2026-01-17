@@ -10,6 +10,6 @@ export const getFocusableElements = (container: HTMLElement | null) => {
     "[tabindex]:not([tabindex='-1'])",
   ];
   return Array.from(container.querySelectorAll<HTMLElement>(selectors.join(","))).filter(
-    (element) => !element.hasAttribute("disabled") && !element.getAttribute("aria-hidden")
+    (element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true"
   );
 };

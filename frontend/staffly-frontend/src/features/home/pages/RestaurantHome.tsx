@@ -144,6 +144,7 @@ export default function RestaurantHome() {
   const hasRelevantNotifications = announcementsPreview.length > 0;
   const shouldShowNotificationsEntry = canManageNotifications;
   const canAccessContacts = access.isManagerLike;
+  const canAccessMasterSchedules = access.isManagerLike;
 
   // Сохранённые графики (для индикатора зелёной точки)
   React.useEffect(() => {
@@ -350,6 +351,18 @@ export default function RestaurantHome() {
             </div>
             <div className="mt-1 text-sm text-zinc-600">
               Создавайте смены и распределяйте сотрудников по дням.
+            </div>
+          </Link>
+        )}
+
+        {canAccessMasterSchedules && (
+          <Link
+            to="/master-schedules"
+            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
+          >
+            <div className="text-lg font-semibold">Мастер график</div>
+            <div className="mt-1 text-sm text-zinc-600">
+              Планируйте ФОТ и рассчитывайте LC% по периодам.
             </div>
           </Link>
         )}

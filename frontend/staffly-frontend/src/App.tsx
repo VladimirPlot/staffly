@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, Navigate, Link } from "react-router-dom";
+import { Routes, Route, Navigate, Link, Outlet } from "react-router-dom";
 import { AuthProvider, useAuth } from "./shared/providers/AuthProvider";
 import ProtectedRoute from "./shared/routes/ProtectedRoute";
 import RequireRestaurant from "./shared/routes/RequireRestaurant";
@@ -24,6 +24,8 @@ import TrainingModuleCategoriesPage from "./features/training/pages/Categories";
 import TrainingCategoryItemsPage from "./features/training/pages/CategoryItems";
 import RestaurantHome from "./features/home/pages/RestaurantHome";
 import SchedulePage from "./features/schedule/pages/SchedulePage";
+import MasterSchedulesPage from "./features/masterSchedule/pages/MasterSchedulesPage";
+import MasterScheduleEditorPage from "./features/masterSchedule/pages/MasterScheduleEditorPage";
 import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
 import AnnouncementsPage from "./features/announcements/pages/AnnouncementsPage";
 import InboxPage from "./features/inbox/pages/InboxPage";
@@ -65,18 +67,16 @@ function TopBar() {
     };
   }, [hasRestaurant, restaurantId]);
 
-  // закрывать меню при смене токена/пользователя/ресторана
   React.useEffect(() => {
     setMobileOpen(false);
   }, [token, restaurantId]);
 
   React.useEffect(() => {
     let alive = true;
+
     const loadUnreadCount = async () => {
       if (!hasRestaurant) {
-        if (alive) {
-          setUnreadCount(0);
-        }
+        if (alive) setUnreadCount(0);
         return;
       }
       try {
@@ -91,19 +91,12 @@ function TopBar() {
 
     void loadUnreadCount();
 
-    const handleInboxChanged = () => {
-      void loadUnreadCount();
-    };
+    const handleInboxChanged = () => void loadUnreadCount();
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("inbox:changed", handleInboxChanged);
-    }
-
+    window.addEventListener("inbox:changed", handleInboxChanged);
     return () => {
       alive = false;
-      if (typeof window !== "undefined") {
-        window.removeEventListener("inbox:changed", handleInboxChanged);
-      }
+      window.removeEventListener("inbox:changed", handleInboxChanged);
     };
   }, [hasRestaurant, restaurantId]);
 
@@ -121,7 +114,6 @@ function TopBar() {
 
         {token ? (
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            {/* ====== DESKTOP (sm+) ====== */}
             {hasRestaurant && restName && (
               <div className="hidden items-center gap-2 sm:flex">
                 <Link
@@ -166,7 +158,6 @@ function TopBar() {
               </Button>
             </div>
 
-            {/* ====== MOBILE (до sm) ====== */}
             <div className="flex items-center gap-2 sm:hidden">
               {hasRestaurant && (
                 <Link to="/inbox" aria-label="Входящие">
@@ -177,7 +168,7 @@ function TopBar() {
               )}
               <button
                 type="button"
-                className="rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50 inline-flex items-center justify-center"
+                className="inline-flex items-center justify-center rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50"
                 aria-label="Открыть меню"
                 aria-expanded={mobileOpen}
                 onClick={() => setMobileOpen((v) => !v)}
@@ -191,7 +182,6 @@ function TopBar() {
         )}
       </header>
 
-      {/* ===== Mobile dropdown menu ===== */}
       {token && mobileOpen && (
         <div className="mt-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:hidden">
           {hasRestaurant && restName && (
@@ -251,22 +241,84 @@ function TopBar() {
   );
 }
 
-/* редирект корня в нужное место в зависимости от состояния */
+/* редирект корня */
 function LandingRedirect() {
   const { token, user } = useAuth();
   if (!token) return <Navigate to="/login" replace />;
   return <Navigate to={user?.restaurantId ? "/app" : "/restaurants"} replace />;
 }
 
+/* ===== Layouts ===== */
+
+function AppShell() {
+  // общий “фон+паддинги” один раз
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 p-4">
+      <Outlet />
+    </main>
+  );
+}
+
+function NarrowLayout() {
+  return (
+    <div className="mx-auto w-full max-w-5xl">
+      <TopBar />
+      <Outlet />
+    </div>
+  );
+}
+
+function WideLayout() {
+  return (
+    <div className="mx-auto w-full max-w-screen-2xl">
+      <TopBar />
+      <Outlet />
+    </div>
+  );
+}
+
 /* ===== App ===== */
 export default function App() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 p-4">
-      <div className="mx-auto w-full max-w-5xl">
-        <AuthProvider>
-          <TopBar />
+    <AuthProvider>
+      <Routes>
+        <Route element={<AppShell />}>
+          {/* WIDE: графики */}
+          <Route element={<WideLayout />}>
+            <Route
+              path="/schedule"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <SchedulePage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/master-schedules"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <MasterSchedulesPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/master-schedules/:id"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <MasterScheduleEditorPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+          </Route>
 
-          <Routes>
+          {/* NARROW: всё остальное */}
+          <Route element={<NarrowLayout />}>
             <Route
               path="/login"
               element={
@@ -276,7 +328,6 @@ export default function App() {
               }
             />
 
-            {/* Дом выбранного ресторана */}
             <Route
               path="/app"
               element={
@@ -288,7 +339,6 @@ export default function App() {
               }
             />
 
-            {/* Разделы внутри ресторана */}
             <Route
               path="/dictionaries/positions"
               element={
@@ -299,6 +349,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/training"
               element={
@@ -325,17 +376,6 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TrainingCategoryItemsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/schedule"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <SchedulePage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -407,7 +447,6 @@ export default function App() {
               }
             />
 
-            {/* Список ресторанов и профиль */}
             <Route
               path="/restaurants"
               element={
@@ -435,6 +474,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/profile"
               element={
@@ -443,6 +483,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/push"
               element={
@@ -477,12 +518,11 @@ export default function App() {
               }
             />
 
-            {/* Корень и «хвосты» */}
             <Route path="/" element={<LandingRedirect />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AuthProvider>
-      </div>
-    </main>
+          </Route>
+        </Route>
+      </Routes>
+    </AuthProvider>
   );
 }

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
+import ru.staffly.master_schedule.model.PayType;
 
 @Entity
 @Table(name = "position",
@@ -32,4 +33,15 @@ public class Position {
     @Column(name = "level", nullable = false, length = 20)
     @Builder.Default
     private RestaurantRole level = RestaurantRole.STAFF;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pay_type", nullable = false, length = 20)
+    @Builder.Default
+    private PayType payType = PayType.HOURLY;
+
+    @Column(name = "pay_rate", precision = 12, scale = 2)
+    private java.math.BigDecimal payRate;
+
+    @Column(name = "norm_hours")
+    private Integer normHours;
 }
