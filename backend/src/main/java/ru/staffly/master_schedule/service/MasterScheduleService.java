@@ -3,6 +3,7 @@ package ru.staffly.master_schedule.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
@@ -14,13 +15,16 @@ import ru.staffly.master_schedule.repository.MasterScheduleRepository;
 import ru.staffly.master_schedule.repository.MasterScheduleRowRepository;
 import ru.staffly.master_schedule.util.MasterScheduleValueParser;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.text.Collator;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -57,6 +61,11 @@ public class MasterScheduleService {
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
+        List<Position> activePositions = positions.findByRestaurantIdAndActiveTrue(restaurantId)
+                .stream()
+                .sorted(positionComparator())
+                .toList();
+
         MasterSchedule schedule = MasterSchedule.builder()
                 .restaurant(restaurant)
                 .name(request.name().trim())
@@ -66,7 +75,8 @@ public class MasterScheduleService {
                 .plannedRevenue(request.plannedRevenue())
                 .build();
         schedule = schedules.save(schedule);
-        return toDto(schedule, List.of(), List.of());
+        List<MasterScheduleRow> createdRows = createRowsForPositions(schedule, activePositions);
+        return toDto(schedule, createdRows, List.of());
     }
 
     @Transactional
@@ -121,20 +131,19 @@ public class MasterScheduleService {
         }
 
         List<MasterScheduleRow> scheduleRows = rows.findByScheduleId(scheduleId);
+
+        boolean exists = scheduleRows.stream()
+                .anyMatch(row -> Objects.equals(row.getPosition().getId(), position.getId()));
+
+        if (schedule.getMode() == MasterScheduleMode.COMPACT && exists) {
+            throw new ConflictException("Compact mode allows only one row per position");
+        }
+
         int nextIndex = scheduleRows.stream()
-                .filter(row -> Objects.equals(row.getPosition().getId(), position.getId()))
+                .filter(r -> Objects.equals(r.getPosition().getId(), position.getId()))
                 .mapToInt(MasterScheduleRow::getRowIndex)
                 .max()
-                .orElse(0) + 1;
-
-        if (schedule.getMode() == MasterScheduleMode.COMPACT) {
-            boolean exists = scheduleRows.stream()
-                    .anyMatch(row -> Objects.equals(row.getPosition().getId(), position.getId()));
-            if (exists) {
-                throw new ConflictException("Compact mode allows only one row per position");
-            }
-            nextIndex = 1;
-        }
+                .orElse(-1) + 1;
 
         MasterScheduleRow row = MasterScheduleRow.builder()
                 .schedule(schedule)
@@ -266,14 +275,14 @@ public class MasterScheduleService {
 
     private void validatePeriod(LocalDate start, LocalDate end) {
         if (start == null || end == null) {
-            throw new ConflictException("Period start and end are required");
+            throw new BadRequestException("Period start and end are required");
         }
         if (end.isBefore(start)) {
-            throw new ConflictException("Period end must be after start");
+            throw new BadRequestException("Period end must be after start");
         }
         long days = ChronoUnit.DAYS.between(start, end) + 1;
         if (days > MAX_PERIOD_DAYS) {
-            throw new ConflictException("Period is too long. Max " + MAX_PERIOD_DAYS + " days");
+            throw new BadRequestException("Period is too long. Max " + MAX_PERIOD_DAYS + " days");
         }
     }
 
@@ -297,8 +306,7 @@ public class MasterScheduleService {
 
     private MasterScheduleDto toDto(MasterSchedule schedule, List<MasterScheduleRow> scheduleRows, List<MasterScheduleCell> scheduleCells) {
         List<MasterScheduleRowDto> rowDtos = scheduleRows.stream()
-                .sorted(Comparator.comparing((MasterScheduleRow row) -> row.getPosition().getName())
-                        .thenComparing(MasterScheduleRow::getRowIndex))
+                .sorted(rowComparator())
                 .map(this::toRowDto)
                 .toList();
         List<MasterScheduleCellDto> cellDtos = scheduleCells.stream()
@@ -342,5 +350,46 @@ public class MasterScheduleService {
                 cell.getValueNum(),
                 cell.getUnitsCount()
         );
+    }
+
+    private List<MasterScheduleRow> createRowsForPositions(MasterSchedule schedule, List<Position> activePositions) {
+        if (activePositions.isEmpty()) {
+            return List.of();
+        }
+        List<MasterScheduleRow> rowsToCreate = activePositions.stream()
+                .map(position -> MasterScheduleRow.builder()
+                        .schedule(schedule)
+                        .position(position)
+                        .rowIndex(0)
+                        .salaryHandling(SalaryHandling.PRORATE)
+                        .build())
+                .toList();
+
+        return rows.saveAll(rowsToCreate);
+    }
+
+    private Comparator<Position> positionComparator() {
+        Collator collator = Collator.getInstance(new Locale("ru", "RU"));
+        collator.setStrength(Collator.PRIMARY);
+        return Comparator.comparingInt((Position position) -> roleOrder(position.getLevel()))
+                .thenComparing(Position::getName, collator)
+                .thenComparing(Position::getId);
+    }
+
+    private Comparator<MasterScheduleRow> rowComparator() {
+        Comparator<Position> positionComparator = positionComparator();
+        return Comparator.comparing(MasterScheduleRow::getPosition, positionComparator)
+                .thenComparing(MasterScheduleRow::getId, Comparator.nullsLast(Long::compareTo));
+    }
+
+    private int roleOrder(RestaurantRole role) {
+        if (role == null) {
+            return Integer.MAX_VALUE;
+        }
+        return switch (role) {
+            case ADMIN -> 0;
+            case MANAGER -> 1;
+            case STAFF -> 2;
+        };
     }
 }
