@@ -4,6 +4,7 @@ import { formatDayLabel } from "../utils/date";
 import { calcCellAmount, calcRowAmount } from "../utils/calc";
 import Icon from "../../../shared/ui/Icon";
 import { Minus, Plus, Settings } from "lucide-react";
+import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavigation";
 
 type Props = {
   rows: MasterScheduleRowDto[];
@@ -74,6 +75,17 @@ export default function MasterScheduleTableView({
       return sum + calcRowAmount(row, rowCells).amount;
     }, 0);
   }, [rows, dates, cellMap]);
+
+  const rowIndexMap = React.useMemo(() => {
+    return new Map(rows.map((row, index) => [row.id, index]));
+  }, [rows]);
+
+  const { registerCellRef, onCellKeyDown } = useGridNavigation({
+    rows,
+    cols: dates,
+    getCellId: (row, date) => `${row.id}:${date}`,
+    wrapTab: true,
+  });
 
   return (
     <div className="overflow-auto rounded-3xl border border-zinc-200 bg-white">
@@ -185,12 +197,14 @@ export default function MasterScheduleTableView({
                         </button>
                       )}
                     </td>
-                    {dates.map((date) => {
+                    {dates.map((date, colIndex) => {
                       const cell = cellMap.get(`${row.id}:${date}`);
                       const { isFriday, isSaturday, isMonday } = formatDayLabel(date);
+                      const rowIndex = rowIndexMap.get(row.id) ?? 0;
+                      const cellId = `${row.id}:${date}`;
                       return (
                         <td
-                          key={`${row.id}:${date}`}
+                          key={cellId}
                           className={`border-l border-zinc-100 px-2 py-2 ${
                             isFriday || isSaturday ? "bg-orange-50" : "bg-white"
                           } ${isMonday ? "border-l-2 border-zinc-200" : ""}`}
@@ -199,6 +213,10 @@ export default function MasterScheduleTableView({
                             className="w-full rounded-xl border border-zinc-200 bg-transparent px-2 py-1 text-center text-sm outline-none focus:ring-2 focus:ring-zinc-300"
                             value={cell?.valueRaw ?? ""}
                             onChange={(e) => onCellChange(row.id, date, e.target.value)}
+                            ref={registerCellRef(cellId)}
+                            onKeyDown={(e) =>
+                              onCellKeyDown(e, { rowIndex, colIndex, cellId })
+                            }
                           />
                         </td>
                       );
