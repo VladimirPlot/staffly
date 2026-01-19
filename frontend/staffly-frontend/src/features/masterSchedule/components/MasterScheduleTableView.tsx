@@ -58,6 +58,9 @@ export default function MasterScheduleTableView({
     }));
   }, [rows]);
 
+  // Navigation order must match the rendered (grouped + sorted) rows.
+  const flattenedRows = React.useMemo(() => grouped.flatMap((group) => group.rows), [grouped]);
+
   const columnTotals = React.useMemo(() => {
     return dates.map((date) =>
       rows.reduce((sum, row) => {
@@ -77,11 +80,11 @@ export default function MasterScheduleTableView({
   }, [rows, dates, cellMap]);
 
   const rowIndexMap = React.useMemo(() => {
-    return new Map(rows.map((row, index) => [row.id, index]));
-  }, [rows]);
+    return new Map(flattenedRows.map((row, index) => [row.id, index]));
+  }, [flattenedRows]);
 
   const { registerCellRef, onCellKeyDown } = useGridNavigation({
-    rows,
+    rows: flattenedRows,
     cols: dates,
     getCellId: (row, date) => `${row.id}:${date}`,
     wrapTab: true,

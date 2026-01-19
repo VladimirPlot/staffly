@@ -12,6 +12,13 @@ export function isEditableElement(element: HTMLElement | null): boolean {
   return true;
 }
 
+export function focusElement(element: HTMLElement): void {
+  element.focus();
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    element.select();
+  }
+}
+
 export function shouldHandleHorizontalArrow(event: {
   key: ArrowKey;
   ctrlKey: boolean;
