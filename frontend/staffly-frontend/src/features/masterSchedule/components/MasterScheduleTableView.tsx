@@ -63,21 +63,21 @@ export default function MasterScheduleTableView({
 
   const columnTotals = React.useMemo(() => {
     return dates.map((date) =>
-      rows.reduce((sum, row) => {
+      flattenedRows.reduce((sum, row) => {
         const cell = cellMap.get(`${row.id}:${date}`);
         return sum + calcCellAmount(row, cell);
       }, 0)
     );
-  }, [dates, rows, cellMap]);
+  }, [dates, flattenedRows, cellMap]);
 
   const totalPayroll = React.useMemo(() => {
-    return rows.reduce((sum, row) => {
+    return flattenedRows.reduce((sum, row) => {
       const rowCells = dates
         .map((date) => cellMap.get(`${row.id}:${date}`))
         .filter(Boolean) as MasterScheduleCellDto[];
       return sum + calcRowAmount(row, rowCells).amount;
     }, 0);
-  }, [rows, dates, cellMap]);
+  }, [flattenedRows, dates, cellMap]);
 
   const rowIndexMap = React.useMemo(() => {
     return new Map(flattenedRows.map((row, index) => [row.id, index]));
