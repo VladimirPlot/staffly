@@ -10,6 +10,10 @@ import type {
   MasterScheduleRowUpdatePayload,
   MasterScheduleSummaryDto,
   MasterScheduleUpdatePayload,
+  MasterScheduleWeekTemplateCellDto,
+  MasterScheduleWeekTemplatePositionPayload,
+  MasterScheduleWeekTemplateUpdatePayload,
+  MasterScheduleApplyTemplatePayload,
 } from "./types";
 
 export async function listMasterSchedules(
@@ -31,9 +35,9 @@ export async function getMasterSchedule(
   restaurantId: number,
   id: number
 ): Promise<MasterScheduleDto> {
-  const { data } = await api.get(`/api/master-schedules/${id}`, {
-    params: { restaurantId },
-  });
+  const { data } = await api.get(
+    `/api/restaurants/${restaurantId}/master-schedules/${id}`
+  );
   return data as MasterScheduleDto;
 }
 
@@ -42,14 +46,15 @@ export async function updateMasterSchedule(
   id: number,
   payload: MasterScheduleUpdatePayload
 ): Promise<MasterScheduleDto> {
-  const { data } = await api.patch(`/api/master-schedules/${id}`, payload, {
-    params: { restaurantId },
-  });
+  const { data } = await api.patch(
+    `/api/restaurants/${restaurantId}/master-schedules/${id}`,
+    payload
+  );
   return data as MasterScheduleDto;
 }
 
 export async function deleteMasterSchedule(restaurantId: number, id: number): Promise<void> {
-  await api.delete(`/api/master-schedules/${id}`, { params: { restaurantId } });
+  await api.delete(`/api/restaurants/${restaurantId}/master-schedules/${id}`);
 }
 
 export async function createMasterScheduleRow(
@@ -57,9 +62,10 @@ export async function createMasterScheduleRow(
   scheduleId: number,
   payload: MasterScheduleRowCreatePayload
 ): Promise<MasterScheduleRowDto> {
-  const { data } = await api.post(`/api/master-schedules/${scheduleId}/rows`, payload, {
-    params: { restaurantId },
-  });
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/rows`,
+    payload
+  );
   return data as MasterScheduleRowDto;
 }
 
@@ -68,9 +74,10 @@ export async function updateMasterScheduleRow(
   rowId: number,
   payload: MasterScheduleRowUpdatePayload
 ): Promise<MasterScheduleRowDto> {
-  const { data } = await api.patch(`/api/master-schedules/rows/${rowId}`, payload, {
-    params: { restaurantId },
-  });
+  const { data } = await api.patch(
+    `/api/restaurants/${restaurantId}/master-schedules/rows/${rowId}`,
+    payload
+  );
   return data as MasterScheduleRowDto;
 }
 
@@ -78,19 +85,19 @@ export async function deleteMasterScheduleRow(
   restaurantId: number,
   rowId: number
 ): Promise<void> {
-  await api.delete(`/api/master-schedules/rows/${rowId}`, { params: { restaurantId } });
+  await api.delete(`/api/restaurants/${restaurantId}/master-schedules/rows/${rowId}`);
 }
 
 export async function batchUpdateMasterScheduleCells(
   restaurantId: number,
   scheduleId: number,
   items: MasterScheduleCellUpdatePayload[]
-): Promise<void> {
-  await api.patch(
-    `/api/master-schedules/${scheduleId}/cells:batch`,
-    { items },
-    { params: { restaurantId } }
+): Promise<MasterScheduleCellDto[]> {
+  const { data } = await api.patch(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/cells:batch`,
+    { items }
   );
+  return data as MasterScheduleCellDto[];
 }
 
 export async function copyMasterScheduleDay(
@@ -98,9 +105,10 @@ export async function copyMasterScheduleDay(
   scheduleId: number,
   payload: MasterScheduleCopyDayPayload
 ): Promise<void> {
-  await api.post(`/api/master-schedules/${scheduleId}/copy-day`, payload, {
-    params: { restaurantId },
-  });
+  await api.post(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/copy-day`,
+    payload
+  );
 }
 
 export async function copyMasterScheduleWeek(
@@ -108,7 +116,63 @@ export async function copyMasterScheduleWeek(
   scheduleId: number,
   payload: MasterScheduleCopyWeekPayload
 ): Promise<void> {
-  await api.post(`/api/master-schedules/${scheduleId}/copy-week`, payload, {
-    params: { restaurantId },
-  });
+  await api.post(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/copy-week`,
+    payload
+  );
+}
+
+export async function getMasterScheduleWeekTemplate(
+  restaurantId: number,
+  scheduleId: number
+): Promise<MasterScheduleWeekTemplateCellDto[]> {
+  const { data } = await api.get(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/week-template`
+  );
+  return data as MasterScheduleWeekTemplateCellDto[];
+}
+
+export async function updateMasterScheduleWeekTemplate(
+  restaurantId: number,
+  scheduleId: number,
+  items: MasterScheduleWeekTemplateUpdatePayload[]
+): Promise<MasterScheduleWeekTemplateCellDto[]> {
+  const { data } = await api.patch(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/week-template:batch`,
+    { items }
+  );
+  return data as MasterScheduleWeekTemplateCellDto[];
+}
+
+export async function addMasterScheduleWeekTemplatePosition(
+  restaurantId: number,
+  scheduleId: number,
+  payload: MasterScheduleWeekTemplatePositionPayload
+): Promise<MasterScheduleWeekTemplateCellDto[]> {
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/week-template/positions`,
+    payload
+  );
+  return data as MasterScheduleWeekTemplateCellDto[];
+}
+
+export async function deleteMasterScheduleWeekTemplatePosition(
+  restaurantId: number,
+  scheduleId: number,
+  positionId: number
+): Promise<void> {
+  await api.delete(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/week-template/positions/${positionId}`
+  );
+}
+
+export async function applyMasterScheduleWeekTemplate(
+  restaurantId: number,
+  scheduleId: number,
+  payload: MasterScheduleApplyTemplatePayload
+): Promise<void> {
+  await api.post(
+    `/api/restaurants/${restaurantId}/master-schedules/${scheduleId}/week-template/apply`,
+    payload
+  );
 }

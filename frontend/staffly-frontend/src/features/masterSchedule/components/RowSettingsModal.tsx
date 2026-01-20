@@ -3,27 +3,27 @@ import Modal from "../../../shared/ui/Modal";
 import SelectField from "../../../shared/ui/SelectField";
 import Input from "../../../shared/ui/Input";
 import Button from "../../../shared/ui/Button";
-import type { MasterScheduleRowDto, SalaryHandling } from "../types";
+import type { MasterScheduleRowDto, PayType } from "../types";
 
 type Props = {
   row: MasterScheduleRowDto | null;
   open: boolean;
   onClose: () => void;
   onSave: (payload: {
-    salaryHandling: SalaryHandling;
+    payTypeOverride: PayType;
     rateOverride: number | null;
     amountOverride: number | null;
   }) => void;
 };
 
 export default function RowSettingsModal({ row, open, onClose, onSave }: Props) {
-  const [salaryHandling, setSalaryHandling] = React.useState<SalaryHandling>("PRORATE");
+  const [payTypeOverride, setPayTypeOverride] = React.useState<PayType>("HOURLY");
   const [rateOverride, setRateOverride] = React.useState<string>("");
   const [amountOverride, setAmountOverride] = React.useState<string>("");
 
   React.useEffect(() => {
     if (!row) return;
-    setSalaryHandling(row.salaryHandling);
+    setPayTypeOverride(row.payType);
     setRateOverride(row.rateOverride?.toString() ?? "");
     setAmountOverride(row.amountOverride?.toString() ?? "");
   }, [row]);
@@ -33,7 +33,7 @@ export default function RowSettingsModal({ row, open, onClose, onSave }: Props) 
       open={open}
       onClose={onClose}
       title={`Настройки строки${row ? `: ${row.positionName}` : ""}`}
-      description="Переопределите ставку или итоговую сумму для этой строки."
+      description="Переопределите тип оплаты, ставку или итоговую сумму для этой строки."
       footer={
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
@@ -42,7 +42,7 @@ export default function RowSettingsModal({ row, open, onClose, onSave }: Props) 
           <Button
             onClick={() =>
               onSave({
-                salaryHandling,
+                payTypeOverride,
                 rateOverride: rateOverride ? Number(rateOverride) : null,
                 amountOverride: amountOverride ? Number(amountOverride) : null,
               })
@@ -55,12 +55,12 @@ export default function RowSettingsModal({ row, open, onClose, onSave }: Props) 
     >
       <div className="space-y-4">
         <SelectField
-          label="Обработка оклада"
-          value={salaryHandling}
-          onChange={(e) => setSalaryHandling(e.target.value as SalaryHandling)}
+          label="Тип оплаты"
+          value={payTypeOverride}
+          onChange={(e) => setPayTypeOverride(e.target.value as PayType)}
         >
-          <option value="PRORATE">Пропорционально часам</option>
-          <option value="FIXED">Фиксированная сумма</option>
+          <option value="HOURLY">Почасовая</option>
+          <option value="SHIFT">Сменная</option>
         </SelectField>
         <Input
           label="Переопределить ставку"

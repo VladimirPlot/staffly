@@ -14,6 +14,7 @@ public record MasterScheduleRowDto(
         BigDecimal rateOverride,
         BigDecimal amountOverride,
         PayType payType,
+        PayType payTypeOverride,
         BigDecimal payRate,
         Integer normHours
 ) {}
