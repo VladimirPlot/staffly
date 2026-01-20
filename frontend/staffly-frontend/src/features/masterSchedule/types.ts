@@ -1,6 +1,6 @@
 export type MasterScheduleMode = "DETAILED" | "COMPACT";
 
-export type PayType = "SALARY" | "HOURLY" | "SHIFT";
+export type PayType = "HOURLY" | "SHIFT";
 
 export type SalaryHandling = "PRORATE" | "FIXED";
 
@@ -23,6 +23,7 @@ export type MasterScheduleRowDto = {
   rateOverride: number | null;
   amountOverride: number | null;
   payType: PayType;
+  payTypeOverride?: PayType | null;
   payRate: number | null;
   normHours: number | null;
 };
@@ -63,12 +64,14 @@ export type MasterScheduleRowCreatePayload = {
   salaryHandling?: SalaryHandling;
   rateOverride?: number | null;
   amountOverride?: number | null;
+  payTypeOverride?: PayType | null;
 };
 
 export type MasterScheduleRowUpdatePayload = {
   salaryHandling?: SalaryHandling;
   rateOverride?: number | null;
   amountOverride?: number | null;
+  payTypeOverride?: PayType | null;
 };
 
 export type MasterScheduleCellUpdatePayload = {
@@ -85,4 +88,36 @@ export type MasterScheduleCopyDayPayload = {
 export type MasterScheduleCopyWeekPayload = {
   sourceWeekStart: string;
   targetWeekStart: string;
+};
+
+export type Weekday =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+
+export type MasterScheduleWeekTemplateCellDto = {
+  id: number;
+  positionId: number;
+  weekday: Weekday;
+  employeesCount: number | null;
+  units: number | null;
+};
+
+export type MasterScheduleWeekTemplateUpdatePayload = {
+  positionId: number;
+  weekday: Weekday;
+  employeesCount: number | null;
+  units: number | null;
+};
+
+export type MasterScheduleWeekTemplatePositionPayload = {
+  positionId: number;
+};
+
+export type MasterScheduleApplyTemplatePayload = {
+  overwriteExisting: boolean;
 };

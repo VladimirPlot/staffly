@@ -46,6 +46,10 @@ public class MasterScheduleRow {
     @Column(name = "amount_override", precision = 14, scale = 2)
     private java.math.BigDecimal amountOverride;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pay_type_override", length = 20)
+    private PayType payTypeOverride;
+
     @Version
     private long version;
 

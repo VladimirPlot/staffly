@@ -34,80 +34,124 @@ public class MasterScheduleController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @GetMapping("/master-schedules/{id}")
-    public MasterScheduleDto get(@PathVariable Long id,
-                                 @RequestParam Long restaurantId,
+    @GetMapping("/restaurants/{restaurantId}/master-schedules/{id}")
+    public MasterScheduleDto get(@PathVariable Long restaurantId,
+                                 @PathVariable Long id,
                                  @AuthenticationPrincipal UserPrincipal principal) {
         return service.get(id, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PatchMapping("/master-schedules/{id}")
-    public MasterScheduleDto update(@PathVariable Long id,
-                                    @RequestParam Long restaurantId,
+    @PatchMapping("/restaurants/{restaurantId}/master-schedules/{id}")
+    public MasterScheduleDto update(@PathVariable Long restaurantId,
+                                    @PathVariable Long id,
                                     @AuthenticationPrincipal UserPrincipal principal,
                                     @RequestBody MasterScheduleUpdateRequest request) {
         return service.update(id, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @DeleteMapping("/master-schedules/{id}")
-    public void delete(@PathVariable Long id,
-                       @RequestParam Long restaurantId,
+    @DeleteMapping("/restaurants/{restaurantId}/master-schedules/{id}")
+    public void delete(@PathVariable Long restaurantId,
+                       @PathVariable Long id,
                        @AuthenticationPrincipal UserPrincipal principal) {
         service.delete(id, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PostMapping("/master-schedules/{id}/rows")
-    public MasterScheduleRowDto createRow(@PathVariable Long id,
-                                          @RequestParam Long restaurantId,
+    @PostMapping("/restaurants/{restaurantId}/master-schedules/{id}/rows")
+    public MasterScheduleRowDto createRow(@PathVariable Long restaurantId,
+                                          @PathVariable Long id,
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @Valid @RequestBody MasterScheduleRowCreateRequest request) {
         return service.createRow(id, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PatchMapping("/master-schedules/rows/{rowId}")
-    public MasterScheduleRowDto updateRow(@PathVariable Long rowId,
-                                          @RequestParam Long restaurantId,
+    @PatchMapping("/restaurants/{restaurantId}/master-schedules/rows/{rowId}")
+    public MasterScheduleRowDto updateRow(@PathVariable Long restaurantId,
+                                          @PathVariable Long rowId,
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @RequestBody MasterScheduleRowUpdateRequest request) {
         return service.updateRow(rowId, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @DeleteMapping("/master-schedules/rows/{rowId}")
-    public void deleteRow(@PathVariable Long rowId,
-                          @RequestParam Long restaurantId,
+    @DeleteMapping("/restaurants/{restaurantId}/master-schedules/rows/{rowId}")
+    public void deleteRow(@PathVariable Long restaurantId,
+                          @PathVariable Long rowId,
                           @AuthenticationPrincipal UserPrincipal principal) {
         service.deleteRow(rowId, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PatchMapping("/master-schedules/{id}/cells:batch")
-    public List<MasterScheduleCellDto> batchCells(@PathVariable Long id,
-                                                  @RequestParam Long restaurantId,
+    @PatchMapping("/restaurants/{restaurantId}/master-schedules/{id}/cells:batch")
+    public List<MasterScheduleCellDto> batchCells(@PathVariable Long restaurantId,
+                                                  @PathVariable Long id,
                                                   @AuthenticationPrincipal UserPrincipal principal,
                                                   @Valid @RequestBody MasterScheduleCellBatchRequest request) {
         return service.batchUpdateCells(id, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PostMapping("/master-schedules/{id}/copy-day")
-    public void copyDay(@PathVariable Long id,
-                        @RequestParam Long restaurantId,
+    @PostMapping("/restaurants/{restaurantId}/master-schedules/{id}/copy-day")
+    public void copyDay(@PathVariable Long restaurantId,
+                        @PathVariable Long id,
                         @AuthenticationPrincipal UserPrincipal principal,
                         @Valid @RequestBody MasterScheduleCopyDayRequest request) {
         service.copyDay(id, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PostMapping("/master-schedules/{id}/copy-week")
-    public void copyWeek(@PathVariable Long id,
-                         @RequestParam Long restaurantId,
+    @PostMapping("/restaurants/{restaurantId}/master-schedules/{id}/copy-week")
+    public void copyWeek(@PathVariable Long restaurantId,
+                         @PathVariable Long id,
                          @AuthenticationPrincipal UserPrincipal principal,
                          @Valid @RequestBody MasterScheduleCopyWeekRequest request) {
         service.copyWeek(id, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/restaurants/{restaurantId}/master-schedules/{id}/week-template")
+    public List<MasterScheduleWeekTemplateCellDto> getWeekTemplate(@PathVariable Long restaurantId,
+                                                                   @PathVariable Long id,
+                                                                   @AuthenticationPrincipal UserPrincipal principal) {
+        return service.getWeekTemplate(id, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PatchMapping("/restaurants/{restaurantId}/master-schedules/{id}/week-template:batch")
+    public List<MasterScheduleWeekTemplateCellDto> batchWeekTemplate(@PathVariable Long restaurantId,
+                                                                     @PathVariable Long id,
+                                                                     @AuthenticationPrincipal UserPrincipal principal,
+                                                                     @Valid @RequestBody MasterScheduleWeekTemplateBatchRequest request) {
+        return service.batchUpdateWeekTemplateCells(id, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/restaurants/{restaurantId}/master-schedules/{id}/week-template/positions")
+    public List<MasterScheduleWeekTemplateCellDto> addWeekTemplatePosition(@PathVariable Long restaurantId,
+                                                                           @PathVariable Long id,
+                                                                           @AuthenticationPrincipal UserPrincipal principal,
+                                                                           @Valid @RequestBody MasterScheduleWeekTemplatePositionRequest request) {
+        return service.addWeekTemplatePosition(id, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @DeleteMapping("/restaurants/{restaurantId}/master-schedules/{id}/week-template/positions/{positionId}")
+    public void deleteWeekTemplatePosition(@PathVariable Long restaurantId,
+                                           @PathVariable Long id,
+                                           @PathVariable Long positionId,
+                                           @AuthenticationPrincipal UserPrincipal principal) {
+        service.deleteWeekTemplatePosition(id, principal.userId(), positionId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/restaurants/{restaurantId}/master-schedules/{id}/week-template/apply")
+    public void applyWeekTemplate(@PathVariable Long restaurantId,
+                                  @PathVariable Long id,
+                                  @AuthenticationPrincipal UserPrincipal principal,
+                                  @Valid @RequestBody MasterScheduleApplyWeekTemplateRequest request) {
+        service.applyWeekTemplate(id, principal.userId(), request);
     }
 }
