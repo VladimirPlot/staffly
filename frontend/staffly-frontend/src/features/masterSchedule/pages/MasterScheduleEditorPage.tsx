@@ -8,8 +8,6 @@ import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   batchUpdateMasterScheduleCells,
-  copyMasterScheduleDay,
-  copyMasterScheduleWeek,
   createMasterScheduleRow,
   getMasterScheduleWeekTemplate,
   getMasterSchedule,
@@ -27,13 +25,13 @@ import type {
   MasterScheduleWeekTemplateCellDto,
   MasterScheduleWeekTemplateUpdatePayload,
 } from "../types";
-import { getDateRange } from "../utils/date";
+import { formatDayLabel, formatShortDate, getDateRange, getWeekdayToken } from "../utils/date";
 import MasterScheduleToolbar from "../components/MasterScheduleToolbar";
-import CopyDialog from "../components/CopyDialog";
 import MasterScheduleTableView from "../components/MasterScheduleTableView";
-import MasterScheduleDayView from "../components/MasterScheduleDayView";
 import RowSettingsModal from "../components/RowSettingsModal";
-import MasterScheduleWeekTemplateView from "../components/MasterScheduleWeekTemplateView";
+import MasterScheduleWeekTemplateView, {
+  type WeekTemplateDay,
+} from "../components/MasterScheduleWeekTemplateView";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { calcRowAmount } from "../utils/calc";
 import { parseCellValue } from "../utils/parse";
@@ -43,6 +41,15 @@ const DEBOUNCE_MS = 200;
 const MAX_WAIT_MS = 1500;
 const CELL_CHUNK_SIZE = 80;
 const TEMPLATE_DEBOUNCE_MS = 300;
+const DEFAULT_WEEK_DAYS: WeekTemplateDay[] = [
+  { label: "Пн", weekday: "MONDAY" },
+  { label: "Вт", weekday: "TUESDAY" },
+  { label: "Ср", weekday: "WEDNESDAY" },
+  { label: "Чт", weekday: "THURSDAY" },
+  { label: "Пт", weekday: "FRIDAY" },
+  { label: "Сб", weekday: "SATURDAY" },
+  { label: "Вс", weekday: "SUNDAY" },
+];
 
 export default function MasterScheduleEditorPage() {
   const { id } = useParams();
@@ -55,19 +62,17 @@ export default function MasterScheduleEditorPage() {
   const [dates, setDates] = React.useState<string[]>([]);
   const [scheduleName, setScheduleName] = React.useState("");
   const [plannedRevenue, setPlannedRevenue] = React.useState<number | null>(null);
-  const [mode, setMode] = React.useState<"DETAILED" | "COMPACT">("DETAILED");
+  const [viewMode, setViewMode] = React.useState<"DETAILED" | "COMPACT">("DETAILED");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [view, setView] = React.useState<"table" | "day">("table");
-  const [selectedDate, setSelectedDate] = React.useState<string>("");
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
   const [positionToAdd, setPositionToAdd] = React.useState<number | "">("");
-  const [copyOpen, setCopyOpen] = React.useState(false);
   const [rowSettings, setRowSettings] = React.useState<MasterScheduleRowDto | null>(null);
   const [cellErrors, setCellErrors] = React.useState<Record<string, string>>({});
   const [weekTemplateCells, setWeekTemplateCells] = React.useState<
     MasterScheduleWeekTemplateCellDto[]
   >([]);
+  const [weekTemplateLoaded, setWeekTemplateLoaded] = React.useState(false);
   const pendingRef = React.useRef<Map<string, { rowId: number; workDate: string; valueRaw: string | null }>>(
     new Map()
   );
@@ -88,21 +93,16 @@ export default function MasterScheduleEditorPage() {
         getMasterSchedule(restaurantId, scheduleId),
         listPositions(restaurantId),
       ]);
-      const template =
-        schedule.mode === "COMPACT"
-          ? await getMasterScheduleWeekTemplate(restaurantId, scheduleId)
-          : [];
       setRows(schedule.rows);
       setCells(schedule.cells);
-      setMode(schedule.mode);
       setDates(getDateRange(schedule.periodStart, schedule.periodEnd));
       setScheduleName(schedule.name);
       setPlannedRevenue(schedule.plannedRevenue ?? null);
-      setSelectedDate(schedule.periodStart);
       setPositions(positionsData);
       setPositionToAdd("");
-      setWeekTemplateCells(template);
       setCellErrors({});
+      setWeekTemplateCells([]);
+      setWeekTemplateLoaded(false);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка загрузки");
     } finally {
@@ -114,12 +114,22 @@ export default function MasterScheduleEditorPage() {
     if (restaurantId && scheduleId) void load();
   }, [restaurantId, scheduleId, load]);
 
-  React.useEffect(() => {
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-    if (isMobile) {
-      setView("day");
+  const loadWeekTemplate = React.useCallback(async () => {
+    if (!restaurantId || !scheduleId) return;
+    try {
+      const template = await getMasterScheduleWeekTemplate(restaurantId, scheduleId);
+      setWeekTemplateCells(template);
+      setWeekTemplateLoaded(true);
+    } catch (e: any) {
+      setError(e?.friendlyMessage || "Ошибка загрузки шаблона");
     }
-  }, []);
+  }, [restaurantId, scheduleId]);
+
+  React.useEffect(() => {
+    if (viewMode === "COMPACT" && !weekTemplateLoaded) {
+      void loadWeekTemplate();
+    }
+  }, [viewMode, weekTemplateLoaded, loadWeekTemplate]);
 
   const flushPendingCells = React.useCallback(async () => {
     if (debounceTimerRef.current) {
@@ -271,7 +281,7 @@ export default function MasterScheduleEditorPage() {
   const handleTemplateCellChange = (
     positionId: number,
     weekday: MasterScheduleWeekTemplateUpdatePayload["weekday"],
-    employeesCount: number | null,
+    staffCount: number | null,
     units: number | null
   ) => {
     const key = `${positionId}:${weekday}`;
@@ -281,7 +291,7 @@ export default function MasterScheduleEditorPage() {
         (cell) => cell.positionId === positionId && cell.weekday === weekday
       );
       if (idx >= 0) {
-        next[idx] = { ...next[idx], employeesCount, units };
+        next[idx] = { ...next[idx], staffCount, units };
         return next;
       }
       return [
@@ -290,7 +300,7 @@ export default function MasterScheduleEditorPage() {
           id: Math.random(),
           positionId,
           weekday,
-          employeesCount,
+          staffCount,
           units,
         },
       ];
@@ -298,7 +308,7 @@ export default function MasterScheduleEditorPage() {
     templatePendingRef.current.set(key, {
       positionId,
       weekday,
-      employeesCount,
+      staffCount,
       units,
     });
     setTemplatePendingTick((v) => v + 1);
@@ -309,17 +319,19 @@ export default function MasterScheduleEditorPage() {
     try {
       const row = await createMasterScheduleRow(restaurantId, scheduleId, { positionId });
       setRows((prev) => [...prev, row]);
+      setWeekTemplateLoaded(false);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка добавления строки");
     }
   };
 
   const handleDeleteRow = async (rowId: number) => {
-    if (!restaurantId) return;
+    if (!restaurantId || !scheduleId) return;
     try {
-      await deleteMasterScheduleRow(restaurantId, rowId);
+      await deleteMasterScheduleRow(restaurantId, scheduleId, rowId);
       setRows((prev) => prev.filter((row) => row.id !== rowId));
       setCells((prev) => prev.filter((cell) => cell.rowId !== rowId));
+      setWeekTemplateLoaded(false);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка удаления строки");
     }
@@ -337,12 +349,23 @@ export default function MasterScheduleEditorPage() {
   }, [rows, cells, dates]);
 
   const availablePositions = React.useMemo(() => {
-    if (mode === "COMPACT") {
+    if (viewMode === "COMPACT") {
       const existing = new Set(weekTemplateCells.map((cell) => cell.positionId));
       return positions.filter((pos) => !existing.has(pos.id));
     }
     return positions;
-  }, [mode, positions, weekTemplateCells]);
+  }, [viewMode, positions, weekTemplateCells]);
+
+  const weekTemplateDays = React.useMemo<WeekTemplateDay[]>(() => {
+    if (dates.length === 0) return DEFAULT_WEEK_DAYS;
+    if (dates.length < 7) {
+      return dates.map((date) => ({
+        label: `${formatDayLabel(date).weekday} ${formatShortDate(date)}`,
+        weekday: getWeekdayToken(date),
+      }));
+    }
+    return DEFAULT_WEEK_DAYS;
+  }, [dates]);
 
   if (!restaurantId) {
     return (
@@ -365,9 +388,6 @@ export default function MasterScheduleEditorPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="text-xl font-semibold">{scheduleName}</h2>
-                <div className="text-sm text-zinc-600">
-                  Режим: {mode === "DETAILED" ? "DETAILED" : "COMPACT"}
-                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <SelectField
@@ -388,7 +408,7 @@ export default function MasterScheduleEditorPage() {
                   disabled={!positionToAdd}
                   onClick={() => {
                     if (!positionToAdd) return;
-                    if (mode === "COMPACT") {
+                    if (viewMode === "COMPACT") {
                       if (!restaurantId || !scheduleId) return;
                       void (async () => {
                         try {
@@ -398,6 +418,7 @@ export default function MasterScheduleEditorPage() {
                             { positionId: Number(positionToAdd) }
                           );
                           setWeekTemplateCells(updated);
+                          setWeekTemplateLoaded(true);
                           setPositionToAdd("");
                         } catch (e: any) {
                           setError(e?.friendlyMessage || "Ошибка добавления должности");
@@ -413,18 +434,13 @@ export default function MasterScheduleEditorPage() {
               </div>
             </div>
 
-            {mode === "DETAILED" && (
-              <MasterScheduleToolbar
-                view={view}
-                onToggleView={setView}
-                onCopy={() => setCopyOpen(true)}
-              />
-            )}
+            <MasterScheduleToolbar viewMode={viewMode} onToggleViewMode={setViewMode} />
 
-            {mode === "COMPACT" ? (
+            {viewMode === "COMPACT" ? (
               <MasterScheduleWeekTemplateView
                 templateCells={weekTemplateCells}
                 positions={positions}
+                days={weekTemplateDays}
                 onCellChange={handleTemplateCellChange}
                 onRemovePosition={async (positionId) => {
                   if (!restaurantId || !scheduleId) return;
@@ -437,6 +453,7 @@ export default function MasterScheduleEditorPage() {
                     setWeekTemplateCells((prev) =>
                       prev.filter((cell) => cell.positionId !== positionId)
                     );
+                    setWeekTemplateLoaded(true);
                   } catch (e: any) {
                     setError(e?.friendlyMessage || "Ошибка удаления должности");
                   }
@@ -447,12 +464,14 @@ export default function MasterScheduleEditorPage() {
                     await applyMasterScheduleWeekTemplate(restaurantId, scheduleId, {
                       overwriteExisting,
                     });
+                    await load();
+                    setViewMode("DETAILED");
                   } catch (e: any) {
                     setError(e?.friendlyMessage || "Ошибка заполнения графика");
                   }
                 }}
               />
-            ) : view === "table" ? (
+            ) : (
               <MasterScheduleTableView
                 rows={rows}
                 cells={cells}
@@ -462,15 +481,6 @@ export default function MasterScheduleEditorPage() {
                 onAddRow={handleAddRow}
                 onDeleteRow={handleDeleteRow}
                 onOpenSettings={(row) => setRowSettings(row)}
-              />
-            ) : (
-              <MasterScheduleDayView
-                rows={rows}
-                cells={cells}
-                cellErrors={cellErrors}
-                date={selectedDate}
-                onDateChange={setSelectedDate}
-                onCellChange={handleCellChange}
               />
             )}
 
@@ -521,41 +531,19 @@ export default function MasterScheduleEditorPage() {
         )}
       </Card>
 
-      {mode === "DETAILED" && (
-        <CopyDialog
-          open={copyOpen}
-          onClose={() => setCopyOpen(false)}
-          minDate={dates[0]}
-          maxDate={dates[dates.length - 1]}
-          onCopyDay={async (source, target) => {
-            if (!restaurantId || !scheduleId) return;
-            await copyMasterScheduleDay(restaurantId, scheduleId, {
-              sourceDate: source,
-              targetDate: target,
-            });
-            await load();
-            setCopyOpen(false);
-          }}
-          onCopyWeek={async (source, target) => {
-            if (!restaurantId || !scheduleId) return;
-            await copyMasterScheduleWeek(restaurantId, scheduleId, {
-              sourceWeekStart: source,
-              targetWeekStart: target,
-            });
-            await load();
-            setCopyOpen(false);
-          }}
-        />
-      )}
-
       <RowSettingsModal
         row={rowSettings}
         open={Boolean(rowSettings)}
         onClose={() => setRowSettings(null)}
         onSave={async (payload) => {
-          if (!restaurantId || !rowSettings) return;
+          if (!restaurantId || !scheduleId || !rowSettings) return;
           try {
-            const updated = await updateMasterScheduleRow(restaurantId, rowSettings.id, payload);
+            const updated = await updateMasterScheduleRow(
+              restaurantId,
+              scheduleId,
+              rowSettings.id,
+              payload
+            );
             setRows((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
             setRowSettings(null);
           } catch (e: any) {

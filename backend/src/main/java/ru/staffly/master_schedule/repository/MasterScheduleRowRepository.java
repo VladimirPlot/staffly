@@ -7,4 +7,8 @@ import java.util.List;
 
 public interface MasterScheduleRowRepository extends JpaRepository<MasterScheduleRow, Long> {
     List<MasterScheduleRow> findByScheduleId(Long scheduleId);
+
+    List<MasterScheduleRow> findByScheduleIdAndPositionId(Long scheduleId, Long positionId);
+
+    long countByScheduleIdAndPositionId(Long scheduleId, Long positionId);
 }

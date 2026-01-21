@@ -40,10 +40,6 @@ public class MasterSchedule {
     @Column(name = "period_end", nullable = false)
     private LocalDate periodEnd;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private MasterScheduleMode mode;
-
     @Column(name = "planned_revenue", precision = 14, scale = 2)
     private java.math.BigDecimal plannedRevenue;
 

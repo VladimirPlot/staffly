@@ -1,3 +1,5 @@
+import type { Weekday } from "../types";
+
 function parseLocalDate(value: string): Date {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -44,4 +46,33 @@ export function formatDayLabel(dateStr: string) {
     isSaturday: date.getDay() === 6,
     isMonday: date.getDay() === 1,
   };
+}
+
+export function formatShortDate(dateStr: string) {
+  const date = parseLocalDate(dateStr);
+  const day = new Intl.DateTimeFormat("ru-RU", { day: "2-digit" }).format(date);
+  const month = new Intl.DateTimeFormat("ru-RU", { month: "2-digit" }).format(date);
+  return `${day}.${month}`;
+}
+
+export function getWeekdayToken(dateStr: string): Weekday {
+  const date = parseLocalDate(dateStr);
+  switch (date.getDay()) {
+    case 0:
+      return "SUNDAY";
+    case 1:
+      return "MONDAY";
+    case 2:
+      return "TUESDAY";
+    case 3:
+      return "WEDNESDAY";
+    case 4:
+      return "THURSDAY";
+    case 5:
+      return "FRIDAY";
+    case 6:
+      return "SATURDAY";
+    default:
+      return "MONDAY";
+  }
 }

@@ -1,8 +1,4 @@
-export type MasterScheduleMode = "DETAILED" | "COMPACT";
-
 export type PayType = "HOURLY" | "SHIFT";
-
-export type SalaryHandling = "PRORATE" | "FIXED";
 
 export type MasterScheduleSummaryDto = {
   id: number;
@@ -10,7 +6,6 @@ export type MasterScheduleSummaryDto = {
   name: string;
   periodStart: string;
   periodEnd: string;
-  mode: MasterScheduleMode;
   plannedRevenue: number | null;
 };
 
@@ -19,7 +14,6 @@ export type MasterScheduleRowDto = {
   positionId: number;
   positionName: string;
   rowIndex: number;
-  salaryHandling: SalaryHandling;
   rateOverride: number | null;
   amountOverride: number | null;
   payType: PayType;
@@ -43,7 +37,6 @@ export type MasterScheduleDto = {
   name: string;
   periodStart: string;
   periodEnd: string;
-  mode: MasterScheduleMode;
   plannedRevenue: number | null;
   rows: MasterScheduleRowDto[];
   cells: MasterScheduleCellDto[];
@@ -53,7 +46,6 @@ export type MasterScheduleCreatePayload = {
   name: string;
   periodStart: string;
   periodEnd: string;
-  mode: MasterScheduleMode;
   plannedRevenue?: number | null;
 };
 
@@ -61,14 +53,12 @@ export type MasterScheduleUpdatePayload = Partial<MasterScheduleCreatePayload>;
 
 export type MasterScheduleRowCreatePayload = {
   positionId: number;
-  salaryHandling?: SalaryHandling;
   rateOverride?: number | null;
   amountOverride?: number | null;
   payTypeOverride?: PayType | null;
 };
 
 export type MasterScheduleRowUpdatePayload = {
-  salaryHandling?: SalaryHandling;
   rateOverride?: number | null;
   amountOverride?: number | null;
   payTypeOverride?: PayType | null;
@@ -78,16 +68,6 @@ export type MasterScheduleCellUpdatePayload = {
   rowId: number;
   workDate: string;
   valueRaw: string | null;
-};
-
-export type MasterScheduleCopyDayPayload = {
-  sourceDate: string;
-  targetDate: string;
-};
-
-export type MasterScheduleCopyWeekPayload = {
-  sourceWeekStart: string;
-  targetWeekStart: string;
 };
 
 export type Weekday =
@@ -103,14 +83,14 @@ export type MasterScheduleWeekTemplateCellDto = {
   id: number;
   positionId: number;
   weekday: Weekday;
-  employeesCount: number | null;
+  staffCount: number | null;
   units: number | null;
 };
 
 export type MasterScheduleWeekTemplateUpdatePayload = {
   positionId: number;
   weekday: Weekday;
-  employeesCount: number | null;
+  staffCount: number | null;
   units: number | null;
 };
 

@@ -8,6 +8,6 @@ import java.time.DayOfWeek;
 public record MasterScheduleWeekTemplateCellUpdateRequest(
         @NotNull Long positionId,
         @NotNull DayOfWeek weekday,
-        Integer employeesCount,
+        Integer staffCount,
         BigDecimal units
 ) {}

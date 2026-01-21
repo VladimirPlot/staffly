@@ -9,14 +9,14 @@ import java.time.DayOfWeek;
 
 @Entity
 @Table(
-        name = "master_schedule_week_template",
+        name = "master_schedule_week_template_cell",
         indexes = {
-                @Index(name = "idx_ms_week_template_schedule", columnList = "schedule_id"),
-                @Index(name = "idx_ms_week_template_position", columnList = "position_id")
+                @Index(name = "idx_ms_week_template_cell_schedule", columnList = "schedule_id"),
+                @Index(name = "idx_ms_week_template_cell_position", columnList = "position_id")
         },
         uniqueConstraints = {
                 @UniqueConstraint(
-                        name = "uk_ms_week_template_schedule_position_day",
+                        name = "uk_ms_week_template_cell_schedule_position_day",
                         columnNames = {"schedule_id", "position_id", "weekday"}
                 )
         }
@@ -26,7 +26,7 @@ import java.time.DayOfWeek;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class MasterScheduleWeekTemplate {
+public class MasterScheduleWeekTemplateCell {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -44,8 +44,8 @@ public class MasterScheduleWeekTemplate {
     @Column(name = "weekday", nullable = false, length = 10)
     private DayOfWeek weekday;
 
-    @Column(name = "employees_count")
-    private Integer employeesCount;
+    @Column(name = "staff_count")
+    private Integer staffCount;
 
     @Column(name = "units", precision = 12, scale = 2)
     private BigDecimal units;

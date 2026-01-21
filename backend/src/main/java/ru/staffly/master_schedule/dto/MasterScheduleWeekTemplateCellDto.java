@@ -7,6 +7,6 @@ public record MasterScheduleWeekTemplateCellDto(
         Long id,
         Long positionId,
         DayOfWeek weekday,
-        Integer employeesCount,
+        Integer staffCount,
         BigDecimal units
 ) {}

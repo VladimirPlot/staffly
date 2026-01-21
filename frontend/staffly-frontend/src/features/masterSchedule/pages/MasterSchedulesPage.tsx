@@ -1,9 +1,8 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import SelectField from "../../../shared/ui/SelectField";
 import Modal from "../../../shared/ui/Modal";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Icon from "../../../shared/ui/Icon";
@@ -14,7 +13,7 @@ import {
   deleteMasterSchedule,
   listMasterSchedules,
 } from "../api";
-import type { MasterScheduleMode, MasterScheduleSummaryDto } from "../types";
+import type { MasterScheduleSummaryDto } from "../types";
 import { clampPeriodDays } from "../utils/date";
 
 const MAX_PERIOD_DAYS = 93;
@@ -22,6 +21,7 @@ const MAX_PERIOD_DAYS = 93;
 export default function MasterSchedulesPage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
+  const navigate = useNavigate();
   const [items, setItems] = React.useState<MasterScheduleSummaryDto[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -30,7 +30,6 @@ export default function MasterSchedulesPage() {
   const [name, setName] = React.useState("");
   const [periodStart, setPeriodStart] = React.useState("");
   const [periodEnd, setPeriodEnd] = React.useState("");
-  const [mode, setMode] = React.useState<MasterScheduleMode>("DETAILED");
   const [plannedRevenue, setPlannedRevenue] = React.useState("");
 
   const load = React.useCallback(async () => {
@@ -135,7 +134,7 @@ export default function MasterSchedulesPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title="Новый мастер-график"
-        description="Заполните параметры периода и режима."
+        description="Заполните параметры периода."
         footer={
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>
@@ -150,17 +149,16 @@ export default function MasterSchedulesPage() {
                   name: name.trim(),
                   periodStart,
                   periodEnd,
-                  mode,
                   plannedRevenue: plannedRevenue ? Number(plannedRevenue) : null,
                 };
-                await createMasterSchedule(restaurantId, payload);
+                const created = await createMasterSchedule(restaurantId, payload);
                 setCreateOpen(false);
                 setName("");
                 setPeriodStart("");
                 setPeriodEnd("");
-                setMode("DETAILED");
                 setPlannedRevenue("");
                 await load();
+                navigate(`/master-schedules/${created.id}`);
               }}
               disabled={!name.trim() || !periodStart || !periodEnd || Boolean(periodError)}
             >
@@ -176,10 +174,6 @@ export default function MasterSchedulesPage() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Мастер-график май"
           />
-          <SelectField label="Режим" value={mode} onChange={(e) => setMode(e.target.value as MasterScheduleMode)}>
-            <option value="DETAILED">DETAILED</option>
-            <option value="COMPACT">COMPACT</option>
-          </SelectField>
           <Input
             label="Начало периода"
             type="date"

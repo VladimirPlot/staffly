@@ -5,23 +5,19 @@ import { formatNumber } from "../utils/format";
 import Icon from "../../../shared/ui/Icon";
 import { Trash2 } from "lucide-react";
 
-const WEEKDAYS: { label: string; value: Weekday }[] = [
-  { label: "Пн", value: "MONDAY" },
-  { label: "Вт", value: "TUESDAY" },
-  { label: "Ср", value: "WEDNESDAY" },
-  { label: "Чт", value: "THURSDAY" },
-  { label: "Пт", value: "FRIDAY" },
-  { label: "Сб", value: "SATURDAY" },
-  { label: "Вс", value: "SUNDAY" },
-];
+export type WeekTemplateDay = {
+  label: string;
+  weekday: Weekday;
+};
 
 type Props = {
   templateCells: MasterScheduleWeekTemplateCellDto[];
   positions: PositionDto[];
+  days: WeekTemplateDay[];
   onCellChange: (
     positionId: number,
     weekday: Weekday,
-    employeesCount: number | null,
+    staffCount: number | null,
     units: number | null
   ) => void;
   onRemovePosition: (positionId: number) => void;
@@ -31,6 +27,7 @@ type Props = {
 export default function MasterScheduleWeekTemplateView({
   templateCells,
   positions,
+  days,
   onCellChange,
   onRemovePosition,
   onApplyTemplate,
@@ -58,6 +55,9 @@ export default function MasterScheduleWeekTemplateView({
 
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+        Шаблон недели — черновик. Нажмите «Заполнить», чтобы применить его к детальному графику.
+      </div>
       <div className="overflow-auto rounded-3xl border border-zinc-200 bg-white">
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead>
@@ -65,9 +65,9 @@ export default function MasterScheduleWeekTemplateView({
               <th className="sticky left-0 top-0 z-40 h-10 bg-white px-4 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Должность
               </th>
-              {WEEKDAYS.map((day) => (
+              {days.map((day) => (
                 <th
-                  key={`weekday-${day.value}`}
+                  key={`weekday-${day.weekday}`}
                   className="sticky top-0 z-30 h-10 border-l border-zinc-100 bg-white px-2 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500"
                 >
                   {day.label}
@@ -101,11 +101,11 @@ export default function MasterScheduleWeekTemplateView({
                       </button>
                     </div>
                   </td>
-                  {WEEKDAYS.map((day) => {
-                    const cell = cellMap.get(`${positionId}:${day.value}`);
+                  {days.map((day) => {
+                    const cell = cellMap.get(`${positionId}:${day.weekday}`);
                     return (
                       <td
-                        key={`${positionId}:${day.value}`}
+                        key={`${positionId}:${day.weekday}`}
                         className="border-l border-zinc-100 px-2 py-2"
                       >
                         <div className="flex flex-col gap-1">
@@ -115,11 +115,11 @@ export default function MasterScheduleWeekTemplateView({
                             step={1}
                             className="w-full rounded-lg border border-zinc-200 px-2 py-1 text-center text-xs"
                             placeholder="Кол-во"
-                            value={cell?.employeesCount ?? ""}
+                            value={cell?.staffCount ?? ""}
                             onChange={(e) =>
                               onCellChange(
                                 positionId,
-                                day.value,
+                                day.weekday,
                                 e.target.value === "" ? null : Number(e.target.value),
                                 cell?.units ?? null
                               )
@@ -135,8 +135,8 @@ export default function MasterScheduleWeekTemplateView({
                             onChange={(e) =>
                               onCellChange(
                                 positionId,
-                                day.value,
-                                cell?.employeesCount ?? null,
+                                day.weekday,
+                                cell?.staffCount ?? null,
                                 e.target.value === "" ? null : Number(e.target.value)
                               )
                             }

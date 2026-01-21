@@ -35,11 +35,6 @@ public class MasterScheduleRow {
     @Column(name = "row_index", nullable = false)
     private int rowIndex;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "salary_handling", nullable = false, length = 20)
-    @Builder.Default
-    private SalaryHandling salaryHandling = SalaryHandling.PRORATE;
-
     @Column(name = "rate_override", precision = 12, scale = 2)
     private java.math.BigDecimal rateOverride;
 

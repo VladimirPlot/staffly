@@ -13,7 +13,8 @@ import ru.staffly.master_schedule.model.*;
 import ru.staffly.master_schedule.repository.MasterScheduleCellRepository;
 import ru.staffly.master_schedule.repository.MasterScheduleRepository;
 import ru.staffly.master_schedule.repository.MasterScheduleRowRepository;
-import ru.staffly.master_schedule.repository.MasterScheduleWeekTemplateRepository;
+import ru.staffly.master_schedule.repository.MasterScheduleWeekTemplateCellRepository;
+import ru.staffly.master_schedule.repository.MasterScheduleWeekTemplatePositionRepository;
 import ru.staffly.master_schedule.util.MasterScheduleValueParser;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
@@ -25,6 +26,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,7 +42,8 @@ public class MasterScheduleService {
     private final MasterScheduleRepository schedules;
     private final MasterScheduleRowRepository rows;
     private final MasterScheduleCellRepository cells;
-    private final MasterScheduleWeekTemplateRepository weekTemplates;
+    private final MasterScheduleWeekTemplateCellRepository weekTemplateCells;
+    private final MasterScheduleWeekTemplatePositionRepository weekTemplatePositions;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final SecurityService security;
@@ -74,11 +77,11 @@ public class MasterScheduleService {
                 .name(request.name().trim())
                 .periodStart(request.periodStart())
                 .periodEnd(request.periodEnd())
-                .mode(request.mode())
                 .plannedRevenue(request.plannedRevenue())
                 .build();
         schedule = schedules.save(schedule);
         List<MasterScheduleRow> createdRows = createRowsForPositions(schedule, activePositions);
+        ensureTemplatePositions(schedule, activePositions);
         return toDto(schedule, createdRows, List.of());
     }
 
@@ -106,9 +109,6 @@ public class MasterScheduleService {
                 throw new ConflictException("Schedule name is required");
             }
             schedule.setName(trimmed);
-        }
-        if (request.mode() != null) {
-            schedule.setMode(request.mode());
         }
         schedule.setPlannedRevenue(request.plannedRevenue());
         schedules.save(schedule);
@@ -141,28 +141,31 @@ public class MasterScheduleService {
                 .max()
                 .orElse(0) + 1;
 
+        boolean isFirstPositionRow = rows.countByScheduleIdAndPositionId(scheduleId, position.getId()) == 0;
         MasterScheduleRow row = MasterScheduleRow.builder()
                 .schedule(schedule)
                 .position(position)
                 .rowIndex(nextIndex)
-                .salaryHandling(request.salaryHandling() != null ? request.salaryHandling() : SalaryHandling.PRORATE)
                 .rateOverride(request.rateOverride())
                 .amountOverride(request.amountOverride())
                 .payTypeOverride(request.payTypeOverride())
                 .build();
         row = rows.save(row);
+        if (isFirstPositionRow) {
+            ensureTemplatePositions(schedule, List.of(position));
+        }
         return toRowDto(row);
     }
 
     @Transactional
-    public MasterScheduleRowDto updateRow(Long rowId, Long userId, MasterScheduleRowUpdateRequest request) {
+    public MasterScheduleRowDto updateRow(Long scheduleId, Long rowId, Long userId, MasterScheduleRowUpdateRequest request) {
         MasterScheduleRow row = rows.findById(rowId)
                 .orElseThrow(() -> new NotFoundException("Row not found: " + rowId));
         MasterSchedule schedule = row.getSchedule();
-        security.assertAtLeastManager(userId, schedule.getRestaurant().getId());
-        if (request.salaryHandling() != null) {
-            row.setSalaryHandling(request.salaryHandling());
+        if (!Objects.equals(schedule.getId(), scheduleId)) {
+            throw new NotFoundException("Row not found in schedule: " + rowId);
         }
+        security.assertAtLeastManager(userId, schedule.getRestaurant().getId());
         row.setRateOverride(request.rateOverride());
         row.setAmountOverride(request.amountOverride());
         row.setPayTypeOverride(request.payTypeOverride());
@@ -171,12 +174,20 @@ public class MasterScheduleService {
     }
 
     @Transactional
-    public void deleteRow(Long rowId, Long userId) {
+    public void deleteRow(Long scheduleId, Long rowId, Long userId) {
         MasterScheduleRow row = rows.findById(rowId)
                 .orElseThrow(() -> new NotFoundException("Row not found: " + rowId));
         MasterSchedule schedule = row.getSchedule();
+        if (!Objects.equals(schedule.getId(), scheduleId)) {
+            throw new NotFoundException("Row not found in schedule: " + rowId);
+        }
         security.assertAtLeastManager(userId, schedule.getRestaurant().getId());
+        Long positionId = row.getPosition().getId();
         rows.delete(row);
+        if (rows.countByScheduleIdAndPositionId(schedule.getId(), positionId) == 0) {
+            weekTemplateCells.deleteByScheduleIdAndPositionId(schedule.getId(), positionId);
+            weekTemplatePositions.deleteByScheduleIdAndPositionId(schedule.getId(), positionId);
+        }
     }
 
     @Transactional
@@ -194,38 +205,9 @@ public class MasterScheduleService {
     }
 
     @Transactional
-    public void copyDay(Long scheduleId, Long userId, MasterScheduleCopyDayRequest request) {
-        MasterSchedule schedule = getScheduleOrThrow(scheduleId, userId);
-        ensureDateInSchedule(schedule, request.sourceDate());
-        ensureDateInSchedule(schedule, request.targetDate());
-
-        List<MasterScheduleCell> sourceCells = cells.findByRowScheduleIdAndWorkDate(scheduleId, request.sourceDate());
-        for (MasterScheduleCell source : sourceCells) {
-            upsertCell(source.getRow(), request.targetDate(), source.getValueRaw());
-        }
-    }
-
-    @Transactional
-    public void copyWeek(Long scheduleId, Long userId, MasterScheduleCopyWeekRequest request) {
-        MasterSchedule schedule = getScheduleOrThrow(scheduleId, userId);
-        LocalDate sourceStart = request.sourceWeekStart();
-        LocalDate targetStart = request.targetWeekStart();
-        for (int i = 0; i < 7; i++) {
-            LocalDate sourceDate = sourceStart.plusDays(i);
-            LocalDate targetDate = targetStart.plusDays(i);
-            ensureDateInSchedule(schedule, sourceDate);
-            ensureDateInSchedule(schedule, targetDate);
-            List<MasterScheduleCell> sourceCells = cells.findByRowScheduleIdAndWorkDate(scheduleId, sourceDate);
-            for (MasterScheduleCell source : sourceCells) {
-                upsertCell(source.getRow(), targetDate, source.getValueRaw());
-            }
-        }
-    }
-
-    @Transactional
     public List<MasterScheduleWeekTemplateCellDto> getWeekTemplate(Long scheduleId, Long userId) {
         MasterSchedule schedule = getScheduleOrThrow(scheduleId, userId);
-        return weekTemplates.findByScheduleId(schedule.getId())
+        return weekTemplateCells.findByScheduleId(schedule.getId())
                 .stream()
                 .map(this::toWeekTemplateDto)
                 .toList();
@@ -238,37 +220,40 @@ public class MasterScheduleService {
             MasterScheduleWeekTemplateBatchRequest request
     ) {
         MasterSchedule schedule = getScheduleOrThrow(scheduleId, userId);
-        List<MasterScheduleWeekTemplate> existing = weekTemplates.findByScheduleId(scheduleId);
-        Map<String, MasterScheduleWeekTemplate> existingMap = existing.stream()
+        List<MasterScheduleWeekTemplateCell> existing = weekTemplateCells.findByScheduleId(scheduleId);
+        Map<String, MasterScheduleWeekTemplateCell> existingMap = existing.stream()
                 .collect(Collectors.toMap(
                         cell -> templateKey(cell.getPosition().getId(), cell.getWeekday()),
                         cell -> cell
                 ));
 
-        List<MasterScheduleWeekTemplate> toSave = request.items().stream()
+        List<MasterScheduleWeekTemplateCell> toSave = request.items().stream()
                 .map(item -> {
                     Position position = positions.findById(item.positionId())
                             .orElseThrow(() -> new NotFoundException("Position not found: " + item.positionId()));
                     if (!Objects.equals(position.getRestaurant().getId(), schedule.getRestaurant().getId())) {
                         throw new NotFoundException("Position not found in this restaurant");
                     }
+                    if (weekTemplatePositions.findByScheduleIdAndPositionId(scheduleId, position.getId()).isEmpty()) {
+                        ensureTemplatePositions(schedule, List.of(position));
+                    }
                     String key = templateKey(position.getId(), item.weekday());
-                    MasterScheduleWeekTemplate cell = existingMap.getOrDefault(
+                    MasterScheduleWeekTemplateCell cell = existingMap.getOrDefault(
                             key,
-                            MasterScheduleWeekTemplate.builder()
+                            MasterScheduleWeekTemplateCell.builder()
                                     .schedule(schedule)
                                     .position(position)
                                     .weekday(item.weekday())
                                     .build()
                     );
-                    cell.setEmployeesCount(item.employeesCount());
+                    cell.setStaffCount(item.staffCount());
                     cell.setUnits(item.units());
                     return cell;
                 })
                 .toList();
 
-        weekTemplates.saveAll(toSave);
-        return weekTemplates.findByScheduleId(scheduleId)
+        weekTemplateCells.saveAll(toSave);
+        return weekTemplateCells.findByScheduleId(scheduleId)
                 .stream()
                 .map(this::toWeekTemplateDto)
                 .toList();
@@ -287,14 +272,19 @@ public class MasterScheduleService {
             throw new NotFoundException("Position not found in this restaurant");
         }
 
-        boolean exists = weekTemplates.findByScheduleId(scheduleId)
-                .stream()
-                .anyMatch(cell -> Objects.equals(cell.getPosition().getId(), position.getId()));
+        boolean exists = weekTemplatePositions.findByScheduleIdAndPositionId(scheduleId, position.getId())
+                .isPresent();
         if (exists) {
             throw new ConflictException("Week template already contains this position");
         }
 
-        List<MasterScheduleWeekTemplate> created = List.of(
+        MasterScheduleWeekTemplatePosition templatePosition = MasterScheduleWeekTemplatePosition.builder()
+                .schedule(schedule)
+                .position(position)
+                .build();
+        weekTemplatePositions.save(templatePosition);
+
+        List<MasterScheduleWeekTemplateCell> created = List.of(
                 DayOfWeek.MONDAY,
                 DayOfWeek.TUESDAY,
                 DayOfWeek.WEDNESDAY,
@@ -303,15 +293,15 @@ public class MasterScheduleService {
                 DayOfWeek.SATURDAY,
                 DayOfWeek.SUNDAY
         ).stream()
-                .map(day -> MasterScheduleWeekTemplate.builder()
+                .map(day -> MasterScheduleWeekTemplateCell.builder()
                         .schedule(schedule)
                         .position(position)
                         .weekday(day)
                         .build())
                 .toList();
-        weekTemplates.saveAll(created);
+        weekTemplateCells.saveAll(created);
 
-        return weekTemplates.findByScheduleId(scheduleId)
+        return weekTemplateCells.findByScheduleId(scheduleId)
                 .stream()
                 .map(this::toWeekTemplateDto)
                 .toList();
@@ -320,50 +310,119 @@ public class MasterScheduleService {
     @Transactional
     public void deleteWeekTemplatePosition(Long scheduleId, Long userId, Long positionId) {
         MasterSchedule schedule = getScheduleOrThrow(scheduleId, userId);
-        weekTemplates.deleteByScheduleIdAndPositionId(schedule.getId(), positionId);
+        weekTemplateCells.deleteByScheduleIdAndPositionId(schedule.getId(), positionId);
+        weekTemplatePositions.deleteByScheduleIdAndPositionId(schedule.getId(), positionId);
     }
 
     @Transactional
     public void applyWeekTemplate(Long scheduleId, Long userId, MasterScheduleApplyWeekTemplateRequest request) {
         MasterSchedule schedule = getScheduleOrThrow(scheduleId, userId);
-        List<MasterScheduleWeekTemplate> templateCells = weekTemplates.findByScheduleId(scheduleId);
-        if (templateCells.isEmpty()) {
+        List<MasterScheduleWeekTemplatePosition> templatePositions = weekTemplatePositions.findByScheduleId(scheduleId);
+        if (templatePositions.isEmpty()) {
             return;
         }
 
-        Map<String, MasterScheduleWeekTemplate> templateMap = templateCells.stream()
-                .collect(Collectors.toMap(
-                        cell -> templateKey(cell.getPosition().getId(), cell.getWeekday()),
-                        cell -> cell,
-                        (first, second) -> first
+        List<MasterScheduleWeekTemplateCell> templateCells = weekTemplateCells.findByScheduleId(scheduleId);
+        Map<Long, Map<DayOfWeek, MasterScheduleWeekTemplateCell>> templateByPosition = templateCells.stream()
+                .collect(Collectors.groupingBy(
+                        cell -> cell.getPosition().getId(),
+                        Collectors.toMap(MasterScheduleWeekTemplateCell::getWeekday, cell -> cell, (a, b) -> a, () -> new EnumMap<>(DayOfWeek.class))
                 ));
 
         List<MasterScheduleRow> scheduleRows = rows.findByScheduleId(scheduleId);
         Map<Long, List<MasterScheduleRow>> rowsByPosition = scheduleRows.stream()
                 .collect(Collectors.groupingBy(row -> row.getPosition().getId()));
 
-        List<MasterScheduleCell> existingCells = cells.findByRowScheduleIdAndWorkDateBetween(
-                scheduleId,
-                schedule.getPeriodStart(),
-                schedule.getPeriodEnd()
-        );
-        Map<String, MasterScheduleCell> existingMap = existingCells.stream()
-                .collect(Collectors.toMap(
-                        cell -> cellKey(cell.getRow().getId(), cell.getWorkDate()),
-                        cell -> cell
-                ));
+        List<Long> templatePositionIds = templatePositions.stream()
+                .map(position -> position.getPosition().getId())
+                .toList();
+        Map<String, MasterScheduleCell> existingMap = Map.of();
+        if (request.overwriteExisting()) {
+            List<MasterScheduleCell> existingCells = cells.findByRowScheduleIdAndWorkDateBetween(
+                    scheduleId,
+                    schedule.getPeriodStart(),
+                    schedule.getPeriodEnd()
+            );
+            Map<Long, List<MasterScheduleCell>> cellsByPosition = existingCells.stream()
+                    .collect(Collectors.groupingBy(cell -> cell.getRow().getPosition().getId()));
+            for (Long positionId : templatePositionIds) {
+                List<MasterScheduleCell> positionCells = cellsByPosition.getOrDefault(positionId, List.of());
+                if (!positionCells.isEmpty()) {
+                    cells.deleteAll(positionCells);
+                }
+            }
+        } else {
+            List<MasterScheduleCell> existingCells = cells.findByRowScheduleIdAndWorkDateBetween(
+                    scheduleId,
+                    schedule.getPeriodStart(),
+                    schedule.getPeriodEnd()
+            );
+            existingMap = existingCells.stream()
+                    .collect(Collectors.toMap(
+                            cell -> cellKey(cell.getRow().getId(), cell.getWorkDate()),
+                            cell -> cell
+                    ));
+        }
 
-        for (LocalDate date = schedule.getPeriodStart();
-             !date.isAfter(schedule.getPeriodEnd());
-             date = date.plusDays(1)) {
-            DayOfWeek weekday = date.getDayOfWeek();
-            for (Map.Entry<Long, List<MasterScheduleRow>> entry : rowsByPosition.entrySet()) {
-                MasterScheduleWeekTemplate template = templateMap.get(templateKey(entry.getKey(), weekday));
-                if (template == null || template.getEmployeesCount() == null || template.getUnits() == null) {
+        java.util.Set<Long> templatePositionSet = java.util.Set.copyOf(templatePositionIds);
+
+        for (Map.Entry<Long, List<MasterScheduleRow>> entry : rowsByPosition.entrySet()) {
+            Long positionId = entry.getKey();
+            if (!templatePositionSet.contains(positionId)) {
+                rows.deleteAll(entry.getValue());
+            }
+        }
+
+        List<MasterScheduleRow> updatedRows = rows.findByScheduleId(scheduleId);
+        Map<Long, List<MasterScheduleRow>> updatedRowsByPosition = updatedRows.stream()
+                .collect(Collectors.groupingBy(row -> row.getPosition().getId()));
+
+        for (Long positionId : templatePositionIds) {
+            Map<DayOfWeek, MasterScheduleWeekTemplateCell> positionTemplate = templateByPosition.get(positionId);
+            if (positionTemplate == null) {
+                continue;
+            }
+            int maxCount = maxTemplateCount(positionTemplate, schedule.getPeriodStart(), schedule.getPeriodEnd());
+            List<MasterScheduleRow> positionRows = updatedRowsByPosition.getOrDefault(positionId, List.of())
+                    .stream()
+                    .sorted(Comparator.comparingInt(MasterScheduleRow::getRowIndex))
+                    .toList();
+
+            if (maxCount > positionRows.size()) {
+                int nextIndex = positionRows.stream()
+                        .mapToInt(MasterScheduleRow::getRowIndex)
+                        .max()
+                        .orElse(0);
+                createMissingRows(schedule, positionId, maxCount - positionRows.size(), nextIndex);
+                positionRows = rows.findByScheduleIdAndPositionId(scheduleId, positionId)
+                        .stream()
+                        .sorted(Comparator.comparingInt(MasterScheduleRow::getRowIndex))
+                        .toList();
+            } else if (request.overwriteExisting() && maxCount > 0 && positionRows.size() > maxCount) {
+                List<MasterScheduleRow> toDelete = positionRows.subList(maxCount, positionRows.size());
+                rows.deleteAll(toDelete);
+                positionRows = rows.findByScheduleIdAndPositionId(scheduleId, positionId)
+                        .stream()
+                        .sorted(Comparator.comparingInt(MasterScheduleRow::getRowIndex))
+                        .toList();
+            }
+
+            if (positionRows.isEmpty()) {
+                continue;
+            }
+
+            for (LocalDate date = schedule.getPeriodStart();
+                 !date.isAfter(schedule.getPeriodEnd());
+                 date = date.plusDays(1)) {
+                DayOfWeek weekday = date.getDayOfWeek();
+                MasterScheduleWeekTemplateCell templateCell = positionTemplate.get(weekday);
+                if (templateCell == null || templateCell.getStaffCount() == null || templateCell.getUnits() == null) {
                     continue;
                 }
-                String valueRaw = template.getEmployeesCount() + "x" + template.getUnits().stripTrailingZeros().toPlainString();
-                for (MasterScheduleRow row : entry.getValue()) {
+                int count = templateCell.getStaffCount();
+                String valueRaw = templateCell.getUnits().stripTrailingZeros().toPlainString();
+                for (int i = 0; i < Math.min(count, positionRows.size()); i++) {
+                    MasterScheduleRow row = positionRows.get(i);
                     if (!request.overwriteExisting()
                             && existingMap.containsKey(cellKey(row.getId(), date))) {
                         continue;
@@ -449,7 +508,6 @@ public class MasterScheduleService {
                 schedule.getName(),
                 schedule.getPeriodStart(),
                 schedule.getPeriodEnd(),
-                schedule.getMode(),
                 schedule.getPlannedRevenue()
         );
     }
@@ -468,7 +526,6 @@ public class MasterScheduleService {
                 schedule.getName(),
                 schedule.getPeriodStart(),
                 schedule.getPeriodEnd(),
-                schedule.getMode(),
                 schedule.getPlannedRevenue(),
                 rowDtos,
                 cellDtos
@@ -505,7 +562,6 @@ public class MasterScheduleService {
                 position.getId(),
                 position.getName(),
                 row.getRowIndex(),
-                row.getSalaryHandling(),
                 row.getRateOverride(),
                 row.getAmountOverride(),
                 effectivePayType,
@@ -526,12 +582,12 @@ public class MasterScheduleService {
         );
     }
 
-    private MasterScheduleWeekTemplateCellDto toWeekTemplateDto(MasterScheduleWeekTemplate cell) {
+    private MasterScheduleWeekTemplateCellDto toWeekTemplateDto(MasterScheduleWeekTemplateCell cell) {
         return new MasterScheduleWeekTemplateCellDto(
                 cell.getId(),
                 cell.getPosition().getId(),
                 cell.getWeekday(),
-                cell.getEmployeesCount(),
+                cell.getStaffCount(),
                 cell.getUnits()
         );
     }
@@ -545,7 +601,6 @@ public class MasterScheduleService {
                         .schedule(schedule)
                         .position(position)
                         .rowIndex(1)
-                        .salaryHandling(SalaryHandling.PRORATE)
                         .build())
                 .toList();
 
@@ -565,6 +620,73 @@ public class MasterScheduleService {
         return Comparator.comparing(MasterScheduleRow::getPosition, positionComparator)
                 .thenComparing(MasterScheduleRow::getRowIndex)
                 .thenComparing(MasterScheduleRow::getId, Comparator.nullsLast(Long::compareTo));
+    }
+
+    private void ensureTemplatePositions(MasterSchedule schedule, List<Position> positions) {
+        for (Position position : positions) {
+            boolean exists = weekTemplatePositions.findByScheduleIdAndPositionId(schedule.getId(), position.getId())
+                    .isPresent();
+            if (exists) {
+                continue;
+            }
+            MasterScheduleWeekTemplatePosition templatePosition = MasterScheduleWeekTemplatePosition.builder()
+                    .schedule(schedule)
+                    .position(position)
+                    .build();
+            weekTemplatePositions.save(templatePosition);
+            List<MasterScheduleWeekTemplateCell> cellsToCreate = List.of(
+                    DayOfWeek.MONDAY,
+                    DayOfWeek.TUESDAY,
+                    DayOfWeek.WEDNESDAY,
+                    DayOfWeek.THURSDAY,
+                    DayOfWeek.FRIDAY,
+                    DayOfWeek.SATURDAY,
+                    DayOfWeek.SUNDAY
+            ).stream()
+                    .map(day -> MasterScheduleWeekTemplateCell.builder()
+                            .schedule(schedule)
+                            .position(position)
+                            .weekday(day)
+                            .build())
+                    .toList();
+            weekTemplateCells.saveAll(cellsToCreate);
+        }
+    }
+
+    private List<MasterScheduleRow> createMissingRows(
+            MasterSchedule schedule,
+            Long positionId,
+            int count,
+            int startIndex
+    ) {
+        if (count <= 0) {
+            return List.of();
+        }
+        Position position = positions.findById(positionId)
+                .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
+        List<MasterScheduleRow> newRows = java.util.stream.IntStream.rangeClosed(1, count)
+                .mapToObj(offset -> MasterScheduleRow.builder()
+                        .schedule(schedule)
+                        .position(position)
+                        .rowIndex(startIndex + offset)
+                        .build())
+                .toList();
+        return rows.saveAll(newRows);
+    }
+
+    private int maxTemplateCount(
+            Map<DayOfWeek, MasterScheduleWeekTemplateCell> template,
+            LocalDate start,
+            LocalDate end
+    ) {
+        int max = 0;
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            MasterScheduleWeekTemplateCell cell = template.get(date.getDayOfWeek());
+            if (cell != null && cell.getStaffCount() != null) {
+                max = Math.max(max, cell.getStaffCount());
+            }
+        }
+        return max;
     }
 
     private String templateKey(Long positionId, DayOfWeek weekday) {
