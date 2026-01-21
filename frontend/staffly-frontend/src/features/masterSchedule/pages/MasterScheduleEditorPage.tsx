@@ -4,7 +4,7 @@ import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import SelectField from "../../../shared/ui/SelectField";
 import Input from "../../../shared/ui/Input";
-import BackToHome from "../../../shared/ui/BackToHome";
+import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   batchUpdateMasterScheduleCells,
@@ -36,6 +36,7 @@ import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { calcRowAmount } from "../utils/calc";
 import { parseCellValue } from "../utils/parse";
 import { formatNumber } from "../utils/format";
+import { comparePositions } from "../utils/positionSort";
 
 const DEBOUNCE_MS = 200;
 const MAX_WAIT_MS = 1500;
@@ -348,13 +349,39 @@ export default function MasterScheduleEditorPage() {
     }, 0);
   }, [rows, cells, dates]);
 
+  const sortedPositions = React.useMemo(
+    () => [...positions].sort(comparePositions),
+    [positions]
+  );
+
   const availablePositions = React.useMemo(() => {
     if (viewMode === "COMPACT") {
       const existing = new Set(weekTemplateCells.map((cell) => cell.positionId));
-      return positions.filter((pos) => !existing.has(pos.id));
+      return sortedPositions.filter((pos) => !existing.has(pos.id));
     }
-    return positions;
-  }, [viewMode, positions, weekTemplateCells]);
+    return sortedPositions;
+  }, [viewMode, sortedPositions, weekTemplateCells]);
+
+  const positionMap = React.useMemo(() => {
+    return new Map(sortedPositions.map((pos) => [pos.id, pos]));
+  }, [sortedPositions]);
+
+  const sortedRows = React.useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const positionA = positionMap.get(a.positionId);
+      const positionB = positionMap.get(b.positionId);
+      if (positionA && positionB) {
+        const positionCompare = comparePositions(positionA, positionB);
+        if (positionCompare !== 0) return positionCompare;
+      } else {
+        const nameCompare = a.positionName.localeCompare(b.positionName, "ru", {
+          sensitivity: "base",
+        });
+        if (nameCompare !== 0) return nameCompare;
+      }
+      return a.rowIndex - b.rowIndex;
+    });
+  }, [rows, positionMap]);
 
   const weekTemplateDays = React.useMemo<WeekTemplateDay[]>(() => {
     if (dates.length === 0) return DEFAULT_WEEK_DAYS;
@@ -377,7 +404,12 @@ export default function MasterScheduleEditorPage() {
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4">
-      <BackToHome />
+      <Breadcrumbs
+        items={[
+          { label: "Мастер-графики", to: "/master-schedules" },
+          { label: scheduleName || "Мастер-график" },
+        ]}
+      />
       <Card>
         {loading ? (
           <div>Загрузка…</div>
@@ -439,7 +471,7 @@ export default function MasterScheduleEditorPage() {
             {viewMode === "COMPACT" ? (
               <MasterScheduleWeekTemplateView
                 templateCells={weekTemplateCells}
-                positions={positions}
+                positions={sortedPositions}
                 days={weekTemplateDays}
                 onCellChange={handleTemplateCellChange}
                 onRemovePosition={async (positionId) => {
@@ -473,7 +505,7 @@ export default function MasterScheduleEditorPage() {
               />
             ) : (
               <MasterScheduleTableView
-                rows={rows}
+                rows={sortedRows}
                 cells={cells}
                 dates={dates}
                 cellErrors={cellErrors}

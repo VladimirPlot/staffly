@@ -175,6 +175,14 @@ export default function MasterSchedulesPage() {
             placeholder="Мастер-график май"
           />
           <Input
+            label="Плановая выручка"
+            type="number"
+            inputMode="decimal"
+            value={plannedRevenue}
+            onChange={(e) => setPlannedRevenue(e.target.value)}
+            placeholder="Необязательно"
+          />
+          <Input
             label="Начало периода"
             type="date"
             value={periodStart}
@@ -187,14 +195,6 @@ export default function MasterSchedulesPage() {
             value={periodEnd}
             onChange={(e) => setPeriodEnd(e.target.value)}
             error={periodError ?? undefined}
-          />
-          <Input
-            label="Плановая выручка"
-            type="number"
-            inputMode="decimal"
-            value={plannedRevenue}
-            onChange={(e) => setPlannedRevenue(e.target.value)}
-            placeholder="Необязательно"
           />
         </div>
       </Modal>

@@ -2,6 +2,7 @@ import React from "react";
 import type { MasterScheduleWeekTemplateCellDto, Weekday } from "../types";
 import type { PositionDto } from "../../dictionaries/api";
 import { formatNumber } from "../utils/format";
+import { comparePositions } from "../utils/positionSort";
 import Icon from "../../../shared/ui/Icon";
 import { Trash2 } from "lucide-react";
 
@@ -47,9 +48,7 @@ export default function MasterScheduleWeekTemplateView({
   const positionIds = React.useMemo(() => {
     const ids = Array.from(new Set(templateCells.map((cell) => cell.positionId)));
     return ids.sort((a, b) => {
-      const nameA = positionMap.get(a)?.name ?? "";
-      const nameB = positionMap.get(b)?.name ?? "";
-      return nameA.localeCompare(nameB, "ru");
+      return comparePositions(positionMap.get(a), positionMap.get(b));
     });
   }, [templateCells, positionMap]);
 
