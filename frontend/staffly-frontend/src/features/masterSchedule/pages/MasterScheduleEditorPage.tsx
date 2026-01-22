@@ -67,6 +67,8 @@ export default function MasterScheduleEditorPage() {
   const [plannedRevenue, setPlannedRevenue] = React.useState<number | null>(null);
   const [viewMode, setViewMode] = React.useState<"DETAILED" | "COMPACT">("DETAILED");
   const [overviewMode, setOverviewMode] = React.useState(false);
+  const [overviewScale, setOverviewScale] = React.useState(100);
+  const [overviewScaleUserSet, setOverviewScaleUserSet] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
@@ -140,6 +142,15 @@ export default function MasterScheduleEditorPage() {
       setOverviewMode(false);
     }
   }, [viewMode]);
+
+  React.useEffect(() => {
+    if (overviewMode) {
+      setOverviewScaleUserSet(false);
+      return;
+    }
+    setOverviewScale(100);
+    setOverviewScaleUserSet(false);
+  }, [overviewMode]);
 
   const flushPendingCells = React.useCallback(async () => {
     if (debounceTimerRef.current) {
@@ -480,19 +491,41 @@ export default function MasterScheduleEditorPage() {
                 <MasterScheduleToolbar viewMode={viewMode} onToggleViewMode={setViewMode} />
               </div>
               {viewMode === "DETAILED" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setOverviewMode((prev) => !prev)}
-                  leftIcon={
-                    <Icon
-                      icon={overviewMode ? Minimize2 : Maximize2}
-                      size="xs"
-                    />
-                  }
-                >
-                  {overviewMode ? "Обычный" : "Обзор"}
-                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                  {overviewMode && (
+                    <label className="flex items-center gap-3 text-sm text-zinc-600">
+                      <input
+                        type="range"
+                        min={50}
+                        max={100}
+                        step={5}
+                        value={overviewScale}
+                        onChange={(event) => {
+                          setOverviewScale(Number(event.target.value));
+                          setOverviewScaleUserSet(true);
+                        }}
+                        className="w-32 accent-zinc-900 sm:w-40"
+                        aria-label="Масштаб обзора"
+                      />
+                      <span className="hidden sm:block text-zinc-500">
+                        {overviewScale}%
+                      </span>
+                    </label>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setOverviewMode((prev) => !prev)}
+                    title={overviewMode ? "Обычный режим" : "Режим обзора"}
+                    aria-label={overviewMode ? "Обычный режим" : "Режим обзора"}
+                    leftIcon={
+                      <Icon
+                        icon={overviewMode ? Minimize2 : Maximize2}
+                        size="xs"
+                      />
+                    }
+                  />
+                </div>
               )}
             </div>
 
@@ -538,6 +571,9 @@ export default function MasterScheduleEditorPage() {
                 dates={dates}
                 cellErrors={cellErrors}
                 overviewMode={overviewMode}
+                overviewScale={overviewScale}
+                overviewScaleUserSet={overviewScaleUserSet}
+                onOverviewScaleAuto={setOverviewScale}
                 onCellChange={handleCellChange}
                 onAddRow={handleAddRow}
                 onDeleteRow={handleDeleteRow}
