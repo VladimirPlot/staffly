@@ -5,7 +5,9 @@ import Button from "../../../shared/ui/Button";
 import SelectField from "../../../shared/ui/SelectField";
 import Input from "../../../shared/ui/Input";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
+import Icon from "../../../shared/ui/Icon";
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   batchUpdateMasterScheduleCells,
   createMasterScheduleRow,
@@ -64,6 +66,7 @@ export default function MasterScheduleEditorPage() {
   const [scheduleName, setScheduleName] = React.useState("");
   const [plannedRevenue, setPlannedRevenue] = React.useState<number | null>(null);
   const [viewMode, setViewMode] = React.useState<"DETAILED" | "COMPACT">("DETAILED");
+  const [overviewMode, setOverviewMode] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
@@ -131,6 +134,12 @@ export default function MasterScheduleEditorPage() {
       void loadWeekTemplate();
     }
   }, [viewMode, weekTemplateLoaded, loadWeekTemplate]);
+
+  React.useEffect(() => {
+    if (viewMode === "COMPACT") {
+      setOverviewMode(false);
+    }
+  }, [viewMode]);
 
   const flushPendingCells = React.useCallback(async () => {
     if (debounceTimerRef.current) {
@@ -466,7 +475,26 @@ export default function MasterScheduleEditorPage() {
               </div>
             </div>
 
-            <MasterScheduleToolbar viewMode={viewMode} onToggleViewMode={setViewMode} />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <MasterScheduleToolbar viewMode={viewMode} onToggleViewMode={setViewMode} />
+              </div>
+              {viewMode === "DETAILED" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOverviewMode((prev) => !prev)}
+                  leftIcon={
+                    <Icon
+                      icon={overviewMode ? Minimize2 : Maximize2}
+                      size="xs"
+                    />
+                  }
+                >
+                  {overviewMode ? "Обычный" : "Обзор"}
+                </Button>
+              )}
+            </div>
 
             {viewMode === "COMPACT" ? (
               <MasterScheduleWeekTemplateView
@@ -509,6 +537,7 @@ export default function MasterScheduleEditorPage() {
                 cells={cells}
                 dates={dates}
                 cellErrors={cellErrors}
+                overviewMode={overviewMode}
                 onCellChange={handleCellChange}
                 onAddRow={handleAddRow}
                 onDeleteRow={handleDeleteRow}

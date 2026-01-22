@@ -12,6 +12,7 @@ type Props = {
   cells: MasterScheduleCellDto[];
   dates: string[];
   cellErrors: Record<string, string>;
+  overviewMode: boolean;
   onCellChange: (rowId: number, date: string, value: string) => void;
   onAddRow: (positionId: number) => void;
   onDeleteRow: (rowId: number) => void;
@@ -29,6 +30,7 @@ export default function MasterScheduleTableView({
   cells,
   dates,
   cellErrors,
+  overviewMode,
   onCellChange,
   onAddRow,
   onDeleteRow,
@@ -91,8 +93,12 @@ export default function MasterScheduleTableView({
     wrapTab: true,
   });
 
+  const containerClassName = overviewMode
+    ? "overflow-x-auto overflow-y-visible"
+    : "relative max-h-[calc(100vh-320px)] overflow-auto";
+
   return (
-    <div className="overflow-auto rounded-3xl border border-zinc-200 bg-white">
+    <div className={`${containerClassName} rounded-3xl border border-zinc-200 bg-white`}>
       <table className="min-w-full border-separate border-spacing-0 text-sm break-words">
         <thead>
           <tr>
@@ -104,7 +110,7 @@ export default function MasterScheduleTableView({
               return (
                 <th
                   key={`weekday-${date}`}
-                  className={`sticky top-0 z-40 h-10 border-b border-zinc-200 px-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 ${
+                  className={`sticky top-0 z-30 h-10 border-b border-zinc-200 px-3 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500 ${
                     isFriday || isSaturday ? "bg-orange-50" : "bg-white"
                   } ${isMonday ? "border-l-2 border-zinc-200" : "border-l border-zinc-100"}`}
                 >
@@ -114,7 +120,7 @@ export default function MasterScheduleTableView({
             })}
           </tr>
           <tr>
-            <th className="sticky left-0 top-10 z-50 h-10 bg-white px-4 text-left text-xs font-medium text-zinc-400">
+            <th className="sticky left-0 top-10 z-40 h-10 bg-white px-4 text-left text-xs font-medium text-zinc-400">
               Строки
             </th>
             {dates.map((date) => {
@@ -122,7 +128,7 @@ export default function MasterScheduleTableView({
               return (
                 <th
                   key={`day-${date}`}
-                  className={`sticky top-10 z-40 h-10 border-b border-zinc-200 px-3 text-center text-xs font-medium text-zinc-500 ${
+                  className={`sticky top-10 z-20 h-10 border-b border-zinc-200 px-3 text-center text-xs font-medium text-zinc-500 ${
                     isFriday || isSaturday ? "bg-orange-50" : "bg-white"
                   } ${isMonday ? "border-l-2 border-zinc-200" : "border-l border-zinc-100"}`}
                 >
@@ -158,7 +164,7 @@ export default function MasterScheduleTableView({
                 const isLast = index === group.rows.length - 1;
                 return (
                   <tr key={row.id} className="border-b border-zinc-100">
-                    <td className="sticky left-0 z-50 border-r border-zinc-100 bg-white px-4 py-3 break-words">
+                    <td className="sticky left-0 z-10 border-r border-zinc-100 bg-white px-4 py-2 break-words">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate font-medium text-zinc-900">
@@ -177,7 +183,7 @@ export default function MasterScheduleTableView({
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            className="rounded-xl border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50"
+                            className="rounded-xl border border-zinc-200 bg-white p-1.5 text-zinc-700 hover:bg-zinc-50"
                             onClick={() => onOpenSettings(row)}
                           >
                             <Icon icon={Settings} size="xs" />
@@ -185,7 +191,7 @@ export default function MasterScheduleTableView({
                           {isLast && (
                             <button
                               type="button"
-                              className="rounded-xl border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50"
+                              className="rounded-xl border border-zinc-200 bg-white p-1.5 text-zinc-700 hover:bg-zinc-50"
                               onClick={() => onDeleteRow(row.id)}
                             >
                               <Icon icon={Minus} size="xs" />
@@ -212,12 +218,12 @@ export default function MasterScheduleTableView({
                       return (
                         <td
                           key={cellId}
-                          className={`border-l border-zinc-100 px-2 py-2 ${
+                          className={`border-l border-zinc-100 px-2 py-1 ${
                             isFriday || isSaturday ? "bg-orange-50" : "bg-white"
                           } ${isMonday ? "border-l-2 border-zinc-200" : ""}`}
                         >
                           <input
-                            className={`w-full rounded-xl border px-2 py-1 text-center text-sm outline-none focus:ring-2 ${
+                            className={`w-full rounded-lg border px-2 py-1 text-center text-sm outline-none focus:ring-2 ${
                               hasError
                                 ? "border-red-400 focus:ring-red-200"
                                 : "border-zinc-200 focus:ring-zinc-300"
@@ -236,26 +242,26 @@ export default function MasterScheduleTableView({
                 );
                 })}
                 <tr className="border-b border-zinc-200 bg-zinc-50">
-                  <td className="sticky left-0 z-50 border-r border-zinc-100 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-700">
+                  <td className="sticky left-0 z-10 border-r border-zinc-100 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-700">
                     Итого: {group.positionName}
                   </td>
                   {groupTotals.map((value, idx) => (
                     <td
                       key={`group-${group.positionId}-${dates[idx]}`}
-                      className="border-l border-zinc-100 px-2 py-2 text-center text-sm font-medium text-zinc-600"
+                      className="border-l border-zinc-100 px-2 py-1 text-center text-sm font-medium text-zinc-600"
                     >
                       {formatNumber(value)}
                     </td>
                   ))}
                 </tr>
                 <tr className="border-b border-zinc-200 bg-zinc-50">
-                  <td className="sticky left-0 z-50 border-r border-zinc-100 bg-zinc-50 px-4 py-2 text-xs text-zinc-500">
+                  <td className="sticky left-0 z-10 border-r border-zinc-100 bg-zinc-50 px-4 py-1 text-xs text-zinc-500">
                     Итого по должности: {formatNumber(groupRowTotal)}
                   </td>
                   {dates.map((date) => (
                     <td
                       key={`group-spacer-${group.positionId}-${date}`}
-                      className="border-l border-zinc-100 bg-zinc-50 px-2 py-2"
+                      className="border-l border-zinc-100 bg-zinc-50 px-2 py-1"
                     />
                   ))}
                 </tr>
@@ -263,13 +269,13 @@ export default function MasterScheduleTableView({
             );
           })}
           <tr className="border-t border-zinc-200 bg-zinc-50">
-            <td className="sticky left-0 z-50 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-700">
+            <td className="sticky left-0 z-10 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-700">
               Итог по дням
             </td>
             {columnTotals.map((value, index) => (
               <td
                 key={`total-${dates[index]}`}
-                className="border-l border-zinc-100 px-2 py-2 text-center text-sm font-medium text-zinc-700"
+                className="border-l border-zinc-100 px-2 py-1 text-center text-sm font-medium text-zinc-700"
               >
                 {formatNumber(value)}
               </td>
