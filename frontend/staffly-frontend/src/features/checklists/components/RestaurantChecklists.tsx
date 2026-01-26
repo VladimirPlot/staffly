@@ -1,5 +1,5 @@
 import React from "react";
-import { Download, Pencil, Trash2 } from "lucide-react";
+import { Check, Download, Lock, Pencil, Trash2, Unlock, X } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import ContentText from "../../../shared/ui/ContentText";
@@ -49,6 +49,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   const [deleteTarget, setDeleteTarget] = React.useState<ChecklistDto | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [itemActionLoading, setItemActionLoading] = React.useState<Set<string>>(new Set());
+  const [itemActionError, setItemActionError] = React.useState<string | null>(null);
   const [resetting, setResetting] = React.useState<number | null>(null);
   const [downloading, setDownloading] = React.useState<number | null>(null);
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
@@ -56,6 +57,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
 
   const checklistRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
   const downloadMenuRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
+  const errorTimeoutRef = React.useRef<number | null>(null);
 
   const loadPositions = React.useCallback(async () => {
     if (!restaurantId) return;
@@ -208,6 +210,20 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     setChecklists((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
   }, []);
 
+  const reportItemActionError = React.useCallback((message: string | null) => {
+    setItemActionError(message);
+    if (errorTimeoutRef.current) {
+      window.clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = null;
+    }
+    if (message) {
+      errorTimeoutRef.current = window.setTimeout(() => {
+        setItemActionError(null);
+        errorTimeoutRef.current = null;
+      }, 3000);
+    }
+  }, []);
+
   const toggleItemAction = React.useCallback((key: string, loading: boolean) => {
     setItemActionLoading((prev) => {
       const next = new Set(prev);
@@ -223,21 +239,24 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   const handleItemAction = React.useCallback(
     async (key: string, action: () => Promise<ChecklistDto>) => {
       if (itemActionLoading.has(key)) return;
+      reportItemActionError(null);
       toggleItemAction(key, true);
       try {
         const updated = await action();
         updateChecklistInState(updated);
       } catch (e: any) {
-        if (e?.response?.status === 409) {
-          alert("Пункт уже занят");
+        const status = e?.response?.status;
+        if (status === 409 || status === 403) {
+          reportItemActionError("Пункт забронирован другим сотрудником");
         } else {
           console.error("Failed to update checklist item", e);
+          reportItemActionError(e?.friendlyMessage || "Не удалось обновить пункт");
         }
       } finally {
         toggleItemAction(key, false);
       }
     },
-    [itemActionLoading, toggleItemAction, updateChecklistInState]
+    [itemActionLoading, reportItemActionError, toggleItemAction, updateChecklistInState]
   );
 
   const handleReset = React.useCallback(
@@ -311,6 +330,30 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     };
   }, [downloadMenuFor]);
 
+  React.useEffect(() => {
+    return () => {
+      if (errorTimeoutRef.current) {
+        window.clearTimeout(errorTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const visibleChecklists = React.useMemo(() => {
+    const collator = new Intl.Collator("ru", { sensitivity: "base" });
+    const groupKey = (checklist: ChecklistDto) => {
+      if (checklist.kind === "TRACKABLE" && !checklist.completed) return 0;
+      if (checklist.kind === "INFO") return 1;
+      if (checklist.kind === "TRACKABLE" && checklist.completed) return 2;
+      return 3;
+    };
+
+    return [...checklists].sort((a, b) => {
+      const groupDiff = groupKey(a) - groupKey(b);
+      if (groupDiff !== 0) return groupDiff;
+      return collator.compare(a.name ?? "", b.name ?? "");
+    });
+  }, [checklists]);
+
   return (
     <Card className="mt-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -356,11 +399,12 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
       <div className="mt-6 space-y-3">
         {loading && <div className="text-sm text-zinc-500">Загрузка чек-листов…</div>}
         {error && <div className="text-sm text-red-600">{error}</div>}
-        {!loading && !error && checklists.length === 0 && (
+        {itemActionError && <div className="text-sm text-red-600">{itemActionError}</div>}
+        {!loading && !error && visibleChecklists.length === 0 && (
           <div className="text-sm text-zinc-500">Чек-листы пока не добавлены.</div>
         )}
         {!loading && !error &&
-          checklists.map((checklist) => {
+          visibleChecklists.map((checklist) => {
             const isExpanded = expanded.has(checklist.id);
             const assignedNames = checklist.positions.length
               ? checklist.positions.map((p) => p.name || positionNames.get(p.id) || `Должность #${p.id}`).join(", ")
@@ -459,86 +503,98 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-white p-4 text-sm text-zinc-700">
+                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-white text-sm text-zinc-700">
                     {isTrackable ? (
-                      <div className="space-y-3">
+                      <div>
                         {checklist.items.map((item) => {
                           const reserveKey = `${checklist.id}-${item.id}-reserve`;
                           const unreserveKey = `${checklist.id}-${item.id}-unreserve`;
                           const completeKey = `${checklist.id}-${item.id}-complete`;
                           const undoKey = `${checklist.id}-${item.id}-undo`;
+                          const reserveLoading = itemActionLoading.has(reserveKey);
+                          const unreserveLoading = itemActionLoading.has(unreserveKey);
+                          const completeLoading = itemActionLoading.has(completeKey);
+                          const undoLoading = itemActionLoading.has(undoKey);
+                          const isBusy = reserveLoading || unreserveLoading || completeLoading || undoLoading;
                           const statusLabel = item.done
-                            ? `✅ ✔ ${item.doneBy?.name ?? "Без автора"}`
+                            ? `✔ ${item.doneBy?.name ?? "Без автора"}`
                             : item.reservedBy
-                              ? `⛔ 🔒 ${item.reservedBy?.name ?? "Занято"}`
+                              ? `🔒 ${item.reservedBy?.name ?? "Занято"}`
                               : "—";
-                          const isBusy =
-                            itemActionLoading.has(reserveKey) ||
-                            itemActionLoading.has(unreserveKey) ||
-                            itemActionLoading.has(completeKey) ||
-                            itemActionLoading.has(undoKey);
                           return (
-                            <div key={item.id} className="rounded-2xl border border-zinc-200 bg-white p-3">
-                              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div key={item.id} className="border-b border-zinc-100 px-3 py-3 last:border-b-0">
+                              <div className="flex items-start justify-between gap-3">
                                 <ContentText
                                   className={`min-w-0 ${item.done ? "text-zinc-400 line-through" : "text-zinc-800"}`}
                                 >
                                   {item.text}
                                 </ContentText>
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-2">
                                   {!item.done && !item.reservedBy && (
                                     <Button
                                       variant="outline"
-                                      size="sm"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      aria-label="Взять в работу"
                                       disabled={isBusy}
+                                      isLoading={reserveLoading}
                                       onClick={() =>
                                         handleItemAction(reserveKey, () =>
                                           reserveChecklistItem(restaurantId, checklist.id, item.id)
                                         )
                                       }
                                     >
-                                      Взять в работу
+                                      {!reserveLoading && <Icon icon={Lock} />}
                                     </Button>
                                   )}
                                   {!item.done && item.reservedBy && (
                                     <Button
                                       variant="ghost"
-                                      size="sm"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      aria-label="Снять бронь"
                                       disabled={isBusy}
+                                      isLoading={unreserveLoading}
                                       onClick={() =>
                                         handleItemAction(unreserveKey, () =>
                                           unreserveChecklistItem(restaurantId, checklist.id, item.id)
                                         )
                                       }
                                     >
-                                      Снять бронь
+                                      {!unreserveLoading && <Icon icon={Unlock} />}
                                     </Button>
                                   )}
                                   {!item.done && (
                                     <Button
-                                      size="sm"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      aria-label="Отметить как готово"
                                       disabled={isBusy}
+                                      isLoading={completeLoading}
                                       onClick={() =>
                                         handleItemAction(completeKey, () =>
                                           completeChecklistItem(restaurantId, checklist.id, item.id)
                                         )
                                       }
                                     >
-                                      Готово
+                                      {!completeLoading && <Icon icon={Check} />}
                                     </Button>
                                   )}
                                   {item.done && canManage && (
                                     <Button
                                       variant="outline"
-                                      size="sm"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      aria-label="Снять выполнение"
                                       disabled={isBusy}
+                                      isLoading={undoLoading}
                                       onClick={() =>
                                         handleItemAction(undoKey, () =>
                                           undoChecklistItem(restaurantId, checklist.id, item.id)
                                         )
                                       }
                                     >
-                                      Снять выполнение
+                                      {!undoLoading && <Icon icon={X} />}
                                     </Button>
                                   )}
                                 </div>
@@ -547,7 +603,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                             </div>
                           );
                         })}
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2 px-3 py-3">
                           {canManage && (
                             <Button
                               variant="outline"
@@ -561,7 +617,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                         </div>
                       </div>
                     ) : (
-                      <ContentText>{checklist.content ?? ""}</ContentText>
+                      <ContentText className="p-4">{checklist.content ?? ""}</ContentText>
                     )}
                   </div>
                 )}

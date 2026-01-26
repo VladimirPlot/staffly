@@ -13,7 +13,6 @@ import ru.staffly.checklist.model.ChecklistPeriodicity;
 import ru.staffly.checklist.repository.ChecklistRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
-import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.dictionary.model.Position;
@@ -25,10 +24,13 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 
+import java.text.Collator;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -68,10 +70,22 @@ public class ChecklistServiceImpl implements ChecklistService {
             }
         }
 
-        Long finalEffectiveFilter = effectiveFilter;
         List<Checklist> entities = checklists.findListDetailedByRestaurantId(restaurantId);
-        List<Checklist> updated = new java.util.ArrayList<>();
-        for (Checklist checklist : entities) {
+        List<Checklist> visible = entities.stream()
+                .filter(cl -> {
+                    Set<Long> positionIds = cl.getPositions().stream().map(Position::getId).collect(Collectors.toSet());
+                    if (!canManage) {
+                        return positionIds.contains(effectiveFilter);
+                    }
+                    if (effectiveFilter != null) {
+                        return positionIds.contains(effectiveFilter);
+                    }
+                    return true;
+                })
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        List<Checklist> updated = new ArrayList<>();
+        for (Checklist checklist : visible) {
             if (applyLazyResetIfNeeded(checklist)) {
                 updated.add(checklist);
             }
@@ -80,19 +94,14 @@ public class ChecklistServiceImpl implements ChecklistService {
             checklists.saveAll(updated);
         }
 
-        return entities.stream()
-                .filter(cl -> {
-                    Set<Long> positionIds = cl.getPositions().stream().map(Position::getId).collect(Collectors.toSet());
-                    if (!canManage) {
-                        return positionIds.contains(finalEffectiveFilter);
-                    }
-                    if (finalEffectiveFilter != null) {
-                        return positionIds.contains(finalEffectiveFilter);
-                    }
-                    return true;
-                })
-                .map(mapper::toDto)
-                .toList();
+        Collator collator = Collator.getInstance(new Locale("ru", "RU"));
+        collator.setStrength(Collator.PRIMARY);
+        visible.sort(
+                Comparator.comparingInt(this::checklistGroupKey)
+                        .thenComparing(Checklist::getName, Comparator.nullsLast(collator))
+        );
+
+        return visible.stream().map(mapper::toDto).toList();
     }
 
     @Override
@@ -217,7 +226,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             throw new BadRequestException("Нельзя бронировать выполненный пункт");
         }
         if (item.getReservedBy() != null && !item.getReservedBy().getId().equals(context.member().getId())) {
-            throw new ConflictException("Пункт уже занят");
+            throw new ConflictException("Пункт забронирован другим сотрудником");
         }
         item.setReservedBy(context.member());
         item.setReservedAt(restaurantTime.nowInstant());
@@ -233,7 +242,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             return mapper.toDto(context.checklist());
         }
         if (!item.getReservedBy().getId().equals(context.member().getId()) && !context.canManage()) {
-            throw new ConflictException("Пункт уже занят");
+            throw new ConflictException("Пункт забронирован другим сотрудником");
         }
         item.setReservedBy(null);
         item.setReservedAt(null);
@@ -246,7 +255,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
         ChecklistItem item = findChecklistItem(context.checklist(), itemId);
         if (item.getReservedBy() != null && !item.getReservedBy().getId().equals(context.member().getId())) {
-            throw new ConflictException("Пункт уже занят");
+            throw new ConflictException("Пункт забронирован другим сотрудником");
         }
         if (!item.isDone()) {
             item.setDone(true);
@@ -264,9 +273,6 @@ public class ChecklistServiceImpl implements ChecklistService {
     public ChecklistDto undoItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
-        if (!context.canManage()) {
-            throw new ForbiddenException("Manager or Admin required");
-        }
         ChecklistItem item = findChecklistItem(context.checklist(), itemId);
         item.setDone(false);
         item.setDoneAt(null);
@@ -506,6 +512,19 @@ public class ChecklistServiceImpl implements ChecklistService {
         }
         checklist.setCompleted(false);
         checklist.setLastResetAt(moment != null ? moment : restaurantTime.nowInstant());
+    }
+
+    private int checklistGroupKey(Checklist checklist) {
+        if (checklist.getKind() == ChecklistKind.TRACKABLE && !checklist.isCompleted()) {
+            return 0;
+        }
+        if (checklist.getKind() == ChecklistKind.INFO) {
+            return 1;
+        }
+        if (checklist.getKind() == ChecklistKind.TRACKABLE && checklist.isCompleted()) {
+            return 2;
+        }
+        return 3;
     }
 
     private Instant computeNextReset(Instant base, Checklist checklist) {
