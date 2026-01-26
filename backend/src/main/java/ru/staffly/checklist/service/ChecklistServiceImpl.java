@@ -12,6 +12,8 @@ import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.model.ChecklistPeriodicity;
 import ru.staffly.checklist.repository.ChecklistRepository;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.dictionary.model.Position;
@@ -67,7 +69,18 @@ public class ChecklistServiceImpl implements ChecklistService {
         }
 
         Long finalEffectiveFilter = effectiveFilter;
-        return checklists.findByRestaurantIdOrderByKindDescNameAsc(restaurantId).stream()
+        List<Checklist> entities = checklists.findListDetailedByRestaurantId(restaurantId);
+        List<Checklist> updated = new java.util.ArrayList<>();
+        for (Checklist checklist : entities) {
+            if (applyLazyResetIfNeeded(checklist)) {
+                updated.add(checklist);
+            }
+        }
+        if (!updated.isEmpty()) {
+            checklists.saveAll(updated);
+        }
+
+        return entities.stream()
                 .filter(cl -> {
                     Set<Long> positionIds = cl.getPositions().stream().map(Position::getId).collect(Collectors.toSet());
                     if (!canManage) {
@@ -78,7 +91,6 @@ public class ChecklistServiceImpl implements ChecklistService {
                     }
                     return true;
                 })
-                .peek(this::applyLazyResetIfNeeded)
                 .map(mapper::toDto)
                 .toList();
     }
@@ -198,48 +210,71 @@ public class ChecklistServiceImpl implements ChecklistService {
 
     @Override
     @Transactional
-    public ChecklistDto updateProgress(Long restaurantId, Long currentUserId, Long checklistId, List<Long> itemIds) {
-        security.assertMember(currentUserId, restaurantId);
-        Checklist checklist = checklists.findDetailedById(checklistId)
-                .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
-        if (!Objects.equals(checklist.getRestaurant().getId(), restaurantId)) {
-            throw new NotFoundException("Checklist not found in this restaurant");
+    public ChecklistDto reserveItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId) {
+        ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
+        ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        if (item.isDone()) {
+            throw new BadRequestException("Нельзя бронировать выполненный пункт");
         }
-        if (checklist.getKind() != ChecklistKind.TRACKABLE) {
-            throw new BadRequestException("Можно отмечать только проверяемые чек-листы");
+        if (item.getReservedBy() != null && !item.getReservedBy().getId().equals(context.member().getId())) {
+            throw new ConflictException("Пункт уже занят");
         }
+        item.setReservedBy(context.member());
+        item.setReservedAt(restaurantTime.nowInstant());
+        return mapper.toDto(checklists.save(context.checklist()));
+    }
 
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Member not found"));
-        boolean canManage = isManagerOrAdmin(member);
-        Long myPositionId = member.getPosition() != null ? member.getPosition().getId() : null;
-        Set<Long> positionIds = checklist.getPositions().stream().map(Position::getId).collect(Collectors.toSet());
-        if (!canManage) {
-            if (myPositionId == null || !positionIds.contains(myPositionId)) {
-                throw new NotFoundException("Checklist not available");
-            }
+    @Override
+    @Transactional
+    public ChecklistDto unreserveItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId) {
+        ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
+        ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        if (item.getReservedBy() == null) {
+            return mapper.toDto(context.checklist());
         }
-
-        applyLazyResetIfNeeded(checklist);
-
-        Set<Long> targetIds = itemIds == null ? Set.of() : itemIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
-        Set<Long> knownIds = checklist.getItems().stream().map(ChecklistItem::getId).collect(Collectors.toSet());
-        if (!knownIds.containsAll(targetIds)) {
-            throw new BadRequestException("Некоторые пункты не найдены");
+        if (!item.getReservedBy().getId().equals(context.member().getId()) && !context.canManage()) {
+            throw new ConflictException("Пункт уже занят");
         }
+        item.setReservedBy(null);
+        item.setReservedAt(null);
+        return mapper.toDto(checklists.save(context.checklist()));
+    }
 
-        Instant now = restaurantTime.nowInstant();
-        for (ChecklistItem item : checklist.getItems()) {
-            if (!item.isDone() && targetIds.contains(item.getId())) {
-                item.setDone(true);
-                item.setDoneAt(now);
-                item.setDoneBy(member);
-            }
+    @Override
+    @Transactional
+    public ChecklistDto completeItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId) {
+        ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
+        ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        if (item.getReservedBy() != null && !item.getReservedBy().getId().equals(context.member().getId())) {
+            throw new ConflictException("Пункт уже занят");
         }
-        boolean allDone = checklist.getItems().stream().allMatch(ChecklistItem::isDone);
-        checklist.setCompleted(allDone);
-        checklist = checklists.save(checklist);
-        return mapper.toDto(checklist);
+        if (!item.isDone()) {
+            item.setDone(true);
+            item.setDoneAt(restaurantTime.nowInstant());
+            item.setDoneBy(context.member());
+            item.setReservedBy(null);
+            item.setReservedAt(null);
+        }
+        context.checklist().setCompleted(context.checklist().getItems().stream().allMatch(ChecklistItem::isDone));
+        return mapper.toDto(checklists.save(context.checklist()));
+    }
+
+    @Override
+    @Transactional
+    public ChecklistDto undoItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
+        if (!context.canManage()) {
+            throw new ForbiddenException("Manager or Admin required");
+        }
+        ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        item.setDone(false);
+        item.setDoneAt(null);
+        item.setDoneBy(null);
+        item.setReservedBy(null);
+        item.setReservedAt(null);
+        context.checklist().setCompleted(context.checklist().getItems().stream().allMatch(ChecklistItem::isDone));
+        return mapper.toDto(checklists.save(context.checklist()));
     }
 
     @Override
@@ -282,6 +317,44 @@ public class ChecklistServiceImpl implements ChecklistService {
 
     private boolean isManagerOrAdmin(RestaurantMember member) {
         return member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER;
+    }
+
+    private ChecklistContext loadChecklistContext(Long restaurantId, Long currentUserId, Long checklistId) {
+        security.assertMember(currentUserId, restaurantId);
+        Checklist checklist = checklists.findDetailedById(checklistId)
+                .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
+        if (!Objects.equals(checklist.getRestaurant().getId(), restaurantId)) {
+            throw new NotFoundException("Checklist not found in this restaurant");
+        }
+        if (checklist.getKind() != ChecklistKind.TRACKABLE) {
+            throw new BadRequestException("Можно работать только с проверяемыми чек-листами");
+        }
+        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Member not found"));
+        boolean canManage = isManagerOrAdmin(member);
+        assertChecklistAccess(checklist, member, canManage);
+        if (applyLazyResetIfNeeded(checklist)) {
+            checklists.save(checklist);
+        }
+        return new ChecklistContext(checklist, member, canManage);
+    }
+
+    private void assertChecklistAccess(Checklist checklist, RestaurantMember member, boolean canManage) {
+        if (canManage) {
+            return;
+        }
+        Long myPositionId = member.getPosition() != null ? member.getPosition().getId() : null;
+        Set<Long> positionIds = checklist.getPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        if (myPositionId == null || !positionIds.contains(myPositionId)) {
+            throw new NotFoundException("Checklist not available");
+        }
+    }
+
+    private ChecklistItem findChecklistItem(Checklist checklist, Long itemId) {
+        return checklist.getItems().stream()
+                .filter(item -> Objects.equals(item.getId(), itemId))
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException("Checklist item not found: " + itemId));
     }
 
     private List<Position> resolvePositions(Long restaurantId, List<Long> ids) {
@@ -400,13 +473,13 @@ public class ChecklistServiceImpl implements ChecklistService {
         entity.setCompleted(false);
     }
 
-    private void applyLazyResetIfNeeded(Checklist checklist) {
+    private boolean applyLazyResetIfNeeded(Checklist checklist) {
         if (checklist.getKind() != ChecklistKind.TRACKABLE) {
-            return;
+            return false;
         }
         ChecklistPeriodicity periodicity = checklist.getPeriodicity();
         if (periodicity == null || periodicity == ChecklistPeriodicity.MANUAL) {
-            return;
+            return false;
         }
         Instant last = checklist.getLastResetAt() != null ? checklist.getLastResetAt() : checklist.getCreatedAt();
         if (last == null) {
@@ -420,9 +493,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             updated = true;
             next = computeNextReset(checklist.getLastResetAt(), checklist);
         }
-        if (updated) {
-            checklists.save(checklist);
-        }
+        return updated;
     }
 
     private void resetChecklist(Checklist checklist, Instant moment) {
@@ -430,6 +501,8 @@ public class ChecklistServiceImpl implements ChecklistService {
             item.setDone(false);
             item.setDoneBy(null);
             item.setDoneAt(null);
+            item.setReservedBy(null);
+            item.setReservedAt(null);
         }
         checklist.setCompleted(false);
         checklist.setLastResetAt(moment != null ? moment : restaurantTime.nowInstant());
@@ -441,5 +514,8 @@ public class ChecklistServiceImpl implements ChecklistService {
         }
         ZoneId zone = restaurantTime.zoneFor(checklist.getRestaurant());
         return ChecklistResetCalculator.computeNextReset(base, checklist, zone);
+    }
+
+    private record ChecklistContext(Checklist checklist, RestaurantMember member, boolean canManage) {
     }
 }

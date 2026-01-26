@@ -12,6 +12,7 @@ import ru.staffly.security.UserPrincipal;
 
 import java.util.List;
 
+
 @RestController
 @RequestMapping("/api/restaurants/{restaurantId}/checklists")
 @RequiredArgsConstructor
@@ -53,12 +54,39 @@ public class ChecklistController {
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @PostMapping("/{checklistId}/progress")
-    public ChecklistDto updateProgress(@PathVariable Long restaurantId,
-                                       @PathVariable Long checklistId,
-                                       @AuthenticationPrincipal UserPrincipal principal,
-                                       @RequestBody List<Long> itemIds) {
-        return service.updateProgress(restaurantId, principal.userId(), checklistId, itemIds);
+    @PostMapping("/{checklistId}/items/{itemId}/reserve")
+    public ChecklistDto reserveItem(@PathVariable Long restaurantId,
+                                    @PathVariable Long checklistId,
+                                    @PathVariable Long itemId,
+                                    @AuthenticationPrincipal UserPrincipal principal) {
+        return service.reserveItem(restaurantId, principal.userId(), checklistId, itemId);
+    }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @PostMapping("/{checklistId}/items/{itemId}/unreserve")
+    public ChecklistDto unreserveItem(@PathVariable Long restaurantId,
+                                      @PathVariable Long checklistId,
+                                      @PathVariable Long itemId,
+                                      @AuthenticationPrincipal UserPrincipal principal) {
+        return service.unreserveItem(restaurantId, principal.userId(), checklistId, itemId);
+    }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @PostMapping("/{checklistId}/items/{itemId}/complete")
+    public ChecklistDto completeItem(@PathVariable Long restaurantId,
+                                     @PathVariable Long checklistId,
+                                     @PathVariable Long itemId,
+                                     @AuthenticationPrincipal UserPrincipal principal) {
+        return service.completeItem(restaurantId, principal.userId(), checklistId, itemId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/{checklistId}/items/{itemId}/undo")
+    public ChecklistDto undoItem(@PathVariable Long restaurantId,
+                                 @PathVariable Long checklistId,
+                                 @PathVariable Long itemId,
+                                 @AuthenticationPrincipal UserPrincipal principal) {
+        return service.undoItem(restaurantId, principal.userId(), checklistId, itemId);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

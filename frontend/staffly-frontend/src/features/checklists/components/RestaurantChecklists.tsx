@@ -11,9 +11,12 @@ import {
   createChecklist,
   deleteChecklist,
   listChecklists,
+  reserveChecklistItem,
+  unreserveChecklistItem,
+  completeChecklistItem,
+  undoChecklistItem,
   resetChecklist,
   updateChecklist,
-  updateChecklistProgress,
   type ChecklistDto,
   type ChecklistRequest,
   type ChecklistKind,
@@ -45,8 +48,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
   const [expanded, setExpanded] = React.useState<Set<number>>(new Set());
   const [deleteTarget, setDeleteTarget] = React.useState<ChecklistDto | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-  const [progressDrafts, setProgressDrafts] = React.useState<Map<number, Set<number>>>(new Map());
-  const [progressSaving, setProgressSaving] = React.useState<number | null>(null);
+  const [itemActionLoading, setItemActionLoading] = React.useState<Set<string>>(new Set());
   const [resetting, setResetting] = React.useState<number | null>(null);
   const [downloading, setDownloading] = React.useState<number | null>(null);
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
@@ -72,16 +74,6 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     try {
       const data = await listChecklists(restaurantId, canManage && positionFilter ? { positionId: positionFilter } : undefined);
       setChecklists(data);
-      const drafts = new Map<number, Set<number>>();
-      data.forEach((cl) => {
-        if (cl.kind === "TRACKABLE") {
-          drafts.set(
-            cl.id,
-            new Set(cl.items.filter((item) => item.done).map((item) => item.id))
-          );
-        }
-      });
-      setProgressDrafts(drafts);
     } catch (e) {
       console.error("Failed to load checklists", e);
       setError("Не удалось загрузить чек-листы");
@@ -212,35 +204,40 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     return map;
   }, [positions]);
 
-  const handleToggleItem = React.useCallback(
-    (checklistId: number, itemId: number, done: boolean) => {
-      if (done) return;
-      setProgressDrafts((prev) => {
-        const next = new Map(prev);
-        const current = new Set(next.get(checklistId) ?? []);
-        current.add(itemId);
-        next.set(checklistId, current);
-        return next;
-      });
-    },
-    []
-  );
+  const updateChecklistInState = React.useCallback((updated: ChecklistDto) => {
+    setChecklists((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+  }, []);
 
-  const handleSaveProgress = React.useCallback(
-    async (checklist: ChecklistDto) => {
-      if (progressSaving) return;
-      const selected = progressDrafts.get(checklist.id) ?? new Set<number>();
-      setProgressSaving(checklist.id);
+  const toggleItemAction = React.useCallback((key: string, loading: boolean) => {
+    setItemActionLoading((prev) => {
+      const next = new Set(prev);
+      if (loading) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleItemAction = React.useCallback(
+    async (key: string, action: () => Promise<ChecklistDto>) => {
+      if (itemActionLoading.has(key)) return;
+      toggleItemAction(key, true);
       try {
-        await updateChecklistProgress(restaurantId, checklist.id, Array.from(selected));
-        await loadChecklists();
-      } catch (e) {
-        console.error("Failed to update progress", e);
+        const updated = await action();
+        updateChecklistInState(updated);
+      } catch (e: any) {
+        if (e?.response?.status === 409) {
+          alert("Пункт уже занят");
+        } else {
+          console.error("Failed to update checklist item", e);
+        }
       } finally {
-        setProgressSaving(null);
+        toggleItemAction(key, false);
       }
     },
-    [progressDrafts, restaurantId, progressSaving, loadChecklists]
+    [itemActionLoading, toggleItemAction, updateChecklistInState]
   );
 
   const handleReset = React.useCallback(
@@ -318,12 +315,12 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     <Card className="mt-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         {canManage && (
-              <div className="flex flex-wrap gap-2">
-                {/* ОДНА кнопка */}
-                <Button onClick={openCreateDialog}>Создать чек-лист</Button>
-              </div>
-            )}
+          <div className="flex flex-wrap gap-2">
+            {/* ОДНА кнопка */}
+            <Button onClick={openCreateDialog}>Создать чек-лист</Button>
           </div>
+        )}
+      </div>
 
       {canManage && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -368,9 +365,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
             const assignedNames = checklist.positions.length
               ? checklist.positions.map((p) => p.name || positionNames.get(p.id) || `Должность #${p.id}`).join(", ")
               : "—";
-            const draft = progressDrafts.get(checklist.id) ?? new Set<number>();
             const isTrackable = checklist.kind === "TRACKABLE";
-            const isSaving = progressSaving === checklist.id;
             const isResetting = resetting === checklist.id;
             const isDownloading = downloading === checklist.id;
             return (
@@ -468,32 +463,91 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                     {isTrackable ? (
                       <div className="space-y-3">
                         {checklist.items.map((item) => {
-                          const checked = item.done || draft.has(item.id);
+                          const reserveKey = `${checklist.id}-${item.id}-reserve`;
+                          const unreserveKey = `${checklist.id}-${item.id}-unreserve`;
+                          const completeKey = `${checklist.id}-${item.id}-complete`;
+                          const undoKey = `${checklist.id}-${item.id}-undo`;
+                          const statusLabel = item.done
+                            ? `✅ ✔ ${item.doneBy?.name ?? "Без автора"}`
+                            : item.reservedBy
+                              ? `⛔ 🔒 ${item.reservedBy?.name ?? "Занято"}`
+                              : "—";
+                          const isBusy =
+                            itemActionLoading.has(reserveKey) ||
+                            itemActionLoading.has(unreserveKey) ||
+                            itemActionLoading.has(completeKey) ||
+                            itemActionLoading.has(undoKey);
                           return (
-                            <label key={item.id} className="flex items-start gap-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={item.done}
-                                onChange={() => handleToggleItem(checklist.id, item.id, item.done)}
-                                className="mt-0.5 h-4 w-4 rounded border-zinc-400 text-amber-500 focus:ring-amber-500"
-                              />
-                              <ContentText
-                                className={`min-w-0 ${item.done ? "text-zinc-400 line-through" : "text-zinc-800"}`}
-                              >
-                                {item.text}
-                              </ContentText>
-                            </label>
+                            <div key={item.id} className="rounded-2xl border border-zinc-200 bg-white p-3">
+                              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <ContentText
+                                  className={`min-w-0 ${item.done ? "text-zinc-400 line-through" : "text-zinc-800"}`}
+                                >
+                                  {item.text}
+                                </ContentText>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {!item.done && !item.reservedBy && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={isBusy}
+                                      onClick={() =>
+                                        handleItemAction(reserveKey, () =>
+                                          reserveChecklistItem(restaurantId, checklist.id, item.id)
+                                        )
+                                      }
+                                    >
+                                      Взять в работу
+                                    </Button>
+                                  )}
+                                  {!item.done && item.reservedBy && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      disabled={isBusy}
+                                      onClick={() =>
+                                        handleItemAction(unreserveKey, () =>
+                                          unreserveChecklistItem(restaurantId, checklist.id, item.id)
+                                        )
+                                      }
+                                    >
+                                      Снять бронь
+                                    </Button>
+                                  )}
+                                  {!item.done && (
+                                    <Button
+                                      size="sm"
+                                      disabled={isBusy}
+                                      onClick={() =>
+                                        handleItemAction(completeKey, () =>
+                                          completeChecklistItem(restaurantId, checklist.id, item.id)
+                                        )
+                                      }
+                                    >
+                                      Готово
+                                    </Button>
+                                  )}
+                                  {item.done && canManage && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={isBusy}
+                                      onClick={() =>
+                                        handleItemAction(undoKey, () =>
+                                          undoChecklistItem(restaurantId, checklist.id, item.id)
+                                        )
+                                      }
+                                    >
+                                      Снять выполнение
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-2 text-xs text-zinc-500">{statusLabel}</div>
+                            </div>
                           );
                         })}
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            onClick={() => handleSaveProgress(checklist)}
-                            disabled={isSaving}
-                            className="text-sm"
-                          >
-                            {isSaving ? "Сохраняем…" : "Сохранить"}
-                          </Button>
                           {canManage && (
                             <Button
                               variant="outline"

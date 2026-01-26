@@ -10,13 +10,34 @@ import java.util.Optional;
 
 public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
 
-    @EntityGraph(attributePaths = {"positions", "restaurant"})
-    @Query("select c from Checklist c where c.restaurant.id = :restaurantId order by c.kind desc, c.name asc")
-    List<Checklist> findByRestaurantIdOrderByKindDescNameAsc(Long restaurantId);
+    @EntityGraph(attributePaths = {
+            "positions",
+            "restaurant",
+            "items",
+            "items.doneBy",
+            "items.doneBy.user",
+            "items.reservedBy",
+            "items.reservedBy.user"
+    })
+    @Query("""
+            select c
+            from Checklist c
+            where c.restaurant.id = :restaurantId
+            order by c.kind desc, c.name asc
+            """)
+    List<Checklist> findListDetailedByRestaurantId(Long restaurantId);
 
     @EntityGraph(attributePaths = {"positions", "restaurant"})
     Optional<Checklist> findWithPositionsById(Long id);
 
-    @EntityGraph(attributePaths = {"positions", "restaurant", "items", "items.doneBy"})
+    @EntityGraph(attributePaths = {
+            "positions",
+            "restaurant",
+            "items",
+            "items.doneBy",
+            "items.doneBy.user",
+            "items.reservedBy",
+            "items.reservedBy.user"
+    })
     Optional<Checklist> findDetailedById(Long id);
 }

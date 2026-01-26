@@ -42,4 +42,11 @@ public class ChecklistItem {
 
     @Column(name = "done_at")
     private Instant doneAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reserved_by_member_id")
+    private RestaurantMember reservedBy;
+
+    @Column(name = "reserved_at")
+    private Instant reservedAt;
 }

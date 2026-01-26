@@ -13,7 +13,13 @@ public interface ChecklistService {
 
     ChecklistDto update(Long restaurantId, Long currentUserId, Long checklistId, ChecklistRequest request);
 
-    ChecklistDto updateProgress(Long restaurantId, Long currentUserId, Long checklistId, List<Long> itemIds);
+    ChecklistDto reserveItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId);
+
+    ChecklistDto unreserveItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId);
+
+    ChecklistDto completeItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId);
+
+    ChecklistDto undoItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId);
 
     ChecklistDto reset(Long restaurantId, Long currentUserId, Long checklistId);
 

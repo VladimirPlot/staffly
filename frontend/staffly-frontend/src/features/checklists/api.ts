@@ -5,10 +5,19 @@ export type ChecklistPositionDto = {
   name: string;
 };
 
+export type ChecklistMemberShortDto = {
+  id: number;
+  name: string;
+};
+
 export type ChecklistItemDto = {
   id: number;
   text: string;
   done: boolean;
+  doneBy?: ChecklistMemberShortDto | null;
+  doneAt?: string | null;
+  reservedBy?: ChecklistMemberShortDto | null;
+  reservedAt?: string | null;
 };
 
 export type ChecklistKind = "INFO" | "TRACKABLE";
@@ -97,12 +106,47 @@ export async function deleteChecklist(restaurantId: number, checklistId: number)
   await api.delete(`/api/restaurants/${restaurantId}/checklists/${checklistId}`);
 }
 
-export async function updateChecklistProgress(
+export async function reserveChecklistItem(
   restaurantId: number,
   checklistId: number,
-  itemIds: number[]
+  itemId: number
 ): Promise<ChecklistDto> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/checklists/${checklistId}/progress`, itemIds);
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/reserve`
+  );
+  return data as ChecklistDto;
+}
+
+export async function unreserveChecklistItem(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number
+): Promise<ChecklistDto> {
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/unreserve`
+  );
+  return data as ChecklistDto;
+}
+
+export async function completeChecklistItem(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number
+): Promise<ChecklistDto> {
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/complete`
+  );
+  return data as ChecklistDto;
+}
+
+export async function undoChecklistItem(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number
+): Promise<ChecklistDto> {
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/undo`
+  );
   return data as ChecklistDto;
 }
 

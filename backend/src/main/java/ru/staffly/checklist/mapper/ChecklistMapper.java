@@ -3,12 +3,14 @@ package ru.staffly.checklist.mapper;
 import org.springframework.stereotype.Component;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistItemDto;
+import ru.staffly.checklist.dto.ChecklistMemberShortDto;
 import ru.staffly.checklist.dto.ChecklistPositionDto;
 import ru.staffly.checklist.model.Checklist;
 import ru.staffly.checklist.model.ChecklistItem;
 import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.model.ChecklistPeriodicity;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.member.model.RestaurantMember;
 
 import java.time.DayOfWeek;
 import java.time.format.DateTimeFormatter;
@@ -30,7 +32,15 @@ public class ChecklistMapper {
                 ? List.of()
                 : entity.getItems().stream()
                 .sorted(Comparator.comparing(ChecklistItem::getItemOrder))
-                .map(item -> new ChecklistItemDto(item.getId(), item.getText(), item.isDone()))
+                .map(item -> new ChecklistItemDto(
+                        item.getId(),
+                        item.getText(),
+                        item.isDone(),
+                        toMemberShort(item.getDoneBy()),
+                        item.getDoneAt() != null ? item.getDoneAt().toString() : null,
+                        toMemberShort(item.getReservedBy()),
+                        item.getReservedAt() != null ? item.getReservedAt().toString() : null
+                ))
                 .toList();
         return new ChecklistDto(
                 entity.getId(),
@@ -52,6 +62,14 @@ public class ChecklistMapper {
     public void applyPositions(Checklist entity, Set<Position> positions) {
         entity.getPositions().clear();
         entity.getPositions().addAll(positions);
+    }
+
+    private ChecklistMemberShortDto toMemberShort(RestaurantMember member) {
+        if (member == null) {
+            return null;
+        }
+        String name = member.getUser() != null ? member.getUser().getFullName() : null;
+        return new ChecklistMemberShortDto(member.getId(), name);
     }
 
     private String buildPeriodLabel(Checklist entity) {
