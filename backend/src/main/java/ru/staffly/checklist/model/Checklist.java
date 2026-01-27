@@ -8,9 +8,7 @@ import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
 import java.time.LocalTime;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -74,8 +72,7 @@ public class Checklist {
 
     @Builder.Default
     @OneToMany(mappedBy = "checklist", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("itemOrder ASC")
-    private List<ChecklistItem> items = new ArrayList<>();
+    private Set<ChecklistItem> items = new HashSet<>();
 
     @PrePersist
     void prePersist() {

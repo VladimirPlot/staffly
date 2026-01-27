@@ -20,7 +20,7 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             "items.reservedBy.user"
     })
     @Query("""
-            select c
+            select distinct c
             from Checklist c
             where c.restaurant.id = :restaurantId
             order by c.kind desc, c.name asc
