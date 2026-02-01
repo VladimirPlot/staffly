@@ -35,21 +35,23 @@ export default function PwaUpdatePrompt() {
   // Таймер для “показать позже”
   const timerRef = React.useRef<number | null>(null);
 
-  const clearTimer = () => {
+  const clearTimer = React.useCallback(() => {
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-  };
+  }, []);
 
-  const scheduleShowAt = (ts: number) => {
-    clearTimer();
-    const delay = Math.max(0, ts - nowMs());
-    timerRef.current = window.setTimeout(() => {
-      // если обновление всё ещё актуально (pending), покажем
-      if (isPending()) setOpen(true);
-    }, delay);
-  };
+  const scheduleShowAt = React.useCallback(
+    (ts: number) => {
+      clearTimer();
+      const delay = Math.max(0, ts - nowMs());
+      timerRef.current = window.setTimeout(() => {
+        if (isPending()) setOpen(true);
+      }, delay);
+    },
+    [clearTimer],
+  );
 
   React.useEffect(() => {
     const tryOpenOrSnooze = () => {
@@ -92,7 +94,7 @@ export default function PwaUpdatePrompt() {
       document.removeEventListener("visibilitychange", onVisible);
       clearTimer();
     };
-  }, []);
+  }, [clearTimer, scheduleShowAt]);
 
   if (!open) return null;
 
