@@ -363,12 +363,12 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Удалить напоминание?"
-        message="Действие нельзя отменить."
+        description="Действие нельзя отменить."
         confirmText="Удалить"
         cancelText="Отмена"
-        onConfirm={confirmDelete}
+        onConfirm={() => void confirmDelete()}
         onCancel={closeDeleteDialog}
-        loading={deleting}
+        confirming={deleting}
       />
     </div>
   );
