@@ -27,6 +27,7 @@ import SchedulePage from "./features/schedule/pages/SchedulePage";
 import MasterSchedulesPage from "./features/masterSchedule/pages/MasterSchedulesPage";
 import MasterScheduleEditorPage from "./features/masterSchedule/pages/MasterScheduleEditorPage";
 import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
+import RemindersPage from "./features/reminders/pages/RemindersPage";
 import AnnouncementsPage from "./features/announcements/pages/AnnouncementsPage";
 import InboxPage from "./features/inbox/pages/InboxPage";
 import ContactsPage from "./features/contacts/pages/ContactsPage";
@@ -409,6 +410,16 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <ChecklistsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reminders"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <RemindersPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

@@ -401,6 +401,19 @@ export default function RestaurantHome() {
             </div>
           </Card>
         </Link>
+
+        <Link to="/reminders" className="block">
+          <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-medium mb-1">Напоминания</div>
+                <div className="text-sm text-zinc-600">
+                  Регулярные напоминания для сотрудников и команд
+                </div>
+              </div>
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );
