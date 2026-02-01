@@ -59,7 +59,11 @@ public class ReminderDispatchJob {
                     .collect(Collectors.toMap(RestaurantMember::getId, Function.identity(), (first, second) -> first));
 
             for (Reminder reminder : dueReminders) {
-                processReminder(restaurant, reminder, memberList, memberById, now);
+                try {
+                    processReminder(restaurant, reminder, memberList, memberById, now);
+                } catch (Exception ex) {
+                    log.error("Failed to process reminder {} for restaurant {}", reminder.getId(), restaurant.getId(), ex);
+                }
             }
         }
         log.info("Reminder dispatch job completed");
@@ -101,15 +105,18 @@ public class ReminderDispatchJob {
             }
         }
 
-        reminder.setLastFiredAt(now);
+        Instant nextFireAt = null;
+        boolean active = reminder.isActive();
         if (reminder.getPeriodicity() == ReminderPeriodicity.ONCE) {
-            reminder.setActive(false);
-            reminder.setNextFireAt(null);
+            active = false;
         } else {
             ZoneId zone = restaurantTime.zoneFor(restaurant);
-            Instant next = ReminderScheduleCalculator.computeNextFire(now, reminder, zone);
-            reminder.setNextFireAt(next);
+            nextFireAt = ReminderScheduleCalculator.computeNextFire(now, reminder, zone);
         }
+
+        reminder.setLastFiredAt(now);
+        reminder.setActive(active);
+        reminder.setNextFireAt(nextFireAt);
         reminders.save(reminder);
     }
 

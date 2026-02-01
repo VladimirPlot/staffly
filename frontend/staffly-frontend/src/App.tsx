@@ -16,6 +16,7 @@ import NotesPage from "./features/income/pages/NotesPage";
 
 import Avatar from "./shared/ui/Avatar";
 import Button from "./shared/ui/Button";
+import PwaUpdatePrompt from "./shared/pwa/PwaUpdatePrompt";
 
 import { fetchRestaurantName } from "./features/restaurants/api";
 import PositionsPage from "./features/dictionaries/pages/Positions";
@@ -256,6 +257,7 @@ function AppShell() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 p-4">
       <Outlet />
+      <PwaUpdatePrompt />
     </main>
   );
 }

@@ -29,6 +29,7 @@ type ReminderDialogProps = {
   canManage: boolean;
   positions: PositionDto[];
   members: MemberDto[];
+  currentMemberId?: number | null;
   initialData?: ReminderDialogInitial;
   submitting: boolean;
   error?: string | null;
@@ -58,12 +59,14 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
   canManage,
   positions,
   members,
+  currentMemberId,
   initialData,
   submitting,
   error,
   onClose,
   onSubmit,
 }) => {
+  const [targetSelection, setTargetSelection] = React.useState<"ALL" | "POSITION" | "ME">("ALL");
   const [title, setTitle] = React.useState(initialData?.title ?? "");
   const [description, setDescription] = React.useState(initialData?.description ?? "");
   const [periodicity, setPeriodicity] = React.useState<ReminderPeriodicity>(
@@ -98,6 +101,14 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
 
   React.useEffect(() => {
     if (!open) return;
+    const initialTargetType = initialData?.targetType;
+    const isSelfTarget =
+      initialTargetType === "MEMBER" &&
+      Boolean(initialData?.targetMemberId) &&
+      initialData?.targetMemberId === currentMemberId;
+    setTargetSelection(
+      initialTargetType === "ALL" ? "ALL" : isSelfTarget ? "ME" : "POSITION"
+    );
     setTitle(initialData?.title ?? "");
     setDescription(initialData?.description ?? "");
     setPeriodicity(initialData?.periodicity ?? "DAILY");
@@ -108,15 +119,25 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     setMonthlyLastDay(initialData?.monthlyLastDay ?? false);
     setOnceDate(initialData?.onceDate ?? "");
     setVisibleToAdmin(initialData?.visibleToAdmin ?? true);
-    setPositionId(initialData?.targetPositionId ?? null);
-    setMemberId(initialData?.targetMemberId ?? null);
+    const resolvedMemberId = initialData?.targetMemberId ?? null;
+    const resolvedPositionId =
+      initialData?.targetPositionId ??
+      members.find((member) => member.id === resolvedMemberId)?.positionId ??
+      null;
+    setPositionId(resolvedPositionId);
+    setMemberId(isSelfTarget ? null : resolvedMemberId);
     setLocalError(null);
-  }, [open, initialData]);
+  }, [open, initialData, currentMemberId, members]);
 
   React.useEffect(() => {
-    if (periodicity !== "MONTHLY") return;
-    if (Number(dayOfMonth) !== 31 && monthlyLastDay) {
-      setMonthlyLastDay(false);
+    if (periodicity !== "MONTHLY") {
+      if (monthlyLastDay) {
+        setMonthlyLastDay(false);
+      }
+      return;
+    }
+    if (monthlyLastDay && Number(dayOfMonth) !== 31) {
+      setDayOfMonth(31);
     }
   }, [periodicity, dayOfMonth, monthlyLastDay]);
 
@@ -138,14 +159,23 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     return members.filter((member) => member.positionId === positionId);
   }, [members, positionId]);
 
-  const handlePositionChange = (value: string) => {
+  const handleTargetChange = (value: string) => {
     if (!value) {
+      setTargetSelection("ALL");
+      setPositionId(null);
+      setMemberId(null);
+      return;
+    }
+    if (value === "me") {
+      setTargetSelection("ME");
       setPositionId(null);
       setMemberId(null);
       return;
     }
     const id = Number(value);
-    setPositionId(Number.isNaN(id) ? null : id);
+    const resolvedId = Number.isNaN(id) ? null : id;
+    setTargetSelection("POSITION");
+    setPositionId(resolvedId);
     setMemberId(null);
   };
 
@@ -188,8 +218,15 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     let targetMemberId: number | null = null;
 
     if (canManage) {
-      if (!positionId) {
+      if (targetSelection === "ALL") {
         targetType = "ALL";
+      } else if (targetSelection === "ME") {
+        if (!currentMemberId) {
+          setLocalError("Не удалось определить текущего сотрудника");
+          return;
+        }
+        targetType = "MEMBER";
+        targetMemberId = currentMemberId;
       } else if (memberId) {
         targetType = "MEMBER";
         targetMemberId = memberId;
@@ -202,7 +239,8 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     onSubmit({
       title: title.trim(),
       description: description.trim() || undefined,
-      visibleToAdmin: canManage ? true : visibleToAdmin,
+      visibleToAdmin:
+        canManage && targetSelection !== "ME" ? true : Boolean(visibleToAdmin),
       targetType,
       targetPositionId,
       targetMemberId,
@@ -221,7 +259,7 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
   };
 
   const effectiveError = error || localError;
-  const showLastDay = periodicity === "MONTHLY" && Number(dayOfMonth) === 31;
+  const showVisibilityToggle = !canManage || targetSelection === "ME";
 
   return (
     <Modal
@@ -258,10 +296,19 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
         {canManage ? (
           <SelectField
             label="Кому"
-            value={positionId ? String(positionId) : ""}
-            onChange={(event) => handlePositionChange(event.target.value)}
+            value={
+              targetSelection === "ALL"
+                ? ""
+                : targetSelection === "ME"
+                  ? "me"
+                  : positionId
+                    ? String(positionId)
+                    : ""
+            }
+            onChange={(event) => handleTargetChange(event.target.value)}
           >
             <option value="">Всем</option>
+            <option value="me">Мне</option>
             {positionOptions.map((position) => (
               <option key={position.id} value={position.id}>
                 {position.name}
@@ -274,7 +321,7 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
           </SelectField>
         )}
 
-        {canManage && positionId && (
+        {canManage && targetSelection === "POSITION" && positionId && (
           <SelectField
             label="Выберите сотрудника"
             value={memberId ? String(memberId) : "all"}
@@ -296,14 +343,14 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
           </SelectField>
         )}
 
-        {!canManage && (
+        {showVisibilityToggle && (
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={visibleToAdmin}
               onChange={(event) => setVisibleToAdmin(event.currentTarget.checked)}
             />
-            Видно администрации
+            Видно всем
           </label>
         )}
 
@@ -346,7 +393,13 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
             <SelectField
               label="День месяца"
               value={dayOfMonth === "" ? "" : String(dayOfMonth)}
-              onChange={(event) => setDayOfMonth(Number(event.target.value))}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setDayOfMonth(value);
+                if (monthlyLastDay && value !== 31) {
+                  setMonthlyLastDay(false);
+                }
+              }}
             >
               <option value="">--</option>
               {Array.from({ length: 31 }, (_, i) => i + 1).map((value) => (
@@ -359,8 +412,13 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
               <input
                 type="checkbox"
                 checked={monthlyLastDay}
-                disabled={!showLastDay}
-                onChange={(event) => setMonthlyLastDay(event.currentTarget.checked)}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked;
+                  setMonthlyLastDay(checked);
+                  if (checked) {
+                    setDayOfMonth(31);
+                  }
+                }}
               />
               Последний день месяца
             </label>

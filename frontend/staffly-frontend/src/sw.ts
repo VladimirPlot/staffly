@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
-import { createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
+import { clientsClaim } from "workbox-core";
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
 import { NetworkOnly } from "workbox-strategies";
 
@@ -9,6 +10,17 @@ declare let self: ServiceWorkerGlobalScope & {
 };
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+cleanupOutdatedCaches();
+clientsClaim();
+
+// ВАЖНО для prompt-обновлений: позволяем странице попросить SW активироваться по кнопке “Обновить”
+self.addEventListener("message", (event) => {
+  const data = event.data as { type?: string } | undefined;
+  if (data?.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+  }
+});
 
 registerRoute(
   ({ request }: { request: Request }) => request.mode === "navigate",

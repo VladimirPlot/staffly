@@ -11,7 +11,7 @@ export default defineConfig({
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.js",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       manifest: {
         id: "/", // убирает warning в DevTools
         name: "Staffly",

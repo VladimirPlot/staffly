@@ -246,6 +246,11 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     [positions]
   );
 
+  const currentMemberId = React.useMemo(() => {
+    if (!currentUserId) return null;
+    return members.find((member) => member.userId === currentUserId)?.id ?? null;
+  }, [currentUserId, members]);
+
   const canEditReminder = React.useCallback(
     (reminder: ReminderDto) => {
       if (canManage) return true;
@@ -257,7 +262,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         {canManage && positionFilterOptions.length > 0 && (
           <SelectField
             label="Фильтр по должности"
@@ -276,9 +281,15 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
             ))}
           </SelectField>
         )}
-        <Button onClick={openCreateDialog} className="ml-auto">
-          <Icon icon={Plus} className="mr-2" />
-          Создать
+        <Button
+          onClick={openCreateDialog}
+          className="ml-auto self-end whitespace-nowrap"
+        >
+          <span className="inline-flex items-center gap-2 leading-none">
+            <Icon icon={Plus} className="shrink-0" />
+            <span className="hidden sm:inline">Создать</span>
+            <span className="sm:hidden">Создать</span>
+          </span>
         </Button>
       </div>
 
@@ -353,6 +364,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
         canManage={canManage}
         positions={positions}
         members={members}
+        currentMemberId={currentMemberId}
         initialData={dialogInitial}
         submitting={dialogSubmitting}
         error={dialogError}
