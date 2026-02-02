@@ -4,42 +4,52 @@ import { AuthProvider, useAuth } from "./shared/providers/AuthProvider";
 import ProtectedRoute from "./shared/routes/ProtectedRoute";
 import RequireRestaurant from "./shared/routes/RequireRestaurant";
 import PublicOnlyRoute from "./shared/routes/PublicOnlyRoute";
-
-import LoginRegister from "./features/auth/pages/LoginRegister";
-import Restaurants from "./features/restaurants/pages/Restaurants";
-import CreateRestaurant from "./features/restaurants/pages/CreateRestaurant";
-import Profile from "./features/profile/pages/Profile";
-import InvitePage from "./features/employees/pages/Invite";
-import IncomeListPage from "./features/income/pages/IncomeListPage";
-import IncomePeriodPage from "./features/income/pages/IncomePeriodPage";
-import NotesPage from "./features/income/pages/NotesPage";
+import PageLoader from "./shared/ui/PageLoader";
 
 import Avatar from "./shared/ui/Avatar";
 import Button from "./shared/ui/Button";
 import PwaUpdatePrompt from "./shared/pwa/PwaUpdatePrompt";
 
 import { fetchRestaurantName } from "./features/restaurants/api";
-import PositionsPage from "./features/dictionaries/pages/Positions";
-import TrainingLandingPage from "./features/training/pages/Landing";
-import TrainingModuleCategoriesPage from "./features/training/pages/Categories";
-import TrainingCategoryItemsPage from "./features/training/pages/CategoryItems";
-import RestaurantHome from "./features/home/pages/RestaurantHome";
-import SchedulePage from "./features/schedule/pages/SchedulePage";
-import MasterSchedulesPage from "./features/masterSchedule/pages/MasterSchedulesPage";
-import MasterScheduleEditorPage from "./features/masterSchedule/pages/MasterScheduleEditorPage";
-import ChecklistsPage from "./features/checklists/pages/ChecklistsPage";
-import RemindersPage from "./features/reminders/pages/RemindersPage";
-import AnnouncementsPage from "./features/announcements/pages/AnnouncementsPage";
-import InboxPage from "./features/inbox/pages/InboxPage";
-import ContactsPage from "./features/contacts/pages/ContactsPage";
-import AnonymousLettersPage from "./features/anonymousLetters/pages/AnonymousLettersPage";
-import PushRedirectPage from "./features/push/pages/PushRedirectPage";
-import TasksPage from "./features/tasks/pages/TasksPage";
+import { fetchInboxUnreadCount } from "./features/inbox/api";
 
 import { Bell, Menu } from "lucide-react";
 import Icon from "./shared/ui/Icon";
 import IconButton from "./shared/ui/IconButton";
-import { fetchInboxUnreadCount } from "./features/inbox/api";
+
+/* ===== Lazy pages ===== */
+const LoginRegister = React.lazy(() => import("./features/auth/pages/LoginRegister"));
+const Restaurants = React.lazy(() => import("./features/restaurants/pages/Restaurants"));
+const CreateRestaurant = React.lazy(() => import("./features/restaurants/pages/CreateRestaurant"));
+const Profile = React.lazy(() => import("./features/profile/pages/Profile"));
+const InvitePage = React.lazy(() => import("./features/employees/pages/Invite"));
+
+const IncomeListPage = React.lazy(() => import("./features/income/pages/IncomeListPage"));
+const IncomePeriodPage = React.lazy(() => import("./features/income/pages/IncomePeriodPage"));
+const NotesPage = React.lazy(() => import("./features/income/pages/NotesPage"));
+
+const PositionsPage = React.lazy(() => import("./features/dictionaries/pages/Positions"));
+
+const TrainingLandingPage = React.lazy(() => import("./features/training/pages/Landing"));
+const TrainingModuleCategoriesPage = React.lazy(() => import("./features/training/pages/Categories"));
+const TrainingCategoryItemsPage = React.lazy(() => import("./features/training/pages/CategoryItems"));
+
+const RestaurantHome = React.lazy(() => import("./features/home/pages/RestaurantHome"));
+
+const SchedulePage = React.lazy(() => import("./features/schedule/pages/SchedulePage"));
+const MasterSchedulesPage = React.lazy(() => import("./features/masterSchedule/pages/MasterSchedulesPage"));
+const MasterScheduleEditorPage = React.lazy(
+  () => import("./features/masterSchedule/pages/MasterScheduleEditorPage"),
+);
+
+const ChecklistsPage = React.lazy(() => import("./features/checklists/pages/ChecklistsPage"));
+const RemindersPage = React.lazy(() => import("./features/reminders/pages/RemindersPage"));
+const AnnouncementsPage = React.lazy(() => import("./features/announcements/pages/AnnouncementsPage"));
+const InboxPage = React.lazy(() => import("./features/inbox/pages/InboxPage"));
+const ContactsPage = React.lazy(() => import("./features/contacts/pages/ContactsPage"));
+const AnonymousLettersPage = React.lazy(() => import("./features/anonymousLetters/pages/AnonymousLettersPage"));
+const PushRedirectPage = React.lazy(() => import("./features/push/pages/PushRedirectPage"));
+const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksPage"));
 
 /* ===== TopBar ===== */
 function TopBar() {
@@ -245,7 +255,9 @@ function TopBar() {
 
 /* редирект корня */
 function LandingRedirect() {
-  const { token, user } = useAuth();
+  const { token, user, loading } = useAuth();
+
+  if (loading) return <PageLoader label="Загрузка…" delayMs={200} />;
   if (!token) return <Navigate to="/login" replace />;
   return <Navigate to={user?.restaurantId ? "/app" : "/restaurants"} replace />;
 }
@@ -253,10 +265,11 @@ function LandingRedirect() {
 /* ===== Layouts ===== */
 
 function AppShell() {
-  // общий “фон+паддинги” один раз
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 p-4">
-      <Outlet />
+      <React.Suspense fallback={<PageLoader delayMs={200} />}>
+        <Outlet />
+      </React.Suspense>
       <PwaUpdatePrompt />
     </main>
   );
@@ -284,258 +297,259 @@ function WideLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route element={<AppShell />}>
-          {/* WIDE: графики */}
-          <Route element={<WideLayout />}>
-            <Route
-              path="/schedule"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <SchedulePage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/master-schedules"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <MasterSchedulesPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/master-schedules/:id"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <MasterScheduleEditorPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
+        <Routes>
+          <Route element={<AppShell />}>
+            {/* WIDE: графики */}
+            <Route element={<WideLayout />}>
+              <Route
+                path="/schedule"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <SchedulePage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/master-schedules"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <MasterSchedulesPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/master-schedules/:id"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <MasterScheduleEditorPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+
+            {/* NARROW: всё остальное */}
+            <Route element={<NarrowLayout />}>
+              <Route
+                path="/login"
+                element={
+                  <PublicOnlyRoute>
+                    <LoginRegister />
+                  </PublicOnlyRoute>
+                }
+              />
+
+              <Route
+                path="/app"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <RestaurantHome />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/dictionaries/positions"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <PositionsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/training"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingLandingPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/:module"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingModuleCategoriesPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/:module/categories/:categoryId"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingCategoryItemsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/inbox"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <InboxPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/announcements"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <AnnouncementsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/checklists"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <ChecklistsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/reminders"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <RemindersPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/tasks"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TasksPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/contacts"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <ContactsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/anonymous-letter"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <AnonymousLettersPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/restaurants"
+                element={
+                  <ProtectedRoute>
+                    <Restaurants />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/restaurants/new"
+                element={
+                  <ProtectedRoute>
+                    <CreateRestaurant />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/employees/invite"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <InvitePage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/push"
+                element={
+                  <ProtectedRoute>
+                    <PushRedirectPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/me/income"
+                element={
+                  <ProtectedRoute>
+                    <IncomeListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/me/income/periods/:periodId"
+                element={
+                  <ProtectedRoute>
+                    <IncomePeriodPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/me/notes"
+                element={
+                  <ProtectedRoute>
+                    <NotesPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route path="/" element={<LandingRedirect />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
           </Route>
-
-          {/* NARROW: всё остальное */}
-          <Route element={<NarrowLayout />}>
-            <Route
-              path="/login"
-              element={
-                <PublicOnlyRoute>
-                  <LoginRegister />
-                </PublicOnlyRoute>
-              }
-            />
-
-            <Route
-              path="/app"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <RestaurantHome />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/dictionaries/positions"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <PositionsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/training"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <TrainingLandingPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/training/:module"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <TrainingModuleCategoriesPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/training/:module/categories/:categoryId"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <TrainingCategoryItemsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/inbox"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <InboxPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/announcements"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <AnnouncementsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/checklists"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <ChecklistsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/reminders"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <RemindersPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/tasks"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <TasksPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/contacts"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <ContactsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/anonymous-letter"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <AnonymousLettersPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/restaurants"
-              element={
-                <ProtectedRoute>
-                  <Restaurants />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/restaurants/new"
-              element={
-                <ProtectedRoute>
-                  <CreateRestaurant />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/employees/invite"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <InvitePage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <Profile />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/push"
-              element={
-                <ProtectedRoute>
-                  <PushRedirectPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/me/income"
-              element={
-                <ProtectedRoute>
-                  <IncomeListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/me/income/periods/:periodId"
-              element={
-                <ProtectedRoute>
-                  <IncomePeriodPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/me/notes"
-              element={
-                <ProtectedRoute>
-                  <NotesPage />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route path="/" element={<LandingRedirect />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Route>
-      </Routes>
+        </Routes>
     </AuthProvider>
   );
 }

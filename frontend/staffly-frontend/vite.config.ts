@@ -12,6 +12,7 @@ export default defineConfig({
       srcDir: "src",
       filename: "sw.js",
       registerType: "prompt",
+
       manifest: {
         id: "/", // убирает warning в DevTools
         name: "Staffly",
@@ -32,9 +33,27 @@ export default defineConfig({
           },
         ],
       },
+
       injectManifest: {
         swSrc: "src/sw.ts",
       },
     }),
   ],
+
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // 🔹 базовый каркас SPA
+          react: ["react", "react-dom", "react-router-dom"],
+
+          // 🔹 иконки (lucide реально много весит)
+          icons: ["lucide-react"],
+
+          // 🔹 PWA / register (если будет использован в app-коде)
+          pwa: ["virtual:pwa-register"],
+        },
+      },
+    },
+  },
 });

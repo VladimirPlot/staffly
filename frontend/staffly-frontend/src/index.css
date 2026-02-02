@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @import "react-phone-number-input/style.css";
 
+/* ===== animations ===== */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @layer components {
   .staffly-phone {
     @apply flex items-stretch gap-2;

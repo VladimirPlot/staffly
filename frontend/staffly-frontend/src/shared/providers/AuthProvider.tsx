@@ -1,7 +1,8 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { clearToken, getToken, saveToken } from "../utils/storage";
-import { logout as apiLogout, me as apiMe, refresh as apiRefresh } from "../../features/auth/api";
+import { logout as apiLogout, me as apiMe } from "../../features/auth/api";
+import { refreshSession } from "../api/apiClient";
 import type { MeResponse } from "../../entities/user/types";
 import { toAbsoluteUrl } from "../utils/url";
 import { subscribePush, subscriptionToDto } from "../../features/push/api";
@@ -125,7 +126,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
         // 2) Otherwise try to restore session by refresh cookie
         try {
-          await apiRefresh(); // saves new access token
+          await refreshSession(); // ✅ единая реализация refresh (/api/auth/refresh)
         } catch {
           if (active) {
             clearToken();
@@ -134,7 +135,6 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
           }
           return;
         }
-
         await refreshMe();
       } finally {
         if (active) setLoading(false);

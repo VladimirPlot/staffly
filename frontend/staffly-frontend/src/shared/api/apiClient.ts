@@ -27,18 +27,28 @@ function isAuthUrl(url?: string) {
 
 async function runRefresh(): Promise<string> {
   if (!refreshPromise) {
+    const tokenBefore = getToken(); // 👈 запоминаем, что было ДО refresh
+
     refreshPromise = refreshClient
       .post("/api/auth/refresh")
       .then((response) => {
-        const token = response.data?.token;
-        if (!token) throw new Error("No token in refresh response");
-        saveToken(token);
-        return token as string;
+        const refreshed = response.data?.token as string | undefined;
+        if (!refreshed) throw new Error("No token in refresh response");
+
+        // 👇 если пока мы делали refresh, токен уже изменился (например, логином) — НЕ перезаписываем
+        const tokenAfter = getToken();
+        if (tokenAfter && tokenAfter !== tokenBefore) {
+          return tokenAfter;
+        }
+
+        saveToken(refreshed);
+        return refreshed;
       })
       .finally(() => {
         refreshPromise = null;
       });
   }
+
   return refreshPromise;
 }
 
@@ -83,5 +93,9 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export async function refreshSession(): Promise<string> {
+  return runRefresh();
+}
 
 export default api;

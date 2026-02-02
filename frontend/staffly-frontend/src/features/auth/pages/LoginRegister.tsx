@@ -1,9 +1,10 @@
 import React from "react";
-import { isValidPhoneNumber } from "react-phone-number-input";
+
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import PhoneInputField from "../../../shared/ui/PhoneInputField";
+import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
+
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { login, register } from "../../auth/api";
 
@@ -13,9 +14,13 @@ const PHONE_ERROR = "Введите корректный номер телефо
 
 const getStoredPhone = () => {
   const stored = localStorage.getItem("auth.lastPhone");
-  if (stored && isValidPhoneNumber(stored)) return stored;
-  return undefined;
+  return stored || undefined;
 };
+
+async function isPhoneValid(phone: string): Promise<boolean> {
+  const mod = await import("react-phone-number-input");
+  return mod.isValidPhoneNumber(phone);
+}
 
 export default function LoginRegister() {
   const { loginWithToken } = useAuth();
@@ -43,7 +48,7 @@ export default function LoginRegister() {
   const onLogin = async () => {
     setError(null);
 
-    if (!lPhone || !isValidPhoneNumber(lPhone)) {
+    if (!lPhone || !(await isPhoneValid(lPhone))) {
       setError(PHONE_ERROR);
       return;
     }
@@ -70,7 +75,7 @@ export default function LoginRegister() {
   const onRegister = async () => {
     setError(null);
 
-    if (!rPhone || !isValidPhoneNumber(rPhone)) {
+    if (!rPhone || !(await isPhoneValid(rPhone))) {
       setError(PHONE_ERROR);
       return;
     }
@@ -102,7 +107,6 @@ export default function LoginRegister() {
       rFirstName.trim() &&
       rLastName.trim() &&
       rPhone &&
-      isValidPhoneNumber(rPhone) &&
       rEmail.trim() &&
       rPassword.trim() &&
       rBirthDate.trim()
@@ -132,7 +136,7 @@ export default function LoginRegister() {
 
         {mode === "login" ? (
           <div className="grid gap-3">
-            <PhoneInputField
+            <LazyPhoneInputField
               label="Телефон"
               autoComplete="username"
               defaultCountry="RU"
@@ -173,7 +177,7 @@ export default function LoginRegister() {
               disabled={busy}
             />
 
-            <PhoneInputField
+            <LazyPhoneInputField
               label="Телефон"
               defaultCountry="RU"
               autoComplete="tel"
