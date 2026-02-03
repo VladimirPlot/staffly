@@ -1,10 +1,46 @@
 @import "tailwindcss";
 @import "react-phone-number-input/style.css";
 
+@layer base {
+  :root {
+    --staffly-bg: #f8fafc;
+    --staffly-surface: #ffffff;
+    --staffly-border: #e4e4e7;
+    --staffly-muted: #71717a;
+    --staffly-icon: #52525b;
+  }
+
+  .dark {
+    --staffly-bg: #0b0b0c;
+    --staffly-surface: #18181b;
+    --staffly-border: #27272a;
+    --staffly-muted: #a1a1aa;
+    --staffly-icon: #d4d4d8;
+  }
+}
+
 /* ===== animations ===== */
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
+  }
+}
+
+@layer utilities {
+  .bg-surface {
+    background-color: var(--staffly-surface);
+  }
+
+  .border-subtle {
+    border-color: var(--staffly-border);
+  }
+
+  .text-muted {
+    color: var(--staffly-muted);
+  }
+
+  .text-icon {
+    color: var(--staffly-icon);
   }
 }
 

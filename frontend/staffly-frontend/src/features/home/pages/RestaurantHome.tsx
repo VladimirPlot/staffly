@@ -11,6 +11,20 @@ import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import { fetchInbox, fetchInboxMarkers, type InboxMessageDto } from "../../inbox/api";
 import { listSavedSchedules, type ScheduleSummary } from "../../schedule/api";
 import { fetchUnreadAnonymousLetters } from "../../anonymousLetters/api";
+import DashboardGrid, { type DashboardCardItem } from "../components/DashboardGrid";
+import { useDashboardLayout } from "../hooks/useDashboardLayout";
+import {
+  AlarmClock,
+  CalendarCog,
+  CalendarDays,
+  GraduationCap,
+  LayoutList,
+  ListChecks,
+  MailQuestion,
+  Megaphone,
+  Phone,
+  Users,
+} from "lucide-react";
 
 function formatNotificationDate(dateStr?: string | null): string {
   if (!dateStr) return "—";
@@ -29,6 +43,13 @@ export default function RestaurantHome() {
   const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
   const [hasUnreadAnonymousLetters, setHasUnreadAnonymousLetters] = React.useState(false);
   const [hasUnreadScheduleEvents, setHasUnreadScheduleEvents] = React.useState(false);
+  const {
+    layout,
+    setLayout,
+    isLoading: isLayoutLoading,
+    error: layoutError,
+    persistLayout,
+  } = useDashboardLayout(restaurantId);
 
   // Название ресторана
   React.useEffect(() => {
@@ -145,6 +166,133 @@ export default function RestaurantHome() {
   const shouldShowNotificationsEntry = canManageNotifications;
   const canAccessContacts = access.isManagerLike;
   const canAccessMasterSchedules = access.isManagerLike;
+  const hasScheduleIndicator = hasPendingSavedSchedules || hasUnreadScheduleEvents;
+
+  const dashboardCards = React.useMemo<DashboardCardItem[]>(
+    () => [
+      {
+        id: "employees",
+        title: "Сотрудники",
+        description: "Приглашайте сотрудников и назначайте роли/позиции.",
+        to: "/employees/invite",
+        icon: Users,
+      },
+      ...(shouldShowNotificationsEntry
+        ? [
+            {
+              id: "announcements",
+              title: "Объявления",
+              description: canManageNotifications
+                ? "Создавайте и редактируйте сообщения для сотрудников."
+                : "Посмотрите новые сообщения от руководства.",
+              to: "/announcements",
+              icon: Megaphone,
+            },
+          ]
+        : []),
+      ...(canAccessContacts
+        ? [
+            {
+              id: "contacts",
+              title: "Контакты",
+              description: "Храните телефоны и информацию о важных поставщиках и службах.",
+              to: "/contacts",
+              icon: Phone,
+            },
+          ]
+        : []),
+      {
+        id: "anonymous-letter",
+        title: "Анонимное письмо",
+        description: "Отправьте обращение руководителю ресторана или прочитайте новые письма.",
+        to: "/anonymous-letter",
+        icon: MailQuestion,
+        showIndicator: hasUnreadAnonymousLetters,
+      },
+      ...(canAccessSchedules
+        ? [
+            {
+              id: "schedule",
+              title: "График",
+              description: "Создавайте смены и распределяйте сотрудников по дням.",
+              to: "/schedule",
+              icon: CalendarDays,
+              showIndicator: hasScheduleIndicator,
+            },
+          ]
+        : []),
+      ...(canAccessMasterSchedules
+        ? [
+            {
+              id: "master-schedule",
+              title: "Мастер график",
+              description: "Планируйте ФОТ и рассчитывайте LC% по периодам.",
+              to: "/master-schedules",
+              icon: CalendarCog,
+            },
+          ]
+        : []),
+      {
+        id: "training",
+        title: "Тренинг",
+        description: "Категории и карточки меню, бара, вина и сервиса",
+        to: "/training",
+        icon: GraduationCap,
+      },
+      {
+        id: "tasks",
+        title: "Доска задач",
+        description: "Назначайте задачи сотрудникам и следите за сроками.",
+        to: "/tasks",
+        icon: LayoutList,
+      },
+      {
+        id: "checklists",
+        title: "Чек-листы",
+        description: "Готовые инструкции для сотрудников",
+        to: "/checklists",
+        icon: ListChecks,
+      },
+      {
+        id: "reminders",
+        title: "Напоминания",
+        description: "Регулярные напоминания для сотрудников и команд",
+        to: "/reminders",
+        icon: AlarmClock,
+      },
+    ],
+    [
+      canAccessContacts,
+      canAccessMasterSchedules,
+      canAccessSchedules,
+      canManageNotifications,
+      hasScheduleIndicator,
+      hasUnreadAnonymousLetters,
+      shouldShowNotificationsEntry,
+    ]
+  );
+
+  const availableIds = React.useMemo(
+    () => dashboardCards.map((card) => card.id),
+    [dashboardCards]
+  );
+
+  const resolvedOrder = React.useMemo(() => {
+    const order = new Set<string>();
+    layout.forEach((id) => {
+      if (availableIds.includes(id)) order.add(id);
+    });
+    availableIds.forEach((id) => order.add(id));
+    return Array.from(order);
+  }, [layout, availableIds]);
+
+  React.useEffect(() => {
+    const current = layout.join("|");
+    const resolved = resolvedOrder.join("|");
+    if (current !== resolved) {
+      setLayout(resolvedOrder);
+    }
+  }, [layout, resolvedOrder, setLayout]);
 
   // Сохранённые графики (для индикатора зелёной точки)
   React.useEffect(() => {
@@ -280,140 +428,17 @@ export default function RestaurantHome() {
           </Card>
         ))}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link
-          to="/employees/invite"
-          className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
-        >
-          <div className="text-lg font-semibold">Сотрудники</div>
-          <div className="mt-1 text-sm text-zinc-600">
-            Приглашайте сотрудников и назначайте роли/позиции.
-          </div>
-        </Link>
-
-        {shouldShowNotificationsEntry && (
-          <Link
-            to="/announcements"
-            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
-          >
-            <div className="text-lg font-semibold">Объявления</div>
-            <div className="mt-1 text-sm text-zinc-600">
-              {canManageNotifications
-                ? "Создавайте и редактируйте сообщения для сотрудников."
-                : "Посмотрите новые сообщения от руководства."}
-            </div>
-          </Link>
+      <div className="space-y-3">
+        {isLayoutLoading && (
+          <div className="text-xs text-zinc-500">Загрузка порядка карточек…</div>
         )}
-
-        {canAccessContacts && (
-          <Link
-            to="/contacts"
-            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
-          >
-            <div className="text-lg font-semibold">Контакты</div>
-            <div className="mt-1 text-sm text-zinc-600">
-              Храните телефоны и информацию о важных поставщиках и службах.
-            </div>
-          </Link>
-        )}
-
-        <Link
-          to="/anonymous-letter"
-          className="relative block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
-        >
-          <div className="flex items-center gap-2 text-lg font-semibold">
-            <span>Анонимное письмо</span>
-            {hasUnreadAnonymousLetters && (
-              <span
-                className="inline-block h-2 w-2 rounded-full bg-emerald-500"
-                aria-label="Есть непрочитанные письма"
-              />
-            )}
-          </div>
-          <div className="mt-1 text-sm text-zinc-600">
-            Отправьте обращение руководителю ресторана или прочитайте новые письма.
-          </div>
-        </Link>
-
-        {canAccessSchedules && (
-          <Link
-            to="/schedule"
-            className="relative block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
-          >
-            <div className="flex items-center gap-2 text-lg font-semibold">
-              <span>График</span>
-              {(hasPendingSavedSchedules || hasUnreadScheduleEvents) && (
-                <span
-                  className="inline-block h-2 w-2 rounded-full bg-emerald-500"
-                  aria-label="Есть необработанные заявки"
-                />
-              )}
-            </div>
-            <div className="mt-1 text-sm text-zinc-600">
-              Создавайте смены и распределяйте сотрудников по дням.
-            </div>
-          </Link>
-        )}
-
-        {canAccessMasterSchedules && (
-          <Link
-            to="/master-schedules"
-            className="block rounded-3xl border border-zinc-200 bg-white p-6 hover:bg-zinc-50"
-          >
-            <div className="text-lg font-semibold">Мастер график</div>
-            <div className="mt-1 text-sm text-zinc-600">
-              Планируйте ФОТ и рассчитывайте LC% по периодам.
-            </div>
-          </Link>
-        )}
-
-        <Link to="/training" className="block">
-          <Card className="h-full hover:bg-zinc-50">
-            <div className="text-lg font-medium mb-1">Тренинг</div>
-            <div className="text-sm text-zinc-600">
-              Категории и карточки меню, бара, вина и сервиса
-            </div>
-          </Card>
-        </Link>
-
-        <Link to="/tasks" className="block">
-          <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-medium mb-1">Доска задач</div>
-                <div className="text-sm text-zinc-600">
-                  Назначайте задачи сотрудникам и следите за сроками.
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Link>
-
-        <Link to="/checklists" className="block">
-          <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-medium mb-1">Чек-листы</div>
-                <div className="text-sm text-zinc-600">
-                  Готовые инструкции для сотрудников
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Link>
-
-        <Link to="/reminders" className="block">
-          <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-medium mb-1">Напоминания</div>
-                <div className="text-sm text-zinc-600">
-                  Регулярные напоминания для сотрудников и команд
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Link>
+        {layoutError && <div className="text-xs text-zinc-500">{layoutError}</div>}
+        <DashboardGrid
+          cards={dashboardCards}
+          order={resolvedOrder}
+          onOrderChange={setLayout}
+          onOrderSave={persistLayout}
+        />
       </div>
     </div>
   );
