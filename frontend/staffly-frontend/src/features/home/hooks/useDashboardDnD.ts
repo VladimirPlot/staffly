@@ -1,6 +1,6 @@
 import React from "react";
 import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 
 type UseDashboardDnDOptions = {
@@ -21,12 +21,9 @@ export function useDashboardDnD({ items, onChange, onSave }: UseDashboardDnDOpti
     })
   );
 
-  const handleDragStart = React.useCallback(
-    (event: DragStartEvent) => {
-      setIsEditMode(true);
-    },
-    []
-  );
+  const handleDragStart = React.useCallback(() => {
+    setIsEditMode(true);
+  }, []);
 
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {
