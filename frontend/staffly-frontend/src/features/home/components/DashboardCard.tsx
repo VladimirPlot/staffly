@@ -46,12 +46,14 @@ export default function DashboardCard({
         {...wrapperProps}
         {...attributes}
         {...listeners}
-        className={`group relative flex h-24 flex-col justify-between gap-3 rounded-3xl border border-subtle bg-surface p-4 transition sm:h-auto sm:gap-4 sm:p-6 ${
+        data-dashboard-card
+        className={`dashboard-card-interaction group relative flex h-24 flex-col justify-between gap-3 rounded-3xl border border-subtle bg-surface p-4 transition sm:h-auto sm:gap-4 sm:p-6 ${
           isReorderMode
             ? "shadow-md"
             : "hover:-translate-y-[1px] hover:shadow-md focus-visible:-translate-y-[1px] focus-visible:shadow-md"
         } ${isReorderMode && !isDragging ? "dashboard-jiggle" : ""}`}
         style={{ touchAction: "pan-y" }}
+        onContextMenu={(event: React.MouseEvent) => event.preventDefault()}
         onClick={(event: React.MouseEvent) => {
           if (isReorderMode || isDragging) event.preventDefault();
         }}

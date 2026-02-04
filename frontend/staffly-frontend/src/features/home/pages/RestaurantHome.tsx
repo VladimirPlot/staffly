@@ -1,19 +1,14 @@
 import React from "react";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
-import ContentText from "../../../shared/ui/ContentText";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/providers/AuthProvider";
-import { fetchRestaurantName } from "../../restaurants/api";
-import { fetchMyRoleIn } from "../../employees/api";
-import type { RestaurantRole } from "../../../shared/types/restaurant";
-import { resolveRestaurantAccess } from "../../../shared/utils/access";
-import { fetchInbox, fetchInboxMarkers, type InboxMessageDto } from "../../inbox/api";
-import { listSavedSchedules, type ScheduleSummary } from "../../schedule/api";
-import { fetchUnreadAnonymousLetters } from "../../anonymousLetters/api";
 import DashboardGrid, { type DashboardCardItem } from "../components/DashboardGrid";
 import { useDashboardDnD } from "../hooks/useDashboardDnD";
 import { useDashboardLayout } from "../hooks/useDashboardLayout";
+import AnnouncementsPreviewCard from "../components/AnnouncementsPreviewCard";
+import Toast from "../components/Toast";
+import { useRestaurantHomeData } from "../hooks/useRestaurantHomeData";
+import { useAnnouncementsPreviewVisibility } from "../hooks/useAnnouncementsPreviewVisibility";
 import {
   AlarmClock,
   CalendarCog,
@@ -27,23 +22,35 @@ import {
   Users,
 } from "lucide-react";
 
-function formatNotificationDate(dateStr?: string | null): string {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(d);
+function normalizeOrder(layout: string[], availableIds: string[]): string[] {
+  const order = new Set<string>();
+  layout.forEach((id) => {
+    if (availableIds.includes(id)) order.add(id);
+  });
+  availableIds.forEach((id) => order.add(id));
+  return Array.from(order);
 }
 
 export default function RestaurantHome() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const [name, setName] = React.useState<string>("");
-  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
-  const [announcementsPreview, setAnnouncementsPreview] = React.useState<InboxMessageDto[]>([]);
-  const [announcementsPreviewHidden, setAnnouncementsPreviewHidden] = React.useState(false);
-  const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
-  const [hasUnreadAnonymousLetters, setHasUnreadAnonymousLetters] = React.useState(false);
-  const [hasUnreadScheduleEvents, setHasUnreadScheduleEvents] = React.useState(false);
+  const userId = user?.id ?? null;
+
+  const {
+    restaurantName,
+    access,
+    announcementsPreview,
+    savedSchedules,
+    hasUnreadAnonymousLetters,
+    hasUnreadScheduleEvents,
+  } = useRestaurantHomeData({ restaurantId, userRoles: user?.roles });
+
+  const {
+    hidden: announcementsPreviewHidden,
+    hide: hideAnnouncementsPreview,
+    show: showAnnouncementsPreview,
+  } = useAnnouncementsPreviewVisibility(restaurantId, userId);
+
   const {
     layout,
     setLayout,
@@ -51,129 +58,22 @@ export default function RestaurantHome() {
     loadError,
     persistLayout,
   } = useDashboardLayout(restaurantId);
+
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!toastMessage) return;
-    const timer = window.setTimeout(() => setToastMessage(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [toastMessage]);
-
-  // Название ресторана
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (restaurantId) {
-        try {
-          const n = await fetchRestaurantName(restaurantId);
-          if (alive) setName(n);
-        } catch {
-          if (alive) setName("");
-        }
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [restaurantId]);
-
-  // Моя роль в ресторане
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!restaurantId) {
-        if (alive) setMyRole(null);
-        return;
-      }
-      try {
-        const role = await fetchMyRoleIn(restaurantId);
-        if (alive) setMyRole(role);
-      } catch {
-        if (alive) setMyRole(null);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [restaurantId]);
-
-  // Инбокс для превью
-  React.useEffect(() => {
-    let alive = true;
-    if (!restaurantId) {
-      setAnnouncementsPreview([]);
-      return () => {
-        alive = false;
-      };
-    }
-
-    (async () => {
-      try {
-        const { items } = await fetchInbox(restaurantId, {
-          type: "ANNOUNCEMENT",
-          state: "UNREAD",
-          page: 0,
-          size: 3,
-        });
-        if (!alive) return;
-        setAnnouncementsPreview(items);
-      } catch {
-        if (!alive) return;
-        setAnnouncementsPreview([]);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [restaurantId]);
-
-  // Скрытие блока объявлений (localStorage)
-  React.useEffect(() => {
-    if (!user?.restaurantId || !user?.id) {
-      setAnnouncementsPreviewHidden(false);
-      return;
-    }
-    if (typeof window === "undefined") return;
-    const key = `restaurant:${restaurantId}:announcementsPreviewHidden:${user.id}`;
-    setAnnouncementsPreviewHidden(window.localStorage.getItem(key) === "1");
-  }, [restaurantId, user?.restaurantId, user?.id]);
-
-  const hideNotifications = React.useCallback(() => {
-    if (!restaurantId || !user?.id) return;
-    setAnnouncementsPreviewHidden(true);
-    if (typeof window !== "undefined") {
-      const key = `restaurant:${restaurantId}:announcementsPreviewHidden:${user.id}`;
-      window.localStorage.setItem(key, "1");
-    }
-  }, [restaurantId, user?.id]);
-
-  const showNotifications = React.useCallback(() => {
-    if (!restaurantId || !user?.id) return;
-    setAnnouncementsPreviewHidden(false);
-    if (typeof window !== "undefined") {
-      const key = `restaurant:${restaurantId}:announcementsPreviewHidden:${user.id}`;
-      window.localStorage.removeItem(key);
-    }
-  }, [restaurantId, user?.id]);
-
-  const access = React.useMemo(
-    () => resolveRestaurantAccess(user?.roles, myRole),
-    [user?.roles, myRole]
-  );
+  const handleToastClose = React.useCallback(() => setToastMessage(null), []);
 
   const canAccessSchedules = access.isAdminLike || Boolean(access.normalizedRestaurantRole);
   const canManageNotifications = access.isAdminLike || access.normalizedRestaurantRole === "MANAGER";
+  const canAccessContacts = access.isManagerLike;
+  const canAccessMasterSchedules = access.isManagerLike;
+  const hasRelevantNotifications = announcementsPreview.length > 0;
+  const shouldShowNotificationsEntry = canManageNotifications;
 
   const hasPendingSavedSchedules = React.useMemo(
     () => savedSchedules.some((item) => item.hasPendingShiftRequests),
     [savedSchedules]
   );
 
-  const hasRelevantNotifications = announcementsPreview.length > 0;
-  const shouldShowNotificationsEntry = canManageNotifications;
-  const canAccessContacts = access.isManagerLike;
-  const canAccessMasterSchedules = access.isManagerLike;
   const hasScheduleIndicator = hasPendingSavedSchedules || hasUnreadScheduleEvents;
 
   const dashboardCards = React.useMemo<DashboardCardItem[]>(
@@ -285,14 +185,10 @@ export default function RestaurantHome() {
     [dashboardCards]
   );
 
-  const resolvedOrder = React.useMemo(() => {
-    const order = new Set<string>();
-    layout.forEach((id) => {
-      if (availableIds.includes(id)) order.add(id);
-    });
-    availableIds.forEach((id) => order.add(id));
-    return Array.from(order);
-  }, [layout, availableIds]);
+  const resolvedOrder = React.useMemo(
+    () => normalizeOrder(layout, availableIds),
+    [layout, availableIds]
+  );
 
   React.useEffect(() => {
     const current = layout.join("|");
@@ -319,148 +215,39 @@ export default function RestaurantHome() {
 
   const handleReorderBackgroundPointerUp = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isReorderMode) return;
+      if (!isReorderMode || isDragging) return;
 
       const target = event.target as HTMLElement | null;
       if (target?.closest("[data-dashboard-card]")) return;
 
       void exitReorderMode();
     },
-    [exitReorderMode, isReorderMode]
+    [exitReorderMode, isDragging, isReorderMode]
   );
-
-  // Сохранённые графики (для индикатора зелёной точки)
-  React.useEffect(() => {
-    let alive = true;
-    if (!restaurantId || !canAccessSchedules) {
-      setSavedSchedules([]);
-      return () => {
-        alive = false;
-      };
-    }
-
-    (async () => {
-      try {
-        const schedules = await listSavedSchedules(restaurantId);
-        if (!alive) return;
-        setSavedSchedules(schedules);
-      } catch {
-        if (!alive) return;
-        setSavedSchedules([]);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [restaurantId, canAccessSchedules]);
-
-  React.useEffect(() => {
-    let alive = true;
-    if (!restaurantId || access.normalizedRestaurantRole !== "ADMIN") {
-      setHasUnreadAnonymousLetters(false);
-      return () => {
-        alive = false;
-      };
-    }
-
-    (async () => {
-      try {
-        const { hasUnread } = await fetchUnreadAnonymousLetters(restaurantId);
-        if (!alive) return;
-        setHasUnreadAnonymousLetters(hasUnread);
-      } catch {
-        if (!alive) return;
-        setHasUnreadAnonymousLetters(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [restaurantId, access.normalizedRestaurantRole]);
-
-  // Разовое скрытие уведомлений сотрудником:
-  // сохраняем состояние только локально
-  const hideAndDismissNotifications = React.useCallback(() => {
-    hideNotifications();
-  }, [hideNotifications]);
-
-  React.useEffect(() => {
-    let alive = true;
-    if (!restaurantId) {
-      setHasUnreadScheduleEvents(false);
-      return () => {
-        alive = false;
-      };
-    }
-
-    (async () => {
-      try {
-        const data = await fetchInboxMarkers(restaurantId);
-        if (!alive) return;
-        setHasUnreadScheduleEvents(data.hasScheduleEvents);
-      } catch {
-        if (!alive) return;
-        setHasUnreadScheduleEvents(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [restaurantId]);
 
   return (
     <div className="mx-auto max-w-3xl">
       <Card className="mb-4">
         <div className="text-sm text-zinc-500">Ресторан</div>
-        <h2 className="text-2xl font-semibold">{name || "…"}</h2>
+        <h2 className="text-2xl font-semibold">{restaurantName || "…"}</h2>
       </Card>
 
       {!canManageNotifications && hasRelevantNotifications &&
         (announcementsPreviewHidden ? (
           <div className="mb-4 flex justify-end">
-            <Button variant="ghost" className="text-sm text-zinc-600" onClick={showNotifications}>
+            <Button
+              variant="ghost"
+              className="text-sm text-zinc-600"
+              onClick={showAnnouncementsPreview}
+            >
               Показать объявления
             </Button>
           </div>
         ) : (
-          <Card className="mb-4 border-emerald-200 bg-emerald-50/70">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 space-y-3">
-                <div className="text-sm font-medium uppercase tracking-wide text-emerald-700">
-                  Новые объявления
-                </div>
-                <ul className="space-y-3 text-sm text-emerald-900">
-                  {announcementsPreview.map((item) => (
-                    <li
-                      key={item.id}
-                      className="rounded-2xl border border-emerald-100 bg-white/60 p-3 shadow-sm"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-700">
-                        <span>{item.createdBy?.name ?? "Руководство"}</span>
-                        <span>до {formatNotificationDate(item.expiresAt)}</span>
-                      </div>
-                      <ContentText className="mt-2 text-base text-emerald-900">
-                        {item.content}
-                      </ContentText>
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/inbox" className="inline-flex text-xs text-emerald-700 underline">
-                  Перейти во входящие
-                </Link>
-              </div>
-              <Button
-                variant="ghost"
-                className="text-sm text-emerald-700"
-                onClick={hideAndDismissNotifications}
-              >
-                Скрыть
-              </Button>
-            </div>
-          </Card>
+          <AnnouncementsPreviewCard
+            announcements={announcementsPreview}
+            onHide={hideAnnouncementsPreview}
+          />
         ))}
 
       <div className="space-y-3">
@@ -479,13 +266,8 @@ export default function RestaurantHome() {
           <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
         </div>
       </div>
-      {toastMessage && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-center px-4">
-          <div className="pointer-events-auto rounded-full bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-            {toastMessage}
-          </div>
-        </div>
-      )}
+
+      <Toast message={toastMessage} onClose={handleToastClose} />
     </div>
   );
 }

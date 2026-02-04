@@ -57,6 +57,12 @@
     animation: dashboard-jiggle 0.9s ease-in-out infinite;
     transform-origin: center;
   }
+
+  .dashboard-card-interaction {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 @layer components {
