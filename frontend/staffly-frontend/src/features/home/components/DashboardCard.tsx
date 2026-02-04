@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, type LucideIcon } from "lucide-react";
+import { type LucideIcon } from "lucide-react";
 
 type DashboardCardProps = {
   id: string;
@@ -11,7 +11,7 @@ type DashboardCardProps = {
   to: string;
   icon: LucideIcon;
   showIndicator?: boolean;
-  isEditMode: boolean;
+  isReorderMode: boolean;
 };
 
 export default function DashboardCard({
@@ -21,7 +21,7 @@ export default function DashboardCard({
   to,
   icon: Icon,
   showIndicator,
-  isEditMode,
+  isReorderMode,
 }: DashboardCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
@@ -32,21 +32,28 @@ export default function DashboardCard({
     transition,
   };
 
-  const Wrapper: React.ElementType = isEditMode ? "div" : Link;
-  const wrapperProps = isEditMode ? {} : { to };
+  const Wrapper: React.ElementType = isReorderMode ? "div" : Link;
+  const wrapperProps = isReorderMode ? {} : { to };
 
   return (
-    <div ref={setNodeRef} style={style} className={isDragging ? "opacity-70" : undefined}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-dashboard-card
+      className={isDragging ? "z-10 opacity-80" : undefined}
+    >
       <Wrapper
         {...wrapperProps}
         {...attributes}
         {...listeners}
         className={`group relative flex h-24 flex-col justify-between gap-3 rounded-3xl border border-subtle bg-surface p-4 transition sm:h-auto sm:gap-4 sm:p-6 ${
-          isEditMode ? "shadow-md sm:-translate-y-[1px]" : "hover:-translate-y-[1px]"
-        }`}
+          isReorderMode
+            ? "shadow-md"
+            : "hover:-translate-y-[1px] hover:shadow-md focus-visible:-translate-y-[1px] focus-visible:shadow-md"
+        } ${isReorderMode && !isDragging ? "dashboard-jiggle" : ""}`}
         style={{ touchAction: "pan-y" }}
         onClick={(event: React.MouseEvent) => {
-          if (isEditMode) event.preventDefault();
+          if (isReorderMode || isDragging) event.preventDefault();
         }}
       >
         <div className="flex items-start justify-between gap-3">
@@ -62,14 +69,6 @@ export default function DashboardCard({
               )}
             </div>
           </div>
-          {isEditMode && (
-            <div
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-400"
-              aria-hidden
-            >
-              <GripVertical className="h-4 w-4" />
-            </div>
-          )}
         </div>
         {description && (
           <div className="hidden text-sm text-muted sm:block">{description}</div>

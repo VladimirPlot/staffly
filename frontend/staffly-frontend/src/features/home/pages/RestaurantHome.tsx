@@ -12,6 +12,7 @@ import { fetchInbox, fetchInboxMarkers, type InboxMessageDto } from "../../inbox
 import { listSavedSchedules, type ScheduleSummary } from "../../schedule/api";
 import { fetchUnreadAnonymousLetters } from "../../anonymousLetters/api";
 import DashboardGrid, { type DashboardCardItem } from "../components/DashboardGrid";
+import { useDashboardDnD } from "../hooks/useDashboardDnD";
 import { useDashboardLayout } from "../hooks/useDashboardLayout";
 import {
   AlarmClock,
@@ -47,9 +48,16 @@ export default function RestaurantHome() {
     layout,
     setLayout,
     isLoading: isLayoutLoading,
-    error: layoutError,
+    loadError,
     persistLayout,
   } = useDashboardLayout(restaurantId);
+  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!toastMessage) return;
+    const timer = window.setTimeout(() => setToastMessage(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
 
   // Название ресторана
   React.useEffect(() => {
@@ -294,6 +302,33 @@ export default function RestaurantHome() {
     }
   }, [layout, resolvedOrder, setLayout]);
 
+  const dashboardDnD = useDashboardDnD({
+    items: resolvedOrder,
+    onChange: setLayout,
+  });
+  const { isReorderMode, isDragging, setIsReorderMode } = dashboardDnD;
+
+  const exitReorderMode = React.useCallback(async () => {
+    if (!isReorderMode) return;
+    setIsReorderMode(false);
+    const result = await persistLayout(layout);
+    if (!result?.ok) {
+      setToastMessage("Сервер сейчас недоступен, попробуйте позже");
+    }
+  }, [isReorderMode, layout, persistLayout, setIsReorderMode]);
+
+  const handleReorderBackgroundPointerUp = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isReorderMode) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-dashboard-card]")) return;
+
+      void exitReorderMode();
+    },
+    [exitReorderMode, isReorderMode]
+  );
+
   // Сохранённые графики (для индикатора зелёной точки)
   React.useEffect(() => {
     let alive = true;
@@ -432,14 +467,25 @@ export default function RestaurantHome() {
         {isLayoutLoading && (
           <div className="text-xs text-zinc-500">Загрузка порядка карточек…</div>
         )}
-        {layoutError && <div className="text-xs text-zinc-500">{layoutError}</div>}
-        <DashboardGrid
-          cards={dashboardCards}
-          order={resolvedOrder}
-          onOrderChange={setLayout}
-          onOrderSave={persistLayout}
-        />
+        {loadError && <div className="text-xs text-zinc-500">{loadError}</div>}
+        {isReorderMode && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => void exitReorderMode()}>
+              Готово
+            </Button>
+          </div>
+        )}
+        <div onPointerUp={handleReorderBackgroundPointerUp}>
+          <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
+        </div>
       </div>
+      {toastMessage && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto rounded-full bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+            {toastMessage}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

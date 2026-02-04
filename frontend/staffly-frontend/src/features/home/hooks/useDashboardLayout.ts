@@ -28,8 +28,14 @@ function normalizeLayout(layout: string[] | undefined | null) {
 export function useDashboardLayout(restaurantId: number | null) {
   const [layout, setLayout] = React.useState<string[]>(DEFAULT_LAYOUT);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const lastSaved = React.useRef<string[]>(DEFAULT_LAYOUT);
+  const hasSameLayout = React.useCallback((nextLayout: string[]) => {
+    const normalized = normalizeLayout(nextLayout);
+    const current = lastSaved.current;
+    if (normalized.length !== current.length) return false;
+    return normalized.every((id, index) => id === current[index]);
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -49,11 +55,11 @@ export function useDashboardLayout(restaurantId: number | null) {
         const normalized = normalizeLayout(data.layout);
         lastSaved.current = normalized;
         setLayout(normalized);
-        setError(null);
+        setLoadError(null);
       } catch (e: any) {
         if (!alive) return;
         setLayout(DEFAULT_LAYOUT);
-        setError(e?.friendlyMessage ?? "Не удалось загрузить порядок карточек.");
+        setLoadError(e?.friendlyMessage ?? "Не удалось загрузить порядок карточек.");
       } finally {
         if (alive) setIsLoading(false);
       }
@@ -66,28 +72,32 @@ export function useDashboardLayout(restaurantId: number | null) {
 
   const persistLayout = React.useCallback(
     async (nextLayout: string[]) => {
-      if (!restaurantId) return;
+      if (!restaurantId) return { ok: false };
       const normalized = normalizeLayout(nextLayout);
+      if (hasSameLayout(normalized)) {
+        setLayout(normalized);
+        return { ok: true, skipped: true };
+      }
       setLayout(normalized);
       try {
         const data = await saveDashboardLayout(restaurantId, normalized);
         const resolved = normalizeLayout(data.layout);
         lastSaved.current = resolved;
         setLayout(resolved);
-        setError(null);
+        return { ok: true };
       } catch (e: any) {
         setLayout(lastSaved.current);
-        setError(e?.friendlyMessage ?? "Не удалось сохранить порядок карточек.");
+        return { ok: false, message: e?.friendlyMessage };
       }
     },
-    [restaurantId]
+    [restaurantId, hasSameLayout]
   );
 
   return {
     layout,
     setLayout,
     isLoading,
-    error,
+    loadError,
     persistLayout,
   };
 }

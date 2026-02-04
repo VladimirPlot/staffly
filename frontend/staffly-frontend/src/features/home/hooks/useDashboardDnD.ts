@@ -6,23 +6,34 @@ import { arrayMove } from "@dnd-kit/sortable";
 type UseDashboardDnDOptions = {
   items: string[];
   onChange: (items: string[]) => void;
-  onSave: (items: string[]) => void;
 };
 
-export function useDashboardDnD({ items, onChange, onSave }: UseDashboardDnDOptions) {
-  const [isEditMode, setIsEditMode] = React.useState(false);
+const LONG_PRESS_DELAY_MS = 320;
+const LONG_PRESS_TOLERANCE_PX = 6;
+const DRAG_DISTANCE_PX = 4;
+
+export function useDashboardDnD({ items, onChange }: UseDashboardDnDOptions) {
+  const [isReorderMode, setIsReorderMode] = React.useState(false);
+  const [isDragging, setIsDragging] = React.useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        delay: 200,
-        tolerance: 6,
+        ...(isReorderMode
+          ? {
+              distance: DRAG_DISTANCE_PX,
+            }
+          : {
+              delay: LONG_PRESS_DELAY_MS,
+              tolerance: LONG_PRESS_TOLERANCE_PX,
+            }),
       },
     })
   );
 
   const handleDragStart = React.useCallback(() => {
-    setIsEditMode(true);
+    setIsReorderMode(true);
+    setIsDragging(true);
   }, []);
 
   const handleDragEnd = React.useCallback(
@@ -33,22 +44,25 @@ export function useDashboardDnD({ items, onChange, onSave }: UseDashboardDnDOpti
         const newIndex = items.indexOf(over.id as string);
         const nextItems = arrayMove(items, oldIndex, newIndex);
         onChange(nextItems);
-        onSave(nextItems);
       }
-      setIsEditMode(false);
+      setIsDragging(false);
     },
-    [items, onChange, onSave]
+    [items, onChange]
   );
 
   const handleDragCancel = React.useCallback(() => {
-    setIsEditMode(false);
+    setIsDragging(false);
   }, []);
 
   return {
-    isEditMode,
+    isReorderMode,
+    setIsReorderMode,
+    isDragging,
     sensors,
     handleDragStart,
     handleDragEnd,
     handleDragCancel,
   };
 }
+
+export type DashboardDnDState = ReturnType<typeof useDashboardDnD>;

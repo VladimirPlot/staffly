@@ -26,6 +26,16 @@
   }
 }
 
+@keyframes dashboard-jiggle {
+  0%,
+  100% {
+    transform: rotate(-0.6deg);
+  }
+  50% {
+    transform: rotate(0.6deg);
+  }
+}
+
 @layer utilities {
   .bg-surface {
     background-color: var(--staffly-surface);
@@ -41,6 +51,11 @@
 
   .text-icon {
     color: var(--staffly-icon);
+  }
+
+  .dashboard-jiggle {
+    animation: dashboard-jiggle 0.9s ease-in-out infinite;
+    transform-origin: center;
   }
 }
 

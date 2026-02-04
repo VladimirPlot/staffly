@@ -3,7 +3,7 @@ import { DndContext } from "@dnd-kit/core";
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable";
 import type { LucideIcon } from "lucide-react";
 import DashboardCard from "./DashboardCard";
-import { useDashboardDnD } from "../hooks/useDashboardDnD";
+import type { DashboardDnDState } from "../hooks/useDashboardDnD";
 
 export type DashboardCardItem = {
   id: string;
@@ -17,38 +17,24 @@ export type DashboardCardItem = {
 type DashboardGridProps = {
   cards: DashboardCardItem[];
   order: string[];
-  onOrderChange: (order: string[]) => void;
-  onOrderSave: (order: string[]) => void;
+  dndState: DashboardDnDState;
 };
 
 export default function DashboardGrid({
   cards,
   order,
-  onOrderChange,
-  onOrderSave,
+  dndState,
 }: DashboardGridProps) {
   const cardMap = React.useMemo(() => {
     return new Map(cards.map((card) => [card.id, card]));
   }, [cards]);
 
-  const {
-    isEditMode,
-    sensors,
-    handleDragStart,
-    handleDragEnd,
-    handleDragCancel,
-  } = useDashboardDnD({
-    items: order,
-    onChange: onOrderChange,
-    onSave: onOrderSave,
-  });
-
   return (
     <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
+      sensors={dndState.sensors}
+      onDragStart={dndState.handleDragStart}
+      onDragEnd={dndState.handleDragEnd}
+      onDragCancel={dndState.handleDragCancel}
     >
       <SortableContext items={order} strategy={rectSortingStrategy}>
         <div className="grid grid-cols-1 gap-3 min-[300px]:grid-cols-2 sm:gap-4">
@@ -64,7 +50,7 @@ export default function DashboardGrid({
                 to={card.to}
                 icon={card.icon}
                 showIndicator={card.showIndicator}
-                isEditMode={isEditMode}
+                isReorderMode={dndState.isReorderMode}
               />
             );
           })}
