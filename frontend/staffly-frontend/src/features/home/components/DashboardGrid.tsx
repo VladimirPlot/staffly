@@ -20,14 +20,12 @@ type DashboardGridProps = {
   dndState: DashboardDnDState;
 };
 
-export default function DashboardGrid({
-  cards,
-  order,
-  dndState,
-}: DashboardGridProps) {
-  const cardMap = React.useMemo(() => {
-    return new Map(cards.map((card) => [card.id, card]));
-  }, [cards]);
+export default function DashboardGrid({ cards, order, dndState }: DashboardGridProps) {
+  const cardMap = React.useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
+
+  const enterReorderMode = React.useCallback(() => {
+    dndState.setIsReorderMode(true);
+  }, [dndState]);
 
   return (
     <DndContext
@@ -41,6 +39,7 @@ export default function DashboardGrid({
           {order.map((id) => {
             const card = cardMap.get(id);
             if (!card) return null;
+
             return (
               <DashboardCard
                 key={card.id}
@@ -51,6 +50,7 @@ export default function DashboardGrid({
                 icon={card.icon}
                 showIndicator={card.showIndicator}
                 isReorderMode={dndState.isReorderMode}
+                onEnterReorderMode={enterReorderMode}
               />
             );
           })}

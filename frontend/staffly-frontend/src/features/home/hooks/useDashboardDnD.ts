@@ -9,7 +9,7 @@ type UseDashboardDnDOptions = {
 };
 
 const LONG_PRESS_DELAY_MS = 320;
-const LONG_PRESS_TOLERANCE_PX = 6;
+const LONG_PRESS_TOLERANCE_PX = 8;
 const DRAG_DISTANCE_PX = 4;
 
 export function useDashboardDnD({ items, onChange }: UseDashboardDnDOptions) {
@@ -18,33 +18,31 @@ export function useDashboardDnD({ items, onChange }: UseDashboardDnDOptions) {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        ...(isReorderMode
-          ? {
-              distance: DRAG_DISTANCE_PX,
-            }
-          : {
-              delay: LONG_PRESS_DELAY_MS,
-              tolerance: LONG_PRESS_TOLERANCE_PX,
-            }),
-      },
+      activationConstraint: isReorderMode
+        ? { distance: DRAG_DISTANCE_PX }
+        : { delay: LONG_PRESS_DELAY_MS, tolerance: LONG_PRESS_TOLERANCE_PX },
     })
   );
 
   const handleDragStart = React.useCallback(() => {
-    setIsReorderMode(true);
     setIsDragging(true);
+    // если человек начал тянуть — значит reorder-mode точно включён
+    setIsReorderMode(true);
   }, []);
 
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
+
       if (over && active.id !== over.id) {
         const oldIndex = items.indexOf(active.id as string);
         const newIndex = items.indexOf(over.id as string);
-        const nextItems = arrayMove(items, oldIndex, newIndex);
-        onChange(nextItems);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+          onChange(arrayMove(items, oldIndex, newIndex));
+        }
       }
+
       setIsDragging(false);
     },
     [items, onChange]

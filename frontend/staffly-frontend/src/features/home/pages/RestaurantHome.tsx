@@ -9,6 +9,8 @@ import AnnouncementsPreviewCard from "../components/AnnouncementsPreviewCard";
 import Toast from "../components/Toast";
 import { useRestaurantHomeData } from "../hooks/useRestaurantHomeData";
 import { useAnnouncementsPreviewVisibility } from "../hooks/useAnnouncementsPreviewVisibility";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useOutsidePointerDown } from "../hooks/useOutsidePointerDown";
 import {
   AlarmClock,
   CalendarCog,
@@ -213,17 +215,16 @@ export default function RestaurantHome() {
     }
   }, [isReorderMode, layout, persistLayout, setIsReorderMode]);
 
-  const handleReorderBackgroundPointerUp = React.useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      if (!isReorderMode || isDragging) return;
+  useBodyScrollLock(isReorderMode);
 
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-dashboard-card]")) return;
-
+  useOutsidePointerDown({
+    enabled: isReorderMode,
+    insideSelector: "[data-dashboard-card],[data-reorder-exit]",
+    onOutside: () => {
+      if (isDragging) return;
       void exitReorderMode();
     },
-    [exitReorderMode, isDragging, isReorderMode]
-  );
+  });
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -257,14 +258,17 @@ export default function RestaurantHome() {
         {loadError && <div className="text-xs text-zinc-500">{loadError}</div>}
         {isReorderMode && (
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => void exitReorderMode()}>
+            <Button
+              variant="outline"
+              size="sm"
+              data-reorder-exit
+              onClick={() => void exitReorderMode()}
+            >
               Готово
             </Button>
           </div>
         )}
-        <div onPointerUp={handleReorderBackgroundPointerUp}>
-          <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
-        </div>
+        <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
       </div>
 
       <Toast message={toastMessage} onClose={handleToastClose} />
