@@ -1,6 +1,6 @@
 import React from "react";
 
-export function useMeasuredHeight<T extends HTMLElement>(ref: React.RefObject<T>) {
+export function useMeasuredHeight<T extends HTMLElement>(ref: React.RefObject<T | null>) {
   const [height, setHeight] = React.useState(0);
 
   React.useLayoutEffect(() => {

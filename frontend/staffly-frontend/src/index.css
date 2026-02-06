@@ -74,7 +74,6 @@
     @apply relative flex items-center justify-center rounded-2xl border border-zinc-300 px-3 shadow-sm transition;
   }
 
-  /* селект остаётся кликабельным, но визуально “чистый” */
   .staffly-phone .PhoneInputCountrySelect {
     @apply absolute inset-0 h-full w-full cursor-pointer opacity-0;
   }
@@ -83,17 +82,14 @@
     @apply h-4 w-6 overflow-hidden rounded-sm;
   }
 
-  /* ВАЖНО: 16px => iOS не зумит */
   .staffly-phone .PhoneInputInput {
     @apply w-full rounded-2xl border border-zinc-300 p-3 text-[16px] outline-none transition focus:ring-2 focus:ring-zinc-300;
   }
 
-  /* disabled */
   .staffly-phone .PhoneInputInput:disabled {
     @apply bg-zinc-100;
   }
 
-  /* error state */
   .staffly-phone.is-error .PhoneInputInput {
     @apply border-red-500 ring-red-200;
   }
@@ -102,13 +98,21 @@
     @apply border-red-500;
   }
 
-  /* focus ring also highlights country block */
   .staffly-phone:has(.PhoneInputInput:focus) .PhoneInputCountry {
     @apply ring-2 ring-zinc-300;
   }
 
-  /* focus+error => красный */
   .staffly-phone.is-error:has(.PhoneInputInput:focus) .PhoneInputCountry {
     @apply ring-red-200;
   }
+}
+
+/* ===== hide scrollbars (drag / reorder mode) ===== */
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
 }

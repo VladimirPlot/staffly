@@ -60,13 +60,21 @@ export function useDashboardDnD({ items, onChange, scrollContainerRef }: UseDash
           return;
         }
 
+        const atTop = container.scrollTop <= 0;
+        const atBottom =
+          container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+        if ((state.direction < 0 && atTop) || (state.direction > 0 && atBottom)) {
+          stopAutoScroll();
+          return;
+        }
+
         container.scrollTop += state.direction * state.speed;
         state.rafId = requestAnimationFrame(step);
       };
 
       state.rafId = requestAnimationFrame(step);
     },
-    [scrollContainerRef]
+    [scrollContainerRef, stopAutoScroll]
   );
 
   const handleDragMove = React.useCallback(
@@ -99,6 +107,14 @@ export function useDashboardDnD({ items, onChange, scrollContainerRef }: UseDash
       }
 
       if (direction === 0 || speed === 0) {
+        stopAutoScroll();
+        return;
+      }
+
+      const atTop = container.scrollTop <= 0;
+      const atBottom =
+        container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+      if ((direction < 0 && atTop) || (direction > 0 && atBottom)) {
         stopAutoScroll();
         return;
       }

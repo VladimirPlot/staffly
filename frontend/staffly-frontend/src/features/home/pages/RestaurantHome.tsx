@@ -146,7 +146,7 @@ export default function RestaurantHome() {
       {
         id: "training",
         title: "Тренинг",
-        description: "Категории и карточки меню, бара, вина и сервиса",
+        description: "Категории и карточки меню, бара, вина, сервиса и аттестация",
         to: "/training",
         icon: GraduationCap,
       },
@@ -197,10 +197,9 @@ export default function RestaurantHome() {
   const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
   const topContentHeight = useMeasuredHeight(topContentRef);
   const viewportHeight = useViewportHeight();
-  const scrollContainerHeight = React.useMemo(() => {
+  const availableScrollHeight = React.useMemo(() => {
     if (!viewportHeight) return undefined;
-    const availableHeight = Math.max(viewportHeight - topContentHeight, 0);
-    return `calc(${availableHeight}px - env(safe-area-inset-bottom, 0px))`;
+    return Math.max(viewportHeight - topContentHeight, 0);
   }, [topContentHeight, viewportHeight]);
 
   React.useEffect(() => {
@@ -282,12 +281,28 @@ export default function RestaurantHome() {
 
       <div
         ref={scrollContainerRef}
-        className="mt-3 overscroll-contain"
-        style={{
-          height: scrollContainerHeight,
-          overflowY: "auto",
-          WebkitOverflowScrolling: "touch",
-        }}
+        className="mt-3"
+        style={
+          isReorderMode
+            ? {
+                maxHeight:
+                  availableScrollHeight != null
+                    ? `calc(${availableScrollHeight}px - env(safe-area-inset-bottom, 0px))`
+                    : undefined,
+
+                overflowY: "auto",
+                overflowX: "hidden",              // ✅ отключаем горизонтальный скролл
+                WebkitOverflowScrolling: "touch",
+                overscrollBehavior: "contain",
+
+                scrollbarGutter: "stable",         // ✅ ширина не прыгает при появлении скроллбара
+
+                padding: 10,                       // ✅ воздух для jiggle
+                marginLeft: -10,                   // ✅ компенсация, чтобы ширина визуально не “съехала”
+                marginRight: -10,
+              }
+            : undefined
+        }
       >
         <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
       </div>
