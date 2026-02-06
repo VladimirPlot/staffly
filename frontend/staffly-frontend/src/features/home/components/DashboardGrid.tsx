@@ -31,6 +31,7 @@ export default function DashboardGrid({ cards, order, dndState }: DashboardGridP
     <DndContext
       sensors={dndState.sensors}
       onDragStart={dndState.handleDragStart}
+      onDragMove={dndState.handleDragMove}
       onDragEnd={dndState.handleDragEnd}
       onDragCancel={dndState.handleDragCancel}
     >

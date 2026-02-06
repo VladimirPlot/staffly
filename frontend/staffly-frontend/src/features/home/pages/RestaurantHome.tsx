@@ -9,8 +9,9 @@ import AnnouncementsPreviewCard from "../components/AnnouncementsPreviewCard";
 import Toast from "../components/Toast";
 import { useRestaurantHomeData } from "../hooks/useRestaurantHomeData";
 import { useAnnouncementsPreviewVisibility } from "../hooks/useAnnouncementsPreviewVisibility";
-import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useOutsidePointerDown } from "../hooks/useOutsidePointerDown";
+import { useMeasuredHeight } from "../hooks/useMeasuredHeight";
+import { useViewportHeight } from "../hooks/useViewportHeight";
 import {
   AlarmClock,
   CalendarCog,
@@ -192,6 +193,16 @@ export default function RestaurantHome() {
     [layout, availableIds]
   );
 
+  const topContentRef = React.useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const topContentHeight = useMeasuredHeight(topContentRef);
+  const viewportHeight = useViewportHeight();
+  const scrollContainerHeight = React.useMemo(() => {
+    if (!viewportHeight) return undefined;
+    const availableHeight = Math.max(viewportHeight - topContentHeight, 0);
+    return `calc(${availableHeight}px - env(safe-area-inset-bottom, 0px))`;
+  }, [topContentHeight, viewportHeight]);
+
   React.useEffect(() => {
     const current = layout.join("|");
     const resolved = resolvedOrder.join("|");
@@ -203,6 +214,7 @@ export default function RestaurantHome() {
   const dashboardDnD = useDashboardDnD({
     items: resolvedOrder,
     onChange: setLayout,
+    scrollContainerRef,
   });
   const { isReorderMode, isDragging, setIsReorderMode } = dashboardDnD;
 
@@ -215,8 +227,6 @@ export default function RestaurantHome() {
     }
   }, [isReorderMode, layout, persistLayout, setIsReorderMode]);
 
-  useBodyScrollLock(isReorderMode);
-
   useOutsidePointerDown({
     enabled: isReorderMode,
     insideSelector: "[data-dashboard-card],[data-reorder-exit]",
@@ -228,30 +238,30 @@ export default function RestaurantHome() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Card className="mb-4">
-        <div className="text-sm text-zinc-500">Ресторан</div>
-        <h2 className="text-2xl font-semibold">{restaurantName || "…"}</h2>
-      </Card>
+      <div ref={topContentRef} className="space-y-3">
+        <Card>
+          <div className="text-sm text-zinc-500">Ресторан</div>
+          <h2 className="text-2xl font-semibold">{restaurantName || "…"}</h2>
+        </Card>
 
-      {!canManageNotifications && hasRelevantNotifications &&
-        (announcementsPreviewHidden ? (
-          <div className="mb-4 flex justify-end">
-            <Button
-              variant="ghost"
-              className="text-sm text-zinc-600"
-              onClick={showAnnouncementsPreview}
-            >
-              Показать объявления
-            </Button>
-          </div>
-        ) : (
-          <AnnouncementsPreviewCard
-            announcements={announcementsPreview}
-            onHide={hideAnnouncementsPreview}
-          />
-        ))}
+        {!canManageNotifications && hasRelevantNotifications &&
+          (announcementsPreviewHidden ? (
+            <div className="flex justify-end">
+              <Button
+                variant="ghost"
+                className="text-sm text-zinc-600"
+                onClick={showAnnouncementsPreview}
+              >
+                Показать объявления
+              </Button>
+            </div>
+          ) : (
+            <AnnouncementsPreviewCard
+              announcements={announcementsPreview}
+              onHide={hideAnnouncementsPreview}
+            />
+          ))}
 
-      <div className="space-y-3">
         {isLayoutLoading && (
           <div className="text-xs text-zinc-500">Загрузка порядка карточек…</div>
         )}
@@ -268,6 +278,17 @@ export default function RestaurantHome() {
             </Button>
           </div>
         )}
+      </div>
+
+      <div
+        ref={scrollContainerRef}
+        className="mt-3 overscroll-contain"
+        style={{
+          height: scrollContainerHeight,
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
         <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
       </div>
 
