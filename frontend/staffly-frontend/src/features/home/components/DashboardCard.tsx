@@ -59,6 +59,11 @@ export default function DashboardCard({
       // в reorder-mode отдельный long-press не нужен
       if (isReorderMode) return;
 
+      // iOS: убираем long-press preview/callout (и в целом стабилизируем жест)
+      if (e.pointerType === "touch") {
+        e.preventDefault();
+      }
+
       longPressFiredRef.current = false;
       startRef.current = { x: e.clientX, y: e.clientY };
 
@@ -104,8 +109,8 @@ export default function DashboardCard({
     [isDragging, isReorderMode, navigate, to]
   );
 
-  // Важно: listeners/attributes подключаем ВСЕГДА, иначе dnd-kit не получит pointerdown,
-  // и тот же жест “зажал и повёл” не сможет стать drag после delay.
+  // Важно: listeners/attributes подключаем ВСЕГДА
+  // НО: свои pointer handlers вешаем через Capture, чтобы не перезатереть listeners.onPointerDown
   const dndProps = { ...attributes, ...listeners };
 
   return (
@@ -130,10 +135,10 @@ export default function DashboardCard({
           touchAction: isReorderMode ? "none" : "manipulation",
         }}
         onContextMenu={(event: React.MouseEvent) => event.preventDefault()}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUpOrCancel}
-        onPointerCancel={onPointerUpOrCancel}
+        onPointerDownCapture={onPointerDown}
+        onPointerMoveCapture={onPointerMove}
+        onPointerUpCapture={onPointerUpOrCancel}
+        onPointerCancelCapture={onPointerUpOrCancel}
         onClick={handleClick}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === "Enter" || e.key === " ") {
