@@ -286,7 +286,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
           className="ml-auto self-end whitespace-nowrap"
         >
           <span className="inline-flex items-center gap-2 leading-none">
-            <Icon icon={Plus} className="shrink-0" />
+            <Icon icon={Plus} size="sm" className="shrink-0" />
             <span className="hidden sm:inline">Создать</span>
             <span className="sm:hidden">Создать</span>
           </span>
@@ -312,14 +312,14 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
               <Card key={reminder.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-lg font-semibold text-zinc-900">{reminder.title}</div>
+                    <div className="text-lg font-semibold text-strong">{reminder.title}</div>
                     {reminder.description && (
-                      <div className="mt-1 whitespace-pre-line text-sm text-zinc-600">
+                      <div className="mt-1 whitespace-pre-line text-sm text-muted">
                         {reminder.description}
                       </div>
                     )}
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
+                      <span className="rounded-full bg-app px-3 py-1 text-default">
                         {resolveTargetLabel(reminder)}
                       </span>
                       <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
@@ -327,7 +327,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
                       </span>
                     </div>
                     {nextFireLabel && (
-                      <div className="mt-2 text-xs text-zinc-500">Следующее: {nextFireLabel}</div>
+                      <div className="mt-2 text-xs text-muted">Следующее: {nextFireLabel}</div>
                     )}
                   </div>
                   {canEdit && (
@@ -336,10 +336,10 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
                         variant="ghost"
                         size="icon"
                         onClick={() => openEditDialog(reminder)}
-                        className="text-zinc-600"
+                        className="text-muted"
                         aria-label="Редактировать"
                       >
-                        <Icon icon={Pencil} />
+                        <Icon icon={Pencil} size="sm" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -348,7 +348,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
                         className="text-red-600 hover:bg-red-50"
                         aria-label="Удалить"
                       >
-                        <Icon icon={Trash2} />
+                        <Icon icon={Trash2} size="sm" />
                       </Button>
                     </div>
                   )}

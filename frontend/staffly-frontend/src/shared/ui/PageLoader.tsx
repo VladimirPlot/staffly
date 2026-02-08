@@ -19,9 +19,9 @@ export default function PageLoader({ label = "Загрузка…", delayMs = 20
 
   return (
     <div className="mx-auto w-full max-w-5xl p-4">
-      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <div className="text-sm font-medium text-zinc-900">Staffly</div>
-        <div className="mt-1 text-sm text-zinc-500">{label}</div>
+      <div className="rounded-2xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)]">
+        <div className="text-sm font-medium text-strong">Staffly</div>
+        <div className="mt-1 text-sm text-muted">{label}</div>
 
         <div className="mt-4 grid gap-3">
           <Skeleton className="h-10 w-full" />
@@ -37,9 +37,11 @@ function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       className={[
-        "relative overflow-hidden rounded-xl bg-zinc-100",
+        "relative overflow-hidden rounded-xl bg-app",
         // shimmer
-        "before:absolute before:inset-0 before:-translate-x-full before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent before:animate-[shimmer_1.2s_infinite]",
+        "before:absolute before:inset-0 before:-translate-x-full",
+        "before:bg-gradient-to-r before:from-transparent before:via-[rgba(255,255,255,0.35)] before:to-transparent",
+        "before:animate-[shimmer_1.2s_infinite]",
         className,
       ].join(" ")}
     />

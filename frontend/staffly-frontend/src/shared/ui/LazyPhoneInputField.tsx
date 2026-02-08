@@ -20,8 +20,13 @@ export default function LazyPhoneInputField(props: Props) {
     <React.Suspense
       fallback={
         <label className="block">
-          <span className="mb-1 block text-sm text-zinc-600">{label}</span>
-          <div className={`h-10 w-full rounded-xl border bg-white ${error ? "border-red-300" : "border-zinc-300"}`} />
+          <span className="mb-1 block text-sm text-muted">{label}</span>
+          <div
+            className={[
+              "h-10 w-full rounded-xl border bg-surface",
+              error ? "border-red-300" : "border-subtle",
+            ].join(" ")}
+          />
           {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
         </label>
       }

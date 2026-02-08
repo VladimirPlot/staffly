@@ -24,12 +24,12 @@ export default function Icon({
   title,
   decorative = true,
 }: Props) {
-
   return (
     <IconComp
       className={`${sizeMap[size]} ${className}`}
       aria-hidden={decorative ? true : undefined}
       aria-label={!decorative ? title : undefined}
+      role={!decorative ? "img" : undefined}
       focusable="false"
     />
   );

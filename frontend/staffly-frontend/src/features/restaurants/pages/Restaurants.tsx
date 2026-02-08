@@ -73,7 +73,7 @@ export default function Restaurants() {
         <Card>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-semibold">Выбор ресторана</h2>
-            <div className="w-fit animate-pulse rounded-full border border-zinc-300 px-3 py-1 text-xs">
+            <div className="w-fit animate-pulse rounded-full border border-subtle px-3 py-1 text-xs text-muted">
               Загружаем рестораны…
             </div>
           </div>
@@ -107,15 +107,15 @@ export default function Restaurants() {
               {invites.map((inv) => (
                 <div
                   key={inv.token}
-                  className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0 space-y-1 text-sm leading-snug">
                     <div className="font-medium break-words">{inv.restaurantName}</div>
-                    <div className="text-zinc-700">Права: {inv.desiredRole}</div>
+                    <div className="text-default">Права: {inv.desiredRole}</div>
                     {inv.positionName && (
-                      <div className="text-zinc-700">Дольжность: {inv.positionName}</div>
+                      <div className="text-default">Дольжность: {inv.positionName}</div>
                     )}
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-muted">
                       истекает: {new Date(inv.expiresAt).toLocaleString()}
                     </div>
                   </div>
@@ -168,11 +168,11 @@ export default function Restaurants() {
           {restaurants.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col gap-3 rounded-2xl border border-zinc-200 p-4 hover:bg-zinc-50 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-3 rounded-2xl border border-subtle p-4 hover:bg-app sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
                 <div className="text-lg font-medium">{r.name}</div>
-                <div className="text-sm text-zinc-600">
+                <div className="text-sm text-muted">
                   {(r.city || "") + " · Роль: " + r.role}
                 </div>
                 {r.locked && (
@@ -207,7 +207,7 @@ export default function Restaurants() {
                         setEditError(null);
                       }}
                     >
-                      <Icon icon={Pencil} decorative />
+                      <Icon icon={Pencil} size="sm" decorative />
                     </Button>
                     <Button
                       size="icon"
@@ -232,7 +232,7 @@ export default function Restaurants() {
                         }
                       }}
                     >
-                      <Icon icon={r.locked ? Unlock : Lock} decorative />
+                      <Icon icon={r.locked ? Unlock : Lock} size="sm" decorative />
                     </Button>
                     <Button
                       size="icon"
@@ -243,7 +243,7 @@ export default function Restaurants() {
                         setDeleteError(null);
                       }}
                     >
-                      <Icon icon={Trash2} decorative className="text-rose-600" />
+                      <Icon icon={Trash2} size="sm" decorative className="text-rose-600" />
                     </Button>
                   </div>
                 )}

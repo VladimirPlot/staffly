@@ -8,12 +8,15 @@ type Props = React.InputHTMLAttributes<HTMLInputElement> & {
 export default function Input({ label, error, className = "", ...rest }: Props) {
   return (
     <label className="block min-w-0">
-      <span className="mb-1 block text-sm text-zinc-600">{label}</span>
+      <span className="mb-1 block text-sm text-muted">{label}</span>
 
       <input
-        className={`w-full max-w-full rounded-2xl border p-3 text-[16px] outline-none transition focus:ring-2 ${
-          error ? "border-red-500 ring-red-200" : "border-zinc-300 focus:ring-zinc-300"
-        } ${className}`}
+        className={[
+          "w-full max-w-full rounded-2xl border bg-surface p-3 text-[16px] text-default",
+          "outline-none transition focus:ring-2 focus:ring-default",
+          error ? "border-red-500 ring-red-200" : "border-subtle",
+          className,
+        ].join(" ")}
         {...rest}
       />
 

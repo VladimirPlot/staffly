@@ -8,6 +8,10 @@
     --staffly-border: #e4e4e7;
     --staffly-muted: #71717a;
     --staffly-icon: #52525b;
+    --staffly-text: #18181b;
+    --staffly-text-strong: #09090b;
+    --staffly-ring: #d4d4d8;
+    --staffly-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
   }
 
   .dark {
@@ -16,6 +20,10 @@
     --staffly-border: #27272a;
     --staffly-muted: #a1a1aa;
     --staffly-icon: #d4d4d8;
+    --staffly-text: #e4e4e7;
+    --staffly-text-strong: #fafafa;
+    --staffly-ring: #3f3f46;
+    --staffly-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -37,6 +45,10 @@
 }
 
 @layer utilities {
+  .bg-app {
+    background-color: var(--staffly-bg);
+  }
+
   .bg-surface {
     background-color: var(--staffly-surface);
   }
@@ -49,8 +61,20 @@
     color: var(--staffly-muted);
   }
 
+  .text-strong {
+    color: var(--staffly-text-strong);
+  }
+
+  .text-default {
+    color: var(--staffly-text);
+  }
+
   .text-icon {
     color: var(--staffly-icon);
+  }
+
+  .ring-default {
+    --tw-ring-color: var(--staffly-ring);
   }
 
   .dashboard-jiggle {

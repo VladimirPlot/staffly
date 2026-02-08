@@ -8,7 +8,10 @@ type Props = {
 
 export default function Avatar({ name, imageUrl, className = "" }: Props) {
   const [broken, setBroken] = React.useState(false);
-  React.useEffect(() => { setBroken(false); }, [imageUrl]);
+
+  React.useEffect(() => {
+    setBroken(false);
+  }, [imageUrl]);
 
   const initials = React.useMemo(() => {
     return (
@@ -28,7 +31,7 @@ export default function Avatar({ name, imageUrl, className = "" }: Props) {
       <img
         src={imageUrl}
         alt={name}
-        className={`h-9 w-9 rounded-full border border-zinc-200 object-cover ${className}`}
+        className={`h-9 w-9 overflow-hidden rounded-full border border-subtle bg-surface object-cover ${className}`}
         onError={() => setBroken(true)}
       />
     );
@@ -36,7 +39,7 @@ export default function Avatar({ name, imageUrl, className = "" }: Props) {
 
   return (
     <div
-      className={`flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-zinc-50 text-xs font-semibold ${className}`}
+      className={`flex h-9 w-9 select-none items-center justify-center overflow-hidden rounded-full border border-subtle bg-app text-xs font-semibold text-default ${className}`}
       aria-label={name}
     >
       {initials}

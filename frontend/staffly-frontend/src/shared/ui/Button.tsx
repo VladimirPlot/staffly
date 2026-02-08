@@ -24,7 +24,7 @@ export default function Button({
 }: Props) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-2xl font-medium transition shadow-sm " +
-    "focus:outline-none focus:ring-2 focus:ring-zinc-300 " +
+    "focus:outline-none focus:ring-2 ring-default " +
     "disabled:cursor-not-allowed disabled:opacity-60";
 
   const sizes: Record<ButtonSize, string> = {
@@ -35,9 +35,10 @@ export default function Button({
   };
 
   const styles: Record<ButtonVariant, string> = {
-    primary: "bg-black text-white hover:opacity-90 active:opacity-80",
-    ghost: "bg-transparent hover:bg-zinc-100",
-    outline: "border border-zinc-300 hover:bg-zinc-50",
+    primary:
+      "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] hover:opacity-90 active:opacity-80",
+    ghost: "bg-transparent text-default hover:bg-app",
+    outline: "border border-subtle bg-transparent text-default hover:bg-app",
   };
 
   const isDisabled = disabled || isLoading;
@@ -51,7 +52,6 @@ export default function Button({
     >
       {isLoading ? (
         <>
-          {/* простая “точка-загрузка”, без библиотек */}
           <span className="h-4 w-4 animate-pulse rounded-full bg-current opacity-40" />
           <span className="truncate">{children}</span>
         </>

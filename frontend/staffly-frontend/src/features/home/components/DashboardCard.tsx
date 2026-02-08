@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { type LucideIcon } from "lucide-react";
+import Icon from "../../../shared/ui/Icon";
 
 type DashboardCardProps = {
   id: string;
@@ -23,7 +24,7 @@ export default function DashboardCard({
   title,
   description,
   to,
-  icon: Icon,
+  icon: CardIcon,
   showIndicator,
   isReorderMode,
   onEnterReorderMode,
@@ -149,9 +150,17 @@ export default function DashboardCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Icon className="pointer-events-none absolute bottom-4 right-4 h-12 w-12 text-icon opacity-[0.12] sm:pointer-events-auto sm:static sm:h-6 sm:w-6 sm:text-icon sm:opacity-100" />
+            <Icon
+              icon={CardIcon}
+              decorative
+              className="
+                pointer-events-none absolute bottom-4 right-4
+                h-12 w-12 text-icon opacity-[0.12]
+                sm:pointer-events-auto sm:static sm:h-6 sm:w-6 sm:opacity-100
+              "
+            />
             <div className="relative z-10 flex items-center gap-2">
-              <span className="text-base font-semibold text-zinc-900 sm:text-lg">{title}</span>
+              <span className="text-base font-semibold text-strong sm:text-lg">{title}</span>
               {showIndicator && (
                 <span
                   className="inline-block h-2 w-2 rounded-full bg-emerald-500"

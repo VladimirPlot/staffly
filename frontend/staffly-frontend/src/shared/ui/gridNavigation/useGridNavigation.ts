@@ -160,20 +160,3 @@ export function useGridNavigation<Row, Col>(
 
   return { registerCellRef, onCellKeyDown, focusCellById, focusCell };
 }
-
-/**
- * Пример подключения (табель):
- *
- * const { registerCellRef, onCellKeyDown } = useGridNavigation({
- *   rows: employees,
- *   cols: dates,
- *   getCellId: (employee, date, rowIndex, colIndex) =>
- *     `${employee.id}:${date}:${fields[colIndex]}`,
- *   wrapTab: true,
- * });
- *
- * <input
- *   ref={registerCellRef(cellId)}
- *   onKeyDown={(e) => onCellKeyDown(e, { rowIndex, colIndex, cellId })}
- * />
- */

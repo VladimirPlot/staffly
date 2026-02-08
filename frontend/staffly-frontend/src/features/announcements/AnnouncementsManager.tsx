@@ -3,6 +3,7 @@ import Card from "../../shared/ui/Card";
 import Button from "../../shared/ui/Button";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import ContentText from "../../shared/ui/ContentText";
+import Icon from "../../shared/ui/Icon";
 import AnnouncementDialog from "./AnnouncementDialog";
 import type { AnnouncementDto, AnnouncementRequest } from "./api";
 import {
@@ -149,10 +150,10 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
     return (
       <div
         key={announcement.id}
-        className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+        className="rounded-2xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)]"
       >
         <div className="flex items-start justify-between gap-2">
-          <div className="text-xs text-zinc-500">{createdLabel}</div>
+          <div className="text-xs text-muted">{createdLabel}</div>
           {canManage && (
             <div className="flex items-center gap-1">
               <Button
@@ -161,7 +162,7 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
                 aria-label="Изменить"
                 onClick={() => openEdit(announcement)}
               >
-                <Pencil className="h-4 w-4" />
+                <Icon icon={Pencil} size="sm" decorative />
               </Button>
               <Button
                 variant="ghost"
@@ -170,22 +171,22 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
                 aria-label="Удалить"
                 onClick={() => openDelete(announcement)}
               >
-                <Trash2 className="h-4 w-4" />
+                <Icon icon={Trash2} size="sm" decorative />
               </Button>
             </div>
           )}
         </div>
-        <ContentText className="mt-2 text-base text-zinc-900">{announcement.content}</ContentText>
+        <ContentText className="mt-2 text-base text-strong">{announcement.content}</ContentText>
         {announcement.positions.length > 0 && (
-          <div className="mt-3 flex flex-col gap-1 text-xs text-zinc-700">
-            <div className="text-[11px] font-semibold uppercase text-zinc-500">Должности</div>
+          <div className="mt-3 flex flex-col gap-1 text-xs text-default">
+            <div className="text-[11px] font-semibold uppercase text-muted">Должности</div>
             <div className="flex flex-wrap gap-2">
               {announcement.positions.map((p) => (
                 <span
                   key={p.id}
                   className={`rounded-full border px-2 py-1 ${
                     p.active
-                      ? "border-zinc-200 bg-zinc-100"
+                      ? "border-subtle bg-app"
                       : "border-amber-200 bg-amber-50 text-amber-800"
                   }`}
                 >
@@ -196,8 +197,8 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
             </div>
           </div>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
-          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-800">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span className="rounded-full bg-app px-3 py-1 text-sm text-strong">
             {announcement.expiresAt
               ? `Действует до ${formatDate(announcement.expiresAt)}`
               : "Без даты окончания"}
@@ -208,17 +209,17 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
   };
 
   const emptyState = loading ? (
-    <div className="text-sm text-zinc-600">Загружаем объявления…</div>
+    <div className="text-sm text-muted">Загружаем объявления…</div>
   ) : (
-    <div className="text-sm text-zinc-600">Пока нет объявлений</div>
+    <div className="text-sm text-muted">Пока нет объявлений</div>
   );
 
   return (
     <Card className="mb-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="text-lg font-semibold text-zinc-900">Объявления</div>
-          <div className="text-sm text-zinc-600">Сообщения руководства по должностям</div>
+          <div className="text-lg font-semibold text-strong">Объявления</div>
+          <div className="text-sm text-muted">Сообщения руководства по должностям</div>
         </div>
         {canManage && <Button onClick={openCreate}>Создать объявление</Button>}
       </div>

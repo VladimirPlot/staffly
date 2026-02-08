@@ -26,15 +26,15 @@ export default function Breadcrumbs({
   const navigate = useNavigate();
 
   const pillBase =
-    "inline-flex items-center gap-1 rounded-2xl border border-zinc-300 " +
-    "bg-white px-2 py-1 text-sm font-medium text-zinc-700 shadow-sm " +
-    "transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300";
+    "inline-flex items-center gap-1 rounded-2xl border border-subtle " +
+    "bg-surface px-2 py-1 text-sm font-medium text-default shadow-[var(--staffly-shadow)] " +
+    "transition hover:bg-app focus:outline-none focus:ring-2 ring-default";
 
   const currentPill =
-    "inline-flex items-center rounded-2xl border border-zinc-300 " +
-    "bg-zinc-50 px-2 py-1 text-sm font-medium text-zinc-800";
+    "inline-flex items-center rounded-2xl border border-subtle " +
+    "bg-app px-2 py-1 text-sm font-medium text-strong";
 
-  const sep = <Icon icon={ChevronRight} size="xs" className="text-zinc-400" decorative />;
+  const sep = <Icon icon={ChevronRight} size="xs" className="text-icon" decorative />;
 
   const depth = items.length;
 
@@ -63,7 +63,7 @@ export default function Breadcrumbs({
   return (
     <>
       {/* Mobile: Home + Back(with parent) */}
-      <div className={`flex min-w-0 items-center gap-2 text-sm text-zinc-700 sm:hidden ${className}`}>
+      <div className={`flex min-w-0 items-center gap-2 text-sm text-default sm:hidden ${className}`}>
         {/* Home фиксированный, не сжимается */}
         {homeButton}
 
@@ -82,7 +82,7 @@ export default function Breadcrumbs({
       </div>
 
       {/* Desktop: home + full breadcrumbs */}
-      <div className={`hidden flex-wrap items-center gap-1 text-sm text-zinc-700 sm:flex ${className}`}>
+      <div className={`hidden flex-wrap items-center gap-1 text-sm text-default sm:flex ${className}`}>
         {homeButton}
         {items.length > 0 && sep}
         {items.map((it, i) => {

@@ -627,7 +627,7 @@ export default function InvitePage() {
                           setUpdatePositionError(null);
                         }}
                         disabled={savingPosition && memberToEdit?.id === m.id}
-                        leftIcon={<Icon icon={Pencil} decorative={false} title="Редактировать" />}
+                        leftIcon={<Icon icon={Pencil} size="sm" decorative={false} title="Редактировать" />}
                       />
                     )}
                     {canRemoveMember(m) && (
@@ -640,7 +640,7 @@ export default function InvitePage() {
                           setMemberToRemove(m);
                         }}
                         disabled={removing && memberToRemove?.id === m.id}
-                        leftIcon={<Icon icon={Trash2} decorative={false} title="Исключить" />}
+                        leftIcon={<Icon icon={Trash2} size="sm" decorative={false} title="Исключить" />}
                       />
                     )}
                   </div>

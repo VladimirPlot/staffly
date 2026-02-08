@@ -22,7 +22,7 @@ export default function PhoneInputField({
 }: Props) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm text-zinc-600">{label}</span>
+      <span className="mb-1 block text-sm text-muted">{label}</span>
 
       <PhoneInput
         value={value}

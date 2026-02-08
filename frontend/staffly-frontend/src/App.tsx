@@ -118,7 +118,7 @@ function TopBar() {
     <div className="mb-6">
       <header className="flex items-center justify-between gap-3">
         <Link to={homeHref} className="flex items-center gap-2">
-          <span className="text-xl font-semibold">Staffly</span>
+          <span className="text-xl font-semibold text-strong">Staffly</span>
           <span className="rounded-full bg-zinc-900 px-2 py-1 text-xs font-medium text-white">
             alpha 2.3
           </span>
@@ -131,11 +131,11 @@ function TopBar() {
                 <Link
                   to="/app"
                   title="Дом ресторана"
-                  className="rounded-full border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-50"
+                  className="rounded-full border border-subtle px-3 py-1 text-xs text-default hover:bg-app"
                 >
                   {restName}
                 </Link>
-                <Link to="/restaurants" className="text-xs text-zinc-600 hover:underline">
+                <Link to="/restaurants" className="text-xs text-muted hover:underline">
                   Сменить ресторан
                 </Link>
               </div>
@@ -145,8 +145,8 @@ function TopBar() {
               <>
                 <Avatar name={user.name} imageUrl={user.avatarUrl} />
                 <div className="hidden text-sm leading-tight sm:block">
-                  <div className="font-medium">{user.name}</div>
-                  <div className="text-zinc-500">{user.phone}</div>
+                  <div className="font-medium text-default">{user.name}</div>
+                  <div className="text-muted">{user.phone}</div>
                 </div>
               </>
             )}
@@ -155,7 +155,7 @@ function TopBar() {
               {hasRestaurant && (
                 <Link to="/inbox" aria-label="Входящие">
                   <IconButton badge={unreadCount}>
-                    <Icon icon={Bell} size="md" className="text-zinc-900" />
+                    <Icon icon={Bell} size="md" className="text-icon" />
                   </IconButton>
                 </Link>
               )}
@@ -174,40 +174,40 @@ function TopBar() {
               {hasRestaurant && (
                 <Link to="/inbox" aria-label="Входящие">
                   <IconButton badge={unreadCount}>
-                    <Icon icon={Bell} size="md" className="text-zinc-900" />
+                    <Icon icon={Bell} size="md" className="text-icon" />
                   </IconButton>
                 </Link>
               )}
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded-2xl border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50"
+                className="inline-flex items-center justify-center rounded-2xl border border-subtle bg-surface px-3 py-2 text-sm font-medium text-default shadow-[var(--staffly-shadow)] hover:bg-app focus:outline-none focus:ring-2 ring-default"
                 aria-label="Открыть меню"
                 aria-expanded={mobileOpen}
                 onClick={() => setMobileOpen((v) => !v)}
               >
-                <Icon icon={Menu} size="md" className="text-zinc-900" />
+                <Icon icon={Menu} size="md" className="text-icon" />
               </button>
             </div>
           </div>
         ) : (
-          <div className="text-sm text-zinc-600">Войдите, чтобы продолжить</div>
+          <div className="text-sm text-muted">Войдите, чтобы продолжить</div>
         )}
       </header>
 
       {token && mobileOpen && (
-        <div className="mt-3 rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm sm:hidden">
+        <div className="mt-3 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)] sm:hidden">
           {hasRestaurant && restName && (
             <div className="mb-3 flex items-center justify-between gap-2">
               <Link
                 to="/app"
-                className="rounded-full border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-50"
+                className="rounded-full border border-subtle px-3 py-1 text-xs text-default hover:bg-app"
                 onClick={() => setMobileOpen(false)}
               >
                 {restName}
               </Link>
               <Link
                 to="/restaurants"
-                className="text-xs text-zinc-600 hover:underline"
+                className="text-xs text-muted hover:underline"
                 onClick={() => setMobileOpen(false)}
               >
                 Сменить ресторан
@@ -217,28 +217,28 @@ function TopBar() {
 
           {user && (
             <div className="mb-3 text-sm">
-              <div className="font-medium">{user.name}</div>
-              <div className="text-zinc-500">{user.phone}</div>
+              <div className="font-medium text-default">{user.name}</div>
+              <div className="text-muted">{user.phone}</div>
             </div>
           )}
 
           <div className="flex flex-col gap-2">
             <Link
               to="/me/income"
-              className="rounded-xl px-3 py-2 hover:bg-zinc-50"
+              className="rounded-xl px-3 py-2 text-default hover:bg-app"
               onClick={() => setMobileOpen(false)}
             >
               Мои доходы
             </Link>
             <Link
               to="/profile"
-              className="rounded-xl px-3 py-2 hover:bg-zinc-50"
+              className="rounded-xl px-3 py-2 text-default hover:bg-app"
               onClick={() => setMobileOpen(false)}
             >
               Профиль
             </Link>
             <button
-              className="rounded-xl px-3 py-2 text-left hover:bg-zinc-50"
+              className="rounded-xl px-3 py-2 text-left text-default hover:bg-app"
               onClick={() => {
                 setMobileOpen(false);
                 logout();
@@ -266,7 +266,7 @@ function LandingRedirect() {
 
 function AppShell() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 p-4">
+    <main className="min-h-screen bg-app p-4">
       <React.Suspense fallback={<PageLoader delayMs={200} />}>
         <Outlet />
       </React.Suspense>

@@ -25,7 +25,7 @@ const Modal: React.FC<ModalProps> = ({
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const lastActiveElementRef = React.useRef<HTMLElement | null>(null);
 
-  // ✅ держим актуальный onClose без перезапуска эффектов
+  // держим актуальный onClose без перезапуска эффектов
   const onCloseRef = React.useRef(onClose);
   React.useEffect(() => {
     onCloseRef.current = onClose;
@@ -60,7 +60,7 @@ const Modal: React.FC<ModalProps> = ({
       window.removeEventListener("keydown", handler);
       window.clearTimeout(focusTimer);
     };
-  }, [open]); // ✅ только open
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -112,32 +112,31 @@ const Modal: React.FC<ModalProps> = ({
           aria-describedby={description ? descriptionId : undefined}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className={`flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
+          className={`flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-subtle bg-surface shadow-2xl max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-6 py-5">
+          <div className="flex items-start justify-between gap-4 border-b border-subtle px-6 py-5">
             <div className="min-w-0">
               {title && (
-                <div id={titleId} className="text-lg font-semibold text-zinc-900">
+                <div id={titleId} className="text-lg font-semibold text-strong">
                   {title}
                 </div>
               )}
               {description && (
-                <div id={descriptionId} className="mt-2 text-sm text-zinc-600">
+                <div id={descriptionId} className="mt-2 text-sm text-muted">
                   {description}
                 </div>
               )}
             </div>
+
             <Button variant="ghost" onClick={() => onCloseRef.current()}>
               Закрыть
             </Button>
           </div>
 
-          {children && (
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
-          )}
+          {children && <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>}
 
           {footer && (
-            <div className="border-t border-zinc-100 px-6 py-4">
+            <div className="border-t border-subtle px-6 py-4">
               <div className="flex justify-end gap-2">{footer}</div>
             </div>
           )}

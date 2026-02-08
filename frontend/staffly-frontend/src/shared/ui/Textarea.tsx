@@ -9,16 +9,19 @@ type Props = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
 export default function Textarea({ label, error, hint, className = "", ...rest }: Props) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm text-zinc-600">{label}</span>
+      <span className="mb-1 block text-sm text-muted">{label}</span>
 
       <textarea
-        className={`w-full rounded-2xl border p-3 text-[16px] outline-none transition focus:ring-2 ${
-          error ? "border-red-500 ring-red-200" : "border-zinc-300 focus:ring-zinc-300"
-        } ${className}`}
+        className={[
+          "w-full rounded-2xl border bg-surface p-3 text-[16px] text-default",
+          "outline-none transition focus:ring-2 focus:ring-default",
+          error ? "border-red-500 ring-red-200" : "border-subtle",
+          className,
+        ].join(" ")}
         {...rest}
       />
 
-      {hint && !error && <span className="mt-1 block text-xs text-zinc-500">{hint}</span>}
+      {hint && !error && <span className="mt-1 block text-xs text-muted">{hint}</span>}
       {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
     </label>
   );

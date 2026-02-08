@@ -8,9 +8,13 @@ const IconButton: React.FC<IconButtonProps> = ({ badge, children, className, ...
   <button
     type="button"
     {...props}
-    className={`relative inline-flex items-center justify-center rounded-full border border-zinc-300 px-3 py-2 text-sm font-medium shadow-sm hover:bg-zinc-50 ${
-      className ?? ""
-    }`}
+    className={[
+      "relative inline-flex items-center justify-center rounded-full",
+      "border border-subtle bg-surface px-3 py-2 text-sm font-medium text-icon",
+      "shadow-[var(--staffly-shadow)] hover:bg-app",
+      "focus:outline-none focus:ring-2 focus:ring-default",
+      className ?? "",
+    ].join(" ")}
   >
     {children}
     {typeof badge === "number" && badge > 0 && (
