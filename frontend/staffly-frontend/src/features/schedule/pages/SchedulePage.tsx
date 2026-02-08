@@ -476,7 +476,7 @@ const SchedulePage: React.FC = () => {
         setScheduleLoading(false);
       }
     },
-    [loadShiftRequests, prepareSchedule, restaurantId]
+    [clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId]
   );
 
   const handleEditSavedSchedule = React.useCallback(
@@ -502,7 +502,7 @@ const SchedulePage: React.FC = () => {
         setScheduleLoading(false);
       }
     },
-    [canManage, loadShiftRequests, prepareSchedule, restaurantId]
+    [clearScheduleNotices, canManage, loadShiftRequests, prepareSchedule, restaurantId]
   );
 
   const handleCloseSavedSchedule = React.useCallback(() => {
@@ -597,7 +597,7 @@ const SchedulePage: React.FC = () => {
     } finally {
       setScheduleLoading(false);
     }
-  }, [handleCloseSavedSchedule, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]);
+  }, [clearScheduleNotices, handleCloseSavedSchedule, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]);
 
   const handleDeleteSavedSchedule = React.useCallback(
     async (id: number) => {
@@ -624,7 +624,7 @@ const SchedulePage: React.FC = () => {
         setDeletingId(null);
       }
     },
-    [canManage, restaurantId, scheduleId]
+    [clearScheduleNotices, canManage, restaurantId, scheduleId]
   );
 
   const handleDeleteSchedule = React.useCallback(() => {

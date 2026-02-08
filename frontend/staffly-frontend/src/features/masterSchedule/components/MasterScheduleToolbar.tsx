@@ -9,13 +9,15 @@ type Props = {
 export default function MasterScheduleToolbar({ viewMode, onToggleViewMode }: Props) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="text-sm text-zinc-600">Планирование ФОТ / LC</div>
-      <div className="flex items-center gap-1 rounded-2xl border border-zinc-200 bg-white p-1">
+      <div className="text-sm text-muted">Планирование ФОТ / LC</div>
+      <div className="flex items-center gap-1 rounded-2xl border border-subtle bg-surface p-1">
         <button
           type="button"
           onClick={() => onToggleViewMode("DETAILED")}
           className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm transition ${
-            viewMode === "DETAILED" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"
+            viewMode === "DETAILED"
+              ? "bg-app text-strong shadow-[var(--staffly-shadow)]"
+              : "text-default hover:bg-app"
           }`}
         >
           <Icon icon={LayoutGrid} size="xs" />
@@ -25,7 +27,9 @@ export default function MasterScheduleToolbar({ viewMode, onToggleViewMode }: Pr
           type="button"
           onClick={() => onToggleViewMode("COMPACT")}
           className={`inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm transition ${
-            viewMode === "COMPACT" ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"
+            viewMode === "COMPACT"
+              ? "bg-app text-strong shadow-[var(--staffly-shadow)]"
+              : "text-default hover:bg-app"
           }`}
         >
           <Icon icon={List} size="xs" />

@@ -73,7 +73,7 @@ export default function MasterSchedulesPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-subtle px-6 py-4">
           <h2 className="text-lg font-semibold">Мастер-графики</h2>
         </div>
         {loading ? (
@@ -81,7 +81,7 @@ export default function MasterSchedulesPage() {
         ) : error ? (
           <div className="p-6 text-red-600">{error}</div>
         ) : items.length === 0 ? (
-          <div className="p-6 text-zinc-600">Пока нет мастер-графиков.</div>
+          <div className="p-6 text-muted">Пока нет мастер-графиков.</div>
         ) : (
           <div className="divide-y">
             {items.map((item) => (
@@ -90,14 +90,14 @@ export default function MasterSchedulesPage() {
                 className="flex flex-wrap items-center justify-between gap-3 px-6 py-4"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-base font-medium text-zinc-900 break-words">
+                  <div className="truncate text-base font-medium text-strong break-words">
                     {item.name}
                   </div>
-                  <div className="text-sm text-zinc-600">
+                  <div className="text-sm text-muted">
                     {item.periodStart} — {item.periodEnd}
                   </div>
                   {item.plannedRevenue != null && (
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-muted">
                       Плановая выручка: {item.plannedRevenue}
                     </div>
                   )}
@@ -105,14 +105,14 @@ export default function MasterSchedulesPage() {
                 <div className="flex items-center gap-2">
                   <Link
                     to={`/master-schedules/${item.id}`}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-subtle bg-surface px-3 py-2 text-sm text-default hover:bg-app"
                   >
-                    <Icon icon={Pencil} size="xs" />
+                    <Icon icon={Pencil} size="xs" className="text-icon" />
                     Редактировать
                   </Link>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-subtle bg-surface px-3 py-2 text-sm text-default hover:bg-app"
                     onClick={async () => {
                       if (!restaurantId) return;
                       if (!window.confirm("Удалить мастер-график?")) return;
@@ -120,7 +120,7 @@ export default function MasterSchedulesPage() {
                       await load();
                     }}
                   >
-                    <Icon icon={Trash2} size="xs" />
+                    <Icon icon={Trash2} size="xs" className="text-icon" />
                     Удалить
                   </button>
                 </div>

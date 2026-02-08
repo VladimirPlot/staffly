@@ -493,7 +493,7 @@ export default function MasterScheduleEditorPage() {
               {viewMode === "DETAILED" && (
                 <div className="flex flex-wrap items-center gap-3">
                   {overviewMode && (
-                    <label className="flex items-center gap-3 text-sm text-zinc-600">
+                    <label className="flex items-center gap-3 text-sm text-muted">
                       <input
                         type="range"
                         min={50}
@@ -504,10 +504,10 @@ export default function MasterScheduleEditorPage() {
                           setOverviewScale(Number(event.target.value));
                           setOverviewScaleUserSet(true);
                         }}
-                        className="w-32 accent-zinc-900 sm:w-40"
+                        className="w-32 accent-[var(--staffly-text-strong)] sm:w-40"
                         aria-label="Масштаб обзора"
                       />
-                      <span className="hidden sm:block text-zinc-500">
+                      <span className="hidden sm:block text-muted">
                         {overviewScale}%
                       </span>
                     </label>
@@ -581,9 +581,9 @@ export default function MasterScheduleEditorPage() {
               />
             )}
 
-            <div className="flex flex-wrap items-end justify-between gap-4 rounded-3xl border border-zinc-200 bg-white p-4">
+            <div className="flex flex-wrap items-end justify-between gap-4 rounded-3xl border border-subtle bg-surface p-4">
               <div className="space-y-2">
-                <div className="text-sm text-zinc-600">Planned revenue</div>
+                <div className="text-sm text-muted">Planned revenue</div>
                 <Input
                   label="Плановая выручка"
                   type="number"
@@ -610,16 +610,16 @@ export default function MasterScheduleEditorPage() {
                 </Button>
               </div>
               <div className="text-right">
-                <div className="text-sm text-zinc-600">LC%</div>
-                <div className="text-xl font-semibold text-zinc-900">
+                <div className="text-sm text-muted">LC%</div>
+                <div className="text-xl font-semibold text-strong">
                   {plannedRevenue && plannedRevenue > 0
                     ? formatNumber((totalPayroll / plannedRevenue) * 100)
                     : "—"}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm text-zinc-600">Общий ФОТ</div>
-                <div className="text-xl font-semibold text-zinc-900">
+                <div className="text-sm text-muted">Общий ФОТ</div>
+                <div className="text-xl font-semibold text-strong">
                   {formatNumber(totalPayroll)}
                 </div>
               </div>

@@ -57,17 +57,17 @@ export default function MasterScheduleWeekTemplateView({
       <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
         Шаблон недели — черновик. Нажмите «Заполнить», чтобы применить его к детальному графику.
       </div>
-      <div className="overflow-auto rounded-3xl border border-zinc-200 bg-white">
+      <div className="overflow-auto rounded-3xl border border-subtle bg-surface shadow-[var(--staffly-shadow)]">
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-40 h-10 bg-white px-4 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              <th className="sticky left-0 top-0 z-40 h-10 bg-surface px-4 text-left text-xs font-semibold uppercase tracking-wide text-muted">
                 Должность
               </th>
               {days.map((day) => (
                 <th
                   key={`weekday-${day.weekday}`}
-                  className="sticky top-0 z-30 h-10 border-l border-zinc-100 bg-white px-2 text-center text-xs font-semibold uppercase tracking-wide text-zinc-500"
+                  className="sticky top-0 z-30 h-10 border-l border-subtle bg-surface px-2 text-center text-xs font-semibold uppercase tracking-wide text-muted"
                 >
                   {day.label}
                 </th>
@@ -78,14 +78,14 @@ export default function MasterScheduleWeekTemplateView({
             {positionIds.map((positionId) => {
               const position = positionMap.get(positionId);
               return (
-                <tr key={positionId} className="border-b border-zinc-100">
-                  <td className="sticky left-0 z-40 border-r border-zinc-100 bg-white px-4 py-3">
+                <tr key={positionId} className="border-b border-subtle">
+                  <td className="sticky left-0 z-40 border-r border-subtle bg-surface px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate font-medium text-zinc-900">
+                        <div className="truncate font-medium text-strong">
                           {position?.name ?? "Удаленная должность"}
                         </div>
-                        <div className="text-xs text-zinc-500">
+                        <div className="text-xs text-muted">
                           {position?.payType === "SHIFT"
                             ? `Смена — ${formatNumber(position?.payRate ?? 0)}`
                             : `Часы — ${formatNumber(position?.payRate ?? 0)}/ч`}
@@ -93,7 +93,7 @@ export default function MasterScheduleWeekTemplateView({
                       </div>
                       <button
                         type="button"
-                        className="rounded-xl border border-zinc-200 bg-white p-2 text-zinc-700 hover:bg-zinc-50"
+                        className="rounded-xl border border-subtle bg-surface p-2 text-icon hover:bg-app"
                         onClick={() => onRemovePosition(positionId)}
                       >
                         <Icon icon={Trash2} size="xs" />
@@ -105,14 +105,14 @@ export default function MasterScheduleWeekTemplateView({
                     return (
                       <td
                         key={`${positionId}:${day.weekday}`}
-                        className="border-l border-zinc-100 px-2 py-2"
+                        className="border-l border-subtle px-2 py-2"
                       >
                         <div className="flex flex-col gap-1">
                           <input
                             type="number"
                             min={0}
                             step={1}
-                            className="w-full rounded-lg border border-zinc-200 px-2 py-1 text-center text-xs"
+                            className="w-full rounded-lg border border-subtle px-2 py-1 text-center text-xs outline-none focus:ring-2 ring-default"
                             placeholder="Кол-во"
                             value={cell?.staffCount ?? ""}
                             onChange={(e) =>
@@ -128,7 +128,7 @@ export default function MasterScheduleWeekTemplateView({
                             type="number"
                             min={0}
                             step={0.25}
-                            className="w-full rounded-lg border border-zinc-200 px-2 py-1 text-center text-xs"
+                            className="w-full rounded-lg border border-subtle px-2 py-1 text-center text-xs outline-none focus:ring-2 ring-default"
                             placeholder="Ед."
                             value={cell?.units ?? ""}
                             onChange={(e) =>
@@ -152,22 +152,22 @@ export default function MasterScheduleWeekTemplateView({
       </div>
 
       <div className="space-y-2">
-        <div className="text-sm font-semibold text-zinc-700">Заполнить детальный график</div>
+        <div className="text-sm font-semibold text-strong">Заполнить детальный график</div>
         <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-          onClick={() => onApplyTemplate(false)}
-        >
-          Заполнить только пустые
-        </button>
-        <button
-          type="button"
-          className="rounded-2xl border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-          onClick={() => onApplyTemplate(true)}
-        >
-          Перезаписать детальный график
-        </button>
+          <button
+            type="button"
+            className="rounded-2xl border border-subtle bg-surface px-4 py-2 text-sm text-default hover:bg-app"
+            onClick={() => onApplyTemplate(false)}
+          >
+            Заполнить только пустые
+          </button>
+          <button
+            type="button"
+            className="rounded-2xl border border-subtle bg-surface px-4 py-2 text-sm text-default hover:bg-app"
+            onClick={() => onApplyTemplate(true)}
+          >
+            Перезаписать детальный график
+          </button>
         </div>
       </div>
     </div>
