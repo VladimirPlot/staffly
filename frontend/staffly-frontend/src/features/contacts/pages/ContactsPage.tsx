@@ -1,20 +1,21 @@
-import React from "react";
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 
 import BackToHome from "../../../shared/ui/BackToHome";
+import PageLoader from "../../../shared/ui/PageLoader";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchMyRoleIn } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import ContactsManager from "../components/ContactsManager";
 
-const ContactsPage: React.FC = () => {
+const ContactsPage = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
-  const [roleLoading, setRoleLoading] = React.useState<boolean>(!!restaurantId);
+  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
+  const [roleLoading, setRoleLoading] = useState<boolean>(!!restaurantId);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!restaurantId) {
       setMyRole(null);
       setRoleLoading(false);
@@ -44,7 +45,7 @@ const ContactsPage: React.FC = () => {
   }
 
   if (roleLoading) {
-    return null;
+    return <PageLoader />;
   }
 
   const access = resolveRestaurantAccess(user?.roles, myRole);

@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect, useMemo, useState } from "react";
 import BackToHome from "../../../shared/ui/BackToHome";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchMyRoleIn } from "../../employees/api";
@@ -6,12 +6,12 @@ import type { RestaurantRole } from "../../../shared/types/restaurant";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import RestaurantChecklists from "../components/RestaurantChecklists";
 
-const ChecklistsPage: React.FC = () => {
+const ChecklistsPage = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!restaurantId) {
       setMyRole(null);
       return;
@@ -32,7 +32,7 @@ const ChecklistsPage: React.FC = () => {
     };
   }, [restaurantId]);
 
-  const access = React.useMemo(
+  const access = useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
     [user?.roles, myRole]
   );
@@ -48,8 +48,8 @@ const ChecklistsPage: React.FC = () => {
       </div>
       <h2 className="mb-4 text-2xl font-semibold">Чек-листы</h2>
       <div>
-                <div className="text-sm text-zinc-600">Готовые инструкции для сотрудников по должностям</div>
-              </div>
+        <div className="text-sm text-muted">Готовые инструкции для сотрудников по должностям</div>
+      </div>
       <RestaurantChecklists restaurantId={restaurantId} canManage={access.isManagerLike} />
     </div>
   );

@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Modal from "../../shared/ui/Modal";
 import Input from "../../shared/ui/Input";
@@ -28,7 +28,7 @@ function createId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-const AnnouncementDialog: React.FC<AnnouncementDialogProps> = ({
+const AnnouncementDialog = ({
   open,
   title,
   positions,
@@ -38,14 +38,14 @@ const AnnouncementDialog: React.FC<AnnouncementDialogProps> = ({
   initialData,
   onClose,
   onSubmit,
-}) => {
-  const today = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [content, setContent] = React.useState(initialData?.content ?? "");
-  const [expiresAt, setExpiresAt] = React.useState(initialData?.expiresAt ?? "");
-  const [fields, setFields] = React.useState<PositionField[]>([{ id: createId(), value: "" }]);
-  const [localError, setLocalError] = React.useState<string | null>(null);
+}: AnnouncementDialogProps) => {
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [content, setContent] = useState(initialData?.content ?? "");
+  const [expiresAt, setExpiresAt] = useState(initialData?.expiresAt ?? "");
+  const [fields, setFields] = useState<PositionField[]>([{ id: createId(), value: "" }]);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     setContent(initialData?.content ?? "");
     setExpiresAt(initialData?.expiresAt ?? "");
@@ -57,32 +57,32 @@ const AnnouncementDialog: React.FC<AnnouncementDialogProps> = ({
     setLocalError(null);
   }, [open, initialData?.content, initialData?.expiresAt, initialData?.positionIds]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) {
       setFields([]);
     }
   }, [open]);
 
-  const positionOptions = React.useMemo(
+  const positionOptions = useMemo(
     () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
     [positions],
   );
 
-  const handleAdd = React.useCallback(() => {
+  const handleAdd = useCallback(() => {
     setFields((prev) => [...prev, { id: createId(), value: "" }]);
   }, []);
 
-  const handleRemove = React.useCallback((id: string) => {
+  const handleRemove = useCallback((id: string) => {
     setFields((prev) => (prev.length <= 1 ? prev : prev.filter((field) => field.id !== id)));
   }, []);
 
-  const handleChange = React.useCallback((id: string, value: string) => {
+  const handleChange = useCallback((id: string, value: string) => {
     setFields((prev) =>
       prev.map((field) => (field.id === id ? { ...field, value: value ? Number(value) : "" } : field)),
     );
   }, []);
 
-  const handleSubmit = React.useCallback(() => {
+  const handleSubmit = useCallback(() => {
     const trimmed = content.trim();
     if (!trimmed) {
       setLocalError("Добавьте текст объявления");
@@ -117,8 +117,8 @@ const AnnouncementDialog: React.FC<AnnouncementDialogProps> = ({
       title={title}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
-            Отменить
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
             {submitting ? "Сохраняем…" : submitLabel}
@@ -128,12 +128,12 @@ const AnnouncementDialog: React.FC<AnnouncementDialogProps> = ({
     >
       <div className="space-y-4">
         <div>
-          <div className="mb-2 text-sm text-zinc-600">Должности</div>
+          <div className="mb-2 text-sm text-muted">Должности</div>
           <div className="space-y-3">
             {fields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
                 <select
-                  className="flex-1 rounded-2xl border border-zinc-300 p-2 text-base"
+                  className="flex-1 rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                   value={field.value}
                   onChange={(event) => handleChange(field.id, event.target.value)}
                   disabled={submitting}
@@ -150,7 +150,7 @@ const AnnouncementDialog: React.FC<AnnouncementDialogProps> = ({
                   variant="ghost"
                   onClick={() => handleRemove(field.id)}
                   disabled={fields.length <= 1 || submitting}
-                  className="text-sm text-zinc-600"
+                  className="text-sm text-muted"
                 >
                   Удалить
                 </Button>

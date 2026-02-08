@@ -1,4 +1,4 @@
-import React from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 
@@ -8,18 +8,18 @@ type TaskGroupProps = {
   defaultOpen?: boolean;
   open?: boolean;
   onToggle?: (open: boolean) => void;
-  children?: React.ReactNode;
+  children?: ReactNode;
 };
 
-const TaskGroup: React.FC<TaskGroupProps> = ({
+const TaskGroup = ({
   title,
   count,
   defaultOpen = false,
   open,
   onToggle,
   children,
-}) => {
-  const [internalOpen, setInternalOpen] = React.useState(defaultOpen);
+}: TaskGroupProps) => {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const isOpen = open ?? internalOpen;
 
   const handleToggle = () => {
@@ -31,7 +31,7 @@ const TaskGroup: React.FC<TaskGroupProps> = ({
   };
 
   return (
-    <div className="rounded-3xl border border-zinc-200 bg-white">
+    <div className="rounded-3xl border border-subtle bg-surface">
       <button
         type="button"
         className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
@@ -39,17 +39,17 @@ const TaskGroup: React.FC<TaskGroupProps> = ({
       >
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold">{title}</span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+          <span className="rounded-full bg-app px-2 py-0.5 text-xs text-muted">
             {count}
           </span>
         </div>
         <Icon
           icon={ChevronDown}
           size="md"
-          className={`text-zinc-500 transition ${isOpen ? "rotate-180" : ""}`}
+          className={`text-muted transition ${isOpen ? "rotate-180" : ""}`}
         />
       </button>
-      {isOpen && <div className="border-t border-zinc-100 px-4 py-4">{children}</div>}
+      {isOpen && <div className="border-t border-subtle px-4 py-4">{children}</div>}
     </div>
   );
 };

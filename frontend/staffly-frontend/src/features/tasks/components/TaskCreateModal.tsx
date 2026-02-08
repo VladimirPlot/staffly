@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect, useMemo, useState } from "react";
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
@@ -29,18 +29,18 @@ function formatMemberName(member: MemberDto): string {
   return `${first} ${last}`.trim() || member.phone || "Сотрудник";
 }
 
-const TaskCreateModal: React.FC<TaskCreateModalProps> = ({ open, positions, members, onClose, onCreate }) => {
-  const [title, setTitle] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [priority, setPriority] = React.useState<TaskPriority>("MEDIUM");
-  const [dueDate, setDueDate] = React.useState("");
-  const [assignee, setAssignee] = React.useState("none");
-  const [positionId, setPositionId] = React.useState<number | null>(null);
-  const [memberId, setMemberId] = React.useState<number | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+const TaskCreateModal = ({ open, positions, members, onClose, onCreate }: TaskCreateModalProps) => {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
+  const [dueDate, setDueDate] = useState("");
+  const [assignee, setAssignee] = useState("none");
+  const [positionId, setPositionId] = useState<number | null>(null);
+  const [memberId, setMemberId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     setTitle("");
     setDescription("");
@@ -64,12 +64,12 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({ open, positions, memb
     }
   };
 
-  const filteredMembers = React.useMemo(() => {
+  const filteredMembers = useMemo(() => {
     if (!positionId) return [];
     return members.filter((member) => member.positionId === positionId);
   }, [members, positionId]);
 
-  const todayIso = React.useMemo(() => {
+  const todayIso = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = `${now.getMonth() + 1}`.padStart(2, "0");
@@ -123,8 +123,8 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({ open, positions, memb
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
-            Отменить
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
             {submitting ? "Создаём…" : "Создать"}

@@ -1,8 +1,9 @@
-import React from "react";
+import { useCallback, useEffect, useState } from "react";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ContentText from "../../../shared/ui/ContentText";
+import PageLoader from "../../../shared/ui/PageLoader";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   fetchInbox,
@@ -40,22 +41,22 @@ function formatCreated(dateStr: string): string {
   return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(d);
 }
 
-const InboxPage: React.FC = () => {
+const InboxPage = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const [typeFilter, setTypeFilter] = React.useState<InboxTypeFilter>("ALL");
-  const [state, setState] = React.useState<InboxStateFilter>("UNREAD");
-  const [loading, setLoading] = React.useState(false);
-  const [messages, setMessages] = React.useState<InboxMessageDto[]>([]);
-  const [page, setPage] = React.useState(0);
-  const [hasNext, setHasNext] = React.useState(false);
+  const [typeFilter, setTypeFilter] = useState<InboxTypeFilter>("ALL");
+  const [state, setState] = useState<InboxStateFilter>("UNREAD");
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState<InboxMessageDto[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
 
-  const notifyInboxChanged = React.useCallback(() => {
+  const notifyInboxChanged = useCallback(() => {
     if (typeof window === "undefined") return;
     window.dispatchEvent(new CustomEvent("inbox:changed"));
   }, []);
 
-  const loadPage = React.useCallback(
+  const loadPage = useCallback(
     async (targetPage: number, replace = false) => {
       if (!restaurantId) return;
       setLoading(true);
@@ -81,14 +82,14 @@ const InboxPage: React.FC = () => {
     [restaurantId, state, typeFilter],
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     setMessages([]);
     setPage(0);
     setHasNext(false);
     void loadPage(0, true);
   }, [loadPage]);
 
-  const handleRead = React.useCallback(
+  const handleRead = useCallback(
     async (id: number) => {
       if (!restaurantId) return;
       try {
@@ -107,7 +108,7 @@ const InboxPage: React.FC = () => {
     [restaurantId, state, notifyInboxChanged],
   );
 
-  const handleHide = React.useCallback(
+  const handleHide = useCallback(
     async (id: number) => {
       if (!restaurantId) return;
       try {
@@ -121,7 +122,7 @@ const InboxPage: React.FC = () => {
     [restaurantId, loadPage, notifyInboxChanged],
   );
 
-  const handleRestore = React.useCallback(
+  const handleRestore = useCallback(
     async (id: number) => {
       if (!restaurantId) return;
       try {
@@ -135,15 +136,13 @@ const InboxPage: React.FC = () => {
     [restaurantId, loadPage, notifyInboxChanged],
   );
 
-  const emptyLabel = loading ? "Загружаем сообщения…" : "Сообщений нет";
-
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-3">
         <BackToHome />
       </div>
       <h2 className="text-2xl font-semibold">Входящие</h2>
-      <p className="mb-4 text-sm text-zinc-600">
+      <p className="mb-4 text-sm text-muted">
         Единый список сообщений с фильтрами по типам и статусам.
       </p>
 
@@ -173,21 +172,23 @@ const InboxPage: React.FC = () => {
       </div>
 
       <div className="mt-4 space-y-3">
-        {messages.length === 0 ? (
-          <div className="text-sm text-zinc-600">{emptyLabel}</div>
+        {messages.length === 0 && loading ? (
+          <PageLoader />
+        ) : messages.length === 0 ? (
+          <Card className="text-sm text-muted">Сообщений нет</Card>
         ) : (
           messages.map((message) => (
             <Card
               key={message.id}
               className={
                 state === "HIDDEN"
-                  ? "border-zinc-200 bg-zinc-50/70"
-                  : "border-zinc-200"
+                  ? "border-subtle bg-app/70"
+                  : "border-subtle"
               }
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs text-zinc-500">
+                  <div className="text-xs text-muted">
                     {message.createdBy?.name ?? "Система"}
                     {message.createdAt ? `, ${formatCreated(message.createdAt)}` : ""}
                   </div>
@@ -197,29 +198,29 @@ const InboxPage: React.FC = () => {
                     </div>
                   )}
                   {message.type === "ANNOUNCEMENT" && (
-                    <div className="mt-1 text-xs text-zinc-500">
+                    <div className="mt-1 text-xs text-muted">
                       {message.expiresAt
                         ? `Действует до ${formatDate(message.expiresAt)}`
                         : "Без срока"}
                     </div>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                   {!message.isRead && state !== "HIDDEN" && (
                     <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
                       Новые
                     </span>
                   )}
                   {state === "HIDDEN" && message.isHidden && (
-                    <span className="rounded-full bg-zinc-100 px-2 py-1">Скрыто</span>
+                    <span className="rounded-full bg-app px-2 py-1">Скрыто</span>
                   )}
                   {state === "HIDDEN" && message.isExpired && (
-                    <span className="rounded-full bg-zinc-100 px-2 py-1">Истекло</span>
+                    <span className="rounded-full bg-app px-2 py-1">Истекло</span>
                   )}
                 </div>
               </div>
               <ContentText
-                className={`mt-2 text-base ${state === "HIDDEN" ? "text-zinc-700" : "text-zinc-900"}`}
+                className={`mt-2 text-base ${state === "HIDDEN" ? "text-default" : "text-strong"}`}
               >
                 {message.content}
               </ContentText>

@@ -1,4 +1,3 @@
-import React from "react";
 import SelectField from "../../../shared/ui/SelectField";
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -12,16 +11,16 @@ type TimeSelectProps = {
   onMinuteChange: (value: number | "") => void;
 };
 
-const TimeSelect: React.FC<TimeSelectProps> = ({
+const TimeSelect = ({
   label,
   hour,
   minute,
   onHourChange,
   onMinuteChange,
-}) => {
+}: TimeSelectProps) => {
   return (
     <div>
-      {label && <div className="mb-1 text-sm font-medium text-zinc-700">{label}</div>}
+      {label && <div className="mb-1 text-sm font-medium text-default">{label}</div>}
       <div className="grid grid-cols-2 gap-3">
         <SelectField
           label="Часы"

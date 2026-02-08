@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect, useMemo, useState } from "react";
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
@@ -54,7 +54,7 @@ function formatMemberName(member: MemberDto): string {
   return `${first} ${last}`.trim() || member.phone || "Сотрудник";
 }
 
-const ReminderDialog: React.FC<ReminderDialogProps> = ({
+const ReminderDialog = ({
   open,
   canManage,
   positions,
@@ -65,41 +65,41 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
   error,
   onClose,
   onSubmit,
-}) => {
-  const [targetSelection, setTargetSelection] = React.useState<"ALL" | "POSITION" | "ME">("ALL");
-  const [title, setTitle] = React.useState(initialData?.title ?? "");
-  const [description, setDescription] = React.useState(initialData?.description ?? "");
-  const [periodicity, setPeriodicity] = React.useState<ReminderPeriodicity>(
+}: ReminderDialogProps) => {
+  const [targetSelection, setTargetSelection] = useState<"ALL" | "POSITION" | "ME">("ALL");
+  const [title, setTitle] = useState(initialData?.title ?? "");
+  const [description, setDescription] = useState(initialData?.description ?? "");
+  const [periodicity, setPeriodicity] = useState<ReminderPeriodicity>(
     initialData?.periodicity ?? "DAILY"
   );
-  const [hour, setHour] = React.useState<number | "">(
+  const [hour, setHour] = useState<number | "">(
     initialData?.time ? Number(initialData.time.split(":")[0]) : ""
   );
-  const [minute, setMinute] = React.useState<number | "">(
+  const [minute, setMinute] = useState<number | "">(
     initialData?.time ? Number(initialData.time.split(":")[1]) : ""
   );
-  const [dayOfWeek, setDayOfWeek] = React.useState<number | "">(
+  const [dayOfWeek, setDayOfWeek] = useState<number | "">(
     initialData?.dayOfWeek ?? ""
   );
-  const [dayOfMonth, setDayOfMonth] = React.useState<number | "">(
+  const [dayOfMonth, setDayOfMonth] = useState<number | "">(
     initialData?.dayOfMonth ?? ""
   );
-  const [monthlyLastDay, setMonthlyLastDay] = React.useState<boolean>(
+  const [monthlyLastDay, setMonthlyLastDay] = useState<boolean>(
     initialData?.monthlyLastDay ?? false
   );
-  const [onceDate, setOnceDate] = React.useState(initialData?.onceDate ?? "");
-  const [visibleToAdmin, setVisibleToAdmin] = React.useState(
+  const [onceDate, setOnceDate] = useState(initialData?.onceDate ?? "");
+  const [visibleToAdmin, setVisibleToAdmin] = useState(
     initialData?.visibleToAdmin ?? true
   );
-  const [positionId, setPositionId] = React.useState<number | null>(
+  const [positionId, setPositionId] = useState<number | null>(
     initialData?.targetPositionId ?? null
   );
-  const [memberId, setMemberId] = React.useState<number | null>(
+  const [memberId, setMemberId] = useState<number | null>(
     initialData?.targetMemberId ?? null
   );
-  const [localError, setLocalError] = React.useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     const initialTargetType = initialData?.targetType;
     const isSelfTarget =
@@ -129,7 +129,7 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     setLocalError(null);
   }, [open, initialData, currentMemberId, members]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (periodicity !== "MONTHLY") {
       if (monthlyLastDay) {
         setMonthlyLastDay(false);
@@ -141,7 +141,7 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     }
   }, [periodicity, dayOfMonth, monthlyLastDay]);
 
-  const todayIso = React.useMemo(() => {
+  const todayIso = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
     const month = `${now.getMonth() + 1}`.padStart(2, "0");
@@ -149,12 +149,12 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
     return `${year}-${month}-${day}`;
   }, []);
 
-  const positionOptions = React.useMemo(
+  const positionOptions = useMemo(
     () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
     [positions]
   );
 
-  const filteredMembers = React.useMemo(() => {
+  const filteredMembers = useMemo(() => {
     if (!positionId) return [];
     return members.filter((member) => member.positionId === positionId);
   }, [members, positionId]);
@@ -268,7 +268,7 @@ const ReminderDialog: React.FC<ReminderDialogProps> = ({
       onClose={onClose}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>

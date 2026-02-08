@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useState } from "react";
 import Card from "../../shared/ui/Card";
 import Button from "../../shared/ui/Button";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
@@ -33,21 +33,21 @@ type AnnouncementsManagerProps = {
   canManage: boolean;
 };
 
-const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
+const AnnouncementsManager = ({
   restaurantId,
   canManage,
-}) => {
-  const [loading, setLoading] = React.useState<boolean>(true);
-  const [announcements, setAnnouncements] = React.useState<AnnouncementDto[]>([]);
-  const [positions, setPositions] = React.useState<PositionDto[]>([]);
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editing, setEditing] = React.useState<AnnouncementDto | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
-  const [dialogError, setDialogError] = React.useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = React.useState<AnnouncementDto | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
+}: AnnouncementsManagerProps) => {
+  const [loading, setLoading] = useState<boolean>(true);
+  const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<AnnouncementDto | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AnnouncementDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const loadAnnouncements = React.useCallback(async () => {
+  const loadAnnouncements = useCallback(async () => {
     setLoading(true);
     try {
       const data = await listAnnouncements(restaurantId);
@@ -60,11 +60,11 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
     }
   }, [restaurantId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadAnnouncements();
   }, [loadAnnouncements]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!canManage) return;
     (async () => {
       try {
@@ -76,26 +76,26 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
     })();
   }, [canManage, restaurantId]);
 
-  const openCreate = React.useCallback(() => {
+  const openCreate = useCallback(() => {
     setEditing(null);
     setDialogError(null);
     setDialogOpen(true);
   }, []);
 
-  const openEdit = React.useCallback((announcement: AnnouncementDto) => {
+  const openEdit = useCallback((announcement: AnnouncementDto) => {
     setEditing(announcement);
     setDialogError(null);
     setDialogOpen(true);
   }, []);
 
-  const closeDialog = React.useCallback(() => {
+  const closeDialog = useCallback(() => {
     if (submitting) return;
     setDialogOpen(false);
     setDialogError(null);
     setEditing(null);
   }, [submitting]);
 
-  const handleSubmit = React.useCallback(
+  const handleSubmit = useCallback(
     async (payload: AnnouncementRequest) => {
       setSubmitting(true);
       setDialogError(null);
@@ -119,16 +119,16 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
     [editing, loadAnnouncements, restaurantId],
   );
 
-  const openDelete = React.useCallback((announcement: AnnouncementDto) => {
+  const openDelete = useCallback((announcement: AnnouncementDto) => {
     setDeleteTarget(announcement);
   }, []);
 
-  const closeDelete = React.useCallback(() => {
+  const closeDelete = useCallback(() => {
     if (deleting) return;
     setDeleteTarget(null);
   }, [deleting]);
 
-  const confirmDelete = React.useCallback(async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
@@ -208,10 +208,10 @@ const AnnouncementsManager: React.FC<AnnouncementsManagerProps> = ({
     );
   };
 
-  const emptyState = loading ? (
-    <div className="text-sm text-muted">Загружаем объявления…</div>
-  ) : (
-    <div className="text-sm text-muted">Пока нет объявлений</div>
+  const emptyState = (
+    <div className="rounded-2xl border border-subtle bg-surface p-4 text-sm text-muted">
+      {loading ? "Загружаем объявления…" : "Пока нет объявлений"}
+    </div>
   );
 
   return (

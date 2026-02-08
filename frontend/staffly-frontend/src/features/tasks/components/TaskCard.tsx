@@ -1,4 +1,3 @@
-import React from "react";
 import { Check, Trash } from "lucide-react";
 import Card from "../../../shared/ui/Card";
 import Icon from "../../../shared/ui/Icon";
@@ -24,19 +23,19 @@ const priorityStyles: Record<string, string> = {
   LOW: "bg-emerald-100 text-emerald-700",
 };
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, onOpen, onComplete, onDelete, canDelete }) => {
-  const badgeClass = priorityStyles[task.priority] ?? "bg-zinc-100 text-zinc-600";
+const TaskCard = ({ task, onOpen, onComplete, onDelete, canDelete }: TaskCardProps) => {
+  const badgeClass = priorityStyles[task.priority] ?? "bg-app text-muted";
 
   return (
     <Card
-      className="cursor-pointer transition hover:shadow-md"
+      className="cursor-pointer transition hover:shadow-[var(--staffly-shadow)]"
       onClick={() => onOpen(task)}
     >
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-base font-semibold text-zinc-900">{task.title}</div>
-            <div className="mt-1 text-xs text-zinc-500">{resolveTaskAssignee(task)}</div>
+            <div className="text-base font-semibold text-strong">{task.title}</div>
+            <div className="mt-1 text-xs text-muted">{resolveTaskAssignee(task)}</div>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass}`}>
             {task.priority}
@@ -44,12 +43,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onOpen, onComplete, onDelete,
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
+          <div className="text-sm text-muted">
             <span className={`font-medium ${dueDateClassName(task.dueDate)}`}>
               {formatTaskDate(task.dueDate)}
             </span>
             {task.dueDate && (
-              <span className="ml-2 text-xs text-zinc-500">
+              <span className="ml-2 text-xs text-muted">
                 {formatRelativeTaskDate(task.dueDate)}
               </span>
             )}

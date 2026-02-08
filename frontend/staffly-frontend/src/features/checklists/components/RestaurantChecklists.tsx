@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Download, Lock, Pencil, Trash2, Unlock, X } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
@@ -34,32 +34,32 @@ function sanitizeFileName(name: string): string {
   return safe.replace(/[\\/:*?"<>|]+/g, "_");
 }
 
-const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantId, canManage }) => {
-  const [positions, setPositions] = React.useState<PositionDto[]>([]);
-  const [checklists, setChecklists] = React.useState<ChecklistDto[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [positionFilter, setPositionFilter] = React.useState<number | null>(null);
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [dialogSubmitting, setDialogSubmitting] = React.useState(false);
-  const [dialogError, setDialogError] = React.useState<string | null>(null);
-  const [dialogInitial, setDialogInitial] = React.useState<ChecklistDialogInitial | undefined>(undefined);
-  const [editing, setEditing] = React.useState<ChecklistDto | null>(null);
-  const [expanded, setExpanded] = React.useState<Set<number>>(new Set());
-  const [deleteTarget, setDeleteTarget] = React.useState<ChecklistDto | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
-  const [itemActionLoading, setItemActionLoading] = React.useState<Set<string>>(new Set());
-  const [itemActionError, setItemActionError] = React.useState<string | null>(null);
-  const [resetting, setResetting] = React.useState<number | null>(null);
-  const [downloading, setDownloading] = React.useState<number | null>(null);
-  const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
-  const [createKind, setCreateKind] = React.useState<ChecklistKind>("TRACKABLE");
+const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsProps) => {
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [checklists, setChecklists] = useState<ChecklistDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [positionFilter, setPositionFilter] = useState<number | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogSubmitting, setDialogSubmitting] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [dialogInitial, setDialogInitial] = useState<ChecklistDialogInitial | undefined>(undefined);
+  const [editing, setEditing] = useState<ChecklistDto | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<ChecklistDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [itemActionLoading, setItemActionLoading] = useState<Set<string>>(new Set());
+  const [itemActionError, setItemActionError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState<number | null>(null);
+  const [downloadMenuFor, setDownloadMenuFor] = useState<number | null>(null);
+  const [createKind, setCreateKind] = useState<ChecklistKind>("TRACKABLE");
 
-  const checklistRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
-  const downloadMenuRefs = React.useRef<Map<number, HTMLDivElement | null>>(new Map());
-  const errorTimeoutRef = React.useRef<number | null>(null);
+  const checklistRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
+  const downloadMenuRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
+  const errorTimeoutRef = useRef<number | null>(null);
 
-  const loadPositions = React.useCallback(async () => {
+  const loadPositions = useCallback(async () => {
     if (!restaurantId) return;
     try {
       const data = await listPositions(restaurantId, { includeInactive: true });
@@ -69,7 +69,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     }
   }, [restaurantId]);
 
-  const loadChecklists = React.useCallback(async () => {
+  const loadChecklists = useCallback(async () => {
     if (!restaurantId) return;
     setLoading(true);
     setError(null);
@@ -85,15 +85,15 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     }
   }, [restaurantId, canManage, positionFilter]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadPositions();
   }, [loadPositions]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadChecklists();
   }, [loadChecklists]);
 
-  const openCreateDialog = React.useCallback(() => {
+  const openCreateDialog = useCallback(() => {
     setEditing(null);
     setDialogError(null);
 
@@ -109,7 +109,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     setDialogOpen(true);
   }, [createKind]);
 
-  const openEditDialog = React.useCallback((checklist: ChecklistDto) => {
+  const openEditDialog = useCallback((checklist: ChecklistDto) => {
     setEditing(checklist);
     setDialogError(null);
     setDialogInitial({
@@ -126,14 +126,14 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     setDialogOpen(true);
   }, []);
 
-  const closeDialog = React.useCallback(() => {
+  const closeDialog = useCallback(() => {
     if (dialogSubmitting) return;
     setDialogOpen(false);
     setEditing(null);
     setDialogError(null);
   }, [dialogSubmitting]);
 
-  const handleSubmitDialog = React.useCallback(
+  const handleSubmitDialog = useCallback(
     async (payload: ChecklistRequest) => {
       if (!restaurantId) return;
       setDialogSubmitting(true);
@@ -161,7 +161,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     [restaurantId, editing, loadChecklists]
   );
 
-  const toggleExpanded = React.useCallback((id: number) => {
+  const toggleExpanded = useCallback((id: number) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -173,16 +173,16 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     });
   }, []);
 
-  const openDeleteDialog = React.useCallback((checklist: ChecklistDto) => {
+  const openDeleteDialog = useCallback((checklist: ChecklistDto) => {
     setDeleteTarget(checklist);
   }, []);
 
-  const closeDeleteDialog = React.useCallback(() => {
+  const closeDeleteDialog = useCallback(() => {
     if (deleting) return;
     setDeleteTarget(null);
   }, [deleting]);
 
-  const confirmDelete = React.useCallback(async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
@@ -196,21 +196,21 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     }
   }, [deleteTarget, restaurantId, loadChecklists]);
 
-  const resetFilter = React.useCallback(() => {
+  const resetFilter = useCallback(() => {
     setPositionFilter(null);
   }, []);
 
-  const positionNames = React.useMemo(() => {
+  const positionNames = useMemo(() => {
     const map = new Map<number, string>();
     positions.forEach((p) => map.set(p.id, p.name));
     return map;
   }, [positions]);
 
-  const updateChecklistInState = React.useCallback((updated: ChecklistDto) => {
+  const updateChecklistInState = useCallback((updated: ChecklistDto) => {
     setChecklists((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
   }, []);
 
-  const reportItemActionError = React.useCallback((message: string | null) => {
+  const reportItemActionError = useCallback((message: string | null) => {
     setItemActionError(message);
     if (errorTimeoutRef.current) {
       window.clearTimeout(errorTimeoutRef.current);
@@ -224,7 +224,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     }
   }, []);
 
-  const toggleItemAction = React.useCallback((key: string, loading: boolean) => {
+  const toggleItemAction = useCallback((key: string, loading: boolean) => {
     setItemActionLoading((prev) => {
       const next = new Set(prev);
       if (loading) {
@@ -236,7 +236,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     });
   }, []);
 
-  const handleItemAction = React.useCallback(
+  const handleItemAction = useCallback(
     async (key: string, action: () => Promise<ChecklistDto>) => {
       if (itemActionLoading.has(key)) return;
       reportItemActionError(null);
@@ -259,7 +259,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     [itemActionLoading, reportItemActionError, toggleItemAction, updateChecklistInState]
   );
 
-  const handleReset = React.useCallback(
+  const handleReset = useCallback(
     async (checklist: ChecklistDto) => {
       setResetting(checklist.id);
       try {
@@ -274,7 +274,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     [restaurantId, loadChecklists]
   );
 
-  const handleDownloadJpg = React.useCallback(
+  const handleDownloadJpg = useCallback(
     async (checklist: ChecklistDto) => {
       const node = checklistRefs.current.get(checklist.id);
       if (!node) return;
@@ -295,19 +295,19 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     []
   );
 
-  const setChecklistRef = React.useCallback((id: number, node: HTMLDivElement | null) => {
+  const setChecklistRef = useCallback((id: number, node: HTMLDivElement | null) => {
     checklistRefs.current.set(id, node);
   }, []);
 
-  const setDownloadMenuRef = React.useCallback((id: number, node: HTMLDivElement | null) => {
+  const setDownloadMenuRef = useCallback((id: number, node: HTMLDivElement | null) => {
     downloadMenuRefs.current.set(id, node);
   }, []);
 
-  const toggleDownloadMenu = React.useCallback((checklistId: number) => {
+  const toggleDownloadMenu = useCallback((checklistId: number) => {
     setDownloadMenuFor((current) => (current === checklistId ? null : checklistId));
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (downloadMenuFor === null) return;
       const menuNode = downloadMenuRefs.current.get(downloadMenuFor);
@@ -330,7 +330,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     };
   }, [downloadMenuFor]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       if (errorTimeoutRef.current) {
         window.clearTimeout(errorTimeoutRef.current);
@@ -338,7 +338,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
     };
   }, []);
 
-  const visibleChecklists = React.useMemo(() => {
+  const visibleChecklists = useMemo(() => {
     const collator = new Intl.Collator("ru", { sensitivity: "base" });
     const groupKey = (checklist: ChecklistDto) => {
       if (checklist.kind === "TRACKABLE" && !checklist.completed) return 0;
@@ -368,7 +368,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
       {canManage && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <select
-            className="rounded-2xl border border-zinc-300 bg-white p-2 text-base"
+            className="rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
             value={positionFilter ?? ""}
             onChange={(event) => setPositionFilter(event.target.value ? Number(event.target.value) : null)}
           >
@@ -383,25 +383,25 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
             type="button"
             onClick={resetFilter}
             className={`flex items-center gap-1 rounded-full border border-transparent p-2 text-sm transition ${
-              positionFilter == null ? "text-zinc-300" : "text-zinc-500 hover:text-zinc-700"
+              positionFilter == null ? "text-muted/60" : "text-muted hover:text-default"
             }`}
             aria-label="Сбросить фильтр"
             disabled={positionFilter == null}
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16M20 4L4 20" />
-            </svg>
+            <Icon icon={X} size="sm" decorative />
             <span>Сбросить</span>
           </button>
         </div>
       )}
 
       <div className="mt-6 space-y-3">
-        {loading && <div className="text-sm text-zinc-500">Загрузка чек-листов…</div>}
-        {error && <div className="text-sm text-red-600">{error}</div>}
-        {itemActionError && <div className="text-sm text-red-600">{itemActionError}</div>}
+        {loading && (
+          <Card className="text-sm text-muted">Загрузка чек-листов…</Card>
+        )}
+        {error && <Card className="text-sm text-red-600">{error}</Card>}
+        {itemActionError && <Card className="text-sm text-red-600">{itemActionError}</Card>}
         {!loading && !error && visibleChecklists.length === 0 && (
-          <div className="text-sm text-zinc-500">Чек-листы пока не добавлены.</div>
+          <Card className="text-sm text-muted">Чек-листы пока не добавлены.</Card>
         )}
         {!loading && !error &&
           visibleChecklists.map((checklist) => {
@@ -415,7 +415,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
             return (
               <div
                 key={checklist.id}
-                className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4"
+                className="rounded-2xl border border-subtle bg-app/70 p-4"
                 ref={(node) => setChecklistRef(checklist.id, node)}
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -429,15 +429,15 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                           aria-hidden
                         />
                       )}
-                      <div className="text-base font-semibold text-zinc-900">{checklist.name}</div>
+                      <div className="text-base font-semibold text-strong">{checklist.name}</div>
                     </div>
                     {isTrackable && checklist.periodLabel && (
-                      <div className="text-sm text-zinc-700">{checklist.periodLabel}</div>
+                      <div className="text-sm text-default">{checklist.periodLabel}</div>
                     )}
-                    <div className="mt-1 text-xs uppercase tracking-wide text-zinc-500">{assignedNames}</div>
+                    <div className="mt-1 text-xs uppercase tracking-wide text-muted">{assignedNames}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="ghost" onClick={() => toggleExpanded(checklist.id)} className="text-sm text-zinc-600">
+                    <Button variant="ghost" onClick={() => toggleExpanded(checklist.id)} className="text-sm text-muted">
                       {isExpanded ? "Свернуть" : "Открыть"}
                     </Button>
                     {canManage && (
@@ -450,7 +450,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                           size="icon"
                           onClick={() => toggleDownloadMenu(checklist.id)}
                           disabled={isDownloading}
-                          className="text-zinc-700"
+                          className="text-default"
                           aria-haspopup="menu"
                           aria-expanded={downloadMenuFor === checklist.id}
                           aria-controls={downloadMenuFor === checklist.id ? `download-menu-${checklist.id}` : undefined}
@@ -462,12 +462,12 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                           <div
                             id={`download-menu-${checklist.id}`}
                             role="menu"
-                            className="absolute right-0 z-10 mt-2 w-36 rounded-2xl border border-zinc-200 bg-white p-1 shadow-lg"
+                            className="absolute right-0 z-10 mt-2 w-36 rounded-2xl border border-subtle bg-surface p-1 shadow-[var(--staffly-shadow)]"
                           >
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="w-full justify-start text-sm text-zinc-700"
+                              className="w-full justify-start text-sm text-default"
                               onClick={() => handleDownloadJpg(checklist)}
                               disabled={isDownloading}
                               role="menuitem"
@@ -483,7 +483,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                         variant="ghost"
                         size="icon"
                         onClick={() => openEditDialog(checklist)}
-                        className="text-zinc-600"
+                        className="text-muted"
                         aria-label="Редактировать"
                       >
                         <Icon icon={Pencil} />
@@ -503,7 +503,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="mt-4 rounded-2xl border border-zinc-200 bg-white text-sm text-zinc-700">
+                  <div className="mt-4 rounded-2xl border border-subtle bg-surface text-sm text-default">
                     {isTrackable ? (
                       <div>
                         {checklist.items.map((item) => {
@@ -522,10 +522,10 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                               ? `🔒 ${item.reservedBy?.name ?? "Занято"}`
                               : "—";
                           return (
-                            <div key={item.id} className="border-b border-zinc-100 px-3 py-3 last:border-b-0">
+                            <div key={item.id} className="border-b border-subtle px-3 py-3 last:border-b-0">
                               <div className="flex items-start justify-between gap-3">
                                 <ContentText
-                                  className={`min-w-0 ${item.done ? "text-zinc-400 line-through" : "text-zinc-800"}`}
+                                  className={`min-w-0 ${item.done ? "text-muted line-through" : "text-default"}`}
                                 >
                                   {item.text}
                                 </ContentText>
@@ -599,7 +599,7 @@ const RestaurantChecklists: React.FC<RestaurantChecklistsProps> = ({ restaurantI
                                   )}
                                 </div>
                               </div>
-                              <div className="mt-2 text-xs text-zinc-500">{statusLabel}</div>
+                              <div className="mt-2 text-xs text-muted">{statusLabel}</div>
                             </div>
                           );
                         })}

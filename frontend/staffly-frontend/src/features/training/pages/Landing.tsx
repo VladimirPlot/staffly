@@ -15,9 +15,9 @@ export default function TrainingLandingPage() {
       <div className="grid gap-4 sm:grid-cols-2">
         {TRAINING_MODULES.map((module) => (
           <Link key={module.slug} to={`/training/${module.slug}`} className="block">
-            <Card className="h-full transition hover:translate-y-[-2px] hover:shadow-md">
+            <Card className="h-full transition hover:translate-y-[-2px] hover:shadow-[var(--staffly-shadow)]">
               <div className="text-lg font-semibold">{module.title}</div>
-              <div className="mt-2 text-sm text-zinc-600">{module.description}</div>
+              <div className="mt-2 text-sm text-muted">{module.description}</div>
             </Card>
           </Link>
         ))}

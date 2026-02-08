@@ -33,10 +33,10 @@ export function formatRelativeTaskDate(dateStr?: string | null): string {
 
 export function dueDateClassName(dateStr?: string | null): string {
   const days = diffTaskDays(dateStr);
-  if (days === null) return "text-zinc-600";
+  if (days === null) return "text-muted";
   if (days < 0) return "text-red-600";
   if (days <= 3) return "text-yellow-600";
-  return "text-zinc-600";
+  return "text-muted";
 }
 
 export function isOverdue(dateStr?: string | null): boolean {

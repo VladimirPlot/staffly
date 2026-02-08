@@ -1,5 +1,5 @@
-import React from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
@@ -9,6 +9,7 @@ import { getMyRoleIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
+import LinkButton from "../../../shared/ui/LinkButton";
 import {
   listCategories,
   createCategory,
@@ -41,7 +42,7 @@ function ServiceStub({ module }: { module: TrainingModuleConfig }) {
       <BreadcrumbsBlock module={module} />
       <Card>
         <div className="text-lg font-semibold">{module.title}</div>
-        <div className="mt-2 text-sm text-zinc-600">
+        <div className="mt-2 text-sm text-muted">
           Раздел находится в разработке. Скоро здесь появятся материалы по сервису.
         </div>
       </Card>
@@ -57,14 +58,14 @@ function TrainingModuleCategoriesPage() {
   const moduleCode: TrainingModule = hasCategories ? moduleConfig.module : "MENU";
   const restaurantId = user?.restaurantId ?? null;
 
-  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
 
-  const canManage = React.useMemo(
+  const canManage = useMemo(
     () => hasTrainingManagementAccess(user?.roles, myRole),
     [user?.roles, myRole]
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (restaurantId == null) {
       setMyRole(null);
       return;
@@ -96,28 +97,28 @@ function TrainingModuleCategoriesPage() {
     };
   }, [restaurantId, user?.roles]);
 
-  const [categories, setCategories] = React.useState<TrainingCategoryDto[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [categories, setCategories] = useState<TrainingCategoryDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [showCreateForm, setShowCreateForm] = React.useState(false);
-  const [name, setName] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  const [allForManagers, setAllForManagers] = React.useState(false);
+  const [allForManagers, setAllForManagers] = useState(false);
 
-  const [editingCategoryId, setEditingCategoryId] = React.useState<number | null>(null);
-  const [editCategoryName, setEditCategoryName] = React.useState("");
-  const [editCategoryDescription, setEditCategoryDescription] = React.useState("");
-  const [savingCategory, setSavingCategory] = React.useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryDescription, setEditCategoryDescription] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!hasCategories) return;
     setAllForManagers(false);
   }, [hasCategories, moduleCode]);
 
-  const load = React.useCallback(async () => {
+  const load = useCallback(async () => {
     if (!restaurantId || !hasCategories) return;
     setLoading(true);
     setError(null);
@@ -137,11 +138,11 @@ function TrainingModuleCategoriesPage() {
     }
   }, [restaurantId, hasCategories, moduleCode, allForManagers, canManage]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (restaurantId) void load();
   }, [restaurantId, load]);
 
-  const handleCreate = React.useCallback(async () => {
+  const handleCreate = useCallback(async () => {
     if (!restaurantId || !hasCategories || !name.trim()) return;
     try {
       setCreating(true);
@@ -186,7 +187,7 @@ function TrainingModuleCategoriesPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">{moduleConfig.title}</h2>
-          <div className="mt-1 text-sm text-zinc-600">{moduleConfig.description}</div>
+          <div className="mt-1 text-sm text-muted">{moduleConfig.description}</div>
         </div>
         <div className="flex items-center gap-3 text-sm">
           {canManage && (
@@ -255,15 +256,18 @@ function TrainingModuleCategoriesPage() {
 
       <Card>
         {loading ? (
-          <div>Загрузка…</div>
+          <div className="text-sm text-muted">Загрузка…</div>
         ) : error ? (
           <div className="text-red-600">{error}</div>
         ) : categories.length === 0 ? (
-          <div className="text-zinc-600">Категории пока не созданы.</div>
+          <div className="text-sm text-muted">Категории пока не созданы.</div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {categories.map((category) => (
-              <Card key={category.id} className="flex h-full flex-col gap-3 transition hover:-translate-y-0.5 hover:shadow-md">
+              <Card
+                key={category.id}
+                className="flex h-full flex-col gap-3 transition hover:-translate-y-0.5 hover:shadow-[var(--staffly-shadow)]"
+              >
                 <div className="flex-1">
                   {editingCategoryId === category.id ? (
                     <div className="grid gap-3">
@@ -281,15 +285,15 @@ function TrainingModuleCategoriesPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="text-lg font-semibold text-zinc-900">{category.name}</div>
+                      <div className="text-lg font-semibold text-strong">{category.name}</div>
                       {category.description && (
-                        <ContentText className="mt-1 text-sm text-zinc-600">{category.description}</ContentText>
+                        <ContentText className="mt-1 text-sm text-muted">{category.description}</ContentText>
                       )}
                     </>
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-xs text-zinc-600">
+                <div className="flex flex-wrap gap-2 text-xs text-muted">
                   <span className="rounded-full border border-emerald-200 px-2 py-0.5 uppercase">
                     {moduleCode === "MENU"
                       ? "Меню"
@@ -301,7 +305,7 @@ function TrainingModuleCategoriesPage() {
                     className={`rounded-full px-2 py-0.5 ${
                       category.active !== false
                         ? "border border-emerald-300 text-emerald-700"
-                        : "border border-zinc-300 text-zinc-600"
+                        : "border border-subtle text-muted"
                     }`}
                   >
                     {category.active !== false ? "Активна" : "Отключена"}
@@ -309,9 +313,9 @@ function TrainingModuleCategoriesPage() {
                 </div>
 
                 <div className="mt-auto flex flex-wrap gap-2">
-                  <Link to={`/training/${moduleConfig.slug}/categories/${category.id}`}>
-                    <Button variant="outline">Открыть</Button>
-                  </Link>
+                  <LinkButton to={`/training/${moduleConfig.slug}/categories/${category.id}`} variant="outline">
+                    Открыть
+                  </LinkButton>
                   {canManage && (
                     <>
                       {editingCategoryId === category.id ? (

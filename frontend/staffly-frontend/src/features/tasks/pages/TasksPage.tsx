@@ -1,9 +1,10 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
+import PageLoader from "../../../shared/ui/PageLoader";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
@@ -39,41 +40,41 @@ const writeStoredGroupState = (key: string, value: boolean) => {
   window.localStorage.setItem(key, value ? "true" : "false");
 };
 
-const TasksPage: React.FC = () => {
+const TasksPage = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const [myRole, setMyRole] = React.useState<string | null>(null);
-  const [positions, setPositions] = React.useState<PositionDto[]>([]);
-  const [members, setMembers] = React.useState<MemberDto[]>([]);
-  const [scope, setScope] = React.useState<TaskScope>("MINE");
-  const [tasks, setTasks] = React.useState<TaskDto[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [createOpen, setCreateOpen] = React.useState(false);
-  const [selectedTask, setSelectedTask] = React.useState<TaskDto | null>(null);
-  const [comments, setComments] = React.useState<TaskCommentDto[]>([]);
-  const [commentPage, setCommentPage] = React.useState(0);
-  const [commentHasNext, setCommentHasNext] = React.useState(false);
-  const [commentLoadingMore, setCommentLoadingMore] = React.useState(false);
-  const [commentValue, setCommentValue] = React.useState("");
-  const [commentLoading, setCommentLoading] = React.useState(false);
-  const [deleteTarget, setDeleteTarget] = React.useState<TaskDto | null>(null);
-  const [activeOpen, setActiveOpen] = React.useState(() =>
+  const [myRole, setMyRole] = useState<string | null>(null);
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [members, setMembers] = useState<MemberDto[]>([]);
+  const [scope, setScope] = useState<TaskScope>("MINE");
+  const [tasks, setTasks] = useState<TaskDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<TaskDto | null>(null);
+  const [comments, setComments] = useState<TaskCommentDto[]>([]);
+  const [commentPage, setCommentPage] = useState(0);
+  const [commentHasNext, setCommentHasNext] = useState(false);
+  const [commentLoadingMore, setCommentLoadingMore] = useState(false);
+  const [commentValue, setCommentValue] = useState("");
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<TaskDto | null>(null);
+  const [activeOpen, setActiveOpen] = useState(() =>
     readStoredGroupState("tasks:groupOpen:active")
   );
-  const [overdueOpen, setOverdueOpen] = React.useState(() =>
+  const [overdueOpen, setOverdueOpen] = useState(() =>
     readStoredGroupState("tasks:groupOpen:overdue")
   );
-  const [completedOpen, setCompletedOpen] = React.useState(() =>
+  const [completedOpen, setCompletedOpen] = useState(() =>
     readStoredGroupState("tasks:groupOpen:completed")
   );
 
-  const access = React.useMemo(
+  const access = useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
     [user?.roles, myRole]
   );
   const canManage = access.isManagerLike;
 
-  React.useEffect(() => {
+  useEffect(() => {
     let alive = true;
     if (!restaurantId) {
       setMyRole(null);
@@ -94,13 +95,13 @@ const TasksPage: React.FC = () => {
     };
   }, [restaurantId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!canManage) {
       setScope("MINE");
     }
   }, [canManage]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let alive = true;
     if (!restaurantId) {
       setTasks([]);
@@ -125,7 +126,7 @@ const TasksPage: React.FC = () => {
     };
   }, [restaurantId, scope]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let alive = true;
     if (!restaurantId || !canManage) {
       setPositions([]);
@@ -155,7 +156,7 @@ const TasksPage: React.FC = () => {
     };
   }, [restaurantId, canManage]);
 
-  const reloadTasks = React.useCallback(async () => {
+  const reloadTasks = useCallback(async () => {
     if (!restaurantId) return;
     setLoading(true);
     try {
@@ -168,7 +169,7 @@ const TasksPage: React.FC = () => {
     }
   }, [restaurantId, scope]);
 
-  const handleComplete = React.useCallback(
+  const handleComplete = useCallback(
     async (task: TaskDto) => {
       try {
         const updated = await completeTask(task.id);
@@ -181,14 +182,14 @@ const TasksPage: React.FC = () => {
     []
   );
 
-  const handleDelete = React.useCallback(
+  const handleDelete = useCallback(
     async (task: TaskDto) => {
       setDeleteTarget(task);
     },
     []
   );
 
-  const confirmDelete = React.useCallback(async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
       await deleteTask(deleteTarget.id);
@@ -203,11 +204,11 @@ const TasksPage: React.FC = () => {
     }
   }, [deleteTarget, selectedTask?.id]);
 
-  const handleOpenTask = React.useCallback((task: TaskDto) => {
+  const handleOpenTask = useCallback((task: TaskDto) => {
     setSelectedTask(task);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let alive = true;
     if (!selectedTask) {
       setComments([]);
@@ -236,7 +237,7 @@ const TasksPage: React.FC = () => {
     };
   }, [selectedTask]);
 
-  const handleAddComment = React.useCallback(async () => {
+  const handleAddComment = useCallback(async () => {
     if (!selectedTask || !commentValue.trim()) return;
     setCommentLoading(true);
     try {
@@ -250,7 +251,7 @@ const TasksPage: React.FC = () => {
     }
   }, [selectedTask, commentValue]);
 
-  const handleLoadMoreComments = React.useCallback(async () => {
+  const handleLoadMoreComments = useCallback(async () => {
     if (!selectedTask || !commentHasNext || commentLoadingMore) return;
     setCommentLoadingMore(true);
     try {
@@ -269,18 +270,18 @@ const TasksPage: React.FC = () => {
     }
   }, [selectedTask, commentHasNext, commentLoadingMore, commentPage]);
 
-  const activeTasks = React.useMemo(
+  const activeTasks = useMemo(
     () =>
       sortTasks(tasks.filter((task) => task.status === "ACTIVE" && !isOverdue(task.dueDate))),
     [tasks]
   );
 
-  const overdueTasks = React.useMemo(
+  const overdueTasks = useMemo(
     () => sortTasks(tasks.filter((task) => task.status === "ACTIVE" && isOverdue(task.dueDate))),
     [tasks]
   );
 
-  const completedTasks = React.useMemo(
+  const completedTasks = useMemo(
     () => sortTasks(tasks.filter((task) => task.status === "COMPLETED")),
     [tasks]
   );
@@ -294,12 +295,15 @@ const TasksPage: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">Задачи</h2>
-          <p className="text-sm text-zinc-600">Доска задач ресторана.</p>
+          <p className="text-sm text-muted">Доска задач ресторана.</p>
         </div>
         {canManage && (
-          <Button onClick={() => setCreateOpen(true)} aria-label="Создать задачу">
-            <Icon icon={Plus} size="sm" />
-          </Button>
+          <Button
+            size="icon"
+            onClick={() => setCreateOpen(true)}
+            aria-label="Создать задачу"
+            leftIcon={<Icon icon={Plus} size="sm" />}
+          />
         )}
       </div>
 
@@ -314,12 +318,12 @@ const TasksPage: React.FC = () => {
             </Button>
           </>
         ) : (
-          <span className="text-sm text-zinc-500">Мои задачи</span>
+          <span className="text-sm text-muted">Мои задачи</span>
         )}
       </div>
 
       {loading ? (
-        <div className="text-sm text-zinc-500">Загружаем задачи…</div>
+        <PageLoader />
       ) : (
         <div className="space-y-4">
           <TaskGroup
@@ -333,7 +337,9 @@ const TasksPage: React.FC = () => {
             }}
           >
             {activeTasks.length === 0 ? (
-              <div className="text-sm text-zinc-500">Активных задач нет.</div>
+              <div className="rounded-2xl border border-subtle bg-surface p-4 text-sm text-muted">
+                Активных задач нет.
+              </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {activeTasks.map((task) => (
@@ -361,7 +367,9 @@ const TasksPage: React.FC = () => {
             }}
           >
             {overdueTasks.length === 0 ? (
-              <div className="text-sm text-zinc-500">Просроченных задач нет.</div>
+              <div className="rounded-2xl border border-subtle bg-surface p-4 text-sm text-muted">
+                Просроченных задач нет.
+              </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {overdueTasks.map((task) => (
@@ -389,7 +397,9 @@ const TasksPage: React.FC = () => {
             }}
           >
             {completedTasks.length === 0 ? (
-              <div className="text-sm text-zinc-500">Выполненных задач нет.</div>
+              <div className="rounded-2xl border border-subtle bg-surface p-4 text-sm text-muted">
+                Выполненных задач нет.
+              </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {completedTasks.map((task) => (

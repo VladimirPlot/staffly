@@ -1,11 +1,12 @@
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Input from "../../../shared/ui/Input";
 import SelectField from "../../../shared/ui/SelectField";
 import Button from "../../../shared/ui/Button";
 import BackToHome from "../../../shared/ui/BackToHome";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import LinkButton from "../../../shared/ui/LinkButton";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import Avatar from "../../../shared/ui/Avatar";
@@ -87,40 +88,40 @@ export default function InvitePage() {
   const restaurantId = user?.restaurantId ?? null;
 
   // Моя роль в текущем ресторане (управляет правами UI)
-  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
 
   // Список участников
-  const [members, setMembers] = React.useState<MemberDto[]>([]);
-  const [loadingMembers, setLoadingMembers] = React.useState(true);
-  const [membersError, setMembersError] = React.useState<string | null>(null);
-  const [memberToRemove, setMemberToRemove] = React.useState<MemberDto | null>(null);
-  const [removing, setRemoving] = React.useState(false);
-  const [removeError, setRemoveError] = React.useState<string | null>(null);
-  const [positionFilter, setPositionFilter] = React.useState<string | null>(null);
+  const [members, setMembers] = useState<MemberDto[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<MemberDto | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [positionFilter, setPositionFilter] = useState<string | null>(null);
 
   // Должности
-  const [positions, setPositions] = React.useState<PositionDto[]>([]);
-  const [loadingPositions, setLoadingPositions] = React.useState(true);
-  const [allPositions, setAllPositions] = React.useState<PositionDto[]>([]);
-  const [loadingAllPositions, setLoadingAllPositions] = React.useState(true);
-  const [positionsError, setPositionsError] = React.useState<string | null>(null);
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [loadingPositions, setLoadingPositions] = useState(true);
+  const [allPositions, setAllPositions] = useState<PositionDto[]>([]);
+  const [loadingAllPositions, setLoadingAllPositions] = useState(true);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
 
   // Форма приглашения (показываем только по кнопке и только если есть права)
-  const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [phoneOrEmail, setPhoneOrEmail] = React.useState("");
-  const [role, setRole] = React.useState<InviteRole>("STAFF");
-  const [positionId, setPositionId] = React.useState<number | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
-  const [inviteError, setInviteError] = React.useState<string | null>(null);
-  const [inviteDone, setInviteDone] = React.useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [phoneOrEmail, setPhoneOrEmail] = useState("");
+  const [role, setRole] = useState<InviteRole>("STAFF");
+  const [positionId, setPositionId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteDone, setInviteDone] = useState(false);
 
   // Редактирование участника
-  const [memberToEdit, setMemberToEdit] = React.useState<MemberDto | null>(null);
-  const [editPositionId, setEditPositionId] = React.useState<number | null>(null);
-  const [savingPosition, setSavingPosition] = React.useState(false);
-  const [updatePositionError, setUpdatePositionError] = React.useState<string | null>(null);
+  const [memberToEdit, setMemberToEdit] = useState<MemberDto | null>(null);
+  const [editPositionId, setEditPositionId] = useState<number | null>(null);
+  const [savingPosition, setSavingPosition] = useState(false);
+  const [updatePositionError, setUpdatePositionError] = useState<string | null>(null);
 
-  const access = React.useMemo(
+  const access = useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
     [user?.roles, myRole]
   );
@@ -134,7 +135,7 @@ export default function InvitePage() {
     : ["STAFF"];
 
   // 1) тянем мою роль и участников
-  React.useEffect(() => {
+  useEffect(() => {
     let alive = true;
     (async () => {
       if (!restaurantId) return;
@@ -161,7 +162,7 @@ export default function InvitePage() {
     return () => { alive = false; };
   }, [restaurantId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let alive = true;
     (async () => {
       if (!restaurantId) return;
@@ -185,12 +186,12 @@ export default function InvitePage() {
   }, [restaurantId]);
 
   const currentUserId = user?.id ?? null;
-  const adminsCount = React.useMemo(
+  const adminsCount = useMemo(
     () => members.filter((m) => m.role === "ADMIN").length,
     [members]
   );
 
-  const positionOptions = React.useMemo(
+  const positionOptions = useMemo(
     () => {
       const unique = new Map<string, string>();
       members.forEach((member) => {
@@ -214,7 +215,7 @@ export default function InvitePage() {
     [members]
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!positionFilter) return;
     const optionKeys = positionOptions.map((o) => o.key);
     const hasNoneOption = optionKeys.includes("none");
@@ -229,7 +230,7 @@ export default function InvitePage() {
     }
   }, [positionFilter, positionOptions]);
 
-  const filteredMembers = React.useMemo(
+  const filteredMembers = useMemo(
     () => {
       if (!positionFilter) return members;
 
@@ -244,7 +245,7 @@ export default function InvitePage() {
     [members, positionFilter]
   );
 
-  const sortedMembers = React.useMemo(
+  const sortedMembers = useMemo(
     () => {
       return [...filteredMembers].sort((a, b) => {
         const roleDiff = ROLE_PRIORITY[a.role] - ROLE_PRIORITY[b.role];
@@ -270,7 +271,7 @@ export default function InvitePage() {
     [filteredMembers]
   );
 
-  const canRemoveMember = React.useCallback(
+  const canRemoveMember = useCallback(
     (member: MemberDto) => {
       if (!currentUserId) return false;
       const isSelf = member.userId === currentUserId;
@@ -299,13 +300,13 @@ export default function InvitePage() {
     ]
   );
 
-  const closeRemoveDialog = React.useCallback(() => {
+  const closeRemoveDialog = useCallback(() => {
     if (removing) return;
     setMemberToRemove(null);
     setRemoveError(null);
   }, [removing]);
 
-  const confirmRemoveMember = React.useCallback(async () => {
+  const confirmRemoveMember = useCallback(async () => {
     if (!restaurantId || !memberToRemove) return;
     setRemoving(true);
     setRemoveError(null);
@@ -323,7 +324,7 @@ export default function InvitePage() {
     }
   }, [currentUserId, memberToRemove, restaurantId]);
 
-  const memberRemovalDescription = React.useMemo(() => {
+  const memberRemovalDescription = useMemo(() => {
     if (!memberToRemove) return null;
     const isSelf = currentUserId != null && memberToRemove.userId === currentUserId;
     return (
@@ -338,26 +339,26 @@ export default function InvitePage() {
     );
   }, [currentUserId, memberToRemove, removeError]);
 
-  const memberRemovalTitle = React.useMemo(() => {
+  const memberRemovalTitle = useMemo(() => {
     if (!memberToRemove) return "";
     return currentUserId != null && memberToRemove.userId === currentUserId
       ? "Покинуть ресторан?"
       : "Исключить участника?";
   }, [currentUserId, memberToRemove]);
 
-  const memberRemovalConfirmText = React.useMemo(() => {
+  const memberRemovalConfirmText = useMemo(() => {
     if (!memberToRemove) return "Исключить";
     return currentUserId != null && memberToRemove.userId === currentUserId
       ? "Покинуть"
       : "Исключить";
   }, [currentUserId, memberToRemove]);
 
-  const editOptions = React.useMemo(() => {
+  const editOptions = useMemo(() => {
     if (!memberToEdit) return [] as PositionDto[];
     return allPositions.filter((p) => p.active);
   }, [allPositions, memberToEdit]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!memberToEdit || loadingAllPositions) return;
 
     const fallbackPositionId =
@@ -366,13 +367,13 @@ export default function InvitePage() {
     setEditPositionId((prev) => (prev == null ? fallbackPositionId : prev));
   }, [allPositions, loadingAllPositions, memberToEdit]);
 
-  const closeEditDialog = React.useCallback(() => {
+  const closeEditDialog = useCallback(() => {
     if (savingPosition) return;
     setMemberToEdit(null);
     setUpdatePositionError(null);
   }, [savingPosition]);
 
-  const saveMemberPosition = React.useCallback(async () => {
+  const saveMemberPosition = useCallback(async () => {
     if (!restaurantId || !memberToEdit) return;
     if (editPositionId == null) {
       setUpdatePositionError("Выберите должность");
@@ -404,7 +405,7 @@ export default function InvitePage() {
     }
   }, [allPositions, editPositionId, memberToEdit, restaurantId]);
   // 2) тянем должности (активные). Сервер может уметь фильтровать по роли — пробуем прокинуть.
-  const loadPositions = React.useCallback(async (filterByRole?: InviteRole) => {
+  const loadPositions = useCallback(async (filterByRole?: InviteRole) => {
     if (!restaurantId) return;
     setLoadingPositions(true);
     try {
@@ -429,7 +430,7 @@ export default function InvitePage() {
     }
   }, [restaurantId, role, positionId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (restaurantId) void loadPositions(role);
   }, [restaurantId, role, loadPositions]);
 
@@ -437,9 +438,11 @@ export default function InvitePage() {
     return (
       <div className="mx-auto max-w-2xl">
         <Card>
-          <div className="text-sm text-zinc-700">Сначала выберите ресторан.</div>
+          <div className="text-sm text-default">Сначала выберите ресторан.</div>
           <div className="mt-3">
-            <Button variant="outline" onClick={() => navigate("/restaurants")}>К выбору ресторанов</Button>
+            <Button variant="outline" onClick={() => navigate("/restaurants")}>
+              К выбору ресторанов
+            </Button>
           </div>
         </Card>
       </div>
@@ -455,12 +458,12 @@ export default function InvitePage() {
           <h2 className="text-xl font-semibold">Сотрудники</h2>
           {canInvite && (
             <div className="flex flex-wrap items-center gap-2">
-              <Link
+              <LinkButton
                 to="/dictionaries/positions"
-                className="rounded-2xl border border-zinc-300 px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-zinc-50"
+                variant="outline"
               >
                 Должности
-              </Link>
+              </LinkButton>
               <Button variant="outline" onClick={() => setInviteOpen((v) => !v)}>
                 {inviteOpen ? "Скрыть приглашение" : "Пригласить сотрудника"}
               </Button>
@@ -469,7 +472,7 @@ export default function InvitePage() {
         </div>
 
         {canInvite && inviteOpen && (
-          <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <div className="mb-5 rounded-2xl border border-subtle bg-app p-4">
             {inviteDone ? (
               <div className="space-y-4">
                 <div className="text-emerald-700">
@@ -555,10 +558,10 @@ export default function InvitePage() {
 
         {positionOptions.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-            <label className="flex items-center gap-2 text-zinc-700">
+            <label className="flex items-center gap-2 text-default">
               <span>Фильтр по должности:</span>
               <select
-                className="rounded-2xl border border-zinc-300 px-3 py-2 text-base outline-none transition focus:ring-2 focus:ring-zinc-300"
+                className="rounded-2xl border border-subtle bg-surface px-3 py-2 text-base text-default outline-none transition focus:ring-2 ring-default"
                 value={positionFilter ?? ""}
                 onChange={(e) => setPositionFilter(e.target.value ? e.target.value : null)}
               >
@@ -579,15 +582,15 @@ export default function InvitePage() {
         )}
 
         {loadingMembers ? (
-          <div>Загрузка участников…</div>
+          <Card className="text-sm text-muted">Загрузка участников…</Card>
         ) : membersError ? (
-          <div className="text-red-600">{membersError}</div>
+          <Card className="text-sm text-red-600">{membersError}</Card>
         ) : sortedMembers.length === 0 ? (
-          <div className="text-zinc-600">
+          <Card className="text-sm text-muted">
             {members.length === 0 ? "Пока нет участников." : "Нет участников с выбранной должностью."}
-          </div>
+          </Card>
         ) : (
-          <div className="divide-y">
+          <div className="divide-y divide-subtle">
             {sortedMembers.map((m) => (
               <div
                 key={m.id}
@@ -601,18 +604,18 @@ export default function InvitePage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-base font-medium">{displayNameOf(m)}</div>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
-                      <span className="rounded-full border px-2 py-0.5">
+                    <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                      <span className="rounded-full border border-subtle px-2 py-0.5">
                         {m.positionName || ROLE_LABEL[m.role]}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="text-sm text-zinc-700">
+                  <div className="text-sm text-default">
                     День рождения: <span className="font-medium">{formatBirthday(m.birthDate)}</span>
                   </div>
-                  <div className="text-sm text-zinc-700">
+                  <div className="text-sm text-default">
                     Телефон: <span className="font-medium">{m.phone || "—"}</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -663,7 +666,7 @@ export default function InvitePage() {
           memberToEdit ? (
             <>
               <Button variant="ghost" onClick={closeEditDialog} disabled={savingPosition}>
-                Отменить
+                Отмена
               </Button>
               <Button
                 onClick={saveMemberPosition}
@@ -677,11 +680,11 @@ export default function InvitePage() {
         }
       >
         {loadingAllPositions ? (
-          <div className="text-sm text-zinc-700">Загрузка должностей…</div>
+          <div className="text-sm text-muted">Загрузка должностей…</div>
         ) : positionsError ? (
           <div className="text-sm text-red-600">{positionsError}</div>
         ) : !memberToEdit ? null : editOptions.length === 0 ? (
-          <div className="text-sm text-zinc-700">Нет доступных активных должностей для этой роли.</div>
+          <div className="text-sm text-muted">Нет доступных активных должностей для этой роли.</div>
         ) : (
           <SelectField
             label="Должность"

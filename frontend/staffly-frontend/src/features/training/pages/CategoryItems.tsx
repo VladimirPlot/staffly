@@ -1,10 +1,11 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
 import ContentText from "../../../shared/ui/ContentText";
+import IconButton from "../../../shared/ui/IconButton";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   listCategories,
@@ -40,14 +41,14 @@ export default function TrainingCategoryItemsPage() {
   const hasValidCategoryId = Boolean(params.categoryId) && !Number.isNaN(categoryId);
   const moduleCode = hasCategories ? moduleConfig.module : "MENU";
   const restaurantId = user?.restaurantId ?? null;
-  const [myRole, setMyRole] = React.useState<RestaurantRole | null>(null);
+  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
 
-  const canManage = React.useMemo(
+  const canManage = useMemo(
     () => hasTrainingManagementAccess(user?.roles, myRole),
     [user?.roles, myRole]
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (restaurantId == null) {
       setMyRole(null);
       return;
@@ -79,34 +80,34 @@ export default function TrainingCategoryItemsPage() {
     };
   }, [restaurantId, user?.roles]);
 
-  const [category, setCategory] = React.useState<TrainingCategoryDto | null>(null);
-  const [categoryError, setCategoryError] = React.useState<string | null>(null);
-  const [categoryLoading, setCategoryLoading] = React.useState(true);
+  const [category, setCategory] = useState<TrainingCategoryDto | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [categoryLoading, setCategoryLoading] = useState(true);
 
-  const [items, setItems] = React.useState<TrainingItemDto[]>([]);
-  const [itemsLoading, setItemsLoading] = React.useState(true);
-  const [itemsError, setItemsError] = React.useState<string | null>(null);
+  const [items, setItems] = useState<TrainingItemDto[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
+  const [itemsError, setItemsError] = useState<string | null>(null);
 
-  const [showCreateForm, setShowCreateForm] = React.useState(false);
-  const [name, setName] = React.useState("");
-  const [composition, setComposition] = React.useState("");
-  const [description, setDescription] = React.useState("");
-  const [allergens, setAllergens] = React.useState("");
-  const [imageFile, setImageFile] = React.useState<File | null>(null);
-  const [creating, setCreating] = React.useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [name, setName] = useState("");
+  const [composition, setComposition] = useState("");
+  const [description, setDescription] = useState("");
+  const [allergens, setAllergens] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [creating, setCreating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [imageMutatingId, setImageMutatingId] = React.useState<number | null>(null);
-  const [deletingItemId, setDeletingItemId] = React.useState<number | null>(null);
-  const [editingItemId, setEditingItemId] = React.useState<number | null>(null);
-  const [openActionsItemId, setOpenActionsItemId] = React.useState<number | null>(null);
-  const [editItemName, setEditItemName] = React.useState("");
-  const [editItemComposition, setEditItemComposition] = React.useState("");
-  const [editItemDescription, setEditItemDescription] = React.useState("");
-  const [editItemAllergens, setEditItemAllergens] = React.useState("");
-  const [savingItemId, setSavingItemId] = React.useState<number | null>(null);
+  const [imageMutatingId, setImageMutatingId] = useState<number | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [openActionsItemId, setOpenActionsItemId] = useState<number | null>(null);
+  const [editItemName, setEditItemName] = useState("");
+  const [editItemComposition, setEditItemComposition] = useState("");
+  const [editItemDescription, setEditItemDescription] = useState("");
+  const [editItemAllergens, setEditItemAllergens] = useState("");
+  const [savingItemId, setSavingItemId] = useState<number | null>(null);
 
-  const loadCategory = React.useCallback(async () => {
+  const loadCategory = useCallback(async () => {
     if (!restaurantId || !hasCategories || !hasValidCategoryId) return;
     setCategoryLoading(true);
     setCategoryError(null);
@@ -127,7 +128,7 @@ export default function TrainingCategoryItemsPage() {
     }
   }, [restaurantId, hasCategories, hasValidCategoryId, moduleCode, canManage, categoryId]);
 
-  const loadItems = React.useCallback(async () => {
+  const loadItems = useCallback(async () => {
     if (!restaurantId || !hasValidCategoryId) return;
     setItemsLoading(true);
     setItemsError(null);
@@ -148,7 +149,7 @@ export default function TrainingCategoryItemsPage() {
     }
   }, [restaurantId, hasValidCategoryId, categoryId]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!restaurantId) return;
     void loadCategory();
     void loadItems();
@@ -309,7 +310,6 @@ export default function TrainingCategoryItemsPage() {
     return <Navigate to="/training" replace />;
   }
 
-
   return (
     <div className="mx-auto max-w-5xl">
       <Breadcrumbs
@@ -324,14 +324,14 @@ export default function TrainingCategoryItemsPage() {
 
       <Card className="mb-4">
         {categoryLoading ? (
-          <div>Загрузка категории…</div>
+          <div className="text-sm text-muted">Загрузка категории…</div>
         ) : categoryError ? (
           <div className="text-red-600">{categoryError}</div>
         ) : category ? (
           <div>
-            <div className="text-2xl font-semibold text-zinc-900">{category.name}</div>
+            <div className="text-2xl font-semibold text-strong">{category.name}</div>
             {category.description && (
-              <ContentText className="mt-1 text-sm text-zinc-600">{category.description}</ContentText>
+              <ContentText className="mt-1 text-sm text-muted">{category.description}</ContentText>
             )}
           </div>
         ) : null}
@@ -379,7 +379,7 @@ export default function TrainingCategoryItemsPage() {
               rows={3}
             />
             <label className="block">
-              <span className="mb-1 block text-sm text-zinc-600">Фото (опционально)</span>
+              <span className="mb-1 block text-sm text-muted">Фото (опционально)</span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -395,7 +395,7 @@ export default function TrainingCategoryItemsPage() {
                 >
                   Выберите файл
                 </Button>
-                <span className="text-sm text-zinc-500">
+                <span className="text-sm text-muted">
                   {imageFile ? imageFile.name : "Файл не выбран"}
                 </span>
               </div>
@@ -423,11 +423,11 @@ export default function TrainingCategoryItemsPage() {
 
       <Card>
         {itemsLoading ? (
-          <div>Загрузка карточек…</div>
+          <div className="text-sm text-muted">Загрузка карточек…</div>
         ) : itemsError ? (
           <div className="text-red-600">{itemsError}</div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 text-zinc-600">
+          <div className="flex flex-col items-start gap-3 text-muted">
             <div>В этой категории пока нет карточек.</div>
             {canManage && (
               <Button
@@ -448,17 +448,16 @@ export default function TrainingCategoryItemsPage() {
               return (
                 <Card key={item.id} className="relative flex h-full flex-col gap-3">
                   {canManage && !isEditing && (
-                    <button
-                      type="button"
+                    <IconButton
                       aria-label="Действия с карточкой"
-                      className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-600 shadow-sm transition hover:bg-zinc-50"
+                      className="absolute right-3 top-3 h-9 w-9 p-0"
                       onClick={() => setOpenActionsItemId((prev) => (prev === item.id ? null : item.id))}
                     >
-                      <Icon icon={Pencil} size="sm" className="text-zinc-700" decorative />
-                    </button>
+                      <Icon icon={Pencil} size="sm" decorative />
+                    </IconButton>
                   )}
                   {canManage && actionsOpen && !isEditing && (
-                    <div className="absolute right-3 top-14 z-10 flex w-60 flex-col gap-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl">
+                    <div className="absolute right-3 top-14 z-10 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]">
                       <Button variant="outline" onClick={() => startEditItem(item)}>
                         Редактировать карточку
                       </Button>
@@ -505,8 +504,8 @@ export default function TrainingCategoryItemsPage() {
                           onChange={(e) => setEditItemAllergens(e.target.value)}
                           rows={3}
                         />
-                        <div className="rounded-2xl border border-dashed border-zinc-200 p-3">
-                          <div className="text-sm font-medium text-zinc-700">Фото</div>
+                        <div className="rounded-2xl border border-dashed border-subtle p-3">
+                          <div className="text-sm font-medium text-default">Фото</div>
                           <div className="mt-2 flex flex-col gap-2">
                             {item.imageUrl ? (
                               <>
@@ -542,24 +541,24 @@ export default function TrainingCategoryItemsPage() {
                       </div>
                     ) : (
                       <>
-                        <div className="text-lg font-semibold text-zinc-900">{item.name}</div>
+                        <div className="text-lg font-semibold text-strong">{item.name}</div>
                         {item.description && (
-                          <ContentText className="mt-1 text-sm text-zinc-600">{item.description}</ContentText>
+                          <ContentText className="mt-1 text-sm text-muted">{item.description}</ContentText>
                         )}
                         <div className="mt-3">
-                          <div className="text-xs uppercase tracking-wide text-zinc-500">
+                          <div className="text-xs uppercase tracking-wide text-muted">
                             Состав
                           </div>
-                          <ContentText className="mt-1 text-sm text-zinc-700">
+                          <ContentText className="mt-1 text-sm text-default">
                             {item.composition || "Не указан"}
                           </ContentText>
                         </div>
                         {item.allergens && (
                           <div className="mt-3">
-                            <div className="text-xs uppercase tracking-wide text-zinc-500">
+                            <div className="text-xs uppercase tracking-wide text-muted">
                               Аллергены
                             </div>
-                            <ContentText className="mt-1 text-sm text-zinc-700">
+                            <ContentText className="mt-1 text-sm text-default">
                               {item.allergens}
                             </ContentText>
                           </div>

@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
@@ -16,7 +16,7 @@ type ContactDialogProps = {
   onSubmit: (payload: ContactRequest) => void;
 };
 
-const ContactDialog: React.FC<ContactDialogProps> = ({
+const ContactDialog = ({
   open,
   title,
   initialData,
@@ -24,13 +24,13 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
   error,
   onClose,
   onSubmit,
-}) => {
-  const [name, setName] = React.useState(initialData?.name ?? "");
-  const [description, setDescription] = React.useState(initialData?.description ?? "");
-  const [phone, setPhone] = React.useState(initialData?.phone ?? "");
-  const [localError, setLocalError] = React.useState<string | null>(null);
+}: ContactDialogProps) => {
+  const [name, setName] = useState(initialData?.name ?? "");
+  const [description, setDescription] = useState(initialData?.description ?? "");
+  const [phone, setPhone] = useState(initialData?.phone ?? "");
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     setName(initialData?.name ?? "");
     setDescription(initialData?.description ?? "");
@@ -38,7 +38,7 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
     setLocalError(null);
   }, [open, initialData?.name, initialData?.description, initialData?.phone]);
 
-  const handleSubmit = React.useCallback(() => {
+  const handleSubmit = useCallback(() => {
     const trimmedName = name.trim();
     const trimmedPhone = phone.trim();
     if (!trimmedName) {
@@ -66,8 +66,8 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
       title={title}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
-            Отменить
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
             {submitting ? "Сохраняем…" : "Сохранить"}

@@ -1,4 +1,4 @@
-import React from "react";
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Trash } from "lucide-react";
 import Button from "../../../shared/ui/Button";
@@ -30,7 +30,7 @@ type TaskDetailModalProps = {
   canDelete: boolean;
 };
 
-const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
+const TaskDetailModal = ({
   open,
   task,
   comments,
@@ -45,16 +45,16 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onDelete,
   onClose,
   canDelete,
-}) => {
-  const dialogRef = React.useRef<HTMLDivElement>(null);
-  const lastActiveElementRef = React.useRef<HTMLElement | null>(null);
-  const onCloseRef = React.useRef(onClose);
+}: TaskDetailModalProps) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const lastActiveElementRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
 
-  React.useEffect(() => {
+  useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
 
     lastActiveElementRef.current = document.activeElement as HTMLElement | null;
@@ -82,7 +82,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     };
   }, [open]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     return () => {
       lastActiveElementRef.current?.focus();
@@ -91,13 +91,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   if (!open || !task || typeof document === "undefined") return null;
 
-  const handleBackdropMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleBackdropMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       onClose();
     }
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
     const focusable = getFocusableElements(dialogRef.current);
     if (focusable.length === 0) {
@@ -127,14 +127,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           aria-modal="true"
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className="flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]"
+          className="flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-surface shadow-[var(--staffly-shadow)] max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]"
         >
-          <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-6 py-5">
+          <div className="flex items-start justify-between gap-4 border-b border-subtle px-6 py-5">
             <div className="min-w-0">
-              <div className="text-lg font-semibold text-zinc-900 break-words [overflow-wrap:anywhere]">
+              <div className="text-lg font-semibold text-strong break-words [overflow-wrap:anywhere]">
                 {task.title}
               </div>
-              <div className="mt-2 text-sm text-zinc-500">{resolveTaskAssignee(task)}</div>
+              <div className="mt-2 text-sm text-muted">{resolveTaskAssignee(task)}</div>
             </div>
             <div className="flex items-center gap-2">
               {task.status !== "COMPLETED" && (
@@ -159,7 +159,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               )}
               <button
                 type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-subtle text-muted hover:bg-app"
                 aria-label="Закрыть"
                 onClick={onClose}
               >
@@ -170,56 +170,56 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 space-y-6">
             <div className="space-y-3">
-              <div className="text-sm text-zinc-500">Описание</div>
-              <div className="text-sm text-zinc-800 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+              <div className="text-sm text-muted">Описание</div>
+              <div className="text-sm text-default whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                 {task.description ? task.description : "Нет описания"}
               </div>
             </div>
 
-            <div className="grid gap-4 rounded-2xl bg-zinc-50 p-4 text-sm sm:grid-cols-2">
+            <div className="grid gap-4 rounded-2xl bg-app p-4 text-sm sm:grid-cols-2">
               <div>
-                <div className="text-xs text-zinc-500">Срок</div>
+                <div className="text-xs text-muted">Срок</div>
                 <div className={`font-medium ${dueDateClassName(task.dueDate)}`}>
                   {formatTaskDate(task.dueDate)}
                 </div>
                 {task.dueDate && (
-                  <div className="text-xs text-zinc-500">{formatRelativeTaskDate(task.dueDate)}</div>
+                  <div className="text-xs text-muted">{formatRelativeTaskDate(task.dueDate)}</div>
                 )}
               </div>
               <div>
-                <div className="text-xs text-zinc-500">Приоритет</div>
-                <div className="font-medium text-zinc-800">{task.priority}</div>
+                <div className="text-xs text-muted">Приоритет</div>
+                <div className="font-medium text-default">{task.priority}</div>
               </div>
               <div>
-                <div className="text-xs text-zinc-500">Статус</div>
-                <div className="font-medium text-zinc-800">
+                <div className="text-xs text-muted">Статус</div>
+                <div className="font-medium text-default">
                   {task.status === "COMPLETED" ? "Выполнено" : "Активна"}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-zinc-500">История выполнения</div>
-                <div className="font-medium text-zinc-800">{formatCompletedAt(task.completedAt)}</div>
+                <div className="text-xs text-muted">История выполнения</div>
+                <div className="font-medium text-default">{formatCompletedAt(task.completedAt)}</div>
               </div>
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold">Комментарии</div>
-                <div className="text-xs text-zinc-500">{comments.length}</div>
+                <div className="text-xs text-muted">{comments.length}</div>
               </div>
               <div className="space-y-3">
                 {comments.length === 0 ? (
-                  <div className="text-sm text-zinc-500">Комментариев пока нет.</div>
+                  <div className="text-sm text-muted">Комментариев пока нет.</div>
                 ) : (
                   comments.map((comment) => (
-                    <div key={comment.id} className="rounded-2xl border border-zinc-100 p-4">
-                      <div className="text-xs text-zinc-500">
+                    <div key={comment.id} className="rounded-2xl border border-subtle p-4">
+                      <div className="text-xs text-muted">
                         {comment.author?.fullName ?? "Сотрудник"}
                       </div>
-                      <div className="mt-2 text-sm text-zinc-800 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      <div className="mt-2 text-sm text-default whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                         {comment.text}
                       </div>
-                      <div className="mt-2 text-[11px] text-zinc-400">
+                      <div className="mt-2 text-[11px] text-muted">
                         {comment.createdAt
                           ? new Intl.DateTimeFormat("ru-RU", {
                               day: "2-digit",
@@ -245,9 +245,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </div>
               )}
 
-              <div className="rounded-2xl border border-zinc-100 p-4 space-y-3">
+              <div className="rounded-2xl border border-subtle p-4 space-y-3">
                 <textarea
-                  className="min-h-[90px] w-full resize-none rounded-2xl border border-zinc-200 p-3 text-sm outline-none focus:ring-2 focus:ring-zinc-200"
+                  className="min-h-[90px] w-full resize-none rounded-2xl border border-subtle bg-surface p-3 text-sm text-default outline-none focus:ring-2 ring-default"
                   placeholder="Напишите комментарий..."
                   value={commentValue}
                   onChange={(event) => onCommentChange(event.target.value)}

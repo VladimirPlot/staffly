@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
@@ -43,7 +43,7 @@ type ChecklistDialogProps = {
   onSubmit: (payload: ChecklistRequest) => void;
 };
 
-const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
+const ChecklistDialog = ({
   open,
   title,
   positions,
@@ -53,20 +53,20 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
   error,
   onClose,
   onSubmit,
-}) => {
-  const [kind, setKind] = React.useState<ChecklistKind>(initialData?.kind ?? "INFO");
-  const [name, setName] = React.useState(initialData?.name ?? "");
-  const [content, setContent] = React.useState(initialData?.content ?? "");
-  const [periodicity, setPeriodicity] = React.useState<ChecklistPeriodicity | undefined>(initialData?.periodicity);
-  const [resetHour, setResetHour] = React.useState<number | "">(initialData?.resetTime ? Number(initialData.resetTime.split(":")[0]) : "");
-  const [resetMinute, setResetMinute] = React.useState<number | "">(initialData?.resetTime ? Number(initialData.resetTime.split(":")[1]) : "");
-  const [resetDayOfWeek, setResetDayOfWeek] = React.useState<number | "">(initialData?.resetDayOfWeek ?? "");
-  const [resetDayOfMonth, setResetDayOfMonth] = React.useState<number | "">(initialData?.resetDayOfMonth ?? "");
-  const [positionFields, setPositionFields] = React.useState<PositionField[]>([]);
-  const [items, setItems] = React.useState<{ id: string; value: string }[]>([]);
-  const [localError, setLocalError] = React.useState<string | null>(null);
+}: ChecklistDialogProps) => {
+  const [kind, setKind] = useState<ChecklistKind>(initialData?.kind ?? "INFO");
+  const [name, setName] = useState(initialData?.name ?? "");
+  const [content, setContent] = useState(initialData?.content ?? "");
+  const [periodicity, setPeriodicity] = useState<ChecklistPeriodicity | undefined>(initialData?.periodicity);
+  const [resetHour, setResetHour] = useState<number | "">(initialData?.resetTime ? Number(initialData.resetTime.split(":")[0]) : "");
+  const [resetMinute, setResetMinute] = useState<number | "">(initialData?.resetTime ? Number(initialData.resetTime.split(":")[1]) : "");
+  const [resetDayOfWeek, setResetDayOfWeek] = useState<number | "">(initialData?.resetDayOfWeek ?? "");
+  const [resetDayOfMonth, setResetDayOfMonth] = useState<number | "">(initialData?.resetDayOfMonth ?? "");
+  const [positionFields, setPositionFields] = useState<PositionField[]>([]);
+  const [items, setItems] = useState<{ id: string; value: string }[]>([]);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) return;
     setKind(initialData?.kind ?? "INFO");
     setName(initialData?.name ?? "");
@@ -89,45 +89,45 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
     setLocalError(null);
   }, [open, initialData]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!open) {
       setPositionFields([]);
       setItems([]);
     }
   }, [open]);
 
-  const positionOptions = React.useMemo(
+  const positionOptions = useMemo(
     () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
     [positions]
   );
 
   const isTrackable = kind === "TRACKABLE";
 
-  const handleAddPosition = React.useCallback(() => {
+  const handleAddPosition = useCallback(() => {
     setPositionFields((prev) => [...prev, { id: createId(), value: "" }]);
   }, []);
 
-  const handleRemovePosition = React.useCallback((id: string) => {
+  const handleRemovePosition = useCallback((id: string) => {
     setPositionFields((prev) => (prev.length <= 1 ? prev : prev.filter((field) => field.id !== id)));
   }, []);
 
-  const handlePositionChange = React.useCallback((id: string, value: string) => {
+  const handlePositionChange = useCallback((id: string, value: string) => {
     setPositionFields((prev) => prev.map((field) => (field.id === id ? { ...field, value: value ? Number(value) : "" } : field)));
   }, []);
 
-  const handleAddItem = React.useCallback(() => {
+  const handleAddItem = useCallback(() => {
     setItems((prev) => [...prev, { id: createId(), value: "" }]);
   }, []);
 
-  const handleRemoveItem = React.useCallback((id: string) => {
+  const handleRemoveItem = useCallback((id: string) => {
     setItems((prev) => (prev.length <= 1 ? prev : prev.filter((item) => item.id !== id)));
   }, []);
 
-  const handleItemChange = React.useCallback((id: string, value: string) => {
+  const handleItemChange = useCallback((id: string, value: string) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, value } : item)));
   }, []);
 
-  const buildResetTime = React.useCallback(() => {
+  const buildResetTime = useCallback(() => {
     if (!periodicity || periodicity === "MANUAL") return undefined;
     if (resetHour === "" || resetMinute === "") return undefined;
     const hh = String(resetHour).padStart(2, "0");
@@ -135,7 +135,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
     return `${hh}:${mm}`;
   }, [periodicity, resetHour, resetMinute]);
 
-  const handleSubmit = React.useCallback(() => {
+  const handleSubmit = useCallback(() => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       setLocalError("Введите название чек-листа");
@@ -236,7 +236,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
       title={title}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
@@ -250,7 +250,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
           <button
             type="button"
             className={`rounded-2xl border px-3 py-2 text-sm transition ${
-              kind === "TRACKABLE" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-zinc-300 bg-white"
+              kind === "TRACKABLE" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-subtle bg-surface"
             } ${isEditing ? "cursor-not-allowed opacity-70" : ""}`}
             onClick={() => !isEditing && setKind("TRACKABLE")}
             disabled={isEditing}
@@ -260,7 +260,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
           <button
             type="button"
             className={`rounded-2xl border px-3 py-2 text-sm transition ${
-              kind === "INFO" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-zinc-300 bg-white"
+              kind === "INFO" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-subtle bg-surface"
             } ${isEditing ? "cursor-not-allowed opacity-70" : ""}`}
             onClick={() => !isEditing && setKind("INFO")}
             disabled={isEditing}
@@ -272,12 +272,12 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
         <Input label="Название" value={name} onChange={(event) => setName(event.target.value)} disabled={submitting} />
 
         <div>
-          <div className="mb-2 text-sm text-zinc-600">Должности</div>
+          <div className="mb-2 text-sm text-muted">Должности</div>
           <div className="space-y-3">
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
                 <select
-                  className="flex-1 rounded-2xl border border-zinc-300 p-2 text-base"
+                  className="flex-1 rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                   value={field.value}
                   onChange={(event) => handlePositionChange(field.id, event.target.value)}
                   disabled={submitting}
@@ -294,7 +294,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                   variant="ghost"
                   onClick={() => handleRemovePosition(field.id)}
                   disabled={positionFields.length <= 1 || submitting}
-                  className="text-sm text-zinc-600"
+                  className="text-sm text-muted"
                 >
                   Удалить
                 </Button>
@@ -309,9 +309,9 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
         {isTrackable ? (
           <div className="space-y-3">
             <div>
-              <div className="mb-1 text-sm text-zinc-700">Периодичность</div>
+              <div className="mb-1 text-sm text-default">Периодичность</div>
               <select
-                className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
+                className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                 value={periodicity ?? ""}
                 onChange={(event) => setPeriodicity((event.target.value || undefined) as ChecklistPeriodicity | undefined)}
                 disabled={submitting}
@@ -327,10 +327,10 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
             {periodicity && periodicity !== "MANUAL" && (
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <div className="mb-1 text-sm text-zinc-700">Время сброса</div>
+                  <div className="mb-1 text-sm text-default">Время сброса</div>
                   <div className="flex gap-2">
                     <select
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
+                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                       value={resetHour}
                       onChange={(event) => setResetHour(event.target.value === "" ? "" : Number(event.target.value))}
                       disabled={submitting}
@@ -343,7 +343,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                       ))}
                     </select>
                     <select
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
+                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                       value={resetMinute}
                       onChange={(event) => setResetMinute(event.target.value === "" ? "" : Number(event.target.value))}
                       disabled={submitting}
@@ -360,9 +360,9 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
 
                 {periodicity === "WEEKLY" && (
                   <div>
-                    <div className="mb-1 text-sm text-zinc-700">День недели</div>
+                    <div className="mb-1 text-sm text-default">День недели</div>
                     <select
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
+                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                       value={resetDayOfWeek}
                       onChange={(event) => setResetDayOfWeek(event.target.value ? Number(event.target.value) : "")}
                       disabled={submitting}
@@ -381,12 +381,12 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
 
                 {periodicity === "MONTHLY" && (
                   <div>
-                    <div className="mb-1 text-sm text-zinc-700">День месяца</div>
+                    <div className="mb-1 text-sm text-default">День месяца</div>
                     <input
                       type="number"
                       min={1}
                       max={31}
-                      className="w-full rounded-2xl border border-zinc-300 p-2 text-base"
+                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
                       value={resetDayOfMonth}
                       onChange={(event) => setResetDayOfMonth(event.target.value ? Number(event.target.value) : "")}
                       disabled={submitting}
@@ -397,7 +397,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
             )}
 
             <div>
-              <div className="mb-2 text-sm text-zinc-700">Пункты чек-листа</div>
+              <div className="mb-2 text-sm text-default">Пункты чек-листа</div>
               <div className="space-y-3">
                 {items.map((item) => (
                   <div key={item.id} className="flex items-start gap-3">
@@ -413,7 +413,7 @@ const ChecklistDialog: React.FC<ChecklistDialogProps> = ({
                       variant="ghost"
                       onClick={() => handleRemoveItem(item.id)}
                       disabled={items.length <= 1 || submitting}
-                      className="text-sm text-zinc-600"
+                      className="text-sm text-muted"
                     >
                       Удалить
                     </Button>

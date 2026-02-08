@@ -1,4 +1,4 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
@@ -34,26 +34,26 @@ type RestaurantRemindersProps = {
   currentUserId?: number | null;
 };
 
-const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
+const RestaurantReminders = ({
   restaurantId,
   canManage,
   currentUserId,
-}) => {
-  const [positions, setPositions] = React.useState<PositionDto[]>([]);
-  const [members, setMembers] = React.useState<MemberDto[]>([]);
-  const [reminders, setReminders] = React.useState<ReminderDto[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [positionFilter, setPositionFilter] = React.useState<number | null>(null);
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [dialogSubmitting, setDialogSubmitting] = React.useState(false);
-  const [dialogError, setDialogError] = React.useState<string | null>(null);
-  const [dialogInitial, setDialogInitial] = React.useState<ReminderDialogInitial | undefined>(undefined);
-  const [editing, setEditing] = React.useState<ReminderDto | null>(null);
-  const [deleteTarget, setDeleteTarget] = React.useState<ReminderDto | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
+}: RestaurantRemindersProps) => {
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [members, setMembers] = useState<MemberDto[]>([]);
+  const [reminders, setReminders] = useState<ReminderDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [positionFilter, setPositionFilter] = useState<number | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogSubmitting, setDialogSubmitting] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [dialogInitial, setDialogInitial] = useState<ReminderDialogInitial | undefined>(undefined);
+  const [editing, setEditing] = useState<ReminderDto | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ReminderDto | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const loadDictionaries = React.useCallback(async () => {
+  const loadDictionaries = useCallback(async () => {
     if (!canManage || !restaurantId) {
       setPositions([]);
       setMembers([]);
@@ -73,7 +73,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     }
   }, [restaurantId, canManage]);
 
-  const loadReminders = React.useCallback(async () => {
+  const loadReminders = useCallback(async () => {
     if (!restaurantId) return;
     setLoading(true);
     setError(null);
@@ -92,15 +92,15 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     }
   }, [restaurantId, canManage, positionFilter]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadDictionaries();
   }, [loadDictionaries]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadReminders();
   }, [loadReminders]);
 
-  const openCreateDialog = React.useCallback(() => {
+  const openCreateDialog = useCallback(() => {
     setEditing(null);
     setDialogError(null);
     setDialogInitial({
@@ -118,7 +118,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     setDialogOpen(true);
   }, []);
 
-  const openEditDialog = React.useCallback((reminder: ReminderDto) => {
+  const openEditDialog = useCallback((reminder: ReminderDto) => {
     setEditing(reminder);
     setDialogError(null);
     setDialogInitial({
@@ -138,14 +138,14 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     setDialogOpen(true);
   }, []);
 
-  const closeDialog = React.useCallback(() => {
+  const closeDialog = useCallback(() => {
     if (dialogSubmitting) return;
     setDialogOpen(false);
     setEditing(null);
     setDialogError(null);
   }, [dialogSubmitting]);
 
-  const handleSubmitDialog = React.useCallback(
+  const handleSubmitDialog = useCallback(
     async (payload: ReminderRequest) => {
       if (!restaurantId) return;
       setDialogSubmitting(true);
@@ -170,16 +170,16 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     [restaurantId, editing, loadReminders]
   );
 
-  const openDeleteDialog = React.useCallback((reminder: ReminderDto) => {
+  const openDeleteDialog = useCallback((reminder: ReminderDto) => {
     setDeleteTarget(reminder);
   }, []);
 
-  const closeDeleteDialog = React.useCallback(() => {
+  const closeDeleteDialog = useCallback(() => {
     if (deleting) return;
     setDeleteTarget(null);
   }, [deleting]);
 
-  const confirmDelete = React.useCallback(async () => {
+  const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
@@ -193,7 +193,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     }
   }, [deleteTarget, restaurantId, loadReminders]);
 
-  const resolveTargetLabel = React.useCallback((reminder: ReminderDto) => {
+  const resolveTargetLabel = useCallback((reminder: ReminderDto) => {
     if (reminder.targetType === "ALL") {
       return "Всем";
     }
@@ -206,7 +206,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     return "—";
   }, []);
 
-  const resolvePeriodLabel = React.useCallback((reminder: ReminderDto) => {
+  const resolvePeriodLabel = useCallback((reminder: ReminderDto) => {
     const time = reminder.time;
     switch (reminder.periodicity) {
       case "DAILY":
@@ -228,7 +228,7 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     }
   }, []);
 
-  const formatNextFire = React.useCallback((value?: string | null) => {
+  const formatNextFire = useCallback((value?: string | null) => {
     if (!value) return null;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
@@ -241,17 +241,17 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
     });
   }, []);
 
-  const positionFilterOptions = React.useMemo(
+  const positionFilterOptions = useMemo(
     () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
     [positions]
   );
 
-  const currentMemberId = React.useMemo(() => {
+  const currentMemberId = useMemo(() => {
     if (!currentUserId) return null;
     return members.find((member) => member.userId === currentUserId)?.id ?? null;
   }, [currentUserId, members]);
 
-  const canEditReminder = React.useCallback(
+  const canEditReminder = useCallback(
     (reminder: ReminderDto) => {
       if (canManage) return true;
       if (!currentUserId) return false;
@@ -284,12 +284,9 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
         <Button
           onClick={openCreateDialog}
           className="ml-auto self-end whitespace-nowrap"
+          leftIcon={<Icon icon={Plus} size="sm" className="shrink-0" />}
         >
-          <span className="inline-flex items-center gap-2 leading-none">
-            <Icon icon={Plus} size="sm" className="shrink-0" />
-            <span className="hidden sm:inline">Создать</span>
-            <span className="sm:hidden">Создать</span>
-          </span>
+          Создать
         </Button>
       </div>
 
@@ -300,9 +297,9 @@ const RestaurantReminders: React.FC<RestaurantRemindersProps> = ({
       )}
 
       {loading ? (
-        <Card>Загружаем напоминания…</Card>
+        <Card className="text-sm text-muted">Загружаем напоминания…</Card>
       ) : reminders.length === 0 ? (
-        <Card>Напоминаний пока нет.</Card>
+        <Card className="text-sm text-muted">Напоминаний пока нет.</Card>
       ) : (
         <div className="space-y-3">
           {reminders.map((reminder) => {
