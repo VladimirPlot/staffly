@@ -59,13 +59,13 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 
       <Card className="overflow-visible">
         {scheduleReadOnly && (
-          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted">
             Просмотр сохранённого графика
           </div>
         )}
 
         {schedule.rows.length === 0 ? (
-          <div className="text-sm text-zinc-600">
+          <div className="text-sm text-muted">
             В выбранных должностях пока нет сотрудников. Попробуйте выбрать другие должности.
           </div>
         ) : (
@@ -81,7 +81,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
         )}
 
         {schedule.rows.length > 0 && monthFallback && (
-          <div className="mt-3 text-xs text-zinc-500">
+          <div className="mt-3 text-xs text-muted">
             Период: {schedule.config.startDate} — {schedule.config.endDate} ({monthFallback})
           </div>
         )}

@@ -29,7 +29,7 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
 }) => {
   return (
     <div className="space-y-3">
-      <div className="text-lg font-semibold text-zinc-900">
+      <div className="text-lg font-semibold text-strong">
         {canManage ? "Заявки по этому графику" : "Мои заявки по этому графику"}
       </div>
       {loading && <Card>Заявки на смены загружаются…</Card>}
@@ -38,16 +38,16 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
       {!loading && !error && requests.length > 0 && (
         <div className="space-y-3">
           {requests.map((request) => (
-            <Card key={request.id} className="border-zinc-200">
+            <Card key={request.id} className="border-subtle">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1 text-sm text-zinc-700">
-                  <div className="flex flex-wrap items-center gap-2 font-medium text-zinc-900">
+                <div className="space-y-1 text-sm text-default">
+                  <div className="flex flex-wrap items-center gap-2 font-medium text-strong">
                     <span>{request.type === "REPLACEMENT" ? "Замена" : "Обмен сменами"}</span>
-                    <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-normal text-zinc-700">
+                    <span className="rounded-full bg-app px-2 py-1 text-xs font-normal text-default">
                       {humanStatus(request.status)}
                     </span>
                   </div>
-                  <div className="text-xs text-zinc-600">
+                  <div className="text-xs text-muted">
                     {request.type === "REPLACEMENT" ? "От" : "Первый"}: {request.fromMember.displayName}
                     {request.dayFrom && (
                       <>
@@ -55,7 +55,7 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
                       </>
                     )}
                   </div>
-                  <div className="text-xs text-zinc-600">
+                  <div className="text-xs text-muted">
                     {request.type === "REPLACEMENT" ? "Кому" : "Ворой"}: {request.toMember.displayName}
                     {request.dayTo && (
                       <>
@@ -69,9 +69,9 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
                     )}
                   </div>
                   {request.reason && (
-                    <div className="text-xs text-zinc-600">Причина: {request.reason}</div>
+                    <div className="text-xs text-muted">Причина: {request.reason}</div>
                   )}
-                  <div className="text-xs text-zinc-500">
+                  <div className="text-xs text-muted">
                     Создано: {new Date(request.createdAt).toLocaleString("ru-RU")}
                   </div>
                 </div>
@@ -100,7 +100,7 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
                       <Button
                         variant="outline"
                         onClick={() => onCancel(request.id)}
-                        className="border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                        className="border-subtle text-default hover:bg-app"
                       >
                         Отменить заявку
                       </Button>

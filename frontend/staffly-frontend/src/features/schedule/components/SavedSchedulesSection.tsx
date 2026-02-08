@@ -52,7 +52,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+          <div className="flex items-center gap-2 text-sm font-medium text-default">
             <span>Сохранённые графики</span>
             {hasPendingSavedSchedules && (
               <span
@@ -61,7 +61,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               />
             )}
           </div>
-          <div className="text-xs text-zinc-500">
+          <div className="text-xs text-muted">
             {hasSchedules
               ? "Нажмите «Открыть», чтобы посмотреть график или скачайте файл."
               : canManage
@@ -70,10 +70,10 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
           </div>
         </div>
         {canManage && (
-          <div className="flex items-center gap-2 text-sm text-zinc-700">
+          <div className="flex items-center gap-2 text-sm text-default">
             <span>Должность:</span>
             <select
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-base text-zinc-800 focus:border-black focus:outline-none"
+              className="rounded-lg border border-subtle px-3 py-2 text-base text-strong focus:outline-none focus:ring-2 ring-default"
               value={positionFilter}
               onChange={(e) =>
                 onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))
@@ -104,8 +104,8 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                   key={item.id}
                   className={`relative flex h-full flex-col justify-between rounded-2xl border px-4 py-3 text-sm transition ${
                     isActive
-                      ? "border-black bg-zinc-50"
-                      : "border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50"
+                      ? "border-subtle bg-app"
+                      : "border-subtle hover:bg-app"
                   }`}
                 >
                   {item.hasPendingShiftRequests && (
@@ -115,8 +115,8 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                     />
                   )}
                   <div>
-                    <div className="font-medium text-zinc-800">{item.title}</div>
-                    <div className="mt-1 text-xs text-zinc-500">
+                    <div className="font-medium text-strong">{item.title}</div>
+                    <div className="mt-1 text-xs text-muted">
                       {item.startDate} — {item.endDate}
                     </div>
                   </div>
@@ -164,9 +164,9 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                         <Icon icon={Download} />
                       </Button>
                       {menuOpen && (
-                        <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-zinc-200 bg-white shadow-lg">
+                        <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-subtle bg-surface shadow-[var(--staffly-shadow)]">
                           <button
-                            className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                            className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
                             onClick={() => {
                               onDownloadXlsx(item.id);
                               onToggleDownloadMenu(null);
@@ -175,7 +175,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                             Скачать .xlsx
                           </button>
                           <button
-                            className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                            className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
                             onClick={() => {
                               onDownloadJpg(item.id);
                               onToggleDownloadMenu(null);

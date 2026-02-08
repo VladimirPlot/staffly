@@ -8,14 +8,14 @@ type ScheduleTabsNavProps = {
 
 const ScheduleTabsNav: React.FC<ScheduleTabsNavProps> = ({ activeTab, hasTodayShifts, onChange }) => {
   return (
-    <div className="flex flex-wrap gap-2 border-b border-zinc-200 text-sm font-medium text-zinc-700">
+    <div className="flex flex-wrap gap-2 border-b border-subtle text-sm font-medium text-default">
       <button
         className={`rounded-t-xl px-4 py-2 transition ${
           activeTab === "today"
-            ? "border-b-2 border-black text-black"
+            ? "border-b-2 border-subtle text-strong"
             : hasTodayShifts
-            ? "text-zinc-600 hover:text-black"
-            : "cursor-not-allowed text-zinc-400"
+            ? "text-muted hover:text-strong"
+            : "cursor-not-allowed text-muted"
         }`}
         disabled={!hasTodayShifts}
         onClick={() => hasTodayShifts && onChange("today")}
@@ -24,7 +24,9 @@ const ScheduleTabsNav: React.FC<ScheduleTabsNavProps> = ({ activeTab, hasTodaySh
       </button>
       <button
         className={`rounded-t-xl px-4 py-2 transition ${
-          activeTab === "table" ? "border-b-2 border-black text-black" : "text-zinc-600 hover:text-black"
+          activeTab === "table"
+            ? "border-b-2 border-subtle text-strong"
+            : "text-muted hover:text-strong"
         }`}
         onClick={() => onChange("table")}
       >
@@ -33,8 +35,8 @@ const ScheduleTabsNav: React.FC<ScheduleTabsNavProps> = ({ activeTab, hasTodaySh
       <button
         className={`rounded-t-xl px-4 py-2 transition ${
           activeTab === "requests"
-            ? "border-b-2 border-black text-black"
-            : "text-zinc-600 hover:text-black"
+            ? "border-b-2 border-subtle text-strong"
+            : "text-muted hover:text-strong"
         }`}
         onClick={() => onChange("requests")}
       >

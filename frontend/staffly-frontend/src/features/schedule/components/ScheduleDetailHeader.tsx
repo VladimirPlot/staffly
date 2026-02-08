@@ -41,8 +41,8 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 space-y-1">
-        <div className="text-xl font-semibold text-zinc-900">{schedule.title}</div>
-        <div className="text-sm text-zinc-600">
+        <div className="text-xl font-semibold text-strong">{schedule.title}</div>
+        <div className="text-sm text-muted">
           {schedule.config.startDate} — {schedule.config.endDate}
         </div>
       </div>
@@ -77,9 +77,9 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             </Button>
 
             {downloadMenuFor === scheduleId && (
-              <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-zinc-200 bg-white shadow-lg">
+              <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-subtle bg-surface shadow-[var(--staffly-shadow)]">
                 <button
-                  className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                  className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
                   onClick={() => {
                     onDownloadXlsx(scheduleId);
                     onToggleDownloadMenu(null);
@@ -88,7 +88,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
                   Скачать .xlsx
                 </button>
                 <button
-                  className="block w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                  className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
                   onClick={() => {
                     onDownloadJpg(scheduleId);
                     onToggleDownloadMenu(null);

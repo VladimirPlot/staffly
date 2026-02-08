@@ -144,12 +144,12 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
     // ❗️скролл только в ScheduleTableSection (overflow-auto)
     <div className="inline-block min-w-full align-top">
       <div
-        className="grid border border-zinc-300 bg-white"
+        className="grid border border-subtle bg-surface"
         style={{ gridTemplateColumns, width: "max-content", minWidth: "100%" }}
       >
         {/* Заголовок таблицы (НЕ sticky) */}
         <div
-          className="flex items-center justify-center border-b border-zinc-300 px-3 py-3 text-center font-semibold"
+          className="flex items-center justify-center border-b border-subtle px-3 py-3 text-center font-semibold"
           style={{ gridColumn: `1 / span ${days.length + 2}` }}
         >
           {title}
@@ -159,8 +159,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         <div
           className={[
             "sticky left-0 top-0 z-50 flex h-10 items-center justify-start",
-            "border-b border-r border-zinc-200 bg-white px-3",
-            "text-xs font-semibold text-zinc-700",
+            "border-b border-r border-subtle bg-surface px-3",
+            "text-xs font-semibold text-default",
             STICKY_COL_SHADOW,
             STICKY_ROW_SHADOW,
           ].join(" ")}
@@ -173,8 +173,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
             key={`weekday-${day.date}`}
             className={[
               "sticky top-0 z-40 flex h-10 items-center justify-center",
-              "border-b border-l border-zinc-200 bg-white px-2",
-              "text-xs font-medium text-zinc-600",
+              "border-b border-l border-subtle bg-surface px-2",
+              "text-xs font-medium text-muted",
               STICKY_ROW_SHADOW,
             ].join(" ")}
           >
@@ -185,8 +185,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         <div
           className={[
             "sticky top-0 z-40 flex h-10 items-center justify-center",
-            "border-b border-l border-zinc-200 bg-white px-2 text-center",
-            "text-xs font-semibold text-zinc-700",
+            "border-b border-l border-subtle bg-surface px-2 text-center",
+            "text-xs font-semibold text-default",
             STICKY_ROW_SHADOW,
           ].join(" ")}
         >
@@ -197,8 +197,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         <div
           className={[
             "sticky left-0 top-10 z-50 flex h-10 items-center justify-start",
-            "border-b border-r border-zinc-200 bg-white px-3",
-            "text-xs font-semibold text-zinc-700",
+            "border-b border-r border-subtle bg-surface px-3",
+            "text-xs font-semibold text-default",
             STICKY_COL_SHADOW,
             STICKY_ROW_SHADOW,
           ].join(" ")}
@@ -211,8 +211,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
             key={`day-${day.date}`}
             className={[
               "sticky top-10 z-40 flex h-10 items-center justify-center",
-              "border-b border-l border-zinc-200 bg-white px-2",
-              "text-xs text-zinc-700",
+              "border-b border-l border-subtle bg-surface px-2",
+              "text-xs text-default",
               STICKY_ROW_SHADOW,
             ].join(" ")}
           >
@@ -223,8 +223,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         <div
           className={[
             "sticky top-10 z-40 flex h-10 items-center justify-center",
-            "border-b border-l border-zinc-200 bg-white px-2 text-center",
-            "text-xs font-medium text-zinc-700",
+            "border-b border-l border-subtle bg-surface px-2 text-center",
+            "text-xs font-medium text-default",
             STICKY_ROW_SHADOW,
           ].join(" ")}
         >
@@ -241,14 +241,14 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
               <div
                 className={[
                   "sticky left-0 z-30 flex flex-col justify-center",
-                  "border-b border-r border-zinc-200 bg-white px-3 py-3",
-                  "text-sm font-medium text-zinc-800",
+                  "border-b border-r border-subtle bg-surface px-3 py-3",
+                  "text-sm font-medium text-strong",
                   STICKY_COL_SHADOW,
                 ].join(" ")}
               >
                 <span className="truncate">{row.displayName}</span>
                 {row.positionName && (
-                  <span className="truncate text-xs font-normal text-zinc-500">
+                  <span className="truncate text-xs font-normal text-muted">
                     {row.positionName}
                   </span>
                 )}
@@ -260,10 +260,10 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
                 const missingEnd = hasStartWithoutEndValue(value);
 
                 return (
-                    <div
-                      key={key}
-                      className="border-b border-l border-zinc-200 px-1.5 py-1 text-sm"
-                    >
+                  <div
+                    key={key}
+                    className="border-b border-l border-subtle px-1.5 py-1 text-sm"
+                  >
                     {readOnly ? (
                       <ReadonlyCell value={value} shiftMode={config.shiftMode} />
                     ) : (
@@ -281,8 +281,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
                 );
               })}
 
-              <div className="border-b border-l border-zinc-200 px-1.5 py-1 text-sm">
-                <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-white px-1 text-center text-xs font-semibold leading-tight text-zinc-800">
+              <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
+                <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
                   {memberShiftCounts[rowIndex] ?? 0}
                 </div>
               </div>
@@ -294,8 +294,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         <div
           className={[
             "sticky left-0 z-20 flex flex-col justify-center",
-            "border-b border-r border-zinc-200 bg-white px-3 py-3",
-            "text-sm font-semibold text-zinc-800",
+            "border-b border-r border-subtle bg-surface px-3 py-3",
+            "text-sm font-semibold text-strong",
             STICKY_COL_SHADOW,
           ].join(" ")}
         >
@@ -305,16 +305,16 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         {days.map((day, index) => (
           <div
             key={`day-count-${day.date}`}
-            className="border-b border-l border-zinc-200 px-1.5 py-1 text-sm"
+            className="border-b border-l border-subtle px-1.5 py-1 text-sm"
           >
-            <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-white px-1 text-center text-xs font-semibold leading-tight text-zinc-800">
+            <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
               {dayShiftCounts[index] ?? 0}
             </div>
           </div>
         ))}
 
-        <div className="border-b border-l border-zinc-200 px-1.5 py-1 text-sm">
-          <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-white px-1 text-center text-xs font-semibold leading-tight text-zinc-800">
+        <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
+          <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
             {totalShifts}
           </div>
         </div>
@@ -345,7 +345,7 @@ function EditableCell({
           onChange={(event) => onInputChange(event.target.value)}
           onBlur={(event) => onBlur(event.target.value)}
           placeholder={placeholder}
-          className="h-10 w-full rounded-lg border border-transparent bg-zinc-50 px-2 text-center text-base text-zinc-800 focus:border-zinc-400 focus:bg-white focus:outline-none"
+          className="h-10 w-full rounded-lg border border-transparent bg-app px-2 text-center text-base text-strong focus:bg-surface focus:outline-none focus:ring-2 ring-default"
         />
       );
   }
@@ -354,7 +354,7 @@ function EditableCell({
 function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMode }) {
   if (!value) {
     return (
-      <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-white px-1 text-center text-xs leading-tight text-zinc-400">
+      <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs leading-tight text-muted">
         —
       </div>
     );
@@ -367,7 +367,7 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
       .filter(Boolean);
 
     return (
-      <div className="flex min-h-[2.25rem] flex-col items-center justify-center rounded-xl bg-white px-1 text-center text-xs leading-tight text-zinc-800">
+      <div className="flex min-h-[2.25rem] flex-col items-center justify-center rounded-xl bg-surface px-1 text-center text-xs leading-tight text-strong">
         <span>{from}</span>
         {to && <span>{to}</span>}
       </div>
@@ -375,7 +375,7 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
   }
 
   return (
-    <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-white px-1 text-center text-xs leading-tight text-zinc-800">
+    <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs leading-tight text-strong">
       {value}
     </div>
   );
@@ -399,7 +399,7 @@ function ArrivalSelector({ value, onCommit }: ArrivalSelectorProps) {
   };
 
   return (
-    <div className="flex min-h-[2.25rem] flex-col items-center justify-center gap-1 rounded-xl bg-white px-1 text-xs text-zinc-800">
+    <div className="flex min-h-[2.25rem] flex-col items-center justify-center gap-1 rounded-xl bg-surface px-1 text-xs text-strong">
       <TimeSelector value={time} onHourChange={handleHourChange} onMinuteChange={handleMinuteChange} />
     </div>
   );
@@ -417,7 +417,7 @@ function IntervalSelector({ value, onCommit, highlightEnd }: IntervalSelectorPro
   const showHighlight = Boolean(highlightEnd && from.hour !== null && to.hour === null);
 
   return (
-    <div className="flex min-h-[2.75rem] flex-col items-center justify-center gap-1 rounded-xl bg-white px-1 text-[11px] text-zinc-800">
+    <div className="flex min-h-[2.75rem] flex-col items-center justify-center gap-1 rounded-xl bg-surface px-1 text-[11px] text-strong">
       <TimeSelector
         value={from}
         onHourChange={(hour) => updateRange("from", hour, hour === null ? null : from.minute ?? 0)}
@@ -442,7 +442,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
     value.hour === null ? "" : normalizeMinuteValue(value.hour, value.minute ?? 0);
 
   const baseClasses =
-    "h-8 w-full min-w-[3.25rem] rounded-lg border border-zinc-200 bg-white px-1 text-center text-base focus:border-zinc-400 focus:outline-none";
+    "h-8 w-full min-w-[3.25rem] rounded-lg border border-subtle bg-surface px-1 text-center text-base focus:outline-none focus:ring-2 ring-default";
   const highlightClasses = highlight
     ? "border-amber-400 bg-amber-50 ring-1 ring-amber-200"
     : "";
@@ -473,7 +473,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
           else onMinuteChange(Number(rawValue));
         }}
         disabled={value.hour === null}
-        className={`${baseClasses} ${highlightClasses} disabled:cursor-not-allowed disabled:bg-zinc-100`.trim()}
+        className={`${baseClasses} ${highlightClasses} disabled:cursor-not-allowed disabled:bg-app`.trim()}
       >
         <option value="">--</option>
         {MINUTE_STEPS.map((minute) => (

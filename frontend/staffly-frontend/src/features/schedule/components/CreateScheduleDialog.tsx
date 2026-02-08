@@ -150,12 +150,12 @@ const CreateScheduleDialog: React.FC<Props> = ({
         </div>
 
         <div className="space-y-3">
-          <div className="text-sm font-medium text-zinc-700">Выберите должности</div>
+          <div className="text-sm font-medium text-default">Выберите должности</div>
           <div className="space-y-3">
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-2">
                 <select
-                  className="flex-1 min-w-0 rounded-2xl border border-zinc-300 p-3 text-base outline-none transition focus:ring-2 focus:ring-zinc-300"
+                  className="flex-1 min-w-0 rounded-2xl border border-subtle p-3 text-base outline-none transition focus:ring-2 ring-default"
                   value={field.value === "" ? "" : String(field.value)}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
                 >

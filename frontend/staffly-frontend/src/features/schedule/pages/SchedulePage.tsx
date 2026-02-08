@@ -107,6 +107,10 @@ const SchedulePage: React.FC = () => {
   const autoTabDoneRef = React.useRef(false);
 
   const scheduleId = schedule?.id ?? null;
+  const clearScheduleNotices = React.useCallback(() => {
+    setScheduleError(null);
+    setScheduleMessage(null);
+  }, []);
 
   React.useEffect(() => {
     if (!restaurantId) {
@@ -120,8 +124,7 @@ const SchedulePage: React.FC = () => {
       setSelectedSavedId(null);
       setScheduleReadOnly(false);
       setScheduleLoading(false);
-      setScheduleMessage(null);
-      setScheduleError(null);
+      clearScheduleNotices();
       setSaving(false);
       setDeletingId(null);
       setShiftRequests([]);
@@ -137,8 +140,7 @@ const SchedulePage: React.FC = () => {
     setSavedSchedules([]);
     setSelectedSavedId(null);
     setScheduleReadOnly(false);
-    setScheduleMessage(null);
-    setScheduleError(null);
+    clearScheduleNotices();
     setScheduleLoading(false);
     setSaving(false);
     setShiftRequests([]);
@@ -174,7 +176,7 @@ const SchedulePage: React.FC = () => {
     return () => {
       alive = false;
     };
-  }, [restaurantId, user?.roles]);
+  }, [clearScheduleNotices, restaurantId, user?.roles]);
 
   const access = React.useMemo(
     () => resolveRestaurantAccess(user?.roles, myRole),
@@ -314,12 +316,11 @@ const SchedulePage: React.FC = () => {
       });
       setScheduleReadOnly(false);
       setSelectedSavedId(null);
-      setScheduleMessage(null);
-      setScheduleError(null);
+      clearScheduleNotices();
       setScheduleLoading(false);
       setLastRange({ start: config.startDate, end: config.endDate });
     },
-    [canManage, members, positions]
+    [canManage, clearScheduleNotices, members, positions]
   );
 
   const prepareSchedule = React.useCallback(
@@ -400,8 +401,7 @@ const SchedulePage: React.FC = () => {
   const handleSaveSchedule = React.useCallback(async () => {
     if (!canManage || !restaurantId || !schedule) return;
     setSaving(true);
-    setScheduleMessage(null);
-    setScheduleError(null);
+    clearScheduleNotices();
     try {
       if (schedule.config.shiftMode === "FULL") {
         const hasIncompleteShifts = Object.values(schedule.cellValues).some((value) =>
@@ -451,7 +451,7 @@ const SchedulePage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [canManage, loadShiftRequests, prepareSchedule, restaurantId, schedule]);
+  }, [canManage, clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId, schedule]);
 
   const handleOpenSavedSchedule = React.useCallback(
     async (id: number) => {
@@ -463,8 +463,7 @@ const SchedulePage: React.FC = () => {
       setScheduleReadOnly(true);
       setScheduleLoading(true);
       setSchedule(null);
-      setScheduleMessage(null);
-      setScheduleError(null);
+      clearScheduleNotices();
       try {
         const data = await fetchSchedule(restaurantId, id);
         const prepared = prepareSchedule(data);
@@ -490,8 +489,7 @@ const SchedulePage: React.FC = () => {
       setScheduleReadOnly(false);
       setScheduleLoading(true);
       setSchedule(null);
-      setScheduleMessage(null);
-      setScheduleError(null);
+      clearScheduleNotices();
       try {
         const data = await fetchSchedule(restaurantId, id);
         const prepared = prepareSchedule(data);
@@ -511,13 +509,12 @@ const SchedulePage: React.FC = () => {
     setSchedule(null);
     setSelectedSavedId(null);
     setScheduleReadOnly(false);
-    setScheduleMessage(null);
-    setScheduleError(null);
+    clearScheduleNotices();
     setScheduleLoading(false);
     setShiftRequests([]);
 
     autoTabDoneRef.current = false;
-  }, []);
+  }, [clearScheduleNotices]);
 
   const fetchScheduleForActions = React.useCallback(
     async (id: number) => {
@@ -544,13 +541,13 @@ const SchedulePage: React.FC = () => {
       } catch (e: any) {
         console.error(e);
         const message = e?.friendlyMessage || "Не удалось скачать график";
-        setScheduleMessage(null);
+        clearScheduleNotices();
         setScheduleError(message);
       } finally {
         setDownloading((prev) => (prev && prev.id === id ? null : prev));
       }
     },
-    [fetchScheduleForActions, restaurantId]
+    [clearScheduleNotices, fetchScheduleForActions, restaurantId]
   );
 
   const handleDownloadJpg = React.useCallback(
@@ -565,21 +562,20 @@ const SchedulePage: React.FC = () => {
       } catch (e: any) {
         console.error(e);
         const message = e?.friendlyMessage || "Не удалось скачать график";
-        setScheduleMessage(null);
+        clearScheduleNotices();
         setScheduleError(message);
       } finally {
         setDownloading((prev) => (prev && prev.id === id ? null : prev));
       }
     },
-    [fetchScheduleForActions, restaurantId]
+    [clearScheduleNotices, fetchScheduleForActions, restaurantId]
   );
 
   const handleEnterEditMode = React.useCallback(() => {
     if (!canManage) return;
     setScheduleReadOnly(false);
-    setScheduleMessage(null);
-    setScheduleError(null);
-  }, [canManage]);
+    clearScheduleNotices();
+  }, [canManage, clearScheduleNotices]);
 
   const handleCancelEdit = React.useCallback(async () => {
     if (!restaurantId) return;
@@ -588,8 +584,7 @@ const SchedulePage: React.FC = () => {
       return;
     }
     setScheduleLoading(true);
-    setScheduleError(null);
-    setScheduleMessage(null);
+    clearScheduleNotices();
     try {
       const data = await fetchSchedule(restaurantId, scheduleId);
       const prepared = prepareSchedule(data);
@@ -611,8 +606,7 @@ const SchedulePage: React.FC = () => {
         return;
       }
       setDeletingId(id);
-      setScheduleError(null);
-      setScheduleMessage(null);
+      clearScheduleNotices();
       try {
         await deleteSchedule(restaurantId, id);
         const savedList = await listSavedSchedules(restaurantId);
@@ -665,75 +659,71 @@ const SchedulePage: React.FC = () => {
   const handleSubmitReplacement = React.useCallback(
     async (payload: { day: string; toMemberId: number; reason?: string }) => {
       if (!restaurantId || !scheduleId) return;
-      setScheduleError(null);
-      setScheduleMessage(null);
-    try {
-      await createReplacement(restaurantId, scheduleId, payload);
-      setScheduleMessage("Заявка на замену отправлена");
-      setReplacementOpen(false);
-      await loadShiftRequests();
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на замену");
-    }
-  },
-  [loadShiftRequests, restaurantId, scheduleId]
-);
+      clearScheduleNotices();
+      try {
+        await createReplacement(restaurantId, scheduleId, payload);
+        setScheduleMessage("Заявка на замену отправлена");
+        setReplacementOpen(false);
+        await loadShiftRequests();
+      } catch (e: any) {
+        setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на замену");
+      }
+    },
+    [clearScheduleNotices, loadShiftRequests, restaurantId, scheduleId]
+  );
 
   const handleSubmitSwap = React.useCallback(
     async (payload: { myDay: string; targetMemberId: number; targetDay: string; reason?: string }) => {
       if (!restaurantId || !scheduleId) return;
-      setScheduleError(null);
-      setScheduleMessage(null);
-    try {
-      await createSwap(restaurantId, scheduleId, payload);
-      setScheduleMessage("Заявка на обмен отправлена");
-      setSwapOpen(false);
-      await loadShiftRequests();
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на обмен");
-    }
-  },
-  [loadShiftRequests, restaurantId, scheduleId]
-);
+      clearScheduleNotices();
+      try {
+        await createSwap(restaurantId, scheduleId, payload);
+        setScheduleMessage("Заявка на обмен отправлена");
+        setSwapOpen(false);
+        await loadShiftRequests();
+      } catch (e: any) {
+        setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на обмен");
+      }
+    },
+    [clearScheduleNotices, loadShiftRequests, restaurantId, scheduleId]
+  );
 
   const handleManagerDecision = React.useCallback(
     async (requestId: number, accepted: boolean) => {
       if (!restaurantId || !scheduleId) return;
-      setScheduleError(null);
-      setScheduleMessage(null);
-    try {
-      await decideAsManager(restaurantId, scheduleId, requestId, accepted);
-      const data = await fetchSchedule(restaurantId, scheduleId);
-      const prepared = prepareSchedule(data);
-      setSchedule(prepared);
-      setScheduleReadOnly(true);
-      setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
-      await loadShiftRequests(scheduleId);
-      setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось обработать заявку");
-    }
-  },
-  [loadShiftRequests, prepareSchedule, restaurantId, scheduleId]
-);
+      clearScheduleNotices();
+      try {
+        await decideAsManager(restaurantId, scheduleId, requestId, accepted);
+        const data = await fetchSchedule(restaurantId, scheduleId);
+        const prepared = prepareSchedule(data);
+        setSchedule(prepared);
+        setScheduleReadOnly(true);
+        setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
+        await loadShiftRequests(scheduleId);
+        setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
+      } catch (e: any) {
+        setScheduleError(e?.friendlyMessage || "Не удалось обработать заявку");
+      }
+    },
+    [clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]
+  );
 
   const handleCancelMyShiftRequest = React.useCallback(
     async (requestId: number) => {
       if (!restaurantId || !scheduleId) return;
-      setScheduleError(null);
-      setScheduleMessage(null);
-    try {
-      await cancelShiftRequest(restaurantId, scheduleId, requestId);
-      await loadShiftRequests();
-      const savedList = await listSavedSchedules(restaurantId);
-      setSavedSchedules(savedList);
-      setScheduleMessage("Заявка отменена");
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось отменить заявку");
-    }
-  },
-  [restaurantId, scheduleId, loadShiftRequests]
-);
+      clearScheduleNotices();
+      try {
+        await cancelShiftRequest(restaurantId, scheduleId, requestId);
+        await loadShiftRequests();
+        const savedList = await listSavedSchedules(restaurantId);
+        setSavedSchedules(savedList);
+        setScheduleMessage("Заявка отменена");
+      } catch (e: any) {
+        setScheduleError(e?.friendlyMessage || "Не удалось отменить заявку");
+      }
+    },
+    [clearScheduleNotices, restaurantId, scheduleId, loadShiftRequests]
+  );
 
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;
@@ -858,30 +848,30 @@ const SchedulePage: React.FC = () => {
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6">
-    <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-700">
-      <BackToHome className="text-sm" />
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-default">
+        <BackToHome className="text-sm" />
 
-      {schedule && (
-        <button
-          type="button"
-          onClick={handleCloseSavedSchedule}
-          className={
-            "inline-flex items-center gap-0 rounded-2xl border border-zinc-200 " +
-            "bg-white px-2 py-1 text-sm font-medium text-zinc-700 shadow-sm " +
-            "transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300"
-          }
-          title="Ко всем графикам"
-          aria-label="Ко всем графикам"
-        >
-          <Icon icon={ArrowLeft} size="xs" decorative />
-          <span>Ко всем графикам</span>
-        </button>
-      )}
-    </div>
+        {schedule && (
+          <button
+            type="button"
+            onClick={handleCloseSavedSchedule}
+            className={
+              "inline-flex items-center gap-0 rounded-2xl border border-subtle " +
+              "bg-surface px-2 py-1 text-sm font-medium text-default shadow-[var(--staffly-shadow)] " +
+              "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
+            }
+            title="Ко всем графикам"
+            aria-label="Ко всем графикам"
+          >
+            <Icon icon={ArrowLeft} size="xs" decorative />
+            <span>Ко всем графикам</span>
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">Графики</h1>
-          <p className="mt-1 text-sm text-zinc-600">
+          <h1 className="text-2xl font-semibold text-strong">Графики</h1>
+          <p className="mt-1 text-sm text-muted">
             Создавайте и редактируйте графики для выбранных должностей.
           </p>
         </div>
@@ -926,7 +916,7 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && !canManage && filteredSavedSchedules.length === 0 && !schedule && !scheduleLoading && (
         <Card>
-          <div className="text-sm text-zinc-600">
+          <div className="text-sm text-muted">
             Раздел доступен для просмотра. Как только менеджер сохранит график, он появится в списке выше.
           </div>
         </Card>
@@ -934,7 +924,7 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && canManage && filteredSavedSchedules.length === 0 && !schedule && !scheduleLoading && (
         <Card>
-          <div className="space-y-2 text-sm text-zinc-600">
+          <div className="space-y-2 text-sm text-muted">
             <p>Пока график не создан. Нажмите «Создать график», чтобы настроить таблицу.</p>
             <p>Диапазон может включать не более 32 дней.</p>
           </div>

@@ -147,9 +147,9 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
     >
       <div className="space-y-4">
         <div className="space-y-2">
-          <div className="text-sm font-medium text-zinc-700">Моя смена</div>
+          <div className="text-sm font-medium text-default">Моя смена</div>
           <select
-            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
+            className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
             value={myDay}
             onChange={(e) => setMyDay(e.target.value)}
           >
@@ -163,9 +163,9 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
         </div>
 
         <div className="space-y-2">
-          <div className="text-sm font-medium text-zinc-700">С кем обменяться</div>
+          <div className="text-sm font-medium text-default">С кем обменяться</div>
           <select
-            className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
+            className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
             value={targetMemberId}
             onChange={(e) => setTargetMemberId(e.target.value)}
             disabled={!myDay}
@@ -177,14 +177,14 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
               </option>
             ))}
           </select>
-          {!myDay && <div className="text-xs text-zinc-500">Сначала выберите свою смену.</div>}
+          {!myDay && <div className="text-xs text-muted">Сначала выберите свою смену.</div>}
         </div>
 
         {targetMemberId && (
           <div className="space-y-2">
-            <div className="text-sm font-medium text-zinc-700">Смена коллеги</div>
+            <div className="text-sm font-medium text-default">Смена коллеги</div>
             <select
-              className="w-full rounded-2xl border border-zinc-300 px-3 py-2 text-base"
+              className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
               value={targetDay}
               onChange={(e) => setTargetDay(e.target.value)}
             >
