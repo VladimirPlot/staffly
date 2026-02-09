@@ -13,7 +13,6 @@ import ru.staffly.training.dto.TrainingItemDto;
 import ru.staffly.training.mapper.TrainingItemMapper;
 import ru.staffly.training.model.TrainingItem;
 import ru.staffly.training.repository.TrainingItemRepository;
-import ru.staffly.security.SecurityService;
 
 import java.io.IOException;
 
@@ -25,7 +24,7 @@ public class TrainingItemImageController {
     private final TrainingItemRepository items;
     private final TrainingImageStorage storage;
     private final TrainingItemMapper itemMapper;
-    private final SecurityService security;
+    private static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping(value = "/{itemId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -33,6 +32,22 @@ public class TrainingItemImageController {
     public TrainingItemDto uploadImage(@PathVariable Long restaurantId,
                                        @PathVariable Long itemId,
                                        @RequestParam("file") MultipartFile file) throws IOException {
+        if (file.isEmpty()) {
+            throw new BadRequestException("Файл не выбран");
+        }
+        if (file.getSize() > MAX_IMAGE_BYTES) {
+            throw new BadRequestException("Файл больше 2MB");
+        }
+        String contentType = file.getContentType();
+        if (contentType != null) {
+            int i = contentType.indexOf(';');
+            if (i > -1) contentType = contentType.substring(0, i);
+            contentType = contentType.trim().toLowerCase();
+        }
+        if (contentType == null || (!contentType.equals("image/jpeg") && !contentType.equals("image/png"))) {
+            throw new BadRequestException("Разрешены только JPEG/PNG");
+        }
+
         var item = items.findById(itemId)
                 .orElseThrow(() -> new NotFoundException("Item not found: " + itemId));
 
@@ -44,7 +59,12 @@ public class TrainingItemImageController {
         // удалить старый файл (если был)
         storage.deleteByPublicUrl(item.getImageUrl());
 
-        String publicUrl = storage.saveForItem(itemId, file);
+        String publicUrl;
+        try {
+            publicUrl = storage.saveForItem(itemId, file);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage());
+        }
         item.setImageUrl(publicUrl);
         // @Transactional — сохранит
         return itemMapper.toDto(item);

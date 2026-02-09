@@ -10,10 +10,13 @@ import java.util.Optional;
 
 public interface TrainingCategoryRepository extends JpaRepository<TrainingCategory, Long> {
 
-    boolean existsByRestaurantIdAndModuleAndNameIgnoreCase(Long restaurantId, TrainingModule module, String name);
+    boolean existsByRestaurantIdAndModuleAndNameIgnoreCaseAndActiveTrue(Long restaurantId, TrainingModule module, String name);
 
     @EntityGraph(attributePaths = {"visibleForPositions", "restaurant"})
     List<TrainingCategory> findByRestaurantIdAndModuleAndActiveTrueOrderBySortOrderAscNameAsc(Long restaurantId, TrainingModule module);
+
+    @EntityGraph(attributePaths = {"visibleForPositions", "restaurant"})
+    List<TrainingCategory> findByRestaurantIdAndModuleOrderByActiveDescSortOrderAscNameAsc(Long restaurantId, TrainingModule module);
 
     @EntityGraph(attributePaths = {"visibleForPositions", "restaurant"})
     Optional<TrainingCategory> findWithPositionsById(Long id);

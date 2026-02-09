@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
@@ -6,12 +6,13 @@ import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
 import ContentText from "../../../shared/ui/ContentText";
 import IconButton from "../../../shared/ui/IconButton";
-import { useAuth } from "../../../shared/providers/AuthProvider";
 import {
   listCategories,
   listItems,
   createItem,
   deleteItem,
+  hideItem,
+  restoreItem,
   uploadItemImage,
   deleteItemImage,
   updateItem,
@@ -20,65 +21,26 @@ import {
 } from "../api";
 import { getTrainingModuleConfig, isConfigWithCategories } from "../config";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
-import { getMyRoleIn } from "../../../shared/api/memberships";
-import { hasTrainingManagementAccess } from "../../../shared/utils/access";
-import type { RestaurantRole } from "../../../shared/types/restaurant";
+import Switch from "../../../shared/ui/Switch";
+import { useTrainingAccess } from "../hooks/useTrainingAccess";
 
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Icon from "../../../shared/ui/Icon";
 import { Pencil } from "lucide-react";
 
 const REQUIRED_MESSAGE = "Обязательное поле";
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 type Params = { module: string; categoryId: string };
 
 export default function TrainingCategoryItemsPage() {
   const params = useParams<Params>();
-  const { user } = useAuth();
+  const { restaurantId, canManage } = useTrainingAccess();
   const moduleConfig = getTrainingModuleConfig(params.module);
   const hasCategories = isConfigWithCategories(moduleConfig);
   const categoryId = Number(params.categoryId);
   const hasValidCategoryId = Boolean(params.categoryId) && !Number.isNaN(categoryId);
   const moduleCode = hasCategories ? moduleConfig.module : "MENU";
-  const restaurantId = user?.restaurantId ?? null;
-  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
-
-  const canManage = useMemo(
-    () => hasTrainingManagementAccess(user?.roles, myRole),
-    [user?.roles, myRole]
-  );
-
-  useEffect(() => {
-    if (restaurantId == null) {
-      setMyRole(null);
-      return;
-    }
-
-    if (hasTrainingManagementAccess(user?.roles)) {
-      setMyRole(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const role = await getMyRoleIn(restaurantId);
-        if (!cancelled) {
-          setMyRole(role);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to load membership role", error);
-          setMyRole(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [restaurantId, user?.roles]);
 
   const [category, setCategory] = useState<TrainingCategoryDto | null>(null);
   const [categoryError, setCategoryError] = useState<string | null>(null);
@@ -87,6 +49,7 @@ export default function TrainingCategoryItemsPage() {
   const [items, setItems] = useState<TrainingItemDto[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [itemsError, setItemsError] = useState<string | null>(null);
+  const [includeInactive, setIncludeInactive] = useState(false);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [name, setName] = useState("");
@@ -107,12 +70,18 @@ export default function TrainingCategoryItemsPage() {
   const [editItemAllergens, setEditItemAllergens] = useState("");
   const [savingItemId, setSavingItemId] = useState<number | null>(null);
 
+  useEffect(() => {
+    setIncludeInactive(false);
+  }, [moduleCode, categoryId]);
+
   const loadCategory = useCallback(async () => {
     if (!restaurantId || !hasCategories || !hasValidCategoryId) return;
     setCategoryLoading(true);
     setCategoryError(null);
     try {
-      const data = await listCategories(restaurantId, moduleCode, canManage);
+      const data = await listCategories(restaurantId, moduleCode, {
+        includeInactive: includeInactive && canManage,
+      });
       const found = data.find((c) => c.id === categoryId) ?? null;
       if (!found) {
         setCategoryError("Категория не найдена или недоступна.");
@@ -126,15 +95,19 @@ export default function TrainingCategoryItemsPage() {
     } finally {
       setCategoryLoading(false);
     }
-  }, [restaurantId, hasCategories, hasValidCategoryId, moduleCode, canManage, categoryId]);
+  }, [restaurantId, hasCategories, hasValidCategoryId, moduleCode, canManage, categoryId, includeInactive]);
 
   const loadItems = useCallback(async () => {
     if (!restaurantId || !hasValidCategoryId) return;
     setItemsLoading(true);
     setItemsError(null);
     try {
-      const data = await listItems(restaurantId, categoryId);
+      const data = await listItems(restaurantId, categoryId, {
+        includeInactive: includeInactive && canManage,
+      });
       const sorted = [...data].sort((a, b) => {
+        const activeOrder = Number(b.active !== false) - Number(a.active !== false);
+        if (activeOrder !== 0) return activeOrder;
         const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
         const orderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
         if (orderA !== orderB) return orderA - orderB;
@@ -147,7 +120,7 @@ export default function TrainingCategoryItemsPage() {
     } finally {
       setItemsLoading(false);
     }
-  }, [restaurantId, hasValidCategoryId, categoryId]);
+  }, [restaurantId, hasValidCategoryId, categoryId, includeInactive, canManage]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -165,6 +138,19 @@ export default function TrainingCategoryItemsPage() {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const validateImageFile = (file: File | null) => {
+    if (!file) return false;
+    if (file.size > MAX_IMAGE_BYTES) {
+      alert("Фото больше 2MB");
+      return false;
+    }
+    if (file.type !== "image/jpeg" && file.type !== "image/png") {
+      alert("Разрешены только JPG или PNG");
+      return false;
+    }
+    return true;
   };
 
   const handleCreate = async () => {
@@ -199,6 +185,7 @@ export default function TrainingCategoryItemsPage() {
 
   const handleUploadImage = async (itemId: number, file: File | null) => {
     if (!restaurantId || !file) return;
+    if (!validateImageFile(file)) return;
     try {
       setImageMutatingId(itemId);
       await uploadItemImage(restaurantId, itemId, file);
@@ -214,11 +201,11 @@ export default function TrainingCategoryItemsPage() {
     if (imageMutatingId === itemId) return;
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = "image/png,image/jpeg";
     input.onchange = (event) => {
       const target = event.target as HTMLInputElement | null;
       const file = target?.files?.[0] ?? null;
-      if (file) {
+      if (file && validateImageFile(file)) {
         void handleUploadImage(itemId, file);
       }
     };
@@ -241,7 +228,7 @@ export default function TrainingCategoryItemsPage() {
   const handleDeleteItem = async (itemId: number, name: string) => {
     if (!restaurantId) return;
     setOpenActionsItemId(null);
-    if (!confirm(`Удалить карточку «${name}»?`)) return;
+    if (!confirm(`Удалить карточку «${name}» навсегда?`)) return;
     try {
       setDeletingItemId(itemId);
       await deleteItem(restaurantId, itemId);
@@ -328,22 +315,28 @@ export default function TrainingCategoryItemsPage() {
         ) : categoryError ? (
           <div className="text-red-600">{categoryError}</div>
         ) : category ? (
-          <div>
-            <div className="text-2xl font-semibold text-strong">{category.name}</div>
-            {category.description && (
-              <ContentText className="mt-1 text-sm text-muted">{category.description}</ContentText>
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-2xl font-semibold text-strong">{category.name}</div>
+              {category.description && (
+                <ContentText className="mt-1 text-sm text-muted">{category.description}</ContentText>
+              )}
+            </div>
+            {canManage && (
+              <div className="flex flex-wrap items-center gap-3">
+                <Switch
+                  checked={includeInactive}
+                  onChange={(event) => setIncludeInactive(event.currentTarget.checked)}
+                  label="Показать скрытые"
+                />
+                <Button onClick={() => setShowCreateForm((prev) => !prev)}>
+                  {showCreateForm ? "Скрыть форму" : "Создать карточку"}
+                </Button>
+              </div>
             )}
           </div>
         ) : null}
       </Card>
-
-      {canManage && (
-        <div className="mb-4 flex justify-end">
-          <Button onClick={() => setShowCreateForm((prev) => !prev)}>
-            {showCreateForm ? "Скрыть форму" : "Создать карточку"}
-          </Button>
-        </div>
-      )}
 
       {canManage && showCreateForm && (
         <Card className="mb-4">
@@ -383,8 +376,18 @@ export default function TrainingCategoryItemsPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
-                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                accept="image/png,image/jpeg"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  if (file && validateImageFile(file)) {
+                    setImageFile(file);
+                  } else {
+                    setImageFile(null);
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = "";
+                    }
+                  }
+                }}
                 className="hidden"
               />
               <div className="flex items-center gap-3">
@@ -427,34 +430,39 @@ export default function TrainingCategoryItemsPage() {
         ) : itemsError ? (
           <div className="text-red-600">{itemsError}</div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 text-muted">
-            <div>В этой категории пока нет карточек.</div>
-            {canManage && (
-              <Button
-                onClick={() => {
-                  setShowCreateForm(true);
-                }}
-              >
-                Создать карточку
-              </Button>
-            )}
-          </div>
+          <div className="text-muted">В этой категории пока нет карточек.</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {items.map((item) => {
               const isEditing = editingItemId === item.id;
               const imageMutating = imageMutatingId === item.id;
               const actionsOpen = openActionsItemId === item.id;
+              const isActive = item.active !== false;
               return (
-                <Card key={item.id} className="relative flex h-full flex-col gap-3">
+                <Card
+                  key={item.id}
+                  className={`relative flex h-full flex-col overflow-hidden p-0 ${isActive ? "" : "opacity-60"}`}
+                >
+                  {item.imageUrl && (
+                    <img
+                      src={toAbsoluteUrl(item.imageUrl)}
+                      alt={item.name}
+                      className="h-48 w-full object-cover"
+                    />
+                  )}
                   {canManage && !isEditing && (
                     <IconButton
                       aria-label="Действия с карточкой"
-                      className="absolute right-3 top-3 h-9 w-9 p-0"
+                      className="absolute right-3 top-3 h-9 w-9 border border-subtle bg-surface/80 p-0 backdrop-blur"
                       onClick={() => setOpenActionsItemId((prev) => (prev === item.id ? null : item.id))}
                     >
                       <Icon icon={Pencil} size="sm" decorative />
                     </IconButton>
+                  )}
+                  {!isActive && (
+                    <span className="absolute left-3 top-3 rounded-full bg-surface/80 px-2 py-1 text-xs font-semibold text-muted backdrop-blur">
+                      Скрыта
+                    </span>
                   )}
                   {canManage && actionsOpen && !isEditing && (
                     <div className="absolute right-3 top-14 z-10 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]">
@@ -463,21 +471,33 @@ export default function TrainingCategoryItemsPage() {
                       </Button>
                       <Button
                         variant="outline"
+                        onClick={async () => {
+                          if (!restaurantId) return;
+                          setOpenActionsItemId(null);
+                          try {
+                            if (item.active === false) {
+                              await restoreItem(restaurantId, item.id);
+                            } else {
+                              await hideItem(restaurantId, item.id);
+                            }
+                            await loadItems();
+                          } catch (e: any) {
+                            alert(e?.friendlyMessage || "Не удалось обновить карточку");
+                          }
+                        }}
+                      >
+                        {item.active === false ? "Раскрыть карточку" : "Скрыть карточку"}
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => handleDeleteItem(item.id, item.name)}
                         disabled={deletingItemId === item.id}
                       >
-                        {deletingItemId === item.id ? "Удаляем…" : "Удалить карточку"}
+                        {deletingItemId === item.id ? "Удаляем…" : "Удалить навсегда"}
                       </Button>
                     </div>
                   )}
-                  {item.imageUrl && (
-                    <img
-                      src={toAbsoluteUrl(item.imageUrl)}
-                      alt={item.name}
-                      className="h-48 w-full rounded-2xl object-cover"
-                    />
-                  )}
-                  <div className="flex-1">
+                  <div className="flex-1 p-6">
                     {isEditing ? (
                       <div className="grid gap-3">
                         <Input
@@ -538,6 +558,25 @@ export default function TrainingCategoryItemsPage() {
                             )}
                           </div>
                         </div>
+                        {canManage && isEditing && (
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => handleSaveItem(item)}
+                              disabled={savingItemId === item.id}
+                            >
+                              {savingItemId === item.id ? "Сохраняем…" : "Сохранить"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={cancelEditItem}
+                              disabled={savingItemId === item.id}
+                            >
+                              Отмена
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -546,18 +585,14 @@ export default function TrainingCategoryItemsPage() {
                           <ContentText className="mt-1 text-sm text-muted">{item.description}</ContentText>
                         )}
                         <div className="mt-3">
-                          <div className="text-xs uppercase tracking-wide text-muted">
-                            Состав
-                          </div>
+                          <div className="text-xs uppercase tracking-wide text-muted">Состав</div>
                           <ContentText className="mt-1 text-sm text-default">
                             {item.composition || "Не указан"}
                           </ContentText>
                         </div>
                         {item.allergens && (
                           <div className="mt-3">
-                            <div className="text-xs uppercase tracking-wide text-muted">
-                              Аллергены
-                            </div>
+                            <div className="text-xs uppercase tracking-wide text-muted">Аллергены</div>
                             <ContentText className="mt-1 text-sm text-default">
                               {item.allergens}
                             </ContentText>
@@ -566,25 +601,6 @@ export default function TrainingCategoryItemsPage() {
                       </>
                     )}
                   </div>
-                  {canManage && isEditing && (
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => handleSaveItem(item)}
-                        disabled={savingItemId === item.id}
-                      >
-                        {savingItemId === item.id ? "Сохраняем…" : "Сохранить"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={cancelEditItem}
-                        disabled={savingItemId === item.id}
-                      >
-                        Отмена
-                      </Button>
-                    </div>
-                  )}
                 </Card>
               );
             })}

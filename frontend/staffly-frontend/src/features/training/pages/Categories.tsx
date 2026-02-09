@@ -1,20 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import ContentText from "../../../shared/ui/ContentText";
-import { useAuth } from "../../../shared/providers/AuthProvider";
-import { getMyRoleIn } from "../../../shared/api/memberships";
-import { hasTrainingManagementAccess } from "../../../shared/utils/access";
-import type { RestaurantRole } from "../../../shared/types/restaurant";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
-import LinkButton from "../../../shared/ui/LinkButton";
+import Switch from "../../../shared/ui/Switch";
 import {
   listCategories,
   createCategory,
   updateCategory,
   deleteCategory,
+  hideCategory,
+  restoreCategory,
   type TrainingCategoryDto,
   type TrainingModule,
 } from "../api";
@@ -23,6 +20,8 @@ import {
   isConfigWithCategories,
   type TrainingModuleConfig,
 } from "../config";
+import { useTrainingAccess } from "../hooks/useTrainingAccess";
+import TrainingCategoryCard from "../components/TrainingCategoryCard";
 
 function BreadcrumbsBlock({ module }: { module: TrainingModuleConfig }) {
   return (
@@ -52,50 +51,10 @@ function ServiceStub({ module }: { module: TrainingModuleConfig }) {
 
 function TrainingModuleCategoriesPage() {
   const params = useParams<{ module: string }>();
-  const { user } = useAuth();
+  const { restaurantId, canManage } = useTrainingAccess();
   const moduleConfig = getTrainingModuleConfig(params.module);
   const hasCategories = isConfigWithCategories(moduleConfig);
   const moduleCode: TrainingModule = hasCategories ? moduleConfig.module : "MENU";
-  const restaurantId = user?.restaurantId ?? null;
-
-  const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
-
-  const canManage = useMemo(
-    () => hasTrainingManagementAccess(user?.roles, myRole),
-    [user?.roles, myRole]
-  );
-
-  useEffect(() => {
-    if (restaurantId == null) {
-      setMyRole(null);
-      return;
-    }
-
-    if (hasTrainingManagementAccess(user?.roles)) {
-      setMyRole(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const role = await getMyRoleIn(restaurantId);
-        if (!cancelled) {
-          setMyRole(role);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to load membership role", error);
-          setMyRole(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [restaurantId, user?.roles]);
 
   const [categories, setCategories] = useState<TrainingCategoryDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +65,7 @@ function TrainingModuleCategoriesPage() {
   const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const [allForManagers, setAllForManagers] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false);
 
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
@@ -115,7 +74,7 @@ function TrainingModuleCategoriesPage() {
 
   useEffect(() => {
     if (!hasCategories) return;
-    setAllForManagers(false);
+    setIncludeInactive(false);
   }, [hasCategories, moduleCode]);
 
   const load = useCallback(async () => {
@@ -123,8 +82,12 @@ function TrainingModuleCategoriesPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listCategories(restaurantId, moduleCode, allForManagers && canManage);
+      const data = await listCategories(restaurantId, moduleCode, {
+        includeInactive: includeInactive && canManage,
+      });
       const sorted = [...data].sort((a, b) => {
+        const activeOrder = Number(b.active !== false) - Number(a.active !== false);
+        if (activeOrder !== 0) return activeOrder;
         const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
         const orderB = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
         if (orderA !== orderB) return orderA - orderB;
@@ -136,7 +99,7 @@ function TrainingModuleCategoriesPage() {
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, hasCategories, moduleCode, allForManagers, canManage]);
+  }, [restaurantId, hasCategories, moduleCode, includeInactive, canManage]);
 
   useEffect(() => {
     if (restaurantId) void load();
@@ -189,30 +152,19 @@ function TrainingModuleCategoriesPage() {
           <h2 className="text-2xl font-semibold">{moduleConfig.title}</h2>
           <div className="mt-1 text-sm text-muted">{moduleConfig.description}</div>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          {canManage && (
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={allForManagers}
-                onChange={(e) => setAllForManagers(e.currentTarget.checked)}
-              />
-              Показать все категории
-            </label>
-          )}
-          <Button variant="outline" onClick={load}>
-            Обновить
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-3">
+            <Switch
+              checked={includeInactive}
+              onChange={(event) => setIncludeInactive(event.currentTarget.checked)}
+              label="Показать скрытые"
+            />
+            <Button onClick={() => setShowCreateForm((prev) => !prev)}>
+              {showCreateForm ? "Скрыть форму" : "Создать категорию"}
+            </Button>
+          </div>
+        )}
       </div>
-
-      {canManage && (
-        <div className="mb-4 flex justify-end">
-          <Button onClick={() => setShowCreateForm((prev) => !prev)}>
-            {showCreateForm ? "Скрыть форму" : "Создать категорию"}
-          </Button>
-        </div>
-      )}
 
       {canManage && showCreateForm && (
         <Card className="mb-4">
@@ -264,146 +216,76 @@ function TrainingModuleCategoriesPage() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {categories.map((category) => (
-              <Card
+              <TrainingCategoryCard
                 key={category.id}
-                className="flex h-full flex-col gap-3 transition hover:-translate-y-0.5 hover:shadow-[var(--staffly-shadow)]"
-              >
-                <div className="flex-1">
-                  {editingCategoryId === category.id ? (
-                    <div className="grid gap-3">
-                      <Input
-                        label="Название"
-                        value={editCategoryName}
-                        onChange={(e) => setEditCategoryName(e.target.value)}
-                        autoFocus
-                      />
-                      <Input
-                        label="Описание (опционально)"
-                        value={editCategoryDescription}
-                        onChange={(e) => setEditCategoryDescription(e.target.value)}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <div className="text-lg font-semibold text-strong">{category.name}</div>
-                      {category.description && (
-                        <ContentText className="mt-1 text-sm text-muted">{category.description}</ContentText>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap gap-2 text-xs text-muted">
-                  <span className="rounded-full border border-emerald-200 px-2 py-0.5 uppercase">
-                    {moduleCode === "MENU"
-                      ? "Меню"
-                      : moduleCode === "BAR"
-                      ? "Бар"
-                      : "Вино"}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 ${
-                      category.active !== false
-                        ? "border border-emerald-300 text-emerald-700"
-                        : "border border-subtle text-muted"
-                    }`}
-                  >
-                    {category.active !== false ? "Активна" : "Отключена"}
-                  </span>
-                </div>
-
-                <div className="mt-auto flex flex-wrap gap-2">
-                  <LinkButton to={`/training/${moduleConfig.slug}/categories/${category.id}`} variant="outline">
-                    Открыть
-                  </LinkButton>
-                  {canManage && (
-                    <>
-                      {editingCategoryId === category.id ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            onClick={async () => {
-                              if (!restaurantId) return;
-                              const trimmedName = editCategoryName.trim();
-                              if (!trimmedName) {
-                                alert("Название не может быть пустым");
-                                return;
-                              }
-                              try {
-                                setSavingCategory(true);
-                                await updateCategory(restaurantId, category.id, {
-                                  name: trimmedName,
-                                  description: editCategoryDescription.trim()
-                                    ? editCategoryDescription.trim()
-                                    : null,
-                                  sortOrder: category.sortOrder ?? 0,
-                                  active: category.active ?? true,
-                                });
-                                setEditingCategoryId(null);
-                                await load();
-                              } catch (e: any) {
-                                alert(
-                                  e?.friendlyMessage || "Ошибка сохранения"
-                                );
-                              } finally {
-                                setSavingCategory(false);
-                              }
-                            }}
-                            disabled={savingCategory}
-                          >
-                            {savingCategory ? "Сохраняем…" : "Сохранить"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => {
-                              setEditingCategoryId(null);
-                              setEditCategoryName("");
-                              setEditCategoryDescription("");
-                            }}
-                            disabled={savingCategory}
-                          >
-                            Отмена
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              setEditingCategoryId(category.id);
-                              setEditCategoryName(category.name);
-                              setEditCategoryDescription(category.description ?? "");
-                            }}
-                          >
-                            Редактировать
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={async () => {
-                              if (
-                                !confirm(`Удалить (деактивировать) категорию «${category.name}»?`)
-                              )
-                                return;
-                              if (!restaurantId) return;
-                              try {
-                                await deleteCategory(restaurantId, category.id);
-                                await load();
-                              } catch (e: any) {
-                                alert(
-                                  e?.friendlyMessage || "Ошибка удаления категории"
-                                );
-                              }
-                            }}
-                          >
-                            Удалить
-                          </Button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </Card>
+                category={category}
+                moduleConfig={moduleConfig}
+                canManage={canManage}
+                isEditing={editingCategoryId === category.id}
+                editName={editCategoryName}
+                editDescription={editCategoryDescription}
+                saving={savingCategory}
+                onStartEdit={() => {
+                  setEditingCategoryId(category.id);
+                  setEditCategoryName(category.name);
+                  setEditCategoryDescription(category.description ?? "");
+                }}
+                onCancelEdit={() => {
+                  setEditingCategoryId(null);
+                  setEditCategoryName("");
+                  setEditCategoryDescription("");
+                }}
+                onSaveEdit={async () => {
+                  if (!restaurantId) return;
+                  const trimmedName = editCategoryName.trim();
+                  if (!trimmedName) {
+                    alert("Название не может быть пустым");
+                    return;
+                  }
+                  try {
+                    setSavingCategory(true);
+                    await updateCategory(restaurantId, category.id, {
+                      name: trimmedName,
+                      description: editCategoryDescription.trim()
+                        ? editCategoryDescription.trim()
+                        : null,
+                      sortOrder: category.sortOrder ?? 0,
+                      active: category.active ?? true,
+                    });
+                    setEditingCategoryId(null);
+                    await load();
+                  } catch (e: any) {
+                    alert(e?.friendlyMessage || "Ошибка сохранения");
+                  } finally {
+                    setSavingCategory(false);
+                  }
+                }}
+                onEditNameChange={(value) => setEditCategoryName(value)}
+                onEditDescriptionChange={(value) => setEditCategoryDescription(value)}
+                onToggleActive={async () => {
+                  if (!restaurantId) return;
+                  try {
+                    if (category.active === false) {
+                      await restoreCategory(restaurantId, category.id);
+                    } else {
+                      await hideCategory(restaurantId, category.id);
+                    }
+                    await load();
+                  } catch (e: any) {
+                    alert(e?.friendlyMessage || "Ошибка обновления категории");
+                  }
+                }}
+                onDelete={async () => {
+                  if (!restaurantId) return;
+                  if (!confirm(`Удалить категорию «${category.name}» навсегда?`)) return;
+                  try {
+                    await deleteCategory(restaurantId, category.id);
+                    await load();
+                  } catch (e: any) {
+                    alert(e?.friendlyMessage || "Ошибка удаления категории");
+                  }
+                }}
+              />
             ))}
           </div>
         )}

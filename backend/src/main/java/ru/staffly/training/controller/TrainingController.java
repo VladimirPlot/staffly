@@ -29,8 +29,9 @@ public class TrainingController {
     public List<TrainingCategoryDto> listCategories(@PathVariable Long restaurantId,
                                                     @PathVariable TrainingModule module,
                                                     @AuthenticationPrincipal UserPrincipal principal,
-                                                    @RequestParam(name = "allForManagers", defaultValue = "false") boolean allForManagers) {
-        return training.listCategories(restaurantId, principal.userId(), module, allForManagers);
+                                                    @RequestParam(name = "allForManagers", defaultValue = "false") boolean allForManagers,
+                                                    @RequestParam(name = "includeInactive", defaultValue = "false") boolean includeInactive) {
+        return training.listCategories(restaurantId, principal.userId(), module, allForManagers, includeInactive);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -55,6 +56,22 @@ public class TrainingController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PatchMapping("/categories/{categoryId}/hide")
+    public TrainingCategoryDto hideCategory(@PathVariable Long restaurantId,
+                                            @PathVariable Long categoryId,
+                                            @AuthenticationPrincipal UserPrincipal principal) {
+        return training.hideCategory(restaurantId, principal.userId(), categoryId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PatchMapping("/categories/{categoryId}/restore")
+    public TrainingCategoryDto restoreCategory(@PathVariable Long restaurantId,
+                                               @PathVariable Long categoryId,
+                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return training.restoreCategory(restaurantId, principal.userId(), categoryId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @DeleteMapping("/categories/{categoryId}")
     public void deleteCategory(@PathVariable Long restaurantId,
                                @PathVariable Long categoryId,
@@ -68,8 +85,9 @@ public class TrainingController {
     @GetMapping("/categories/{categoryId}/items")
     public List<TrainingItemDto> listItems(@PathVariable Long restaurantId,
                                            @PathVariable Long categoryId,
-                                           @AuthenticationPrincipal UserPrincipal principal) {
-        return training.listItems(restaurantId, principal.userId(), categoryId);
+                                           @AuthenticationPrincipal UserPrincipal principal,
+                                           @RequestParam(name = "includeInactive", defaultValue = "false") boolean includeInactive) {
+        return training.listItems(restaurantId, principal.userId(), categoryId, includeInactive);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -87,6 +105,22 @@ public class TrainingController {
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody TrainingItemDto dto) {
         return training.updateItem(restaurantId, principal.userId(), itemId, dto);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PatchMapping("/items/{itemId}/hide")
+    public TrainingItemDto hideItem(@PathVariable Long restaurantId,
+                                    @PathVariable Long itemId,
+                                    @AuthenticationPrincipal UserPrincipal principal) {
+        return training.hideItem(restaurantId, principal.userId(), itemId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PatchMapping("/items/{itemId}/restore")
+    public TrainingItemDto restoreItem(@PathVariable Long restaurantId,
+                                       @PathVariable Long itemId,
+                                       @AuthenticationPrincipal UserPrincipal principal) {
+        return training.restoreItem(restaurantId, principal.userId(), itemId);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

@@ -54,7 +54,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
         if (name == null || name.isBlank()) throw new BadRequestException("Category name is required");
         if (dto.module() == null) throw new BadRequestException("Module is required");
 
-        if (categories.existsByRestaurantIdAndModuleAndNameIgnoreCase(restaurantId, dto.module(), name)) {
+        if (categories.existsByRestaurantIdAndModuleAndNameIgnoreCaseAndActiveTrue(restaurantId, dto.module(), name)) {
             throw new ConflictException("Category already exists: " + name);
         }
 
@@ -70,19 +70,21 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
-    public List<TrainingCategoryDto> listCategories(Long restaurantId, Long currentUserId, TrainingModule module, boolean allForManagers) {
+    public List<TrainingCategoryDto> listCategories(Long restaurantId, Long currentUserId, TrainingModule module, boolean allForManagers, boolean includeInactive) {
         security.assertMember(currentUserId, restaurantId);
-
-        var list = categories
-                .findByRestaurantIdAndModuleAndActiveTrueOrderBySortOrderAscNameAsc(restaurantId, module)
-                .stream()
-                .map(catMapper::toDto)
-                .toList();
 
         RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Membership not found"));
 
         boolean managerOrAdmin = isManagerOrAdmin(member);
+        boolean includeInactiveEffective = includeInactive && managerOrAdmin;
+
+        var list = (includeInactiveEffective
+                ? categories.findByRestaurantIdAndModuleOrderByActiveDescSortOrderAscNameAsc(restaurantId, module)
+                : categories.findByRestaurantIdAndModuleAndActiveTrueOrderBySortOrderAscNameAsc(restaurantId, module))
+                .stream()
+                .map(catMapper::toDto)
+                .toList();
 
         if (managerOrAdmin && allForManagers) {
             return list; // менеджерам по запросу отдаём всё
@@ -113,7 +115,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
 
         String newName = norm(dto.name());
         if (newName != null && !newName.equalsIgnoreCase(entity.getName())
-                && categories.existsByRestaurantIdAndModuleAndNameIgnoreCase(restaurantId, entity.getModule(), newName)) {
+                && categories.existsByRestaurantIdAndModuleAndNameIgnoreCaseAndActiveTrue(restaurantId, entity.getModule(), newName)) {
             throw new ConflictException("Category already exists: " + newName);
         }
 
@@ -135,6 +137,46 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
 
     @Override
     @Transactional
+    public TrainingCategoryDto hideCategory(Long restaurantId, Long currentUserId, Long categoryId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+
+        TrainingCategory entity = categories.findById(categoryId)
+                .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
+        if (!entity.getRestaurant().getId().equals(restaurantId)) {
+            throw new NotFoundException("Category not found in this restaurant");
+        }
+
+        entity.setActive(false);
+        entity = categories.save(entity);
+        return catMapper.toDto(entity);
+    }
+
+    @Override
+    @Transactional
+    public TrainingCategoryDto restoreCategory(Long restaurantId, Long currentUserId, Long categoryId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+
+        TrainingCategory entity = categories.findById(categoryId)
+                .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
+        if (!entity.getRestaurant().getId().equals(restaurantId)) {
+            throw new NotFoundException("Category not found in this restaurant");
+        }
+
+        if (entity.isActive()) {
+            return catMapper.toDto(entity);
+        }
+        if (categories.existsByRestaurantIdAndModuleAndNameIgnoreCaseAndActiveTrue(
+                restaurantId, entity.getModule(), entity.getName())) {
+            throw new ConflictException("Category already exists: " + entity.getName());
+        }
+
+        entity.setActive(true);
+        entity = categories.save(entity);
+        return catMapper.toDto(entity);
+    }
+
+    @Override
+    @Transactional
     public void deleteCategory(Long restaurantId, Long currentUserId, Long categoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
@@ -144,26 +186,20 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
             throw new NotFoundException("Category not found in this restaurant");
         }
 
-        // 1) достаём все items категории (активные/неактивные — не важно, чистим всё)
         var allItems = items.findByCategoryId(categoryId);
 
-        // 2) для каждого item — сносим папку и обнуляем imageUrl
         for (TrainingItem it : allItems) {
             try {
                 storage.deleteItemFolder(it.getId());
             } catch (Exception e) {
                 throw new IllegalStateException("Failed to delete item files: " + it.getId(), e);
             }
-            it.setImageUrl(null);
-            it.setActive(false);
         }
         if (!allItems.isEmpty()) {
-            items.saveAll(allItems);
+            items.deleteAll(allItems);
         }
 
-        // 3) деактивируем категорию
-        entity.setActive(false);
-        categories.save(entity);
+        categories.delete(entity);
     }
 
     /* ========== ITEM ========== */
@@ -182,7 +218,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
         }
         String name = norm(dto.name());
         if (name == null || name.isBlank()) throw new BadRequestException("Item name is required");
-        if (items.existsByCategoryIdAndNameIgnoreCase(cat.getId(), name)) {
+        if (items.existsByCategoryIdAndNameIgnoreCaseAndActiveTrue(cat.getId(), name)) {
             throw new ConflictException("Item already exists: " + name);
         }
 
@@ -197,19 +233,22 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
-    public List<TrainingItemDto> listItems(Long restaurantId, Long currentUserId, Long categoryId) {
+    public List<TrainingItemDto> listItems(Long restaurantId, Long currentUserId, Long categoryId, boolean includeInactive) {
         security.assertMember(currentUserId, restaurantId);
 
         TrainingCategory cat = categories.findWithPositionsById(categoryId)
                 .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
-        if (!cat.getRestaurant().getId().equals(restaurantId) || !cat.isActive()) {
+
+        RestaurantMember m = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Membership not found"));
+        boolean isManagerOrAdmin = m.getRole() == RestaurantRole.ADMIN || m.getRole() == RestaurantRole.MANAGER;
+        boolean includeInactiveEffective = includeInactive && isManagerOrAdmin;
+
+        if (!cat.getRestaurant().getId().equals(restaurantId) || (!cat.isActive() && !includeInactiveEffective)) {
             throw new NotFoundException("Category not found in this restaurant");
         }
 
         // Проверка видимости категории для текущего участника (если не менеджер/админ)
-        RestaurantMember m = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Membership not found"));
-        boolean isManagerOrAdmin = m.getRole() == RestaurantRole.ADMIN || m.getRole() == RestaurantRole.MANAGER;
         if (!isManagerOrAdmin) {
             if (cat.getVisibleForPositions() != null && !cat.getVisibleForPositions().isEmpty()) {
                 Long myPosId = m.getPosition() != null ? m.getPosition().getId() : null;
@@ -222,7 +261,11 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
             }
         }
 
-        return items.findByCategoryIdAndActiveTrueOrderBySortOrderAscNameAsc(categoryId)
+        var list = includeInactiveEffective
+                ? items.findByCategoryIdOrderByActiveDescSortOrderAscNameAsc(categoryId)
+                : items.findByCategoryIdAndActiveTrueOrderBySortOrderAscNameAsc(categoryId);
+
+        return list
                 .stream().map(itemMapper::toDto).toList();
     }
 
@@ -248,7 +291,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
 
         String newName = norm(dto.name());
         if (newName != null && (!newName.equalsIgnoreCase(entity.getName()) || !targetCat.getId().equals(entity.getCategory().getId()))
-                && items.existsByCategoryIdAndNameIgnoreCase(targetCat.getId(), newName)) {
+                && items.existsByCategoryIdAndNameIgnoreCaseAndActiveTrue(targetCat.getId(), newName)) {
             throw new ConflictException("Item already exists: " + newName);
         }
 
@@ -259,6 +302,46 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
                         dto.description(), dto.composition(), dto.allergens(), dto.imageUrl(),
                         dto.sortOrder(), dto.active()),
                 targetCat);
+        entity = items.save(entity);
+        return itemMapper.toDto(entity);
+    }
+
+    @Override
+    @Transactional
+    public TrainingItemDto hideItem(Long restaurantId, Long currentUserId, Long itemId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+
+        TrainingItem entity = items.findById(itemId)
+                .orElseThrow(() -> new NotFoundException("Item not found: " + itemId));
+        if (!entity.getCategory().getRestaurant().getId().equals(restaurantId)) {
+            throw new BadRequestException("Item belongs to another restaurant");
+        }
+
+        entity.setActive(false);
+        entity = items.save(entity);
+        return itemMapper.toDto(entity);
+    }
+
+    @Override
+    @Transactional
+    public TrainingItemDto restoreItem(Long restaurantId, Long currentUserId, Long itemId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+
+        TrainingItem entity = items.findById(itemId)
+                .orElseThrow(() -> new NotFoundException("Item not found: " + itemId));
+        if (!entity.getCategory().getRestaurant().getId().equals(restaurantId)) {
+            throw new BadRequestException("Item belongs to another restaurant");
+        }
+
+        if (entity.isActive()) {
+            return itemMapper.toDto(entity);
+        }
+        if (items.existsByCategoryIdAndNameIgnoreCaseAndActiveTrue(
+                entity.getCategory().getId(), entity.getName())) {
+            throw new ConflictException("Item already exists: " + entity.getName());
+        }
+
+        entity.setActive(true);
         entity = items.save(entity);
         return itemMapper.toDto(entity);
     }
@@ -279,10 +362,7 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
             throw new IllegalStateException("Failed to delete item files: " + itemId, e);
         }
 
-        // 2) обнулить ссылку и пометить как удалённый
-        entity.setImageUrl(null);
-        entity.setActive(false);
-        items.save(entity);
+        items.delete(entity);
     }
 
     /* helpers */

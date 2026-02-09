@@ -17,9 +17,15 @@ export type TrainingCategoryDto = {
 export async function listCategories(
   restaurantId: number,
   module: TrainingModule,
-  allForManagers?: boolean
+  options?: { allForManagers?: boolean; includeInactive?: boolean }
 ): Promise<TrainingCategoryDto[]> {
-  const params = allForManagers ? { allForManagers: true } : undefined;
+  const params =
+    options?.allForManagers || options?.includeInactive
+      ? {
+          ...(options?.allForManagers ? { allForManagers: true } : {}),
+          ...(options?.includeInactive ? { includeInactive: true } : {}),
+        }
+      : undefined;
   const { data } = await api.get(
     `/api/restaurants/${restaurantId}/training/${module}/categories`,
     { params }
@@ -63,10 +69,13 @@ export type TrainingItemDto = {
 
 export async function listItems(
   restaurantId: number,
-  categoryId: number
+  categoryId: number,
+  options?: { includeInactive?: boolean }
 ): Promise<TrainingItemDto[]> {
+  const params = options?.includeInactive ? { includeInactive: true } : undefined;
   const { data } = await api.get(
-    `/api/restaurants/${restaurantId}/training/categories/${categoryId}/items`
+    `/api/restaurants/${restaurantId}/training/categories/${categoryId}/items`,
+    { params }
   );
   return data as TrainingItemDto[];
 }
@@ -117,6 +126,16 @@ export async function deleteItem(restaurantId: number, itemId: number): Promise<
   await api.delete(`/api/restaurants/${restaurantId}/training/items/${itemId}`);
 }
 
+export async function hideItem(restaurantId: number, itemId: number): Promise<TrainingItemDto> {
+  const { data } = await api.patch(`/api/restaurants/${restaurantId}/training/items/${itemId}/hide`);
+  return data as TrainingItemDto;
+}
+
+export async function restoreItem(restaurantId: number, itemId: number): Promise<TrainingItemDto> {
+  const { data } = await api.patch(`/api/restaurants/${restaurantId}/training/items/${itemId}/restore`);
+  return data as TrainingItemDto;
+}
+
 export async function uploadItemImage(
   restaurantId: number,
   itemId: number,
@@ -160,4 +179,24 @@ export async function updateCategory(
 
 export async function deleteCategory(restaurantId: number, categoryId: number): Promise<void> {
   await api.delete(`/api/restaurants/${restaurantId}/training/categories/${categoryId}`);
+}
+
+export async function hideCategory(
+  restaurantId: number,
+  categoryId: number
+): Promise<TrainingCategoryDto> {
+  const { data } = await api.patch(
+    `/api/restaurants/${restaurantId}/training/categories/${categoryId}/hide`
+  );
+  return data as TrainingCategoryDto;
+}
+
+export async function restoreCategory(
+  restaurantId: number,
+  categoryId: number
+): Promise<TrainingCategoryDto> {
+  const { data } = await api.patch(
+    `/api/restaurants/${restaurantId}/training/categories/${categoryId}/restore`
+  );
+  return data as TrainingCategoryDto;
 }

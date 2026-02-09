@@ -16,7 +16,7 @@ public class TrainingImageStorage {
 
     private final Path root = Path.of("data/training").toAbsolutePath().normalize();
     private static final Set<String> ALLOWED = Set.of(
-            "image/jpeg", "image/jpg", "image/png", "image/webp"
+            "image/jpeg", "image/png"
     );
 
     public TrainingImageStorage() throws IOException {
@@ -33,13 +33,12 @@ public class TrainingImageStorage {
             ct = ct.trim().toLowerCase();
         }
         if (ct == null || !ALLOWED.contains(ct)) {
-            throw new IllegalArgumentException("Разрешены только JPEG/PNG/WEBP");
+            throw new IllegalArgumentException("Разрешены только JPEG/PNG");
         }
 
         String ext = switch (ct) {
-            case "image/jpeg", "image/jpg" -> "jpg";
+            case "image/jpeg" -> "jpg";
             case "image/png"               -> "png";
-            case "image/webp"              -> "webp";
             default                        -> "bin";
         };
 
