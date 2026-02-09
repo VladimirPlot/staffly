@@ -24,7 +24,7 @@ export default function LinkButton({
 }: LinkButtonProps) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-2xl font-medium transition shadow-sm " +
-    "focus:outline-none focus:ring-2 ring-default";
+    "focus:outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]";
 
   const sizes: Record<ButtonSize, string> = {
     sm: "h-9 px-3 text-sm",
@@ -36,8 +36,13 @@ export default function LinkButton({
   const styles: Record<ButtonVariant, string> = {
     primary:
       "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] hover:opacity-90 active:opacity-80",
-    ghost: "bg-transparent text-default hover:bg-app",
-    outline: "border border-subtle bg-transparent text-default hover:bg-app",
+
+    ghost:
+      "bg-transparent text-[var(--staffly-text)] hover:bg-[var(--staffly-control-hover)]",
+
+    outline:
+      "border border-[var(--staffly-border)] text-[var(--staffly-text)] " +
+      "bg-[var(--staffly-control)] hover:bg-[var(--staffly-control-hover)]",
   };
 
   return (

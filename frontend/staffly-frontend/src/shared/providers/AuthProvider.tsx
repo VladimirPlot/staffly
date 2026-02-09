@@ -6,6 +6,7 @@ import { refreshSession } from "../api/apiClient";
 import type { MeResponse } from "../../entities/user/types";
 import { toAbsoluteUrl } from "../utils/url";
 import { subscribePush, subscriptionToDto } from "../../features/push/api";
+import { applyThemeToDom, isTheme, setStoredTheme } from "../utils/theme";
 
 export type UiUser = {
   id: number;
@@ -14,6 +15,7 @@ export type UiUser = {
   roles?: string[];
   avatarUrl?: string;
   restaurantId?: number | null;
+  theme?: "light" | "dark";
 };
 
 export type AuthContextValue = {
@@ -42,6 +44,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       roles: m.roles,
       avatarUrl: toAbsoluteUrl(m.avatarUrl),
       restaurantId: m.restaurantId ?? null,
+      theme: m.theme,
     };
   };
 
@@ -75,6 +78,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     try {
       const me = await apiMe();
       setUser(toUiUser(me));
+      if (isTheme(me.theme)) {
+        setStoredTheme(me.theme);
+        applyThemeToDom(me.theme);
+      }
       setToken(getToken()); // ✅ актуальный токен после возможного refresh в interceptor
       void syncPushSubscription();
     } catch (e) {

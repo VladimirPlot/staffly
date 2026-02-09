@@ -1,4 +1,5 @@
 import api from "../../shared/api/apiClient";
+import type { Theme } from "../../shared/utils/theme";
 
 export type UserProfile = {
   id: number;
@@ -8,6 +9,7 @@ export type UserProfile = {
   lastName: string;
   fullName: string;
   birthDate?: string | null;
+  theme?: Theme;
 };
 
 export type UpdateUserRequest = Partial<{
@@ -16,6 +18,7 @@ export type UpdateUserRequest = Partial<{
   phone: string;
   email: string;
   birthDate: string | null;
+  theme: Theme;
 }>;
 
 export async function getMyProfile(): Promise<UserProfile> {

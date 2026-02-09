@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
+import { applyThemeToDom, getStoredTheme } from "./shared/utils/theme";
 
 function runWhenIdle(fn: () => void) {
   const ric = (window as any).requestIdleCallback as
@@ -12,6 +13,9 @@ function runWhenIdle(fn: () => void) {
   if (ric) ric(fn, { timeout: 2000 });
   else window.setTimeout(fn, 800);
 }
+
+const initialTheme = getStoredTheme() ?? "light";
+applyThemeToDom(initialTheme);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

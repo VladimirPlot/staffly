@@ -8,6 +8,7 @@ import { uploadMyAvatar, getMyProfile, updateMyProfile, changeMyPassword, type U
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { API_BASE } from "../../../shared/utils/url";
 import { base64UrlToArrayBuffer, getVapidPublicKey, subscribePush, subscriptionToDto, unsubscribePush } from "../../push/api";
+import { applyThemeToDom, getStoredTheme, setStoredTheme, type Theme } from "../../../shared/utils/theme";
 
 function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = React.useState<File | null>(null);
@@ -101,6 +102,9 @@ export default function Profile() {
   const [phone, setPhone] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [birthDate, setBirthDate] = React.useState("");
+  const [theme, setTheme] = React.useState<Theme>(getStoredTheme() ?? "light");
+  const [themeBusy, setThemeBusy] = React.useState(false);
+  const [themeMsg, setThemeMsg] = React.useState<string | null>(null);
 
   // сохранение
   const [saving, setSaving] = React.useState(false);
@@ -132,6 +136,11 @@ export default function Profile() {
         setPhone(p.phone || "");
         setEmail(p.email || "");
         setBirthDate(p.birthDate || "");
+        if (p.theme === "light" || p.theme === "dark") {
+          setTheme(p.theme);
+          setStoredTheme(p.theme);
+          applyThemeToDom(p.theme);
+        }
         setLoadErr(null);
       } catch (e: any) {
         if (!alive) return;
@@ -162,6 +171,22 @@ export default function Profile() {
       setPushEnabled(Boolean(sub));
     })();
   }, []);
+
+  const onChangeTheme = async (next: Theme) => {
+    setTheme(next);
+    setThemeMsg(null);
+    setStoredTheme(next);
+    applyThemeToDom(next);
+    setThemeBusy(true);
+    try {
+      await updateMyProfile({ theme: next });
+      await refreshMe();
+    } catch {
+      setThemeMsg("Сервер недоступен — тема сохранена локально и синхронизируется позже");
+    } finally {
+      setThemeBusy(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-xl">
@@ -226,6 +251,37 @@ export default function Profile() {
                 {saving ? "Сохраняем…" : "Сохранить"}
               </Button>
               <Button variant="outline" onClick={() => navigate("/restaurants")}>Отмена</Button>
+            </div>
+
+            <hr className="my-6 border-subtle" />
+
+            <div className="mb-2 text-sm font-medium">Тема</div>
+            <div className="rounded-2xl border border-subtle p-4">
+              <div className="flex flex-col gap-2 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="theme"
+                    value="light"
+                    checked={theme === "light"}
+                    onChange={() => onChangeTheme("light")}
+                    disabled={themeBusy}
+                  />
+                  <span>Светлая</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="theme"
+                    value="dark"
+                    checked={theme === "dark"}
+                    onChange={() => onChangeTheme("dark")}
+                    disabled={themeBusy}
+                  />
+                  <span>Тёмная</span>
+                </label>
+              </div>
+              {themeMsg && <div className="mt-2 text-xs text-amber-700">{themeMsg}</div>}
             </div>
 
             <hr className="my-6 border-subtle" />

@@ -131,7 +131,7 @@ function TopBar() {
                 <Link
                   to="/app"
                   title="Дом ресторана"
-                  className="rounded-full border border-subtle px-3 py-1 text-xs text-default hover:bg-app"
+                  className="topbar-link rounded-full border px-3 py-1 text-xs text-default"
                 >
                   {restName}
                 </Link>
@@ -165,7 +165,7 @@ function TopBar() {
               <Link to="/profile">
                 <Button variant="outline">Профиль</Button>
               </Link>
-              <Button variant="ghost" onClick={logout}>
+              <Button variant="outline" onClick={logout}>
                 Выйти
               </Button>
             </div>
@@ -200,7 +200,7 @@ function TopBar() {
             <div className="mb-3 flex items-center justify-between gap-2">
               <Link
                 to="/app"
-                className="rounded-full border border-subtle px-3 py-1 text-xs text-default hover:bg-app"
+                className="topbar-pill rounded-full border px-3 py-1 text-xs text-default"
                 onClick={() => setMobileOpen(false)}
               >
                 {restName}

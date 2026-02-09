@@ -8,6 +8,7 @@ export type MeResponse = {
   lastName?: string;
   avatarUrl?: string;
   birthDate?: string | null;
+  theme?: "light" | "dark";
 };
 
 
@@ -17,4 +18,5 @@ phone: string;
 name: string;
 roles?: string[];
 avatarUrl?: string;
+theme?: "light" | "dark";
 };

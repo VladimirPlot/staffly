@@ -57,6 +57,7 @@ public class MeController {
         res.put("firstName", u.getFirstName());
         res.put("lastName", u.getLastName());
         if (u.getBirthDate() != null) res.put("birthDate", u.getBirthDate());
+        res.put("theme", u.getTheme());
         if (avatarUrl != null) {
             res.put("avatarUrl", withBust(avatarUrl, u.getUpdatedAt()));
         }

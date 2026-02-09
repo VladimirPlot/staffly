@@ -47,7 +47,8 @@ public class UserProfileController {
             @Size(max = 35) String lastName,
             @Pattern(regexp = "\\+?\\d{10,15}") String phone,
             @Email @Size(max = 255) String email,
-            @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$") String birthDate
+            @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$") String birthDate,
+            @Pattern(regexp = "^(light|dark)$") String theme
     ) {}
 
     public static record ChangePasswordRequest(
@@ -56,11 +57,25 @@ public class UserProfileController {
     ) {}
 
     public static record UserProfileDto(
-            Long id, String phone, String email, String firstName, String lastName, String fullName, String birthDate
+            Long id,
+            String phone,
+            String email,
+            String firstName,
+            String lastName,
+            String fullName,
+            String birthDate,
+            String theme
     ) {
         public static UserProfileDto from(User u) {
             return new UserProfileDto(
-                    u.getId(), u.getPhone(), u.getEmail(), u.getFirstName(), u.getLastName(), u.getFullName(), u.getBirthDate() == null ? null : u.getBirthDate().toString()
+                    u.getId(),
+                    u.getPhone(),
+                    u.getEmail(),
+                    u.getFirstName(),
+                    u.getLastName(),
+                    u.getFullName(),
+                    u.getBirthDate() == null ? null : u.getBirthDate().toString(),
+                    u.getTheme()
             );
         }
     }
@@ -126,6 +141,10 @@ public class UserProfileController {
                     throw new BadRequestException("Invalid birthDate format (expected yyyy-MM-dd)");
                 }
             }
+        }
+        if (req.theme() != null && !req.theme().equals(u.getTheme())) {
+            u.setTheme(req.theme());
+            changed = true;
         }
 
         if (!changed) {

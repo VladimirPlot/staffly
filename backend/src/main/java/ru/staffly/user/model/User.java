@@ -46,6 +46,9 @@ public class User {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    @Column(name = "theme", nullable = false, length = 10)
+    private String theme = "light";
+
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 

@@ -31,7 +31,10 @@ export default function PhoneInputField({
         autoComplete={autoComplete}
         disabled={disabled}
         className={`w-full staffly-phone ${error ? "is-error" : ""}`}
-        numberInputProps={{ placeholder: "999 888-77-66" }}
+        numberInputProps={{
+          placeholder: "999 888-77-66",
+          className: "text-default placeholder:text-muted bg-transparent",
+        }}
       />
 
       {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
