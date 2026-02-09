@@ -51,7 +51,7 @@ export default function IncomeListPage() {
         <div className="text-lg font-semibold">Мои доходы</div>
       </PersonalNav>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-3 text-base font-medium">Новый период</div>
         <form className="grid gap-3 sm:grid-cols-2" onSubmit={onCreate}>
           <Input
@@ -76,33 +76,29 @@ export default function IncomeListPage() {
       </div>
 
       {loading ? (
-        <div className="text-sm text-zinc-600">Загружаем периоды...</div>
+        <div className="text-sm text-muted">Загружаем периоды...</div>
       ) : periods.length === 0 ? (
-        <div className="rounded-lg bg-white p-6 text-center text-sm text-zinc-600 shadow-sm">
+        <div className="rounded-2xl bg-surface p-6 text-center text-sm text-muted shadow-[var(--staffly-shadow)]">
           Вы ещё не добавили ни одного периода. Создайте первый, например «Сентябрь 2025».
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {periods.map((period) => (
-            <div key={period.id} className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <div key={period.id} className="rounded-2xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)]">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link to={`/me/income/periods/${period.id}`} className="text-lg font-semibold hover:underline">
                     {period.name}
                   </Link>
                   {period.description && (
-                    <ContentText className="text-sm text-zinc-500">{period.description}</ContentText>
+                    <ContentText className="text-sm text-muted">{period.description}</ContentText>
                   )}
                 </div>
-                <button
-                  className="text-xs text-red-500 hover:underline"
-                  type="button"
-                  onClick={() => onDelete(period.id)}
-                >
-                  удалить
-                </button>
+                <Button variant="ghost" size="sm" type="button" onClick={() => onDelete(period.id)}>
+                  Удалить
+                </Button>
               </div>
-              <div className="mt-3 text-sm text-zinc-700">
+              <div className="mt-3 text-sm text-default">
                 Смен: {period.shiftCount} • Часы: {period.totalHours} • Доход: {period.totalIncome} ₽ • Чаевые:
                 {" "}
                 {period.totalTips} ₽

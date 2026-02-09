@@ -1,8 +1,10 @@
 import React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import ContentText from "../../../shared/ui/ContentText";
+import Icon from "../../../shared/ui/Icon";
 import PersonalNav from "../components/PersonalNav";
 import type { IncomePeriodDetail, IncomeShift, SaveIncomeShiftPayload } from "../api";
 import { createIncomeShift, deleteIncomeShift, getIncomePeriod } from "../api";
@@ -83,14 +85,14 @@ export default function IncomePeriodPage() {
 
   const hours = type === "HOURLY" && form.startTime && form.endTime ? calcHours(form.startTime, form.endTime) : 0;
 
-  if (loading) return <div className="text-sm text-zinc-600">Загружаем период...</div>;
+  if (loading) return <div className="text-sm text-muted">Загружаем период...</div>;
   if (!data) return null;
 
   return (
     <div className="space-y-4">
       <PersonalNav>
         <div className="flex items-center gap-2 text-lg font-semibold">
-          <Link to="/me/income" className="text-zinc-500 hover:underline">
+          <Link to="/me/income" className="text-muted hover:underline">
             Мои доходы
           </Link>
           <span>/</span>
@@ -98,9 +100,9 @@ export default function IncomePeriodPage() {
         </div>
       </PersonalNav>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
         <div className="text-lg font-semibold">Итоги периода</div>
-        <div className="mt-2 grid gap-3 sm:grid-cols-2 md:grid-cols-3 text-sm text-zinc-700">
+        <div className="mt-2 grid gap-3 sm:grid-cols-2 md:grid-cols-3 text-sm text-default">
           <Stat label="Смен" value={data.period.shiftCount} />
           <Stat label="Часы" value={data.period.totalHours} />
           <Stat label="Доход" value={`${data.period.totalIncome} ₽`} />
@@ -109,7 +111,7 @@ export default function IncomePeriodPage() {
         </div>
       </div>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-2 flex items-center justify-between gap-2 text-base font-semibold">
           <span>Добавить смену</span>
           <Button variant="outline" onClick={() => setShowAddShift((prev) => !prev)}>
@@ -125,8 +127,8 @@ export default function IncomePeriodPage() {
               onChange={(e) => onChange({ date: e.target.value })}
               required
             />
-            <div className="flex flex-col gap-2 text-sm text-zinc-700">
-              <span className="text-zinc-600">Тип оплаты</span>
+            <div className="flex flex-col gap-2 text-sm text-default">
+              <span className="text-muted">Тип оплаты</span>
               <div className="flex gap-3">
                 <label className="flex items-center gap-2">
                   <input
@@ -199,13 +201,13 @@ export default function IncomePeriodPage() {
                   }
                   required
                 />
-                <div className="rounded-xl border border-dashed border-zinc-200 p-3 text-sm text-zinc-600">
+                <div className="rounded-2xl border border-dashed border-subtle p-3 text-sm text-muted">
                   Итого часов: {hours.toFixed(2)}
                 </div>
               </div>
             )}
 
-            <details className="md:col-span-2 rounded-xl border border-zinc-200 p-3 text-sm">
+            <details className="md:col-span-2 rounded-2xl border border-subtle p-3 text-sm">
               <summary className="cursor-pointer font-medium">Дополнительно</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <Input
@@ -242,50 +244,38 @@ export default function IncomePeriodPage() {
         )}
       </div>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-3 text-base font-semibold">Смены</div>
         {data.shifts.length === 0 ? (
-          <div className="text-sm text-zinc-600">Пока нет смен в этом периоде.</div>
+          <div className="text-sm text-muted">Пока нет смен в этом периоде.</div>
         ) : (
           <div className="space-y-3">
             {data.shifts.map((shift) => (
-              <div key={shift.id} className="rounded-xl border border-zinc-200 p-3 text-sm">
+              <div key={shift.id} className="rounded-2xl border border-subtle p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-medium">{shift.date}</div>
-                    <div className="text-zinc-600">
+                    <div className="text-muted">
                       {shift.type === "SHIFT"
                         ? `По смене: ${shift.fixedAmount} ₽`
                         : `Почасовая: ${shift.startTime} - ${shift.endTime}, ставка ${shift.hourlyRate} ₽`}
                     </div>
-                    <div className="text-zinc-600">
+                    <div className="text-muted">
                       Доход: {shift.totalIncome} ₽
                       {Number(shift.tipsAmount ?? 0) > 0 && ` • Чаевые: ${shift.tipsAmount} ₽`}
                       {Number(shift.personalRevenue ?? 0) > 0 && ` • Личная выручка: ${shift.personalRevenue} ₽`}
                     </div>
-                    {shift.comment && <ContentText className="text-zinc-500">{shift.comment}</ContentText>}
+                    {shift.comment && <ContentText className="text-muted">{shift.comment}</ContentText>}
                   </div>
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     className="flex items-center gap-2 text-xs"
                     onClick={() => onDeleteShift(shift)}
                     aria-label="Удалить смену"
+                    leftIcon={<Icon icon={Trash2} size="xs" decorative />}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      className="h-4 w-4"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6.75 7.5h10.5M9.75 7.5V6.75c0-.414.336-.75.75-.75h3c.414 0 .75.336.75.75v.75m-7.5 0h7.5m-7.5 0V17.25c0 .414.336.75.75.75h6c.414 0 .75-.336.75-.75V7.5m-6 0v-.75c0-.414.336-.75.75-.75h3c.414 0 .75.336.75.75v.75"
-                      />
-                    </svg>
                     Удалить
                   </Button>
                 </div>
@@ -300,8 +290,8 @@ export default function IncomePeriodPage() {
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-zinc-200 p-3">
-      <div className="text-xs uppercase text-zinc-500">{label}</div>
+    <div className="rounded-2xl border border-subtle p-3">
+      <div className="text-xs uppercase text-muted">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
     </div>
   );

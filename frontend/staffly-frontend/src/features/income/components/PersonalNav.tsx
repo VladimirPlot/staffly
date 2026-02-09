@@ -15,15 +15,17 @@ export default function PersonalNav({ children }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex gap-2 rounded-lg bg-white p-1 shadow-sm">
+        <div className="flex gap-2 rounded-2xl border border-subtle bg-surface p-1 shadow-[var(--staffly-shadow)]">
           {tabs.map((tab) => {
             const active = location.pathname.startsWith(tab.href);
             return (
               <Link
                 key={tab.href}
                 to={tab.href}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition ${
-                  active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"
+                className={`rounded-2xl px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 ring-default ${
+                  active
+                    ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
+                    : "text-default hover:bg-app"
                 }`}
               >
                 {tab.label}

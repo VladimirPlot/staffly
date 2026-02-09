@@ -39,5 +39,5 @@ export default function PushRedirectPage() {
     })();
   }, [navigate, refreshMe, searchParams, token, user?.restaurantId]);
 
-  return <div className="p-6 text-sm text-zinc-600">{status}</div>;
+  return <div className="p-6 text-sm text-muted">{status}</div>;
 }

@@ -100,14 +100,14 @@ export default function Restaurants() {
         </div>
 
         {invites.length > 0 && (
-          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+          <div className="mb-4 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]">
             <div className="mb-2 text-sm font-medium">У вас есть приглашения:</div>
 
             <div className="grid gap-2">
               {invites.map((inv) => (
                 <div
                   key={inv.token}
-                  className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0 space-y-1 text-sm leading-snug">
                     <div className="font-medium break-words">{inv.restaurantName}</div>

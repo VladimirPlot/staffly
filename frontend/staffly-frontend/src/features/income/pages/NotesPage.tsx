@@ -63,7 +63,7 @@ export default function NotesPage() {
         <div className="text-lg font-semibold">Заметки</div>
       </PersonalNav>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-2 text-base font-semibold">{editing ? "Редактирование" : "Новая заметка"}</div>
         <form className="grid gap-3" onSubmit={onSubmit}>
           <Input label="Заголовок" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -94,29 +94,29 @@ export default function NotesPage() {
         </form>
       </div>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
+      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-3 text-base font-semibold">Мои заметки</div>
         {loading ? (
-          <div className="text-sm text-zinc-600">Загружаем...</div>
+          <div className="text-sm text-muted">Загружаем...</div>
         ) : notes.length === 0 ? (
-          <div className="text-sm text-zinc-600">Здесь появятся ваши личные заметки.</div>
+          <div className="text-sm text-muted">Здесь появятся ваши личные заметки.</div>
         ) : (
           <div className="space-y-3">
             {notes.map((note) => (
-              <div key={note.id} className="rounded-xl border border-zinc-200 p-3 text-sm">
+              <div key={note.id} className="rounded-2xl border border-subtle p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <ContentText className="font-semibold">{note.title || "Без названия"}</ContentText>
-                    {note.content && <ContentText className="text-zinc-700">{note.content}</ContentText>}
-                    <div className="text-xs text-zinc-500">Обновлено: {new Date(note.updatedAt).toLocaleString()}</div>
+                    {note.content && <ContentText className="text-default">{note.content}</ContentText>}
+                    <div className="text-xs text-muted">Обновлено: {new Date(note.updatedAt).toLocaleString()}</div>
                   </div>
                   <div className="flex gap-2 text-xs">
-                    <button className="text-blue-600 hover:underline" onClick={() => onEdit(note)}>
-                      редактировать
-                    </button>
-                    <button className="text-red-500 hover:underline" onClick={() => onDelete(note)}>
-                      удалить
-                    </button>
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(note)}>
+                      Редактировать
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onDelete(note)}>
+                      Удалить
+                    </Button>
                   </div>
                 </div>
               </div>

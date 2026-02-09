@@ -251,7 +251,7 @@ export default function AnonymousLettersPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">Анонимное письмо</h2>
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-muted">
             Отправляйте сообщения руководителю ресторана. Получатель не увидит имя отправителя.
           </p>
         </div>
@@ -260,7 +260,7 @@ export default function AnonymousLettersPage() {
         )}
       </div>
 
-      {lettersLoading && <div className="mt-4 text-sm text-zinc-600">Загружаем список писем…</div>}
+      {lettersLoading && <div className="mt-4 text-sm text-muted">Загружаем список писем…</div>}
       {lettersError && !lettersLoading && (
         <div className="mt-4 text-sm text-red-600">{lettersError}</div>
       )}
@@ -269,7 +269,7 @@ export default function AnonymousLettersPage() {
         <div className="mt-4 space-y-3">
           {letters.length === 0 ? (
             <Card>
-              <div className="text-sm text-zinc-600">
+              <div className="text-sm text-muted">
                 {isAdmin
                   ? "Новых писем пока нет."
                   : "Вы ещё не отправляли анонимных писем."}
@@ -284,14 +284,14 @@ export default function AnonymousLettersPage() {
                 <Card key={letter.id} className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <div className="text-xs uppercase tracking-wide text-zinc-500">
+                      <div className="text-xs uppercase tracking-wide text-muted">
                         Дата письма: {formatDate(letter.createdAt)}
                       </div>
-                      <ContentText className="text-lg font-semibold text-zinc-900">
+                      <ContentText className="text-lg font-semibold text-strong">
                         {letter.subject || "Без темы"}
                       </ContentText>
                       {!isAdmin && (
-                        <div className="text-sm text-zinc-600">
+                        <div className="text-sm text-muted">
                           <span className="font-medium">Получатель:</span>{" "}
                           {letter.recipientPosition || letter.recipientName || "Администратор"}
                         </div>
@@ -311,7 +311,7 @@ export default function AnonymousLettersPage() {
                   </div>
 
                   {isExpanded && (
-                    <ContentText className="rounded-2xl bg-zinc-50 p-3 text-sm text-zinc-800">
+                    <ContentText className="rounded-2xl bg-app p-3 text-sm text-default">
                       {detail ? detail.content : "Загружаем письмо…"}
                     </ContentText>
                   )}
@@ -384,7 +384,7 @@ export default function AnonymousLettersPage() {
             ))}
           </SelectField>
           {recipients.length === 0 && (
-            <span className="mt-1 block text-xs text-zinc-500">
+            <span className="mt-1 block text-xs text-muted">
               В ресторане пока нет участников с ролью ADMIN.
             </span>
           )}

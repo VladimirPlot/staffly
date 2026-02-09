@@ -91,16 +91,16 @@ export default function PositionsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-700">
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-default">
         <BackToHome className="text-sm" />
         <Link
           to="/employees/invite"
           title="Сотрудники"
           aria-label="Сотрудники"
           className={
-            "inline-flex items-center gap-0 rounded-2xl border border-zinc-200 " +
-            "bg-white px-2 py-1 text-sm font-medium text-zinc-700 shadow-sm " +
-            "transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+            "inline-flex items-center gap-0 rounded-2xl border border-subtle " +
+            "bg-surface px-2 py-1 text-sm font-medium text-default shadow-[var(--staffly-shadow)] " +
+            "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
           }
         >
           <Icon icon={ArrowLeft} size="xs" decorative />
@@ -155,7 +155,7 @@ export default function PositionsPage() {
           </div>
         </div>
         {!canManage && (
-          <div className="mt-2 text-xs text-zinc-500">
+          <div className="mt-2 text-xs text-muted">
             У вас нет прав на создание должностей (нужен MANAGER или ADMIN).
           </div>
         )}
@@ -168,7 +168,7 @@ export default function PositionsPage() {
         ) : error ? (
           <div className="text-red-600">{error}</div>
         ) : items.length === 0 ? (
-          <div className="text-zinc-600">Пока нет должностей.</div>
+          <div className="text-muted">Пока нет должностей.</div>
         ) : (
           <div className="divide-y">
             {items.map((p) => (
@@ -178,27 +178,29 @@ export default function PositionsPage() {
               >
                 <div className="min-w-0">
                   <div className="truncate text-base font-medium">{p.name}</div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
-                    <span className="rounded-full border px-2 py-0.5">
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+                    <span className="rounded-full border border-subtle px-2 py-0.5 text-muted">
                       {ROLE_LABEL[p.level]}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <button
+                  <Button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                    variant="outline"
+                    size="icon"
                     disabled={!canManage}
                     onClick={() => setEditing(p)}
                     aria-label="Редактировать должность"
                   >
                     <Icon icon={Pencil} size="xs" />
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button
                     type="button"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                    variant="outline"
+                    size="icon"
                     disabled={!canManage}
                     onClick={async () => {
                       const hasEmployees = members.some(
@@ -219,7 +221,7 @@ export default function PositionsPage() {
                     aria-label="Удалить должность"
                   >
                     <Icon icon={Trash2} size="xs" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}

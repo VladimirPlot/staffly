@@ -30,13 +30,13 @@ function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-200 p-4">
+    <div className="rounded-2xl border border-subtle p-4">
       <div className="mb-2 text-sm font-medium">Аватар</div>
-      <div className="mb-3 text-xs text-zinc-600">Разрешены: JPEG, PNG, WEBP. Максимум 5MB.</div>
+      <div className="mb-3 text-xs text-muted">Разрешены: JPEG, PNG, WEBP. Максимум 5MB.</div>
 
       {preview && (
         <div className="mb-3">
-          <img src={preview} alt="preview" className="h-20 w-20 rounded-full border border-zinc-200 object-cover" />
+          <img src={preview} alt="preview" className="h-20 w-20 rounded-full border border-subtle object-cover" />
         </div>
       )}
 
@@ -174,7 +174,7 @@ export default function Profile() {
         {/* Текущий аватар */}
         <div className="mb-4 flex items-center gap-3">
           <Avatar name={user?.name || "Пользователь"} imageUrl={user?.avatarUrl} />
-          <div className="text-sm text-zinc-600">
+          <div className="text-sm text-muted">
             {user?.avatarUrl ? "Аватар загружен" : "Аватар не загружен"}
           </div>
         </div>
@@ -228,23 +228,23 @@ export default function Profile() {
               <Button variant="outline" onClick={() => navigate("/restaurants")}>Отмена</Button>
             </div>
 
-            <hr className="my-6 border-zinc-200" />
+            <hr className="my-6 border-subtle" />
 
             {/* Push уведомления */}
             <div className="mb-2 text-sm font-medium">Push уведомления</div>
             {!pushSupported && (
-              <div className="text-xs text-zinc-600">
+              <div className="text-xs text-muted">
                 Ваш браузер не поддерживает push-уведомления.
               </div>
             )}
             {pushSupported && (
-              <div className="rounded-2xl border border-zinc-200 p-4">
+              <div className="rounded-2xl border border-subtle p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium">
                       {pushEnabled ? "Включены" : "Выключены"}
                     </div>
-                    <div className="text-xs text-zinc-600">
+                    <div className="text-xs text-muted">
                       Разрешение: {pushPermission}
                     </div>
                   </div>
@@ -293,14 +293,14 @@ export default function Profile() {
                 </div>
                 {pushError && <div className="mt-2 text-xs text-red-600">{pushError}</div>}
                 {isIOS && !isStandalone && (
-                  <div className="mt-2 text-xs text-zinc-600">
+                  <div className="mt-2 text-xs text-muted">
                     Добавьте приложение на экран «Домой», иначе push не работают на iOS.
                   </div>
                 )}
               </div>
             )}
 
-            <hr className="my-6 border-zinc-200" />
+            <hr className="my-6 border-subtle" />
 
             {/* Смена пароля */}
             <div className="mb-2 text-sm font-medium">Смена пароля</div>
