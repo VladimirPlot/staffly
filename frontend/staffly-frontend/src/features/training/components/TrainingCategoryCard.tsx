@@ -72,7 +72,7 @@ export default function TrainingCategoryCard({
       {canManage && !isEditing && (
         <div
           data-card-actions
-          className="absolute right-3 top-3 z-10 flex gap-2"
+          className="absolute right-3 top-3 z-20 flex gap-2"
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -104,7 +104,7 @@ export default function TrainingCategoryCard({
       )}
 
       {/* CONTENT */}
-      <div className="relative z-10">
+      <div className="relative pr-36">
         {isEditing ? (
           <div className="grid gap-3">
             <Input
