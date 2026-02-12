@@ -15,9 +15,30 @@ export default function Switch({ label, className = "", checked, disabled, ...re
           disabled={disabled}
           {...rest}
         />
-        <span className="absolute inset-0 rounded-full border border-[var(--staffly-border)] bg-[var(--staffly-control)] transition peer-checked:bg-[var(--staffly-text-strong)] peer-disabled:opacity-60" />
-        <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--staffly-surface)] transition peer-checked:translate-x-5 peer-disabled:opacity-80" />
+
+        {/* track */}
+        <span
+          className={
+            "absolute inset-0 rounded-full border transition " +
+            "border-[var(--staffly-border)] " +
+            "bg-transparent " +
+            "peer-checked:bg-[var(--staffly-text-strong)] " +
+            "peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--staffly-ring)] " +
+            "peer-disabled:opacity-60"
+          }
+        />
+
+        {/* thumb */}
+        <span
+          className={
+            "absolute left-0.5 top-0.5 h-5 w-5 rounded-full transition " +
+            "bg-[var(--staffly-surface)] border border-[var(--staffly-border)] shadow-sm " +
+            "peer-checked:translate-x-5 " +
+            "peer-disabled:opacity-80"
+          }
+        />
       </span>
+
       {label ? <span>{label}</span> : null}
     </label>
   );
