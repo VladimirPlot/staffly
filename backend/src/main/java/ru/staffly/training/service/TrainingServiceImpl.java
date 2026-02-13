@@ -195,9 +195,6 @@ public class TrainingServiceImpl implements ru.staffly.training.service.Training
                 throw new IllegalStateException("Failed to delete item files: " + it.getId(), e);
             }
         }
-        if (!allItems.isEmpty()) {
-            items.deleteAll(allItems);
-        }
 
         categories.delete(entity);
     }

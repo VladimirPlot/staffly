@@ -71,6 +71,27 @@ export default function TrainingCategoryItemsPage() {
   const [savingItemId, setSavingItemId] = useState<number | null>(null);
 
   useEffect(() => {
+    if (openActionsItemId == null) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      if (
+        target.closest(`[data-item-actions-menu="${openActionsItemId}"]`) ||
+        target.closest(`[data-item-actions-trigger="${openActionsItemId}"]`)
+      ) {
+        return;
+      }
+
+      setOpenActionsItemId(null);
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [openActionsItemId]);
+
+  useEffect(() => {
     setIncludeInactive(false);
   }, [moduleCode, categoryId]);
 
@@ -95,7 +116,15 @@ export default function TrainingCategoryItemsPage() {
     } finally {
       setCategoryLoading(false);
     }
-  }, [restaurantId, hasCategories, hasValidCategoryId, moduleCode, canManage, categoryId, includeInactive]);
+  }, [
+    restaurantId,
+    hasCategories,
+    hasValidCategoryId,
+    moduleCode,
+    canManage,
+    categoryId,
+    includeInactive,
+  ]);
 
   const loadItems = useCallback(async () => {
     if (!restaurantId || !hasValidCategoryId) return;
@@ -391,40 +420,26 @@ export default function TrainingCategoryItemsPage() {
                 className="hidden"
               />
               <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
                   Выберите файл
                 </Button>
-                <span className="text-sm text-muted">
-                  {imageFile ? imageFile.name : "Файл не выбран"}
-                </span>
+                <span className="text-sm text-muted">{imageFile ? imageFile.name : "Файл не выбран"}</span>
               </div>
             </label>
           </div>
           <div className="mt-4 flex justify-end gap-2">
-            <Button
-              onClick={handleCreate}
-              disabled={creating || !name.trim() || !composition.trim()}
-            >
+            <Button onClick={handleCreate} disabled={creating || !name.trim() || !composition.trim()}>
               {creating ? "Создаём…" : "Создать"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                resetForm();
-              }}
-            >
+            <Button type="button" variant="outline" onClick={resetForm}>
               Отмена
             </Button>
           </div>
         </Card>
       )}
 
-      <Card>
+      {/* ⬇️ Тут ключ: убираем гигантские отступы у обёртки списка */}
+      <Card className="!p-[8px] sm:!p-4">
         {itemsLoading ? (
           <div className="text-sm text-muted">Загрузка карточек…</div>
         ) : itemsError ? (
@@ -432,43 +447,71 @@ export default function TrainingCategoryItemsPage() {
         ) : items.length === 0 ? (
           <div className="text-muted">В этой категории пока нет карточек.</div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2 xl:gap-4">
             {items.map((item) => {
               const isEditing = editingItemId === item.id;
               const imageMutating = imageMutatingId === item.id;
               const actionsOpen = openActionsItemId === item.id;
               const isActive = item.active !== false;
+
               return (
                 <Card
                   key={item.id}
                   className={`relative flex h-full flex-col overflow-hidden p-0 ${isActive ? "" : "opacity-60"}`}
                 >
+                  {/* ✅ Фото максимально в край */}
                   {item.imageUrl && (
-                    <img
-                      src={toAbsoluteUrl(item.imageUrl)}
-                      alt={item.name}
-                      className="h-48 w-full object-cover"
-                    />
+                    <div className="relative p-[0px]">
+                      <div className="overflow-hidden rounded-3xl">
+                        <img
+                          src={toAbsoluteUrl(item.imageUrl)}
+                          alt={item.name}
+                          className="h-56 w-full object-cover"
+                        />
+                      </div>
+
+                      {canManage && !isEditing && (
+                        <IconButton
+                          aria-label="Действия с карточкой"
+                          data-item-actions-trigger={item.id}
+                          className="
+                          !absolute !right-[-14px] !top-[-14px]
+                          !z-40 !h-11 !w-11 !p-0
+                          !bg-[color-mix(in_srgb,var(--staffly-surface)_35%,transparent)]
+                          !border-[color-mix(in_srgb,var(--staffly-border)_55%,transparent)]
+                          backdrop-blur-sm
+                          "
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onPointerUp={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenActionsItemId((prev) => (prev === item.id ? null : item.id));
+                          }}
+                        >
+                          <Icon icon={Pencil} size="md" decorative />
+                        </IconButton>
+                      )}
+                    </div>
                   )}
-                  {canManage && !isEditing && (
-                    <IconButton
-                      aria-label="Действия с карточкой"
-                      className="absolute right-3 top-3 h-9 w-9 border border-subtle bg-surface/80 p-0 backdrop-blur"
-                      onClick={() => setOpenActionsItemId((prev) => (prev === item.id ? null : item.id))}
-                    >
-                      <Icon icon={Pencil} size="sm" decorative />
-                    </IconButton>
-                  )}
+
                   {!isActive && (
-                    <span className="absolute left-3 top-3 rounded-full bg-surface/80 px-2 py-1 text-xs font-semibold text-muted backdrop-blur">
+                    <span className="absolute left-0.5 top-0.5 z-30 rounded-full border border-subtle bg-surface px-2.5 py-1 text-xs font-semibold text-default shadow-sm">
                       Скрыта
                     </span>
                   )}
+
                   {canManage && actionsOpen && !isEditing && (
-                    <div className="absolute right-3 top-14 z-10 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]">
+                    <div
+                      data-item-actions-menu={item.id}
+                      className="absolute right-0.5 top-14 z-40 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Button variant="outline" onClick={() => startEditItem(item)}>
                         Редактировать карточку
                       </Button>
+
                       <Button
                         variant="outline"
                         onClick={async () => {
@@ -488,6 +531,7 @@ export default function TrainingCategoryItemsPage() {
                       >
                         {item.active === false ? "Раскрыть карточку" : "Скрыть карточку"}
                       </Button>
+
                       <Button
                         variant="outline"
                         onClick={() => handleDeleteItem(item.id, item.name)}
@@ -497,7 +541,9 @@ export default function TrainingCategoryItemsPage() {
                       </Button>
                     </div>
                   )}
-                  <div className="flex-1 p-6">
+
+                  {/* ✅ Текстовые отступы уменьшили (почти в край) */}
+                  <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4">
                     {isEditing ? (
                       <div className="grid gap-3">
                         <Input
@@ -524,6 +570,7 @@ export default function TrainingCategoryItemsPage() {
                           onChange={(e) => setEditItemAllergens(e.target.value)}
                           rows={3}
                         />
+
                         <div className="rounded-2xl border border-dashed border-subtle p-3">
                           <div className="text-sm font-medium text-default">Фото</div>
                           <div className="mt-2 flex flex-col gap-2">
@@ -558,7 +605,8 @@ export default function TrainingCategoryItemsPage() {
                             )}
                           </div>
                         </div>
-                        {canManage && isEditing && (
+
+                        {canManage && (
                           <div className="flex flex-col gap-2">
                             <Button
                               variant="outline"
@@ -567,12 +615,7 @@ export default function TrainingCategoryItemsPage() {
                             >
                               {savingItemId === item.id ? "Сохраняем…" : "Сохранить"}
                             </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={cancelEditItem}
-                              disabled={savingItemId === item.id}
-                            >
+                            <Button type="button" variant="ghost" onClick={cancelEditItem} disabled={savingItemId === item.id}>
                               Отмена
                             </Button>
                           </div>
@@ -584,18 +627,18 @@ export default function TrainingCategoryItemsPage() {
                         {item.description && (
                           <ContentText className="mt-1 text-sm text-muted">{item.description}</ContentText>
                         )}
+
                         <div className="mt-3">
                           <div className="text-xs uppercase tracking-wide text-muted">Состав</div>
                           <ContentText className="mt-1 text-sm text-default">
                             {item.composition || "Не указан"}
                           </ContentText>
                         </div>
+
                         {item.allergens && (
                           <div className="mt-3">
                             <div className="text-xs uppercase tracking-wide text-muted">Аллергены</div>
-                            <ContentText className="mt-1 text-sm text-default">
-                              {item.allergens}
-                            </ContentText>
+                            <ContentText className="mt-1 text-sm text-default">{item.allergens}</ContentText>
                           </div>
                         )}
                       </>
