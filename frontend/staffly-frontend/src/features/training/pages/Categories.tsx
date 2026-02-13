@@ -145,7 +145,7 @@ function TrainingModuleCategoriesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto w-full max-w-5xl px-2 sm:px-0">
       <BreadcrumbsBlock module={moduleConfig} />
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>

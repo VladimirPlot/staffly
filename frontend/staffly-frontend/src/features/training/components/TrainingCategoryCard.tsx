@@ -50,61 +50,24 @@ export default function TrainingCategoryCard({
   const isActive = category.active !== false;
 
   return (
-    <Card
-      className={[
-        "relative flex h-full flex-col gap-3 transition",
-        "hover:-translate-y-0.5 hover:shadow-[var(--staffly-shadow)]",
-        isActive ? "" : "opacity-60",
-        isEditing ? "" : "cursor-pointer",
-      ].join(" ")}
-      onClick={(e) => {
-        if (isEditing) return;
+      <Card
+        className={[
+          "relative flex h-full flex-col gap-3 transition",
+          "hover:-translate-y-0.5 hover:shadow-[var(--staffly-shadow)]",
+          isActive ? "" : "opacity-60",
+          isEditing ? "" : "cursor-pointer",
+        ].join(" ")}
+        onClick={(e) => {
+          if (isEditing) return;
 
-        const target = e.target;
-        if (target instanceof Element && target.closest("[data-card-actions]")) {
-          return;
-        }
+          const target = e.target;
+          if (target instanceof Element && target.closest("[data-card-actions]")) {
+            return;
+          }
 
-        navigate(`/training/${moduleConfig.slug}/categories/${category.id}`);
-      }}
-    >
-      {/* ACTIONS */}
-      {canManage && !isEditing && (
-        <div
-          data-card-actions
-          className="absolute right-3 top-3 z-20 flex gap-2"
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <IconButton
-            aria-label="Редактировать категорию"
-            className="h-11 w-11 border border-subtle bg-surface/80 p-0 backdrop-blur"
-            onClick={onStartEdit}
-          >
-            <Icon icon={Pencil} size="md" decorative />
-          </IconButton>
-
-          <IconButton
-            aria-label={isActive ? "Скрыть категорию" : "Показать категорию"}
-            className="h-11 w-11 border border-subtle bg-surface/80 p-0 backdrop-blur"
-            onClick={onToggleActive}
-          >
-            <Icon icon={isActive ? EyeOff : Eye} size="md" decorative />
-          </IconButton>
-
-          <IconButton
-            aria-label="Удалить категорию"
-            className="h-11 w-11 border border-subtle bg-surface/80 p-0 text-red-500 backdrop-blur"
-            onClick={onDelete}
-          >
-            <Icon icon={Trash2} size="md" decorative />
-          </IconButton>
-        </div>
-      )}
-
-      {/* CONTENT */}
-      <div className="relative pr-36">
+          navigate(`/training/${moduleConfig.slug}/categories/${category.id}`);
+        }}
+      >
         {isEditing ? (
           <div className="grid gap-3">
             <Input
@@ -121,46 +84,70 @@ export default function TrainingCategoryCard({
           </div>
         ) : (
           <>
-            <div className="text-lg font-semibold text-strong">
-              {category.name}
+            {/* HEADER: title + actions */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold text-strong">{category.name}</div>
+
+                {!isActive && (
+                  <div className="mt-2 text-xs font-semibold uppercase text-muted">Скрыта</div>
+                )}
+              </div>
+
+              {canManage && (
+                <div
+                  data-card-actions
+                  className="flex shrink-0 gap-2"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <IconButton
+                    aria-label="Редактировать категорию"
+                    className="h-11 w-11 border border-subtle bg-surface/80 p-0 backdrop-blur"
+                    onClick={onStartEdit}
+                  >
+                    <Icon icon={Pencil} size="md" decorative />
+                  </IconButton>
+
+                  <IconButton
+                    aria-label={isActive ? "Скрыть категорию" : "Показать категорию"}
+                    className="h-11 w-11 border border-subtle bg-surface/80 p-0 backdrop-blur"
+                    onClick={onToggleActive}
+                  >
+                    <Icon icon={isActive ? EyeOff : Eye} size="md" decorative />
+                  </IconButton>
+
+                  <IconButton
+                    aria-label="Удалить категорию"
+                    className="h-11 w-11 border border-subtle bg-surface/80 p-0 text-red-500 backdrop-blur"
+                    onClick={onDelete}
+                  >
+                    <Icon icon={Trash2} size="md" decorative />
+                  </IconButton>
+                </div>
+              )}
             </div>
 
+            {/* BODY: description full width */}
             {category.description && (
-              <ContentText className="mt-1 text-sm text-muted">
-                {category.description}
-              </ContentText>
-            )}
-
-            {!isActive && (
-              <div className="mt-2 text-xs font-semibold uppercase text-muted">
-                Скрыта
-              </div>
+              <ContentText className="text-sm text-muted">{category.description}</ContentText>
             )}
           </>
         )}
-      </div>
 
-      {/* EDIT ACTIONS */}
-      {canManage && isEditing && (
-        <div className="relative z-10 mt-auto flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={onSaveEdit}
-            disabled={saving}
-          >
-            {saving ? "Сохраняем…" : "Сохранить"}
-          </Button>
+        {/* EDIT ACTIONS */}
+        {canManage && isEditing && (
+          <div className="relative z-10 mt-auto flex flex-wrap gap-2">
+            <Button variant="outline" onClick={onSaveEdit} disabled={saving}>
+              {saving ? "Сохраняем…" : "Сохранить"}
+            </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onCancelEdit}
-            disabled={saving}
-          >
-            Отмена
-          </Button>
-        </div>
-      )}
-    </Card>
-  );
-}
+            <Button type="button" variant="ghost" onClick={onCancelEdit} disabled={saving}>
+              Отмена
+            </Button>
+          </div>
+        )}
+      </Card>
+    );
+  }
