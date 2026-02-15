@@ -55,7 +55,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
   const [resetting, setResetting] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [downloadMenuFor, setDownloadMenuFor] = useState<number | null>(null);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -65,7 +65,6 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
 
   const activeTab = searchParams.get("tab") === "scripts" ? "scripts" : "checklists";
   const activeKind: ChecklistKind = activeTab === "scripts" ? "INFO" : "TRACKABLE";
-  const createButtonLabel = activeTab === "scripts" ? "Создать скрипт" : "Создать чек-лист";
   const dialogKind = editing?.kind ?? activeKind;
   const createDialogTitle = editing
     ? dialogKind === "INFO"
@@ -385,6 +384,17 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
     };
   }, []);
 
+  useEffect(() => {
+    function handleOpenDialog() {
+      openCreateDialog();
+    }
+
+    window.addEventListener("open-checklist-dialog", handleOpenDialog);
+    return () => {
+      window.removeEventListener("open-checklist-dialog", handleOpenDialog);
+    };
+  }, [openCreateDialog]);
+
   const visibleChecklists = useMemo(() => {
     const collator = new Intl.Collator("ru", { sensitivity: "base" });
     return [...checklists].sort((a, b) => {
@@ -401,23 +411,6 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
   return (
     <Card className="mt-4">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant={activeTab === "checklists" ? "primary" : "outline"}
-            onClick={() => setSearchParams({ tab: "checklists" })}
-          >
-            Чек-листы
-          </Button>
-          <Button
-            type="button"
-            variant={activeTab === "scripts" ? "primary" : "outline"}
-            onClick={() => setSearchParams({ tab: "scripts" })}
-          >
-            Скрипты
-          </Button>
-          {canManage && <Button onClick={openCreateDialog}>{createButtonLabel}</Button>}
-        </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <Input

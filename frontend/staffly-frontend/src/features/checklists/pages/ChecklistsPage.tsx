@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import BackToHome from "../../../shared/ui/BackToHome";
+import Button from "../../../shared/ui/Button";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchMyRoleIn } from "../../employees/api";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
@@ -10,6 +12,9 @@ const ChecklistsPage = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab = searchParams.get("tab") === "scripts" ? "scripts" : "checklists";
 
   useEffect(() => {
     if (!restaurantId) {
@@ -41,16 +46,55 @@ const ChecklistsPage = () => {
     return null;
   }
 
+  const pageTitle = activeTab === "scripts" ? "Скрипты" : "Чек-листы";
+  const createLabel = activeTab === "scripts" ? "Создать скрипт" : "Создать чек-лист";
+
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-3">
+      {/* Верхняя строка: назад + табы */}
+      <div className="mb-3 flex items-center justify-between gap-3">
         <BackToHome />
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={activeTab === "checklists" ? "primary" : "outline"}
+            onClick={() => setSearchParams({ tab: "checklists" })}
+          >
+            Чек-листы
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "scripts" ? "primary" : "outline"}
+            onClick={() => setSearchParams({ tab: "scripts" })}
+          >
+            Скрипты
+          </Button>
+        </div>
       </div>
-      <h2 className="mb-4 text-2xl font-semibold">Чек-листы и скрипты</h2>
-      <div>
-        <div className="text-sm text-muted">Готовые чек-листы и инструкции для сотрудников по должностям</div>
+
+      {/* Заголовок + кнопка создать */}
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold">{pageTitle}</h2>
+          <div className="text-sm text-muted">
+            {activeTab === "scripts"
+              ? "Готовые инструкции для сотрудников по должностям"
+              : "Готовые чек-листы для сотрудников по должностям"}
+          </div>
+        </div>
+
+        {access.isManagerLike && (
+          <Button onClick={() => window.dispatchEvent(new Event("open-checklist-dialog"))}>
+            {createLabel}
+          </Button>
+        )}
       </div>
-      <RestaurantChecklists restaurantId={restaurantId} canManage={access.isManagerLike} />
+
+      <RestaurantChecklists
+        restaurantId={restaurantId}
+        canManage={access.isManagerLike}
+      />
     </div>
   );
 };

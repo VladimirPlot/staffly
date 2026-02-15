@@ -30,7 +30,7 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
                     where p.id = :positionId
               ))
               and (:kind is null or c.kind = :kind)
-              and (:query is null or lower(c.name) like lower(concat('%', :query, '%')))
+              and (:query is null or lower(c.name) like concat('%', lower(cast(:query as string)), '%'))
             order by c.name asc
             """)
     List<Checklist> findListDetailedByRestaurantId(Long restaurantId, Long positionId, ChecklistKind kind, String query);
