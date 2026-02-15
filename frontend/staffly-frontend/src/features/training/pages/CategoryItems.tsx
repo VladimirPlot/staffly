@@ -27,6 +27,7 @@ import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Icon from "../../../shared/ui/Icon";
 import { Pencil } from "lucide-react";
+import useActionMenu from "../../../shared/hooks/useActionMenu";
 
 const REQUIRED_MESSAGE = "Обязательное поле";
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -70,26 +71,11 @@ export default function TrainingCategoryItemsPage() {
   const [editItemAllergens, setEditItemAllergens] = useState("");
   const [savingItemId, setSavingItemId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (openActionsItemId == null) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-
-      if (
-        target.closest(`[data-item-actions-menu="${openActionsItemId}"]`) ||
-        target.closest(`[data-item-actions-trigger="${openActionsItemId}"]`)
-      ) {
-        return;
-      }
-
-      setOpenActionsItemId(null);
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [openActionsItemId]);
+  const { getActionsKey, toggleMenu, closeMenu } = useActionMenu<number>({
+    openId: openActionsItemId,
+    setOpenId: setOpenActionsItemId,
+    scope: "item",
+  });
 
   useEffect(() => {
     setIncludeInactive(false);
@@ -256,7 +242,7 @@ export default function TrainingCategoryItemsPage() {
 
   const handleDeleteItem = async (itemId: number, name: string) => {
     if (!restaurantId) return;
-    setOpenActionsItemId(null);
+    closeMenu();
     if (!confirm(`Удалить карточку «${name}» навсегда?`)) return;
     try {
       setDeletingItemId(itemId);
@@ -270,7 +256,7 @@ export default function TrainingCategoryItemsPage() {
   };
 
   const startEditItem = (item: TrainingItemDto) => {
-    setOpenActionsItemId(null);
+    closeMenu();
     setEditingItemId(item.id);
     setEditItemName(item.name);
     setEditItemComposition(item.composition ?? "");
@@ -473,10 +459,11 @@ export default function TrainingCategoryItemsPage() {
                       {canManage && !isEditing && (
                         <IconButton
                           aria-label="Действия с карточкой"
-                          data-item-actions-trigger={item.id}
+                          data-actions
+                          data-actions-trigger={getActionsKey(item.id)}
                           className="
-                          !absolute !right-[-14px] !top-[-14px]
-                          !z-40 !h-11 !w-11 !p-0
+                          !absolute !right-[-6px] !top-[-6px]
+                          !z-40 !h-10 !w-10 !p-0
                           !bg-[color-mix(in_srgb,var(--staffly-surface)_35%,transparent)]
                           !border-[color-mix(in_srgb,var(--staffly-border)_55%,transparent)]
                           backdrop-blur-sm
@@ -485,7 +472,7 @@ export default function TrainingCategoryItemsPage() {
                           onPointerUp={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setOpenActionsItemId((prev) => (prev === item.id ? null : item.id));
+                            toggleMenu(item.id);
                           }}
                         >
                           <Icon icon={Pencil} size="md" decorative />
@@ -502,7 +489,8 @@ export default function TrainingCategoryItemsPage() {
 
                   {canManage && actionsOpen && !isEditing && (
                     <div
-                      data-item-actions-menu={item.id}
+                      data-actions
+                      data-actions-menu={getActionsKey(item.id)}
                       className="absolute right-0.5 top-14 z-40 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]"
                       onPointerDown={(e) => e.stopPropagation()}
                       onPointerUp={(e) => e.stopPropagation()}
@@ -516,7 +504,7 @@ export default function TrainingCategoryItemsPage() {
                         variant="outline"
                         onClick={async () => {
                           if (!restaurantId) return;
-                          setOpenActionsItemId(null);
+                          closeMenu();
                           try {
                             if (item.active === false) {
                               await restoreItem(restaurantId, item.id);

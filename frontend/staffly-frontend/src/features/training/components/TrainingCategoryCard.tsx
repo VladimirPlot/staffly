@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import Input from "../../../shared/ui/Input";
@@ -20,7 +20,11 @@ type Props = {
   editName: string;
   editDescription: string;
   saving: boolean;
+  actionsOpen: boolean;
+  actionsKey: string;
 
+  onToggleActions: () => void;
+  onCloseActions: () => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
@@ -38,6 +42,10 @@ export default function TrainingCategoryCard({
   editName,
   editDescription,
   saving,
+  actionsOpen,
+  actionsKey,
+  onToggleActions,
+  onCloseActions,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -50,104 +58,158 @@ export default function TrainingCategoryCard({
   const isActive = category.active !== false;
 
   return (
-      <Card
-        className={[
-          "relative flex h-full flex-col gap-3 transition",
-          "hover:-translate-y-0.5 hover:shadow-[var(--staffly-shadow)]",
-          isActive ? "" : "opacity-60",
-          isEditing ? "" : "cursor-pointer",
-        ].join(" ")}
-        onClick={(e) => {
-          if (isEditing) return;
+    <Card
+      className={[
+        "relative flex h-full flex-col gap-3 transition",
+        "hover:-translate-y-0.5 hover:shadow-[var(--staffly-shadow)]",
+        isActive ? "" : "opacity-60",
+        isEditing ? "" : "cursor-pointer",
+      ].join(" ")}
 
-          const target = e.target;
-          if (target instanceof Element && target.closest("[data-card-actions]")) {
-            return;
-          }
+      // 🔥 Главное исправление — перехват до click
+      onPointerDownCapture={(e) => {
+        if (isEditing) return;
+        if (!actionsOpen) return;
 
-          navigate(`/training/${moduleConfig.slug}/categories/${category.id}`);
-        }}
-      >
-        {isEditing ? (
-          <div className="grid gap-3">
-            <Input
-              label="Название"
-              value={editName}
-              onChange={(e) => onEditNameChange(e.target.value)}
-              autoFocus
-            />
-            <Input
-              label="Описание (опционально)"
-              value={editDescription}
-              onChange={(e) => onEditDescriptionChange(e.target.value)}
-            />
-          </div>
-        ) : (
-          <>
-            {/* HEADER: title + actions */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-lg font-semibold text-strong">{category.name}</div>
+        const target = e.target;
+        if (target instanceof Element && target.closest("[data-actions]")) {
+          return;
+        }
 
-                {!isActive && (
-                  <div className="mt-2 text-xs font-semibold uppercase text-muted">Скрыта</div>
-                )}
+        // если меню открыто и клик вне меню — просто закрываем
+        onCloseActions();
+      }}
+
+      onClick={(e) => {
+        if (isEditing) return;
+
+        const target = e.target;
+        if (target instanceof Element && target.closest("[data-actions]")) {
+          return;
+        }
+
+        // если меню было открыто — не навигируем
+        if (actionsOpen) return;
+
+        navigate(`/training/${moduleConfig.slug}/categories/${category.id}`);
+      }}
+    >
+      {isEditing ? (
+        <div className="grid gap-3">
+          <Input
+            label="Название"
+            value={editName}
+            onChange={(e) => onEditNameChange(e.target.value)}
+            autoFocus
+          />
+          <Input
+            label="Описание (опционально)"
+            value={editDescription}
+            onChange={(e) => onEditDescriptionChange(e.target.value)}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-lg font-semibold text-strong">
+                {category.name}
               </div>
 
-              {canManage && (
-                <div
-                  data-card-actions
-                  className="flex shrink-0 gap-2"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <IconButton
-                    aria-label="Редактировать категорию"
-                    className="h-11 w-11 border border-subtle bg-surface/80 p-0 backdrop-blur"
-                    onClick={onStartEdit}
-                  >
-                    <Icon icon={Pencil} size="md" decorative />
-                  </IconButton>
-
-                  <IconButton
-                    aria-label={isActive ? "Скрыть категорию" : "Показать категорию"}
-                    className="h-11 w-11 border border-subtle bg-surface/80 p-0 backdrop-blur"
-                    onClick={onToggleActive}
-                  >
-                    <Icon icon={isActive ? EyeOff : Eye} size="md" decorative />
-                  </IconButton>
-
-                  <IconButton
-                    aria-label="Удалить категорию"
-                    className="h-11 w-11 border border-subtle bg-surface/80 p-0 text-red-500 backdrop-blur"
-                    onClick={onDelete}
-                  >
-                    <Icon icon={Trash2} size="md" decorative />
-                  </IconButton>
+              {!isActive && (
+                <div className="mt-2 text-xs font-semibold uppercase text-muted">
+                  Скрыта
                 </div>
               )}
             </div>
 
-            {/* BODY: description full width */}
-            {category.description && (
-              <ContentText className="text-sm text-muted">{category.description}</ContentText>
+            {canManage && (
+              <div
+                data-actions
+                className="relative shrink-0"
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <IconButton
+                  aria-label="Действия с категорией"
+                  data-actions
+                  data-actions-trigger={actionsKey}
+                  className="h-10 w-10 border border-subtle bg-surface/80 p-0 backdrop-blur"
+                  onClick={onToggleActions}
+                >
+                  <Icon icon={Pencil} size="md" decorative />
+                </IconButton>
+
+                {actionsOpen && (
+                  <div
+                    data-actions
+                    data-actions-menu={actionsKey}
+                    className="absolute right-0 top-12 z-40 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        onCloseActions();
+                        onStartEdit();
+                      }}
+                    >
+                      Редактировать
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        onCloseActions();
+                        onToggleActive();
+                      }}
+                    >
+                      {isActive ? "Скрыть" : "Раскрыть"}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="text-red-500"
+                      onClick={() => {
+                        onCloseActions();
+                        onDelete();
+                      }}
+                    >
+                      Удалить навсегда
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
-          </>
-        )}
-
-        {/* EDIT ACTIONS */}
-        {canManage && isEditing && (
-          <div className="relative z-10 mt-auto flex flex-wrap gap-2">
-            <Button variant="outline" onClick={onSaveEdit} disabled={saving}>
-              {saving ? "Сохраняем…" : "Сохранить"}
-            </Button>
-
-            <Button type="button" variant="ghost" onClick={onCancelEdit} disabled={saving}>
-              Отмена
-            </Button>
           </div>
-        )}
-      </Card>
-    );
-  }
+
+          {category.description && (
+            <ContentText className="text-sm text-muted">
+              {category.description}
+            </ContentText>
+          )}
+        </>
+      )}
+
+      {canManage && isEditing && (
+        <div className="relative z-10 mt-auto flex flex-wrap gap-2">
+          <Button variant="outline" onClick={onSaveEdit} disabled={saving}>
+            {saving ? "Сохраняем…" : "Сохранить"}
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onCancelEdit}
+            disabled={saving}
+          >
+            Отмена
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}

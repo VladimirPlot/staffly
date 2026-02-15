@@ -22,6 +22,7 @@ import {
 } from "../config";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import TrainingCategoryCard from "../components/TrainingCategoryCard";
+import useActionMenu from "../../../shared/hooks/useActionMenu";
 
 function BreadcrumbsBlock({ module }: { module: TrainingModuleConfig }) {
   return (
@@ -68,14 +69,26 @@ function TrainingModuleCategoriesPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
 
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [openActionsCategoryId, setOpenActionsCategoryId] = useState<number | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editCategoryDescription, setEditCategoryDescription] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
+
+  const { getActionsKey, toggleMenu, closeMenu } = useActionMenu<number>({
+    openId: openActionsCategoryId,
+    setOpenId: setOpenActionsCategoryId,
+    scope: "category",
+  });
 
   useEffect(() => {
     if (!hasCategories) return;
     setIncludeInactive(false);
   }, [hasCategories, moduleCode]);
+
+  useEffect(() => {
+    if (editingCategoryId == null) return;
+    setOpenActionsCategoryId(null);
+  }, [editingCategoryId]);
 
   const load = useCallback(async () => {
     if (!restaurantId || !hasCategories) return;
@@ -94,6 +107,7 @@ function TrainingModuleCategoriesPage() {
         return a.id - b.id;
       });
       setCategories(sorted);
+      setOpenActionsCategoryId(null);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка загрузки категорий");
     } finally {
@@ -222,15 +236,21 @@ function TrainingModuleCategoriesPage() {
                 moduleConfig={moduleConfig}
                 canManage={canManage}
                 isEditing={editingCategoryId === category.id}
+                actionsOpen={openActionsCategoryId === category.id}
+                actionsKey={getActionsKey(category.id)}
                 editName={editCategoryName}
                 editDescription={editCategoryDescription}
                 saving={savingCategory}
+                onToggleActions={() => toggleMenu(category.id)}
+                onCloseActions={closeMenu}
                 onStartEdit={() => {
+                  closeMenu();
                   setEditingCategoryId(category.id);
                   setEditCategoryName(category.name);
                   setEditCategoryDescription(category.description ?? "");
                 }}
                 onCancelEdit={() => {
+                  closeMenu();
                   setEditingCategoryId(null);
                   setEditCategoryName("");
                   setEditCategoryDescription("");
@@ -243,6 +263,7 @@ function TrainingModuleCategoriesPage() {
                     return;
                   }
                   try {
+                    closeMenu();
                     setSavingCategory(true);
                     await updateCategory(restaurantId, category.id, {
                       name: trimmedName,
@@ -265,6 +286,7 @@ function TrainingModuleCategoriesPage() {
                 onToggleActive={async () => {
                   if (!restaurantId) return;
                   try {
+                    closeMenu();
                     if (category.active === false) {
                       await restoreCategory(restaurantId, category.id);
                     } else {
@@ -277,6 +299,7 @@ function TrainingModuleCategoriesPage() {
                 }}
                 onDelete={async () => {
                   if (!restaurantId) return;
+                  closeMenu();
                   if (!confirm(`Удалить категорию «${category.name}» навсегда?`)) return;
                   try {
                     await deleteCategory(restaurantId, category.id);
