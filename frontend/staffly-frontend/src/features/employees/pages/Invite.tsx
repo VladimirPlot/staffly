@@ -594,9 +594,9 @@ export default function InvitePage() {
             {sortedMembers.map((m) => (
               <div
                 key={m.id}
-                className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="relative flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3 pr-24 sm:pr-0">
                   <Avatar
                     name={displayNameOf(m)}
                     imageUrl={m.avatarUrl ?? undefined}
@@ -611,14 +611,18 @@ export default function InvitePage() {
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="text-sm text-default">
-                    День рождения: <span className="font-medium">{formatBirthday(m.birthDate)}</span>
+                <div className="min-w-0 text-sm text-default sm:mr-3">
+                  <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                    <span>
+                      Дата рождения: <span className="font-medium">{formatBirthday(m.birthDate)}</span>
+                    </span>
+                    <span className="text-muted">•</span>
+                    <span className="min-w-0 truncate">
+                      Тел: <span className="font-medium">{m.phone || "—"}</span>
+                    </span>
                   </div>
-                  <div className="text-sm text-default">
-                    Телефон: <span className="font-medium">{m.phone || "—"}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
+                </div>
+                <div className="absolute right-0 top-3 flex items-center gap-2 sm:static">
                     {canEditMembers && (
                       <Button
                         variant="outline"
@@ -647,7 +651,6 @@ export default function InvitePage() {
                       />
                     )}
                   </div>
-                </div>
               </div>
             ))}
           </div>
