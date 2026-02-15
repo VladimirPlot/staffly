@@ -46,9 +46,9 @@ const ChecklistsPage = () => {
       <div className="mb-3">
         <BackToHome />
       </div>
-      <h2 className="mb-4 text-2xl font-semibold">Чек-листы</h2>
+      <h2 className="mb-4 text-2xl font-semibold">Чек-листы и скрипты</h2>
       <div>
-        <div className="text-sm text-muted">Готовые инструкции для сотрудников по должностям</div>
+        <div className="text-sm text-muted">Готовые чек-листы и инструкции для сотрудников по должностям</div>
       </div>
       <RestaurantChecklists restaurantId={restaurantId} canManage={access.isManagerLike} />
     </div>

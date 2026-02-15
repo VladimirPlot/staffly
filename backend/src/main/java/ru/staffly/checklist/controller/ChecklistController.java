@@ -7,6 +7,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistRequest;
+import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.service.ChecklistService;
 import ru.staffly.security.UserPrincipal;
 
@@ -24,8 +25,10 @@ public class ChecklistController {
     @GetMapping
     public List<ChecklistDto> list(@PathVariable Long restaurantId,
                                    @AuthenticationPrincipal UserPrincipal principal,
-                                   @RequestParam(name = "positionId", required = false) Long positionId) {
-        return service.list(restaurantId, principal.userId(), principal.roles(), positionId);
+                                   @RequestParam(name = "positionId", required = false) Long positionId,
+                                   @RequestParam(name = "kind", required = false) ChecklistKind kind,
+                                   @RequestParam(name = "q", required = false) String query) {
+        return service.list(restaurantId, principal.userId(), principal.roles(), positionId, kind, query);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Check, Download, Lock, Pencil, Trash2, Unlock, X } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
@@ -6,6 +7,7 @@ import ContentText from "../../../shared/ui/ContentText";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
+import Input from "../../../shared/ui/Input";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import {
   createChecklist,
@@ -53,11 +55,26 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
   const [resetting, setResetting] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [downloadMenuFor, setDownloadMenuFor] = useState<number | null>(null);
-  const [createKind, setCreateKind] = useState<ChecklistKind>("TRACKABLE");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   const checklistRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
   const downloadMenuRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
   const errorTimeoutRef = useRef<number | null>(null);
+
+  const activeTab = searchParams.get("tab") === "scripts" ? "scripts" : "checklists";
+  const activeKind: ChecklistKind = activeTab === "scripts" ? "INFO" : "TRACKABLE";
+  const createButtonLabel = activeTab === "scripts" ? "Создать скрипт" : "Создать чек-лист";
+  const dialogKind = editing?.kind ?? activeKind;
+  const createDialogTitle = editing
+    ? dialogKind === "INFO"
+      ? "Редактирование скрипта"
+      : "Редактирование чек-листа"
+    : activeTab === "scripts"
+      ? "Новый скрипт"
+      : "Новый чек-лист";
+  const emptyStateLabel = activeTab === "scripts" ? "Скрипты пока не добавлены." : "Чек-листы пока не добавлены.";
 
   const loadPositions = useCallback(async () => {
     if (!restaurantId) return;
@@ -69,28 +86,58 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
     }
   }, [restaurantId]);
 
-  const loadChecklists = useCallback(async () => {
-    if (!restaurantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listChecklists(restaurantId, canManage && positionFilter ? { positionId: positionFilter } : undefined);
-      setChecklists(data);
-    } catch (e) {
-      console.error("Failed to load checklists", e);
-      setError("Не удалось загрузить чек-листы");
-      setChecklists([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [restaurantId, canManage, positionFilter]);
+  const loadChecklists = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!restaurantId) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await listChecklists(
+          restaurantId,
+          {
+            positionId: canManage && positionFilter ? positionFilter : undefined,
+            kind: activeKind,
+            q: debouncedQuery,
+          },
+          signal
+        );
+        setChecklists(data);
+        setExpanded(new Set());
+      } catch (e: any) {
+        if (e?.name === "CanceledError" || e?.code === "ERR_CANCELED") {
+          return;
+        }
+        console.error("Failed to load checklists", e);
+        setError("Не удалось загрузить список");
+        setChecklists([]);
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
+      }
+    },
+    [restaurantId, canManage, positionFilter, activeKind, debouncedQuery]
+  );
 
   useEffect(() => {
     void loadPositions();
   }, [loadPositions]);
 
   useEffect(() => {
-    void loadChecklists();
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(searchTerm.trim());
+    }, 300);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadChecklists(controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [loadChecklists]);
 
   const openCreateDialog = useCallback(() => {
@@ -98,16 +145,16 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
     setDialogError(null);
 
     setDialogInitial({
-      kind: createKind,
+      kind: activeKind,
       name: "",
       content: "",
       positionIds: [],
-      periodicity: createKind === "TRACKABLE" ? "DAILY" : undefined,
+      periodicity: activeKind === "TRACKABLE" ? "DAILY" : undefined,
       items: [""],
     });
 
     setDialogOpen(true);
-  }, [createKind]);
+  }, [activeKind]);
 
   const openEditDialog = useCallback((checklist: ChecklistDto) => {
     setEditing(checklist);
@@ -144,7 +191,6 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
           await updateChecklist(restaurantId, editing.id, payload);
         } else {
           await createChecklist(restaurantId, payload);
-          setCreateKind(payload.kind); // запомнили последний выбранный тип
         }
 
         setDialogOpen(false);
@@ -198,6 +244,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
 
   const resetFilter = useCallback(() => {
     setPositionFilter(null);
+    setSearchTerm("");
   }, []);
 
   const positionNames = useMemo(() => {
@@ -340,59 +387,76 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
 
   const visibleChecklists = useMemo(() => {
     const collator = new Intl.Collator("ru", { sensitivity: "base" });
-    const groupKey = (checklist: ChecklistDto) => {
-      if (checklist.kind === "TRACKABLE" && !checklist.completed) return 0;
-      if (checklist.kind === "INFO") return 1;
-      if (checklist.kind === "TRACKABLE" && checklist.completed) return 2;
-      return 3;
-    };
-
     return [...checklists].sort((a, b) => {
-      const groupDiff = groupKey(a) - groupKey(b);
-      if (groupDiff !== 0) return groupDiff;
+      if (activeKind === "TRACKABLE") {
+        const completedDiff = Number(a.completed) - Number(b.completed);
+        if (completedDiff !== 0) {
+          return completedDiff;
+        }
+      }
       return collator.compare(a.name ?? "", b.name ?? "");
     });
-  }, [checklists]);
+  }, [checklists, activeKind]);
 
   return (
     <Card className="mt-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        {canManage && (
-          <div className="flex flex-wrap gap-2">
-            {/* ОДНА кнопка */}
-            <Button onClick={openCreateDialog}>Создать чек-лист</Button>
-          </div>
-        )}
-      </div>
-
-      {canManage && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <select
-            className="rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
-            value={positionFilter ?? ""}
-            onChange={(event) => setPositionFilter(event.target.value ? Number(event.target.value) : null)}
-          >
-            <option value="">Все должности</option>
-            {positions.map((position) => (
-              <option key={position.id} value={position.id}>
-                {position.name}
-              </option>
-            ))}
-          </select>
-          <button
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2">
+          <Button
             type="button"
-            onClick={resetFilter}
-            className={`flex items-center gap-1 rounded-full border border-transparent p-2 text-sm transition ${
-              positionFilter == null ? "text-muted/60" : "text-muted hover:text-default"
-            }`}
-            aria-label="Сбросить фильтр"
-            disabled={positionFilter == null}
+            variant={activeTab === "checklists" ? "primary" : "outline"}
+            onClick={() => setSearchParams({ tab: "checklists" })}
           >
-            <Icon icon={X} size="sm" decorative />
-            <span>Сбросить</span>
-          </button>
+            Чек-листы
+          </Button>
+          <Button
+            type="button"
+            variant={activeTab === "scripts" ? "primary" : "outline"}
+            onClick={() => setSearchParams({ tab: "scripts" })}
+          >
+            Скрипты
+          </Button>
+          {canManage && <Button onClick={openCreateDialog}>{createButtonLabel}</Button>}
         </div>
-      )}
+
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <Input
+            label="Поиск"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Поиск по названию…"
+            className="md:max-w-sm"
+          />
+          {canManage && (
+            <>
+              <select
+                className="rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                value={positionFilter ?? ""}
+                onChange={(event) => setPositionFilter(event.target.value ? Number(event.target.value) : null)}
+              >
+                <option value="">Все должности</option>
+                {positions.map((position) => (
+                  <option key={position.id} value={position.id}>
+                    {position.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={resetFilter}
+                className={`flex items-center gap-1 rounded-full border border-transparent p-2 text-sm transition ${
+                  positionFilter == null && !searchTerm ? "text-muted/60" : "text-muted hover:text-default"
+                }`}
+                aria-label="Сбросить фильтры"
+                disabled={positionFilter == null && !searchTerm}
+              >
+                <Icon icon={X} size="sm" decorative />
+                <span>Сбросить</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="mt-6 space-y-3">
         {loading && (
@@ -401,7 +465,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
         {error && <Card className="text-sm text-red-600">{error}</Card>}
         {itemActionError && <Card className="text-sm text-red-600">{itemActionError}</Card>}
         {!loading && !error && visibleChecklists.length === 0 && (
-          <Card className="text-sm text-muted">Чек-листы пока не добавлены.</Card>
+          <Card className="text-sm text-muted">{emptyStateLabel}</Card>
         )}
         {!loading && !error &&
           visibleChecklists.map((checklist) => {
@@ -437,7 +501,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                     <div className="mt-1 text-xs uppercase tracking-wide text-muted">{assignedNames}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="ghost" onClick={() => toggleExpanded(checklist.id)} className="text-sm text-muted">
+                    <Button variant="outline" onClick={() => toggleExpanded(checklist.id)} className="text-sm">
                       {isExpanded ? "Свернуть" : "Открыть"}
                     </Button>
                     {canManage && (
@@ -628,10 +692,9 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
 
       <ChecklistDialog
         open={dialogOpen}
-        title={editing ? "Редактирование чек-листа" : "Новый чек-лист"}
+        title={createDialogTitle}
         positions={positions}
         initialData={dialogInitial}
-        isEditMode={Boolean(editing)}
         submitting={dialogSubmitting}
         error={dialogError}
         onClose={closeDialog}

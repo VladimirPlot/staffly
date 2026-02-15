@@ -51,15 +51,36 @@ export type ChecklistRequest = {
   positionIds: number[];
 };
 
-export async function listChecklists(
-  restaurantId: number,
-  params?: { positionId?: number }
-): Promise<ChecklistDto[]> {
-  const query: Record<string, any> = {};
+export type ListChecklistsParams = {
+  positionId?: number;
+  kind?: ChecklistKind;
+  q?: string;
+};
+
+function buildListChecklistsQuery(params?: ListChecklistsParams): Record<string, string | number> {
+  const query: Record<string, string | number> = {};
   if (params?.positionId) {
     query.positionId = params.positionId;
   }
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/checklists`, { params: query });
+  if (params?.kind) {
+    query.kind = params.kind;
+  }
+  const normalizedQuery = params?.q?.trim();
+  if (normalizedQuery) {
+    query.q = normalizedQuery;
+  }
+  return query;
+}
+
+export async function listChecklists(
+  restaurantId: number,
+  params?: ListChecklistsParams,
+  signal?: AbortSignal
+): Promise<ChecklistDto[]> {
+  const { data } = await api.get(`/api/restaurants/${restaurantId}/checklists`, {
+    params: buildListChecklistsQuery(params),
+    signal,
+  });
   return data as ChecklistDto[];
 }
 

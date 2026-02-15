@@ -2,12 +2,20 @@ package ru.staffly.checklist.service;
 
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistRequest;
+import ru.staffly.checklist.model.ChecklistKind;
 
 import java.util.List;
 
 public interface ChecklistService {
 
-    List<ChecklistDto> list(Long restaurantId, Long currentUserId, List<String> globalRoles, Long positionFilterId);
+    List<ChecklistDto> list(
+            Long restaurantId,
+            Long currentUserId,
+            List<String> globalRoles,
+            Long positionFilterId,
+            ChecklistKind kind,
+            String query
+    );
 
     ChecklistDto create(Long restaurantId, Long currentUserId, ChecklistRequest request);
 

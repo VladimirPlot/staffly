@@ -52,7 +52,14 @@ public class ChecklistServiceImpl implements ChecklistService {
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
-    public List<ChecklistDto> list(Long restaurantId, Long currentUserId, List<String> globalRoles, Long positionFilterId) {
+    public List<ChecklistDto> list(
+            Long restaurantId,
+            Long currentUserId,
+            List<String> globalRoles,
+            Long positionFilterId,
+            ChecklistKind kind,
+            String query
+    ) {
         security.assertMember(currentUserId, restaurantId);
 
         RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
@@ -60,29 +67,15 @@ public class ChecklistServiceImpl implements ChecklistService {
         boolean canManage = isCreator || (member != null && isManagerOrAdmin(member));
         Long myPositionId = member != null && member.getPosition() != null ? member.getPosition().getId() : null;
 
-        Long effectiveFilter;
-        if (canManage) {
-            effectiveFilter = positionFilterId;
-        } else {
-            effectiveFilter = myPositionId;
-            if (effectiveFilter == null) {
-                return List.of();
-            }
+        Long effectiveFilter = canManage ? positionFilterId : myPositionId;
+        if (!canManage && effectiveFilter == null) {
+            return List.of();
         }
 
-        List<Checklist> entities = checklists.findListDetailedByRestaurantId(restaurantId);
-        List<Checklist> visible = entities.stream()
-                .filter(cl -> {
-                    Set<Long> positionIds = cl.getPositions().stream().map(Position::getId).collect(Collectors.toSet());
-                    if (!canManage) {
-                        return positionIds.contains(effectiveFilter);
-                    }
-                    if (effectiveFilter != null) {
-                        return positionIds.contains(effectiveFilter);
-                    }
-                    return true;
-                })
-                .collect(Collectors.toCollection(ArrayList::new));
+        String normalizedQuery = normalizeQuery(query);
+        List<Checklist> visible = new ArrayList<>(
+                checklists.findListDetailedByRestaurantId(restaurantId, effectiveFilter, kind, normalizedQuery)
+        );
 
         List<Checklist> updated = new ArrayList<>();
         for (Checklist checklist : visible) {
@@ -94,12 +87,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             checklists.saveAll(updated);
         }
 
-        Collator collator = Collator.getInstance(new Locale("ru", "RU"));
-        collator.setStrength(Collator.PRIMARY);
-        visible.sort(
-                Comparator.comparingInt(this::checklistGroupKey)
-                        .thenComparing(Checklist::getName, Comparator.nullsLast(collator))
-        );
+        sortChecklists(visible, kind);
 
         return visible.stream().map(mapper::toDto).toList();
     }
@@ -310,6 +298,27 @@ public class ChecklistServiceImpl implements ChecklistService {
             throw new NotFoundException("Checklist not found in this restaurant");
         }
         checklists.delete(entity);
+    }
+
+    private void sortChecklists(List<Checklist> checklists, ChecklistKind kind) {
+        Collator collator = Collator.getInstance(new Locale("ru", "RU"));
+        collator.setStrength(Collator.PRIMARY);
+
+        Comparator<Checklist> byName = Comparator.comparing(Checklist::getName, Comparator.nullsLast(collator));
+        if (kind == ChecklistKind.TRACKABLE) {
+            checklists.sort(Comparator.comparing(Checklist::isCompleted).thenComparing(byName));
+            return;
+        }
+        if (kind == ChecklistKind.INFO) {
+            checklists.sort(byName);
+            return;
+        }
+        checklists.sort(Comparator.comparingInt(this::checklistGroupKey).thenComparing(byName));
+    }
+
+    private String normalizeQuery(String query) {
+        String normalized = normalize(query);
+        return normalized == null || normalized.isBlank() ? null : normalized;
     }
 
     private boolean hasRole(List<String> roles, String expected) {

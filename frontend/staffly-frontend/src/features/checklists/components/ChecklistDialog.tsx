@@ -36,7 +36,6 @@ type ChecklistDialogProps = {
   title: string;
   positions: PositionDto[];
   initialData?: ChecklistDialogInitial;
-  isEditMode?: boolean;
   submitting: boolean;
   error?: string | null;
   onClose: () => void;
@@ -48,7 +47,6 @@ const ChecklistDialog = ({
   title,
   positions,
   initialData,
-  isEditMode,
   submitting,
   error,
   onClose,
@@ -227,7 +225,6 @@ const ChecklistDialog = ({
   ]);
 
   const effectiveError = error || localError;
-  const isEditing = Boolean(isEditMode);
 
   return (
     <Modal
@@ -246,29 +243,6 @@ const ChecklistDialog = ({
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={`rounded-2xl border px-3 py-2 text-sm transition ${
-              kind === "TRACKABLE" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-subtle bg-surface"
-            } ${isEditing ? "cursor-not-allowed opacity-70" : ""}`}
-            onClick={() => !isEditing && setKind("TRACKABLE")}
-            disabled={isEditing}
-          >
-            Чек-лист с отметками
-          </button>
-          <button
-            type="button"
-            className={`rounded-2xl border px-3 py-2 text-sm transition ${
-              kind === "INFO" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-subtle bg-surface"
-            } ${isEditing ? "cursor-not-allowed opacity-70" : ""}`}
-            onClick={() => !isEditing && setKind("INFO")}
-            disabled={isEditing}
-          >
-            Обычный чек-лист
-          </button>
-        </div>
-
         <Input label="Название" value={name} onChange={(event) => setName(event.target.value)} disabled={submitting} />
 
         <div>

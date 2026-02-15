@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import ru.staffly.checklist.model.Checklist;
+import ru.staffly.checklist.model.ChecklistKind;
 
 import java.util.List;
 import java.util.Optional;
@@ -23,9 +24,16 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             select distinct c
             from Checklist c
             where c.restaurant.id = :restaurantId
-            order by c.kind desc, c.name asc
+              and (:positionId is null or exists (
+                    select 1
+                    from c.positions p
+                    where p.id = :positionId
+              ))
+              and (:kind is null or c.kind = :kind)
+              and (:query is null or lower(c.name) like lower(concat('%', :query, '%')))
+            order by c.name asc
             """)
-    List<Checklist> findListDetailedByRestaurantId(Long restaurantId);
+    List<Checklist> findListDetailedByRestaurantId(Long restaurantId, Long positionId, ChecklistKind kind, String query);
 
     @EntityGraph(attributePaths = {"positions", "restaurant"})
     Optional<Checklist> findWithPositionsById(Long id);
