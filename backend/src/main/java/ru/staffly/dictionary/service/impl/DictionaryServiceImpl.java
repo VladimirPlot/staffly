@@ -3,9 +3,11 @@ package ru.staffly.dictionary.service.impl;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.dictionary.dto.CreatePositionRequest;
 import ru.staffly.dictionary.dto.PositionDto;
 import ru.staffly.dictionary.dto.ShiftDto;
 import ru.staffly.dictionary.mapper.PositionMapper;
@@ -38,7 +40,7 @@ public class DictionaryServiceImpl implements DictionaryService {
 
     @Override
     @Transactional
-    public PositionDto createPosition(Long restaurantId, Long currentUserId, PositionDto dto) {
+    public PositionDto createPosition(Long restaurantId, Long currentUserId, CreatePositionRequest dto) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         RestaurantRole level = dto.level() != null ? dto.level() : RestaurantRole.STAFF;
 
@@ -58,8 +60,10 @@ public class DictionaryServiceImpl implements DictionaryService {
             throw new ConflictException("Position already exists: " + name);
         }
 
+        validateCompensation(dto.payType(), dto.payRate());
+
         Position p = positionMapper.toEntity(
-                new PositionDto(dto.id(), restaurantId, name, Boolean.TRUE, level, dto.payType(), dto.payRate(), dto.normHours()),
+                new PositionDto(null, restaurantId, name, Boolean.TRUE, level, dto.payType(), dto.payRate(), dto.normHours()),
                 r
         );
         p = positions.save(p);
@@ -112,6 +116,8 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (!isAdmin && newLevel != RestaurantRole.STAFF) {
             throw new ForbiddenException("Managers can set only STAFF-level positions");
         }
+
+        validateCompensation(dto.payType(), dto.payRate());
 
         positionMapper.updateEntity(
                 p,
@@ -231,6 +237,15 @@ public class DictionaryServiceImpl implements DictionaryService {
 
     private String normName(String s) {
         return s == null ? null : s.trim();
+    }
+
+    private void validateCompensation(ru.staffly.master_schedule.model.PayType payType, java.math.BigDecimal payRate) {
+        if (payRate != null && payRate.signum() < 0) {
+            throw new BadRequestException("payRate must be >= 0");
+        }
+        if (payRate != null && payType == null) {
+            throw new BadRequestException("payType is required when payRate is provided");
+        }
     }
 
     /** Разрешаем ночные смены (end < start => следующий день). Запрещаем 0 и >18ч. */

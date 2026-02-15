@@ -9,7 +9,7 @@ export type PositionDto = {
   name: string;
   active: boolean;
   level: RestaurantRole;
-  payType: PayType;
+  payType: PayType | null;
   payRate: number | null;
   normHours: number | null;
 };
@@ -33,14 +33,14 @@ export async function listPositions(
 // Создать (name + level). active проставим true.
 export async function createPosition(
   restaurantId: number,
-  payload: { name: string; level: RestaurantRole; payType?: PayType; payRate?: number | null; normHours?: number | null }
+  payload: { name: string; level: RestaurantRole; payType?: PayType | null; payRate?: number | null; normHours?: number | null }
 ): Promise<PositionDto> {
   const body = {
     restaurantId,
     name: payload.name.trim(),
     level: payload.level,
     active: true,
-    payType: payload.payType ?? "HOURLY",
+    payType: payload.payType ?? null,
     payRate: payload.payRate ?? null,
     normHours: payload.normHours ?? null,
   };

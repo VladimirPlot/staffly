@@ -1,12 +1,13 @@
 package ru.staffly.dictionary.service;
 
+import ru.staffly.dictionary.dto.CreatePositionRequest;
 import ru.staffly.dictionary.dto.PositionDto;
 import ru.staffly.dictionary.dto.ShiftDto;
 
 import java.util.List;
 
 public interface DictionaryService {
-    PositionDto createPosition(Long restaurantId, Long currentUserId, PositionDto dto);
+    PositionDto createPosition(Long restaurantId, Long currentUserId, CreatePositionRequest dto);
     List<PositionDto> listPositions(Long restaurantId, Long currentUserId, boolean includeInactive);
     PositionDto updatePosition(Long restaurantId, Long currentUserId, Long positionId, PositionDto dto);
     void deletePosition(Long restaurantId, Long currentUserId, Long positionId);

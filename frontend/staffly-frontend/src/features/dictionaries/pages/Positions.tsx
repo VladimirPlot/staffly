@@ -1,23 +1,22 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import Card from "../../../shared/ui/Card";
-import Button from "../../../shared/ui/Button";
-import Input from "../../../shared/ui/Input";
-import SelectField from "../../../shared/ui/SelectField";
-import BackToHome from "../../../shared/ui/BackToHome";
-import Modal from "../../../shared/ui/Modal";
-import { useAuth } from "../../../shared/providers/AuthProvider";
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import BackToHome from "../../../shared/ui/BackToHome";
+import Button from "../../../shared/ui/Button";
+import Card from "../../../shared/ui/Card";
 import Icon from "../../../shared/ui/Icon";
+import Input from "../../../shared/ui/Input";
+import Modal from "../../../shared/ui/Modal";
+import SelectField from "../../../shared/ui/SelectField";
+import { useAuth } from "../../../shared/providers/AuthProvider";
 import { listMembers, type MemberDto } from "../../employees/api";
-
 import {
-  listPositions,
   createPosition,
-  updatePosition,
   deletePosition,
-  type PositionDto,
+  listPositions,
+  updatePosition,
   type PayType,
+  type PositionDto,
   type RestaurantRole,
 } from "../api";
 
@@ -26,6 +25,96 @@ const ROLE_LABEL: Record<RestaurantRole, string> = {
   MANAGER: "Менеджер",
   STAFF: "Сотрудник",
 };
+
+type PositionCompensationForm = {
+  payType: PayType | "";
+  payRate: string;
+  normHours: string;
+};
+
+function PositionCompensationFields({
+  value,
+  onChange,
+  optional,
+}: {
+  value: PositionCompensationForm;
+  onChange: (next: PositionCompensationForm) => void;
+  optional?: boolean;
+}) {
+  return (
+    <>
+      <SelectField
+        label={optional ? "Тип оплаты (опционально)" : "Тип оплаты"}
+        value={value.payType}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            payType: event.target.value as PayType | "",
+          })
+        }
+      >
+        {optional && <option value="">Не указан</option>}
+        <option value="HOURLY">Почасовая</option>
+        <option value="SHIFT">Сменная</option>
+        <option value="SALARY">Оклад</option>
+      </SelectField>
+      <Input
+        label={optional ? "Ставка (опционально)" : "Ставка"}
+        type="number"
+        inputMode="decimal"
+        min="0"
+        value={value.payRate}
+        onChange={(event) => onChange({ ...value, payRate: event.target.value })}
+      />
+      {(value.payType === "SALARY" || (optional && value.normHours !== "")) && (
+        <Input
+          label={optional ? "Норматив часов (опционально)" : "Норматив часов"}
+          type="number"
+          inputMode="numeric"
+          value={value.normHours}
+          onChange={(event) => onChange({ ...value, normHours: event.target.value })}
+        />
+      )}
+    </>
+  );
+}
+
+function toNullableNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseCompensation(form: PositionCompensationForm): {
+  payType: PayType | null;
+  payRate: number | null;
+  normHours: number | null;
+  error: string | null;
+} {
+  const payRate = toNullableNumber(form.payRate);
+  if (payRate != null && payRate < 0) {
+    return { payType: null, payRate: null, normHours: null, error: "Ставка не может быть меньше 0" };
+  }
+
+  if (payRate != null && !form.payType) {
+    return {
+      payType: null,
+      payRate: null,
+      normHours: null,
+      error: "Выберите тип оплаты, если указана ставка",
+    };
+  }
+
+  const normHours = form.payType === "SALARY" ? toNullableNumber(form.normHours) : null;
+
+  return {
+    payType: form.payType || null,
+    payRate,
+    normHours,
+    error: null,
+  };
+}
 
 export default function PositionsPage() {
   const { user } = useAuth();
@@ -38,16 +127,22 @@ export default function PositionsPage() {
   const [editing, setEditing] = React.useState<PositionDto | null>(null);
   const [editName, setEditName] = React.useState("");
   const [editLevel, setEditLevel] = React.useState<RestaurantRole>("STAFF");
-  const [editPayType, setEditPayType] = React.useState<PayType>("HOURLY");
-  const [editPayRate, setEditPayRate] = React.useState("");
-  const [editNormHours, setEditNormHours] = React.useState("");
+  const [editCompensation, setEditCompensation] = React.useState<PositionCompensationForm>({
+    payType: "HOURLY",
+    payRate: "",
+    normHours: "",
+  });
+  const [formError, setFormError] = React.useState<string | null>(null);
 
-  // форма создания
   const [name, setName] = React.useState("");
   const [level, setLevel] = React.useState<RestaurantRole>("STAFF");
+  const [createCompensation, setCreateCompensation] = React.useState<PositionCompensationForm>({
+    payType: "",
+    payRate: "",
+    normHours: "",
+  });
   const [creating, setCreating] = React.useState(false);
 
-  // Показываем UI всем, а права проверит бэкенд (403 при отсутствии прав).
   const canManage = true;
 
   const load = React.useCallback(async () => {
@@ -76,9 +171,12 @@ export default function PositionsPage() {
     if (!editing) return;
     setEditName(editing.name);
     setEditLevel(editing.level);
-    setEditPayType(editing.payType);
-    setEditPayRate(editing.payRate?.toString() ?? "");
-    setEditNormHours(editing.normHours?.toString() ?? "");
+    setEditCompensation({
+      payType: editing.payType ?? "HOURLY",
+      payRate: editing.payRate?.toString() ?? "",
+      normHours: editing.normHours?.toString() ?? "",
+    });
+    setFormError(null);
   }, [editing]);
 
   if (!restaurantId) {
@@ -111,40 +209,56 @@ export default function PositionsPage() {
         <h2 className="text-xl font-semibold">Должности</h2>
       </div>
 
-      {/* Создание */}
       <Card className="mb-4">
         <div className="mb-3 text-sm font-medium">Добавить должность</div>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Input
             label="Название"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
             placeholder="Официант"
           />
-          <div className="sm:w-56">
-            <SelectField
-              label="Уровень"
-              value={level}
-              onChange={(e) => setLevel(e.target.value as RestaurantRole)}
-            >
-              <option value="STAFF">Сотрудник</option>
-              <option value="MANAGER">Менеджер</option>
-              <option value="ADMIN">Админ</option>
-            </SelectField>
-          </div>
+          <SelectField
+            label="Уровень"
+            value={level}
+            onChange={(event) => setLevel(event.target.value as RestaurantRole)}
+          >
+            <option value="STAFF">Сотрудник</option>
+            <option value="MANAGER">Менеджер</option>
+            <option value="ADMIN">Админ</option>
+          </SelectField>
+          <PositionCompensationFields
+            value={createCompensation}
+            onChange={setCreateCompensation}
+            optional
+          />
           <div className="flex items-end">
             <Button
               disabled={!name.trim() || creating || !canManage}
               onClick={async () => {
                 if (!name.trim()) return;
+                const compensation = parseCompensation(createCompensation);
+                if (compensation.error) {
+                  setFormError(compensation.error);
+                  return;
+                }
+
                 try {
                   setCreating(true);
-                  await createPosition(restaurantId, { name, level });
+                  setFormError(null);
+                  await createPosition(restaurantId, {
+                    name,
+                    level,
+                    payType: compensation.payType,
+                    payRate: compensation.payRate,
+                    normHours: compensation.normHours,
+                  });
                   setName("");
                   setLevel("STAFF");
+                  setCreateCompensation({ payType: "", payRate: "", normHours: "" });
                   await load();
                 } catch (e: any) {
-                  alert(e?.friendlyMessage || "Ошибка создания");
+                  setFormError(e?.friendlyMessage || "Ошибка создания");
                 } finally {
                   setCreating(false);
                 }
@@ -154,14 +268,9 @@ export default function PositionsPage() {
             </Button>
           </div>
         </div>
-        {!canManage && (
-          <div className="mt-2 text-xs text-muted">
-            У вас нет прав на создание должностей (нужен MANAGER или ADMIN).
-          </div>
-        )}
+        {formError && <div className="mt-2 text-xs text-red-600">{formError}</div>}
       </Card>
 
-      {/* Список */}
       <Card>
         {loading ? (
           <div>Загрузка…</div>
@@ -171,16 +280,16 @@ export default function PositionsPage() {
           <div className="text-muted">Пока нет должностей.</div>
         ) : (
           <div className="divide-y">
-            {items.map((p) => (
+            {items.map((position) => (
               <div
-                key={p.id}
+                key={position.id}
                 className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-base font-medium">{p.name}</div>
+                  <div className="truncate text-base font-medium">{position.name}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted">
                     <span className="rounded-full border border-subtle px-2 py-0.5 text-muted">
-                      {ROLE_LABEL[p.level]}
+                      {ROLE_LABEL[position.level]}
                     </span>
                   </div>
                 </div>
@@ -191,7 +300,7 @@ export default function PositionsPage() {
                     variant="outline"
                     size="icon"
                     disabled={!canManage}
-                    onClick={() => setEditing(p)}
+                    onClick={() => setEditing(position)}
                     aria-label="Редактировать должность"
                   >
                     <Icon icon={Pencil} size="xs" />
@@ -203,16 +312,14 @@ export default function PositionsPage() {
                     size="icon"
                     disabled={!canManage}
                     onClick={async () => {
-                      const hasEmployees = members.some(
-                        (member) => member.positionId === p.id,
-                      );
+                      const hasEmployees = members.some((member) => member.positionId === position.id);
                       if (hasEmployees) {
                         alert("В ресторане есть сотрудники с этой должностью");
                         return;
                       }
-                      if (!confirm(`Удалить должность «${p.name}»?`)) return;
+                      if (!confirm(`Удалить должность «${position.name}»?`)) return;
                       try {
-                        await deletePosition(restaurantId, p.id);
+                        await deletePosition(restaurantId, position.id);
                         await load();
                       } catch (e: any) {
                         alert(e?.friendlyMessage || "Ошибка удаления");
@@ -241,22 +348,25 @@ export default function PositionsPage() {
             <Button
               onClick={async () => {
                 if (!editing || !restaurantId) return;
+                const compensation = parseCompensation(editCompensation);
+                if (compensation.error) {
+                  setFormError(compensation.error);
+                  return;
+                }
                 try {
+                  setFormError(null);
                   await updatePosition(restaurantId, editing.id, {
                     name: editName.trim(),
                     level: editLevel,
                     active: editing.active,
-                    payType: editPayType,
-                    payRate: editPayRate ? Number(editPayRate) : null,
-                    normHours:
-                      editPayType === "SALARY" && editNormHours
-                        ? Number(editNormHours)
-                        : null,
+                    payType: compensation.payType ?? undefined,
+                    payRate: compensation.payRate,
+                    normHours: compensation.normHours,
                   });
                   setEditing(null);
                   await load();
                 } catch (e: any) {
-                  alert(e?.friendlyMessage || "Ошибка обновления");
+                  setFormError(e?.friendlyMessage || "Ошибка обновления");
                 }
               }}
               disabled={!editName.trim()}
@@ -267,46 +377,19 @@ export default function PositionsPage() {
         }
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Название"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-          />
+          <Input label="Название" value={editName} onChange={(event) => setEditName(event.target.value)} />
           <SelectField
             label="Уровень"
             value={editLevel}
-            onChange={(e) => setEditLevel(e.target.value as RestaurantRole)}
+            onChange={(event) => setEditLevel(event.target.value as RestaurantRole)}
           >
             <option value="STAFF">Сотрудник</option>
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
           </SelectField>
-          <SelectField
-            label="Тип оплаты"
-            value={editPayType}
-            onChange={(e) => setEditPayType(e.target.value as PayType)}
-          >
-            <option value="HOURLY">Почасовая</option>
-            <option value="SHIFT">Сменная</option>
-            <option value="SALARY">Оклад</option>
-          </SelectField>
-          <Input
-            label="Ставка"
-            type="number"
-            inputMode="decimal"
-            value={editPayRate}
-            onChange={(e) => setEditPayRate(e.target.value)}
-          />
-          {editPayType === "SALARY" && (
-            <Input
-              label="Норматив часов"
-              type="number"
-              inputMode="numeric"
-              value={editNormHours}
-              onChange={(e) => setEditNormHours(e.target.value)}
-            />
-          )}
+          <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} />
         </div>
+        {formError && <div className="mt-2 text-xs text-red-600">{formError}</div>}
       </Modal>
     </div>
   );

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import ru.staffly.dictionary.dto.CreatePositionRequest;
 import ru.staffly.dictionary.dto.PositionDto;
 import ru.staffly.dictionary.dto.ShiftDto;
 import ru.staffly.dictionary.service.DictionaryService;
@@ -38,7 +39,7 @@ public class DictionaryController {
     @PostMapping("/positions")
     public PositionDto createPosition(@PathVariable Long restaurantId,
                                       @AuthenticationPrincipal UserPrincipal principal,
-                                      @Valid @RequestBody PositionDto dto) {
+                                      @Valid @RequestBody CreatePositionRequest dto) {
         return dictionaries.createPosition(restaurantId, principal.userId(), dto);
     }
 
