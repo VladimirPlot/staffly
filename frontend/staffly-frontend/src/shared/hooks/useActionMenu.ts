@@ -13,7 +13,7 @@ export default function useActionMenu<T extends MenuId>({ openId, setOpenId, sco
     if (openId == null) return;
 
     const key = `${scope}:${openId}`;
-    const onPointerDown = (event: PointerEvent) => {
+    const onClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
 
@@ -25,10 +25,15 @@ export default function useActionMenu<T extends MenuId>({ openId, setOpenId, sco
       }
 
       setOpenId(null);
+      event.preventDefault();
+      event.stopPropagation();
     };
 
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
+    window.addEventListener("click", onClickCapture, { capture: true });
+
+    return () => {
+      window.removeEventListener("click", onClickCapture, { capture: true });
+    };
   }, [openId, scope, setOpenId]);
 
   const getActionsKey = useCallback((id: T) => `${scope}:${id}`, [scope]);

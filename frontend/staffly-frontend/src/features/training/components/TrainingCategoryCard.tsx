@@ -66,20 +66,6 @@ export default function TrainingCategoryCard({
         isEditing ? "" : "cursor-pointer",
       ].join(" ")}
 
-      // 🔥 Главное исправление — перехват до click
-      onPointerDownCapture={(e) => {
-        if (isEditing) return;
-        if (!actionsOpen) return;
-
-        const target = e.target;
-        if (target instanceof Element && target.closest("[data-actions]")) {
-          return;
-        }
-
-        // если меню открыто и клик вне меню — просто закрываем
-        onCloseActions();
-      }}
-
       onClick={(e) => {
         if (isEditing) return;
 
@@ -87,9 +73,6 @@ export default function TrainingCategoryCard({
         if (target instanceof Element && target.closest("[data-actions]")) {
           return;
         }
-
-        // если меню было открыто — не навигируем
-        if (actionsOpen) return;
 
         navigate(`/training/${moduleConfig.slug}/categories/${category.id}`);
       }}
@@ -127,8 +110,6 @@ export default function TrainingCategoryCard({
               <div
                 data-actions
                 className="relative shrink-0"
-                onPointerDown={(e) => e.stopPropagation()}
-                onPointerUp={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
                 <IconButton
@@ -146,8 +127,6 @@ export default function TrainingCategoryCard({
                     data-actions
                     data-actions-menu={actionsKey}
                     className="absolute right-0 top-12 z-40 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onPointerUp={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Button
