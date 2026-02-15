@@ -441,7 +441,7 @@ export default function MasterScheduleEditorPage() {
               <div className="min-w-0">
                 <h2 className="text-xl font-semibold">{scheduleName}</h2>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-end gap-2">
                 <SelectField
                   label="Добавить должность"
                   value={positionToAdd}

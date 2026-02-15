@@ -283,52 +283,57 @@ export default function PositionsPage() {
             {items.map((position) => (
               <div
                 key={position.id}
-                className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-2 py-3"
               >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-base font-medium">{position.name}</div>
+                  </div>
+
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={!canManage}
+                      onClick={() => setEditing(position)}
+                      aria-label="Редактировать должность"
+                    >
+                      <Icon icon={Pencil} size="xs" />
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={!canManage}
+                      onClick={async () => {
+                        const hasEmployees = members.some((member) => member.positionId === position.id);
+                        if (hasEmployees) {
+                          alert("В ресторане есть сотрудники с этой должностью");
+                          return;
+                        }
+                        if (!confirm(`Удалить должность «${position.name}»?`)) return;
+                        try {
+                          await deletePosition(restaurantId, position.id);
+                          await load();
+                        } catch (e: any) {
+                          alert(e?.friendlyMessage || "Ошибка удаления");
+                        }
+                      }}
+                      aria-label="Удалить должность"
+                    >
+                      <Icon icon={Trash2} size="xs" />
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="min-w-0">
-                  <div className="truncate text-base font-medium">{position.name}</div>
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted">
                     <span className="rounded-full border border-subtle px-2 py-0.5 text-muted">
                       {ROLE_LABEL[position.level]}
                     </span>
                   </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    disabled={!canManage}
-                    onClick={() => setEditing(position)}
-                    aria-label="Редактировать должность"
-                  >
-                    <Icon icon={Pencil} size="xs" />
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    disabled={!canManage}
-                    onClick={async () => {
-                      const hasEmployees = members.some((member) => member.positionId === position.id);
-                      if (hasEmployees) {
-                        alert("В ресторане есть сотрудники с этой должностью");
-                        return;
-                      }
-                      if (!confirm(`Удалить должность «${position.name}»?`)) return;
-                      try {
-                        await deletePosition(restaurantId, position.id);
-                        await load();
-                      } catch (e: any) {
-                        alert(e?.friendlyMessage || "Ошибка удаления");
-                      }
-                    }}
-                    aria-label="Удалить должность"
-                  >
-                    <Icon icon={Trash2} size="xs" />
-                  </Button>
                 </div>
               </div>
             ))}
