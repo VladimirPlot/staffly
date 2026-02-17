@@ -31,11 +31,13 @@ function formatShortDate(dateStr: string): string {
 type AnnouncementsManagerProps = {
   restaurantId: number;
   canManage: boolean;
+  hideHeader?: boolean;
 };
 
 const AnnouncementsManager = ({
   restaurantId,
   canManage,
+  hideHeader = false,
 }: AnnouncementsManagerProps) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
@@ -87,6 +89,19 @@ const AnnouncementsManager = ({
     setDialogError(null);
     setDialogOpen(true);
   }, []);
+
+
+  useEffect(() => {
+    function handleOpenDialog() {
+      if (!canManage) return;
+      openCreate();
+    }
+
+    window.addEventListener("open-announcement-dialog", handleOpenDialog);
+    return () => {
+      window.removeEventListener("open-announcement-dialog", handleOpenDialog);
+    };
+  }, [canManage, openCreate]);
 
   const closeDialog = useCallback(() => {
     if (submitting) return;
@@ -157,7 +172,7 @@ const AnnouncementsManager = ({
           {canManage && (
             <div className="flex items-center gap-1">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 aria-label="Изменить"
                 onClick={() => openEdit(announcement)}
@@ -165,7 +180,7 @@ const AnnouncementsManager = ({
                 <Icon icon={Pencil} size="sm" decorative />
               </Button>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="icon"
                 className="text-red-600"
                 aria-label="Удалить"
@@ -178,23 +193,10 @@ const AnnouncementsManager = ({
         </div>
         <ContentText className="mt-2 text-base text-strong">{announcement.content}</ContentText>
         {announcement.positions.length > 0 && (
-          <div className="mt-3 flex flex-col gap-1 text-xs text-default">
-            <div className="text-[11px] font-semibold uppercase text-muted">Должности</div>
-            <div className="flex flex-wrap gap-2">
-              {announcement.positions.map((p) => (
-                <span
-                  key={p.id}
-                  className={`rounded-full border px-2 py-1 ${
-                    p.active
-                      ? "border-subtle bg-app"
-                      : "border-amber-200 bg-amber-50 text-amber-800"
-                  }`}
-                >
-                  {p.name}
-                  {!p.active ? " (неактивна)" : ""}
-                </span>
-              ))}
-            </div>
+          <div className="mt-3 text-xs uppercase tracking-wide text-muted">
+            {announcement.positions
+              .map((position) => `${position.name}${!position.active ? " (неактивна)" : ""}`)
+              .join(", ")}
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -216,15 +218,17 @@ const AnnouncementsManager = ({
 
   return (
     <Card className="mb-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="text-lg font-semibold text-strong">Объявления</div>
-          <div className="text-sm text-muted">Сообщения руководства по должностям</div>
+      {!hideHeader && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-strong">Объявления</div>
+            <div className="text-sm text-muted">Сообщения руководства по должностям</div>
+          </div>
+          {canManage && <Button onClick={openCreate}>Создать объявление</Button>}
         </div>
-        {canManage && <Button onClick={openCreate}>Создать объявление</Button>}
-      </div>
+      )}
 
-      <div className="mt-4 space-y-3">
+      <div className={`${hideHeader ? "" : "mt-4 "}space-y-3`}>
         {announcements.length > 0 ? announcements.map(renderAnnouncement) : emptyState}
       </div>
 

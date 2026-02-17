@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
-import Textarea from "../../../shared/ui/Textarea";
 import Button from "../../../shared/ui/Button";
+import Icon from "../../../shared/ui/Icon";
+import Textarea from "../../../shared/ui/Textarea";
 import type { ChecklistRequest, ChecklistKind, ChecklistPeriodicity } from "../api";
 import type { PositionDto } from "../../dictionaries/api";
 
@@ -233,7 +235,7 @@ const ChecklistDialog = ({
       title={title}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
@@ -265,17 +267,19 @@ const ChecklistDialog = ({
                   ))}
                 </select>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="icon"
                   onClick={() => handleRemovePosition(field.id)}
                   disabled={positionFields.length <= 1 || submitting}
-                  className="text-sm text-muted"
+                  className="text-default"
+                  aria-label="Удалить должность"
                 >
-                  Удалить
+                  <Icon icon={Trash2} />
                 </Button>
               </div>
             ))}
           </div>
-          <Button variant="ghost" onClick={handleAddPosition} disabled={submitting} className="mt-2 text-sm">
+          <Button variant="outline" onClick={handleAddPosition} disabled={submitting} className="mt-2 text-sm">
             Добавить должность
           </Button>
         </div>
@@ -374,27 +378,31 @@ const ChecklistDialog = ({
               <div className="mb-2 text-sm text-default">Пункты чек-листа</div>
               <div className="space-y-3">
                 {items.map((item) => (
-                  <div key={item.id} className="flex items-start gap-3">
-                    <Textarea
-                      label="Пункт чек-листа"
+                  <div key={item.id} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-muted">Пункт чек-листа</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleRemoveItem(item.id)}
+                        disabled={items.length <= 1 || submitting}
+                        className="text-default"
+                        aria-label="Удалить пункт чек-листа"
+                      >
+                        <Icon icon={Trash2} />
+                      </Button>
+                    </div>
+                    <textarea
                       value={item.value}
                       onChange={(event) => handleItemChange(item.id, event.target.value)}
                       rows={2}
                       disabled={submitting}
-                      className="flex-1 resize-y"
+                      className="w-full resize-y rounded-2xl border border-subtle bg-surface p-3 text-[16px] text-default outline-none transition focus:ring-2 focus:ring-default [overflow-wrap:anywhere]"
                     />
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleRemoveItem(item.id)}
-                      disabled={items.length <= 1 || submitting}
-                      className="text-sm text-muted"
-                    >
-                      Удалить
-                    </Button>
                   </div>
                 ))}
               </div>
-              <Button variant="ghost" onClick={handleAddItem} disabled={submitting} className="mt-2 text-sm">
+              <Button variant="outline" onClick={handleAddItem} disabled={submitting} className="mt-2 text-sm">
                 Добавить пункт
               </Button>
             </div>

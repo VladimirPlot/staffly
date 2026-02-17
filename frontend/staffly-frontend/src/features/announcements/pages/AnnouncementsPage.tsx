@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import BackToHome from "../../../shared/ui/BackToHome";
+import Button from "../../../shared/ui/Button";
 import PageLoader from "../../../shared/ui/PageLoader";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { fetchMyRoleIn } from "../../employees/api";
@@ -58,17 +59,30 @@ const AnnouncementsPage = () => {
 
   if (loadingRole) return <PageLoader />;
 
+  const handleCreate = () => {
+    window.dispatchEvent(new CustomEvent("open-announcement-dialog"));
+  };
+
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-3">
         <BackToHome />
       </div>
-      <h2 className="text-2xl font-semibold">Объявления</h2>
-      <p className="mb-4 text-sm text-muted">
-        Сообщения руководства для сотрудников по должностям.
-      </p>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Объявления</h2>
+          <p className="text-sm text-muted">
+            Сообщения руководства для сотрудников по должностям.
+          </p>
+        </div>
+        {canManageAnnouncements && <Button onClick={handleCreate}>Создать объявление</Button>}
+      </div>
 
-      <AnnouncementsManager restaurantId={restaurantId} canManage={canManageAnnouncements} />
+      <AnnouncementsManager
+        restaurantId={restaurantId}
+        canManage={canManageAnnouncements}
+        hideHeader
+      />
     </div>
   );
 };

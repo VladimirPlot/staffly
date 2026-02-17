@@ -6,6 +6,8 @@ import Textarea from "../../shared/ui/Textarea";
 import Button from "../../shared/ui/Button";
 import type { AnnouncementRequest } from "./api";
 import type { PositionDto } from "../dictionaries/api";
+import Icon from "../../shared/ui/Icon";
+import { Trash2 } from "lucide-react";
 
 type PositionField = { id: string; value: number | "" };
 
@@ -109,15 +111,20 @@ const AnnouncementDialog = ({
   }, [content, expiresAt, fields, onSubmit]);
 
   const effectiveError = error || localError;
+  const selectedPositionIds = useMemo(
+    () => new Set(fields.map((field) => field.value).filter((value): value is number => typeof value === "number")),
+    [fields],
+  );
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title={title}
+      closeButtonVariant="outline"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
@@ -140,24 +147,30 @@ const AnnouncementDialog = ({
                 >
                   <option value="">Выберите должность</option>
                   {positionOptions.map((position) => (
-                    <option key={position.id} value={position.id}>
+                    <option
+                      key={position.id}
+                      value={position.id}
+                      disabled={selectedPositionIds.has(position.id) && field.value !== position.id}
+                    >
                       {position.name}
                       {!position.active ? " (неактивна)" : ""}
                     </option>
                   ))}
                 </select>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Удалить должность"
                   onClick={() => handleRemove(field.id)}
                   disabled={fields.length <= 1 || submitting}
-                  className="text-sm text-muted"
+                  className="text-muted"
                 >
-                  Удалить
+                  <Icon icon={Trash2} size="sm" decorative />
                 </Button>
               </div>
             ))}
           </div>
-          <Button variant="ghost" onClick={handleAdd} disabled={submitting} className="mt-2 text-sm">
+          <Button variant="outline" onClick={handleAdd} disabled={submitting} className="mt-2 text-sm">
             Добавить должность
           </Button>
         </div>

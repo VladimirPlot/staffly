@@ -10,6 +10,7 @@ type ModalProps = {
   onClose: () => void;
   footer?: React.ReactNode;
   className?: string;
+  closeButtonVariant?: "ghost" | "outline";
   children?: React.ReactNode;
 };
 
@@ -20,6 +21,7 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   footer,
   className = "",
+  closeButtonVariant = "ghost",
   children,
 }) => {
   const dialogRef = React.useRef<HTMLDivElement>(null);
@@ -127,10 +129,6 @@ const Modal: React.FC<ModalProps> = ({
                 </div>
               )}
             </div>
-
-            <Button variant="ghost" onClick={() => onCloseRef.current()}>
-              Закрыть
-            </Button>
           </div>
 
           {children && <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>}

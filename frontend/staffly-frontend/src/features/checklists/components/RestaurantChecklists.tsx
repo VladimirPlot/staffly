@@ -486,12 +486,12 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                           aria-hidden
                         />
                       )}
-                      <div className="text-base font-semibold text-strong">{checklist.name}</div>
+                      <div className="text-base font-semibold text-strong [overflow-wrap:anywhere]">{checklist.name}</div>
                     </div>
                     {isTrackable && checklist.periodLabel && (
                       <div className="text-sm text-default">{checklist.periodLabel}</div>
                     )}
-                    <div className="mt-1 text-xs uppercase tracking-wide text-muted">{assignedNames}</div>
+                    <div className="mt-1 text-xs uppercase tracking-wide text-muted [overflow-wrap:anywhere]">{assignedNames}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" onClick={() => toggleExpanded(checklist.id)} className="text-sm">
@@ -537,10 +537,10 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                     )}
                     {canManage && (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
                         onClick={() => openEditDialog(checklist)}
-                        className="text-muted"
+                        className="text-default"
                         aria-label="Редактировать"
                       >
                         <Icon icon={Pencil} />
@@ -548,10 +548,10 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                     )}
                     {canManage && (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
                         onClick={() => openDeleteDialog(checklist)}
-                        className="text-red-600 hover:bg-red-50"
+                        className="text-default"
                         aria-label="Удалить"
                       >
                         <Icon icon={Trash2} />
@@ -582,7 +582,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                             <div key={item.id} className="border-b border-subtle px-3 py-3 last:border-b-0">
                               <div className="flex items-start justify-between gap-3">
                                 <ContentText
-                                  className={`min-w-0 ${item.done ? "text-muted line-through" : "text-default"}`}
+                                  className={`min-w-0 flex-1 [overflow-wrap:anywhere] ${item.done ? "text-muted line-through" : "text-default"}`}
                                 >
                                   {item.text}
                                 </ContentText>
@@ -674,7 +674,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                         </div>
                       </div>
                     ) : (
-                      <ContentText className="p-4">{checklist.content ?? ""}</ContentText>
+                      <ContentText className="p-4 [overflow-wrap:anywhere]">{checklist.content ?? ""}</ContentText>
                     )}
                   </div>
                 )}
