@@ -183,7 +183,7 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
 
                 <div className="relative" data-contact-menu>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="icon"
                     onClick={() => toggleMenu(contact.id)}
                     data-contact-trigger
@@ -192,10 +192,10 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
                   >
                   </Button>
                   {menuFor === contact.id && (
-                    <div className="absolute right-0 z-10 mt-2 w-48 rounded-2xl border border-subtle bg-surface p-2 shadow-[var(--staffly-shadow)]">
+                    <div className="absolute right-0 z-10 mt-2 w-48 rounded-2xl border border-subtle bg-surface p-2 shadow-[var(--staffly-shadow)] space-y-2">
                       <Button
-                        variant="ghost"
-                        className="w-full justify-start text-sm"
+                        variant="outline"
+                        className="w-full justify-center text-center text-sm"
                         onClick={() => {
                           openEditDialog(contact);
                           setMenuFor(null);
@@ -203,9 +203,10 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
                       >
                         Изменить контакт
                       </Button>
+
                       <Button
-                        variant="ghost"
-                        className="w-full justify-start text-sm text-red-600"
+                        variant="outline"
+                        className="w-full justify-center text-center text-sm text-red-600"
                         onClick={() => askDelete(contact)}
                       >
                         Удалить контакт

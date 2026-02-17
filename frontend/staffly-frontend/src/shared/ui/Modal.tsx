@@ -1,6 +1,5 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import Button from "./Button";
 import { getFocusableElements } from "./dialogUtils";
 
 type ModalProps = {
@@ -10,7 +9,6 @@ type ModalProps = {
   onClose: () => void;
   footer?: React.ReactNode;
   className?: string;
-  closeButtonVariant?: "ghost" | "outline";
   children?: React.ReactNode;
 };
 
@@ -21,7 +19,6 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   footer,
   className = "",
-  closeButtonVariant = "ghost",
   children,
 }) => {
   const dialogRef = React.useRef<HTMLDivElement>(null);

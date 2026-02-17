@@ -121,7 +121,6 @@ const AnnouncementDialog = ({
       open={open}
       onClose={onClose}
       title={title}
-      closeButtonVariant="outline"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={submitting}>

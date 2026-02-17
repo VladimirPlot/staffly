@@ -61,7 +61,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               />
             )}
           </div>
-          <div className="text-xs text-muted">
+          <div className={`text-xs text-muted ${hasSchedules ? "hidden sm:block" : ""}`}>
             {hasSchedules
               ? "Нажмите «Открыть», чтобы посмотреть график или скачайте файл."
               : canManage
@@ -73,7 +73,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
           <div className="flex items-center gap-2 text-sm text-default">
             <span>Должность:</span>
             <select
-              className="rounded-lg border border-subtle px-3 py-2 text-base text-strong focus:outline-none focus:ring-2 ring-default"
+              className="rounded-lg border border-subtle bg-surface px-3 py-2 text-base text-default focus:outline-none focus:ring-2 ring-default [color-scheme:dark]"
               value={positionFilter}
               onChange={(e) =>
                 onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))
@@ -131,7 +131,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                     {canManage && (
                       <>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
                           onClick={() => onEditSavedSchedule(item.id)}
                           aria-label="Редактировать график"
@@ -140,12 +140,12 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                           <Icon icon={Pencil} />
                         </Button>
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
                           onClick={() => onDeleteSavedSchedule(item.id)}
                           aria-label="Удалить график"
                           disabled={isDeleting}
-                          className={`text-red-600 hover:bg-red-50 ${
+                          className={`text-default ${
                             isDeleting ? "cursor-wait opacity-60" : ""
                           }`}
                         >

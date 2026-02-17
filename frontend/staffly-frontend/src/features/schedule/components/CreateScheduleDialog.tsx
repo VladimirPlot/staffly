@@ -155,7 +155,7 @@ const CreateScheduleDialog: React.FC<Props> = ({
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-2">
                 <select
-                  className="flex-1 min-w-0 rounded-2xl border border-subtle p-3 text-base outline-none transition focus:ring-2 ring-default"
+                  className="min-w-0 flex-1 rounded-2xl border border-subtle bg-surface p-3 text-base text-default outline-none transition focus:ring-2 ring-default [color-scheme:dark]"
                   value={field.value === "" ? "" : String(field.value)}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
                 >
@@ -174,7 +174,7 @@ const CreateScheduleDialog: React.FC<Props> = ({
                     size="icon"
                     onClick={() => handleRemoveField(field.id)}
                     aria-label="Удалить должность"
-                    className="shrink-0 text-red-600 hover:bg-red-50"
+                    className="text-default"
                   >
                     <Icon icon={Trash2} />
                   </Button>
@@ -191,11 +191,14 @@ const CreateScheduleDialog: React.FC<Props> = ({
         {error && <div className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       </div>
 
-      <div className="mt-6 flex justify-end gap-3">
-        <Button variant="outline" onClick={onClose}>
+      {/* Кнопки: на мобилке — 2 колонки на всю ширину, на десктопе — справа */}
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:flex sm:justify-end">
+        <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
           Отмена
         </Button>
-        <Button onClick={handleSubmit}>Создать</Button>
+        <Button onClick={handleSubmit} className="w-full sm:w-auto">
+          Создать
+        </Button>
       </div>
     </Modal>
   );

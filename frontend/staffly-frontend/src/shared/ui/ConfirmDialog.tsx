@@ -36,14 +36,23 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       onClose={handleClose}
       className="max-w-sm"
       footer={
-        <>
-          <Button variant="outline" onClick={handleClose} disabled={confirming}>
+        <div className="w-full grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            disabled={confirming}
+            className="w-full"
+          >
             {cancelText}
           </Button>
-          <Button onClick={onConfirm} disabled={confirming}>
+          <Button
+            onClick={onConfirm}
+            disabled={confirming}
+            className="w-full"
+          >
             {confirming ? "Подождите…" : confirmText}
           </Button>
-        </>
+        </div>
       }
     />
   );

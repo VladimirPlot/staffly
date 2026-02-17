@@ -59,7 +59,7 @@ const ContactsPage = () => {
       <div className="mb-3">
         <BackToHome />
       </div>
-      <h2 className="mb-4 text-2xl font-semibold">Контакты</h2>
+
       <ContactsManager restaurantId={restaurantId} />
     </div>
   );

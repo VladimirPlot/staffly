@@ -844,7 +844,8 @@ const SchedulePage: React.FC = () => {
     );
   }, [canManage, currentMember, shiftRequests]);
 
-  const showCreateScheduleButton = canManage && (!schedule || schedule.id != null);
+  const showLandingHeader = !schedule;
+  const showCreateScheduleButton = canManage && showLandingHeader;
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6">
@@ -868,19 +869,18 @@ const SchedulePage: React.FC = () => {
           </button>
         )}
       </div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-strong">Графики</h1>
-          <p className="mt-1 text-sm text-muted">
-            Создавайте и редактируйте графики для выбранных должностей.
-          </p>
+      {showLandingHeader && (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold text-strong">Графики</h1>
+          </div>
+          {showCreateScheduleButton && (
+            <Button onClick={openDialog} disabled={loading} className="shrink-0">
+              Создать график
+            </Button>
+          )}
         </div>
-        {showCreateScheduleButton && (
-          <Button onClick={openDialog} disabled={loading}>
-            Создать график
-          </Button>
-        )}
-      </div>
+      )}
 
       {loading && <Card>Загрузка…</Card>}
       {!loading && error && <Card className="text-red-600">{error}</Card>}

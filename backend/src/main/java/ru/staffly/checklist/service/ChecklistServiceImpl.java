@@ -467,24 +467,42 @@ public class ChecklistServiceImpl implements ChecklistService {
     }
 
     private void applyItems(Checklist entity, List<String> itemTexts) {
-        entity.getItems().clear();
-        if (itemTexts == null) {
-            return;
-        }
-        int order = 1;
-        for (String raw : itemTexts) {
-            String text = normalize(raw);
-            if (text == null || text.isBlank()) {
-                continue;
+        List<String> normalizedItems = itemTexts == null
+                ? List.of()
+                : itemTexts.stream()
+                .map(this::normalize)
+                .filter(text -> text != null && !text.isBlank())
+                .toList();
+
+        List<ChecklistItem> existingItems = entity.getItems().stream()
+                .sorted(Comparator.comparing(ChecklistItem::getItemOrder)
+                        .thenComparing(item -> item.getId() == null ? Long.MAX_VALUE : item.getId()))
+                .toList();
+
+        int targetCount = normalizedItems.size();
+        for (int i = 0; i < targetCount; i++) {
+            ChecklistItem item;
+            if (i < existingItems.size()) {
+                item = existingItems.get(i);
+            } else {
+                item = ChecklistItem.builder()
+                        .checklist(entity)
+                        .done(false)
+                        .build();
+                entity.getItems().add(item);
             }
-            ChecklistItem item = ChecklistItem.builder()
-                    .checklist(entity)
-                    .itemOrder(order++)
-                    .text(text)
-                    .done(false)
-                    .build();
-            entity.getItems().add(item);
+            item.setItemOrder(i + 1);
+            item.setText(normalizedItems.get(i));
+            if (!item.isDone()) {
+                item.setDoneBy(null);
+                item.setDoneAt(null);
+            }
         }
+
+        for (int i = targetCount; i < existingItems.size(); i++) {
+            entity.getItems().remove(existingItems.get(i));
+        }
+
         entity.setCompleted(false);
     }
 

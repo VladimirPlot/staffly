@@ -330,19 +330,19 @@ const RestaurantReminders = ({
                   {canEdit && (
                     <div className="flex items-center gap-2">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
                         onClick={() => openEditDialog(reminder)}
-                        className="text-muted"
+                        className="text-default"
                         aria-label="Редактировать"
                       >
                         <Icon icon={Pencil} size="sm" />
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
                         onClick={() => openDeleteDialog(reminder)}
-                        className="text-red-600 hover:bg-red-50"
+                        className="text-default"
                         aria-label="Удалить"
                       >
                         <Icon icon={Trash2} size="sm" />
