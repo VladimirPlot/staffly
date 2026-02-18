@@ -58,20 +58,11 @@ const TasksPage = () => {
   const [commentValue, setCommentValue] = useState("");
   const [commentLoading, setCommentLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TaskDto | null>(null);
-  const [activeOpen, setActiveOpen] = useState(() =>
-    readStoredGroupState("tasks:groupOpen:active")
-  );
-  const [overdueOpen, setOverdueOpen] = useState(() =>
-    readStoredGroupState("tasks:groupOpen:overdue")
-  );
-  const [completedOpen, setCompletedOpen] = useState(() =>
-    readStoredGroupState("tasks:groupOpen:completed")
-  );
+  const [activeOpen, setActiveOpen] = useState(() => readStoredGroupState("tasks:groupOpen:active"));
+  const [overdueOpen, setOverdueOpen] = useState(() => readStoredGroupState("tasks:groupOpen:overdue"));
+  const [completedOpen, setCompletedOpen] = useState(() => readStoredGroupState("tasks:groupOpen:completed"));
 
-  const access = useMemo(
-    () => resolveRestaurantAccess(user?.roles, myRole),
-    [user?.roles, myRole]
-  );
+  const access = useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
   const canManage = access.isManagerLike;
 
   useEffect(() => {
@@ -169,25 +160,19 @@ const TasksPage = () => {
     }
   }, [restaurantId, scope]);
 
-  const handleComplete = useCallback(
-    async (task: TaskDto) => {
-      try {
-        const updated = await completeTask(task.id);
-        setTasks((prev) => prev.map((item) => (item.id === task.id ? updated : item)));
-        setSelectedTask((prev) => (prev?.id === task.id ? updated : prev));
-      } catch (err) {
-        console.error("Failed to complete task", err);
-      }
-    },
-    []
-  );
+  const handleComplete = useCallback(async (task: TaskDto) => {
+    try {
+      const updated = await completeTask(task.id);
+      setTasks((prev) => prev.map((item) => (item.id === task.id ? updated : item)));
+      setSelectedTask((prev) => (prev?.id === task.id ? updated : prev));
+    } catch (err) {
+      console.error("Failed to complete task", err);
+    }
+  }, []);
 
-  const handleDelete = useCallback(
-    async (task: TaskDto) => {
-      setDeleteTarget(task);
-    },
-    []
-  );
+  const handleDelete = useCallback(async (task: TaskDto) => {
+    setDeleteTarget(task);
+  }, []);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -271,8 +256,7 @@ const TasksPage = () => {
   }, [selectedTask, commentHasNext, commentLoadingMore, commentPage]);
 
   const activeTasks = useMemo(
-    () =>
-      sortTasks(tasks.filter((task) => task.status === "ACTIVE" && !isOverdue(task.dueDate))),
+    () => sortTasks(tasks.filter((task) => task.status === "ACTIVE" && !isOverdue(task.dueDate))),
     [tasks]
   );
 
@@ -292,33 +276,36 @@ const TasksPage = () => {
         <BackToHome />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-2xl font-semibold">Задачи</h2>
           <p className="text-sm text-muted">Доска задач ресторана.</p>
         </div>
-        {canManage && (
-          <Button
-            size="icon"
-            onClick={() => setCreateOpen(true)}
-            aria-label="Создать задачу"
-            leftIcon={<Icon icon={Plus} size="sm" />}
-          />
-        )}
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {canManage ? (
-          <>
-            <Button variant={scope === "MINE" ? "primary" : "outline"} onClick={() => setScope("MINE")}>
+        {canManage && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant={scope === "MINE" ? "primary" : "outline"}
+              onClick={() => setScope("MINE")}
+            >
               Мои
             </Button>
-            <Button variant={scope === "ALL" ? "primary" : "outline"} onClick={() => setScope("ALL")}>
+            <Button
+              type="button"
+              variant={scope === "ALL" ? "primary" : "outline"}
+              onClick={() => setScope("ALL")}
+            >
               Все
             </Button>
-          </>
-        ) : (
-          <span className="text-sm text-muted">Мои задачи</span>
+            <Button
+              type="button"
+              size="icon"
+              onClick={() => setCreateOpen(true)}
+              aria-label="Создать задачу"
+              leftIcon={<Icon icon={Plus} size="sm" />}
+            />
+          </div>
         )}
       </div>
 

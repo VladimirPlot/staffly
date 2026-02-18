@@ -123,7 +123,7 @@ const TaskCreateModal = ({ open, positions, members, onClose, onCreate }: TaskCr
       onClose={onClose}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>

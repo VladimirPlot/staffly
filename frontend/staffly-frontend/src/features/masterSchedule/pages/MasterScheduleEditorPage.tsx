@@ -583,7 +583,7 @@ export default function MasterScheduleEditorPage() {
 
             <div className="flex flex-wrap items-end justify-between gap-4 rounded-3xl border border-subtle bg-surface p-4">
               <div className="space-y-2">
-                <div className="text-sm text-muted">Planned revenue</div>
+
                 <Input
                   label="Плановая выручка"
                   type="number"
