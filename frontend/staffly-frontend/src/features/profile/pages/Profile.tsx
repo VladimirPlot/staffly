@@ -278,7 +278,9 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
         <div className="flex flex-col gap-4">
           <div
             ref={cropAreaRef}
-            className="relative mx-auto h-[min(70vw,360px)] w-[min(70vw,360px)] max-h-[360px] max-w-[360px] select-none overflow-hidden rounded-2xl bg-black/70"
+            className="relative mx-auto h-[min(70vw,360px)] w-[min(70vw,360px)] max-h-[360px] max-w-[360px]
+                       select-none overflow-hidden rounded-2xl bg-black/70
+                       touch-none overscroll-contain"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerEnd}

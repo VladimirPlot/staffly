@@ -33,6 +33,33 @@ const Modal: React.FC<ModalProps> = ({
   const titleId = React.useId();
   const descriptionId = React.useId();
 
+  // ✅ lock body scroll while modal is open (mobile-friendly)
+  React.useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+
+    const body = document.body;
+    const scrollY = window.scrollY || 0;
+
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+
+    return () => {
+      const top = body.style.top;
+
+      body.style.position = "";
+      body.style.top = "";
+      body.style.left = "";
+      body.style.right = "";
+      body.style.width = "";
+
+      const restoredY = top ? Math.abs(parseInt(top, 10)) : scrollY;
+      window.scrollTo(0, restoredY);
+    };
+  }, [open]);
+
   React.useEffect(() => {
     if (!open) return;
 

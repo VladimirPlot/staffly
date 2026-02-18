@@ -44,6 +44,7 @@ services:
       - db
     volumes:
       - avatars:/app/data/avatars
+      - training:/app/data/training
 
   backend-worker:
     build:
@@ -67,6 +68,7 @@ services:
       - db
     volumes:
       - avatars:/app/data/avatars
+      - training:/app/data/training
     command: ["java","-jar","/app/app.jar","--spring.profiles.active=prod,worker"]
 
   frontend:
@@ -96,5 +98,6 @@ services:
 volumes:
   pgdata:
   avatars:
+  training:
   caddy_data:
   caddy_config:
