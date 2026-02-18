@@ -8,6 +8,7 @@ export type UserProfile = {
   firstName: string;
   lastName: string;
   fullName: string;
+  avatarUrl?: string | null;
   birthDate?: string | null;
   theme?: Theme;
 };
@@ -45,4 +46,8 @@ export async function uploadMyAvatar(file: File): Promise<{ avatarUrl: string }>
   const { data } = await api.post("/api/users/me/avatar", form);
   if (!data?.avatarUrl) throw new Error("Avatar upload failed");
   return data;
+}
+
+export async function deleteMyAvatar(): Promise<void> {
+  await api.delete("/api/users/me/avatar");
 }

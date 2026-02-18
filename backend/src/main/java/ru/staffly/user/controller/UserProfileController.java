@@ -63,6 +63,7 @@ public class UserProfileController {
             String firstName,
             String lastName,
             String fullName,
+            String avatarUrl,
             String birthDate,
             String theme
     ) {
@@ -74,6 +75,7 @@ public class UserProfileController {
                     u.getFirstName(),
                     u.getLastName(),
                     u.getFullName(),
+                    u.getAvatarUrl(),
                     u.getBirthDate() == null ? null : u.getBirthDate().toString(),
                     u.getTheme()
             );
@@ -199,5 +201,18 @@ public class UserProfileController {
         users.save(u);
 
         return Map.of("avatarUrl", publicUrl);
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @DeleteMapping("/avatar")
+    public void deleteAvatar(@AuthenticationPrincipal UserPrincipal principal) throws IOException {
+        User u = users.findById(principal.userId())
+                .orElseThrow(() -> new NotFoundException("User not found: " + principal.userId()));
+
+        avatarStorage.deleteByPublicUrl(u.getAvatarUrl());
+        if (u.getAvatarUrl() != null) {
+            u.setAvatarUrl(null);
+            users.save(u);
+        }
     }
 }

@@ -62,8 +62,8 @@ public class AvatarStorage {
         if (publicUrl == null) return;
         Path file = resolveFromPublicUrl(publicUrl);
         if (file == null) return;
-        if (file.startsWith(root) && Files.exists(file)) {
-            Files.delete(file);
+        if (file.startsWith(root)) {
+            Files.deleteIfExists(file);
         }
     }
 

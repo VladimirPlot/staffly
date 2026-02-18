@@ -4,30 +4,228 @@ import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Avatar from "../../../shared/ui/Avatar";
-import { uploadMyAvatar, getMyProfile, updateMyProfile, changeMyPassword, type UserProfile } from "../api";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import Modal from "../../../shared/ui/Modal";
+import {
+  changeMyPassword,
+  deleteMyAvatar,
+  getMyProfile,
+  updateMyProfile,
+  uploadMyAvatar,
+  type UserProfile,
+} from "../api";
 import { useAuth } from "../../../shared/providers/AuthProvider";
-import { API_BASE } from "../../../shared/utils/url";
 import { base64UrlToArrayBuffer, getVapidPublicKey, subscribePush, subscriptionToDto, unsubscribePush } from "../../push/api";
 import { applyThemeToDom, getStoredTheme, setStoredTheme, type Theme } from "../../../shared/utils/theme";
+import { getCroppedAvatarFile, isAvatarMimeType, type PixelCrop } from "../utils/avatarCrop";
+import { toAbsoluteUrl } from "../../../shared/utils/url";
 
-function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
-  const [file, setFile] = React.useState<File | null>(null);
+const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
+const CROP_SIZE = 280;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 0.05;
+
+type UploadAvatarBlockProps = {
+  currentAvatarUrl?: string;
+  onUploaded: () => Promise<void>;
+};
+
+function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockProps) {
   const [busy, setBusy] = React.useState(false);
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [preview, setPreview] = React.useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [cropModalOpen, setCropModalOpen] = React.useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [sourceImageUrl, setSourceImageUrl] = React.useState<string | null>(null);
+  const [imageNaturalSize, setImageNaturalSize] = React.useState<{ width: number; height: number } | null>(null);
+
+  const [crop, setCrop] = React.useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = React.useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = React.useState<PixelCrop | null>(null);
+
+  const dragStateRef = React.useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const cropAreaRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const selectedFileRef = React.useRef<File | null>(null);
+
+  React.useEffect(() => {
+    setPreviewUrl(currentAvatarUrl ?? null);
+  }, [currentAvatarUrl]);
 
   React.useEffect(() => {
     return () => {
-      if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
+      if (sourceImageUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(sourceImageUrl);
+      }
     };
-  }, [preview]);
+  }, [sourceImageUrl]);
 
-  const onFileChange = (f: File | null) => {
+  const baseScale = React.useMemo(() => {
+    if (!imageNaturalSize) return 1;
+    return Math.max(CROP_SIZE / imageNaturalSize.width, CROP_SIZE / imageNaturalSize.height);
+  }, [imageNaturalSize]);
+
+  const minZoom = 1;
+  const effectiveScale = baseScale * zoom;
+
+  const maxOffsets = React.useMemo(() => {
+    if (!imageNaturalSize) return { x: 0, y: 0 };
+    const scaledWidth = imageNaturalSize.width * effectiveScale;
+    const scaledHeight = imageNaturalSize.height * effectiveScale;
+    return {
+      x: Math.max(0, (scaledWidth - CROP_SIZE) / 2),
+      y: Math.max(0, (scaledHeight - CROP_SIZE) / 2),
+    };
+  }, [effectiveScale, imageNaturalSize]);
+
+  const clampCrop = React.useCallback((nextCrop: { x: number; y: number }) => ({
+    x: Math.min(maxOffsets.x, Math.max(-maxOffsets.x, nextCrop.x)),
+    y: Math.min(maxOffsets.y, Math.max(-maxOffsets.y, nextCrop.y)),
+  }), [maxOffsets.x, maxOffsets.y]);
+
+  React.useEffect(() => {
+    setCrop((prev) => clampCrop(prev));
+  }, [clampCrop]);
+
+  React.useEffect(() => {
+    if (!imageNaturalSize) {
+      setCroppedAreaPixels(null);
+      return;
+    }
+    const cropWidth = CROP_SIZE / effectiveScale;
+    const cropHeight = CROP_SIZE / effectiveScale;
+    const centeredX = (imageNaturalSize.width - cropWidth) / 2;
+    const centeredY = (imageNaturalSize.height - cropHeight) / 2;
+    const x = centeredX - crop.x / effectiveScale;
+    const y = centeredY - crop.y / effectiveScale;
+    setCroppedAreaPixels({
+      x: Math.max(0, Math.min(imageNaturalSize.width - cropWidth, x)),
+      y: Math.max(0, Math.min(imageNaturalSize.height - cropHeight, y)),
+      width: cropWidth,
+      height: cropHeight,
+    });
+  }, [crop.x, crop.y, effectiveScale, imageNaturalSize]);
+
+  const resetCropModal = React.useCallback(() => {
+    if (sourceImageUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(sourceImageUrl);
+    }
+    setCropModalOpen(false);
+    setSourceImageUrl(null);
+    setImageNaturalSize(null);
+    selectedFileRef.current = null;
+    dragStateRef.current = null;
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [sourceImageUrl]);
+
+  const onFileSelected = React.useCallback((file: File | null) => {
+    if (!file) return;
     setError(null);
-    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
-    setFile(f);
-    setPreview(f ? URL.createObjectURL(f) : null);
+
+    if (!isAvatarMimeType(file.type)) {
+      setError("Разрешены только JPEG, PNG или WEBP");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      setError("Файл больше 5MB");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (sourceImageUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(sourceImageUrl);
+    }
+
+    selectedFileRef.current = file;
+    setSourceImageUrl(URL.createObjectURL(file));
+    setCropModalOpen(true);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setImageNaturalSize(null);
+  }, [sourceImageUrl]);
+
+  const updateZoom = React.useCallback((nextZoom: number) => {
+    setZoom(Math.min(MAX_ZOOM, Math.max(minZoom, nextZoom)));
+  }, []);
+
+  const handleSaveCroppedAvatar = React.useCallback(async () => {
+    if (!sourceImageUrl || !croppedAreaPixels || !selectedFileRef.current) return;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const { file, previewUrl: nextPreview } = await getCroppedAvatarFile({
+        imageSrc: sourceImageUrl,
+        croppedAreaPixels,
+        outputSize: 512,
+        baseFileName: selectedFileRef.current.name,
+      });
+
+      const { avatarUrl } = await uploadMyAvatar(file);
+      setPreviewUrl(nextPreview);
+      await onUploaded();
+      setPreviewUrl(toAbsoluteUrl(avatarUrl) ?? nextPreview);
+      resetCropModal();
+      alert("Аватар обновлён");
+    } catch (e: any) {
+      setError(e?.friendlyMessage || e?.message || "Не удалось обновить аватар");
+    } finally {
+      setBusy(false);
+    }
+  }, [croppedAreaPixels, onUploaded, resetCropModal, sourceImageUrl]);
+
+  const handleDeleteAvatar = React.useCallback(async () => {
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await deleteMyAvatar();
+      setDeleteConfirmOpen(false);
+      setPreviewUrl(null);
+      await onUploaded();
+    } catch (e: any) {
+      setError(e?.friendlyMessage || e?.message || "Не удалось удалить аватар");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [onUploaded]);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (busy || !imageNaturalSize) return;
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: crop.x,
+      originY: crop.y,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const nextCrop = {
+      x: dragState.originX + (event.clientX - dragState.startX),
+      y: dragState.originY + (event.clientY - dragState.startY),
+    };
+    setCrop(clampCrop(nextCrop));
+  };
+
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    dragStateRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   return (
@@ -35,9 +233,9 @@ function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
       <div className="mb-2 text-sm font-medium">Аватар</div>
       <div className="mb-3 text-xs text-muted">Разрешены: JPEG, PNG, WEBP. Максимум 5MB.</div>
 
-      {preview && (
+      {previewUrl && (
         <div className="mb-3">
-          <img src={preview} alt="preview" className="h-20 w-20 rounded-full border border-subtle object-cover" />
+          <img src={previewUrl} alt="Аватар" className="h-20 w-20 rounded-full border border-subtle object-cover" />
         </div>
       )}
 
@@ -46,49 +244,101 @@ function UploadAvatarBlock({ onUploaded }: { onUploaded: () => void }) {
         type="file"
         accept="image/jpeg,image/jpg,image/png,image/webp"
         className="hidden"
-        onChange={(e) => onFileChange(e.currentTarget.files?.[0] ?? null)}
+        onChange={(e) => onFileSelected(e.currentTarget.files?.[0] ?? null)}
       />
 
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy || deleteBusy}>
           Выбрать файл
         </Button>
-        <Button
-          variant="primary"
-          disabled={!file || busy}
-          onClick={async () => {
-            if (!file) return;
-            setBusy(true);
-            setError(null);
-            try {
-              if (file.size > 5 * 1024 * 1024) throw new Error("Файл больше 5MB");
-              const { avatarUrl } = await uploadMyAvatar(file);
-
-              // ✅ делаем absolute + cache-busting для мгновенного превью
-              const abs = avatarUrl.startsWith("http") ? avatarUrl : `${API_BASE}${avatarUrl}`;
-              const withBusting = `${abs}${abs.includes("?") ? "&" : "?"}v=${Date.now()}`;
-              setPreview(withBusting);
-
-              onUploaded(); // подтянуть /api/me и обновить аватар в шапке
-              if (fileInputRef.current) fileInputRef.current.value = "";
-              setFile(null);
-              alert("Аватар обновлён");
-            } catch (e: any) {
-              setError(e?.friendlyMessage || (e as Error)?.message || "Ошибка загрузки");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? "Загружаем…" : "Загрузить"}
+        <Button type="button" variant="ghost" onClick={() => setDeleteConfirmOpen(true)} disabled={!previewUrl || busy || deleteBusy}>
+          Удалить аватар
         </Button>
       </div>
 
       {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
+
+      <Modal
+        open={cropModalOpen}
+        title="Предпросмотр аватара"
+        description="Перетащите фото и выберите масштаб"
+        onClose={() => {
+          if (!busy) resetCropModal();
+        }}
+        className="max-w-lg"
+        footer={(
+          <div className="flex w-full gap-2">
+            <Button type="button" variant="outline" className="flex-1" disabled={busy} onClick={resetCropModal}>Отмена</Button>
+            <Button type="button" className="flex-1" disabled={busy || !croppedAreaPixels} onClick={handleSaveCroppedAvatar}>
+              {busy ? "Сохраняем…" : "Сохранить"}
+            </Button>
+          </div>
+        )}
+      >
+        <div className="flex flex-col gap-4">
+          <div
+            ref={cropAreaRef}
+            className="relative mx-auto h-[min(70vw,360px)] w-[min(70vw,360px)] max-h-[360px] max-w-[360px] select-none overflow-hidden rounded-2xl bg-black/70"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerEnd}
+            onPointerCancel={handlePointerEnd}
+          >
+            {sourceImageUrl && (
+              <>
+                <img
+                  src={sourceImageUrl}
+                  alt="Предпросмотр"
+                  draggable={false}
+                  className="pointer-events-none absolute left-1/2 top-1/2 max-w-none"
+                  style={{
+                    width: imageNaturalSize ? `${imageNaturalSize.width}px` : "auto",
+                    height: imageNaturalSize ? `${imageNaturalSize.height}px` : "auto",
+                    transform: `translate(-50%, -50%) translate(${crop.x}px, ${crop.y}px) scale(${effectiveScale})`,
+                    transformOrigin: "center center",
+                  }}
+                  onLoad={(event) => {
+                    const img = event.currentTarget;
+                    setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
+                  }}
+                />
+                <div className="pointer-events-none absolute inset-0 bg-black/45" />
+                <div className="pointer-events-none absolute left-1/2 top-1/2 h-[280px] w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="outline" size="icon" onClick={() => updateZoom(zoom - ZOOM_STEP)} disabled={busy || zoom <= minZoom}>–</Button>
+            <input
+              type="range"
+              min={minZoom}
+              max={MAX_ZOOM}
+              step={ZOOM_STEP}
+              value={zoom}
+              onChange={(event) => updateZoom(Number(event.target.value))}
+              disabled={busy}
+              className="h-2 w-full cursor-pointer accent-[var(--staffly-text-strong)]"
+              aria-label="Масштаб аватара"
+            />
+            <Button type="button" variant="outline" size="icon" onClick={() => updateZoom(zoom + ZOOM_STEP)} disabled={busy || zoom >= MAX_ZOOM}>+</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Удалить аватар?"
+        description="Это действие нельзя отменить."
+        confirmText="Удалить"
+        cancelText="Отмена"
+        confirming={deleteBusy}
+        onCancel={() => setDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteAvatar}
+      />
     </div>
   );
 }
-
 export default function Profile() {
   const navigate = useNavigate();
   const { user, refreshMe } = useAuth();
@@ -193,7 +443,7 @@ export default function Profile() {
       <Card>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Профиль</h2>
-          <Button variant="ghost" onClick={() => navigate("/restaurants")}>Закрыть</Button>
+          <Button variant="outline" onClick={() => navigate("/restaurants")}>Закрыть</Button>
         </div>
 
         {/* Текущий аватар */}
@@ -205,7 +455,7 @@ export default function Profile() {
         </div>
 
         {/* Загрузка нового аватара */}
-        <UploadAvatarBlock onUploaded={() => refreshMe()} />
+        <UploadAvatarBlock currentAvatarUrl={user?.avatarUrl} onUploaded={refreshMe} />
 
         {loading ? (
           <div className="mt-6">Загрузка…</div>
@@ -359,33 +609,44 @@ export default function Profile() {
             <hr className="my-6 border-subtle" />
 
             {/* Смена пароля */}
-            <div className="mb-2 text-sm font-medium">Смена пароля</div>
-            <div className="grid gap-3">
-              <Input label="Текущий пароль" type="password" value={currPass} onChange={(e) => setCurrPass(e.target.value)} />
-              <Input label="Новый пароль" type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
-            </div>
-            {pwdMsg && <div className="mt-2 text-sm text-emerald-700">{pwdMsg}</div>}
-            <div className="mt-3">
-              <Button
-                disabled={!currPass.trim() || !newPass.trim() || pwdBusy}
-                onClick={async () => {
-                  try {
-                    setPwdBusy(true);
-                    setPwdMsg(null);
-                    await changeMyPassword({ currentPassword: currPass, newPassword: newPass });
-                    setCurrPass("");
-                    setNewPass("");
-                    setPwdMsg("Пароль изменён");
-                  } catch (e: any) {
-                    setPwdMsg(null);
-                    alert(e?.friendlyMessage || "Не удалось изменить пароль");
-                  } finally {
-                    setPwdBusy(false);
-                  }
-                }}
-              >
-                {pwdBusy ? "Обновляем…" : "Обновить пароль"}
-              </Button>
+            <div className="mb-2 text-sm font-medium">Сменить пароль</div>
+            <div className="rounded-2xl border border-subtle p-4 grid gap-3">
+              <Input
+                label="Текущий пароль"
+                type="password"
+                value={currPass}
+                onChange={(e) => setCurrPass(e.target.value)}
+              />
+              <Input
+                label="Новый пароль"
+                type="password"
+                value={newPass}
+                onChange={(e) => setNewPass(e.target.value)}
+              />
+
+              {pwdMsg && <div className="text-sm text-emerald-700">{pwdMsg}</div>}
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    try {
+                      setPwdBusy(true);
+                      setPwdMsg(null);
+                      await changeMyPassword({ currentPassword: currPass, newPassword: newPass });
+                      setPwdMsg("Пароль изменён");
+                      setCurrPass("");
+                      setNewPass("");
+                    } catch (e: any) {
+                      alert(e?.friendlyMessage || "Не удалось сменить пароль");
+                    } finally {
+                      setPwdBusy(false);
+                    }
+                  }}
+                  disabled={pwdBusy || !currPass || !newPass}
+                >
+                  {pwdBusy ? "Сохраняем…" : "Обновить пароль"}
+                </Button>
+              </div>
             </div>
           </>
         )}
