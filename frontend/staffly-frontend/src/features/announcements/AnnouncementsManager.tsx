@@ -182,7 +182,7 @@ const AnnouncementsManager = ({
               <Button
                 variant="outline"
                 size="icon"
-                className="text-red-600"
+                className="text-default"
                 aria-label="Удалить"
                 onClick={() => openDelete(announcement)}
               >

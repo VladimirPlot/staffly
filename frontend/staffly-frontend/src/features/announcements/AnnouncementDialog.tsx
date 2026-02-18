@@ -162,7 +162,7 @@ const AnnouncementDialog = ({
                   aria-label="Удалить должность"
                   onClick={() => handleRemove(field.id)}
                   disabled={fields.length <= 1 || submitting}
-                  className="text-muted"
+                  className="text-default"
                 >
                   <Icon icon={Trash2} size="sm" decorative />
                 </Button>
