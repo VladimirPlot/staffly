@@ -46,6 +46,7 @@ public class User {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    @Builder.Default
     @Column(name = "theme", nullable = false, length = 10)
     private String theme = "light";
 
