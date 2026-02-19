@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
+
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
 import ContentText from "../../../shared/ui/ContentText";
 import IconButton from "../../../shared/ui/IconButton";
+import Switch from "../../../shared/ui/Switch";
+import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
+import Icon from "../../../shared/ui/Icon";
+
 import {
   listCategories,
   listItems,
@@ -21,13 +26,10 @@ import {
 } from "../api";
 import { getTrainingModuleConfig, isConfigWithCategories } from "../config";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
-import Switch from "../../../shared/ui/Switch";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
-
-import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
-import Icon from "../../../shared/ui/Icon";
-import { Pencil } from "lucide-react";
 import useActionMenu from "../../../shared/hooks/useActionMenu";
+
+import { Pencil, Image as ImageIcon } from "lucide-react";
 
 const REQUIRED_MESSAGE = "Обязательное поле";
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -172,8 +174,7 @@ export default function TrainingCategoryItemsPage() {
     if (!restaurantId || !hasValidCategoryId || !name.trim() || !composition.trim()) return;
     try {
       setCreating(true);
-      const nextSortOrder =
-        items.reduce((max, item) => Math.max(max, item.sortOrder ?? 0), -1) + 1;
+      const nextSortOrder = items.reduce((max, item) => Math.max(max, item.sortOrder ?? 0), -1) + 1;
       const created = await createItem(restaurantId, {
         categoryId,
         name,
@@ -240,10 +241,10 @@ export default function TrainingCategoryItemsPage() {
     }
   };
 
-  const handleDeleteItem = async (itemId: number, name: string) => {
+  const handleDeleteItem = async (itemId: number, itemName: string) => {
     if (!restaurantId) return;
     closeMenu();
-    if (!confirm(`Удалить карточку «${name}» навсегда?`)) return;
+    if (!confirm(`Удалить карточку «${itemName}» навсегда?`)) return;
     try {
       setDeletingItemId(itemId);
       await deleteItem(restaurantId, itemId);
@@ -424,7 +425,6 @@ export default function TrainingCategoryItemsPage() {
         </Card>
       )}
 
-      {/* ⬇️ Тут ключ: убираем гигантские отступы у обёртки списка */}
       <Card className="!p-[8px] sm:!p-4">
         {itemsLoading ? (
           <div className="text-sm text-muted">Загрузка карточек…</div>
@@ -443,10 +443,42 @@ export default function TrainingCategoryItemsPage() {
               return (
                 <Card
                   key={item.id}
-                  className={`relative flex h-full flex-col overflow-hidden p-0 ${isActive ? "" : "opacity-60"}`}
+                  className={[
+                    "relative flex h-full flex-col overflow-hidden p-0",
+                    isActive ? "" : "opacity-60",
+                  ].join(" ")}
                 >
-                  {/* ✅ Фото максимально в край */}
-                  {item.imageUrl && (
+                  {/* ✅ Карандаш/меню действий теперь не зависит от наличия картинки */}
+                  {canManage && !isEditing && (
+                    <div
+                      data-actions
+                      className="absolute right-2 top-2 z-40"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => e.stopPropagation()}
+                    >
+                      <IconButton
+                        aria-label="Действия с карточкой"
+                        data-actions
+                        data-actions-trigger={getActionsKey(item.id)}
+                        className="
+                          !h-10 !w-10 !p-0
+                          !bg-[color-mix(in_srgb,var(--staffly-surface)_35%,transparent)]
+                          !border-[color-mix(in_srgb,var(--staffly-border)_55%,transparent)]
+                          backdrop-blur-sm
+                        "
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleMenu(item.id);
+                        }}
+                      >
+                        <Icon icon={Pencil} size="md" decorative />
+                      </IconButton>
+                    </div>
+                  )}
+
+                  {/* ✅ Фото/плейсхолдер одинаковой высоты */}
+                  {item.imageUrl ? (
                     <div className="relative p-[0px]">
                       <div className="overflow-hidden rounded-3xl">
                         <img
@@ -455,29 +487,31 @@ export default function TrainingCategoryItemsPage() {
                           className="h-56 w-full object-cover"
                         />
                       </div>
+                    </div>
+                  ) : (
+                    <div className="px-3 pt-3 sm:px-4 sm:pt-4">
+                      <div
+                        className="
+                          group flex h-28 w-full flex-col items-center justify-center
+                          rounded-3xl border border-dashed border-subtle
+                          bg-gradient-to-br from-surface to-surface/70
+                          transition
+                        "
+                      >
+                        <div className="flex items-center justify-center rounded-full bg-surface/80 p-3 shadow-sm">
+                          <Icon icon={ImageIcon} size="lg" className="text-muted" decorative />
+                        </div>
 
-                      {canManage && !isEditing && (
-                        <IconButton
-                          aria-label="Действия с карточкой"
-                          data-actions
-                          data-actions-trigger={getActionsKey(item.id)}
-                          className="
-                          !absolute !right-[-6px] !top-[-6px]
-                          !z-40 !h-10 !w-10 !p-0
-                          !bg-[color-mix(in_srgb,var(--staffly-surface)_35%,transparent)]
-                          !border-[color-mix(in_srgb,var(--staffly-border)_55%,transparent)]
-                          backdrop-blur-sm
-                          "
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onPointerUp={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleMenu(item.id);
-                          }}
-                        >
-                          <Icon icon={Pencil} size="md" decorative />
-                        </IconButton>
-                      )}
+                        <span className="mt-2 text-sm text-muted">
+                          Фото не добавлено
+                        </span>
+
+                        {canManage && !isEditing && (
+                          <span className="mt-1 text-xs text-muted opacity-70">
+                            Нажмите карандаш, чтобы добавить
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -491,7 +525,7 @@ export default function TrainingCategoryItemsPage() {
                     <div
                       data-actions
                       data-actions-menu={getActionsKey(item.id)}
-                      className="absolute right-0.5 top-14 z-40 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]"
+                      className="absolute right-2 top-14 z-40 flex w-60 flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]"
                       onPointerDown={(e) => e.stopPropagation()}
                       onPointerUp={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
@@ -530,7 +564,6 @@ export default function TrainingCategoryItemsPage() {
                     </div>
                   )}
 
-                  {/* ✅ Текстовые отступы уменьшили (почти в край) */}
                   <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4">
                     {isEditing ? (
                       <div className="grid gap-3">
@@ -603,7 +636,12 @@ export default function TrainingCategoryItemsPage() {
                             >
                               {savingItemId === item.id ? "Сохраняем…" : "Сохранить"}
                             </Button>
-                            <Button type="button" variant="ghost" onClick={cancelEditItem} disabled={savingItemId === item.id}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={cancelEditItem}
+                              disabled={savingItemId === item.id}
+                            >
                               Отмена
                             </Button>
                           </div>
@@ -612,6 +650,7 @@ export default function TrainingCategoryItemsPage() {
                     ) : (
                       <>
                         <div className="text-lg font-semibold text-strong">{item.name}</div>
+
                         {item.description && (
                           <ContentText className="mt-1 text-sm text-muted">{item.description}</ContentText>
                         )}
