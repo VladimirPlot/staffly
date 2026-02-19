@@ -38,8 +38,6 @@ public class SecurityConfig {
                                 "/api/push/vapid-public-key",
                                 "/actuator/health",
                                 "/actuator/info",
-                                "/static/avatars/**",
-                                "/static/training/**",
                                 "/error"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

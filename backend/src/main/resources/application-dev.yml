@@ -4,6 +4,11 @@ spring:
     username: app
     password: app
 
+app:
+  s3:
+    public-bucket: ${S3_PUBLIC_BUCKET:staffly-dev-public}
+    private-bucket: ${S3_PRIVATE_BUCKET:staffly-dev-private}
+
 logging:
   level:
     ru.staffly: DEBUG

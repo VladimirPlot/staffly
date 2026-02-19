@@ -1,10 +1,13 @@
 spring:
   datasource:
-    # В проде всё равно перетирается через env DB_URL/DB_USER/DB_PASSWORD,
-    # но файл пусть будет на будущее
     url: jdbc:postgresql://db:5432/staffly
     username: app
     password: app
+
+app:
+  s3:
+    public-bucket: ${S3_PUBLIC_BUCKET:staffly-prod}
+    private-bucket: ${S3_PRIVATE_BUCKET:staffly-private}
 
 logging:
   level:

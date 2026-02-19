@@ -1,78 +1,154 @@
 package ru.staffly.media;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
+import ru.staffly.config.S3Config;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.Comparator;
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
 @Component
+@RequiredArgsConstructor
 public class TrainingImageStorage {
 
-    private final Path root = Path.of("data/training").toAbsolutePath().normalize();
-    private static final Set<String> ALLOWED = Set.of(
-            "image/jpeg", "image/png"
-    );
+    private final S3Client s3;
+    private final S3Config s3cfg;
 
-    public TrainingImageStorage() throws IOException {
-        Files.createDirectories(root);
-    }
+    private static final Set<String> ALLOWED = Set.of("image/jpeg", "image/png");
+    private static final String CACHE_CONTROL_1Y = "public, max-age=31536000, immutable";
 
+    /**
+     * S3 key format:
+     * training/items/{itemId}/{uuid}.{ext}
+     */
     public String saveForItem(Long itemId, MultipartFile file) throws IOException {
-        if (file.isEmpty()) throw new IllegalArgumentException("Пустой файл");
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("Пустой файл");
 
-        String ct = file.getContentType();
-        if (ct != null) {
-            int i = ct.indexOf(';');                // срезать "; charset=..."
-            if (i > -1) ct = ct.substring(0, i);
-            ct = ct.trim().toLowerCase();
-        }
+        String ct = normalizeContentType(file.getContentType());
         if (ct == null || !ALLOWED.contains(ct)) {
             throw new IllegalArgumentException("Разрешены только JPEG/PNG");
         }
 
         String ext = switch (ct) {
             case "image/jpeg" -> "jpg";
-            case "image/png"               -> "png";
-            default                        -> "bin";
+            case "image/png" -> "png";
+            default -> "bin";
         };
 
-        Path dir = root.resolve(Path.of("items", String.valueOf(itemId)));
-        Files.createDirectories(dir);
+        // ✅ НАДЁЖНО: чистим весь prefix item-а перед загрузкой
+        String prefix = "training/items/" + itemId + "/";
+        deleteByPrefix(s3cfg.getPublicBucket(), prefix);
 
-        String fname = UUID.randomUUID() + "." + ext;
-        Path target = dir.resolve(fname);
-        Files.write(target, file.getBytes(), StandardOpenOption.CREATE_NEW);
+        String key = prefix + UUID.randomUUID() + "." + ext;
 
-        // Возвращаем ПУБЛИЧНЫЙ URL (раздаётся через WebStaticConfig)
-        String relative = "items/" + itemId + "/" + fname;
-        return "/static/training/" + relative.replace('\\', '/');
+        PutObjectRequest req = PutObjectRequest.builder()
+                .bucket(s3cfg.getPublicBucket())
+                .key(key)
+                .contentType(ct)
+                .contentLength(file.getSize())
+                .cacheControl(CACHE_CONTROL_1Y)
+                .metadata(java.util.Map.of(
+                        "uploadedAt", Instant.now().toString(),
+                        "itemId", String.valueOf(itemId)
+                ))
+                .build();
+
+        s3.putObject(req, RequestBody.fromBytes(file.getBytes()));
+
+        return publicUrl(s3cfg.getPublicBucket(), key);
     }
 
-    public void deleteByPublicUrl(String publicUrl) throws IOException {
-        if (publicUrl == null || !publicUrl.startsWith("/static/training/")) return;
-        Path file = root.resolve(publicUrl.substring("/static/training/".length())).normalize();
-        if (file.startsWith(root) && Files.exists(file)) {
-            Files.delete(file);
+    public void deleteByPublicUrl(String publicUrl) {
+        if (publicUrl == null || publicUrl.isBlank()) return;
+
+        BucketKey bk = extractBucketKeyFromUrl(publicUrl);
+        if (bk == null) return;
+
+        try {
+            s3.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(bk.bucket())
+                    .key(bk.key())
+                    .build());
+        } catch (S3Exception ignored) {
         }
     }
 
-    public void deleteItemFolder(Long itemId) throws IOException {
-        Path dir = root.resolve(Path.of("items", String.valueOf(itemId))).normalize();
-        if (!dir.startsWith(root)) return; // safety
-        if (!Files.exists(dir)) return;
+    public void deleteItemFolder(Long itemId) {
+        String prefix = "training/items/" + itemId + "/";
+        deleteByPrefix(s3cfg.getPublicBucket(), prefix);
+    }
 
-        // удалить рекурсивно
-        try (var walk = Files.walk(dir)) {
-            walk.sorted(Comparator.reverseOrder())
-                    .forEach(p -> {
-                        try { Files.deleteIfExists(p); } catch (IOException ignored) {}
-                    });
+    /* ================= helpers ================= */
+
+    private void deleteByPrefix(String bucket, String prefix) {
+        try {
+            String token = null;
+            do {
+                ListObjectsV2Response res = s3.listObjectsV2(ListObjectsV2Request.builder()
+                        .bucket(bucket)
+                        .prefix(prefix)
+                        .continuationToken(token)
+                        .maxKeys(1000)
+                        .build());
+
+                if (res.contents() != null && !res.contents().isEmpty()) {
+                    var ids = res.contents().stream()
+                            .map(o -> ObjectIdentifier.builder().key(o.key()).build())
+                            .toList();
+
+                    s3.deleteObjects(DeleteObjectsRequest.builder()
+                            .bucket(bucket)
+                            .delete(Delete.builder().objects(ids).build())
+                            .build());
+                }
+
+                token = res.nextContinuationToken();
+            } while (token != null);
+        } catch (S3Exception ignored) {
         }
+    }
+
+    private String publicUrl(String bucket, String key) {
+        String base = trimTrailingSlash(s3cfg.getPublicBaseUrl());
+        return base + "/" + bucket + "/" + key;
+    }
+
+    private record BucketKey(String bucket, String key) {}
+
+    private BucketKey extractBucketKeyFromUrl(String url) {
+        String base = trimTrailingSlash(s3cfg.getPublicBaseUrl());
+        int i = url.indexOf(base);
+        if (i == -1) return null;
+
+        String tail = url.substring(i + base.length()); // "/bucket/key..."
+        if (!tail.startsWith("/")) return null;
+        tail = tail.substring(1);
+
+        int slash = tail.indexOf('/');
+        if (slash <= 0) return null;
+
+        String bucket = tail.substring(0, slash);
+        String key = tail.substring(slash + 1);
+        if (bucket.isBlank() || key.isBlank()) return null;
+
+        return new BucketKey(bucket, key);
+    }
+
+    private static String normalizeContentType(String ct) {
+        if (ct == null) return null;
+        int i = ct.indexOf(';');
+        if (i > -1) ct = ct.substring(0, i);
+        return ct.trim().toLowerCase();
+    }
+
+    private static String trimTrailingSlash(String s) {
+        if (s == null) return "";
+        return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
     }
 }

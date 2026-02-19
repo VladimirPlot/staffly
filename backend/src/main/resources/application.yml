@@ -24,6 +24,15 @@ app:
       private-key: ${VAPID_PRIVATE_KEY:}
       subject: ${VAPID_SUBJECT:}
 
+  s3:
+    endpoint: ${S3_ENDPOINT:https://storage.yandexcloud.net}
+    region: ${S3_REGION:ru-central1}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+    public-base-url: ${S3_PUBLIC_BASE_URL:https://storage.yandexcloud.net}
+    public-bucket: ${S3_PUBLIC_BUCKET:}
+    private-bucket: ${S3_PRIVATE_BUCKET:}
+
 spring:
   application:
     name: staffly-backend

@@ -1,0 +1,13 @@
+# env (никогда не коммитим)
+infra/.env
+.env
+*.env
+
+# node / build
+**/node_modules/
+**/.ignored_node_modules/
+**/dist/
+**/dist-ssr/
+
+# misc
+.DS_Store
