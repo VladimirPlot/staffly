@@ -10,6 +10,7 @@ import IconButton from "../../../shared/ui/IconButton";
 import Switch from "../../../shared/ui/Switch";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Icon from "../../../shared/ui/Icon";
+import ImageCropperModal from "../../../shared/ui/ImageCropperModal";
 
 import {
   listCategories,
@@ -28,11 +29,15 @@ import { getTrainingModuleConfig, isConfigWithCategories } from "../config";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import useActionMenu from "../../../shared/hooks/useActionMenu";
+import { exportCroppedImageToFile } from "../../../shared/lib/imageCrop/canvasExport";
+import { isAllowedMimeType, pickOutputMimeType, supportsWebp, TRAINING_ALLOWED_MIME_TYPES } from "../../../shared/lib/imageCrop/mime";
+import type { CropFrame } from "../../../shared/lib/imageCrop/types";
 
 import { Pencil, Image as ImageIcon } from "lucide-react";
 
 const REQUIRED_MESSAGE = "Обязательное поле";
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const TRAINING_CROP_FRAME: CropFrame = { shape: "roundedRect", frameWidth: 280, frameHeight: 210, borderRadius: 24 };
 
 type Params = { module: string; categoryId: string };
 
@@ -61,6 +66,11 @@ export default function TrainingCategoryItemsPage() {
   const [allergens, setAllergens] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [creating, setCreating] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropBusy, setCropBusy] = useState(false);
+  const [cropSourceImageUrl, setCropSourceImageUrl] = useState<string | null>(null);
+  const [cropSourceFileName, setCropSourceFileName] = useState<string>("image");
+  const [cropTarget, setCropTarget] = useState<{ mode: "create" } | { mode: "edit"; itemId: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [imageMutatingId, setImageMutatingId] = useState<number | null>(null);
@@ -82,6 +92,12 @@ export default function TrainingCategoryItemsPage() {
   useEffect(() => {
     setIncludeInactive(false);
   }, [moduleCode, categoryId]);
+
+  useEffect(() => () => {
+    if (cropSourceImageUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(cropSourceImageUrl);
+    }
+  }, [cropSourceImageUrl]);
 
   const loadCategory = useCallback(async () => {
     if (!restaurantId || !hasCategories || !hasValidCategoryId) return;
@@ -163,12 +179,72 @@ export default function TrainingCategoryItemsPage() {
       alert("Фото больше 2MB");
       return false;
     }
-    if (file.type !== "image/jpeg" && file.type !== "image/png") {
-      alert("Разрешены только JPG или PNG");
+    if (!isAllowedMimeType(file.type, TRAINING_ALLOWED_MIME_TYPES)) {
+      alert("Разрешены только JPG, PNG или WEBP");
       return false;
     }
     return true;
   };
+
+  const resetCropModal = useCallback(() => {
+    if (cropSourceImageUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(cropSourceImageUrl);
+    }
+    setCropModalOpen(false);
+    setCropBusy(false);
+    setCropSourceImageUrl(null);
+    setCropSourceFileName("image");
+    setCropTarget(null);
+  }, [cropSourceImageUrl]);
+
+  const openCropForFile = useCallback((file: File, target: { mode: "create" } | { mode: "edit"; itemId: number }) => {
+    if (!validateImageFile(file)) return;
+    if (cropSourceImageUrl?.startsWith("blob:")) {
+      URL.revokeObjectURL(cropSourceImageUrl);
+    }
+    setCropSourceImageUrl(URL.createObjectURL(file));
+    setCropSourceFileName(file.name);
+    setCropTarget(target);
+    setCropModalOpen(true);
+  }, [cropSourceImageUrl]);
+
+  const handleConfirmCrop = useCallback(async ({ croppedAreaPixels }: { croppedAreaPixels: { x: number; y: number; width: number; height: number } }) => {
+    if (!restaurantId || !cropSourceImageUrl || !cropTarget) return;
+    setCropBusy(true);
+    try {
+      const { file } = await exportCroppedImageToFile({
+        imageSrc: cropSourceImageUrl,
+        crop: croppedAreaPixels,
+        exportOptions: {
+          outputWidth: 1200,
+          outputHeight: 900,
+          mimeType: pickOutputMimeType({
+            supportsWebp: supportsWebp(),
+            backendAllowsWebp: true,
+            fallback: "image/jpeg",
+          }),
+          quality: 0.9,
+          baseFileName: cropSourceFileName,
+        },
+      });
+
+      if (cropTarget.mode === "create") {
+        setImageFile(file);
+      } else {
+        setImageMutatingId(cropTarget.itemId);
+        await uploadItemImage(restaurantId, cropTarget.itemId, file);
+        await loadItems();
+        setImageMutatingId(null);
+      }
+      resetCropModal();
+    } catch (e: any) {
+      alert(e?.friendlyMessage || "Не удалось обработать фото");
+      setCropBusy(false);
+      if (cropTarget.mode === "edit") {
+        setImageMutatingId(null);
+      }
+    }
+  }, [cropSourceFileName, cropSourceImageUrl, cropTarget, loadItems, resetCropModal, restaurantId]);
 
   const handleCreate = async () => {
     if (!restaurantId || !hasValidCategoryId || !name.trim() || !composition.trim()) return;
@@ -199,30 +275,16 @@ export default function TrainingCategoryItemsPage() {
     }
   };
 
-  const handleUploadImage = async (itemId: number, file: File | null) => {
-    if (!restaurantId || !file) return;
-    if (!validateImageFile(file)) return;
-    try {
-      setImageMutatingId(itemId);
-      await uploadItemImage(restaurantId, itemId, file);
-      await loadItems();
-    } catch (e: any) {
-      alert(e?.friendlyMessage || "Не удалось загрузить фото");
-    } finally {
-      setImageMutatingId(null);
-    }
-  };
-
   const triggerImagePicker = (itemId: number) => {
     if (imageMutatingId === itemId) return;
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/png,image/jpeg";
+    input.accept = "image/png,image/jpeg,image/webp";
     input.onchange = (event) => {
       const target = event.target as HTMLInputElement | null;
       const file = target?.files?.[0] ?? null;
-      if (file && validateImageFile(file)) {
-        void handleUploadImage(itemId, file);
+      if (file) {
+        openCropForFile(file, { mode: "edit", itemId });
       }
     };
     input.click();
@@ -392,16 +454,16 @@ export default function TrainingCategoryItemsPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg"
+                accept="image/png,image/jpeg,image/webp"
                 onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
-                  if (file && validateImageFile(file)) {
-                    setImageFile(file);
+                  if (file) {
+                    openCropForFile(file, { mode: "create" });
                   } else {
                     setImageFile(null);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = "";
-                    }
+                  }
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
                   }
                 }}
                 className="hidden"
@@ -677,6 +739,17 @@ export default function TrainingCategoryItemsPage() {
           </div>
         )}
       </Card>
+
+      <ImageCropperModal
+        open={cropModalOpen}
+        title="Кадрирование фото"
+        description="Подгоните изображение под карточку 4:3"
+        imageUrl={cropSourceImageUrl}
+        frame={TRAINING_CROP_FRAME}
+        busy={cropBusy}
+        onCancel={resetCropModal}
+        onConfirm={({ croppedAreaPixels }) => void handleConfirmCrop({ croppedAreaPixels })}
+      />
     </div>
   );
 }

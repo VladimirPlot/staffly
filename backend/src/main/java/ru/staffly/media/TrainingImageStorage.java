@@ -20,7 +20,7 @@ public class TrainingImageStorage {
     private final S3Client s3;
     private final S3Config s3cfg;
 
-    private static final Set<String> ALLOWED = Set.of("image/jpeg", "image/png");
+    private static final Set<String> ALLOWED = Set.of("image/jpeg", "image/png", "image/webp");
     private static final String CACHE_CONTROL_1Y = "public, max-age=31536000, immutable";
 
     /**
@@ -32,12 +32,13 @@ public class TrainingImageStorage {
 
         String ct = normalizeContentType(file.getContentType());
         if (ct == null || !ALLOWED.contains(ct)) {
-            throw new IllegalArgumentException("Разрешены только JPEG/PNG");
+            throw new IllegalArgumentException("Разрешены только JPEG/PNG/WEBP");
         }
 
         String ext = switch (ct) {
             case "image/jpeg" -> "jpg";
             case "image/png" -> "png";
+            case "image/webp" -> "webp";
             default -> "bin";
         };
 

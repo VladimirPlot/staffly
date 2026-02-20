@@ -44,8 +44,8 @@ public class TrainingItemImageController {
             if (i > -1) contentType = contentType.substring(0, i);
             contentType = contentType.trim().toLowerCase();
         }
-        if (contentType == null || (!contentType.equals("image/jpeg") && !contentType.equals("image/png"))) {
-            throw new BadRequestException("Разрешены только JPEG/PNG");
+        if (contentType == null || (!contentType.equals("image/jpeg") && !contentType.equals("image/png") && !contentType.equals("image/webp"))) {
+            throw new BadRequestException("Разрешены только JPEG/PNG/WEBP");
         }
 
         var item = items.findById(itemId)

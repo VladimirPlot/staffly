@@ -5,7 +5,7 @@ import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import Avatar from "../../../shared/ui/Avatar";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
-import Modal from "../../../shared/ui/Modal";
+import ImageCropperModal from "../../../shared/ui/ImageCropperModal";
 import {
   changeMyPassword,
   deleteMyAvatar,
@@ -17,13 +17,13 @@ import {
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { base64UrlToArrayBuffer, getVapidPublicKey, subscribePush, subscriptionToDto, unsubscribePush } from "../../push/api";
 import { applyThemeToDom, getStoredTheme, setStoredTheme, type Theme } from "../../../shared/utils/theme";
-import { getCroppedAvatarFile, isAvatarMimeType, type PixelCrop } from "../utils/avatarCrop";
+import { isAvatarMimeType } from "../utils/avatarCrop";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
+import { exportCroppedImageToFile } from "../../../shared/lib/imageCrop/canvasExport";
+import { pickOutputMimeType, supportsWebp } from "../../../shared/lib/imageCrop/mime";
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
 const CROP_SIZE = 280;
-const MAX_ZOOM = 3;
-const ZOOM_STEP = 0.05;
 
 type UploadAvatarBlockProps = {
   currentAvatarUrl?: string;
@@ -38,14 +38,6 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
   const [cropModalOpen, setCropModalOpen] = React.useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
   const [sourceImageUrl, setSourceImageUrl] = React.useState<string | null>(null);
-  const [imageNaturalSize, setImageNaturalSize] = React.useState<{ width: number; height: number } | null>(null);
-
-  const [crop, setCrop] = React.useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = React.useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = React.useState<PixelCrop | null>(null);
-
-  const dragStateRef = React.useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
-  const cropAreaRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const selectedFileRef = React.useRef<File | null>(null);
 
@@ -61,64 +53,13 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
     };
   }, [sourceImageUrl]);
 
-  const baseScale = React.useMemo(() => {
-    if (!imageNaturalSize) return 1;
-    return Math.max(CROP_SIZE / imageNaturalSize.width, CROP_SIZE / imageNaturalSize.height);
-  }, [imageNaturalSize]);
-
-  const minZoom = 1;
-  const effectiveScale = baseScale * zoom;
-
-  const maxOffsets = React.useMemo(() => {
-    if (!imageNaturalSize) return { x: 0, y: 0 };
-    const scaledWidth = imageNaturalSize.width * effectiveScale;
-    const scaledHeight = imageNaturalSize.height * effectiveScale;
-    return {
-      x: Math.max(0, (scaledWidth - CROP_SIZE) / 2),
-      y: Math.max(0, (scaledHeight - CROP_SIZE) / 2),
-    };
-  }, [effectiveScale, imageNaturalSize]);
-
-  const clampCrop = React.useCallback((nextCrop: { x: number; y: number }) => ({
-    x: Math.min(maxOffsets.x, Math.max(-maxOffsets.x, nextCrop.x)),
-    y: Math.min(maxOffsets.y, Math.max(-maxOffsets.y, nextCrop.y)),
-  }), [maxOffsets.x, maxOffsets.y]);
-
-  React.useEffect(() => {
-    setCrop((prev) => clampCrop(prev));
-  }, [clampCrop]);
-
-  React.useEffect(() => {
-    if (!imageNaturalSize) {
-      setCroppedAreaPixels(null);
-      return;
-    }
-    const cropWidth = CROP_SIZE / effectiveScale;
-    const cropHeight = CROP_SIZE / effectiveScale;
-    const centeredX = (imageNaturalSize.width - cropWidth) / 2;
-    const centeredY = (imageNaturalSize.height - cropHeight) / 2;
-    const x = centeredX - crop.x / effectiveScale;
-    const y = centeredY - crop.y / effectiveScale;
-    setCroppedAreaPixels({
-      x: Math.max(0, Math.min(imageNaturalSize.width - cropWidth, x)),
-      y: Math.max(0, Math.min(imageNaturalSize.height - cropHeight, y)),
-      width: cropWidth,
-      height: cropHeight,
-    });
-  }, [crop.x, crop.y, effectiveScale, imageNaturalSize]);
-
   const resetCropModal = React.useCallback(() => {
     if (sourceImageUrl?.startsWith("blob:")) {
       URL.revokeObjectURL(sourceImageUrl);
     }
     setCropModalOpen(false);
     setSourceImageUrl(null);
-    setImageNaturalSize(null);
     selectedFileRef.current = null;
-    dragStateRef.current = null;
-    setCrop({ x: 0, y: 0 });
-    setZoom(1);
-    setCroppedAreaPixels(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -146,27 +87,29 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
     selectedFileRef.current = file;
     setSourceImageUrl(URL.createObjectURL(file));
     setCropModalOpen(true);
-    setCrop({ x: 0, y: 0 });
-    setZoom(1);
-    setImageNaturalSize(null);
   }, [sourceImageUrl]);
 
-  const updateZoom = React.useCallback((nextZoom: number) => {
-    setZoom(Math.min(MAX_ZOOM, Math.max(minZoom, nextZoom)));
-  }, []);
-
-  const handleSaveCroppedAvatar = React.useCallback(async () => {
-    if (!sourceImageUrl || !croppedAreaPixels || !selectedFileRef.current) return;
+  const handleSaveCroppedAvatar = React.useCallback(async (croppedAreaPixels: { x: number; y: number; width: number; height: number }) => {
+    if (!sourceImageUrl || !selectedFileRef.current) return;
 
     setBusy(true);
     setError(null);
 
     try {
-      const { file, previewUrl: nextPreview } = await getCroppedAvatarFile({
+      const { file, previewUrl: nextPreview } = await exportCroppedImageToFile({
         imageSrc: sourceImageUrl,
-        croppedAreaPixels,
-        outputSize: 512,
-        baseFileName: selectedFileRef.current.name,
+        crop: croppedAreaPixels,
+        exportOptions: {
+          outputWidth: 512,
+          outputHeight: 512,
+          mimeType: pickOutputMimeType({
+            supportsWebp: supportsWebp(),
+            backendAllowsWebp: true,
+            fallback: "image/png",
+          }),
+          quality: 0.92,
+          baseFileName: selectedFileRef.current.name,
+        },
       });
 
       const { avatarUrl } = await uploadMyAvatar(file);
@@ -180,7 +123,7 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
     } finally {
       setBusy(false);
     }
-  }, [croppedAreaPixels, onUploaded, resetCropModal, sourceImageUrl]);
+  }, [onUploaded, resetCropModal, sourceImageUrl]);
 
   const handleDeleteAvatar = React.useCallback(async () => {
     setDeleteBusy(true);
@@ -196,37 +139,6 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
       setDeleteBusy(false);
     }
   }, [onUploaded]);
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (busy || !imageNaturalSize) return;
-    dragStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: crop.x,
-      originY: crop.y,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const dragState = dragStateRef.current;
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    const nextCrop = {
-      x: dragState.originX + (event.clientX - dragState.startX),
-      y: dragState.originY + (event.clientY - dragState.startY),
-    };
-    setCrop(clampCrop(nextCrop));
-  };
-
-  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    const dragState = dragStateRef.current;
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    dragStateRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
 
   return (
     <div className="rounded-2xl border border-subtle p-4">
@@ -258,75 +170,16 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
 
       {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
 
-      <Modal
+      <ImageCropperModal
         open={cropModalOpen}
         title="Предпросмотр аватара"
         description="Перетащите фото и выберите масштаб"
-        onClose={() => {
-          if (!busy) resetCropModal();
-        }}
-        className="max-w-lg"
-        footer={(
-          <div className="flex w-full gap-2">
-            <Button type="button" variant="outline" className="flex-1" disabled={busy} onClick={resetCropModal}>Отмена</Button>
-            <Button type="button" className="flex-1" disabled={busy || !croppedAreaPixels} onClick={handleSaveCroppedAvatar}>
-              {busy ? "Сохраняем…" : "Сохранить"}
-            </Button>
-          </div>
-        )}
-      >
-        <div className="flex flex-col gap-4">
-          <div
-            ref={cropAreaRef}
-            className="relative mx-auto h-[min(70vw,360px)] w-[min(70vw,360px)] max-h-[360px] max-w-[360px]
-                       select-none overflow-hidden rounded-2xl bg-black/70
-                       touch-none overscroll-contain"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerEnd}
-            onPointerCancel={handlePointerEnd}
-          >
-            {sourceImageUrl && (
-              <>
-                <img
-                  src={sourceImageUrl}
-                  alt="Предпросмотр"
-                  draggable={false}
-                  className="pointer-events-none absolute left-1/2 top-1/2 max-w-none"
-                  style={{
-                    width: imageNaturalSize ? `${imageNaturalSize.width}px` : "auto",
-                    height: imageNaturalSize ? `${imageNaturalSize.height}px` : "auto",
-                    transform: `translate(-50%, -50%) translate(${crop.x}px, ${crop.y}px) scale(${effectiveScale})`,
-                    transformOrigin: "center center",
-                  }}
-                  onLoad={(event) => {
-                    const img = event.currentTarget;
-                    setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
-                  }}
-                />
-                <div className="pointer-events-none absolute inset-0 bg-black/45" />
-                <div className="pointer-events-none absolute left-1/2 top-1/2 h-[280px] w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button type="button" variant="outline" size="icon" onClick={() => updateZoom(zoom - ZOOM_STEP)} disabled={busy || zoom <= minZoom}>–</Button>
-            <input
-              type="range"
-              min={minZoom}
-              max={MAX_ZOOM}
-              step={ZOOM_STEP}
-              value={zoom}
-              onChange={(event) => updateZoom(Number(event.target.value))}
-              disabled={busy}
-              className="h-2 w-full cursor-pointer accent-[var(--staffly-text-strong)]"
-              aria-label="Масштаб аватара"
-            />
-            <Button type="button" variant="outline" size="icon" onClick={() => updateZoom(zoom + ZOOM_STEP)} disabled={busy || zoom >= MAX_ZOOM}>+</Button>
-          </div>
-        </div>
-      </Modal>
+        imageUrl={sourceImageUrl}
+        frame={{ shape: "circle", frameWidth: CROP_SIZE, frameHeight: CROP_SIZE }}
+        busy={busy}
+        onCancel={resetCropModal}
+        onConfirm={({ croppedAreaPixels }) => void handleSaveCroppedAvatar(croppedAreaPixels)}
+      />
 
       <ConfirmDialog
         open={deleteConfirmOpen}
