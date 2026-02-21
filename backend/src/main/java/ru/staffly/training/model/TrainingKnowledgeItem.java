@@ -2,40 +2,43 @@ package ru.staffly.training.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
 
 @Entity
-@Table(name = "training_item",
-        indexes = {
-                @Index(name = "idx_training_item_category", columnList = "category_id")
-        })
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class TrainingItem {
-
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+@Table(name = "training_knowledge_item")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class TrainingKnowledgeItem {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "category_id", nullable = false)
-    private TrainingCategory category;
+    @JoinColumn(name = "restaurant_id", nullable = false)
+    private Restaurant restaurant;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "folder_id", nullable = false)
+    private TrainingFolder folder;
 
     @Column(nullable = false, length = 150)
-    private String name;
+    private String title;
 
     @Column(columnDefinition = "text")
     private String description;
 
-    // Для MENU (опционально)
     @Column(columnDefinition = "text")
     private String composition;
 
     @Column(columnDefinition = "text")
     private String allergens;
 
-    // общее поле и для BAR и для MENU
     @Column(name = "image_url")
     private String imageUrl;
 

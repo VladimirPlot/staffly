@@ -31,8 +31,6 @@ const NotesPage = React.lazy(() => import("./features/income/pages/NotesPage"));
 const PositionsPage = React.lazy(() => import("./features/dictionaries/pages/Positions"));
 
 const TrainingLandingPage = React.lazy(() => import("./features/training/pages/Landing"));
-const TrainingModuleCategoriesPage = React.lazy(() => import("./features/training/pages/Categories"));
-const TrainingCategoryItemsPage = React.lazy(() => import("./features/training/pages/CategoryItems"));
 
 const RestaurantHome = React.lazy(() => import("./features/home/pages/RestaurantHome"));
 
@@ -376,27 +374,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/training/:module"
-                element={
-                  <ProtectedRoute>
-                    <RequireRestaurant>
-                      <TrainingModuleCategoriesPage />
-                    </RequireRestaurant>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/training/:module/categories/:categoryId"
-                element={
-                  <ProtectedRoute>
-                    <RequireRestaurant>
-                      <TrainingCategoryItemsPage />
-                    </RequireRestaurant>
-                  </ProtectedRoute>
-                }
-              />
-
               <Route
                 path="/inbox"
                 element={

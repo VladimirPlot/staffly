@@ -3,38 +3,39 @@ package ru.staffly.training.model;
 import jakarta.persistence.*;
 import lombok.*;
 import ru.staffly.common.time.TimeProvider;
-import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 @Entity
-@Table(name = "training_category",
-        indexes = {
-                @Index(name = "idx_training_category_restaurant", columnList = "restaurant_id"),
-                @Index(name = "idx_training_category_module", columnList = "module")
-        })
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class TrainingCategory {
-
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+@Table(name = "training_folder")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class TrainingFolder {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
     private Restaurant restaurant;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "module", nullable = false, length = 20)
-    private TrainingModule module;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    private TrainingFolder parent;
 
     @Column(nullable = false, length = 150)
     private String name;
 
     @Column(columnDefinition = "text")
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private TrainingFolderType type;
 
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
@@ -51,16 +52,6 @@ public class TrainingCategory {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = TimeProvider.now();
-
-    // видимость для позиций
-    @ManyToMany
-    @JoinTable(
-            name = "training_category_position",
-            joinColumns = @JoinColumn(name = "category_id"),
-            inverseJoinColumns = @JoinColumn(name = "position_id")
-    )
-    @Builder.Default
-    private Set<Position> visibleForPositions = new LinkedHashSet<>();
 
     @PrePersist
     void prePersist() {
