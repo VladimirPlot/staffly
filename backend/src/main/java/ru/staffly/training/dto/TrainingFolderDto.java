@@ -1,16 +1,17 @@
 package ru.staffly.training.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import ru.staffly.training.model.TrainingFolderType;
 
-public record TrainingItemDto(
+public record TrainingFolderDto(
         Long id,
-        Long categoryId,
+        @NotNull Long restaurantId,
+        Long parentId,
         @NotBlank @Size(max = 150) String name,
         String description,
-        String composition,   // для MENU (опц.)
-        String allergens,     // для MENU (опц.)
-        String imageUrl,      // общий (опц.)
+        @NotNull TrainingFolderType type,
         Integer sortOrder,
         Boolean active
 ) {}
