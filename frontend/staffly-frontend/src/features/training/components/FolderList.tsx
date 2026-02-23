@@ -6,14 +6,23 @@ type Props = {
   folders: TrainingFolderDto[];
   canManage: boolean;
   actionLoadingId: number | null;
-  onSelect: (folder: TrainingFolderDto) => void;
-  onHide: (id: number) => void;
-  onRestore: (id: number) => void;
+  onOpen: (folderId: number) => void;
+  onEdit: (folder: TrainingFolderDto) => void;
+  onHide: (folderId: number) => void;
+  onRestore: (folderId: number) => void;
+  onDelete: (folderId: number) => void;
 };
 
-export default function FolderList(props: Props) {
-  const { folders, canManage, actionLoadingId, onSelect, onHide, onRestore } = props;
-
+export default function FolderList({
+  folders,
+  canManage,
+  actionLoadingId,
+  onOpen,
+  onEdit,
+  onHide,
+  onRestore,
+  onDelete,
+}: Props) {
   return (
     <Card className="space-y-3">
       {folders.map((folder) => (
@@ -22,9 +31,11 @@ export default function FolderList(props: Props) {
           folder={folder}
           canManage={canManage}
           isBusy={actionLoadingId === folder.id}
-          onSelect={onSelect}
+          onOpen={onOpen}
+          onEdit={onEdit}
           onHide={onHide}
           onRestore={onRestore}
+          onDelete={onDelete}
         />
       ))}
     </Card>

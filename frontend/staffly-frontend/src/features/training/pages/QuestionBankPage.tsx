@@ -87,9 +87,14 @@ export default function QuestionBankPage() {
           folders={foldersState.folders}
           canManage={canManage}
           actionLoadingId={foldersState.actionLoadingId}
-          onSelect={setSelectedFolder}
+          onOpen={(folderId) => {
+            const folder = foldersState.folders.find((item) => item.id === folderId) ?? null;
+            setSelectedFolder(folder);
+          }}
+          onEdit={() => {}}
           onHide={foldersState.hide}
           onRestore={foldersState.restore}
+          onDelete={() => {}}
         />
       )}
 

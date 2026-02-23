@@ -10,6 +10,7 @@ import type {
   TrainingFolderType,
   TrainingKnowledgeItemDto,
   TrainingQuestionDto,
+  UpdateTrainingFolderPayload,
 } from "./types";
 
 export async function listFolders(
@@ -39,6 +40,22 @@ export async function hideFolder(restaurantId: number, folderId: number): Promis
 export async function restoreFolder(restaurantId: number, folderId: number): Promise<TrainingFolderDto> {
   const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/folders/${folderId}/restore`);
   return data as TrainingFolderDto;
+}
+
+export async function updateFolder(
+  restaurantId: number,
+  folderId: number,
+  payload: UpdateTrainingFolderPayload
+): Promise<TrainingFolderDto> {
+  const { data } = await apiClient.put(
+    `/api/restaurants/${restaurantId}/training/folders/${folderId}`,
+    payload
+  );
+  return data as TrainingFolderDto;
+}
+
+export async function deleteFolder(restaurantId: number, folderId: number): Promise<void> {
+  await apiClient.delete(`/api/restaurants/${restaurantId}/training/folders/${folderId}`);
 }
 
 export async function listKnowledgeItems(

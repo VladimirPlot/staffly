@@ -18,6 +18,11 @@ export type CreateTrainingFolderPayload = {
   type: TrainingFolderType;
 };
 
+export type UpdateTrainingFolderPayload = {
+  name: string;
+  description?: string | null;
+};
+
 /** BACKEND: TrainingKnowledgeItemDto */
 export type TrainingKnowledgeItemDto = {
   id: number;
