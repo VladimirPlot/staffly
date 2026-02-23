@@ -41,8 +41,7 @@ public class ExamServiceImpl implements ExamService {
         var examIds = examList.stream().map(TrainingExam::getId).toList();
         var scopesByExam = scopes.findByExamIdIn(examIds).stream()
                 .collect(Collectors.groupingBy(s -> s.getExam().getId(), Collectors.mapping(s -> s.getFolder().getId(), Collectors.toList())));
-        return examList.stream().map(exam -> new TrainingExamDto(exam.getId(), exam.getRestaurant().getId(), exam.getTitle(), exam.getDescription(), exam.getQuestionCount(),
-                exam.getPassPercent(), exam.getTimeLimitSec(), exam.isActive(), scopesByExam.getOrDefault(exam.getId(), List.of()))).toList();
+        return examList.stream().map(exam -> toDto(exam, scopesByExam.getOrDefault(exam.getId(), List.of()))).toList();
     }
 
     @Override
@@ -56,6 +55,7 @@ public class ExamServiceImpl implements ExamService {
                 .passPercent(request.passPercent())
                 .timeLimitSec(request.timeLimitSec())
                 .active(true)
+                .version(1)
                 .build());
         replaceScopes(restaurantId, exam, request.folderIds());
         return listExams(restaurantId, true).stream().filter(x -> x.id().equals(exam.getId())).findFirst().orElseThrow();
@@ -85,6 +85,13 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
+    public void resetExamResults(Long restaurantId, Long examId) {
+        var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
+        exam.setVersion(exam.getVersion() + 1);
+    }
+
+    @Override
+    @Transactional
     public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId) {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
         var scopeIds = scopes.findByExamId(examId).stream().map(x -> x.getFolder().getId()).toList();
@@ -103,6 +110,7 @@ public class ExamServiceImpl implements ExamService {
 
         var attempt = attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
+                .examVersion(exam.getVersion())
                 .user(User.builder().id(userId).build())
                 .startedAt(TimeProvider.now())
                 .build());
@@ -122,14 +130,14 @@ public class ExamServiceImpl implements ExamService {
         }
         attemptQuestions.saveAll(entities);
 
-        var examDto = new TrainingExamDto(exam.getId(), restaurantId, exam.getTitle(), exam.getDescription(), exam.getQuestionCount(), exam.getPassPercent(), exam.getTimeLimitSec(), exam.isActive(), scopeIds);
-        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), examDto, snapshots);
+        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), attempt.getExamVersion(), toDto(exam, scopeIds), snapshots);
     }
 
     @Override
     @Transactional
     public AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request) {
         var attempt = attempts.findByIdAndExamRestaurantId(attemptId, restaurantId).orElseThrow(() -> new NotFoundException("Attempt not found"));
+        if (attempt.getExam() == null) throw new ConflictException("Exam was deleted");
         if (!Objects.equals(attempt.getUser().getId(), userId)) throw new BadRequestException("Attempt belongs to another user");
         if (attempt.getFinishedAt() != null) throw new ConflictException("Attempt already finished");
 
@@ -138,11 +146,12 @@ public class ExamServiceImpl implements ExamService {
         int correctAnswers = 0;
 
         for (var item : existing) {
-            var answer = byQuestionId.get(item.getQuestion().getId());
-            if (answer == null) throw new BadRequestException("Missing answer for question " + item.getQuestion().getId());
-            validateAnswerForType(answer.answerJson(), item.getQuestionSnapshotJson());
+            var snapshot = readSnapshot(item.getQuestionSnapshotJson());
+            var answer = byQuestionId.get(snapshot.questionId());
+            if (answer == null) throw new BadRequestException("Missing answer for question " + snapshot.questionId());
+            validateAnswerForType(answer.answerJson(), snapshot);
             item.setChosenAnswerJson(answer.answerJson());
-            boolean isCorrect = isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson());
+            boolean isCorrect = isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson(), snapshot.type());
             item.setCorrect(isCorrect);
             if (isCorrect) correctAnswers++;
         }
@@ -152,8 +161,8 @@ public class ExamServiceImpl implements ExamService {
         attempt.setScorePercent(score);
         attempt.setPassed(score >= attempt.getExam().getPassPercent());
 
-        return new AttemptResultDto(attempt.getId(), attempt.getExam().getId(), attempt.getUser().getId(), attempt.getStartedAt(), attempt.getFinishedAt(), attempt.getScorePercent(), attempt.getPassed(),
-                existing.stream().map(x -> new AttemptResultQuestionDto(x.getQuestion().getId(), x.getChosenAnswerJson(), x.isCorrect())).toList());
+        return new AttemptResultDto(attempt.getId(), attempt.getExam().getId(), attempt.getExamVersion(), attempt.getUser().getId(), attempt.getStartedAt(), attempt.getFinishedAt(), attempt.getScorePercent(), attempt.getPassed(),
+                existing.stream().map(x -> new AttemptResultQuestionDto(readSnapshot(x.getQuestionSnapshotJson()).questionId(), x.getChosenAnswerJson(), x.isCorrect())).toList());
     }
 
     private SnapshotPayload buildSnapshot(TrainingQuestion question, List<TrainingQuestionOption> options, List<TrainingQuestionMatchPair> pairs) {
@@ -163,7 +172,9 @@ public class ExamServiceImpl implements ExamService {
             var snapshotDto = new AttemptQuestionSnapshotDto(question.getId(), question.getType(), question.getPrompt(), question.getExplanation(), optionView, pairView);
             String snapshotJson = objectMapper.writeValueAsString(snapshotDto);
             String correctKey = switch (question.getType()) {
-                case MATCH -> objectMapper.writeValueAsString(pairs.stream().map(TrainingQuestionMatchPair::getRightText).toList());
+                case MATCH -> objectMapper.writeValueAsString(pairs.stream()
+                        .map(p -> new MatchPairAnswer(p.getLeftText(), p.getRightText()))
+                        .sorted(Comparator.comparing(MatchPairAnswer::left)).toList());
                 case MULTI -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).sorted().toList());
                 default -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).findFirst().orElse(""));
             };
@@ -173,23 +184,63 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private void validateAnswerForType(String answerJson, String snapshotJson) {
+    private AttemptQuestionSnapshotDto readSnapshot(String snapshotJson) {
         try {
-            var snapshot = objectMapper.readValue(snapshotJson, AttemptQuestionSnapshotDto.class);
+            return objectMapper.readValue(snapshotJson, AttemptQuestionSnapshotDto.class);
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid question snapshot");
+        }
+    }
+
+    private void validateAnswerForType(String answerJson, AttemptQuestionSnapshotDto snapshot) {
+        try {
             switch (snapshot.type()) {
-                case MATCH, MULTI -> objectMapper.readValue(answerJson, new TypeReference<List<String>>() {});
-                default -> objectMapper.readValue(answerJson, String.class);
+                case MATCH -> {
+                    var answerPairs = objectMapper.readValue(answerJson, new TypeReference<List<MatchPairAnswer>>() {
+                    });
+                    var allowedLeft = snapshot.matchPairs().stream().map(TrainingQuestionMatchPairViewDto::leftText).collect(Collectors.toSet());
+                    var allowedRight = snapshot.matchPairs().stream().map(TrainingQuestionMatchPairViewDto::rightText).collect(Collectors.toSet());
+                    if (answerPairs.size() != allowedLeft.size()) throw new BadRequestException("Invalid answer values");
+                    var lefts = new HashSet<String>();
+                    for (var pair : answerPairs) {
+                        if (!allowedLeft.contains(pair.left()) || !allowedRight.contains(pair.right()) || !lefts.add(pair.left())) {
+                            throw new BadRequestException("Invalid answer values");
+                        }
+                    }
+                }
+                case MULTI -> {
+                    var values = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {
+                    });
+                    var allowed = snapshot.options().stream().map(TrainingQuestionOptionViewDto::text).collect(Collectors.toSet());
+                    if (!allowed.containsAll(values)) throw new BadRequestException("Invalid answer values");
+                }
+                default -> {
+                    var value = objectMapper.readValue(answerJson, String.class);
+                    var allowed = snapshot.options().stream().map(TrainingQuestionOptionViewDto::text).collect(Collectors.toSet());
+                    if (!allowed.contains(value)) throw new BadRequestException("Invalid answer values");
+                }
             }
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             throw new BadRequestException("Invalid answer format");
         }
     }
 
-    private boolean isAnswerCorrect(String answerJson, String correctKeyJson) {
+    private boolean isAnswerCorrect(String answerJson, String correctKeyJson, TrainingQuestionType type) {
         try {
-            if (correctKeyJson.startsWith("[")) {
-                var actual = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
-                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
+            if (type == TrainingQuestionType.MATCH) {
+                var actual = objectMapper.readValue(answerJson, new TypeReference<List<MatchPairAnswer>>() {
+                }).stream().sorted(Comparator.comparing(MatchPairAnswer::left)).toList();
+                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<MatchPairAnswer>>() {
+                }).stream().sorted(Comparator.comparing(MatchPairAnswer::left)).toList();
+                return expected.equals(actual);
+            }
+            if (type == TrainingQuestionType.MULTI) {
+                var actual = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {
+                }).stream().sorted().toList();
+                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<String>>() {
+                }).stream().sorted().toList();
                 return expected.equals(actual);
             }
             String actual = objectMapper.readValue(answerJson, String.class);
@@ -206,11 +257,21 @@ public class ExamServiceImpl implements ExamService {
         List<TrainingExamScope> entities = new ArrayList<>();
         for (Long folderId : folderIds) {
             var folder = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
-            if (folder.getType() != TrainingFolderType.QUESTION_BANK) throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
+            if (folder.getType() != TrainingFolderType.QUESTION_BANK)
+                throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
             entities.add(TrainingExamScope.builder().exam(exam).folder(folder).build());
         }
         scopes.saveAll(entities);
     }
 
-    private record SnapshotPayload(AttemptQuestionSnapshotDto snapshotDto, String snapshotJson, String correctKeyJson) {}
+    private TrainingExamDto toDto(TrainingExam exam, List<Long> scopeIds) {
+        return new TrainingExamDto(exam.getId(), exam.getRestaurant().getId(), exam.getTitle(), exam.getDescription(), exam.getQuestionCount(),
+                exam.getPassPercent(), exam.getTimeLimitSec(), exam.getVersion(), exam.isActive(), scopeIds);
+    }
+
+    private record SnapshotPayload(AttemptQuestionSnapshotDto snapshotDto, String snapshotJson, String correctKeyJson) {
+    }
+
+    private record MatchPairAnswer(String left, String right) {
+    }
 }

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
@@ -21,6 +22,7 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionRepository questions;
     private final TrainingQuestionOptionRepository options;
     private final TrainingQuestionMatchPairRepository pairs;
+    private final TrainingExamScopeRepository scopes;
 
     @Override
     public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long folderId, boolean includeInactive) {
@@ -74,6 +76,10 @@ public class QuestionServiceImpl implements QuestionService {
     @Transactional
     public void deleteQuestion(Long restaurantId, Long questionId) {
         var entity = questions.findByIdAndRestaurantId(questionId, restaurantId).orElseThrow(() -> new NotFoundException("Question not found"));
+        var usages = scopes.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, List.of(entity.getFolder().getId()));
+        if (!usages.isEmpty()) {
+            throw new ConflictException("Question is used in exams", Map.of("exams", usages));
+        }
         options.deleteByQuestionId(entity.getId());
         pairs.deleteByQuestionId(entity.getId());
         questions.delete(entity);

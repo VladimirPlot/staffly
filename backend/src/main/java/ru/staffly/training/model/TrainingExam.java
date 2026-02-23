@@ -38,6 +38,10 @@ public class TrainingExam {
     @Column(name = "time_limit_sec")
     private Integer timeLimitSec;
 
+    @Column(name = "version", nullable = false)
+    @Builder.Default
+    private int version = 1;
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean active = true;

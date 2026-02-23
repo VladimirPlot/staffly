@@ -206,6 +206,12 @@ public class TrainingController {
         examService.deleteExam(restaurantId, examId);
     }
 
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/{examId}/reset-results")
+    public void resetExamResults(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
+        examService.resetExamResults(restaurantId, examId);
+    }
+
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/start")
     public StartExamResponseDto startExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
