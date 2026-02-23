@@ -78,7 +78,7 @@ public class QuestionServiceImpl implements QuestionService {
         var entity = questions.findByIdAndRestaurantId(questionId, restaurantId).orElseThrow(() -> new NotFoundException("Question not found"));
         var usages = scopes.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, List.of(entity.getFolder().getId()));
         if (!usages.isEmpty()) {
-            throw new ConflictException("Question is used in exams", Map.of("exams", usages));
+            throw new ConflictException("Вопрос используется в экзаменах. Уберите папку из области экзамена, затем удаляйте вопрос.", Map.of("exams", usages));
         }
         options.deleteByQuestionId(entity.getId());
         pairs.deleteByQuestionId(entity.getId());
@@ -99,6 +99,14 @@ public class QuestionServiceImpl implements QuestionService {
     private void validateQuestionRequest(TrainingQuestionType type, List<TrainingQuestionOptionDto> optionDtos, List<TrainingQuestionMatchPairDto> pairDtos) {
         if (type == TrainingQuestionType.MATCH) {
             if (pairDtos == null || pairDtos.size() < 2) throw new BadRequestException("MATCH requires at least 2 pairs");
+            var lefts = new HashSet<String>();
+            var rights = new HashSet<String>();
+            for (var pair : pairDtos) {
+                if (pair.leftText() == null || pair.rightText() == null) throw new BadRequestException("MATCH pairs must be complete");
+                if (!lefts.add(pair.leftText())) throw new BadRequestException("MATCH contains duplicate left values");
+                if (!rights.add(pair.rightText())) throw new BadRequestException("MATCH contains duplicate right values");
+            }
+            if (lefts.size() != pairDtos.size() || rights.size() != pairDtos.size()) throw new BadRequestException("MATCH contains duplicate pairs");
             return;
         }
         if (optionDtos == null || optionDtos.size() < 2) throw new BadRequestException("Question requires at least 2 options");

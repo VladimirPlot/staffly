@@ -52,7 +52,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ErrorResponse> handleResponseStatus(ResponseStatusException ex) {
         String msg = ex.getReason() != null ? ex.getReason() : ex.getMessage();
-        return ResponseEntity.status(ex.getStatusCode()).body(new ErrorResponse(ex.getStatusCode().toString(), msg, null));
+        var status = HttpStatus.resolve(ex.getStatusCode().value());
+        String errorCode = status == null ? "INTERNAL_ERROR" : status.name();
+        return ResponseEntity.status(ex.getStatusCode()).body(new ErrorResponse(errorCode, msg, null));
     }
 
     @ExceptionHandler(AuthenticationException.class)
@@ -92,6 +94,6 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ErrorResponse> buildResponse(String message, HttpStatus status) {
-        return ResponseEntity.status(status).body(new ErrorResponse(message));
+        return ResponseEntity.status(status).body(new ErrorResponse(status.name(), message, null));
     }
 }

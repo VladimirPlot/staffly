@@ -2,6 +2,7 @@ package ru.staffly.training.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import ru.staffly.training.dto.ExamUsageDto;
 import ru.staffly.training.model.TrainingExamScope;
 
@@ -16,7 +17,7 @@ public interface TrainingExamScopeRepository extends JpaRepository<TrainingExamS
     @Query("select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title) " +
             "from TrainingExamScope s join s.exam e " +
             "where s.folder.id in :folderIds and e.restaurant.id = :restaurantId")
-    List<ExamUsageDto> findExamUsagesByRestaurantIdAndFolderIds(Long restaurantId, List<Long> folderIds);
+    List<ExamUsageDto> findExamUsagesByRestaurantIdAndFolderIds(@Param("restaurantId") Long restaurantId, @Param("folderIds") List<Long> folderIds);
 
     void deleteByExamId(Long examId);
 }

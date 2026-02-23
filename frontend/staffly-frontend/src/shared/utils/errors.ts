@@ -11,14 +11,24 @@ export function getErrorMessage(error: any, defaultMessage: string): string {
   if (data) {
     // Если backend вернул JSON-объект
     if (typeof data === "object") {
-      if (typeof data.message === "string" && data.message.trim().length > 0) {
-        return data.message;
-      }
-      if (typeof data.error === "string" && data.error.trim().length > 0) {
-        return data.error;
-      }
-      if (typeof data.errorMessage === "string" && data.errorMessage.trim().length > 0) {
-        return data.errorMessage;
+      const baseMessage = typeof data.message === "string" && data.message.trim().length > 0
+        ? data.message
+        : typeof data.error === "string" && data.error.trim().length > 0
+          ? data.error
+          : typeof data.errorMessage === "string" && data.errorMessage.trim().length > 0
+            ? data.errorMessage
+            : null;
+
+      if (baseMessage) {
+        const exams = Array.isArray(data?.meta?.exams)
+          ? data.meta.exams
+              .map((exam: any) => (typeof exam?.title === "string" ? exam.title : null))
+              .filter((title: string | null): title is string => Boolean(title && title.trim().length > 0))
+          : [];
+        if (exams.length > 0) {
+          return `${baseMessage}: ${exams.join(", ")}`;
+        }
+        return baseMessage;
       }
     }
 

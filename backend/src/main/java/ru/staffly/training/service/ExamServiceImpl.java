@@ -88,6 +88,7 @@ public class ExamServiceImpl implements ExamService {
     public void resetExamResults(Long restaurantId, Long examId) {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
         exam.setVersion(exam.getVersion() + 1);
+        exam.setUpdatedAt(TimeProvider.now());
     }
 
     @Override
@@ -111,8 +112,13 @@ public class ExamServiceImpl implements ExamService {
         var attempt = attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
                 .examVersion(exam.getVersion())
+                .restaurant(exam.getRestaurant())
                 .user(User.builder().id(userId).build())
                 .startedAt(TimeProvider.now())
+                .passPercentSnapshot(exam.getPassPercent())
+                .titleSnapshot(exam.getTitle())
+                .questionCountSnapshot(exam.getQuestionCount())
+                .timeLimitSecSnapshot(exam.getTimeLimitSec())
                 .build());
 
         List<TrainingExamAttemptQuestion> entities = new ArrayList<>();
@@ -136,8 +142,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request) {
-        var attempt = attempts.findByIdAndExamRestaurantId(attemptId, restaurantId).orElseThrow(() -> new NotFoundException("Attempt not found"));
-        if (attempt.getExam() == null) throw new ConflictException("Exam was deleted");
+        var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId).orElseThrow(() -> new NotFoundException("Attempt not found"));
         if (!Objects.equals(attempt.getUser().getId(), userId)) throw new BadRequestException("Attempt belongs to another user");
         if (attempt.getFinishedAt() != null) throw new ConflictException("Attempt already finished");
 
@@ -159,9 +164,9 @@ public class ExamServiceImpl implements ExamService {
         int score = existing.isEmpty() ? 0 : (int) Math.round((correctAnswers * 100.0) / existing.size());
         attempt.setFinishedAt(TimeProvider.now());
         attempt.setScorePercent(score);
-        attempt.setPassed(score >= attempt.getExam().getPassPercent());
+        attempt.setPassed(score >= attempt.getPassPercentSnapshot());
 
-        return new AttemptResultDto(attempt.getId(), attempt.getExam().getId(), attempt.getExamVersion(), attempt.getUser().getId(), attempt.getStartedAt(), attempt.getFinishedAt(), attempt.getScorePercent(), attempt.getPassed(),
+        return new AttemptResultDto(attempt.getId(), attempt.getExam() == null ? null : attempt.getExam().getId(), attempt.getExamVersion(), attempt.getUser().getId(), attempt.getStartedAt(), attempt.getFinishedAt(), attempt.getScorePercent(), attempt.getPassed(),
                 existing.stream().map(x -> new AttemptResultQuestionDto(readSnapshot(x.getQuestionSnapshotJson()).questionId(), x.getChosenAnswerJson(), x.isCorrect())).toList());
     }
 
@@ -202,8 +207,9 @@ public class ExamServiceImpl implements ExamService {
                     var allowedRight = snapshot.matchPairs().stream().map(TrainingQuestionMatchPairViewDto::rightText).collect(Collectors.toSet());
                     if (answerPairs.size() != allowedLeft.size()) throw new BadRequestException("Invalid answer values");
                     var lefts = new HashSet<String>();
+                    var rights = new HashSet<String>();
                     for (var pair : answerPairs) {
-                        if (!allowedLeft.contains(pair.left()) || !allowedRight.contains(pair.right()) || !lefts.add(pair.left())) {
+                        if (!allowedLeft.contains(pair.left()) || !allowedRight.contains(pair.right()) || !lefts.add(pair.left()) || !rights.add(pair.right())) {
                             throw new BadRequestException("Invalid answer values");
                         }
                     }

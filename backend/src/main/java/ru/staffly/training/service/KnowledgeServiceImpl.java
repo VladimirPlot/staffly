@@ -92,7 +92,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (root.getType() == TrainingFolderType.QUESTION_BANK) {
             var usages = scopes.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
             if (!usages.isEmpty()) {
-                throw new ConflictException("Folder contains questions used in exams", Map.of("exams", usages));
+                throw new ConflictException("Нельзя удалить папку: она используется в экзаменах. Уберите папку из области экзаменов и повторите.", Map.of("exams", usages));
             }
         }
         var relatedItems = items.findByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds);

@@ -12,11 +12,6 @@ public class ErrorResponse {
     private String message;
     private Map<String, Object> meta;
 
-    public ErrorResponse(String error) {
-        this.error = error;
-        this.message = error;
-    }
-
     public ErrorResponse(String error, String message, Map<String, Object> meta) {
         this.error = error;
         this.message = message;
