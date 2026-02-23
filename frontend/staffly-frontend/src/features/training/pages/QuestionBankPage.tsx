@@ -96,26 +96,41 @@ export default function QuestionBankPage() {
       {selectedFolder && (
         <Card className="space-y-3">
           <h3 className="text-lg font-semibold">Вопросы папки: {selectedFolder.name}</h3>
+
           {questionsLoading && <LoadingState label="Загрузка вопросов…" />}
           {questionsError && <ErrorState message={questionsError} onRetry={loadQuestions} />}
+
           {!questionsLoading && !questionsError && questions.length === 0 && (
             <EmptyState title="Вопросов пока нет" description="Добавьте вопросы для этой папки." />
           )}
 
           {!questionsLoading && !questionsError && questions.length > 0 && (
             <div className="space-y-2">
-              {questions.map((question) => (
-                <div key={question.id} className="rounded-2xl border border-subtle bg-app p-3">
-                  <div className="font-medium">{question.text}</div>
-                  {question.explanation && <div className="mt-1 text-sm text-muted">{question.explanation}</div>}
-                  {!question.active && <div className="mt-1 text-xs text-amber-600">Скрыт</div>}
+              {questions.map((q) => (
+                <div key={q.id} className="rounded-2xl border border-subtle bg-app p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium">{q.prompt}</div>
+                    <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-700">{q.type}</span>
+                    {!q.active && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">Скрыт</span>}
+                  </div>
+
+                  {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+
+                  <div className="mt-2 text-xs text-muted">
+                    {q.type === "MATCH" ? `Пар: ${q.matchPairs.length}` : `Вариантов: ${q.options.length}`}
+                  </div>
+
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {question.active ? (
+                    <Button variant="outline" size="sm" disabled>
+                      Редактировать
+                    </Button>
+
+                    {q.active ? (
                       <Button
                         variant="outline"
                         size="sm"
-                        isLoading={questionActionLoadingId === question.id}
-                        onClick={() => runQuestionAction(question.id, "hide")}
+                        isLoading={questionActionLoadingId === q.id}
+                        onClick={() => runQuestionAction(q.id, "hide")}
                       >
                         Скрыть
                       </Button>
@@ -124,16 +139,16 @@ export default function QuestionBankPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          isLoading={questionActionLoadingId === question.id}
-                          onClick={() => runQuestionAction(question.id, "restore")}
+                          isLoading={questionActionLoadingId === q.id}
+                          onClick={() => runQuestionAction(q.id, "restore")}
                         >
                           Восстановить
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          isLoading={questionActionLoadingId === question.id}
-                          onClick={() => runQuestionAction(question.id, "delete")}
+                          isLoading={questionActionLoadingId === q.id}
+                          onClick={() => runQuestionAction(q.id, "delete")}
                         >
                           Удалить
                         </Button>

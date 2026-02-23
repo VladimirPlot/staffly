@@ -97,23 +97,29 @@ export default function KnowledgePage() {
       {selectedFolder && (
         <Card className="space-y-3">
           <h3 className="text-lg font-semibold">Материалы папки: {selectedFolder.name}</h3>
+
           {itemsLoading && <LoadingState label="Загрузка материалов…" />}
           {itemsError && <ErrorState message={itemsError} onRetry={loadItems} />}
+
           {!itemsLoading && !itemsError && items.length === 0 && (
             <EmptyState title="Материалов пока нет" description="Создайте карточки знаний для этой папки." />
           )}
+
           {!itemsLoading && !itemsError && items.length > 0 && (
             <div className="space-y-2">
               {items.map((item) => (
                 <div key={item.id} className="rounded-2xl border border-subtle bg-app p-3">
                   <div className="font-medium">{item.title}</div>
-                  <div className="mt-1 text-sm text-muted line-clamp-3">{item.content}</div>
+
+                  {item.description && <div className="mt-1 text-sm text-muted line-clamp-3">{item.description}</div>}
                   {!item.active && <div className="mt-1 text-xs text-amber-600">Скрыт</div>}
+
                   {canManage && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" disabled>
                         Редактировать
                       </Button>
+
                       {item.active ? (
                         <Button
                           variant="outline"

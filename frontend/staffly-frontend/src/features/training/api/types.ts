@@ -11,24 +11,48 @@ export type TrainingFolderDto = {
   active: boolean;
 };
 
+/** BACKEND: TrainingKnowledgeItemDto */
 export type TrainingKnowledgeItemDto = {
   id: number;
   restaurantId: number;
   folderId: number;
   title: string;
-  content: string;
+  description?: string | null;
+  composition?: string | null;
+  allergens?: string | null;
+  imageUrl?: string | null;
   sortOrder: number;
   active: boolean;
+};
+
+/** BACKEND: TrainingQuestionDto */
+export type TrainingQuestionType = "SINGLE" | "MULTI" | "TRUE_FALSE" | "FILL_SELECT" | "MATCH";
+
+export type TrainingQuestionOptionDto = {
+  id: number;
+  text: string;
+  correct: boolean;
+  sortOrder: number;
+};
+
+export type TrainingQuestionMatchPairDto = {
+  id: number;
+  leftText: string;
+  rightText: string;
+  sortOrder: number;
 };
 
 export type TrainingQuestionDto = {
   id: number;
   restaurantId: number;
   folderId: number;
-  text: string;
+  type: TrainingQuestionType;
+  prompt: string;
   explanation?: string | null;
+  sortOrder: number;
   active: boolean;
-  sortOrder?: number;
+  options: TrainingQuestionOptionDto[];
+  matchPairs: TrainingQuestionMatchPairDto[];
 };
 
 export type TrainingExamDto = {
@@ -39,6 +63,7 @@ export type TrainingExamDto = {
   questionCount: number;
   passPercent: number;
   timeLimitSec?: number | null;
+  version: number;
   active: boolean;
   folderIds: number[];
 };
@@ -48,44 +73,61 @@ export type ExamProgressDto = {
   passed: boolean;
   lastAttemptAt?: string | null;
   scorePercent?: number | null;
-  attemptsCount?: number;
 };
 
-export type ExamStartQuestionOptionDto = {
-  id: number;
+/** START EXAM: snapshots */
+export type ExamStartQuestionOptionViewDto = {
+  sortOrder: number;
   text: string;
 };
 
-export type ExamStartQuestionDto = {
-  id: number;
-  text: string;
-  options: ExamStartQuestionOptionDto[];
+export type ExamStartQuestionMatchPairViewDto = {
+  sortOrder: number;
+  leftText: string;
+  rightText: string;
+};
+
+export type AttemptQuestionSnapshotDto = {
+  questionId: number;
+  type: TrainingQuestionType;
+  prompt: string;
+  explanation?: string | null;
+  options: ExamStartQuestionOptionViewDto[];
+  matchPairs: ExamStartQuestionMatchPairViewDto[];
 };
 
 export type ExamAttemptDto = {
   attemptId: number;
-  examId: number;
-  status: "IN_PROGRESS" | "SUBMITTED" | string;
-  startedAt?: string;
-  timeLimitSec?: number | null;
-  questions: ExamStartQuestionDto[];
+  startedAt: string;
+  examVersion: number;
+  exam: TrainingExamDto;
+  questions: AttemptQuestionSnapshotDto[];
 };
 
+/** SUBMIT: backend expects answerJson per questionId */
 export type ExamSubmitAnswerDto = {
   questionId: number;
-  optionId: number;
+  answerJson: string; // JSON string payload
 };
 
 export type ExamSubmitPayload = {
   answers: ExamSubmitAnswerDto[];
 };
 
+export type AttemptResultQuestionDto = {
+  questionId: number;
+  chosenAnswerJson: string | null;
+  correct: boolean;
+};
+
 export type ExamSubmitResultDto = {
   attemptId: number;
-  examId: number;
-  passed: boolean;
+  examId: number | null;
+  examVersion: number;
+  userId: number;
+  startedAt: string;
+  finishedAt: string;
   scorePercent: number;
-  correctAnswers: number;
-  totalQuestions: number;
-  submittedAt: string;
+  passed: boolean;
+  answers: AttemptResultQuestionDto[];
 };
