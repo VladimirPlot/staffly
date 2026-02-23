@@ -13,6 +13,7 @@ import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingFolder;
 import ru.staffly.training.model.TrainingFolderType;
 import ru.staffly.training.model.TrainingKnowledgeItem;
+import ru.staffly.training.repository.TrainingExamScopeRepository;
 import ru.staffly.training.repository.TrainingFolderRepository;
 import ru.staffly.training.repository.TrainingKnowledgeItemRepository;
 
@@ -27,6 +28,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingFolderRepository folders;
     private final TrainingKnowledgeItemRepository items;
     private final TrainingImageStorage storage;
+    private final TrainingExamScopeRepository scopes;
 
     @Override
     public List<TrainingFolderDto> listFolders(Long restaurantId, TrainingFolderType type, boolean includeInactive) {
@@ -86,7 +88,13 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
         if (root.isActive()) throw new ConflictException("Folder must be hidden before delete");
 
-        var allFolderIds = collectFolderIds(restaurantId, root.getId());
+        var allFolderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+        if (root.getType() == TrainingFolderType.QUESTION_BANK) {
+            var usages = scopes.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
+            if (!usages.isEmpty()) {
+                throw new ConflictException("Folder contains questions used in exams", Map.of("exams", usages));
+            }
+        }
         var relatedItems = items.findByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds);
         for (var item : relatedItems) {
             storage.deleteByPublicUrl(item.getImageUrl());
@@ -152,6 +160,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public void deleteKnowledgeItem(Long restaurantId, Long itemId) {
         var entity = items.findByIdAndRestaurantId(itemId, restaurantId).orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+        if (entity.isActive()) throw new ConflictException("Item must be hidden before delete");
         storage.deleteByPublicUrl(entity.getImageUrl());
         storage.deleteItemFolder(itemId);
         items.delete(entity);
@@ -193,25 +202,26 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void setFolderTreeActive(Long restaurantId, TrainingFolder root, boolean active) {
-        var queue = new ArrayDeque<TrainingFolder>();
-        queue.add(root);
-        while (!queue.isEmpty()) {
-            var current = queue.removeFirst();
-            current.setActive(active);
-            items.findByRestaurantIdAndFolderIdOrderBySortOrderAscTitleAsc(restaurantId, current.getId())
-                    .forEach(item -> item.setActive(active));
-            queue.addAll(folders.findByRestaurantIdAndParentId(restaurantId, current.getId()));
-        }
+        var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+        folders.updateActiveByRestaurantIdAndIdIn(restaurantId, folderIds, active);
+        items.updateActiveByRestaurantIdAndFolderIdIn(restaurantId, folderIds, active);
+        root.setActive(active);
     }
 
-    private List<Long> collectFolderIds(Long restaurantId, Long rootId) {
+    private List<Long> collectFolderIds(Long restaurantId, Long rootId, TrainingFolderType type) {
+        var allFolders = folders.findByRestaurantIdAndType(restaurantId, type);
+        Map<Long, List<Long>> childrenByParent = allFolders.stream()
+                .filter(f -> f.getParent() != null)
+                .collect(java.util.stream.Collectors.groupingBy(f -> f.getParent().getId(),
+                        java.util.stream.Collectors.mapping(TrainingFolder::getId, java.util.stream.Collectors.toList())));
+
         var result = new ArrayList<Long>();
         var queue = new ArrayDeque<Long>();
         queue.add(rootId);
         while (!queue.isEmpty()) {
             var id = queue.removeFirst();
             result.add(id);
-            folders.findByRestaurantIdAndParentId(restaurantId, id).forEach(child -> queue.add(child.getId()));
+            queue.addAll(childrenByParent.getOrDefault(id, List.of()));
         }
         return result;
     }

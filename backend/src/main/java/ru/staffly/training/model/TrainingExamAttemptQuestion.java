@@ -19,8 +19,8 @@ public class TrainingExamAttemptQuestion {
     @JoinColumn(name = "attempt_id", nullable = false)
     private TrainingExamAttempt attempt;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "question_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "question_id")
     private TrainingQuestion question;
 
     @Column(name = "question_snapshot_json", nullable = false, columnDefinition = "text")

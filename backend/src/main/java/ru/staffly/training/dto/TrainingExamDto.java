@@ -15,6 +15,7 @@ public record TrainingExamDto(
         @NotNull @Min(1) Integer questionCount,
         @NotNull @Min(1) @Max(100) Integer passPercent,
         @Min(0) Integer timeLimitSec,
+        @NotNull @Min(1) Integer version,
         Boolean active,
         List<Long> folderIds
 ) {}
