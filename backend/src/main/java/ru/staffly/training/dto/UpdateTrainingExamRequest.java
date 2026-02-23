@@ -7,9 +7,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 
-public record TrainingExamDto(
-        Long id,
-        Long restaurantId,
+public record UpdateTrainingExamRequest(
         @NotBlank String title,
         String description,
         @NotNull @Min(1) Integer questionCount,

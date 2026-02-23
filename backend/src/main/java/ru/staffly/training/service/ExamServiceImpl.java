@@ -1,9 +1,12 @@
 package ru.staffly.training.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.restaurant.model.Restaurant;
@@ -13,6 +16,8 @@ import ru.staffly.training.repository.*;
 import ru.staffly.user.model.User;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -20,43 +25,54 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
     private final TrainingExamScopeRepository scopes;
     private final TrainingQuestionRepository questions;
+    private final TrainingQuestionOptionRepository questionOptions;
+    private final TrainingQuestionMatchPairRepository questionPairs;
     private final TrainingExamAttemptRepository attempts;
     private final TrainingExamAttemptQuestionRepository attemptQuestions;
     private final TrainingFolderRepository folders;
+    private final ObjectMapper objectMapper;
 
     @Override
-    public List<TrainingExamDto> listExams(Long restaurantId) {
-        return exams.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream().map(this::toDto).toList();
+    public List<TrainingExamDto> listExams(Long restaurantId, boolean includeInactive) {
+        var examList = includeInactive
+                ? exams.findByRestaurantIdOrderByCreatedAtDesc(restaurantId)
+                : exams.findByRestaurantIdAndActiveTrueOrderByCreatedAtDesc(restaurantId);
+        if (examList.isEmpty()) return List.of();
+        var examIds = examList.stream().map(TrainingExam::getId).toList();
+        var scopesByExam = scopes.findByExamIdIn(examIds).stream()
+                .collect(Collectors.groupingBy(s -> s.getExam().getId(), Collectors.mapping(s -> s.getFolder().getId(), Collectors.toList())));
+        return examList.stream().map(exam -> new TrainingExamDto(exam.getId(), exam.getRestaurant().getId(), exam.getTitle(), exam.getDescription(), exam.getQuestionCount(),
+                exam.getPassPercent(), exam.getTimeLimitSec(), exam.isActive(), scopesByExam.getOrDefault(exam.getId(), List.of()))).toList();
     }
 
     @Override
     @Transactional
-    public TrainingExamDto createExam(Long restaurantId, TrainingExamDto dto) {
+    public TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request) {
         var exam = exams.save(TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
-                .title(dto.title())
-                .description(dto.description())
-                .questionCount(dto.questionCount())
-                .passPercent(dto.passPercent())
-                .timeLimitSec(dto.timeLimitSec())
-                .active(dto.active() == null || dto.active())
+                .title(request.title())
+                .description(request.description())
+                .questionCount(request.questionCount())
+                .passPercent(request.passPercent())
+                .timeLimitSec(request.timeLimitSec())
+                .active(true)
                 .build());
-        replaceScopes(restaurantId, exam, dto.folderIds());
-        return toDto(exam);
+        replaceScopes(restaurantId, exam, request.folderIds());
+        return listExams(restaurantId, true).stream().filter(x -> x.id().equals(exam.getId())).findFirst().orElseThrow();
     }
 
     @Override
     @Transactional
-    public TrainingExamDto updateExam(Long restaurantId, Long examId, TrainingExamDto dto) {
+    public TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request) {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
-        exam.setTitle(dto.title());
-        exam.setDescription(dto.description());
-        exam.setQuestionCount(dto.questionCount());
-        exam.setPassPercent(dto.passPercent());
-        exam.setTimeLimitSec(dto.timeLimitSec());
-        exam.setActive(dto.active() == null ? exam.isActive() : dto.active());
-        replaceScopes(restaurantId, exam, dto.folderIds());
-        return toDto(exam);
+        exam.setTitle(request.title());
+        exam.setDescription(request.description());
+        exam.setQuestionCount(request.questionCount());
+        exam.setPassPercent(request.passPercent());
+        exam.setTimeLimitSec(request.timeLimitSec());
+        exam.setActive(request.active() == null ? exam.isActive() : request.active());
+        replaceScopes(restaurantId, exam, request.folderIds());
+        return listExams(restaurantId, true).stream().filter(x -> x.id().equals(exam.getId())).findFirst().orElseThrow();
     }
 
     @Override
@@ -69,11 +85,18 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public TrainingExamAttemptDto startExam(Long restaurantId, Long examId, Long userId) {
+    public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId) {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
         var scopeIds = scopes.findByExamId(examId).stream().map(x -> x.getFolder().getId()).toList();
         var pool = scopeIds.isEmpty() ? List.<TrainingQuestion>of() : questions.findByRestaurantIdAndFolderIdInAndActiveTrue(restaurantId, scopeIds);
         if (pool.isEmpty()) throw new BadRequestException("No questions in exam scope");
+
+        var questionIds = pool.stream().map(TrainingQuestion::getId).toList();
+        var optionsByQuestion = questionOptions.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
+                .collect(Collectors.groupingBy(o -> o.getQuestion().getId()));
+        var pairsByQuestion = questionPairs.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
+                .collect(Collectors.groupingBy(p -> p.getQuestion().getId()));
+
         Collections.shuffle(pool);
         int count = Math.min(exam.getQuestionCount(), pool.size());
         var selected = pool.subList(0, count);
@@ -84,33 +107,97 @@ public class ExamServiceImpl implements ExamService {
                 .startedAt(TimeProvider.now())
                 .build());
 
-        attemptQuestions.saveAll(selected.stream().map(q -> TrainingExamAttemptQuestion.builder()
-                .attempt(attempt).question(q).correct(false).build()).toList());
+        List<TrainingExamAttemptQuestion> entities = new ArrayList<>();
+        List<AttemptQuestionSnapshotDto> snapshots = new ArrayList<>();
+        for (var question : selected) {
+            var snapshot = buildSnapshot(question, optionsByQuestion.getOrDefault(question.getId(), List.of()), pairsByQuestion.getOrDefault(question.getId(), List.of()));
+            snapshots.add(snapshot.snapshotDto());
+            entities.add(TrainingExamAttemptQuestion.builder()
+                    .attempt(attempt)
+                    .question(question)
+                    .questionSnapshotJson(snapshot.snapshotJson())
+                    .correctKeyJson(snapshot.correctKeyJson())
+                    .correct(false)
+                    .build());
+        }
+        attemptQuestions.saveAll(entities);
 
-        return toAttemptDto(attempt);
+        var examDto = new TrainingExamDto(exam.getId(), restaurantId, exam.getTitle(), exam.getDescription(), exam.getQuestionCount(), exam.getPassPercent(), exam.getTimeLimitSec(), exam.isActive(), scopeIds);
+        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), examDto, snapshots);
     }
 
     @Override
     @Transactional
-    public TrainingExamAttemptDto submitAttempt(Long restaurantId, Long attemptId, Long userId, TrainingExamSubmitRequest request) {
+    public AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request) {
         var attempt = attempts.findByIdAndExamRestaurantId(attemptId, restaurantId).orElseThrow(() -> new NotFoundException("Attempt not found"));
         if (!Objects.equals(attempt.getUser().getId(), userId)) throw new BadRequestException("Attempt belongs to another user");
+        if (attempt.getFinishedAt() != null) throw new ConflictException("Attempt already finished");
+
         var existing = attemptQuestions.findByAttemptId(attemptId);
-        var byQuestionId = new HashMap<Long, TrainingExamAttemptQuestionDto>();
-        request.questions().forEach(x -> byQuestionId.put(x.questionId(), x));
-        int correct = 0;
+        var byQuestionId = request.answers().stream().collect(Collectors.toMap(SubmitAttemptAnswerDto::questionId, Function.identity(), (a, b) -> b));
+        int correctAnswers = 0;
+
         for (var item : existing) {
             var answer = byQuestionId.get(item.getQuestion().getId());
-            item.setChosenAnswerJson(answer == null ? null : answer.chosenAnswerJson());
-            boolean isCorrect = answer != null && Boolean.TRUE.equals(answer.correct());
+            if (answer == null) throw new BadRequestException("Missing answer for question " + item.getQuestion().getId());
+            validateAnswerForType(answer.answerJson(), item.getQuestionSnapshotJson());
+            item.setChosenAnswerJson(answer.answerJson());
+            boolean isCorrect = isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson());
             item.setCorrect(isCorrect);
-            if (isCorrect) correct++;
+            if (isCorrect) correctAnswers++;
         }
-        int score = existing.isEmpty() ? 0 : (int) Math.round((correct * 100.0) / existing.size());
+
+        int score = existing.isEmpty() ? 0 : (int) Math.round((correctAnswers * 100.0) / existing.size());
         attempt.setFinishedAt(TimeProvider.now());
         attempt.setScorePercent(score);
         attempt.setPassed(score >= attempt.getExam().getPassPercent());
-        return toAttemptDto(attempt);
+
+        return new AttemptResultDto(attempt.getId(), attempt.getExam().getId(), attempt.getUser().getId(), attempt.getStartedAt(), attempt.getFinishedAt(), attempt.getScorePercent(), attempt.getPassed(),
+                existing.stream().map(x -> new AttemptResultQuestionDto(x.getQuestion().getId(), x.getChosenAnswerJson(), x.isCorrect())).toList());
+    }
+
+    private SnapshotPayload buildSnapshot(TrainingQuestion question, List<TrainingQuestionOption> options, List<TrainingQuestionMatchPair> pairs) {
+        try {
+            var optionView = options.stream().map(o -> new TrainingQuestionOptionViewDto(o.getSortOrder(), o.getText())).toList();
+            var pairView = pairs.stream().map(p -> new TrainingQuestionMatchPairViewDto(p.getSortOrder(), p.getLeftText(), p.getRightText())).toList();
+            var snapshotDto = new AttemptQuestionSnapshotDto(question.getId(), question.getType(), question.getPrompt(), question.getExplanation(), optionView, pairView);
+            String snapshotJson = objectMapper.writeValueAsString(snapshotDto);
+            String correctKey = switch (question.getType()) {
+                case MATCH -> objectMapper.writeValueAsString(pairs.stream().map(TrainingQuestionMatchPair::getRightText).toList());
+                case MULTI -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).sorted().toList());
+                default -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).findFirst().orElse(""));
+            };
+            return new SnapshotPayload(snapshotDto, snapshotJson, correctKey);
+        } catch (Exception e) {
+            throw new BadRequestException("Cannot serialize exam snapshot");
+        }
+    }
+
+    private void validateAnswerForType(String answerJson, String snapshotJson) {
+        try {
+            var snapshot = objectMapper.readValue(snapshotJson, AttemptQuestionSnapshotDto.class);
+            switch (snapshot.type()) {
+                case MATCH, MULTI -> objectMapper.readValue(answerJson, new TypeReference<List<String>>() {});
+                default -> objectMapper.readValue(answerJson, String.class);
+            }
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid answer format");
+        }
+    }
+
+    private boolean isAnswerCorrect(String answerJson, String correctKeyJson) {
+        try {
+            if (correctKeyJson.startsWith("[")) {
+                var actual = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
+                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
+                return expected.equals(actual);
+            }
+            String actual = objectMapper.readValue(answerJson, String.class);
+            String expected = objectMapper.readValue(correctKeyJson, String.class);
+            return Objects.equals(expected, actual);
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid answer payload");
+        }
     }
 
     private void replaceScopes(Long restaurantId, TrainingExam exam, List<Long> folderIds) {
@@ -125,14 +212,5 @@ public class ExamServiceImpl implements ExamService {
         scopes.saveAll(entities);
     }
 
-    private TrainingExamDto toDto(TrainingExam exam) {
-        return new TrainingExamDto(exam.getId(), exam.getRestaurant().getId(), exam.getTitle(), exam.getDescription(), exam.getQuestionCount(),
-                exam.getPassPercent(), exam.getTimeLimitSec(), exam.isActive(), scopes.findByExamId(exam.getId()).stream().map(x -> x.getFolder().getId()).toList());
-    }
-
-    private TrainingExamAttemptDto toAttemptDto(TrainingExamAttempt attempt) {
-        return new TrainingExamAttemptDto(attempt.getId(), attempt.getExam().getId(), attempt.getUser().getId(), attempt.getStartedAt(),
-                attempt.getFinishedAt(), attempt.getScorePercent(), attempt.getPassed(),
-                attemptQuestions.findByAttemptId(attempt.getId()).stream().map(x -> new TrainingExamAttemptQuestionDto(x.getId(), x.getQuestion().getId(), x.getChosenAnswerJson(), x.isCorrect())).toList());
-    }
+    private record SnapshotPayload(AttemptQuestionSnapshotDto snapshotDto, String snapshotJson, String correctKeyJson) {}
 }

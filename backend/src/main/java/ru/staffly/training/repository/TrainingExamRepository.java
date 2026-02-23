@@ -8,5 +8,6 @@ import java.util.Optional;
 
 public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long> {
     List<TrainingExam> findByRestaurantIdOrderByCreatedAtDesc(Long restaurantId);
+    List<TrainingExam> findByRestaurantIdAndActiveTrueOrderByCreatedAtDesc(Long restaurantId);
     Optional<TrainingExam> findByIdAndRestaurantId(Long id, Long restaurantId);
 }

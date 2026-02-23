@@ -7,5 +7,6 @@ import java.util.List;
 
 public interface TrainingExamScopeRepository extends JpaRepository<TrainingExamScope, Long> {
     List<TrainingExamScope> findByExamId(Long examId);
+    List<TrainingExamScope> findByExamIdIn(List<Long> examIds);
     void deleteByExamId(Long examId);
 }

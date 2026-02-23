@@ -23,6 +23,12 @@ public class TrainingExamAttemptQuestion {
     @JoinColumn(name = "question_id", nullable = false)
     private TrainingQuestion question;
 
+    @Column(name = "question_snapshot_json", nullable = false, columnDefinition = "text")
+    private String questionSnapshotJson;
+
+    @Column(name = "correct_key_json", nullable = false, columnDefinition = "text")
+    private String correctKeyJson;
+
     @Column(name = "chosen_answer_json", columnDefinition = "text")
     private String chosenAnswerJson;
 

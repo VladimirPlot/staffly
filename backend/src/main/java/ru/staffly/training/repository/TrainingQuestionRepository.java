@@ -8,6 +8,8 @@ import java.util.Optional;
 
 public interface TrainingQuestionRepository extends JpaRepository<TrainingQuestion, Long> {
     List<TrainingQuestion> findByRestaurantIdAndFolderIdOrderBySortOrderAscIdAsc(Long restaurantId, Long folderId);
+    List<TrainingQuestion> findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscIdAsc(Long restaurantId, Long folderId);
     List<TrainingQuestion> findByRestaurantIdAndFolderIdInAndActiveTrue(Long restaurantId, List<Long> folderIds);
+    List<TrainingQuestion> findByIdIn(List<Long> ids);
     Optional<TrainingQuestion> findByIdAndRestaurantId(Long id, Long restaurantId);
 }
