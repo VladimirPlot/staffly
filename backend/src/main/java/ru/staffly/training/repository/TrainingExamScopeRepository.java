@@ -19,5 +19,11 @@ public interface TrainingExamScopeRepository extends JpaRepository<TrainingExamS
             "where s.folder.id in :folderIds and e.restaurant.id = :restaurantId")
     List<ExamUsageDto> findExamUsagesByRestaurantIdAndFolderIds(@Param("restaurantId") Long restaurantId, @Param("folderIds") List<Long> folderIds);
 
+    @Query("select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title) " +
+            "from TrainingExamScope s join s.exam e " +
+            "where e.restaurant.id = :restaurantId and s.folder.id = (" +
+            "select q.folder.id from TrainingQuestion q where q.id = :questionId and q.restaurant.id = :restaurantId)")
+    List<ExamUsageDto> findExamUsagesByRestaurantIdAndQuestionId(@Param("restaurantId") Long restaurantId, @Param("questionId") Long questionId);
+
     void deleteByExamId(Long examId);
 }

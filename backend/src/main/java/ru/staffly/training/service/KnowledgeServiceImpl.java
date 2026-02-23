@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import jakarta.persistence.EntityManager;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
@@ -29,6 +30,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingKnowledgeItemRepository items;
     private final TrainingImageStorage storage;
     private final TrainingExamScopeRepository scopes;
+    private final EntityManager entityManager;
 
     @Override
     public List<TrainingFolderDto> listFolders(Long restaurantId, TrainingFolderType type, boolean includeInactive) {
@@ -71,7 +73,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public TrainingFolderDto hideFolder(Long restaurantId, Long folderId) {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
         setFolderTreeActive(restaurantId, root, false);
-        return toDto(root);
+        return toDto(folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
     }
 
     @Override
@@ -79,14 +81,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public TrainingFolderDto restoreFolder(Long restaurantId, Long folderId) {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
         setFolderTreeActive(restaurantId, root, true);
-        return toDto(root);
+        return toDto(folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
     }
 
     @Override
     @Transactional
     public void deleteFolder(Long restaurantId, Long folderId) {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
-        if (root.isActive()) throw new ConflictException("Folder must be hidden before delete");
+        if (root.isActive()) throw new ConflictException("Сначала скройте папку, затем удаляйте.");
 
         var allFolderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
         if (root.getType() == TrainingFolderType.QUESTION_BANK) {
@@ -160,7 +162,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public void deleteKnowledgeItem(Long restaurantId, Long itemId) {
         var entity = items.findByIdAndRestaurantId(itemId, restaurantId).orElseThrow(() -> new NotFoundException("Knowledge item not found"));
-        if (entity.isActive()) throw new ConflictException("Item must be hidden before delete");
+        if (entity.isActive()) throw new ConflictException("Сначала скройте материал, затем удаляйте.");
         storage.deleteByPublicUrl(entity.getImageUrl());
         storage.deleteItemFolder(itemId);
         items.delete(entity);
@@ -205,7 +207,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
         folders.updateActiveByRestaurantIdAndIdIn(restaurantId, folderIds, active);
         items.updateActiveByRestaurantIdAndFolderIdIn(restaurantId, folderIds, active);
-        root.setActive(active);
+        entityManager.flush();
+        entityManager.clear();
     }
 
     private List<Long> collectFolderIds(Long restaurantId, Long rootId, TrainingFolderType type) {

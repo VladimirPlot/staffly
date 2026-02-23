@@ -167,6 +167,20 @@ public class TrainingController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PatchMapping("/questions/{questionId}/hide")
+    public TrainingQuestionDto hideQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId,
+                                            @AuthenticationPrincipal UserPrincipal principal) {
+        return questionService.hideQuestion(restaurantId, questionId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PatchMapping("/questions/{questionId}/restore")
+    public TrainingQuestionDto restoreQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId,
+                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return questionService.restoreQuestion(restaurantId, questionId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
     @DeleteMapping("/questions/{questionId}")
     public void deleteQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId, @AuthenticationPrincipal UserPrincipal principal) {
         questionService.deleteQuestion(restaurantId, questionId);
@@ -201,6 +215,18 @@ public class TrainingController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/hide")
+    public TrainingExamDto hideExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.hideExam(restaurantId, examId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/restore")
+    public TrainingExamDto restoreExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.restoreExam(restaurantId, examId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
     @DeleteMapping("/exams/{examId}")
     public void deleteExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
         examService.deleteExam(restaurantId, examId);
@@ -210,6 +236,12 @@ public class TrainingController {
     @PostMapping("/exams/{examId}/reset-results")
     public void resetExamResults(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
         examService.resetExamResults(restaurantId, examId);
+    }
+
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/progress")
+    public List<TrainingExamProgressDto> listExamProgress(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.listCurrentUserExamProgress(restaurantId, principal.userId());
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")

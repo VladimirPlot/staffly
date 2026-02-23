@@ -8,8 +8,11 @@ public interface ExamService {
     List<TrainingExamDto> listExams(Long restaurantId, boolean includeInactive);
     TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request);
     TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request);
+    TrainingExamDto hideExam(Long restaurantId, Long examId);
+    TrainingExamDto restoreExam(Long restaurantId, Long examId);
     void deleteExam(Long restaurantId, Long examId);
     void resetExamResults(Long restaurantId, Long examId);
+    List<TrainingExamProgressDto> listCurrentUserExamProgress(Long restaurantId, Long userId);
     StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId);
     AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
 }

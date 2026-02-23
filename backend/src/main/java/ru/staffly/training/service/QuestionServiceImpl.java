@@ -74,11 +74,30 @@ public class QuestionServiceImpl implements QuestionService {
 
     @Override
     @Transactional
+    public TrainingQuestionDto hideQuestion(Long restaurantId, Long questionId) {
+        var entity = questions.findByIdAndRestaurantId(questionId, restaurantId).orElseThrow(() -> new NotFoundException("Question not found"));
+        entity.setActive(false);
+        return toDtos(List.of(entity)).get(0);
+    }
+
+    @Override
+    @Transactional
+    public TrainingQuestionDto restoreQuestion(Long restaurantId, Long questionId) {
+        var entity = questions.findByIdAndRestaurantId(questionId, restaurantId).orElseThrow(() -> new NotFoundException("Question not found"));
+        entity.setActive(true);
+        return toDtos(List.of(entity)).get(0);
+    }
+
+    @Override
+    @Transactional
     public void deleteQuestion(Long restaurantId, Long questionId) {
         var entity = questions.findByIdAndRestaurantId(questionId, restaurantId).orElseThrow(() -> new NotFoundException("Question not found"));
-        var usages = scopes.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, List.of(entity.getFolder().getId()));
+        if (entity.isActive()) {
+            throw new ConflictException("Сначала скройте вопрос, затем удаляйте.");
+        }
+        var usages = scopes.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, questionId);
         if (!usages.isEmpty()) {
-            throw new ConflictException("Вопрос используется в экзаменах. Уберите папку из области экзамена, затем удаляйте вопрос.", Map.of("exams", usages));
+            throw new ConflictException("Вопрос используется в экзаменах. Уберите папку из области экзамена и повторите.", Map.of("exams", usages));
         }
         options.deleteByQuestionId(entity.getId());
         pairs.deleteByQuestionId(entity.getId());
