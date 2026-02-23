@@ -7,5 +7,6 @@ import java.util.List;
 
 public interface TrainingQuestionMatchPairRepository extends JpaRepository<TrainingQuestionMatchPair, Long> {
     List<TrainingQuestionMatchPair> findByQuestionIdOrderBySortOrderAscIdAsc(Long questionId);
+    List<TrainingQuestionMatchPair> findByQuestionIdInOrderBySortOrderAscIdAsc(List<Long> questionIds);
     void deleteByQuestionId(Long questionId);
 }
