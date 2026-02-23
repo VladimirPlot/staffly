@@ -11,6 +11,13 @@ export type TrainingFolderDto = {
   active: boolean;
 };
 
+export type CreateTrainingFolderPayload = {
+  name: string;
+  description?: string | null;
+  parentId?: number | null;
+  type: TrainingFolderType;
+};
+
 /** BACKEND: TrainingKnowledgeItemDto */
 export type TrainingKnowledgeItemDto = {
   id: number;

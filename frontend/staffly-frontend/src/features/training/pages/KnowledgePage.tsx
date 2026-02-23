@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
+import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Switch from "../../../shared/ui/Switch";
 import EmptyState from "../components/EmptyState";
@@ -10,6 +11,7 @@ import FolderList from "../components/FolderList";
 import LoadingState from "../components/LoadingState";
 import { mapKnowledgeItemsForUi } from "../api/mappers";
 import {
+  createFolder,
   deleteKnowledgeItem,
   hideKnowledgeItem,
   listKnowledgeItems,
@@ -40,6 +42,10 @@ export default function KnowledgePage() {
   const [itemActionLoadingId, setItemActionLoadingId] = useState<number | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createModalTarget, setCreateModalTarget] = useState<CreateTarget>(null);
+  const [createFolderName, setCreateFolderName] = useState("");
+  const [createFolderDescription, setCreateFolderDescription] = useState("");
+  const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false);
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
   const createMenuRef = useRef<HTMLDivElement | null>(null);
 
   const loadItems = useCallback(async () => {
@@ -90,6 +96,46 @@ export default function KnowledgePage() {
   const openCreateModal = (target: Exclude<CreateTarget, null>) => {
     setCreateModalTarget(target);
     setCreateMenuOpen(false);
+    if (target === "folder") {
+      setCreateFolderName("");
+      setCreateFolderDescription("");
+      setCreateFolderError(null);
+      setCreateFolderSubmitting(false);
+    }
+  };
+
+  const closeCreateModal = () => {
+    if (createFolderSubmitting) return;
+    setCreateModalTarget(null);
+    setCreateFolderError(null);
+  };
+
+  const handleCreateFolder = async () => {
+    if (!restaurantId) return;
+
+    const trimmedName = createFolderName.trim();
+    const trimmedDescription = createFolderDescription.trim();
+    if (!trimmedName) return;
+
+    setCreateFolderSubmitting(true);
+    setCreateFolderError(null);
+
+    try {
+      const createdFolder = await createFolder(restaurantId, {
+        type: "KNOWLEDGE",
+        parentId: selectedFolder?.id ?? null,
+        name: trimmedName,
+        description: trimmedDescription || null,
+      });
+
+      setCreateModalTarget(null);
+      await foldersState.reload();
+      setSelectedFolder(createdFolder);
+    } catch (e) {
+      setCreateFolderError(getTrainingErrorMessage(e, "Не удалось создать папку."));
+    } finally {
+      setCreateFolderSubmitting(false);
+    }
   };
 
   const runItemAction = async (itemId: number, action: "hide" | "restore" | "delete") => {
@@ -106,6 +152,9 @@ export default function KnowledgePage() {
       setItemActionLoadingId(null);
     }
   };
+
+  const isCreateFolderModal = createModalTarget === "folder";
+  const createFolderNameTrimmed = createFolderName.trim();
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -261,11 +310,64 @@ export default function KnowledgePage() {
 
       <Modal
         open={createModalTarget !== null}
-        title="В разработке"
-        description={createModalTarget ? createModalContent[createModalTarget] : undefined}
-        onClose={() => setCreateModalTarget(null)}
-        footer={<Button onClick={() => setCreateModalTarget(null)}>Закрыть</Button>}
-      />
+        title={isCreateFolderModal ? "Создать папку" : "В разработке"}
+        description={
+          !isCreateFolderModal && createModalTarget ? createModalContent[createModalTarget] : undefined
+        }
+        onClose={closeCreateModal}
+        footer={
+          isCreateFolderModal ? (
+            <>
+              <Button variant="outline" onClick={closeCreateModal} disabled={createFolderSubmitting}>
+                Отмена
+              </Button>
+              <Button
+                onClick={handleCreateFolder}
+                disabled={!createFolderNameTrimmed}
+                isLoading={createFolderSubmitting}
+              >
+                Создать
+              </Button>
+            </>
+          ) : (
+            <Button onClick={closeCreateModal}>Закрыть</Button>
+          )
+        }
+      >
+        {isCreateFolderModal && (
+          <div className="space-y-4">
+            <Input
+              label="Название"
+              value={createFolderName}
+              onChange={(event) => setCreateFolderName(event.target.value)}
+              autoFocus
+              required
+            />
+
+            <label className="block min-w-0">
+              <span className="mb-1 block text-sm text-muted">Описание (опционально)</span>
+              <textarea
+                className="border-subtle w-full max-w-full rounded-2xl border bg-surface p-3 text-[16px] text-default outline-none transition focus:ring-2 focus:ring-default dark:[color-scheme:dark]"
+                value={createFolderDescription}
+                onChange={(event) => setCreateFolderDescription(event.target.value)}
+                rows={4}
+              />
+            </label>
+
+            <div className="text-sm text-muted">
+              {selectedFolder
+                ? `Папка будет создана внутри: ${selectedFolder.name}`
+                : "Папка будет создана в корне базы знаний"}
+            </div>
+
+            {createFolderError && (
+              <div className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {createFolderError}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

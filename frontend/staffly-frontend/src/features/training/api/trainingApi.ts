@@ -1,5 +1,6 @@
 import apiClient from "../../../shared/api/apiClient";
 import type {
+  CreateTrainingFolderPayload,
   ExamAttemptDto,
   ExamProgressDto,
   ExamSubmitPayload,
@@ -20,6 +21,14 @@ export async function listFolders(
     params: { type, includeInactive },
   });
   return data as TrainingFolderDto[];
+}
+
+export async function createFolder(
+  restaurantId: number,
+  payload: CreateTrainingFolderPayload
+): Promise<TrainingFolderDto> {
+  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/folders`, payload);
+  return data as TrainingFolderDto;
 }
 
 export async function hideFolder(restaurantId: number, folderId: number): Promise<TrainingFolderDto> {
