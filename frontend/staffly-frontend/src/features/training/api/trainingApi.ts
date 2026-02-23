@@ -1,5 +1,6 @@
 import apiClient from "../../../shared/api/apiClient";
 import type {
+  CreateKnowledgeItemPayload,
   CreateTrainingFolderPayload,
   ExamAttemptDto,
   ExamProgressDto,
@@ -10,6 +11,7 @@ import type {
   TrainingFolderType,
   TrainingKnowledgeItemDto,
   TrainingQuestionDto,
+  UpdateKnowledgeItemPayload,
   UpdateTrainingFolderPayload,
 } from "./types";
 
@@ -75,6 +77,53 @@ export async function hideKnowledgeItem(
 ): Promise<TrainingKnowledgeItemDto> {
   const { data } = await apiClient.patch(
     `/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/hide`
+  );
+  return data as TrainingKnowledgeItemDto;
+}
+
+export async function createKnowledgeItem(
+  restaurantId: number,
+  payload: CreateKnowledgeItemPayload
+): Promise<TrainingKnowledgeItemDto> {
+  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-items`, payload);
+  return data as TrainingKnowledgeItemDto;
+}
+
+export async function updateKnowledgeItem(
+  restaurantId: number,
+  itemId: number,
+  payload: UpdateKnowledgeItemPayload
+): Promise<TrainingKnowledgeItemDto> {
+  const { data } = await apiClient.put(
+    `/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}`,
+    payload
+  );
+  return data as TrainingKnowledgeItemDto;
+}
+
+export async function uploadKnowledgeImage(
+  restaurantId: number,
+  itemId: number,
+  file: File
+): Promise<TrainingKnowledgeItemDto> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post(
+    `/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/image`,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+  return data as TrainingKnowledgeItemDto;
+}
+
+export async function deleteKnowledgeImage(
+  restaurantId: number,
+  itemId: number
+): Promise<TrainingKnowledgeItemDto> {
+  const { data } = await apiClient.delete(
+    `/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/image`
   );
   return data as TrainingKnowledgeItemDto;
 }

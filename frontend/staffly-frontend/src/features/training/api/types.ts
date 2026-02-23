@@ -37,6 +37,25 @@ export type TrainingKnowledgeItemDto = {
   active: boolean;
 };
 
+export type CreateKnowledgeItemPayload = {
+  folderId: number;
+  title: string;
+  description?: string | null;
+  composition?: string | null;
+  allergens?: string | null;
+  imageUrl?: string | null;
+  sortOrder?: number;
+};
+
+export type UpdateKnowledgeItemPayload = {
+  folderId?: number;
+  title: string;
+  description?: string | null;
+  composition?: string | null;
+  allergens?: string | null;
+  sortOrder?: number;
+};
+
 /** BACKEND: TrainingQuestionDto */
 export type TrainingQuestionType = "SINGLE" | "MULTI" | "TRUE_FALSE" | "FILL_SELECT" | "MATCH";
 

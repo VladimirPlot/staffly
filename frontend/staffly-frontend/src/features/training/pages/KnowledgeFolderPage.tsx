@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
@@ -6,12 +7,22 @@ import Card from "../../../shared/ui/Card";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Switch from "../../../shared/ui/Switch";
+import Icon from "../../../shared/ui/Icon";
+import IconButton from "../../../shared/ui/IconButton";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import EmptyState from "../components/EmptyState";
+import KnowledgeItemModal from "../components/KnowledgeItemModal";
 import ErrorState from "../components/ErrorState";
 import FolderList from "../components/FolderList";
 import LoadingState from "../components/LoadingState";
 import { mapKnowledgeItemsForUi } from "../api/mappers";
-import { createFolder, deleteFolder, listKnowledgeItems, updateFolder } from "../api/trainingApi";
+import {
+  createFolder,
+  deleteFolder,
+  deleteKnowledgeItem,
+  listKnowledgeItems,
+  updateFolder,
+} from "../api/trainingApi";
 import type { TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
@@ -19,12 +30,11 @@ import { getTrainingErrorMessage } from "../utils/errors";
 import { bySortOrderAndName } from "../utils/sort";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
-type CreateTarget = "folder" | "card" | "test" | null;
+type CreateTarget = "folder" | "card" | null;
 
 const createModalContent: Record<Exclude<CreateTarget, null>, string> = {
   folder: "",
-  card: "Здесь будет форма создания новой карточки знаний.",
-  test: "Здесь будет форма создания нового теста.",
+  card: "",
 };
 
 export default function KnowledgeFolderPage() {
@@ -45,6 +55,11 @@ export default function KnowledgeFolderPage() {
   const [folderError, setFolderError] = useState<string | null>(null);
   const [editingFolder, setEditingFolder] = useState<TrainingFolderDto | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
+  const [knowledgeModalMode, setKnowledgeModalMode] = useState<"create" | "edit">("create");
+  const [editingItem, setEditingItem] = useState<TrainingKnowledgeItemDto | null>(null);
+  const [itemDeleteConfirm, setItemDeleteConfirm] = useState<TrainingKnowledgeItemDto | null>(null);
+  const [itemActionLoadingId, setItemActionLoadingId] = useState<number | null>(null);
   const createMenuRef = useRef<HTMLDivElement | null>(null);
 
   const folderMap = useMemo(
@@ -131,8 +146,15 @@ export default function KnowledgeFolderPage() {
   }, [currentFolder, folderMap]);
 
   const openCreateModal = (target: Exclude<CreateTarget, null>) => {
-    setCreateModalTarget(target);
     setCreateMenuOpen(false);
+    if (target === "card") {
+      setKnowledgeModalMode("create");
+      setEditingItem(null);
+      setKnowledgeModalOpen(true);
+      return;
+    }
+
+    setCreateModalTarget(target);
     setEditingFolder(null);
     setFolderName("");
     setFolderDescription("");
@@ -208,6 +230,28 @@ export default function KnowledgeFolderPage() {
     }
   };
 
+
+  const openEditItemModal = (item: TrainingKnowledgeItemDto) => {
+    setEditingItem(item);
+    setKnowledgeModalMode("edit");
+    setKnowledgeModalOpen(true);
+  };
+
+  const runDeleteItem = async (item: TrainingKnowledgeItemDto) => {
+    if (!restaurantId) return;
+    setItemActionLoadingId(item.id);
+    setItemsError(null);
+    try {
+      await deleteKnowledgeItem(restaurantId, item.id);
+      await loadItems();
+      setItemDeleteConfirm(null);
+    } catch (error) {
+      setItemsError(getTrainingErrorMessage(error, "Не удалось удалить карточку."));
+    } finally {
+      setItemActionLoadingId(null);
+    }
+  };
+
   if (Number.isNaN(currentFolderId)) {
     return (
       <div className="mx-auto max-w-5xl space-y-4">
@@ -255,7 +299,6 @@ export default function KnowledgeFolderPage() {
                 Создать папку
               </Button>
               <Button variant="outline" onClick={() => openCreateModal("card")}>Создать карточку</Button>
-              <Button variant="outline" onClick={() => openCreateModal("test")}>Создать тест</Button>
             </div>
 
             <div ref={createMenuRef} className="relative sm:hidden">
@@ -283,13 +326,6 @@ export default function KnowledgeFolderPage() {
                     onClick={() => openCreateModal("card")}
                   >
                     Карточку
-                  </button>
-                  <button
-                    type="button"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => openCreateModal("test")}
-                  >
-                    Тест
                   </button>
                 </div>
               )}
@@ -331,11 +367,37 @@ export default function KnowledgeFolderPage() {
           <div className="space-y-2">
             {items.map((item) => (
               <div key={item.id} className="border-subtle bg-app rounded-2xl border p-3">
-                <div className="font-medium">{item.title}</div>
-                {item.description && (
-                  <div className="text-muted mt-1 line-clamp-3 text-sm">{item.description}</div>
-                )}
-                {!item.active && <div className="mt-1 text-xs text-amber-600">Скрыт</div>}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">{item.title}</div>
+                    {item.description && (
+                      <div className="text-muted mt-1 line-clamp-3 text-sm">{item.description}</div>
+                    )}
+                    {!item.active && <div className="mt-1 text-xs text-amber-600">Скрыт</div>}
+                  </div>
+                  {canManage && (
+                    <div className="flex items-center gap-1">
+                      <IconButton
+                        aria-label="Редактировать карточку"
+                        title="Редактировать"
+                        onClick={() => openEditItemModal(item)}
+                        disabled={itemActionLoadingId === item.id}
+                        className="px-2 py-1.5"
+                      >
+                        <Icon icon={Pencil} size="sm" />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Удалить карточку"
+                        title="Удалить"
+                        onClick={() => setItemDeleteConfirm(item)}
+                        disabled={itemActionLoadingId === item.id}
+                        className="px-2 py-1.5"
+                      >
+                        <Icon icon={Trash2} size="sm" />
+                      </IconButton>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -388,6 +450,30 @@ export default function KnowledgeFolderPage() {
           </div>
         )}
       </Modal>
+      {restaurantId && (
+        <KnowledgeItemModal
+          open={knowledgeModalOpen}
+          mode={knowledgeModalMode}
+          initialItem={editingItem ?? undefined}
+          folderId={currentFolderId}
+          restaurantId={restaurantId}
+          onClose={() => {
+            setKnowledgeModalOpen(false);
+            setEditingItem(null);
+          }}
+          onSaved={loadItems}
+        />
+      )}
+
+      <ConfirmDialog
+        open={Boolean(itemDeleteConfirm)}
+        title="Удалить карточку?"
+        description="Карточка будет удалена без возможности восстановления."
+        confirmText="Удалить"
+        confirming={Boolean(itemActionLoadingId)}
+        onCancel={() => setItemDeleteConfirm(null)}
+        onConfirm={() => itemDeleteConfirm && void runDeleteItem(itemDeleteConfirm)}
+      />
     </div>
   );
 }
