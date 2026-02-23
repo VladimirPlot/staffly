@@ -1,7 +1,6 @@
 package ru.staffly.training.dto;
 
-public record TrainingExamAttemptQuestionDto(
-        Long id,
+public record AttemptResultQuestionDto(
         Long questionId,
         String chosenAnswerJson,
         Boolean correct

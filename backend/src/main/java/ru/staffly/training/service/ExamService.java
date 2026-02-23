@@ -1,16 +1,14 @@
 package ru.staffly.training.service;
 
-import ru.staffly.training.dto.TrainingExamAttemptDto;
-import ru.staffly.training.dto.TrainingExamDto;
-import ru.staffly.training.dto.TrainingExamSubmitRequest;
+import ru.staffly.training.dto.*;
 
 import java.util.List;
 
 public interface ExamService {
-    List<TrainingExamDto> listExams(Long restaurantId);
-    TrainingExamDto createExam(Long restaurantId, TrainingExamDto dto);
-    TrainingExamDto updateExam(Long restaurantId, Long examId, TrainingExamDto dto);
+    List<TrainingExamDto> listExams(Long restaurantId, boolean includeInactive);
+    TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request);
+    TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request);
     void deleteExam(Long restaurantId, Long examId);
-    TrainingExamAttemptDto startExam(Long restaurantId, Long examId, Long userId);
-    TrainingExamAttemptDto submitAttempt(Long restaurantId, Long attemptId, Long userId, TrainingExamSubmitRequest request);
+    StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId);
+    AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
 }
