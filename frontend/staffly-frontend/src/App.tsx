@@ -31,6 +31,10 @@ const NotesPage = React.lazy(() => import("./features/income/pages/NotesPage"));
 const PositionsPage = React.lazy(() => import("./features/dictionaries/pages/Positions"));
 
 const TrainingLandingPage = React.lazy(() => import("./features/training/pages/Landing"));
+const TrainingKnowledgePage = React.lazy(() => import("./features/training/pages/KnowledgePage"));
+const TrainingQuestionBankPage = React.lazy(() => import("./features/training/pages/QuestionBankPage"));
+const TrainingExamsPage = React.lazy(() => import("./features/training/pages/ExamsPage"));
+const TrainingExamRunPage = React.lazy(() => import("./features/training/pages/ExamRunPage"));
 
 const RestaurantHome = React.lazy(() => import("./features/home/pages/RestaurantHome"));
 
@@ -370,6 +374,46 @@ export default function App() {
                   <ProtectedRoute>
                     <RequireRestaurant>
                       <TrainingLandingPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/knowledge"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingKnowledgePage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/question-bank"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingQuestionBankPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/exams"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingExamsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/exams/:examId/run"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingExamRunPage />
                     </RequireRestaurant>
                   </ProtectedRoute>
                 }

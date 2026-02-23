@@ -26,7 +26,7 @@ export function useTrainingAccess() {
     let cancelled = false;
     setLoading(true);
 
-    (async () => {
+    void (async () => {
       try {
         const role = await getMyRoleIn(restaurantId);
         if (!cancelled) {
