@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
+import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Switch from "../../../shared/ui/Switch";
@@ -30,7 +31,6 @@ export default function KnowledgeRootPage() {
   const { restaurantId, canManage } = useTrainingAccess();
   const foldersState = useTrainingFolders({ restaurantId, type: "KNOWLEDGE", canManage });
 
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createModalTarget, setCreateModalTarget] = useState<CreateTarget>(null);
   const [folderName, setFolderName] = useState("");
   const [folderDescription, setFolderDescription] = useState("");
@@ -40,25 +40,7 @@ export default function KnowledgeRootPage() {
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
   const createMenuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!createMenuOpen) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (createMenuRef.current?.contains(event.target as Node)) return;
-      setCreateMenuOpen(false);
-    };
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCreateMenuOpen(false);
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [createMenuOpen]);
+  // click-away / escape handled inside shared DropdownMenu
 
   const rootFolders = useMemo(
     () => foldersState.folders.filter((folder) => folder.parentId === null).sort(bySortOrderAndName),
@@ -67,7 +49,6 @@ export default function KnowledgeRootPage() {
 
   const openCreateModal = (target: Exclude<CreateTarget, null>) => {
     setCreateModalTarget(target);
-    setCreateMenuOpen(false);
     setFolderName("");
     setFolderDescription("");
     setFolderError(null);
@@ -126,6 +107,7 @@ export default function KnowledgeRootPage() {
   const runDelete = async (folderId: number) => {
     if (!restaurantId) return;
     setActionLoadingId(folderId);
+    setFolderError(null);
     try {
       await deleteFolder(restaurantId, folderId);
       await foldersState.reload();
@@ -136,14 +118,9 @@ export default function KnowledgeRootPage() {
     }
   };
 
-  const isFolderModal = createModalTarget === "folder";
-  const modalTitle = editingFolder ? "Редактировать папку" : "Создать папку";
-
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Breadcrumbs
-        items={[{ label: "Тренинг", to: trainingRoutes.landing }, { label: "База знаний" }]}
-      />
+      <Breadcrumbs items={[{ label: "Тренинг", to: trainingRoutes.landing }, { label: "База знаний" }]} />
       <h2 className="text-2xl font-semibold">База знаний</h2>
 
       {canManage && (
@@ -167,40 +144,52 @@ export default function KnowledgeRootPage() {
               </Button>
             </div>
 
-            <div ref={createMenuRef} className="relative sm:hidden">
-              <Button
-                variant="outline"
-                onClick={() => setCreateMenuOpen((prev) => !prev)}
-                aria-expanded={createMenuOpen}
-                aria-haspopup="menu"
+            <div ref={createMenuRef} className="sm:hidden">
+              <DropdownMenu
+                trigger={(triggerProps) => (
+                  <Button variant="outline" {...triggerProps}>
+                    Создать
+                  </Button>
+                )}
               >
-                Создать
-              </Button>
-              {createMenuOpen && (
-                <div className="border-subtle bg-surface absolute right-0 z-20 mt-2 w-56 rounded-2xl border p-1 shadow-[var(--staffly-shadow)]">
-                  <button
-                    type="button"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => openCreateModal("folder")}
-                  >
-                    Папку
-                  </button>
-                  <button
-                    type="button"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => openCreateModal("card")}
-                  >
-                    Карточку
-                  </button>
-                  <button
-                    type="button"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => openCreateModal("test")}
-                  >
-                    Тест
-                  </button>
-                </div>
-              )}
+                {({ close }) => (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
+                      onClick={() => {
+                        close();
+                        openCreateModal("folder");
+                      }}
+                    >
+                      Папку
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
+                      onClick={() => {
+                        close();
+                        openCreateModal("card");
+                      }}
+                    >
+                      Карточку
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
+                      onClick={() => {
+                        close();
+                        openCreateModal("test");
+                      }}
+                    >
+                      Тест
+                    </button>
+                  </>
+                )}
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -208,6 +197,7 @@ export default function KnowledgeRootPage() {
 
       {foldersState.loading && <LoadingState label="Загрузка папок базы знаний…" />}
       {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
+      {folderError && <ErrorState message={folderError} onRetry={foldersState.reload} />}
       {!foldersState.loading && !foldersState.error && rootFolders.length === 0 && (
         <EmptyState title="Папки не найдены" description="Добавьте первую папку базы знаний." />
       )}
@@ -227,47 +217,38 @@ export default function KnowledgeRootPage() {
 
       <Modal
         open={createModalTarget !== null}
-        title={isFolderModal ? modalTitle : "В разработке"}
-        description={!isFolderModal && createModalTarget ? createModalContent[createModalTarget] : undefined}
+        title={editingFolder ? "Редактировать папку" : "Создать"}
         onClose={closeFolderModal}
         footer={
-          isFolderModal ? (
-            <>
+          createModalTarget === "folder" ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={closeFolderModal} disabled={folderSubmitting}>
                 Отмена
               </Button>
-              <Button onClick={handleSaveFolder} disabled={!folderName.trim()} isLoading={folderSubmitting}>
-                Сохранить
+              <Button onClick={handleSaveFolder} disabled={folderSubmitting || !folderName.trim()}>
+                {editingFolder ? "Сохранить" : "Создать"}
               </Button>
-            </>
+            </div>
           ) : (
-            <Button onClick={closeFolderModal}>Закрыть</Button>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={closeFolderModal}>
+                Закрыть
+              </Button>
+            </div>
           )
         }
       >
-        {isFolderModal && (
-          <div className="space-y-4">
+        {createModalTarget && createModalTarget !== "folder" ? (
+          <div className="text-sm text-muted">{createModalContent[createModalTarget]}</div>
+        ) : (
+          <div className="space-y-3">
+            <Input label="Название" value={folderName} onChange={(event) => setFolderName(event.target.value)} />
             <Input
-              label="Название"
-              value={folderName}
-              onChange={(event) => setFolderName(event.target.value)}
-              autoFocus
-              required
+              label="Описание"
+              value={folderDescription}
+              onChange={(event) => setFolderDescription(event.target.value)}
             />
-            <label className="block min-w-0">
-              <span className="mb-1 block text-sm text-muted">Описание (опционально)</span>
-              <textarea
-                className="border-subtle w-full max-w-full rounded-2xl border bg-surface p-3 text-[16px] text-default outline-none transition focus:ring-2 focus:ring-default dark:[color-scheme:dark]"
-                value={folderDescription}
-                onChange={(event) => setFolderDescription(event.target.value)}
-                rows={4}
-              />
-            </label>
-            {folderError && (
-              <div className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {folderError}
-              </div>
-            )}
+            {folderError && <div className="text-sm text-red-600">{folderError}</div>}
           </div>
         )}
       </Modal>

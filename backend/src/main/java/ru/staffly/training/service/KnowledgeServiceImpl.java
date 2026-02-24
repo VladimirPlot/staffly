@@ -145,17 +145,21 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
+    @Transactional
     public TrainingKnowledgeItemDto hideKnowledgeItem(Long restaurantId, Long itemId) {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId).orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
         entity.setActive(false);
-        return toDto(entity);
+        return toDto(items.save(entity));
     }
 
     @Override
+    @Transactional
     public TrainingKnowledgeItemDto restoreKnowledgeItem(Long restaurantId, Long itemId) {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId).orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
         entity.setActive(true);
-        return toDto(entity);
+        return toDto(items.save(entity));
     }
 
     @Override

@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
+import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Switch from "../../../shared/ui/Switch";
-import Icon from "../../../shared/ui/Icon";
-import IconButton from "../../../shared/ui/IconButton";
-import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import EmptyState from "../components/EmptyState";
+import KnowledgeItemsGrid from "../components/KnowledgeItemsGrid";
 import KnowledgeItemModal from "../components/KnowledgeItemModal";
 import ErrorState from "../components/ErrorState";
 import FolderList from "../components/FolderList";
@@ -20,7 +18,9 @@ import {
   createFolder,
   deleteFolder,
   deleteKnowledgeItem,
+  hideKnowledgeItem,
   listKnowledgeItems,
+  restoreKnowledgeItem,
   updateFolder,
 } from "../api/trainingApi";
 import type { TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
@@ -31,11 +31,7 @@ import { bySortOrderAndName } from "../utils/sort";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
 type CreateTarget = "folder" | "card" | null;
-
-const createModalContent: Record<Exclude<CreateTarget, null>, string> = {
-  folder: "",
-  card: "",
-};
+type ItemAction = "hide" | "restore" | "delete";
 
 export default function KnowledgeFolderPage() {
   const { folderId } = useParams();
@@ -47,7 +43,6 @@ export default function KnowledgeFolderPage() {
   const [items, setItems] = useState<TrainingKnowledgeItemDto[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsError, setItemsError] = useState<string | null>(null);
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createModalTarget, setCreateModalTarget] = useState<CreateTarget>(null);
   const [folderName, setFolderName] = useState("");
   const [folderDescription, setFolderDescription] = useState("");
@@ -58,8 +53,8 @@ export default function KnowledgeFolderPage() {
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [knowledgeModalMode, setKnowledgeModalMode] = useState<"create" | "edit">("create");
   const [editingItem, setEditingItem] = useState<TrainingKnowledgeItemDto | null>(null);
-  const [itemDeleteConfirm, setItemDeleteConfirm] = useState<TrainingKnowledgeItemDto | null>(null);
   const [itemActionLoadingId, setItemActionLoadingId] = useState<number | null>(null);
+  const [itemActionLoadingType, setItemActionLoadingType] = useState<ItemAction | null>(null);
   const createMenuRef = useRef<HTMLDivElement | null>(null);
 
   const folderMap = useMemo(
@@ -96,25 +91,7 @@ export default function KnowledgeFolderPage() {
     void loadItems();
   }, [currentFolder, loadItems]);
 
-  useEffect(() => {
-    if (!createMenuOpen) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (createMenuRef.current?.contains(event.target as Node)) return;
-      setCreateMenuOpen(false);
-    };
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCreateMenuOpen(false);
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [createMenuOpen]);
+  // createMenuRef is kept only for layout parity with other pages (can be removed later)
 
   const breadcrumbItems = useMemo(() => {
     const items: { label: string; to?: string }[] = [
@@ -145,15 +122,7 @@ export default function KnowledgeFolderPage() {
     return items;
   }, [currentFolder, folderMap]);
 
-  const openCreateModal = (target: Exclude<CreateTarget, null>) => {
-    setCreateMenuOpen(false);
-    if (target === "card") {
-      setKnowledgeModalMode("create");
-      setEditingItem(null);
-      setKnowledgeModalOpen(true);
-      return;
-    }
-
+  const openCreateModal = (target: CreateTarget) => {
     setCreateModalTarget(target);
     setEditingFolder(null);
     setFolderName("");
@@ -161,7 +130,7 @@ export default function KnowledgeFolderPage() {
     setFolderError(null);
   };
 
-  const openEditModal = (folder: TrainingFolderDto) => {
+  const openEditFolderModal = (folder: TrainingFolderDto) => {
     setEditingFolder(folder);
     setCreateModalTarget("folder");
     setFolderName(folder.name);
@@ -177,7 +146,7 @@ export default function KnowledgeFolderPage() {
   };
 
   const handleSaveFolder = async () => {
-    if (!restaurantId) return;
+    if (!restaurantId || !currentFolder) return;
     const trimmedName = folderName.trim();
     const trimmedDescription = folderDescription.trim();
     if (!trimmedName) return;
@@ -230,6 +199,11 @@ export default function KnowledgeFolderPage() {
     }
   };
 
+  const openCreateItemModal = () => {
+    setEditingItem(null);
+    setKnowledgeModalMode("create");
+    setKnowledgeModalOpen(true);
+  };
 
   const openEditItemModal = (item: TrainingKnowledgeItemDto) => {
     setEditingItem(item);
@@ -237,29 +211,38 @@ export default function KnowledgeFolderPage() {
     setKnowledgeModalOpen(true);
   };
 
-  const runDeleteItem = async (item: TrainingKnowledgeItemDto) => {
+  const runItemAction = async (itemId: number, action: ItemAction) => {
     if (!restaurantId) return;
-    setItemActionLoadingId(item.id);
+    setItemActionLoadingId(itemId);
+    setItemActionLoadingType(action);
     setItemsError(null);
     try {
-      await deleteKnowledgeItem(restaurantId, item.id);
+      if (action === "hide") {
+        await hideKnowledgeItem(restaurantId, itemId);
+      } else if (action === "restore") {
+        await restoreKnowledgeItem(restaurantId, itemId);
+      } else {
+        await deleteKnowledgeItem(restaurantId, itemId);
+      }
       await loadItems();
-      setItemDeleteConfirm(null);
     } catch (error) {
-      setItemsError(getTrainingErrorMessage(error, "Не удалось удалить карточку."));
+      const fallbackMessage =
+        action === "hide"
+          ? "Не удалось скрыть карточку."
+          : action === "restore"
+            ? "Не удалось восстановить карточку."
+            : "Не удалось удалить карточку.";
+      setItemsError(getTrainingErrorMessage(error, fallbackMessage));
     } finally {
       setItemActionLoadingId(null);
+      setItemActionLoadingType(null);
     }
   };
 
   if (Number.isNaN(currentFolderId)) {
     return (
       <div className="mx-auto max-w-5xl space-y-4">
-        <ErrorState
-          message="Папка не найдена"
-          actionLabel="К списку"
-          onRetry={() => navigate(trainingRoutes.knowledge)}
-        />
+        <ErrorState message="Папка не найдена" actionLabel="К списку" onRetry={() => navigate(trainingRoutes.knowledge)} />
       </div>
     );
   }
@@ -298,37 +281,44 @@ export default function KnowledgeFolderPage() {
               <Button variant="outline" onClick={() => openCreateModal("folder")}>
                 Создать папку
               </Button>
-              <Button variant="outline" onClick={() => openCreateModal("card")}>Создать карточку</Button>
+              <Button variant="outline" onClick={openCreateItemModal}>Создать карточку</Button>
             </div>
 
-            <div ref={createMenuRef} className="relative sm:hidden">
-              <Button
-                variant="outline"
-                onClick={() => setCreateMenuOpen((prev) => !prev)}
-                aria-expanded={createMenuOpen}
-                aria-haspopup="menu"
+            <div ref={createMenuRef} className="sm:hidden">
+              <DropdownMenu
+                trigger={(triggerProps) => (
+                  <Button variant="outline" {...triggerProps}>
+                    Создать
+                  </Button>
+                )}
               >
-                Создать
-              </Button>
-
-              {createMenuOpen && (
-                <div className="border-subtle bg-surface absolute right-0 z-20 mt-2 w-56 rounded-2xl border p-1 shadow-[var(--staffly-shadow)]">
-                  <button
-                    type="button"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => openCreateModal("folder")}
-                  >
-                    Папку
-                  </button>
-                  <button
-                    type="button"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => openCreateModal("card")}
-                  >
-                    Карточку
-                  </button>
-                </div>
-              )}
+                {({ close }) => (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
+                      onClick={() => {
+                        close();
+                        openCreateModal("folder");
+                      }}
+                    >
+                      Папку
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
+                      onClick={() => {
+                        close();
+                        openCreateItemModal();
+                      }}
+                    >
+                      Карточку
+                    </button>
+                  </>
+                )}
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -343,7 +333,7 @@ export default function KnowledgeFolderPage() {
           canManage={canManage}
           actionLoadingId={actionLoadingId ?? foldersState.actionLoadingId}
           onOpen={(id) => navigate(`${trainingRoutes.knowledge}/${id}`)}
-          onEdit={openEditModal}
+          onEdit={openEditFolderModal}
           onHide={foldersState.hide}
           onRestore={foldersState.restore}
           onDelete={runDelete}
@@ -355,124 +345,62 @@ export default function KnowledgeFolderPage() {
       )}
 
       <Card className="space-y-3">
-        <h3 className="text-lg font-semibold">Материалы</h3>
-        {itemsLoading && <LoadingState label="Загрузка материалов…" />}
+        <h3 className="text-lg font-semibold">Карточки</h3>
+        {itemsLoading && <LoadingState label="Загрузка карточек…" />}
         {itemsError && <ErrorState message={itemsError} onRetry={loadItems} />}
 
         {!itemsLoading && !itemsError && items.length === 0 && (
-          <EmptyState title="Материалов пока нет" description="Создайте карточки знаний для этой папки." />
+          <EmptyState title="Карточек пока нет" description="Создайте первую карточку для этой папки." />
         )}
 
         {!itemsLoading && !itemsError && items.length > 0 && (
-          <div className="space-y-2">
-            {items.map((item) => (
-              <div key={item.id} className="border-subtle bg-app rounded-2xl border p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-medium">{item.title}</div>
-                    {item.description && (
-                      <div className="text-muted mt-1 line-clamp-3 text-sm">{item.description}</div>
-                    )}
-                    {!item.active && <div className="mt-1 text-xs text-amber-600">Скрыт</div>}
-                  </div>
-                  {canManage && (
-                    <div className="flex items-center gap-1">
-                      <IconButton
-                        aria-label="Редактировать карточку"
-                        title="Редактировать"
-                        onClick={() => openEditItemModal(item)}
-                        disabled={itemActionLoadingId === item.id}
-                        className="px-2 py-1.5"
-                      >
-                        <Icon icon={Pencil} size="sm" />
-                      </IconButton>
-                      <IconButton
-                        aria-label="Удалить карточку"
-                        title="Удалить"
-                        onClick={() => setItemDeleteConfirm(item)}
-                        disabled={itemActionLoadingId === item.id}
-                        className="px-2 py-1.5"
-                      >
-                        <Icon icon={Trash2} size="sm" />
-                      </IconButton>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <KnowledgeItemsGrid
+            items={items}
+            canManage={canManage}
+            actionLoadingId={itemActionLoadingId}
+            actionLoadingType={itemActionLoadingType}
+            onEdit={openEditItemModal}
+            onHide={(id) => runItemAction(id, "hide")}
+            onRestore={(id) => runItemAction(id, "restore")}
+            onDelete={(id) => runItemAction(id, "delete")}
+          />
         )}
       </Card>
 
       <Modal
-        open={createModalTarget !== null}
-        title={isFolderModal ? modalTitle : "В разработке"}
-        description={!isFolderModal && createModalTarget ? createModalContent[createModalTarget] : undefined}
+        open={isFolderModal}
+        title={modalTitle}
         onClose={closeFolderModal}
         footer={
-          isFolderModal ? (
-            <>
-              <Button variant="outline" onClick={closeFolderModal} disabled={folderSubmitting}>
-                Отмена
-              </Button>
-              <Button onClick={handleSaveFolder} disabled={!folderName.trim()} isLoading={folderSubmitting}>
-                Сохранить
-              </Button>
-            </>
-          ) : (
-            <Button onClick={closeFolderModal}>Закрыть</Button>
-          )
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={closeFolderModal} disabled={folderSubmitting}>
+              Отмена
+            </Button>
+            <Button onClick={handleSaveFolder} disabled={folderSubmitting || !folderName.trim()}>
+              {editingFolder ? "Сохранить" : "Создать"}
+            </Button>
+          </div>
         }
       >
-        {isFolderModal && (
-          <div className="space-y-4">
-            <Input
-              label="Название"
-              value={folderName}
-              onChange={(event) => setFolderName(event.target.value)}
-              autoFocus
-              required
-            />
-            <label className="block min-w-0">
-              <span className="mb-1 block text-sm text-muted">Описание (опционально)</span>
-              <textarea
-                className="border-subtle w-full max-w-full rounded-2xl border bg-surface p-3 text-[16px] text-default outline-none transition focus:ring-2 focus:ring-default dark:[color-scheme:dark]"
-                value={folderDescription}
-                onChange={(event) => setFolderDescription(event.target.value)}
-                rows={4}
-              />
-            </label>
-            {folderError && (
-              <div className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {folderError}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="space-y-3">
+          <Input label="Название" value={folderName} onChange={(event) => setFolderName(event.target.value)} />
+          <Input
+            label="Описание"
+            value={folderDescription}
+            onChange={(event) => setFolderDescription(event.target.value)}
+          />
+          {folderError && <div className="text-sm text-red-600">{folderError}</div>}
+        </div>
       </Modal>
-      {restaurantId && (
-        <KnowledgeItemModal
-          open={knowledgeModalOpen}
-          mode={knowledgeModalMode}
-          initialItem={editingItem ?? undefined}
-          folderId={currentFolderId}
-          restaurantId={restaurantId}
-          onClose={() => {
-            setKnowledgeModalOpen(false);
-            setEditingItem(null);
-          }}
-          onSaved={loadItems}
-        />
-      )}
 
-      <ConfirmDialog
-        open={Boolean(itemDeleteConfirm)}
-        title="Удалить карточку?"
-        description="Карточка будет удалена без возможности восстановления."
-        confirmText="Удалить"
-        confirming={Boolean(itemActionLoadingId)}
-        onCancel={() => setItemDeleteConfirm(null)}
-        onConfirm={() => itemDeleteConfirm && void runDeleteItem(itemDeleteConfirm)}
+      <KnowledgeItemModal
+        open={knowledgeModalOpen}
+        mode={knowledgeModalMode}
+        item={editingItem}
+        restaurantId={restaurantId}
+        folderId={currentFolderId}
+        onClose={() => setKnowledgeModalOpen(false)}
+        onSaved={loadItems}
       />
     </div>
   );

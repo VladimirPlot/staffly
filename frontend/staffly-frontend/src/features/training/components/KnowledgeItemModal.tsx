@@ -24,7 +24,16 @@ import { getTrainingErrorMessage } from "../utils/errors";
 type KnowledgeItemModalProps = {
   open: boolean;
   mode: "create" | "edit";
+
+  /**
+   * ВАЖНО:
+   * В разных местах проекта могли передавать карточку как `item`,
+   * а раньше компонент ожидал `initialItem`.
+   * Поддерживаем оба варианта, чтобы ничего не ломалось.
+   */
+  item?: TrainingKnowledgeItemDto;
   initialItem?: TrainingKnowledgeItemDto;
+
   folderId: number;
   restaurantId: number;
   onClose: () => void;
@@ -34,12 +43,15 @@ type KnowledgeItemModalProps = {
 export default function KnowledgeItemModal({
   open,
   mode,
+  item,
   initialItem,
   folderId,
   restaurantId,
   onClose,
   onSaved,
 }: KnowledgeItemModalProps) {
+  const effectiveItem = item ?? initialItem ?? null;
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [composition, setComposition] = useState("");
@@ -52,6 +64,7 @@ export default function KnowledgeItemModal({
   const [cropBusy, setCropBusy] = useState(false);
   const [sourceImageUrl, setSourceImageUrl] = useState<string | null>(null);
   const [confirmDeleteImageOpen, setConfirmDeleteImageOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const selectedFileRef = useRef<File | null>(null);
 
@@ -59,14 +72,17 @@ export default function KnowledgeItemModal({
 
   useEffect(() => {
     if (!open) return;
-    setTitle(initialItem?.title ?? "");
-    setDescription(initialItem?.description ?? "");
-    setComposition(initialItem?.composition ?? "");
-    setAllergens(initialItem?.allergens ?? "");
-    setImageUrl(toAbsoluteUrl(initialItem?.imageUrl) ?? null);
+
+    // При открытии модалки подставляем данные редактируемой карточки (если есть)
+    setTitle(effectiveItem?.title ?? "");
+    setDescription(effectiveItem?.description ?? "");
+    setComposition(effectiveItem?.composition ?? "");
+    setAllergens(effectiveItem?.allergens ?? "");
+    setImageUrl(toAbsoluteUrl(effectiveItem?.imageUrl) ?? null);
+
     setCroppedFile(null);
     setError(null);
-  }, [open, initialItem]);
+  }, [open, effectiveItem]);
 
   useEffect(() => {
     return () => {
@@ -133,6 +149,7 @@ export default function KnowledgeItemModal({
           baseFileName: selectedFileRef.current.name,
         },
       });
+
       setCroppedFile(file);
       setImageUrl(previewUrl);
       resetCropState();
@@ -150,11 +167,12 @@ export default function KnowledgeItemModal({
       return;
     }
 
-    if (!initialItem) return;
+    if (!effectiveItem) return;
+
     setLoading(true);
     setError(null);
     try {
-      await deleteKnowledgeImage(restaurantId, initialItem.id);
+      await deleteKnowledgeImage(restaurantId, effectiveItem.id);
       setImageUrl(null);
       setCroppedFile(null);
       setConfirmDeleteImageOpen(false);
@@ -169,6 +187,12 @@ export default function KnowledgeItemModal({
     const trimmedTitle = title.trim();
     if (!trimmedTitle || loading) return;
 
+    // Защита от ситуации: mode=edit, но карточку не передали
+    if (mode === "edit" && !effectiveItem) {
+      setError("Не удалось определить редактируемую карточку. Закройте окно и попробуйте снова.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -181,13 +205,13 @@ export default function KnowledgeItemModal({
         allergens: allergens.trim() || null,
       };
 
-      const item =
+      const savedItem =
         mode === "create"
           ? await createKnowledgeItem(restaurantId, payload)
-          : await updateKnowledgeItem(restaurantId, initialItem!.id, payload);
+          : await updateKnowledgeItem(restaurantId, effectiveItem!.id, payload);
 
       if (croppedFile) {
-        const uploaded = await uploadKnowledgeImage(restaurantId, item.id, croppedFile);
+        const uploaded = await uploadKnowledgeImage(restaurantId, savedItem.id, croppedFile);
         setImageUrl(toAbsoluteUrl(uploaded.imageUrl) ?? imageUrl);
         setCroppedFile(null);
       }
@@ -243,7 +267,7 @@ export default function KnowledgeItemModal({
               {imageActionLabel}
             </Button>
             {hasImage && (
-              <Button variant="ghost" onClick={() => setConfirmDeleteImageOpen(true)} disabled={loading}>
+              <Button variant="outline" onClick={() => setConfirmDeleteImageOpen(true)} disabled={loading}>
                 Удалить фото
               </Button>
             )}
@@ -287,7 +311,11 @@ export default function KnowledgeItemModal({
             />
           </label>
 
-          {error && <div className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+          {error && (
+            <div className="rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
         </div>
       </Modal>
 
