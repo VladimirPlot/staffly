@@ -9,6 +9,9 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.*;
@@ -30,26 +33,30 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAttemptRepository attempts;
     private final TrainingExamAttemptQuestionRepository attemptQuestions;
     private final TrainingFolderRepository folders;
+    private final RestaurantMemberRepository members;
+    private final PositionRepository positions;
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<TrainingExamDto> listExams(Long restaurantId, boolean includeInactive) {
-        var examList = includeInactive
-                ? exams.findByRestaurantIdOrderByCreatedAtDesc(restaurantId)
-                : exams.findByRestaurantIdAndActiveTrueOrderByCreatedAtDesc(restaurantId);
+    public List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly) {
+        TrainingExamMode modeFilter = certificationOnly == null ? null : (certificationOnly ? TrainingExamMode.CERTIFICATION : TrainingExamMode.PRACTICE);
 
-        if (examList.isEmpty()) return List.of();
+        List<TrainingExam> examList;
+        if (isManager) {
+            examList = includeInactive
+                    ? exams.findByRestaurantIdWithVisibilityOrderByCreatedAtDesc(restaurantId)
+                    : exams.findByRestaurantIdAndActiveTrueWithVisibilityOrderByCreatedAtDesc(restaurantId);
+            if (modeFilter != null) {
+                examList = examList.stream().filter(e -> e.getMode() == modeFilter).toList();
+            }
+        } else {
+            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Membership not found"));
+            Long positionId = member.getPosition() == null ? -1L : member.getPosition().getId();
+            examList = exams.listVisibleForStaff(restaurantId, positionId, modeFilter);
+        }
 
-        var examIds = examList.stream().map(TrainingExam::getId).toList();
-        var scopesByExam = scopes.findByExamIdIn(examIds).stream()
-                .collect(Collectors.groupingBy(
-                        s -> s.getExam().getId(),
-                        Collectors.mapping(s -> s.getFolder().getId(), Collectors.toList())
-                ));
-
-        return examList.stream()
-                .map(exam -> toDto(exam, scopesByExam.getOrDefault(exam.getId(), List.of())))
-                .toList();
+        return examList.stream().map(this::toDtoWithScopesAndVisibility).toList();
     }
 
     @Override
@@ -62,18 +69,21 @@ public class ExamServiceImpl implements ExamService {
                 .questionCount(request.questionCount())
                 .passPercent(request.passPercent())
                 .timeLimitSec(request.timeLimitSec())
+                .mode(request.mode())
+                .attemptLimit(request.attemptLimit())
                 .active(true)
                 .version(1)
                 .build());
 
         replaceScopes(restaurantId, exam, request.folderIds());
-        return toDtoWithScopes(exam);
+        replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
+        return toDtoWithScopesAndVisibility(exam);
     }
 
     @Override
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
 
         exam.setTitle(request.title());
@@ -81,30 +91,31 @@ public class ExamServiceImpl implements ExamService {
         exam.setQuestionCount(request.questionCount());
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
+        exam.setMode(request.mode());
+        exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(request.active() == null ? exam.isActive() : request.active());
 
         replaceScopes(restaurantId, exam, request.folderIds());
-        return toDtoWithScopes(exam);
+        replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
+        return toDtoWithScopesAndVisibility(exam);
     }
 
     @Override
     @Transactional
     public TrainingExamDto hideExam(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-
         exam.setActive(false);
-        return toDtoWithScopes(exam);
+        return toDtoWithScopesAndVisibility(exam);
     }
 
     @Override
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-
         exam.setActive(true);
-        return toDtoWithScopes(exam);
+        return toDtoWithScopesAndVisibility(exam);
     }
 
     @Override
@@ -129,21 +140,17 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public List<TrainingExamProgressDto> listCurrentUserExamProgress(Long restaurantId, Long userId) {
-        var examIds = exams.findByRestaurantIdOrderByCreatedAtDesc(restaurantId)
+        var examIds = exams.findByRestaurantIdAndActiveTrueWithVisibilityOrderByCreatedAtDesc(restaurantId)
                 .stream()
+                .filter(exam -> exam.getMode() == TrainingExamMode.CERTIFICATION)
                 .map(TrainingExam::getId)
                 .toList();
-
         if (examIds.isEmpty()) return List.of();
 
         var progressByExamId = attempts
                 .findCurrentPassedProgressByRestaurantAndUserAndExamIds(restaurantId, userId, examIds)
                 .stream()
-                .collect(Collectors.toMap(
-                        TrainingExamProgressProjection::getExamId,
-                        Function.identity(),
-                        (a, b) -> a // safety merge (should not happen with the fixed SQL)
-                ));
+                .collect(Collectors.toMap(TrainingExamProgressProjection::getExamId, Function.identity(), (a, b) -> a));
 
         return examIds.stream()
                 .map(examId -> {
@@ -160,26 +167,42 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
+    public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
 
         if (!exam.isActive()) {
             throw new ConflictException("Экзамен скрыт. Нельзя начать прохождение.");
         }
 
-        var scopeIds = scopes.findByExamId(examId).stream().map(x -> x.getFolder().getId()).toList();
-        var pool = scopeIds.isEmpty()
-                ? List.<TrainingQuestion>of()
-                : questions.findByRestaurantIdAndFolderIdInAndActiveTrue(restaurantId, scopeIds);
+        if (!isManager) {
+            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Membership not found"));
+            if (!exam.getVisibilityPositions().isEmpty()) {
+                var positionId = member.getPosition() == null ? null : member.getPosition().getId();
+                var visible = positionId != null && exam.getVisibilityPositions().stream().anyMatch(x -> Objects.equals(x.getId(), positionId));
+                if (!visible) {
+                    throw new ConflictException("Экзамен недоступен для вашей должности.");
+                }
+            }
+        }
 
+        if (exam.getAttemptLimit() != null) {
+            long usedAttempts = attempts.countByExamIdAndRestaurantIdAndUserIdAndExamVersion(
+                    examId, restaurantId, userId, exam.getVersion()
+            );
+            if (usedAttempts >= exam.getAttemptLimit()) {
+                throw new ConflictException("Достигнут лимит попыток для этого теста.");
+            }
+        }
+
+        var scopeIds = scopes.findByExamId(examId).stream().map(x -> x.getFolder().getId()).toList();
+        var pool = scopeIds.isEmpty() ? List.<TrainingQuestion>of() : questions.findByRestaurantIdAndFolderIdInAndActiveTrue(restaurantId, scopeIds);
         if (pool.isEmpty()) throw new BadRequestException("No questions in exam scope");
 
         var questionIds = pool.stream().map(TrainingQuestion::getId).toList();
-        var optionsByQuestion = questionOptions.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
-                .collect(Collectors.groupingBy(o -> o.getQuestion().getId()));
-        var pairsByQuestion = questionPairs.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
-                .collect(Collectors.groupingBy(p -> p.getQuestion().getId()));
+        var optionsByQuestion = questionOptions.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(o -> o.getQuestion().getId()));
+        var pairsByQuestion = questionPairs.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(p -> p.getQuestion().getId()));
 
         Collections.shuffle(pool);
         int count = Math.min(exam.getQuestionCount(), pool.size());
@@ -201,11 +224,7 @@ public class ExamServiceImpl implements ExamService {
         List<AttemptQuestionSnapshotDto> snapshots = new ArrayList<>();
 
         for (var question : selected) {
-            var snapshot = buildSnapshot(
-                    question,
-                    optionsByQuestion.getOrDefault(question.getId(), List.of()),
-                    pairsByQuestion.getOrDefault(question.getId(), List.of())
-            );
+            var snapshot = buildSnapshot(question, optionsByQuestion.getOrDefault(question.getId(), List.of()), pairsByQuestion.getOrDefault(question.getId(), List.of()));
             snapshots.add(snapshot.snapshotDto());
             entities.add(TrainingExamAttemptQuestion.builder()
                     .attempt(attempt)
@@ -218,37 +237,25 @@ public class ExamServiceImpl implements ExamService {
 
         attemptQuestions.saveAll(entities);
 
-        return new StartExamResponseDto(
-                attempt.getId(),
-                attempt.getStartedAt(),
-                attempt.getExamVersion(),
-                toDto(exam, scopeIds),
-                snapshots
-        );
+        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), attempt.getExamVersion(), toDtoWithScopesAndVisibility(exam), snapshots);
     }
 
     @Override
     @Transactional
     public AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request) {
-        var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Attempt not found"));
-
+        var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId).orElseThrow(() -> new NotFoundException("Attempt not found"));
         if (!Objects.equals(attempt.getUser().getId(), userId)) throw new BadRequestException("Attempt belongs to another user");
         if (attempt.getFinishedAt() != null) throw new ConflictException("Attempt already finished");
 
         var existing = attemptQuestions.findByAttemptId(attemptId);
-        var byQuestionId = request.answers().stream()
-                .collect(Collectors.toMap(SubmitAttemptAnswerDto::questionId, Function.identity(), (a, b) -> b));
+        var byQuestionId = request.answers().stream().collect(Collectors.toMap(SubmitAttemptAnswerDto::questionId, Function.identity(), (a, b) -> b));
 
         int correctAnswers = 0;
-
         for (var item : existing) {
             var snapshot = readSnapshot(item.getQuestionSnapshotJson());
             var answer = byQuestionId.get(snapshot.questionId());
             if (answer == null) throw new BadRequestException("Missing answer for question " + snapshot.questionId());
-
             validateAnswerForType(answer.answerJson(), snapshot);
-
             item.setChosenAnswerJson(answer.answerJson());
             boolean isCorrect = isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson(), snapshot.type());
             item.setCorrect(isCorrect);
@@ -269,55 +276,41 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
-                existing.stream()
-                        .map(x -> new AttemptResultQuestionDto(
-                                readSnapshot(x.getQuestionSnapshotJson()).questionId(),
-                                x.getChosenAnswerJson(),
-                                x.isCorrect()
-                        ))
-                        .toList()
+                existing.stream().map(x -> new AttemptResultQuestionDto(readSnapshot(x.getQuestionSnapshotJson()).questionId(), x.getChosenAnswerJson(), x.isCorrect())).toList()
         );
+    }
+
+    @Override
+    public List<TrainingExamResultDto> listExamResults(Long restaurantId, Long examId, Long positionId) {
+        var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Отчетность доступна только для аттестаций.");
+        }
+        return attempts.listExamResults(restaurantId, examId, exam.getVersion(), positionId)
+                .stream()
+                .map(r -> new TrainingExamResultDto(
+                        r.getUserId(),
+                        r.getFullName(),
+                        r.getAttemptsUsed() == null ? 0 : r.getAttemptsUsed(),
+                        r.getBestScore(),
+                        r.getLastAttemptAt(),
+                        Boolean.TRUE.equals(r.getPassed())
+                ))
+                .toList();
     }
 
     private SnapshotPayload buildSnapshot(TrainingQuestion question, List<TrainingQuestionOption> options, List<TrainingQuestionMatchPair> pairs) {
         try {
             var optionView = options.stream().map(o -> new TrainingQuestionOptionViewDto(o.getSortOrder(), o.getText())).toList();
             var pairView = pairs.stream().map(p -> new TrainingQuestionMatchPairViewDto(p.getSortOrder(), p.getLeftText(), p.getRightText())).toList();
-
-            var snapshotDto = new AttemptQuestionSnapshotDto(
-                    question.getId(),
-                    question.getType(),
-                    question.getPrompt(),
-                    question.getExplanation(),
-                    optionView,
-                    pairView
-            );
-
+            var snapshotDto = new AttemptQuestionSnapshotDto(question.getId(), question.getType(), question.getPrompt(), question.getExplanation(), optionView, pairView);
             String snapshotJson = objectMapper.writeValueAsString(snapshotDto);
 
             String correctKey = switch (question.getType()) {
-                case MATCH -> objectMapper.writeValueAsString(
-                        pairs.stream()
-                                .map(p -> new MatchPairAnswer(p.getLeftText(), p.getRightText()))
-                                .sorted(Comparator.comparing(MatchPairAnswer::left))
-                                .toList()
-                );
-                case MULTI -> objectMapper.writeValueAsString(
-                        options.stream()
-                                .filter(TrainingQuestionOption::isCorrect)
-                                .map(TrainingQuestionOption::getText)
-                                .sorted()
-                                .toList()
-                );
-                default -> objectMapper.writeValueAsString(
-                        options.stream()
-                                .filter(TrainingQuestionOption::isCorrect)
-                                .map(TrainingQuestionOption::getText)
-                                .findFirst()
-                                .orElse("")
-                );
+                case MATCH -> objectMapper.writeValueAsString(pairs.stream().map(p -> new MatchPairAnswer(p.getLeftText(), p.getRightText())).sorted(Comparator.comparing(MatchPairAnswer::left)).toList());
+                case MULTI -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).sorted().toList());
+                default -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).findFirst().orElse(""));
             };
-
             return new SnapshotPayload(snapshotDto, snapshotJson, correctKey);
         } catch (Exception e) {
             throw new BadRequestException("Cannot serialize exam snapshot");
@@ -325,11 +318,8 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private AttemptQuestionSnapshotDto readSnapshot(String snapshotJson) {
-        try {
-            return objectMapper.readValue(snapshotJson, AttemptQuestionSnapshotDto.class);
-        } catch (Exception e) {
-            throw new BadRequestException("Invalid question snapshot");
-        }
+        try { return objectMapper.readValue(snapshotJson, AttemptQuestionSnapshotDto.class); }
+        catch (Exception e) { throw new BadRequestException("Invalid question snapshot"); }
     }
 
     private void validateAnswerForType(String answerJson, AttemptQuestionSnapshotDto snapshot) {
@@ -339,16 +329,11 @@ public class ExamServiceImpl implements ExamService {
                     var answerPairs = objectMapper.readValue(answerJson, new TypeReference<List<MatchPairAnswer>>() {});
                     var allowedLeft = snapshot.matchPairs().stream().map(TrainingQuestionMatchPairViewDto::leftText).collect(Collectors.toSet());
                     var allowedRight = snapshot.matchPairs().stream().map(TrainingQuestionMatchPairViewDto::rightText).collect(Collectors.toSet());
-
                     if (answerPairs.size() != allowedLeft.size()) throw new BadRequestException("Invalid answer values");
-
                     var lefts = new HashSet<String>();
                     var rights = new HashSet<String>();
                     for (var pair : answerPairs) {
-                        if (!allowedLeft.contains(pair.left())
-                                || !allowedRight.contains(pair.right())
-                                || !lefts.add(pair.left())
-                                || !rights.add(pair.right())) {
+                        if (!allowedLeft.contains(pair.left()) || !allowedRight.contains(pair.right()) || !lefts.add(pair.left()) || !rights.add(pair.right())) {
                             throw new BadRequestException("Invalid answer values");
                         }
                     }
@@ -374,17 +359,13 @@ public class ExamServiceImpl implements ExamService {
     private boolean isAnswerCorrect(String answerJson, String correctKeyJson, TrainingQuestionType type) {
         try {
             if (type == TrainingQuestionType.MATCH) {
-                var actual = objectMapper.readValue(answerJson, new TypeReference<List<MatchPairAnswer>>() {})
-                        .stream().sorted(Comparator.comparing(MatchPairAnswer::left)).toList();
-                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<MatchPairAnswer>>() {})
-                        .stream().sorted(Comparator.comparing(MatchPairAnswer::left)).toList();
+                var actual = objectMapper.readValue(answerJson, new TypeReference<List<MatchPairAnswer>>() {}).stream().sorted(Comparator.comparing(MatchPairAnswer::left)).toList();
+                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<MatchPairAnswer>>() {}).stream().sorted(Comparator.comparing(MatchPairAnswer::left)).toList();
                 return expected.equals(actual);
             }
             if (type == TrainingQuestionType.MULTI) {
-                var actual = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {})
-                        .stream().sorted().toList();
-                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<String>>() {})
-                        .stream().sorted().toList();
+                var actual = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
+                var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
                 return expected.equals(actual);
             }
             String actual = objectMapper.readValue(answerJson, String.class);
@@ -400,9 +381,8 @@ public class ExamServiceImpl implements ExamService {
         if (folderIds == null || folderIds.isEmpty()) return;
 
         List<TrainingExamScope> entities = new ArrayList<>();
-        for (Long folderId : folderIds) {
-            var folder = folders.findByIdAndRestaurantId(folderId, restaurantId)
-                    .orElseThrow(() -> new NotFoundException("Folder not found"));
+        for (Long folderId : folderIds.stream().distinct().toList()) {
+            var folder = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
             if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
                 throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
             }
@@ -411,14 +391,20 @@ public class ExamServiceImpl implements ExamService {
         scopes.saveAll(entities);
     }
 
-    private TrainingExamDto toDtoWithScopes(TrainingExam exam) {
-        var scopeIds = scopes.findByExamId(exam.getId()).stream()
-                .map(s -> s.getFolder().getId())
-                .toList();
-        return toDto(exam, scopeIds);
+    private void replaceVisibility(Long restaurantId, TrainingExam exam, List<Long> visibilityPositionIds) {
+        exam.getVisibilityPositions().clear();
+        if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) return;
+        var allowed = positions.findByRestaurantId(restaurantId).stream().collect(Collectors.toMap(Position::getId, Function.identity()));
+        for (Long positionId : visibilityPositionIds.stream().distinct().toList()) {
+            var position = allowed.get(positionId);
+            if (position == null) throw new NotFoundException("Position not found");
+            exam.getVisibilityPositions().add(position);
+        }
     }
 
-    private TrainingExamDto toDto(TrainingExam exam, List<Long> scopeIds) {
+    private TrainingExamDto toDtoWithScopesAndVisibility(TrainingExam exam) {
+        var scopeIds = scopes.findByExamId(exam.getId()).stream().map(s -> s.getFolder().getId()).toList();
+        var visibilityIds = exam.getVisibilityPositions().stream().map(Position::getId).sorted().toList();
         return new TrainingExamDto(
                 exam.getId(),
                 exam.getRestaurant().getId(),
@@ -427,13 +413,15 @@ public class ExamServiceImpl implements ExamService {
                 exam.getQuestionCount(),
                 exam.getPassPercent(),
                 exam.getTimeLimitSec(),
+                exam.getMode(),
+                exam.getAttemptLimit(),
                 exam.getVersion(),
                 exam.isActive(),
-                scopeIds
+                scopeIds,
+                visibilityIds
         );
     }
 
     private record SnapshotPayload(AttemptQuestionSnapshotDto snapshotDto, String snapshotJson, String correctKeyJson) {}
-
     private record MatchPairAnswer(String left, String right) {}
 }

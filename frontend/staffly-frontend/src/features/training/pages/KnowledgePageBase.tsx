@@ -16,6 +16,7 @@ import { deleteFolder, deleteKnowledgeItem, hideKnowledgeItem, listKnowledgeItem
 import type { TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
+import { useExams } from "../hooks/useExams";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { bySortOrderAndName } from "../utils/sort";
 import { trainingRoutes } from "../utils/trainingRoutes";
@@ -30,6 +31,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const navigate = useNavigate();
   const { restaurantId, canManage } = useTrainingAccess();
   const foldersState = useTrainingFolders({ restaurantId, type: "KNOWLEDGE", canManage });
+  const practiceExamsState = useExams({ restaurantId, canManage, certificationOnly: false });
 
   const [items, setItems] = useState<TrainingKnowledgeItemDto[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -205,6 +207,24 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
           onDelete={runDelete}
         />
       )}
+
+      <Card className="space-y-3">
+        <h3 className="text-lg font-semibold">Практические тесты</h3>
+        {practiceExamsState.loading && <LoadingState label="Загрузка тестов…" />}
+        {!practiceExamsState.loading && practiceExamsState.exams.length === 0 && (
+          <EmptyState title="Практических тестов пока нет" description="Тесты режима PRACTICE появятся здесь." />
+        )}
+        {!practiceExamsState.loading && practiceExamsState.exams.length > 0 && (
+          <div className="space-y-2">
+            {practiceExamsState.exams.map((exam) => (
+              <button key={exam.id} type="button" className="border-subtle bg-app w-full rounded-2xl border p-3 text-left" onClick={() => navigate(trainingRoutes.examRun(exam.id))}>
+                <div className="font-medium">{exam.title}</div>
+                {exam.description && <div className="text-sm text-muted">{exam.description}</div>}
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <Card className="space-y-3">
         <h3 className="text-lg font-semibold">Карточки</h3>

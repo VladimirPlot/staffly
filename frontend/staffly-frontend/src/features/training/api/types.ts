@@ -26,7 +26,6 @@ export type UpdateTrainingFolderPayload = {
   visibilityPositionIds?: number[] | null;
 };
 
-/** BACKEND: TrainingKnowledgeItemDto */
 export type TrainingKnowledgeItemDto = {
   id: number;
   restaurantId: number;
@@ -59,18 +58,18 @@ export type UpdateKnowledgeItemPayload = {
   sortOrder?: number;
 };
 
-/** BACKEND: TrainingQuestionDto */
 export type TrainingQuestionType = "SINGLE" | "MULTI" | "TRUE_FALSE" | "FILL_SELECT" | "MATCH";
+export type TrainingExamMode = "CERTIFICATION" | "PRACTICE";
 
 export type TrainingQuestionOptionDto = {
-  id: number;
+  id?: number;
   text: string;
   correct: boolean;
   sortOrder: number;
 };
 
 export type TrainingQuestionMatchPairDto = {
-  id: number;
+  id?: number;
   leftText: string;
   rightText: string;
   sortOrder: number;
@@ -89,6 +88,21 @@ export type TrainingQuestionDto = {
   matchPairs: TrainingQuestionMatchPairDto[];
 };
 
+export type CreateQuestionPayload = {
+  folderId: number;
+  type: TrainingQuestionType;
+  prompt: string;
+  explanation?: string | null;
+  sortOrder?: number;
+  options?: TrainingQuestionOptionDto[];
+  matchPairs?: TrainingQuestionMatchPairDto[];
+};
+
+export type UpdateQuestionPayload = Omit<CreateQuestionPayload, "folderId"> & {
+  folderId?: number;
+  active?: boolean;
+};
+
 export type TrainingExamDto = {
   id: number;
   restaurantId: number;
@@ -97,9 +111,25 @@ export type TrainingExamDto = {
   questionCount: number;
   passPercent: number;
   timeLimitSec?: number | null;
+  mode: TrainingExamMode;
+  attemptLimit?: number | null;
   version: number;
   active: boolean;
   folderIds: number[];
+  visibilityPositionIds: number[];
+};
+
+export type UpsertExamPayload = {
+  title: string;
+  description?: string | null;
+  mode: TrainingExamMode;
+  questionCount: number;
+  passPercent: number;
+  timeLimitSec?: number | null;
+  attemptLimit?: number | null;
+  folderIds: number[];
+  visibilityPositionIds: number[];
+  active?: boolean;
 };
 
 export type ExamProgressDto = {
@@ -109,17 +139,17 @@ export type ExamProgressDto = {
   scorePercent?: number | null;
 };
 
-/** START EXAM: snapshots */
-export type ExamStartQuestionOptionViewDto = {
-  sortOrder: number;
-  text: string;
+export type ExamResultRowDto = {
+  userId: number;
+  fullName: string;
+  attemptsUsed: number;
+  bestScore?: number | null;
+  lastAttemptAt?: string | null;
+  passed: boolean;
 };
 
-export type ExamStartQuestionMatchPairViewDto = {
-  sortOrder: number;
-  leftText: string;
-  rightText: string;
-};
+export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };
+export type ExamStartQuestionMatchPairViewDto = { sortOrder: number; leftText: string; rightText: string };
 
 export type AttemptQuestionSnapshotDto = {
   questionId: number;
@@ -138,21 +168,10 @@ export type ExamAttemptDto = {
   questions: AttemptQuestionSnapshotDto[];
 };
 
-/** SUBMIT: backend expects answerJson per questionId */
-export type ExamSubmitAnswerDto = {
-  questionId: number;
-  answerJson: string; // JSON string payload
-};
+export type ExamSubmitAnswerDto = { questionId: number; answerJson: string };
+export type ExamSubmitPayload = { answers: ExamSubmitAnswerDto[] };
 
-export type ExamSubmitPayload = {
-  answers: ExamSubmitAnswerDto[];
-};
-
-export type AttemptResultQuestionDto = {
-  questionId: number;
-  chosenAnswerJson: string | null;
-  correct: boolean;
-};
+export type AttemptResultQuestionDto = { questionId: number; chosenAnswerJson: string | null; correct: boolean };
 
 export type ExamSubmitResultDto = {
   attemptId: number;

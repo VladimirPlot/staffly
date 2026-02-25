@@ -184,11 +184,13 @@ public class TrainingController {
     @GetMapping("/exams")
     public List<TrainingExamDto> listExams(@PathVariable Long restaurantId,
                                            @AuthenticationPrincipal UserPrincipal principal,
-                                           @RequestParam(defaultValue = "false") boolean includeInactive) {
-        if (includeInactive && !securityService.hasAtLeastManager(principal.userId(), restaurantId)) {
+                                           @RequestParam(defaultValue = "false") boolean includeInactive,
+                                           @RequestParam(required = false) Boolean certificationOnly) {
+        boolean isManager = securityService.hasAtLeastManager(principal.userId(), restaurantId);
+        if (includeInactive && !isManager) {
             throw new ForbiddenException("Only managers can include inactive exams");
         }
-        return examService.listExams(restaurantId, includeInactive);
+        return examService.listExams(restaurantId, principal.userId(), isManager, includeInactive, certificationOnly);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
@@ -238,10 +240,21 @@ public class TrainingController {
         return examService.listCurrentUserExamProgress(restaurantId, principal.userId());
     }
 
+
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/results")
+    public List<TrainingExamResultDto> listExamResults(@PathVariable Long restaurantId,
+                                                        @PathVariable Long examId,
+                                                        @AuthenticationPrincipal UserPrincipal principal,
+                                                        @RequestParam(required = false) Long positionId) {
+        return examService.listExamResults(restaurantId, examId, positionId);
+    }
+
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/start")
     public StartExamResponseDto startExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.startExam(restaurantId, examId, principal.userId());
+        return examService.startExam(restaurantId, examId, principal.userId(), securityService.hasAtLeastManager(principal.userId(), restaurantId));
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")

@@ -3,9 +3,12 @@ package ru.staffly.training.model;
 import jakarta.persistence.*;
 import lombok.*;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "training_exam")
@@ -38,6 +41,14 @@ public class TrainingExam {
     @Column(name = "time_limit_sec")
     private Integer timeLimitSec;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode", nullable = false, length = 20)
+    @Builder.Default
+    private TrainingExamMode mode = TrainingExamMode.CERTIFICATION;
+
+    @Column(name = "attempt_limit")
+    private Integer attemptLimit;
+
     @Column(name = "version", nullable = false)
     @Builder.Default
     private int version = 1;
@@ -53,6 +64,15 @@ public class TrainingExam {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = TimeProvider.now();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "training_exam_visibility",
+            joinColumns = @JoinColumn(name = "exam_id"),
+            inverseJoinColumns = @JoinColumn(name = "position_id")
+    )
+    @Builder.Default
+    private Set<Position> visibilityPositions = new HashSet<>();
 
     @PrePersist
     void prePersist() { if (createdAt == null) createdAt = TimeProvider.now(); if (updatedAt == null) updatedAt = TimeProvider.now(); }
