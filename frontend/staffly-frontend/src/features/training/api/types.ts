@@ -30,7 +30,7 @@ export type UpdateTrainingFolderPayload = {
 export type TrainingKnowledgeItemDto = {
   id: number;
   restaurantId: number;
-  folderId: number;
+  folderId: number | null;
   title: string;
   description?: string | null;
   composition?: string | null;
@@ -41,7 +41,7 @@ export type TrainingKnowledgeItemDto = {
 };
 
 export type CreateKnowledgeItemPayload = {
-  folderId: number;
+  folderId?: number | null;
   title: string;
   description?: string | null;
   composition?: string | null;
@@ -51,7 +51,7 @@ export type CreateKnowledgeItemPayload = {
 };
 
 export type UpdateKnowledgeItemPayload = {
-  folderId?: number;
+  folderId?: number | null;
   title: string;
   description?: string | null;
   composition?: string | null;

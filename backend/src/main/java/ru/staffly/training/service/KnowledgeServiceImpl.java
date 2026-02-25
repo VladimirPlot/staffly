@@ -141,6 +141,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             if (member.getPosition() == null) {
                 throw new ForbiddenException("Обратитесь к менеджеру или в поддержку.");
             }
+            if (folderId == null) {
+                var list = items.findByRestaurantIdAndFolderIsNullAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId);
+                return list.stream().map(this::toDto).toList();
+            }
             var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                     .orElseThrow(() -> new NotFoundException("Folder not found"));
             var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(java.util.stream.Collectors.toSet());
@@ -150,6 +154,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             var list = items.findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId, folderId);
             return list.stream().map(this::toDto).toList();
         }
+
+        if (folderId == null) {
+            var list = includeInactive
+                    ? items.findByRestaurantIdAndFolderIsNullOrderBySortOrderAscTitleAsc(restaurantId)
+                    : items.findByRestaurantIdAndFolderIsNullAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId);
+            return list.stream().map(this::toDto).toList();
+        }
+
         var list = includeInactive
                 ? items.findByRestaurantIdAndFolderIdOrderBySortOrderAscTitleAsc(restaurantId, folderId)
                 : items.findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId, folderId);
@@ -158,7 +170,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public TrainingKnowledgeItemDto createKnowledgeItem(Long restaurantId, CreateTrainingKnowledgeItemRequest request) {
-        var folder = loadFolder(restaurantId, request.folderId(), TrainingFolderType.KNOWLEDGE);
+        TrainingFolder folder = null;
+        if (request.folderId() != null) {
+            folder = loadFolder(restaurantId, request.folderId(), TrainingFolderType.KNOWLEDGE);
+        }
         var entity = TrainingKnowledgeItem.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .folder(folder)
@@ -181,8 +196,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         entity.setComposition(request.composition());
         entity.setAllergens(request.allergens());
         entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
-        if (request.folderId() != null && !request.folderId().equals(entity.getFolder().getId())) {
-            entity.setFolder(loadFolder(restaurantId, request.folderId(), TrainingFolderType.KNOWLEDGE));
+        var currentFolderId = entity.getFolder() == null ? null : entity.getFolder().getId();
+        if (!java.util.Objects.equals(request.folderId(), currentFolderId)) {
+            entity.setFolder(request.folderId() == null ? null : loadFolder(restaurantId, request.folderId(), TrainingFolderType.KNOWLEDGE));
         }
         return toDto(items.save(entity));
     }
@@ -406,7 +422,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private TrainingKnowledgeItemDto toDto(TrainingKnowledgeItem entity) {
-        return new TrainingKnowledgeItemDto(entity.getId(), entity.getRestaurant().getId(), entity.getFolder().getId(), entity.getTitle(),
+        return new TrainingKnowledgeItemDto(entity.getId(), entity.getRestaurant().getId(), entity.getFolder() == null ? null : entity.getFolder().getId(), entity.getTitle(),
                 entity.getDescription(), entity.getComposition(), entity.getAllergens(), entity.getImageUrl(), entity.getSortOrder(), entity.isActive());
     }
 }

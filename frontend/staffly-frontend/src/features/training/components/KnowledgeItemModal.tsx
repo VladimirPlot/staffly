@@ -34,7 +34,7 @@ type KnowledgeItemModalProps = {
   item?: TrainingKnowledgeItemDto;
   initialItem?: TrainingKnowledgeItemDto;
 
-  folderId: number;
+  folderId?: number | null;
   restaurantId: number;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
@@ -198,7 +198,7 @@ export default function KnowledgeItemModal({
 
     try {
       const payload = {
-        folderId,
+        folderId: folderId ?? null,
         title: trimmedTitle,
         description: description.trim() || null,
         composition: composition.trim() || null,

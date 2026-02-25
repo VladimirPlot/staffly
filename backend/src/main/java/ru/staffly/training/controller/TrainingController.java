@@ -79,7 +79,7 @@ public class TrainingController {
     @GetMapping("/knowledge-items")
     public List<TrainingKnowledgeItemDto> listKnowledgeItems(@PathVariable Long restaurantId,
                                                               @AuthenticationPrincipal UserPrincipal principal,
-                                                              @RequestParam Long folderId,
+                                                              @RequestParam(required = false) Long folderId,
                                                               @RequestParam(defaultValue = "false") boolean includeInactive) {
         return knowledgeService.listKnowledgeItems(restaurantId, principal.userId(), folderId, includeInactive);
     }

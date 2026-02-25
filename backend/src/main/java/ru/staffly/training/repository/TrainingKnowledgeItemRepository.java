@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface TrainingKnowledgeItemRepository extends JpaRepository<TrainingKnowledgeItem, Long> {
     List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIdOrderBySortOrderAscTitleAsc(Long restaurantId, Long folderId);
     List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(Long restaurantId, Long folderId);
+    List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIsNullOrderBySortOrderAscTitleAsc(Long restaurantId);
+    List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIsNullAndActiveTrueOrderBySortOrderAscTitleAsc(Long restaurantId);
     List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIdIn(Long restaurantId, List<Long> folderIds);
     Optional<TrainingKnowledgeItem> findByIdAndRestaurantId(Long id, Long restaurantId);
 
