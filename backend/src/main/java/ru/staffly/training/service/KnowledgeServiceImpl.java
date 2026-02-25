@@ -7,9 +7,14 @@ import org.springframework.web.multipart.MultipartFile;
 import jakarta.persistence.EntityManager;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.media.TrainingImageStorage;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.security.SecurityService;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingFolder;
 import ru.staffly.training.model.TrainingFolderType;
@@ -31,12 +36,25 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingImageStorage storage;
     private final TrainingExamScopeRepository scopes;
     private final EntityManager entityManager;
+    private final RestaurantMemberRepository members;
+    private final PositionRepository positions;
+    private final SecurityService securityService;
 
+    @Transactional(readOnly = true)
     @Override
-    public List<TrainingFolderDto> listFolders(Long restaurantId, TrainingFolderType type, boolean includeInactive) {
+    public List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive) {
+        if (!securityService.hasAtLeastManager(userId, restaurantId)) {
+            var member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+                    .orElseThrow(() -> new ForbiddenException("Not a member"));
+            if (member.getPosition() == null) {
+                throw new ForbiddenException("Обратитесь к менеджеру или в поддержку.");
+            }
+            var entities = folders.listFoldersForStaff(restaurantId, type, member.getPosition().getId());
+            return entities.stream().map(this::toDto).toList();
+        }
         var entities = includeInactive
-                ? folders.findByRestaurantIdAndTypeOrderBySortOrderAscNameAsc(restaurantId, type)
-                : folders.findByRestaurantIdAndTypeAndActiveTrueOrderBySortOrderAscNameAsc(restaurantId, type);
+                ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type)
+                : folders.findByRestaurantIdAndTypeAndActiveTrueWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type);
         return entities.stream().map(this::toDto).toList();
     }
 
@@ -44,9 +62,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public TrainingFolderDto createFolder(Long restaurantId, CreateTrainingFolderRequest request) {
         TrainingFolder parent = null;
         if (request.parentId() != null) {
-            parent = folders.findByIdAndRestaurantId(request.parentId(), restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
+            parent = folders.findByIdAndRestaurantIdWithVisibility(request.parentId(), restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
             if (parent.getType() != request.type()) throw new BadRequestException("Parent folder type mismatch");
         }
+        var visibilityPositions = resolveVisibilityPositionsForCreate(restaurantId, parent, request.visibilityPositionIds());
         var entity = TrainingFolder.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .parent(parent)
@@ -55,16 +74,25 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .type(request.type())
                 .sortOrder(request.sortOrder() == null ? 0 : request.sortOrder())
                 .active(true)
+                .visibilityPositions(visibilityPositions)
                 .build();
         return toDto(folders.save(entity));
     }
 
     @Override
     public TrainingFolderDto updateFolder(Long restaurantId, Long folderId, UpdateTrainingFolderRequest request) {
-        var entity = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
+        var entity = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
         entity.setName(request.name());
         entity.setDescription(request.description());
         entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
+
+        if (request.visibilityPositionIds() != null) {
+            var parent = loadParentWithVisibility(restaurantId, entity.getParent());
+            var targetVisibility = loadVisibilityPositions(restaurantId, request.visibilityPositionIds());
+            validateChildVisibility(entity.getId(), parent, targetVisibility.stream().map(Position::getId).collect(java.util.stream.Collectors.toSet()));
+            ensureNoDescendantConflicts(restaurantId, entity, targetVisibility.stream().map(Position::getId).collect(java.util.stream.Collectors.toSet()));
+            entity.setVisibilityPositions(targetVisibility);
+        }
         return toDto(folders.save(entity));
     }
 
@@ -73,7 +101,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public TrainingFolderDto hideFolder(Long restaurantId, Long folderId) {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
         setFolderTreeActive(restaurantId, root, false);
-        return toDto(folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
+        return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
     }
 
     @Override
@@ -81,7 +109,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public TrainingFolderDto restoreFolder(Long restaurantId, Long folderId) {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
         setFolderTreeActive(restaurantId, root, true);
-        return toDto(folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
+        return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
     }
 
     @Override
@@ -106,7 +134,22 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
-    public List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long folderId, boolean includeInactive) {
+    public List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long userId, Long folderId, boolean includeInactive) {
+        if (!securityService.hasAtLeastManager(userId, restaurantId)) {
+            var member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+                    .orElseThrow(() -> new ForbiddenException("Not a member"));
+            if (member.getPosition() == null) {
+                throw new ForbiddenException("Обратитесь к менеджеру или в поддержку.");
+            }
+            var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Folder not found"));
+            var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(java.util.stream.Collectors.toSet());
+            if (!visibilityIds.isEmpty() && !visibilityIds.contains(member.getPosition().getId())) {
+                throw new ForbiddenException("Нет доступа к папке.");
+            }
+            var list = items.findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId, folderId);
+            return list.stream().map(this::toDto).toList();
+        }
         var list = includeInactive
                 ? items.findByRestaurantIdAndFolderIdOrderBySortOrderAscTitleAsc(restaurantId, folderId)
                 : items.findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId, folderId);
@@ -240,8 +283,126 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private TrainingFolderDto toDto(TrainingFolder entity) {
+        var visibilityPositionIds = entity.getVisibilityPositions().stream()
+                .map(Position::getId)
+                .sorted()
+                .toList();
         return new TrainingFolderDto(entity.getId(), entity.getRestaurant().getId(), entity.getParent() == null ? null : entity.getParent().getId(),
-                entity.getName(), entity.getDescription(), entity.getType(), entity.getSortOrder(), entity.isActive());
+                entity.getName(), entity.getDescription(), entity.getType(), entity.getSortOrder(), entity.isActive(), visibilityPositionIds);
+    }
+
+    private TrainingFolder loadParentWithVisibility(Long restaurantId, TrainingFolder parent) {
+        if (parent == null) {
+            return null;
+        }
+        return folders.findByIdAndRestaurantIdWithVisibility(parent.getId(), restaurantId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+    }
+
+    private Set<Position> resolveVisibilityPositionsForCreate(Long restaurantId, TrainingFolder parent, List<Long> requestedVisibilityIds) {
+        if (parent == null) {
+            if (requestedVisibilityIds == null) {
+                return new HashSet<>();
+            }
+            return loadVisibilityPositions(restaurantId, requestedVisibilityIds);
+        }
+
+        if (requestedVisibilityIds == null) {
+            return new HashSet<>(parent.getVisibilityPositions());
+        }
+
+        var visibility = loadVisibilityPositions(restaurantId, requestedVisibilityIds);
+        validateChildVisibility(null, parent, visibility.stream().map(Position::getId).collect(java.util.stream.Collectors.toSet()));
+        return visibility;
+    }
+
+    private Set<Position> loadVisibilityPositions(Long restaurantId, List<Long> requestedVisibilityIds) {
+        var normalizedIds = normalizeIds(requestedVisibilityIds);
+        if (normalizedIds.isEmpty()) {
+            return new HashSet<>();
+        }
+        var loaded = positions.findAllById(normalizedIds);
+        if (loaded.size() != normalizedIds.size()) {
+            throw new BadRequestException("Некорректные должности в видимости.");
+        }
+        boolean allInRestaurant = loaded.stream().allMatch(p -> p.getRestaurant().getId().equals(restaurantId));
+        if (!allInRestaurant) {
+            throw new BadRequestException("Некорректные должности в видимости.");
+        }
+        return new HashSet<>(loaded);
+    }
+
+    private Set<Long> normalizeIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return new HashSet<>();
+        }
+        return ids.stream().filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+    }
+
+    private void validateChildVisibility(Long folderId, TrainingFolder parent, Set<Long> childVisibilityIds) {
+        if (parent == null) {
+            return;
+        }
+        var parentVisibilityIds = parent.getVisibilityPositions().stream()
+                .map(Position::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (parentVisibilityIds.isEmpty()) {
+            return;
+        }
+        if (childVisibilityIds.isEmpty()) {
+            throw new BadRequestException("Дочерняя папка не может расширять видимость родителя.");
+        }
+        if (!parentVisibilityIds.containsAll(childVisibilityIds)) {
+            throw new BadRequestException("Дочерняя папка не может расширять видимость родителя.");
+        }
+    }
+
+    private void ensureNoDescendantConflicts(Long restaurantId, TrainingFolder folder, Set<Long> newVisibilityIds) {
+        if (newVisibilityIds.isEmpty()) {
+            return;
+        }
+
+        var allFolderIds = collectFolderIds(restaurantId, folder.getId(), folder.getType());
+        var descendantIds = allFolderIds.stream().filter(id -> !id.equals(folder.getId())).toList();
+        if (descendantIds.isEmpty()) {
+            return;
+        }
+
+        var descendants = folders.findAllByRestaurantIdAndIdInWithVisibility(restaurantId, descendantIds);
+        var allRestaurantPositionIds = positions.findByRestaurantId(restaurantId).stream()
+                .map(Position::getId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        var conflicts = new ArrayList<Map<String, Object>>();
+        for (var descendant : descendants) {
+            var descendantVisibilityIds = descendant.getVisibilityPositions().stream()
+                    .map(Position::getId)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            Set<Long> offending = new HashSet<>();
+            if (descendantVisibilityIds.isEmpty()) {
+                offending.addAll(allRestaurantPositionIds);
+                offending.removeAll(newVisibilityIds);
+            } else {
+                offending.addAll(descendantVisibilityIds);
+                offending.removeAll(newVisibilityIds);
+            }
+
+            if (!offending.isEmpty()) {
+                conflicts.add(Map.of(
+                        "folderId", descendant.getId(),
+                        "folderName", descendant.getName(),
+                        "offendingPositionIds", offending.stream().sorted().toList()
+                ));
+            }
+        }
+
+        if (!conflicts.isEmpty()) {
+            throw new ConflictException(
+                    "Нельзя изменить видимость: есть дочерние папки с конфликтующими должностями.",
+                    Map.of("conflicts", conflicts)
+            );
+        }
     }
 
     private TrainingKnowledgeItemDto toDto(TrainingKnowledgeItem entity) {

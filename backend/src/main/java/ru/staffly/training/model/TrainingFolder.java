@@ -3,9 +3,12 @@ package ru.staffly.training.model;
 import jakarta.persistence.*;
 import lombok.*;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "training_folder")
@@ -52,6 +55,15 @@ public class TrainingFolder {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = TimeProvider.now();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "training_folder_visibility",
+            joinColumns = @JoinColumn(name = "folder_id"),
+            inverseJoinColumns = @JoinColumn(name = "position_id")
+    )
+    @Builder.Default
+    private Set<Position> visibilityPositions = new HashSet<>();
 
     @PrePersist
     void prePersist() {

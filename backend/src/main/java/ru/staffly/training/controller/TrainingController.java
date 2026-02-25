@@ -37,10 +37,7 @@ public class TrainingController {
         if (type == TrainingFolderType.QUESTION_BANK && !securityService.hasAtLeastManager(principal.userId(), restaurantId)) {
             throw new ForbiddenException("Only managers can access question bank");
         }
-        if (includeInactive && !securityService.hasAtLeastManager(principal.userId(), restaurantId)) {
-            throw new ForbiddenException("Only managers can include inactive folders");
-        }
-        return knowledgeService.listFolders(restaurantId, type, includeInactive);
+        return knowledgeService.listFolders(restaurantId, principal.userId(), type, includeInactive);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
@@ -84,10 +81,7 @@ public class TrainingController {
                                                               @AuthenticationPrincipal UserPrincipal principal,
                                                               @RequestParam Long folderId,
                                                               @RequestParam(defaultValue = "false") boolean includeInactive) {
-        if (includeInactive && !securityService.hasAtLeastManager(principal.userId(), restaurantId)) {
-            throw new ForbiddenException("Only managers can include inactive knowledge items");
-        }
-        return knowledgeService.listKnowledgeItems(restaurantId, folderId, includeInactive);
+        return knowledgeService.listKnowledgeItems(restaurantId, principal.userId(), folderId, includeInactive);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")

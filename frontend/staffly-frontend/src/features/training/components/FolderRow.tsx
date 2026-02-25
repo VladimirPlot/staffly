@@ -62,6 +62,11 @@ export default function FolderRow({
             <div className="relative z-10">
               <div className="flex items-center gap-2">
                 <span className="text-base font-semibold text-strong sm:text-lg">{folder.name}</span>
+                <span className="inline-flex rounded-full border border-subtle px-2 py-0.5 text-xs text-muted">
+                  {folder.visibilityPositionIds.length === 0
+                    ? "Всем"
+                    : `${folder.visibilityPositionIds.length} должности`}
+                </span>
                 {!folder.active && (
                   <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
                     Скрыта

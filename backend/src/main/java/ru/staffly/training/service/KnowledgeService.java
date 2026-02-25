@@ -8,14 +8,14 @@ import java.io.IOException;
 import java.util.List;
 
 public interface KnowledgeService {
-    List<TrainingFolderDto> listFolders(Long restaurantId, TrainingFolderType type, boolean includeInactive);
+    List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive);
     TrainingFolderDto createFolder(Long restaurantId, CreateTrainingFolderRequest request);
     TrainingFolderDto updateFolder(Long restaurantId, Long folderId, UpdateTrainingFolderRequest request);
     TrainingFolderDto hideFolder(Long restaurantId, Long folderId);
     TrainingFolderDto restoreFolder(Long restaurantId, Long folderId);
     void deleteFolder(Long restaurantId, Long folderId);
 
-    List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long folderId, boolean includeInactive);
+    List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long userId, Long folderId, boolean includeInactive);
     TrainingKnowledgeItemDto createKnowledgeItem(Long restaurantId, CreateTrainingKnowledgeItemRequest request);
     TrainingKnowledgeItemDto updateKnowledgeItem(Long restaurantId, Long itemId, UpdateTrainingKnowledgeItemRequest request);
     TrainingKnowledgeItemDto hideKnowledgeItem(Long restaurantId, Long itemId);

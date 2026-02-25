@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import ru.staffly.training.model.TrainingFolderType;
 
+import java.util.List;
+
 public record TrainingFolderDto(
         Long id,
         @NotNull Long restaurantId,
@@ -13,5 +15,6 @@ public record TrainingFolderDto(
         String description,
         @NotNull TrainingFolderType type,
         Integer sortOrder,
-        Boolean active
+        Boolean active,
+        List<Long> visibilityPositionIds
 ) {}

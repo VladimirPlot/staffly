@@ -9,6 +9,7 @@ export type TrainingFolderDto = {
   type: TrainingFolderType;
   sortOrder: number;
   active: boolean;
+  visibilityPositionIds: number[];
 };
 
 export type CreateTrainingFolderPayload = {
@@ -16,11 +17,13 @@ export type CreateTrainingFolderPayload = {
   description?: string | null;
   parentId?: number | null;
   type: TrainingFolderType;
+  visibilityPositionIds?: number[];
 };
 
 export type UpdateTrainingFolderPayload = {
   name: string;
   description?: string | null;
+  visibilityPositionIds?: number[] | null;
 };
 
 /** BACKEND: TrainingKnowledgeItemDto */
