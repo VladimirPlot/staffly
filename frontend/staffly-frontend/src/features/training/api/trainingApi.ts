@@ -45,8 +45,8 @@ export async function deleteKnowledgeImage(restaurantId: number, itemId: number)
 export async function restoreKnowledgeItem(restaurantId: number, itemId: number): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/restore`); return data as TrainingKnowledgeItemDto; }
 export async function deleteKnowledgeItem(restaurantId: number, itemId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}`); }
 
-export async function listQuestions(restaurantId: number, folderId: number, includeInactive = false): Promise<TrainingQuestionDto[]> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/questions`, { params: { folderId, includeInactive } });
+export async function listQuestions(restaurantId: number, folderId: number, includeInactive = false, query?: string): Promise<TrainingQuestionDto[]> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/questions`, { params: { folderId, includeInactive, q: query } });
   return data as TrainingQuestionDto[];
 }
 export async function createQuestion(restaurantId: number, payload: CreateQuestionPayload): Promise<TrainingQuestionDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/questions`, payload); return data as TrainingQuestionDto; }

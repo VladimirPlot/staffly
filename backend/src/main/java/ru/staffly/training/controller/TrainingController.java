@@ -139,8 +139,9 @@ public class TrainingController {
     public List<TrainingQuestionDto> listQuestions(@PathVariable Long restaurantId,
                                                    @AuthenticationPrincipal UserPrincipal principal,
                                                    @RequestParam Long folderId,
-                                                   @RequestParam(defaultValue = "false") boolean includeInactive) {
-        return questionService.listQuestions(restaurantId, folderId, includeInactive);
+                                                   @RequestParam(defaultValue = "false") boolean includeInactive,
+                                                   @RequestParam(required = false, name = "q") String query) {
+        return questionService.listQuestions(restaurantId, folderId, includeInactive, query);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")

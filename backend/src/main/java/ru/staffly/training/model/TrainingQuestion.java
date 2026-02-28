@@ -31,6 +31,9 @@ public class TrainingQuestion {
     @Column(nullable = false, length = 20)
     private TrainingQuestionType type;
 
+    @Column(nullable = false, length = 150)
+    private String title;
+
     @Column(nullable = false, columnDefinition = "text")
     private String prompt;
 

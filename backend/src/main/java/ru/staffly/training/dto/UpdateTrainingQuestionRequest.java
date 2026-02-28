@@ -9,10 +9,12 @@ import java.util.List;
 public record UpdateTrainingQuestionRequest(
         Long folderId,
         @NotNull TrainingQuestionType type,
+        @NotBlank String title,
         @NotBlank String prompt,
         String explanation,
         Integer sortOrder,
         Boolean active,
         List<TrainingQuestionOptionDto> options,
-        List<TrainingQuestionMatchPairDto> matchPairs
+        List<TrainingQuestionMatchPairDto> matchPairs,
+        List<TrainingQuestionBlankDto> blanks
 ) {}

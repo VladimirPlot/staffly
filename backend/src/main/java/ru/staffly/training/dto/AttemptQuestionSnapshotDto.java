@@ -10,5 +10,6 @@ public record AttemptQuestionSnapshotDto(
         String prompt,
         String explanation,
         List<TrainingQuestionOptionViewDto> options,
-        List<TrainingQuestionMatchPairViewDto> matchPairs
+        List<TrainingQuestionMatchPairViewDto> matchPairs,
+        List<TrainingQuestionBlankViewDto> blanks
 ) {}

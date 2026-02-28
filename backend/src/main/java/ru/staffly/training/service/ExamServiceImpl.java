@@ -30,6 +30,8 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingQuestionRepository questions;
     private final TrainingQuestionOptionRepository questionOptions;
     private final TrainingQuestionMatchPairRepository questionPairs;
+    private final TrainingQuestionBlankRepository questionBlanks;
+    private final TrainingQuestionBlankOptionRepository questionBlankOptions;
     private final TrainingExamAttemptRepository attempts;
     private final TrainingExamAttemptQuestionRepository attemptQuestions;
     private final TrainingFolderRepository folders;
@@ -203,6 +205,9 @@ public class ExamServiceImpl implements ExamService {
         var questionIds = pool.stream().map(TrainingQuestion::getId).toList();
         var optionsByQuestion = questionOptions.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(o -> o.getQuestion().getId()));
         var pairsByQuestion = questionPairs.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(p -> p.getQuestion().getId()));
+        var blanksByQuestion = questionBlanks.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(b -> b.getQuestion().getId()));
+        var blankIds = blanksByQuestion.values().stream().flatMap(List::stream).map(TrainingQuestionBlank::getId).toList();
+        var blankOptionsByBlank = blankIds.isEmpty() ? Map.<Long, List<TrainingQuestionBlankOption>>of() : questionBlankOptions.findByBlankIdInOrderBySortOrderAscIdAsc(blankIds).stream().collect(Collectors.groupingBy(o -> o.getBlank().getId()));
 
         Collections.shuffle(pool);
         int count = Math.min(exam.getQuestionCount(), pool.size());
@@ -224,7 +229,7 @@ public class ExamServiceImpl implements ExamService {
         List<AttemptQuestionSnapshotDto> snapshots = new ArrayList<>();
 
         for (var question : selected) {
-            var snapshot = buildSnapshot(question, optionsByQuestion.getOrDefault(question.getId(), List.of()), pairsByQuestion.getOrDefault(question.getId(), List.of()));
+            var snapshot = buildSnapshot(question, optionsByQuestion.getOrDefault(question.getId(), List.of()), pairsByQuestion.getOrDefault(question.getId(), List.of()), blanksByQuestion.getOrDefault(question.getId(), List.of()), blankOptionsByBlank);
             snapshots.add(snapshot.snapshotDto());
             entities.add(TrainingExamAttemptQuestion.builder()
                     .attempt(attempt)
@@ -299,18 +304,31 @@ public class ExamServiceImpl implements ExamService {
                 .toList();
     }
 
-    private SnapshotPayload buildSnapshot(TrainingQuestion question, List<TrainingQuestionOption> options, List<TrainingQuestionMatchPair> pairs) {
+    private SnapshotPayload buildSnapshot(TrainingQuestion question, List<TrainingQuestionOption> options, List<TrainingQuestionMatchPair> pairs, List<TrainingQuestionBlank> blanks, Map<Long, List<TrainingQuestionBlankOption>> blankOptionsByBlank) {
         try {
             var optionView = options.stream().map(o -> new TrainingQuestionOptionViewDto(o.getSortOrder(), o.getText())).toList();
             var pairView = pairs.stream().map(p -> new TrainingQuestionMatchPairViewDto(p.getSortOrder(), p.getLeftText(), p.getRightText())).toList();
-            var snapshotDto = new AttemptQuestionSnapshotDto(question.getId(), question.getType(), question.getPrompt(), question.getExplanation(), optionView, pairView);
+            var blankView = blanks.stream().sorted(Comparator.comparing(TrainingQuestionBlank::getSortOrder)).map(blank -> new TrainingQuestionBlankViewDto(
+                    blank.getSortOrder() + 1,
+                    blankOptionsByBlank.getOrDefault(blank.getId(), List.of()).stream().map(o -> new TrainingQuestionBlankOptionViewDto(o.getSortOrder(), o.getText())).toList()
+            )).toList();
+            var snapshotDto = new AttemptQuestionSnapshotDto(question.getId(), question.getType(), question.getPrompt(), question.getExplanation(), optionView, pairView, blankView);
             String snapshotJson = objectMapper.writeValueAsString(snapshotDto);
 
-            String correctKey = switch (question.getType()) {
-                case MATCH -> objectMapper.writeValueAsString(pairs.stream().map(p -> new MatchPairAnswer(p.getLeftText(), p.getRightText())).sorted(Comparator.comparing(MatchPairAnswer::left)).toList());
-                case MULTI -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).sorted().toList());
-                default -> objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).findFirst().orElse(""));
-            };
+            String correctKey;
+            if (question.getType() == TrainingQuestionType.MATCH) {
+                correctKey = objectMapper.writeValueAsString(pairs.stream().map(p -> new MatchPairAnswer(p.getLeftText(), p.getRightText())).sorted(Comparator.comparing(MatchPairAnswer::left)).toList());
+            } else if (question.getType() == TrainingQuestionType.MULTI) {
+                correctKey = objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).sorted().toList());
+            } else if (question.getType() == TrainingQuestionType.FILL_SELECT && !blankView.isEmpty()) {
+                var key = blanks.stream().sorted(Comparator.comparing(TrainingQuestionBlank::getSortOrder)).map(blank -> {
+                    var correct = blankOptionsByBlank.getOrDefault(blank.getId(), List.of()).stream().filter(TrainingQuestionBlankOption::isCorrect).map(TrainingQuestionBlankOption::getText).findFirst().orElse("");
+                    return new FillBlankCorrectAnswer(blank.getSortOrder() + 1, correct);
+                }).toList();
+                correctKey = objectMapper.writeValueAsString(key);
+            } else {
+                correctKey = objectMapper.writeValueAsString(options.stream().filter(TrainingQuestionOption::isCorrect).map(TrainingQuestionOption::getText).findFirst().orElse(""));
+            }
             return new SnapshotPayload(snapshotDto, snapshotJson, correctKey);
         } catch (Exception e) {
             throw new BadRequestException("Cannot serialize exam snapshot");
@@ -343,6 +361,24 @@ public class ExamServiceImpl implements ExamService {
                     var allowed = snapshot.options().stream().map(TrainingQuestionOptionViewDto::text).collect(Collectors.toSet());
                     if (!allowed.containsAll(values)) throw new BadRequestException("Invalid answer values");
                 }
+                case FILL_SELECT -> {
+                    if (snapshot.blanks() == null || snapshot.blanks().isEmpty()) {
+                        var value = objectMapper.readValue(answerJson, String.class);
+                        var allowed = snapshot.options().stream().map(TrainingQuestionOptionViewDto::text).collect(Collectors.toSet());
+                        if (!allowed.contains(value)) throw new BadRequestException("Invalid answer values");
+                        return;
+                    }
+                    var values = objectMapper.readValue(answerJson, new TypeReference<List<FillBlankAnswer>>() {});
+                    if (values.size() != snapshot.blanks().size()) throw new BadRequestException("Invalid answer values");
+                    var byIndex = values.stream().collect(Collectors.toMap(FillBlankAnswer::blankIndex, FillBlankAnswer::value, (a, b) -> b));
+                    if (byIndex.size() != values.size()) throw new BadRequestException("Invalid answer values");
+                    for (var blank : snapshot.blanks()) {
+                        var value = byIndex.get(blank.blankIndex());
+                        if (value == null) throw new BadRequestException("Invalid answer values");
+                        var allowed = blank.options().stream().map(TrainingQuestionBlankOptionViewDto::text).collect(Collectors.toSet());
+                        if (!allowed.contains(value)) throw new BadRequestException("Invalid answer values");
+                    }
+                }
                 default -> {
                     var value = objectMapper.readValue(answerJson, String.class);
                     var allowed = snapshot.options().stream().map(TrainingQuestionOptionViewDto::text).collect(Collectors.toSet());
@@ -367,6 +403,17 @@ public class ExamServiceImpl implements ExamService {
                 var actual = objectMapper.readValue(answerJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
                 var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<String>>() {}).stream().sorted().toList();
                 return expected.equals(actual);
+            }
+            if (type == TrainingQuestionType.FILL_SELECT) {
+                if (correctKeyJson != null && correctKeyJson.trim().startsWith("[")) {
+                    var actual = objectMapper.readValue(answerJson, new TypeReference<List<FillBlankAnswer>>() {}).stream().sorted(Comparator.comparing(FillBlankAnswer::blankIndex)).toList();
+                    var expected = objectMapper.readValue(correctKeyJson, new TypeReference<List<FillBlankCorrectAnswer>>() {}).stream().sorted(Comparator.comparing(FillBlankCorrectAnswer::blankIndex)).toList();
+                    if (actual.size() != expected.size()) return false;
+                    for (int i = 0; i < expected.size(); i++) {
+                        if (!Objects.equals(expected.get(i).blankIndex(), actual.get(i).blankIndex()) || !Objects.equals(expected.get(i).correct(), actual.get(i).value())) return false;
+                    }
+                    return true;
+                }
             }
             String actual = objectMapper.readValue(answerJson, String.class);
             String expected = objectMapper.readValue(correctKeyJson, String.class);
@@ -424,4 +471,6 @@ public class ExamServiceImpl implements ExamService {
 
     private record SnapshotPayload(AttemptQuestionSnapshotDto snapshotDto, String snapshotJson, String correctKeyJson) {}
     private record MatchPairAnswer(String left, String right) {}
+    private record FillBlankAnswer(Integer blankIndex, String value) {}
+    private record FillBlankCorrectAnswer(Integer blankIndex, String correct) {}
 }

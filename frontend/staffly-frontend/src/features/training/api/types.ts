@@ -75,27 +75,47 @@ export type TrainingQuestionMatchPairDto = {
   sortOrder: number;
 };
 
+export type TrainingQuestionUsage = "TRAINING_ONLY" | "EXAM_ONLY";
+
+export type TrainingQuestionBlankOptionDto = {
+  id?: number;
+  text: string;
+  correct: boolean;
+  sortOrder: number;
+};
+
+export type TrainingQuestionBlankDto = {
+  id?: number;
+  index: number;
+  options: TrainingQuestionBlankOptionDto[];
+};
+
 export type TrainingQuestionDto = {
   id: number;
   restaurantId: number;
   folderId: number;
   type: TrainingQuestionType;
+  title: string;
   prompt: string;
   explanation?: string | null;
   sortOrder: number;
   active: boolean;
   options: TrainingQuestionOptionDto[];
   matchPairs: TrainingQuestionMatchPairDto[];
+  blanks: TrainingQuestionBlankDto[];
 };
 
 export type CreateQuestionPayload = {
   folderId: number;
   type: TrainingQuestionType;
+  usage?: TrainingQuestionUsage;
+  title: string;
   prompt: string;
   explanation?: string | null;
   sortOrder?: number;
   options?: TrainingQuestionOptionDto[];
   matchPairs?: TrainingQuestionMatchPairDto[];
+  blanks?: TrainingQuestionBlankDto[];
 };
 
 export type UpdateQuestionPayload = Omit<CreateQuestionPayload, "folderId"> & {
@@ -151,6 +171,9 @@ export type ExamResultRowDto = {
 export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };
 export type ExamStartQuestionMatchPairViewDto = { sortOrder: number; leftText: string; rightText: string };
 
+export type ExamStartQuestionBlankOptionViewDto = { sortOrder: number; text: string };
+export type ExamStartQuestionBlankViewDto = { blankIndex: number; options: ExamStartQuestionBlankOptionViewDto[] };
+
 export type AttemptQuestionSnapshotDto = {
   questionId: number;
   type: TrainingQuestionType;
@@ -158,6 +181,7 @@ export type AttemptQuestionSnapshotDto = {
   explanation?: string | null;
   options: ExamStartQuestionOptionViewDto[];
   matchPairs: ExamStartQuestionMatchPairViewDto[];
+  blanks: ExamStartQuestionBlankViewDto[];
 };
 
 export type ExamAttemptDto = {

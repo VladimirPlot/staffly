@@ -25,8 +25,10 @@ function isMatch(type: TrainingQuestionType) {
   return type === "MATCH";
 }
 function isSingleLike(type: TrainingQuestionType) {
-  return type === "SINGLE" || type === "TRUE_FALSE" || type === "FILL_SELECT";
+  return type === "SINGLE" || type === "TRUE_FALSE";
 }
+
+type FillBlankAnswer = { blankIndex: number; value: string };
 
 export default function ExamRunPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -121,6 +123,17 @@ export default function ExamRunPage() {
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(next) }));
   };
 
+
+  const setFillSelectAnswer = (q: AttemptQuestionSnapshotDto, blankIndex: number, value: string) => {
+    let payload: FillBlankAnswer[] = [];
+    try {
+      payload = answers[q.questionId] ? (JSON.parse(answers[q.questionId]) as FillBlankAnswer[]) : [];
+      if (!Array.isArray(payload)) payload = [];
+    } catch { payload = []; }
+    const next = payload.filter((p) => p.blankIndex !== blankIndex);
+    next.push({ blankIndex, value });
+    setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(next) }));
+  };
   const submit = async () => {
     if (!restaurantId || !attempt) return;
 
@@ -226,7 +239,31 @@ export default function ExamRunPage() {
       );
     }
 
-    // SINGLE / TRUE_FALSE / FILL_SELECT
+    if (q.type === "FILL_SELECT" && q.blanks.length > 0) {
+      let current: FillBlankAnswer[] = [];
+      try { current = selected ? (JSON.parse(selected) as FillBlankAnswer[]) : []; if (!Array.isArray(current)) current = []; } catch { current = []; }
+      const byIndex = new Map(current.map((x) => [x.blankIndex, x.value]));
+      const blanks = [...q.blanks].sort((a, b) => a.blankIndex - b.blankIndex);
+      return (
+        <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
+          <div className="font-medium">{idx + 1}. {q.prompt}</div>
+          {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+          <div className="mt-3 space-y-3">
+            {blanks.map((b) => (
+              <div key={b.blankIndex}>
+                <div className="mb-1 text-sm text-muted">Пропуск {b.blankIndex}</div>
+                <select className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm" value={byIndex.get(b.blankIndex) ?? ""} onChange={(e) => setFillSelectAnswer(q, b.blankIndex, e.target.value)}>
+                  <option value="" disabled>Выберите вариант</option>
+                  {b.options.map((o) => <option key={o.text} value={o.text}>{o.text}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // SINGLE / TRUE_FALSE
     if (isSingleLike(q.type)) {
       let current: string | null = null;
       try {
