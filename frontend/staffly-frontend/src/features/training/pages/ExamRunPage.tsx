@@ -1,3 +1,4 @@
+// D:\staffly\frontend\staffly-frontend\src\features\training\pages\ExamRunPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
@@ -17,6 +18,7 @@ import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
 type MatchPairAnswer = { left: string; right: string };
+type FillBlankAnswer = { blankIndex: number; value: string };
 
 function isMulti(type: TrainingQuestionType) {
   return type === "MULTI";
@@ -27,8 +29,6 @@ function isMatch(type: TrainingQuestionType) {
 function isSingleLike(type: TrainingQuestionType) {
   return type === "SINGLE" || type === "TRUE_FALSE";
 }
-
-type FillBlankAnswer = { blankIndex: number; value: string };
 
 export default function ExamRunPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -93,11 +93,10 @@ export default function ExamRunPage() {
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(Array.from(next)) }));
   };
 
-  const initMatchAnswer = (q: AttemptQuestionSnapshotDto) => {
-    // default: one-to-one by sortOrder
+  // MATCH: по умолчанию — ПУСТО (без подстановки правильных rightText)
+  const initMatchPayloadEmpty = (q: AttemptQuestionSnapshotDto) => {
     const pairs = [...q.matchPairs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    const rights = pairs.map((p) => p.rightText);
-    const payload: MatchPairAnswer[] = pairs.map((p, i) => ({ left: p.leftText, right: rights[i] ?? "" }));
+    const payload: MatchPairAnswer[] = pairs.map((p) => ({ left: p.leftText, right: "" }));
     return JSON.stringify(payload);
   };
 
@@ -106,36 +105,104 @@ export default function ExamRunPage() {
     try {
       payload = answers[q.questionId]
         ? (JSON.parse(answers[q.questionId]) as MatchPairAnswer[])
-        : (JSON.parse(initMatchAnswer(q)) as MatchPairAnswer[]);
+        : (JSON.parse(initMatchPayloadEmpty(q)) as MatchPairAnswer[]);
       if (!Array.isArray(payload)) payload = [];
     } catch {
       payload = [];
     }
 
-    // enforce unique rights (как в backend validate)
-    const usedRights = new Set(payload.filter((p) => p.left !== left).map((p) => p.right));
-    if (usedRights.has(right)) {
-      // если право уже занято — просто не даём поставить
-      return;
-    }
+    // enforce unique rights
+    const usedRights = new Set(payload.filter((p) => p.left !== left).map((p) => p.right).filter(Boolean));
+    if (right && usedRights.has(right)) return;
 
     const next = payload.map((p) => (p.left === left ? { ...p, right } : p));
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(next) }));
   };
-
 
   const setFillSelectAnswer = (q: AttemptQuestionSnapshotDto, blankIndex: number, value: string) => {
     let payload: FillBlankAnswer[] = [];
     try {
       payload = answers[q.questionId] ? (JSON.parse(answers[q.questionId]) as FillBlankAnswer[]) : [];
       if (!Array.isArray(payload)) payload = [];
-    } catch { payload = []; }
+    } catch {
+      payload = [];
+    }
     const next = payload.filter((p) => p.blankIndex !== blankIndex);
     next.push({ blankIndex, value });
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(next) }));
   };
+
+  // ---- validation before submit (чтобы не отправлять "null" и не ловить 400) ----
+  const validateAllAnswered = (attempt: ExamAttemptDto) => {
+    for (const q of attempt.questions) {
+      const raw = answers[q.questionId];
+
+      if (isMatch(q.type)) {
+        if (!raw) return "Ответьте на все вопросы перед отправкой.";
+        try {
+          const payload = JSON.parse(raw) as MatchPairAnswer[];
+          if (!Array.isArray(payload) || payload.length === 0) return "Ответьте на все вопросы перед отправкой.";
+          if (payload.some((p) => !p.right || !String(p.right).trim())) return "Заполните все соответствия перед отправкой.";
+        } catch {
+          return "Некорректный формат ответа (MATCH).";
+        }
+        continue;
+      }
+
+      if (q.type === "FILL_SELECT" && q.blanks.length > 0) {
+        if (!raw) return "Ответьте на все вопросы перед отправкой.";
+        try {
+          const payload = JSON.parse(raw) as FillBlankAnswer[];
+          if (!Array.isArray(payload)) return "Ответьте на все вопросы перед отправкой.";
+          const byIndex = new Map(payload.map((x) => [x.blankIndex, x.value]));
+          if (byIndex.size !== q.blanks.length) return "Заполните все пропуски перед отправкой.";
+          for (const b of q.blanks) {
+            const v = byIndex.get(b.blankIndex);
+            if (!v || !String(v).trim()) return "Заполните все пропуски перед отправкой.";
+          }
+        } catch {
+          return "Некорректный формат ответа (FILL_SELECT).";
+        }
+        continue;
+      }
+
+      if (isMulti(q.type)) {
+        if (!raw) return "Ответьте на все вопросы перед отправкой.";
+        try {
+          const arr = JSON.parse(raw) as string[];
+          if (!Array.isArray(arr) || arr.length === 0) return "Ответьте на все вопросы перед отправкой.";
+        } catch {
+          return "Некорректный формат ответа (MULTI).";
+        }
+        continue;
+      }
+
+      if (isSingleLike(q.type)) {
+        if (!raw) return "Ответьте на все вопросы перед отправкой.";
+        try {
+          const v = JSON.parse(raw) as string;
+          if (!v || !String(v).trim()) return "Ответьте на все вопросы перед отправкой.";
+        } catch {
+          return "Некорректный формат ответа (SINGLE/TRUE_FALSE).";
+        }
+        continue;
+      }
+
+      // fallback: если появятся новые типы — считаем обязательным
+      if (!raw) return "Ответьте на все вопросы перед отправкой.";
+    }
+
+    return null;
+  };
+
   const submit = async () => {
     if (!restaurantId || !attempt) return;
+
+    const validationError = validateAllAnswered(attempt);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -143,7 +210,8 @@ export default function ExamRunPage() {
       const response = await submitExamAttempt(restaurantId, attempt.attemptId, {
         answers: attempt.questions.map((q) => {
           const answerJson = answers[q.questionId];
-          return { questionId: q.questionId, answerJson: answerJson ?? "null" };
+          // тут answerJson гарантированно есть и корректный
+          return { questionId: q.questionId, answerJson };
         }),
       });
       setResult(response);
@@ -164,13 +232,21 @@ export default function ExamRunPage() {
 
       let payload: MatchPairAnswer[] = [];
       try {
-        payload = selected ? (JSON.parse(selected) as MatchPairAnswer[]) : (JSON.parse(initMatchAnswer(q)) as MatchPairAnswer[]);
+        payload = selected
+          ? (JSON.parse(selected) as MatchPairAnswer[])
+          : (JSON.parse(initMatchPayloadEmpty(q)) as MatchPairAnswer[]);
         if (!Array.isArray(payload)) payload = [];
       } catch {
         payload = [];
       }
 
       const rightByLeft = new Map(payload.map((p) => [p.left, p.right]));
+      const used = new Set(payload.map((p) => p.right).filter(Boolean));
+
+      const optionsFor = (currentValue: string) => {
+        // показываем то, что выбрано сейчас, даже если оно "занято", и остальные незанятые
+        return rights.filter((r) => r === currentValue || !used.has(r));
+      };
 
       return (
         <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
@@ -185,12 +261,17 @@ export default function ExamRunPage() {
               return (
                 <div key={p.leftText} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm">{p.leftText}</div>
+
                   <select
                     className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm text-default sm:max-w-xs"
                     value={value}
                     onChange={(e) => setMatchRight(q, p.leftText, e.target.value)}
                   >
-                    {rights.map((r) => (
+                    <option value="" disabled>
+                      Выберите…
+                    </option>
+
+                    {optionsFor(value).map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
@@ -241,20 +322,39 @@ export default function ExamRunPage() {
 
     if (q.type === "FILL_SELECT" && q.blanks.length > 0) {
       let current: FillBlankAnswer[] = [];
-      try { current = selected ? (JSON.parse(selected) as FillBlankAnswer[]) : []; if (!Array.isArray(current)) current = []; } catch { current = []; }
+      try {
+        current = selected ? (JSON.parse(selected) as FillBlankAnswer[]) : [];
+        if (!Array.isArray(current)) current = [];
+      } catch {
+        current = [];
+      }
       const byIndex = new Map(current.map((x) => [x.blankIndex, x.value]));
       const blanks = [...q.blanks].sort((a, b) => a.blankIndex - b.blankIndex);
+
       return (
         <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
-          <div className="font-medium">{idx + 1}. {q.prompt}</div>
+          <div className="font-medium">
+            {idx + 1}. {q.prompt}
+          </div>
           {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+
           <div className="mt-3 space-y-3">
             {blanks.map((b) => (
               <div key={b.blankIndex}>
                 <div className="mb-1 text-sm text-muted">Пропуск {b.blankIndex}</div>
-                <select className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm" value={byIndex.get(b.blankIndex) ?? ""} onChange={(e) => setFillSelectAnswer(q, b.blankIndex, e.target.value)}>
-                  <option value="" disabled>Выберите вариант</option>
-                  {b.options.map((o) => <option key={o.text} value={o.text}>{o.text}</option>)}
+                <select
+                  className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm"
+                  value={byIndex.get(b.blankIndex) ?? ""}
+                  onChange={(e) => setFillSelectAnswer(q, b.blankIndex, e.target.value)}
+                >
+                  <option value="" disabled>
+                    Выберите вариант
+                  </option>
+                  {b.options.map((o) => (
+                    <option key={o.text} value={o.text}>
+                      {o.text}
+                    </option>
+                  ))}
                 </select>
               </div>
             ))}
@@ -297,7 +397,7 @@ export default function ExamRunPage() {
       );
     }
 
-    // fallback (should not happen)
+    // fallback
     return (
       <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
         <div className="font-medium">
@@ -347,7 +447,11 @@ export default function ExamRunPage() {
           </div>
 
           {result && (
-            <div className={`rounded-2xl p-3 text-sm ${result.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+            <div
+              className={`rounded-2xl p-3 text-sm ${
+                result.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+              }`}
+            >
               {result.passed ? "Поздравляем! Аттестация сдана." : "Аттестация не сдана."} Результат:{" "}
               {result.scorePercent}%.
             </div>

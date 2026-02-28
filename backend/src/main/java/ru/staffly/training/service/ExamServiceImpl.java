@@ -183,13 +183,38 @@ public class ExamServiceImpl implements ExamService {
                     .orElseThrow(() -> new NotFoundException("Membership not found"));
             if (!exam.getVisibilityPositions().isEmpty()) {
                 var positionId = member.getPosition() == null ? null : member.getPosition().getId();
-                var visible = positionId != null && exam.getVisibilityPositions().stream().anyMatch(x -> Objects.equals(x.getId(), positionId));
+                var visible = positionId != null
+                        && exam.getVisibilityPositions().stream().anyMatch(x -> Objects.equals(x.getId(), positionId));
                 if (!visible) {
                     throw new ConflictException("Экзамен недоступен для вашей должности.");
                 }
             }
         }
 
+        // ✅ RESUME: если есть незавершенная попытка на текущей версии экзамена — возвращаем её
+        var existingAttemptOpt =
+                attempts.findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+                        examId, restaurantId, userId, exam.getVersion()
+                );
+
+        if (existingAttemptOpt.isPresent()) {
+            var existingAttempt = existingAttemptOpt.get();
+            var existingItems = attemptQuestions.findByAttemptId(existingAttempt.getId());
+
+            var snapshots = existingItems.stream()
+                    .map(x -> readSnapshot(x.getQuestionSnapshotJson()))
+                    .toList();
+
+            return new StartExamResponseDto(
+                    existingAttempt.getId(),
+                    existingAttempt.getStartedAt(),
+                    existingAttempt.getExamVersion(),
+                    toDtoWithSourcesAndVisibility(exam),
+                    snapshots
+            );
+        }
+
+        // ✅ Лимит попыток считаем только когда реально создаём новую попытку
         if (exam.getAttemptLimit() != null) {
             long usedAttempts = attempts.countByExamIdAndRestaurantIdAndUserIdAndExamVersion(
                     examId, restaurantId, userId, exam.getVersion()
@@ -203,11 +228,19 @@ public class ExamServiceImpl implements ExamService {
         if (pool.isEmpty()) throw new BadRequestException("No questions in exam scope");
 
         var questionIds = pool.stream().map(TrainingQuestion::getId).toList();
-        var optionsByQuestion = questionOptions.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(o -> o.getQuestion().getId()));
-        var pairsByQuestion = questionPairs.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(p -> p.getQuestion().getId()));
-        var blanksByQuestion = questionBlanks.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream().collect(Collectors.groupingBy(b -> b.getQuestion().getId()));
-        var blankIds = blanksByQuestion.values().stream().flatMap(List::stream).map(TrainingQuestionBlank::getId).toList();
-        var blankOptionsByBlank = blankIds.isEmpty() ? Map.<Long, List<TrainingQuestionBlankOption>>of() : questionBlankOptions.findByBlankIdInOrderBySortOrderAscIdAsc(blankIds).stream().collect(Collectors.groupingBy(o -> o.getBlank().getId()));
+        var optionsByQuestion = questionOptions.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
+                .collect(Collectors.groupingBy(o -> o.getQuestion().getId()));
+        var pairsByQuestion = questionPairs.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
+                .collect(Collectors.groupingBy(p -> p.getQuestion().getId()));
+        var blanksByQuestion = questionBlanks.findByQuestionIdInOrderBySortOrderAscIdAsc(questionIds).stream()
+                .collect(Collectors.groupingBy(b -> b.getQuestion().getId()));
+
+        var blankIds = blanksByQuestion.values().stream().flatMap(List::stream)
+                .map(TrainingQuestionBlank::getId).toList();
+        var blankOptionsByBlank = blankIds.isEmpty()
+                ? Map.<Long, List<TrainingQuestionBlankOption>>of()
+                : questionBlankOptions.findByBlankIdInOrderBySortOrderAscIdAsc(blankIds).stream()
+                .collect(Collectors.groupingBy(o -> o.getBlank().getId()));
 
         Collections.shuffle(pool);
         int count = Math.min(exam.getQuestionCount(), pool.size());
@@ -229,7 +262,13 @@ public class ExamServiceImpl implements ExamService {
         List<AttemptQuestionSnapshotDto> snapshots = new ArrayList<>();
 
         for (var question : selected) {
-            var snapshot = buildSnapshot(question, optionsByQuestion.getOrDefault(question.getId(), List.of()), pairsByQuestion.getOrDefault(question.getId(), List.of()), blanksByQuestion.getOrDefault(question.getId(), List.of()), blankOptionsByBlank);
+            var snapshot = buildSnapshot(
+                    question,
+                    optionsByQuestion.getOrDefault(question.getId(), List.of()),
+                    pairsByQuestion.getOrDefault(question.getId(), List.of()),
+                    blanksByQuestion.getOrDefault(question.getId(), List.of()),
+                    blankOptionsByBlank
+            );
             snapshots.add(snapshot.snapshotDto());
             entities.add(TrainingExamAttemptQuestion.builder()
                     .attempt(attempt)
@@ -242,7 +281,13 @@ public class ExamServiceImpl implements ExamService {
 
         attemptQuestions.saveAll(entities);
 
-        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), attempt.getExamVersion(), toDtoWithSourcesAndVisibility(exam), snapshots);
+        return new StartExamResponseDto(
+                attempt.getId(),
+                attempt.getStartedAt(),
+                attempt.getExamVersion(),
+                toDtoWithSourcesAndVisibility(exam),
+                snapshots
+        );
     }
 
     @Override

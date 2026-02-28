@@ -69,4 +69,8 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             @Param("examVersion") int examVersion,
             @Param("positionId") Long positionId
     );
+
+    Optional<TrainingExamAttempt> findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+            Long examId, Long restaurantId, Long userId, int examVersion
+    );
 }
