@@ -25,11 +25,11 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionMatchPairRepository pairs;
     private final TrainingQuestionBlankRepository blanks;
     private final TrainingQuestionBlankOptionRepository blankOptions;
-    private final TrainingExamScopeRepository scopes;
+    private final TrainingExamSourceQuestionRepository questionSources;
 
     @Override
-    public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long folderId, boolean includeInactive, String query) {
-        return toDtos(questions.listForFolder(restaurantId, folderId, includeInactive, query));
+    public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long folderId, TrainingQuestionGroup questionGroup, boolean includeInactive, String query) {
+        return toDtos(questions.listForFolder(restaurantId, folderId, questionGroup, includeInactive, query));
     }
 
     @Override
@@ -44,6 +44,7 @@ public class QuestionServiceImpl implements QuestionService {
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .folder(folder)
                 .type(request.type())
+                .questionGroup(request.questionGroup())
                 .title(request.title().trim())
                 .prompt(request.prompt().trim())
                 .explanation(request.explanation())
@@ -66,6 +67,7 @@ public class QuestionServiceImpl implements QuestionService {
         entity.setPrompt(request.prompt().trim());
         entity.setExplanation(request.explanation());
         entity.setType(request.type());
+        entity.setQuestionGroup(request.questionGroup());
         entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
         entity.setActive(request.active() == null ? entity.isActive() : request.active());
 
@@ -106,7 +108,7 @@ public class QuestionServiceImpl implements QuestionService {
                 .orElseThrow(() -> new NotFoundException("Question not found"));
         if (entity.isActive()) throw new ConflictException("Сначала скройте вопрос, затем удаляйте.");
 
-        var usages = scopes.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, questionId);
+        var usages = questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, questionId);
         if (!usages.isEmpty()) {
             throw new ConflictException(
                     "Вопрос используется в экзаменах. Уберите папку из области экзамена и повторите.",
@@ -336,6 +338,7 @@ public class QuestionServiceImpl implements QuestionService {
                         q.getRestaurant().getId(),
                         q.getFolder().getId(),
                         q.getType(),
+                        q.getQuestionGroup(),
                         q.getTitle(),
                         q.getPrompt(),
                         q.getExplanation(),

@@ -16,12 +16,11 @@ import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.security.SecurityService;
 import ru.staffly.training.dto.*;
-import ru.staffly.training.model.TrainingFolder;
-import ru.staffly.training.model.TrainingFolderType;
-import ru.staffly.training.model.TrainingKnowledgeItem;
-import ru.staffly.training.repository.TrainingExamScopeRepository;
+import ru.staffly.training.model.*;
+import ru.staffly.training.repository.TrainingExamSourceFolderRepository;
 import ru.staffly.training.repository.TrainingFolderRepository;
 import ru.staffly.training.repository.TrainingKnowledgeItemRepository;
+import ru.staffly.training.repository.TrainingQuestionRepository;
 
 import java.io.IOException;
 import java.util.*;
@@ -34,7 +33,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingFolderRepository folders;
     private final TrainingKnowledgeItemRepository items;
     private final TrainingImageStorage storage;
-    private final TrainingExamScopeRepository scopes;
+    private final TrainingExamSourceFolderRepository folderSources;
+    private final TrainingQuestionRepository questions;
     private final EntityManager entityManager;
     private final RestaurantMemberRepository members;
     private final PositionRepository positions;
@@ -58,7 +58,42 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return entities.stream().map(this::toDto).toList();
     }
 
+    
     @Override
+    public List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, TrainingExamMode mode, boolean includeInactive) {
+        var foldersList = folders.findByRestaurantIdAndType(restaurantId, TrainingFolderType.QUESTION_BANK);
+        var group = mode == TrainingExamMode.PRACTICE ? TrainingQuestionGroup.PRACTICE : TrainingQuestionGroup.CERTIFICATION;
+        var counts = questions.countByFolderForMode(restaurantId, group, includeInactive).stream()
+                .collect(java.util.stream.Collectors.toMap(x -> (Long) x[0], x -> (Long) x[1]));
+
+        Map<Long, List<TrainingFolder>> childrenByParent = foldersList.stream()
+                .collect(java.util.stream.Collectors.groupingBy(f -> f.getParent() == null ? 0L : f.getParent().getId()));
+
+        java.util.function.Function<TrainingFolder, QuestionBankTreeNodeDto> mapper = new java.util.function.Function<>() {
+            @Override
+            public QuestionBankTreeNodeDto apply(TrainingFolder folder) {
+                var children = childrenByParent.getOrDefault(folder.getId(), List.of()).stream()
+                        .sorted(java.util.Comparator.comparing(TrainingFolder::getSortOrder).thenComparing(TrainingFolder::getName))
+                        .map(this)
+                        .toList();
+                return new QuestionBankTreeNodeDto(
+                        folder.getId(),
+                        folder.getParent() == null ? null : folder.getParent().getId(),
+                        folder.getName(),
+                        folder.isActive(),
+                        folder.getSortOrder(),
+                        counts.getOrDefault(folder.getId(), 0L),
+                        children
+                );
+            }
+        };
+
+        return childrenByParent.getOrDefault(0L, List.of()).stream()
+                .sorted(java.util.Comparator.comparing(TrainingFolder::getSortOrder).thenComparing(TrainingFolder::getName))
+                .map(mapper)
+                .toList();
+    }
+@Override
     public TrainingFolderDto createFolder(Long restaurantId, CreateTrainingFolderRequest request) {
         TrainingFolder parent = null;
         if (request.parentId() != null) {
@@ -120,7 +155,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         var allFolderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
         if (root.getType() == TrainingFolderType.QUESTION_BANK) {
-            var usages = scopes.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
+            var usages = folderSources.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
             if (!usages.isEmpty()) {
                 throw new ConflictException("Нельзя удалить папку: она используется в экзаменах. Уберите папку из области экзаменов и повторите.", Map.of("exams", usages));
             }

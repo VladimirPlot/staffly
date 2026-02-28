@@ -7,6 +7,7 @@ import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import FolderList from "../components/FolderList";
 import KnowledgeHeader from "../components/KnowledgeHeader";
+import ExamEditorModal from "../components/ExamEditorModal";
 import KnowledgeItemModal from "../components/KnowledgeItemModal";
 import KnowledgeItemsGrid from "../components/KnowledgeItemsGrid";
 import LoadingState from "../components/LoadingState";
@@ -47,6 +48,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const [itemActionLoadingType, setItemActionLoadingType] = useState<ItemAction | null>(null);
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [positionFilter, setPositionFilter] = useState<number | null>(null);
+  const [examModalOpen, setExamModalOpen] = useState(false);
 
   const folderMap = useMemo(() => new Map(foldersState.folders.map((folder) => [folder.id, folder])), [foldersState.folders]);
   const currentFolder = currentFolderId == null ? null : folderMap.get(currentFolderId) ?? null;
@@ -188,7 +190,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         onChangePositionFilter={setPositionFilter}
         onCreateFolder={() => { setEditingFolder(null); setFolderModalOpen(true); }}
         onCreateCard={openCreateItemModal}
-        onCreateTest={() => navigate(trainingRoutes.exams)}
+        onCreateTest={() => setExamModalOpen(true)}
       />
 
       {foldersState.loading && <LoadingState label="Загрузка папок базы знаний…" />}
@@ -258,6 +260,16 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
           initialFolder={editingFolder}
           onClose={() => { setEditingFolder(null); setFolderModalOpen(false); }}
           onSaved={foldersState.reload}
+        />
+      )}
+
+      {restaurantId && (
+        <ExamEditorModal
+          open={examModalOpen}
+          restaurantId={restaurantId}
+          mode="PRACTICE"
+          onClose={() => setExamModalOpen(false)}
+          onSaved={practiceExamsState.reload}
         />
       )}
 

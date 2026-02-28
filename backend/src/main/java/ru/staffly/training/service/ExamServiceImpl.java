@@ -26,7 +26,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
-    private final TrainingExamScopeRepository scopes;
+    private final TrainingExamSourceFolderRepository sourceFolders;
+    private final TrainingExamSourceQuestionRepository sourceQuestions;
     private final TrainingQuestionRepository questions;
     private final TrainingQuestionOptionRepository questionOptions;
     private final TrainingQuestionMatchPairRepository questionPairs;
@@ -58,7 +59,7 @@ public class ExamServiceImpl implements ExamService {
             examList = exams.listVisibleForStaff(restaurantId, positionId, modeFilter);
         }
 
-        return examList.stream().map(this::toDtoWithScopesAndVisibility).toList();
+        return examList.stream().map(this::toDtoWithSourcesAndVisibility).toList();
     }
 
     @Override
@@ -77,9 +78,9 @@ public class ExamServiceImpl implements ExamService {
                 .version(1)
                 .build());
 
-        replaceScopes(restaurantId, exam, request.folderIds());
+        replaceSources(restaurantId, exam, request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
-        return toDtoWithScopesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam);
     }
 
     @Override
@@ -97,9 +98,9 @@ public class ExamServiceImpl implements ExamService {
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(request.active() == null ? exam.isActive() : request.active());
 
-        replaceScopes(restaurantId, exam, request.folderIds());
+        replaceSources(restaurantId, exam, request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
-        return toDtoWithScopesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam);
     }
 
     @Override
@@ -108,7 +109,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         exam.setActive(false);
-        return toDtoWithScopesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam);
     }
 
     @Override
@@ -117,7 +118,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         exam.setActive(true);
-        return toDtoWithScopesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam);
     }
 
     @Override
@@ -198,8 +199,7 @@ public class ExamServiceImpl implements ExamService {
             }
         }
 
-        var scopeIds = scopes.findByExamId(examId).stream().map(x -> x.getFolder().getId()).toList();
-        var pool = scopeIds.isEmpty() ? List.<TrainingQuestion>of() : questions.findByRestaurantIdAndFolderIdInAndActiveTrue(restaurantId, scopeIds);
+        var pool = buildQuestionPool(restaurantId, exam);
         if (pool.isEmpty()) throw new BadRequestException("No questions in exam scope");
 
         var questionIds = pool.stream().map(TrainingQuestion::getId).toList();
@@ -242,7 +242,7 @@ public class ExamServiceImpl implements ExamService {
 
         attemptQuestions.saveAll(entities);
 
-        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), attempt.getExamVersion(), toDtoWithScopesAndVisibility(exam), snapshots);
+        return new StartExamResponseDto(attempt.getId(), attempt.getStartedAt(), attempt.getExamVersion(), toDtoWithSourcesAndVisibility(exam), snapshots);
     }
 
     @Override
@@ -423,19 +423,76 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private void replaceScopes(Long restaurantId, TrainingExam exam, List<Long> folderIds) {
-        scopes.deleteByExamId(exam.getId());
-        if (folderIds == null || folderIds.isEmpty()) return;
+    private List<TrainingQuestion> buildQuestionPool(Long restaurantId, TrainingExam exam) {
+        TrainingQuestionGroup group = exam.getMode() == TrainingExamMode.PRACTICE ? TrainingQuestionGroup.PRACTICE : TrainingQuestionGroup.CERTIFICATION;
 
-        List<TrainingExamScope> entities = new ArrayList<>();
-        for (Long folderId : folderIds.stream().distinct().toList()) {
-            var folder = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
-            if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
-                throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
+        var uniqueById = new LinkedHashMap<Long, TrainingQuestion>();
+        var folderSourcesList = sourceFolders.findByExamId(exam.getId());
+        for (var source : folderSourcesList) {
+            var folderQuestions = questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                    restaurantId,
+                    source.getFolder().getId(),
+                    group
+            );
+            if (source.getPickMode() == TrainingExamSourcePickMode.RANDOM) {
+                Collections.shuffle(folderQuestions);
+                int take = Math.min(source.getRandomCount() == null ? 0 : source.getRandomCount(), folderQuestions.size());
+                folderQuestions = folderQuestions.subList(0, take);
             }
-            entities.add(TrainingExamScope.builder().exam(exam).folder(folder).build());
+            for (var q : folderQuestions) {
+                uniqueById.put(q.getId(), q);
+            }
         }
-        scopes.saveAll(entities);
+
+        var questionIds = sourceQuestions.findByExamId(exam.getId()).stream()
+                .map(x -> x.getQuestion().getId())
+                .distinct()
+                .toList();
+        if (!questionIds.isEmpty()) {
+            var explicitQuestions = questions.findActiveByRestaurantIdAndIdIn(restaurantId, questionIds).stream()
+                    .filter(q -> q.getQuestionGroup() == group)
+                    .toList();
+            for (var q : explicitQuestions) {
+                uniqueById.put(q.getId(), q);
+            }
+        }
+
+        var pool = new ArrayList<>(uniqueById.values());
+        Collections.shuffle(pool);
+        int count = Math.min(exam.getQuestionCount(), pool.size());
+        return pool.subList(0, count);
+    }
+
+    private void replaceSources(Long restaurantId, TrainingExam exam, List<ExamSourceFolderDto> foldersDto, List<Long> sourceQuestionIds) {
+        sourceFolders.deleteByExamId(exam.getId());
+        sourceQuestions.deleteByExamId(exam.getId());
+
+        var folderEntities = new ArrayList<TrainingExamSourceFolder>();
+        for (var folderSource : (foldersDto == null ? List.<ExamSourceFolderDto>of() : foldersDto).stream().distinct().toList()) {
+            var folder = folders.findByIdAndRestaurantId(folderSource.folderId(), restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
+            if (folder.getType() != TrainingFolderType.QUESTION_BANK) throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
+            if (folderSource.pickMode() == TrainingExamSourcePickMode.RANDOM && (folderSource.randomCount() == null || folderSource.randomCount() < 1)) {
+                throw new BadRequestException("randomCount is required for RANDOM pick mode");
+            }
+            folderEntities.add(TrainingExamSourceFolder.builder()
+                    .exam(exam)
+                    .folder(folder)
+                    .pickMode(folderSource.pickMode())
+                    .randomCount(folderSource.pickMode() == TrainingExamSourcePickMode.RANDOM ? folderSource.randomCount() : null)
+                    .build());
+        }
+        if (!folderEntities.isEmpty()) {
+            sourceFolders.saveAll(folderEntities);
+        }
+
+        var questionEntities = new ArrayList<TrainingExamSourceQuestion>();
+        for (Long questionId : (sourceQuestionIds == null ? List.<Long>of() : sourceQuestionIds).stream().distinct().toList()) {
+            var question = questions.findByIdAndRestaurantId(questionId, restaurantId).orElseThrow(() -> new NotFoundException("Question not found"));
+            questionEntities.add(TrainingExamSourceQuestion.builder().exam(exam).question(question).build());
+        }
+        if (!questionEntities.isEmpty()) {
+            sourceQuestions.saveAll(questionEntities);
+        }
     }
 
     private void replaceVisibility(Long restaurantId, TrainingExam exam, List<Long> visibilityPositionIds) {
@@ -449,8 +506,11 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private TrainingExamDto toDtoWithScopesAndVisibility(TrainingExam exam) {
-        var scopeIds = scopes.findByExamId(exam.getId()).stream().map(s -> s.getFolder().getId()).toList();
+    private TrainingExamDto toDtoWithSourcesAndVisibility(TrainingExam exam) {
+        var folders = sourceFolders.findByExamId(exam.getId()).stream()
+                .map(s -> new ExamSourceFolderDto(s.getFolder().getId(), s.getPickMode(), s.getRandomCount()))
+                .toList();
+        var questionIds = sourceQuestions.findByExamId(exam.getId()).stream().map(s -> s.getQuestion().getId()).toList();
         var visibilityIds = exam.getVisibilityPositions().stream().map(Position::getId).sorted().toList();
         return new TrainingExamDto(
                 exam.getId(),
@@ -464,7 +524,8 @@ public class ExamServiceImpl implements ExamService {
                 exam.getAttemptLimit(),
                 exam.getVersion(),
                 exam.isActive(),
-                scopeIds,
+                folders,
+                questionIds,
                 visibilityIds
         );
     }

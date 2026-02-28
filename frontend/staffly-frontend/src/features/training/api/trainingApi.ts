@@ -13,6 +13,8 @@ import type {
   TrainingFolderType,
   TrainingKnowledgeItemDto,
   TrainingQuestionDto,
+  TrainingQuestionGroup,
+  QuestionBankTreeNodeDto,
   UpdateKnowledgeItemPayload,
   UpdateQuestionPayload,
   UpdateTrainingFolderPayload,
@@ -45,8 +47,8 @@ export async function deleteKnowledgeImage(restaurantId: number, itemId: number)
 export async function restoreKnowledgeItem(restaurantId: number, itemId: number): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/restore`); return data as TrainingKnowledgeItemDto; }
 export async function deleteKnowledgeItem(restaurantId: number, itemId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}`); }
 
-export async function listQuestions(restaurantId: number, folderId: number, includeInactive = false, query?: string): Promise<TrainingQuestionDto[]> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/questions`, { params: { folderId, includeInactive, q: query } });
+export async function listQuestions(restaurantId: number, folderId: number, includeInactive = false, query?: string, questionGroup?: TrainingQuestionGroup): Promise<TrainingQuestionDto[]> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/questions`, { params: { folderId, includeInactive, q: query, questionGroup } });
   return data as TrainingQuestionDto[];
 }
 export async function createQuestion(restaurantId: number, payload: CreateQuestionPayload): Promise<TrainingQuestionDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/questions`, payload); return data as TrainingQuestionDto; }
@@ -75,4 +77,9 @@ export async function startExam(restaurantId: number, examId: number): Promise<E
 export async function submitExamAttempt(restaurantId: number, attemptId: number, payload: ExamSubmitPayload): Promise<ExamSubmitResultDto> {
   const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exam-attempts/${attemptId}/submit`, payload);
   return data as ExamSubmitResultDto;
+}
+
+export async function listQuestionBankTree(restaurantId: number, mode: "PRACTICE" | "CERTIFICATION", includeInactive = false): Promise<QuestionBankTreeNodeDto[]> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/question-bank/tree`, { params: { mode, includeInactive } });
+  return data as QuestionBankTreeNodeDto[];
 }

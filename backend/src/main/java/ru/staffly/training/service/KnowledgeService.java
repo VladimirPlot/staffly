@@ -2,6 +2,7 @@ package ru.staffly.training.service;
 
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.training.dto.*;
+import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingFolderType;
 
 import java.io.IOException;
@@ -9,6 +10,7 @@ import java.util.List;
 
 public interface KnowledgeService {
     List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive);
+    List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, TrainingExamMode mode, boolean includeInactive);
     TrainingFolderDto createFolder(Long restaurantId, CreateTrainingFolderRequest request);
     TrainingFolderDto updateFolder(Long restaurantId, Long folderId, UpdateTrainingFolderRequest request);
     TrainingFolderDto hideFolder(Long restaurantId, Long folderId);

@@ -40,6 +40,10 @@ public class TrainingQuestion {
     @Column(columnDefinition = "text")
     private String explanation;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "question_group", nullable = false, length = 20)
+    private TrainingQuestionGroup questionGroup;
+
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private int sortOrder = 0;

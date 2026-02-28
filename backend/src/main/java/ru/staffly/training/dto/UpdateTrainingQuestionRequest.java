@@ -2,6 +2,7 @@ package ru.staffly.training.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.model.TrainingQuestionType;
 
 import java.util.List;
@@ -9,6 +10,7 @@ import java.util.List;
 public record UpdateTrainingQuestionRequest(
         Long folderId,
         @NotNull TrainingQuestionType type,
+        @NotNull TrainingQuestionGroup questionGroup,
         @NotBlank String title,
         @NotBlank String prompt,
         String explanation,

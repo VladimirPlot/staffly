@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingQuestion;
+import ru.staffly.training.model.TrainingQuestionGroup;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +14,7 @@ public interface TrainingQuestionRepository extends JpaRepository<TrainingQuesti
             select q from TrainingQuestion q
             where q.restaurant.id = :restaurantId
               and q.folder.id = :folderId
+              and (:group is null or q.questionGroup = :group)
               and (:includeInactive = true or q.active = true)
               and (:q is null or trim(:q) = '' or lower(q.title) like lower(concat('%', :q, '%')) or lower(q.prompt) like lower(concat('%', :q, '%')))
             order by q.sortOrder asc, q.id asc
@@ -20,10 +22,42 @@ public interface TrainingQuestionRepository extends JpaRepository<TrainingQuesti
     List<TrainingQuestion> listForFolder(
             @Param("restaurantId") Long restaurantId,
             @Param("folderId") Long folderId,
+            @Param("group") TrainingQuestionGroup group,
             @Param("includeInactive") boolean includeInactive,
             @Param("q") String query
     );
 
-    List<TrainingQuestion> findByRestaurantIdAndFolderIdInAndActiveTrue(Long restaurantId, List<Long> folderIds);
+    @Query("""
+            select q from TrainingQuestion q
+            where q.restaurant.id = :restaurantId
+              and q.folder.id = :folderId
+              and q.questionGroup = :group
+              and q.active = true
+            """)
+    List<TrainingQuestion> findActiveByRestaurantIdAndFolderIdAndQuestionGroup(@Param("restaurantId") Long restaurantId,
+                                                                                @Param("folderId") Long folderId,
+                                                                                @Param("group") TrainingQuestionGroup group);
+
+    @Query("""
+            select q from TrainingQuestion q
+            where q.restaurant.id = :restaurantId
+              and q.id in :questionIds
+              and q.active = true
+            """)
+    List<TrainingQuestion> findActiveByRestaurantIdAndIdIn(@Param("restaurantId") Long restaurantId,
+                                                           @Param("questionIds") List<Long> questionIds);
+
+    @Query("""
+            select q.folder.id as folderId, count(q.id) as cnt
+            from TrainingQuestion q
+            where q.restaurant.id = :restaurantId
+              and q.questionGroup = :group
+              and (:includeInactive = true or q.active = true)
+            group by q.folder.id
+            """)
+    List<Object[]> countByFolderForMode(@Param("restaurantId") Long restaurantId,
+                                        @Param("group") TrainingQuestionGroup group,
+                                        @Param("includeInactive") boolean includeInactive);
+
     Optional<TrainingQuestion> findByIdAndRestaurantId(Long id, Long restaurantId);
 }

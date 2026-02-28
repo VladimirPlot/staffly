@@ -11,7 +11,9 @@ import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.security.SecurityService;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.training.dto.*;
+import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingFolderType;
+import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.service.ExamService;
 import ru.staffly.training.service.KnowledgeService;
 import ru.staffly.training.service.QuestionService;
@@ -38,6 +40,15 @@ public class TrainingController {
             throw new ForbiddenException("Only managers can access question bank");
         }
         return knowledgeService.listFolders(restaurantId, principal.userId(), type, includeInactive);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @GetMapping("/question-bank/tree")
+    public List<QuestionBankTreeNodeDto> getQuestionBankTree(@PathVariable Long restaurantId,
+                                                             @AuthenticationPrincipal UserPrincipal principal,
+                                                             @RequestParam TrainingExamMode mode,
+                                                             @RequestParam(defaultValue = "false") boolean includeInactive) {
+        return knowledgeService.getQuestionBankTree(restaurantId, mode, includeInactive);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
@@ -139,9 +150,10 @@ public class TrainingController {
     public List<TrainingQuestionDto> listQuestions(@PathVariable Long restaurantId,
                                                    @AuthenticationPrincipal UserPrincipal principal,
                                                    @RequestParam Long folderId,
+                                                   @RequestParam(required = false) TrainingQuestionGroup questionGroup,
                                                    @RequestParam(defaultValue = "false") boolean includeInactive,
                                                    @RequestParam(required = false, name = "q") String query) {
-        return questionService.listQuestions(restaurantId, folderId, includeInactive, query);
+        return questionService.listQuestions(restaurantId, folderId, questionGroup, includeInactive, query);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")

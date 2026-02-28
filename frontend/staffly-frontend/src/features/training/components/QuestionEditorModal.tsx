@@ -7,7 +7,7 @@ import Modal from "../../../shared/ui/Modal";
 import SelectField from "../../../shared/ui/SelectField";
 import Textarea from "../../../shared/ui/Textarea";
 import { createQuestion, updateQuestion } from "../api/trainingApi";
-import type { TrainingQuestionBlankDto, TrainingQuestionDto, TrainingQuestionType, TrainingQuestionUsage } from "../api/types";
+import type { TrainingQuestionBlankDto, TrainingQuestionDto, TrainingQuestionType, TrainingQuestionGroup } from "../api/types";
 import { getTrainingErrorMessage } from "../utils/errors";
 
 type Props = { open: boolean; restaurantId: number; folderId: number; question?: TrainingQuestionDto | null; onClose: () => void; onSaved: () => Promise<void> | void; };
@@ -19,7 +19,7 @@ const TYPES: TrainingQuestionType[] = ["SINGLE", "FILL_SELECT", "TRUE_FALSE", "M
 
 export default function QuestionEditorModal({ open, restaurantId, folderId, question, onClose, onSaved }: Props) {
   const [step, setStep] = useState<"usage" | "type" | "editor">("usage");
-  const [usage, setUsage] = useState<TrainingQuestionUsage>("TRAINING_ONLY");
+  const [questionGroup, setQuestionGroup] = useState<TrainingQuestionGroup>("PRACTICE");
   const [type, setType] = useState<TrainingQuestionType>("SINGLE");
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -34,6 +34,7 @@ export default function QuestionEditorModal({ open, restaurantId, folderId, ques
     if (!open) return;
     setStep(question ? "editor" : "usage");
     setType(question?.type ?? "SINGLE");
+    setQuestionGroup(question?.questionGroup ?? "PRACTICE");
     setTitle(question?.title ?? "");
     setPrompt(question?.prompt ?? "");
     setExplanation(question?.explanation ?? "");
@@ -98,7 +99,7 @@ export default function QuestionEditorModal({ open, restaurantId, folderId, ques
     try {
       const payload = {
         folderId,
-        usage,
+        questionGroup,
         type,
         title: title.trim(),
         prompt: prompt.trim(),
@@ -120,7 +121,7 @@ export default function QuestionEditorModal({ open, restaurantId, folderId, ques
 
   return <Modal open={open} onClose={onClose} title={question ? "Редактирование вопроса" : (step === "usage" ? "Вид вопроса" : step === "type" ? "Тип вопроса" : "Новый вопрос")}
     footer={<>{step === "editor" && <Button variant="outline" onClick={onClose}>Отмена</Button>}{step === "editor" ? <Button onClick={submit} isLoading={saving} disabled={!title.trim() || !prompt.trim()}>Сохранить</Button> : <Button onClick={() => setStep(step === "usage" ? "type" : "editor")}>Далее</Button>}</>}>
-    {step === "usage" && <div className="space-y-2"><Button variant={usage === "TRAINING_ONLY" ? "primary" : "outline"} className="w-full" onClick={() => setUsage("TRAINING_ONLY")}>Учебный вопрос</Button><Button variant={usage === "EXAM_ONLY" ? "primary" : "outline"} className="w-full" onClick={() => setUsage("EXAM_ONLY")}>Аттестационный вопрос</Button></div>}
+    {step === "usage" && <div className="space-y-2"><Button variant={questionGroup === "PRACTICE" ? "primary" : "outline"} className="w-full" onClick={() => setQuestionGroup("PRACTICE") }>Учебный вопрос</Button><Button variant={questionGroup === "CERTIFICATION" ? "primary" : "outline"} className="w-full" onClick={() => setQuestionGroup("CERTIFICATION") }>Аттестационный вопрос</Button></div>}
     {step === "type" && <SelectField label="Тип" value={type} onChange={(e) => setType(e.target.value as TrainingQuestionType)}>{TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</SelectField>}
     {step === "editor" && <div className="space-y-3"><Input label="Название" value={title} onChange={(e) => setTitle(e.target.value)} required /><Textarea label="Формулировка" value={prompt} onChange={(e) => setPrompt(e.target.value)} required /><Textarea label="Пояснение" value={explanation} onChange={(e) => setExplanation(e.target.value)} />
       {type === "MATCH" && <div className="space-y-2">{pairs.map((p, i) => <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2"><Input label="Левая часть" value={p.leftText} onChange={(e) => setPairs((prev) => prev.map((x, idx) => idx === i ? { ...x, leftText: e.target.value } : x))} /><Input label="Правая часть" value={p.rightText} onChange={(e) => setPairs((prev) => prev.map((x, idx) => idx === i ? { ...x, rightText: e.target.value } : x))} /><div className="flex"><IconButton onClick={() => setPairs((prev) => move(prev, i, -1))}><ArrowUp className="h-4 w-4" /></IconButton><IconButton onClick={() => setPairs((prev) => move(prev, i, 1))}><ArrowDown className="h-4 w-4" /></IconButton><IconButton onClick={() => setPairs((prev) => prev.filter((_, idx) => idx !== i))}><Trash2 className="h-4 w-4" /></IconButton></div></div>)}<Button variant="outline" onClick={() => setPairs((prev) => [...prev, { leftText: "", rightText: "" }])}>Добавить пару</Button></div>}

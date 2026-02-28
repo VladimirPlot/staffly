@@ -75,7 +75,7 @@ export type TrainingQuestionMatchPairDto = {
   sortOrder: number;
 };
 
-export type TrainingQuestionUsage = "TRAINING_ONLY" | "EXAM_ONLY";
+export type TrainingQuestionGroup = "PRACTICE" | "CERTIFICATION";
 
 export type TrainingQuestionBlankOptionDto = {
   id?: number;
@@ -95,6 +95,7 @@ export type TrainingQuestionDto = {
   restaurantId: number;
   folderId: number;
   type: TrainingQuestionType;
+  questionGroup: TrainingQuestionGroup;
   title: string;
   prompt: string;
   explanation?: string | null;
@@ -108,7 +109,7 @@ export type TrainingQuestionDto = {
 export type CreateQuestionPayload = {
   folderId: number;
   type: TrainingQuestionType;
-  usage?: TrainingQuestionUsage;
+  questionGroup: TrainingQuestionGroup;
   title: string;
   prompt: string;
   explanation?: string | null;
@@ -123,6 +124,14 @@ export type UpdateQuestionPayload = Omit<CreateQuestionPayload, "folderId"> & {
   active?: boolean;
 };
 
+export type ExamSourceFolderPickMode = "ALL" | "RANDOM";
+
+export type ExamSourceFolderDto = {
+  folderId: number;
+  pickMode: ExamSourceFolderPickMode;
+  randomCount?: number | null;
+};
+
 export type TrainingExamDto = {
   id: number;
   restaurantId: number;
@@ -135,7 +144,8 @@ export type TrainingExamDto = {
   attemptLimit?: number | null;
   version: number;
   active: boolean;
-  folderIds: number[];
+  sourcesFolders: ExamSourceFolderDto[];
+  sourceQuestionIds: number[];
   visibilityPositionIds: number[];
 };
 
@@ -147,7 +157,8 @@ export type UpsertExamPayload = {
   passPercent: number;
   timeLimitSec?: number | null;
   attemptLimit?: number | null;
-  folderIds: number[];
+  sourcesFolders: ExamSourceFolderDto[];
+  sourceQuestionIds: number[];
   visibilityPositionIds: number[];
   active?: boolean;
 };
@@ -207,4 +218,14 @@ export type ExamSubmitResultDto = {
   scorePercent: number;
   passed: boolean;
   answers: AttemptResultQuestionDto[];
+};
+
+export type QuestionBankTreeNodeDto = {
+  id: number;
+  parentId: number | null;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  questionCount: number;
+  children: QuestionBankTreeNodeDto[];
 };

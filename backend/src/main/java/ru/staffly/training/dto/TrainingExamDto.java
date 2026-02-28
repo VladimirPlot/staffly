@@ -10,16 +10,17 @@ import java.util.List;
 
 public record TrainingExamDto(
         Long id,
-        Long restaurantId,
+        @NotNull Long restaurantId,
         @NotBlank String title,
         String description,
         @NotNull @Min(1) Integer questionCount,
         @NotNull @Min(1) @Max(100) Integer passPercent,
-        @Min(0) Integer timeLimitSec,
+        Integer timeLimitSec,
         @NotNull TrainingExamMode mode,
-        @Min(1) Integer attemptLimit,
-        @NotNull @Min(1) Integer version,
+        Integer attemptLimit,
+        Integer version,
         Boolean active,
-        List<Long> folderIds,
+        List<ExamSourceFolderDto> sourcesFolders,
+        List<Long> sourceQuestionIds,
         List<Long> visibilityPositionIds
 ) {}
