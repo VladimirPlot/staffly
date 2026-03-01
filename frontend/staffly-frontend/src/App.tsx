@@ -132,7 +132,7 @@ function TopBar() {
         <Link to={homeHref} className="flex items-center gap-2">
           <span className="text-xl font-semibold text-strong">Staffly</span>
           <span className="rounded-full bg-zinc-900 px-2 py-1 text-xs font-medium text-white">
-            alpha 2.6.5
+            alpha 2.6.6
           </span>
         </Link>
 
@@ -430,6 +430,16 @@ export default function App() {
               />
               <Route
                 path="/training/exams"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingExamsPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/training/exams/:examId"
                 element={
                   <ProtectedRoute>
                     <RequireRestaurant>
