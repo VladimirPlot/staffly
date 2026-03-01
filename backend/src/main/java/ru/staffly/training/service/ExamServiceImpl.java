@@ -214,9 +214,8 @@ public class ExamServiceImpl implements ExamService {
             );
         }
 
-        // ✅ Лимит попыток считаем только когда реально создаём новую попытку
         if (exam.getAttemptLimit() != null) {
-            long usedAttempts = attempts.countByExamIdAndRestaurantIdAndUserIdAndExamVersion(
+            long usedAttempts = attempts.countByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNotNull(
                     examId, restaurantId, userId, exam.getVersion()
             );
             if (usedAttempts >= exam.getAttemptLimit()) {

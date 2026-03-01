@@ -42,7 +42,12 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             @Param("examIds") List<Long> examIds
     );
 
-    long countByExamIdAndRestaurantIdAndUserIdAndExamVersion(Long examId, Long restaurantId, Long userId, int examVersion);
+    long countByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNotNull(
+            Long examId,
+            Long restaurantId,
+            Long userId,
+            int examVersion
+    );
 
     @Query(value = """
             select m.user_id as userId,
