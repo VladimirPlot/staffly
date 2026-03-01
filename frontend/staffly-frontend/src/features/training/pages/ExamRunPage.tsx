@@ -1,5 +1,5 @@
 // D:\staffly\frontend\staffly-frontend\src\features\training\pages\ExamRunPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
@@ -19,6 +19,7 @@ import { trainingRoutes } from "../utils/trainingRoutes";
 
 type MatchPairAnswer = { left: string; right: string };
 type FillBlankAnswer = { blankIndex: number; value: string };
+type PersistedExamRunState = { attemptId: number; answers: Record<number, string>; currentIndex: number };
 
 function isMulti(type: TrainingQuestionType) {
   return type === "MULTI";
@@ -28,6 +29,84 @@ function isMatch(type: TrainingQuestionType) {
 }
 function isSingleLike(type: TrainingQuestionType) {
   return type === "SINGLE" || type === "TRUE_FALSE";
+}
+
+function getStorageKey(examId: number) {
+  return `training_exam_run_${examId}`;
+}
+
+function parseJson<T>(raw: string | undefined): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function formatRemainingTime(totalSec: number) {
+  const safeSec = Math.max(0, totalSec);
+  const minutes = Math.floor(safeSec / 60)
+    .toString()
+    .padStart(2, "0");
+  const seconds = Math.floor(safeSec % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function getQuestionValidationError(q: AttemptQuestionSnapshotDto, raw: string | undefined): string | null {
+  if (isSingleLike(q.type)) {
+    const value = parseJson<string>(raw);
+    if (!value || !value.trim()) return "Выберите один вариант ответа.";
+    return null;
+  }
+
+  if (isMulti(q.type)) {
+    const values = parseJson<string[]>(raw);
+    if (!Array.isArray(values) || values.length === 0) return "Выберите хотя бы один вариант ответа.";
+    return null;
+  }
+
+  if (q.type === "FILL_SELECT" && q.blanks.length > 0) {
+    const values = parseJson<FillBlankAnswer[]>(raw);
+    if (!Array.isArray(values)) return "Заполните все пропуски.";
+    const byIndex = new Map(values.map((x) => [x.blankIndex, x.value]));
+    for (const blank of q.blanks) {
+      const value = byIndex.get(blank.blankIndex);
+      if (!value || !value.trim()) return "Заполните все пропуски.";
+    }
+    return null;
+  }
+
+  if (q.type === "FILL_SELECT") {
+    const value = parseJson<string>(raw);
+    if (!value || !value.trim()) return "Выберите вариант ответа.";
+    return null;
+  }
+
+  if (isMatch(q.type)) {
+    const values = parseJson<MatchPairAnswer[]>(raw);
+    if (!Array.isArray(values)) return "Заполните все соответствия.";
+
+    const lefts = new Set(q.matchPairs.map((p) => p.leftText));
+    const allowedRight = new Set(q.matchPairs.map((p) => p.rightText));
+    const usedRight = new Set<string>();
+
+    if (values.length !== lefts.size) return "Заполните все соответствия.";
+
+    for (const item of values) {
+      if (!lefts.has(item.left)) return "Некорректные соответствия.";
+      if (!item.right || !item.right.trim()) return "Заполните все соответствия.";
+      if (!allowedRight.has(item.right)) return "Некорректные соответствия.";
+      if (usedRight.has(item.right)) return "В соответствиях не должно быть повторов.";
+      usedRight.add(item.right);
+    }
+
+    return null;
+  }
+
+  return raw ? null : "Ответьте на вопрос, чтобы продолжить.";
 }
 
 export default function ExamRunPage() {
@@ -45,6 +124,10 @@ export default function ExamRunPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ExamSubmitResultDto | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [questionError, setQuestionError] = useState<string | null>(null);
+  const [remainingSec, setRemainingSec] = useState<number | null>(null);
+  const [timeExpired, setTimeExpired] = useState(false);
 
   const loadAttempt = async () => {
     if (!restaurantId || Number.isNaN(parsedExamId)) return;
@@ -52,9 +135,22 @@ export default function ExamRunPage() {
     setError(null);
     try {
       const response = await startExam(restaurantId, parsedExamId);
+      const storageKey = getStorageKey(parsedExamId);
+      const persisted = parseJson<PersistedExamRunState>(localStorage.getItem(storageKey) ?? undefined);
+
+      if (persisted && persisted.attemptId === response.attemptId) {
+        setAnswers(persisted.answers ?? {});
+        setCurrentIndex(Math.min(Math.max(persisted.currentIndex ?? 0, 0), Math.max(response.questions.length - 1, 0)));
+      } else {
+        localStorage.removeItem(storageKey);
+        setAnswers({});
+        setCurrentIndex(0);
+      }
+
       setAttempt(response);
-      setAnswers({});
+      setQuestionError(null);
       setResult(null);
+      setTimeExpired(false);
     } catch (e) {
       setError(getTrainingErrorMessage(e, "Не удалось запустить аттестацию."));
     } finally {
@@ -67,16 +163,60 @@ export default function ExamRunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, parsedExamId]);
 
-  const answeredCount = useMemo(() => {
-    if (!attempt) return 0;
-    return attempt.questions.filter((q) => typeof answers[q.questionId] === "string").length;
-  }, [attempt, answers]);
+  useEffect(() => {
+    if (!attempt || Number.isNaN(parsedExamId) || result) return;
+    localStorage.setItem(
+      getStorageKey(parsedExamId),
+      JSON.stringify({ attemptId: attempt.attemptId, answers, currentIndex }),
+    );
+  }, [answers, attempt, currentIndex, parsedExamId, result]);
+
+  useEffect(() => {
+    if (!attempt || attempt.exam.timeLimitSec == null || result) {
+      setRemainingSec(null);
+      return;
+    }
+
+    const deadline = new Date(attempt.startedAt).getTime() + attempt.exam.timeLimitSec * 1000;
+
+    const tick = () => {
+      const secondsLeft = Math.ceil((deadline - Date.now()) / 1000);
+      if (secondsLeft <= 0) {
+        setRemainingSec(0);
+        setTimeExpired(true);
+        return;
+      }
+      setRemainingSec(secondsLeft);
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [attempt, result]);
+
+  // MATCH: по умолчанию — ПУСТО (без подстановки правильных rightText)
+  const initMatchPayloadEmpty = (q: AttemptQuestionSnapshotDto) => {
+    const pairs = [...q.matchPairs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const payload: MatchPairAnswer[] = pairs.map((p) => ({ left: p.leftText, right: "" }));
+    return JSON.stringify(payload);
+  };
+
+  const currentQuestion = attempt?.questions[currentIndex] ?? null;
+  const currentQuestionError = useMemo(() => {
+    if (!currentQuestion) return null;
+    return getQuestionValidationError(currentQuestion, answers[currentQuestion.questionId]);
+  }, [answers, currentQuestion]);
+
+  const canGoNext = !submitting && !timeExpired && !currentQuestionError;
+  const hasUnsavedAnswers = !result && Object.keys(answers).length > 0;
 
   const setSingleAnswer = (q: AttemptQuestionSnapshotDto, value: string) => {
+    setQuestionError(null);
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(value) }));
   };
 
   const setMultiAnswer = (q: AttemptQuestionSnapshotDto, value: string, checked: boolean) => {
+    setQuestionError(null);
     const current = answers[q.questionId];
     let arr: string[] = [];
     try {
@@ -93,14 +233,8 @@ export default function ExamRunPage() {
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(Array.from(next)) }));
   };
 
-  // MATCH: по умолчанию — ПУСТО (без подстановки правильных rightText)
-  const initMatchPayloadEmpty = (q: AttemptQuestionSnapshotDto) => {
-    const pairs = [...q.matchPairs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    const payload: MatchPairAnswer[] = pairs.map((p) => ({ left: p.leftText, right: "" }));
-    return JSON.stringify(payload);
-  };
-
   const setMatchRight = (q: AttemptQuestionSnapshotDto, left: string, right: string) => {
+    setQuestionError(null);
     let payload: MatchPairAnswer[] = [];
     try {
       payload = answers[q.questionId]
@@ -120,6 +254,7 @@ export default function ExamRunPage() {
   };
 
   const setFillSelectAnswer = (q: AttemptQuestionSnapshotDto, blankIndex: number, value: string) => {
+    setQuestionError(null);
     let payload: FillBlankAnswer[] = [];
     try {
       payload = answers[q.questionId] ? (JSON.parse(answers[q.questionId]) as FillBlankAnswer[]) : [];
@@ -133,70 +268,17 @@ export default function ExamRunPage() {
   };
 
   // ---- validation before submit (чтобы не отправлять "null" и не ловить 400) ----
-  const validateAllAnswered = (attempt: ExamAttemptDto) => {
-    for (const q of attempt.questions) {
-      const raw = answers[q.questionId];
-
-      if (isMatch(q.type)) {
-        if (!raw) return "Ответьте на все вопросы перед отправкой.";
-        try {
-          const payload = JSON.parse(raw) as MatchPairAnswer[];
-          if (!Array.isArray(payload) || payload.length === 0) return "Ответьте на все вопросы перед отправкой.";
-          if (payload.some((p) => !p.right || !String(p.right).trim())) return "Заполните все соответствия перед отправкой.";
-        } catch {
-          return "Некорректный формат ответа (MATCH).";
-        }
-        continue;
-      }
-
-      if (q.type === "FILL_SELECT" && q.blanks.length > 0) {
-        if (!raw) return "Ответьте на все вопросы перед отправкой.";
-        try {
-          const payload = JSON.parse(raw) as FillBlankAnswer[];
-          if (!Array.isArray(payload)) return "Ответьте на все вопросы перед отправкой.";
-          const byIndex = new Map(payload.map((x) => [x.blankIndex, x.value]));
-          if (byIndex.size !== q.blanks.length) return "Заполните все пропуски перед отправкой.";
-          for (const b of q.blanks) {
-            const v = byIndex.get(b.blankIndex);
-            if (!v || !String(v).trim()) return "Заполните все пропуски перед отправкой.";
-          }
-        } catch {
-          return "Некорректный формат ответа (FILL_SELECT).";
-        }
-        continue;
-      }
-
-      if (isMulti(q.type)) {
-        if (!raw) return "Ответьте на все вопросы перед отправкой.";
-        try {
-          const arr = JSON.parse(raw) as string[];
-          if (!Array.isArray(arr) || arr.length === 0) return "Ответьте на все вопросы перед отправкой.";
-        } catch {
-          return "Некорректный формат ответа (MULTI).";
-        }
-        continue;
-      }
-
-      if (isSingleLike(q.type)) {
-        if (!raw) return "Ответьте на все вопросы перед отправкой.";
-        try {
-          const v = JSON.parse(raw) as string;
-          if (!v || !String(v).trim()) return "Ответьте на все вопросы перед отправкой.";
-        } catch {
-          return "Некорректный формат ответа (SINGLE/TRUE_FALSE).";
-        }
-        continue;
-      }
-
-      // fallback: если появятся новые типы — считаем обязательным
-      if (!raw) return "Ответьте на все вопросы перед отправкой.";
+  const validateAllAnswered = useCallback((examAttempt: ExamAttemptDto) => {
+    for (const q of examAttempt.questions) {
+      const validationError = getQuestionValidationError(q, answers[q.questionId]);
+      if (validationError) return "Ответьте на все вопросы перед отправкой.";
     }
 
     return null;
-  };
+  }, [answers]);
 
-  const submit = async () => {
-    if (!restaurantId || !attempt) return;
+  const submit = useCallback(async () => {
+    if (!restaurantId || !attempt || submitting) return;
 
     const validationError = validateAllAnswered(attempt);
     if (validationError) {
@@ -210,16 +292,49 @@ export default function ExamRunPage() {
       const response = await submitExamAttempt(restaurantId, attempt.attemptId, {
         answers: attempt.questions.map((q) => {
           const answerJson = answers[q.questionId];
-          // тут answerJson гарантированно есть и корректный
           return { questionId: q.questionId, answerJson };
         }),
       });
       setResult(response);
+      if (!Number.isNaN(parsedExamId)) {
+        localStorage.removeItem(getStorageKey(parsedExamId));
+      }
     } catch (e) {
       setError(getTrainingErrorMessage(e, "Не удалось отправить ответы."));
     } finally {
       setSubmitting(false);
     }
+  }, [answers, attempt, parsedExamId, restaurantId, submitting, validateAllAnswered]);
+
+  useEffect(() => {
+    if (!timeExpired || !attempt || result || submitting) return;
+    void submit();
+  }, [attempt, result, submitting, timeExpired, submit]);
+
+  const goToNext = () => {
+    if (!attempt || !currentQuestion) return;
+    setQuestionError(null);
+
+    const validationError = getQuestionValidationError(currentQuestion, answers[currentQuestion.questionId]);
+    if (validationError) {
+      setQuestionError("Ответьте на вопрос, чтобы продолжить.");
+      return;
+    }
+
+    if (currentIndex === attempt.questions.length - 1) {
+      void submit();
+      return;
+    }
+
+    setCurrentIndex((prev) => prev + 1);
+  };
+
+  const handleExit = () => {
+    if (hasUnsavedAnswers) {
+      const confirmed = window.confirm("Вы уверены? Прогресс сохранён, можно продолжить позже.");
+      if (!confirmed) return;
+    }
+    navigate(trainingRoutes.exams);
   };
 
   const renderQuestion = (q: AttemptQuestionSnapshotDto, idx: number) => {
@@ -244,7 +359,6 @@ export default function ExamRunPage() {
       const used = new Set(payload.map((p) => p.right).filter(Boolean));
 
       const optionsFor = (currentValue: string) => {
-        // показываем то, что выбрано сейчас, даже если оно "занято", и остальные незанятые
         return rights.filter((r) => r === currentValue || !used.has(r));
       };
 
@@ -268,7 +382,7 @@ export default function ExamRunPage() {
                     onChange={(e) => setMatchRight(q, p.leftText, e.target.value)}
                   >
                     <option value="" disabled>
-                      Выберите…
+                      Выберите...
                     </option>
 
                     {optionsFor(value).map((r) => (
@@ -425,35 +539,49 @@ export default function ExamRunPage() {
 
       {attempt && !loading && (
         <Card className="space-y-4">
-          <div className="space-y-1">
+          <div className="sticky top-0 z-10 -mx-4 border-b border-subtle bg-surface px-4 py-3">
             <div className="text-lg font-semibold text-default">{attempt.exam.title}</div>
-            {attempt.exam.description && <div className="text-sm text-muted">{attempt.exam.description}</div>}
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted">
+              <span>
+                Вопрос {Math.min(currentIndex + 1, attempt.questions.length)} / {attempt.questions.length}
+              </span>
+              {remainingSec != null && <span>Осталось: {formatRemainingTime(remainingSec)}</span>}
+            </div>
+            {attempt.exam.description && <div className="mt-1 text-sm text-muted">{attempt.exam.description}</div>}
           </div>
 
-          <div className="text-sm text-muted">
-            Вопросов: {attempt.questions.length}. Отвечено: {answeredCount}.
-            {attempt.exam.timeLimitSec ? ` · Лимит: ${attempt.exam.timeLimitSec} сек.` : ""}
-          </div>
+          {!result && currentQuestion && <div className="space-y-3">{renderQuestion(currentQuestion, currentIndex)}</div>}
+          {!result && questionError && <div className="text-sm text-rose-600">{questionError}</div>}
+          {!result && timeExpired && <div className="text-sm text-rose-600">Время вышло, завершаем аттестацию…</div>}
 
-          <div className="space-y-3">{attempt.questions.map(renderQuestion)}</div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={submit} isLoading={submitting}>
-              Отправить ответы
-            </Button>
-            <Button variant="outline" onClick={() => navigate(trainingRoutes.exams)}>
-              К списку аттестаций
-            </Button>
-          </div>
+          {!result && (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={goToNext} isLoading={submitting} disabled={!canGoNext}>
+                {currentIndex === attempt.questions.length - 1 ? "Завершить" : "Далее"}
+              </Button>
+              <Button variant="outline" onClick={handleExit}>
+                К списку аттестаций
+              </Button>
+            </div>
+          )}
 
           {result && (
-            <div
-              className={`rounded-2xl p-3 text-sm ${
-                result.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
-              }`}
-            >
-              {result.passed ? "Поздравляем! Аттестация сдана." : "Аттестация не сдана."} Результат:{" "}
-              {result.scorePercent}%.
+            <div className="space-y-3">
+              <div
+                className={`rounded-2xl p-3 text-sm ${
+                  result.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                {result.passed ? "Поздравляем! Аттестация сдана." : "Аттестация не сдана."} Результат: {" "}
+                {result.scorePercent}%.
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => navigate(trainingRoutes.exams)}>Завершить</Button>
+                <Button variant="outline" onClick={loadAttempt}>
+                  Повторить
+                </Button>
+              </div>
             </div>
           )}
         </Card>
