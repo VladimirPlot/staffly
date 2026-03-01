@@ -5,6 +5,8 @@ export type QuestionDeleteDialogMode = "ACTIVE_BLOCK" | "USED_IN_EXAMS" | "GENER
 export type QuestionDeleteExamRef = {
   id: number;
   title: string;
+  mode: "CERTIFICATION" | "PRACTICE";
+  knowledgeFolderId: number | null;
 };
 
 export type QuestionDeleteDialogModel = {
@@ -26,9 +28,15 @@ export function buildQuestionDeleteDialogModel(parsedError: ParsedTrainingApiErr
           const examRecord = exam as Record<string, unknown>;
           const id = examRecord.id;
           const title = examRecord.title;
+          const mode = examRecord.mode;
+          const knowledgeFolderId = examRecord.knowledgeFolderId;
+
           if (typeof id !== "number" || typeof title !== "string") return null;
+          if (mode !== "CERTIFICATION" && mode !== "PRACTICE") return null;
+          if (knowledgeFolderId !== null && typeof knowledgeFolderId !== "number") return null;
           if (!title.trim()) return null;
-          return { id, title };
+
+          return { id, title, mode, knowledgeFolderId };
         })
         .filter((exam): exam is QuestionDeleteExamRef => Boolean(exam))
     : [];

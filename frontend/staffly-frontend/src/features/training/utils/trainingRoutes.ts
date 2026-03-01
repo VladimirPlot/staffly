@@ -1,6 +1,7 @@
 export const trainingRoutes = {
   landing: "/training",
   knowledge: "/training/knowledge",
+  knowledgeFolder: (folderId: number) => `/training/knowledge/${folderId}`,
   questionBank: "/training/question-bank",
   questionBankFolder: (folderId: number) => `/training/question-bank/${folderId}`,
   exams: "/training/exams",

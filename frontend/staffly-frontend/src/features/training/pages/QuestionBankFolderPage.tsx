@@ -363,8 +363,21 @@ export default function QuestionBankFolderPage() {
         onClose={closeDeleteModal}
         onHideAndDelete={() => void handleHideAndDelete()}
         onHideOnly={() => void handleHideOnly()}
-        onOpenExams={() => navigate(trainingRoutes.exams)}
-        onOpenExam={(examId) => navigate(trainingRoutes.exam(examId))}
+        onOpenExams={() => {
+          const practiceExam = (deleteDialogModel?.exams ?? []).find((exam) => exam.mode === "PRACTICE" && exam.knowledgeFolderId !== null);
+          if (practiceExam?.knowledgeFolderId != null) {
+            navigate(trainingRoutes.knowledgeFolder(practiceExam.knowledgeFolderId));
+            return;
+          }
+          navigate(trainingRoutes.exams);
+        }}
+        onOpenExam={(exam) => {
+          if (exam.mode === "PRACTICE" && exam.knowledgeFolderId != null) {
+            navigate(trainingRoutes.knowledgeExamRun(exam.knowledgeFolderId, exam.id));
+            return;
+          }
+          navigate(trainingRoutes.examRun(exam.id));
+        }}
         onCopyExamList={() => void handleCopyExams()}
       />
 

@@ -13,7 +13,7 @@ type QuestionDeleteGuardModalProps = {
   onHideAndDelete: () => void;
   onHideOnly: () => void;
   onOpenExams: () => void;
-  onOpenExam: (examId: number) => void;
+  onOpenExam: (exam: QuestionDeleteExamRef) => void;
   onCopyExamList: () => void;
 };
 
@@ -100,12 +100,17 @@ export default function QuestionDeleteGuardModal({
             <ul className="space-y-1">
               {exams.map((exam) => (
                 <li key={exam.id} className="flex items-center justify-between gap-2 rounded-xl border border-subtle px-3 py-2">
-                  <span className="whitespace-pre-line">• {exam.title}</span>
+                  <div className="flex items-center gap-2 whitespace-pre-line">
+                    <span>• {exam.title}</span>
+                    <span className="rounded-full bg-subtle px-2 py-0.5 text-xs text-muted">
+                      {exam.mode === "PRACTICE" ? "Учебный" : "Аттестация"}
+                    </span>
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
                     leftIcon={<LinkIcon className="h-4 w-4" />}
-                    onClick={() => onOpenExam(exam.id)}
+                    onClick={() => onOpenExam(exam)}
                   >
                     Открыть
                   </Button>
