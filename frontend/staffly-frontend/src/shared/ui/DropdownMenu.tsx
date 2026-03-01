@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 
 type TriggerRenderProps = {
   onClick: (event: React.MouseEvent) => void;
@@ -22,6 +22,9 @@ type Props = {
   alignClassName?: string;
 };
 
+const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
+const VIEWPORT_PADDING = 8;
+
 export default function DropdownMenu({
   trigger,
   children,
@@ -30,7 +33,26 @@ export default function DropdownMenu({
   alignClassName = "right-0",
 }: Props) {
   const [open, setOpen] = useState(false);
-  const menuId = useId();
+  const [isMobile, setIsMobile] = useState(false);
+  const [desktopShiftX, setDesktopShiftX] = useState(0);
+  const [sheetVisible, setSheetVisible] = useState(false);
+
+  const desktopMenuId = useId();
+  const mobileMenuId = `${desktopMenuId}-sheet`;
+  const menuId = isMobile ? mobileMenuId : desktopMenuId;
+
+  const desktopMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const updateIsMobile = () => setIsMobile(mediaQuery.matches);
+
+    updateIsMobile();
+    mediaQuery.addEventListener("change", updateIsMobile);
+    return () => mediaQuery.removeEventListener("change", updateIsMobile);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -41,6 +63,54 @@ export default function DropdownMenu({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || isMobile) {
+      setDesktopShiftX(0);
+      return;
+    }
+
+    const updateDesktopPosition = () => {
+      const menuElement = desktopMenuRef.current;
+      if (!menuElement) return;
+
+      const rect = menuElement.getBoundingClientRect();
+      let nextShiftX = 0;
+
+      if (rect.left < VIEWPORT_PADDING) {
+        nextShiftX = VIEWPORT_PADDING - rect.left;
+      } else if (rect.right > window.innerWidth - VIEWPORT_PADDING) {
+        nextShiftX = window.innerWidth - VIEWPORT_PADDING - rect.right;
+      }
+
+      setDesktopShiftX(nextShiftX);
+    };
+
+    updateDesktopPosition();
+    window.addEventListener("resize", updateDesktopPosition);
+    window.addEventListener("scroll", updateDesktopPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDesktopPosition);
+      window.removeEventListener("scroll", updateDesktopPosition, true);
+    };
+  }, [open, isMobile, menuClassName, alignClassName]);
+
+  useEffect(() => {
+    if (!open || !isMobile) {
+      setSheetVisible(false);
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setSheetVisible(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      setSheetVisible(false);
+    };
+  }, [open, isMobile]);
 
   const close = () => setOpen(false);
 
@@ -59,12 +129,9 @@ export default function DropdownMenu({
 
       {open && (
         <>
-          {/*
-            Backdrop catches ANY click/tap and prevents "click-through" to UI beneath.
-            Use pointerdown so we close before a click is generated.
-          */}
+          {/* Backdrop: closes menu and prevents click-through */}
           <div
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
             onPointerDown={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -73,15 +140,32 @@ export default function DropdownMenu({
             aria-hidden
           />
 
-          <div
-            id={menuId}
-            role="menu"
-            className={`border-subtle bg-surface absolute z-50 mt-2 rounded-2xl border p-1 shadow-[var(--staffly-shadow)] ${alignClassName} ${menuClassName}`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {children({ close })}
-          </div>
+          {isMobile ? (
+            <div
+              id={mobileMenuId}
+              role="menu"
+              className={`bg-surface fixed inset-x-0 bottom-0 z-50 max-h-[min(85vh,640px)] overflow-y-auto rounded-t-3xl border-t p-4 pb-[calc(16px+env(safe-area-inset-bottom))] shadow-[var(--staffly-shadow)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+                sheetVisible ? "translate-y-0" : "translate-y-full"
+              }`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="bg-border/80 mx-auto mb-4 h-1.5 w-12 rounded-full" aria-hidden />
+              {children({ close })}
+            </div>
+          ) : (
+            <div
+              id={desktopMenuId}
+              ref={desktopMenuRef}
+              role="menu"
+              className={`border-subtle bg-surface absolute z-50 mt-2 max-w-[calc(100vw-16px)] rounded-2xl border p-1 shadow-[var(--staffly-shadow)] ${alignClassName} ${menuClassName}`}
+              style={desktopShiftX === 0 ? undefined : { transform: `translateX(${desktopShiftX}px)` }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {children({ close })}
+            </div>
+          )}
         </>
       )}
     </div>

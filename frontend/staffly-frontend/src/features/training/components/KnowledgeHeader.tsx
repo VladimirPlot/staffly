@@ -34,7 +34,12 @@ export default function KnowledgeHeader({
   return (
     <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Switch label="Скрытые элементы" checked={includeInactive} onChange={(e) => onToggleIncludeInactive(e.target.checked)} />
+        <Switch
+          label="Скрытые элементы"
+          checked={includeInactive}
+          onChange={(e) => onToggleIncludeInactive(e.target.checked)}
+        />
+
         <DropdownMenu
           trigger={(triggerProps) => (
             <Button variant="outline" {...triggerProps}>
@@ -56,6 +61,7 @@ export default function KnowledgeHeader({
               >
                 Все должности
               </button>
+
               {positions.map((position) => (
                 <button
                   key={position.id}
@@ -75,19 +81,54 @@ export default function KnowledgeHeader({
         </DropdownMenu>
 
         <div className="hidden flex-wrap gap-2 sm:flex">
-          <Button variant="outline" onClick={onCreateFolder}>Создать папку</Button>
-          <Button variant="outline" onClick={onCreateCard}>Создать карточку</Button>
-          <Button variant="outline" onClick={onCreateTest}>Создать тест</Button>
+          <Button variant="outline" onClick={onCreateFolder}>
+            Создать папку
+          </Button>
+          <Button variant="outline" onClick={onCreateCard}>
+            Создать карточку
+          </Button>
+          <Button variant="outline" onClick={onCreateTest}>
+            Создать тест
+          </Button>
         </div>
 
         <div ref={createMenuRef} className="sm:hidden">
           <DropdownMenu trigger={(triggerProps) => <Button variant="outline" {...triggerProps}>Создать</Button>}>
             {({ close }) => (
-              <>
-                <button type="button" role="menuitem" className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm" onClick={() => { close(); onCreateFolder(); }}>Папку</button>
-                <button type="button" role="menuitem" className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm" onClick={() => { close(); onCreateCard(); }}>Карточку</button>
-                <button type="button" role="menuitem" className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm" onClick={() => { close(); onCreateTest(); }}>Тест</button>
-              </>
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  className="w-full justify-center"
+                  onClick={() => {
+                    close();
+                    onCreateFolder();
+                  }}
+                >
+                  Создать папку
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full justify-center"
+                  onClick={() => {
+                    close();
+                    onCreateCard();
+                  }}
+                >
+                  Создать карточку
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="w-full justify-center"
+                  onClick={() => {
+                    close();
+                    onCreateTest();
+                  }}
+                >
+                  Создать тест
+                </Button>
+              </div>
             )}
           </DropdownMenu>
         </div>
