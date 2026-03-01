@@ -49,6 +49,10 @@ public class TrainingExam {
     @Column(name = "attempt_limit")
     private Integer attemptLimit;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "knowledge_folder_id")
+    private TrainingFolder knowledgeFolder;
+
     @Column(name = "version", nullable = false)
     @Builder.Default
     private int version = 1;

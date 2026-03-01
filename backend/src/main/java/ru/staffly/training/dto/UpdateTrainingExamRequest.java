@@ -15,6 +15,7 @@ public record UpdateTrainingExamRequest(
         @NotNull @Min(1) @Max(100) Integer passPercent,
         @Min(1) Integer timeLimitSec,
         @NotNull TrainingExamMode mode,
+        Long knowledgeFolderId,
         @Min(1) Integer attemptLimit,
         Boolean active,
         List<Long> visibilityPositionIds,

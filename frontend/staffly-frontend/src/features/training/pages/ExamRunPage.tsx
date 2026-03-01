@@ -6,14 +6,16 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
-import { startExam, submitExamAttempt } from "../api/trainingApi";
+import { listFolders, startExam, submitExamAttempt } from "../api/trainingApi";
 import type {
   AttemptQuestionSnapshotDto,
   ExamAttemptDto,
   ExamSubmitResultDto,
+  TrainingFolderDto,
   TrainingQuestionType,
 } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
+import { buildExamRunBreadcrumbs } from "../utils/examRunBreadcrumbs";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
@@ -110,8 +112,10 @@ function getQuestionValidationError(q: AttemptQuestionSnapshotDto, raw: string |
 }
 
 export default function ExamRunPage() {
-  const { examId } = useParams<{ examId: string }>();
+  const { examId, folderId } = useParams<{ examId: string; folderId?: string }>();
   const parsedExamId = Number(examId);
+  const parsedFolderId = folderId ? Number(folderId) : null;
+  const origin = Number.isFinite(parsedFolderId) ? "knowledge" : "exams";
   const navigate = useNavigate();
   const { restaurantId } = useTrainingAccess();
 
@@ -128,6 +132,15 @@ export default function ExamRunPage() {
   const [questionError, setQuestionError] = useState<string | null>(null);
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
   const [timeExpired, setTimeExpired] = useState(false);
+  const [knowledgeFolders, setKnowledgeFolders] = useState<TrainingFolderDto[]>([]);
+
+  const backRoute = origin === "knowledge" && parsedFolderId != null ? `${trainingRoutes.knowledge}/${parsedFolderId}` : trainingRoutes.exams;
+  const breadcrumbItems = useMemo(() => buildExamRunBreadcrumbs(origin, parsedFolderId, knowledgeFolders), [origin, parsedFolderId, knowledgeFolders]);
+
+  useEffect(() => {
+    if (!restaurantId || origin !== "knowledge") return;
+    void listFolders(restaurantId, "KNOWLEDGE", false).then(setKnowledgeFolders).catch(() => setKnowledgeFolders([]));
+  }, [restaurantId, origin]);
 
   const loadAttempt = async () => {
     if (!restaurantId || Number.isNaN(parsedExamId)) return;
@@ -334,7 +347,7 @@ export default function ExamRunPage() {
       const confirmed = window.confirm("Вы уверены? Прогресс сохранён, можно продолжить позже.");
       if (!confirmed) return;
     }
-    navigate(trainingRoutes.exams);
+    navigate(backRoute);
   };
 
   const renderQuestion = (q: AttemptQuestionSnapshotDto, idx: number) => {
@@ -524,17 +537,11 @@ export default function ExamRunPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Breadcrumbs
-        items={[
-          { label: "Тренинг", to: trainingRoutes.landing },
-          { label: "Аттестации", to: trainingRoutes.exams },
-          { label: "Прохождение" },
-        ]}
-      />
+      <Breadcrumbs items={breadcrumbItems} />
 
-      <h2 className="text-2xl font-semibold">Прохождение аттестации</h2>
+      <h2 className="text-2xl font-semibold">Прохождение теста</h2>
 
-      {loading && <LoadingState label="Запускаем аттестацию…" />}
+      {loading && <LoadingState label="Запускаем тест…" />}
       {error && <ErrorState message={error} onRetry={loadAttempt} />}
 
       {attempt && !loading && (
@@ -552,7 +559,7 @@ export default function ExamRunPage() {
 
           {!result && currentQuestion && <div className="space-y-3">{renderQuestion(currentQuestion, currentIndex)}</div>}
           {!result && questionError && <div className="text-sm text-rose-600">{questionError}</div>}
-          {!result && timeExpired && <div className="text-sm text-rose-600">Время вышло, завершаем аттестацию…</div>}
+          {!result && timeExpired && <div className="text-sm text-rose-600">Время вышло, завершаем тест…</div>}
 
           {!result && (
             <div className="flex flex-wrap gap-2">
@@ -560,7 +567,7 @@ export default function ExamRunPage() {
                 {currentIndex === attempt.questions.length - 1 ? "Завершить" : "Далее"}
               </Button>
               <Button variant="outline" onClick={handleExit}>
-                К списку аттестаций
+                К списку
               </Button>
             </div>
           )}
@@ -572,12 +579,12 @@ export default function ExamRunPage() {
                   result.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
                 }`}
               >
-                {result.passed ? "Поздравляем! Аттестация сдана." : "Аттестация не сдана."} Результат: {" "}
+                {result.passed ? "Поздравляем! Тест пройден." : "Тест не пройден."} Результат: {" "}
                 {result.scorePercent}%.
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => navigate(trainingRoutes.exams)}>Завершить</Button>
+                <Button onClick={() => navigate(backRoute)}>Завершить</Button>
                 <Button variant="outline" onClick={loadAttempt}>
                   Повторить
                 </Button>

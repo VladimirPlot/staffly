@@ -6,7 +6,9 @@ import java.util.List;
 
 public interface ExamService {
     List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly);
+    List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive);
     TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request);
+    TrainingExamDto createKnowledgeExam(Long restaurantId, CreateTrainingExamRequest request);
     TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request);
     TrainingExamDto hideExam(Long restaurantId, Long examId);
     TrainingExamDto restoreExam(Long restaurantId, Long examId);

@@ -61,7 +61,15 @@ export async function listExams(restaurantId: number, includeInactive = false, c
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams`, { params: { includeInactive, certificationOnly } });
   return data as TrainingExamDto[];
 }
+export async function listKnowledgeExams(restaurantId: number, folderId: number, includeInactive = false): Promise<TrainingExamDto[]> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-exams`, { params: { folderId, includeInactive } });
+  return data as TrainingExamDto[];
+}
 export async function createExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams`, payload); return data as TrainingExamDto; }
+export async function createKnowledgeExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> {
+  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-exams`, payload);
+  return data as TrainingExamDto;
+}
 export async function updateExam(restaurantId: number, examId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/exams/${examId}`, payload); return data as TrainingExamDto; }
 export async function hideExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/hide`); return data as TrainingExamDto; }
 export async function restoreExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/restore`); return data as TrainingExamDto; }

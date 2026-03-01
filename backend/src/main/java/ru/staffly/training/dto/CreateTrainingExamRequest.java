@@ -15,6 +15,7 @@ public record CreateTrainingExamRequest(
         @NotNull @Min(1) @Max(100) Integer passPercent,
         @Min(1) Integer timeLimitSec,
         @NotNull TrainingExamMode mode,
+        Long knowledgeFolderId,
         @Min(1) Integer attemptLimit,
         List<Long> visibilityPositionIds,
         List<ExamSourceFolderDto> sourcesFolders,

@@ -459,6 +459,16 @@ export default function App() {
                 }
               />
               <Route
+                path="/training/knowledge/:folderId/exams/:examId/run"
+                element={
+                  <ProtectedRoute>
+                    <RequireRestaurant>
+                      <TrainingExamRunPage />
+                    </RequireRestaurant>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/inbox"
                 element={
                   <ProtectedRoute>

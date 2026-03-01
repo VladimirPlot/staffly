@@ -206,12 +206,33 @@ public class TrainingController {
         return examService.listExams(restaurantId, principal.userId(), isManager, includeInactive, certificationOnly);
     }
 
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/knowledge-exams")
+    public List<TrainingExamDto> listKnowledgeExams(@PathVariable Long restaurantId,
+                                                    @AuthenticationPrincipal UserPrincipal principal,
+                                                    @RequestParam Long folderId,
+                                                    @RequestParam(defaultValue = "false") boolean includeInactive) {
+        boolean isManager = securityService.hasAtLeastManager(principal.userId(), restaurantId);
+        if (includeInactive && !isManager) {
+            throw new ForbiddenException("Only managers can include inactive exams");
+        }
+        return examService.listPracticeExamsByKnowledgeFolder(restaurantId, principal.userId(), isManager, folderId, includeInactive);
+    }
+
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
     @PostMapping("/exams")
     public TrainingExamDto createExam(@PathVariable Long restaurantId,
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody CreateTrainingExamRequest request) {
         return examService.createExam(restaurantId, request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PostMapping("/knowledge-exams")
+    public TrainingExamDto createKnowledgeExam(@PathVariable Long restaurantId,
+                                               @AuthenticationPrincipal UserPrincipal principal,
+                                               @Valid @RequestBody CreateTrainingExamRequest request) {
+        return examService.createKnowledgeExam(restaurantId, request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")

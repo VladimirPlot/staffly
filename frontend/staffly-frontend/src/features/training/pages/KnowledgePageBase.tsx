@@ -12,12 +12,21 @@ import KnowledgeItemModal from "../components/KnowledgeItemModal";
 import KnowledgeItemsGrid from "../components/KnowledgeItemsGrid";
 import LoadingState from "../components/LoadingState";
 import TrainingFolderModal from "../components/TrainingFolderModal";
-import { mapKnowledgeItemsForUi } from "../api/mappers";
-import { deleteFolder, deleteKnowledgeItem, hideKnowledgeItem, listKnowledgeItems, restoreKnowledgeItem } from "../api/trainingApi";
-import type { TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
+import { mapExamsForUi, mapKnowledgeItemsForUi } from "../api/mappers";
+import {
+  deleteExam,
+  deleteFolder,
+  deleteKnowledgeItem,
+  hideExam,
+  hideKnowledgeItem,
+  listKnowledgeExams,
+  listKnowledgeItems,
+  restoreExam,
+  restoreKnowledgeItem,
+} from "../api/trainingApi";
+import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
-import { useExams } from "../hooks/useExams";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { bySortOrderAndName } from "../utils/sort";
 import { trainingRoutes } from "../utils/trainingRoutes";
@@ -27,12 +36,12 @@ type Props = {
 };
 
 type ItemAction = "hide" | "restore" | "delete";
+type ExamAction = "hide" | "restore" | "delete";
 
 export default function KnowledgePageBase({ currentFolderId }: Props) {
   const navigate = useNavigate();
   const { restaurantId, canManage } = useTrainingAccess();
   const foldersState = useTrainingFolders({ restaurantId, type: "KNOWLEDGE", canManage });
-  const practiceExamsState = useExams({ restaurantId, canManage, certificationOnly: false });
 
   const [items, setItems] = useState<TrainingKnowledgeItemDto[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -49,6 +58,11 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [positionFilter, setPositionFilter] = useState<number | null>(null);
   const [examModalOpen, setExamModalOpen] = useState(false);
+  const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
+  const [practiceExams, setPracticeExams] = useState<TrainingExamDto[]>([]);
+  const [examsLoading, setExamsLoading] = useState(false);
+  const [examsError, setExamsError] = useState<string | null>(null);
+  const [examActionLoadingId, setExamActionLoadingId] = useState<number | null>(null);
 
   const folderMap = useMemo(() => new Map(foldersState.folders.map((folder) => [folder.id, folder])), [foldersState.folders]);
   const currentFolder = currentFolderId == null ? null : folderMap.get(currentFolderId) ?? null;
@@ -91,6 +105,27 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   useEffect(() => {
     void loadItems();
   }, [loadItems]);
+
+  const loadPracticeExams = useCallback(async () => {
+    if (!restaurantId || currentFolderId == null) {
+      setPracticeExams([]);
+      return;
+    }
+    setExamsLoading(true);
+    setExamsError(null);
+    try {
+      const response = await listKnowledgeExams(restaurantId, currentFolderId, canManage ? foldersState.includeInactive : false);
+      setPracticeExams(mapExamsForUi(response));
+    } catch (error) {
+      setExamsError(getTrainingErrorMessage(error, "Не удалось загрузить тесты."));
+    } finally {
+      setExamsLoading(false);
+    }
+  }, [restaurantId, currentFolderId, canManage, foldersState.includeInactive]);
+
+  useEffect(() => {
+    void loadPracticeExams();
+  }, [loadPracticeExams]);
 
   const breadcrumbItems = useMemo(() => {
     const crumbs: { label: string; to?: string }[] = [
@@ -163,6 +198,22 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     }
   };
 
+  const runExamAction = async (examId: number, action: ExamAction) => {
+    if (!restaurantId) return;
+    setExamActionLoadingId(examId);
+    setExamsError(null);
+    try {
+      if (action === "hide") await hideExam(restaurantId, examId);
+      else if (action === "restore") await restoreExam(restaurantId, examId);
+      else await deleteExam(restaurantId, examId);
+      await loadPracticeExams();
+    } catch (error) {
+      setExamsError(getTrainingErrorMessage(error, "Не удалось выполнить действие с тестом."));
+    } finally {
+      setExamActionLoadingId(null);
+    }
+  };
+
   const showFolderNotFound = currentFolderId !== null && !foldersState.loading && !foldersState.error && !currentFolder;
 
   if (showFolderNotFound) {
@@ -174,7 +225,16 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     );
   }
 
-  const isCompletelyEmpty = !childFolders.length && !items.length && !foldersState.loading && !foldersState.error && !itemsLoading && !itemsError;
+  const isCompletelyEmpty =
+    !childFolders.length &&
+    !items.length &&
+    !practiceExams.length &&
+    !foldersState.loading &&
+    !foldersState.error &&
+    !itemsLoading &&
+    !itemsError &&
+    !examsLoading &&
+    !examsError;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -190,7 +250,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         onChangePositionFilter={setPositionFilter}
         onCreateFolder={() => { setEditingFolder(null); setFolderModalOpen(true); }}
         onCreateCard={openCreateItemModal}
-        onCreateTest={() => setExamModalOpen(true)}
+        onCreateTest={() => { if (currentFolderId == null) { setExamsError("Выберите папку базы знаний, чтобы создать учебный тест."); return; } setEditingExam(null); setExamModalOpen(true); }}
       />
 
       {foldersState.loading && <LoadingState label="Загрузка папок базы знаний…" />}
@@ -210,24 +270,35 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         />
       )}
 
+      {(examsLoading || examsError || practiceExams.length > 0) && (
       <Card className="space-y-3">
         <h3 className="text-lg font-semibold">Практические тесты</h3>
-        {practiceExamsState.loading && <LoadingState label="Загрузка тестов…" />}
-        {!practiceExamsState.loading && practiceExamsState.exams.length === 0 && (
-          <EmptyState title="Практических тестов пока нет" description="Тесты режима PRACTICE появятся здесь." />
-        )}
-        {!practiceExamsState.loading && practiceExamsState.exams.length > 0 && (
+        {examsLoading && <LoadingState label="Загрузка тестов…" />}
+        {examsError && <ErrorState message={examsError} onRetry={loadPracticeExams} />}
+        {!examsLoading && !examsError && practiceExams.length > 0 && (
           <div className="space-y-2">
-            {practiceExamsState.exams.map((exam) => (
-              <button key={exam.id} type="button" className="border-subtle bg-app w-full rounded-2xl border p-3 text-left" onClick={() => navigate(trainingRoutes.examRun(exam.id))}>
+            {practiceExams.map((exam) => (
+              <div key={exam.id} className="border-subtle bg-app w-full rounded-2xl border p-3 text-left space-y-2">
                 <div className="font-medium">{exam.title}</div>
                 {exam.description && <div className="text-sm text-muted">{exam.description}</div>}
-              </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm" onClick={() => navigate(trainingRoutes.knowledgeExamRun(currentFolderId!, exam.id))}>Пройти</button>
+                  {canManage && (
+                    <>
+                      <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm" onClick={() => { setEditingExam(exam); setExamModalOpen(true); }}>Редактировать</button>
+                      <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm" disabled={examActionLoadingId === exam.id} onClick={() => runExamAction(exam.id, exam.active ? "hide" : "restore")}>{exam.active ? "Скрыть" : "Восстановить"}</button>
+                      <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm disabled:opacity-50" disabled={exam.active || examActionLoadingId === exam.id} onClick={() => runExamAction(exam.id, "delete")}>Удалить</button>
+                    </>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         )}
       </Card>
+      )}
 
+      {(itemsLoading || itemsError || items.length > 0) && (
       <Card className="space-y-3">
         <h3 className="text-lg font-semibold">Карточки</h3>
         {itemsLoading && <LoadingState label="Загрузка карточек…" />}
@@ -245,6 +316,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
           />
         )}
       </Card>
+      )}
 
       {isCompletelyEmpty && (
         <EmptyState title="Пока пусто" description="Создайте папку или карточку." />
@@ -268,8 +340,10 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
           open={examModalOpen}
           restaurantId={restaurantId}
           mode="PRACTICE"
-          onClose={() => setExamModalOpen(false)}
-          onSaved={practiceExamsState.reload}
+          exam={editingExam}
+          knowledgeFolderId={currentFolderId}
+          onClose={() => { setEditingExam(null); setExamModalOpen(false); }}
+          onSaved={loadPracticeExams}
         />
       )}
 

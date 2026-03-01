@@ -63,8 +63,29 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
+    public List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive) {
+        var folder = folders.findByIdAndRestaurantId(folderId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+        if (folder.getType() != TrainingFolderType.KNOWLEDGE) {
+            throw new BadRequestException("Folder must belong to knowledge base");
+        }
+
+        Long positionId = null;
+        if (!isManager) {
+            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Membership not found"));
+            positionId = member.getPosition() == null ? -1L : member.getPosition().getId();
+        }
+        return exams.listPracticeByKnowledgeFolder(restaurantId, folderId, includeInactive, positionId)
+                .stream()
+                .map(this::toDtoWithSourcesAndVisibility)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request) {
+        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
         var exam = exams.save(TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .title(request.title())
@@ -73,6 +94,7 @@ public class ExamServiceImpl implements ExamService {
                 .passPercent(request.passPercent())
                 .timeLimitSec(request.timeLimitSec())
                 .mode(request.mode())
+                .knowledgeFolder(knowledgeFolder)
                 .attemptLimit(request.attemptLimit())
                 .active(true)
                 .version(1)
@@ -85,16 +107,41 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
+    public TrainingExamDto createKnowledgeExam(Long restaurantId, CreateTrainingExamRequest request) {
+        var normalized = new CreateTrainingExamRequest(
+                request.title(),
+                request.description(),
+                request.questionCount(),
+                request.passPercent(),
+                request.timeLimitSec(),
+                TrainingExamMode.PRACTICE,
+                request.knowledgeFolderId(),
+                request.attemptLimit(),
+                request.visibilityPositionIds(),
+                request.sourcesFolders(),
+                request.sourceQuestionIds()
+        );
+        return createExam(restaurantId, normalized);
+    }
+
+    @Override
+    @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
+
+        if (exam.getMode() != request.mode()) {
+            throw new BadRequestException("Нельзя менять режим теста после создания.");
+        }
+
+        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
 
         exam.setTitle(request.title());
         exam.setDescription(request.description());
         exam.setQuestionCount(request.questionCount());
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
-        exam.setMode(request.mode());
+        exam.setKnowledgeFolder(knowledgeFolder);
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(request.active() == null ? exam.isActive() : request.active());
 
@@ -565,6 +612,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getPassPercent(),
                 exam.getTimeLimitSec(),
                 exam.getMode(),
+                exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId(),
                 exam.getAttemptLimit(),
                 exam.getVersion(),
                 exam.isActive(),
@@ -572,6 +620,25 @@ public class ExamServiceImpl implements ExamService {
                 questionIds,
                 visibilityIds
         );
+    }
+
+    private TrainingFolder resolveKnowledgeFolder(Long restaurantId, TrainingExamMode mode, Long knowledgeFolderId) {
+        if (mode == TrainingExamMode.PRACTICE) {
+            if (knowledgeFolderId == null) {
+                throw new BadRequestException("Для учебного теста требуется папка в базе знаний.");
+            }
+            var folder = folders.findByIdAndRestaurantId(knowledgeFolderId, restaurantId)
+                    .orElseThrow(() -> new BadRequestException("Папка учебного теста не найдена."));
+            if (folder.getType() != TrainingFolderType.KNOWLEDGE) {
+                throw new BadRequestException("Для учебного теста нужна папка из базы знаний.");
+            }
+            return folder;
+        }
+
+        if (knowledgeFolderId != null) {
+            throw new BadRequestException("Для аттестации папка в базе знаний не задаётся.");
+        }
+        return null;
     }
 
     private record SnapshotPayload(AttemptQuestionSnapshotDto snapshotDto, String snapshotJson, String correctKeyJson) {}

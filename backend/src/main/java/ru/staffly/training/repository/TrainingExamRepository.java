@@ -50,4 +50,29 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     Optional<TrainingExam> findByIdAndRestaurantIdWithVisibility(@Param("id") Long id, @Param("restaurantId") Long restaurantId);
 
     Optional<TrainingExam> findByIdAndRestaurantId(Long id, Long restaurantId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions vp
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
+              and e.knowledgeFolder.id = :folderId
+              and (:includeInactive = true or e.active = true)
+              and (:positionId is null or vp.id is null or vp.id = :positionId)
+            order by e.createdAt desc
+            """)
+    List<TrainingExam> listPracticeByKnowledgeFolder(@Param("restaurantId") Long restaurantId,
+                                                     @Param("folderId") Long folderId,
+                                                     @Param("includeInactive") boolean includeInactive,
+                                                     @Param("positionId") Long positionId);
+
+    @Query("""
+            select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)
+            from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
+              and e.knowledgeFolder.id in :folderIds
+            """)
+    List<ru.staffly.training.dto.ExamUsageDto> findPracticeExamUsagesByKnowledgeFolderIds(@Param("restaurantId") Long restaurantId,
+                                                                                          @Param("folderIds") List<Long> folderIds);
 }

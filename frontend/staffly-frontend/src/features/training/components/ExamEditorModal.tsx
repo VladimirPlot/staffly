@@ -5,7 +5,7 @@ import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import SelectField from "../../../shared/ui/SelectField";
 import type { ExamSourceFolderDto, QuestionBankTreeNodeDto, TrainingExamDto, TrainingExamMode, TrainingQuestionDto } from "../api/types";
-import { createExam, listQuestionBankTree, listQuestions, updateExam } from "../api/trainingApi";
+import { createExam, createKnowledgeExam, listQuestionBankTree, listQuestions, updateExam } from "../api/trainingApi";
 import { getTrainingErrorMessage } from "../utils/errors";
 
 type Props = {
@@ -13,11 +13,12 @@ type Props = {
   restaurantId: number;
   mode: TrainingExamMode;
   exam?: TrainingExamDto | null;
+  knowledgeFolderId?: number | null;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 };
 
-export default function ExamEditorModal({ open, restaurantId, mode, exam, onClose, onSaved }: Props) {
+export default function ExamEditorModal({ open, restaurantId, mode, exam, knowledgeFolderId, onClose, onSaved }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [questionCount, setQuestionCount] = useState(10);
@@ -81,6 +82,7 @@ export default function ExamEditorModal({ open, restaurantId, mode, exam, onClos
         title: title.trim(),
         description: description.trim() || null,
         mode,
+        knowledgeFolderId: mode === "PRACTICE" ? knowledgeFolderId ?? exam?.knowledgeFolderId ?? null : null,
         questionCount,
         passPercent,
         timeLimitSec: timeLimitSec === "" ? null : Number(timeLimitSec),
@@ -90,6 +92,7 @@ export default function ExamEditorModal({ open, restaurantId, mode, exam, onClos
         sourceQuestionIds,
       };
       if (exam) await updateExam(restaurantId, exam.id, { ...payload, active: exam.active });
+      else if (mode === "PRACTICE") await createKnowledgeExam(restaurantId, payload);
       else await createExam(restaurantId, payload);
       await onSaved();
       onClose();

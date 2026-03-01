@@ -141,6 +141,7 @@ export type TrainingExamDto = {
   passPercent: number;
   timeLimitSec?: number | null;
   mode: TrainingExamMode;
+  knowledgeFolderId: number | null;
   attemptLimit?: number | null;
   version: number;
   active: boolean;
@@ -153,6 +154,7 @@ export type UpsertExamPayload = {
   title: string;
   description?: string | null;
   mode: TrainingExamMode;
+  knowledgeFolderId?: number | null;
   questionCount: number;
   passPercent: number;
   timeLimitSec?: number | null;

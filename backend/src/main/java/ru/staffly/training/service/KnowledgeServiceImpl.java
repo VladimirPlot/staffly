@@ -18,6 +18,7 @@ import ru.staffly.security.SecurityService;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamSourceFolderRepository;
+import ru.staffly.training.repository.TrainingExamRepository;
 import ru.staffly.training.repository.TrainingFolderRepository;
 import ru.staffly.training.repository.TrainingKnowledgeItemRepository;
 import ru.staffly.training.repository.TrainingQuestionRepository;
@@ -34,6 +35,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingKnowledgeItemRepository items;
     private final TrainingImageStorage storage;
     private final TrainingExamSourceFolderRepository folderSources;
+    private final TrainingExamRepository exams;
     private final TrainingQuestionRepository questions;
     private final EntityManager entityManager;
     private final RestaurantMemberRepository members;
@@ -135,6 +137,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public TrainingFolderDto hideFolder(Long restaurantId, Long folderId) {
         var root = folders.findByIdAndRestaurantId(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found"));
+        ensureKnowledgeFolderHasNoPracticeExams(restaurantId, root);
         setFolderTreeActive(restaurantId, root, false);
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId).orElseThrow(() -> new NotFoundException("Folder not found")));
     }
@@ -158,6 +161,16 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             var usages = folderSources.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
             if (!usages.isEmpty()) {
                 throw new ConflictException("Нельзя удалить папку: она используется в экзаменах. Уберите папку из области экзаменов и повторите.", Map.of("exams", usages));
+            }
+        }
+        if (root.getType() == TrainingFolderType.KNOWLEDGE) {
+            var usages = exams.findPracticeExamUsagesByKnowledgeFolderIds(restaurantId, allFolderIds);
+            if (!usages.isEmpty()) {
+                var titles = usages.stream().map(ExamUsageDto::title).distinct().toList();
+                throw new ConflictException(
+                        "Папка содержит учебные тесты: " + String.join(", ", titles) + ". Переместите/удалите тесты и повторите.",
+                        Map.of("exams", usages)
+                );
             }
         }
         var relatedItems = items.findByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds);
@@ -299,6 +312,22 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         boolean webp = bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
                 && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
         if (!jpeg && !png && !webp) throw new BadRequestException("Invalid image signature");
+    }
+
+    private void ensureKnowledgeFolderHasNoPracticeExams(Long restaurantId, TrainingFolder root) {
+        if (root.getType() != TrainingFolderType.KNOWLEDGE) {
+            return;
+        }
+        var allFolderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+        var usages = exams.findPracticeExamUsagesByKnowledgeFolderIds(restaurantId, allFolderIds);
+        if (usages.isEmpty()) {
+            return;
+        }
+        var titles = usages.stream().map(ExamUsageDto::title).distinct().toList();
+        throw new ConflictException(
+                "Папка содержит учебные тесты: " + String.join(", ", titles) + ". Переместите/удалите тесты и повторите.",
+                Map.of("exams", usages)
+        );
     }
 
     private void setFolderTreeActive(Long restaurantId, TrainingFolder root, boolean active) {

@@ -6,4 +6,5 @@ export const trainingRoutes = {
   exams: "/training/exams",
   exam: (examId: number) => `/training/exams/${examId}`,
   examRun: (examId: number) => `/training/exams/${examId}/run`,
+  knowledgeExamRun: (folderId: number, examId: number) => `/training/knowledge/${folderId}/exams/${examId}/run`,
 } as const;

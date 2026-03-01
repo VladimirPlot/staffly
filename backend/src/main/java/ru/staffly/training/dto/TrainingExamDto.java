@@ -17,6 +17,7 @@ public record TrainingExamDto(
         @NotNull @Min(1) @Max(100) Integer passPercent,
         Integer timeLimitSec,
         @NotNull TrainingExamMode mode,
+        Long knowledgeFolderId,
         Integer attemptLimit,
         Integer version,
         Boolean active,
