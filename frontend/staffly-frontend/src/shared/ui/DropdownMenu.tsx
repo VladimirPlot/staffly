@@ -47,6 +47,60 @@ export default function DropdownMenu({
   const menuId = isMobile ? mobileMenuId : desktopMenuId;
 
   const desktopMenuRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const openRef = useRef(open);
+  const suppressNextClickRef = useRef(false);
+
+  openRef.current = open;
+
+  useEffect(() => {
+    const stopNativeEvent = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if ("stopImmediatePropagation" in event) {
+        event.stopImmediatePropagation();
+      }
+    };
+
+    const isInsideInteractiveLayer = (target: EventTarget | null) => {
+      if (!(target instanceof Node)) return false;
+
+      const rootElement = rootRef.current;
+      const menuElement = desktopMenuRef.current;
+
+      if (rootElement?.contains(target)) return true;
+      if (menuElement?.contains(target)) return true;
+
+      const mobileSheet = document.getElementById(mobileMenuId);
+      if (mobileSheet?.contains(target)) return true;
+
+      return false;
+    };
+
+    const onPointerDownCapture = (event: PointerEvent) => {
+      if (!openRef.current) return;
+      if (isInsideInteractiveLayer(event.target)) return;
+
+      stopNativeEvent(event);
+      suppressNextClickRef.current = true;
+      setOpen(false);
+    };
+
+    const onClickCapture = (event: MouseEvent) => {
+      if (!suppressNextClickRef.current) return;
+
+      stopNativeEvent(event);
+      suppressNextClickRef.current = false;
+    };
+
+    document.addEventListener("pointerdown", onPointerDownCapture, true);
+    document.addEventListener("click", onClickCapture, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDownCapture, true);
+      document.removeEventListener("click", onClickCapture, true);
+    };
+  }, [mobileMenuId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -120,7 +174,7 @@ export default function DropdownMenu({
   const close = () => setOpen(false);
 
   return (
-    <div className="relative inline-flex">
+    <div ref={rootRef} className="relative inline-flex">
       {trigger({
         onClick: (event) => {
           event.stopPropagation();
