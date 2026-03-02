@@ -6,7 +6,7 @@ type Props = {
   title: string;
   description: string;
   to: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
 };
 
 export default function SectionCard({ title, description, to, icon: CardIcon }: Props) {
@@ -33,11 +33,13 @@ export default function SectionCard({ title, description, to, icon: CardIcon }: 
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Icon
-            icon={CardIcon}
-            decorative
-            className="text-icon pointer-events-none absolute right-4 bottom-4 h-12 w-12 opacity-[0.12] sm:pointer-events-auto sm:static sm:h-6 sm:w-6 sm:opacity-100"
-          />
+          {CardIcon && (
+            <Icon
+              icon={CardIcon}
+              decorative
+              className="text-icon pointer-events-none absolute right-4 bottom-4 h-12 w-12 opacity-[0.12] sm:pointer-events-auto sm:static sm:h-6 sm:w-6 sm:opacity-100"
+            />
+          )}
           <div className="text-strong relative z-10 text-base font-semibold sm:text-lg">
             {title}
           </div>

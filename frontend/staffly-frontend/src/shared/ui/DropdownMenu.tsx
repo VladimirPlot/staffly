@@ -25,6 +25,11 @@ type Props = {
 const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
 const VIEWPORT_PADDING = 8;
 
+// Важно: backdrop должен быть выше любых fixed header / navbar.
+// Меню — выше backdrop.
+const Z_BACKDROP = "z-[1000]";
+const Z_MENU = "z-[1010]";
+
 export default function DropdownMenu({
   trigger,
   children,
@@ -129,13 +134,19 @@ export default function DropdownMenu({
 
       {open && (
         <>
-          {/* Backdrop: closes menu and prevents click-through */}
+          {/* Backdrop: closes menu and MUST prevent click-through to any UI below it. */}
           <div
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
+            className={`fixed inset-0 ${Z_BACKDROP} bg-black/30 backdrop-blur-[2px]`}
             onPointerDown={(event) => {
+              // preventDefault + stopPropagation важны, но главная проблема была в z-index
               event.preventDefault();
               event.stopPropagation();
               close();
+            }}
+            // на всякий случай, чтобы не было "проброса" click после pointerdown в некоторых случаях
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
             }}
             aria-hidden
           />
@@ -144,7 +155,7 @@ export default function DropdownMenu({
             <div
               id={mobileMenuId}
               role="menu"
-              className={`bg-surface fixed inset-x-0 bottom-0 z-50 max-h-[min(85vh,640px)] overflow-y-auto rounded-t-3xl border-t p-4 pb-[calc(16px+env(safe-area-inset-bottom))] shadow-[var(--staffly-shadow)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+              className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} max-h-[min(85vh,640px)] overflow-y-auto rounded-t-3xl border-t p-4 pb-[calc(16px+env(safe-area-inset-bottom))] shadow-[var(--staffly-shadow)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
                 sheetVisible ? "translate-y-0" : "translate-y-full"
               }`}
               onPointerDown={(event) => event.stopPropagation()}
@@ -158,7 +169,7 @@ export default function DropdownMenu({
               id={desktopMenuId}
               ref={desktopMenuRef}
               role="menu"
-              className={`border-subtle bg-surface absolute z-50 mt-2 max-w-[calc(100vw-16px)] rounded-2xl border p-1 shadow-[var(--staffly-shadow)] ${alignClassName} ${menuClassName}`}
+              className={`border-subtle bg-surface absolute ${Z_MENU} mt-2 max-w-[calc(100vw-16px)] rounded-2xl border p-1 shadow-[var(--staffly-shadow)] ${alignClassName} ${menuClassName}`}
               style={desktopShiftX === 0 ? undefined : { transform: `translateX(${desktopShiftX}px)` }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}

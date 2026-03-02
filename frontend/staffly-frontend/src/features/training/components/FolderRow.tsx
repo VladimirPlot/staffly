@@ -53,20 +53,22 @@ export default function FolderRow({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Icon
-              icon={Folder}
-              decorative
-              className="pointer-events-none absolute bottom-4 right-4 h-12 w-12 text-icon opacity-[0.12] sm:pointer-events-auto sm:static sm:h-6 sm:w-6 sm:opacity-100"
-            />
+            {/* Иконку папки показываем только на desktop (sm+).
+               На мобилке она выглядит как "пустая иконка/квадрат" и не несёт смысла. */}
+            <span className="hidden sm:inline-flex">
+              <Icon icon={Folder} decorative className="h-6 w-6 text-icon" />
+            </span>
 
             <div className="relative z-10">
               <div className="flex items-center gap-2">
                 <span className="text-base font-semibold text-strong sm:text-lg">{folder.name}</span>
+
                 <span className="inline-flex rounded-full border border-subtle px-2 py-0.5 text-xs text-muted">
                   {folder.visibilityPositionIds.length === 0
                     ? "Всем"
                     : `${folder.visibilityPositionIds.length} должности`}
                 </span>
+
                 {!folder.active && (
                   <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
                     Скрыта
