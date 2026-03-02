@@ -187,3 +187,12 @@
 .no-scrollbar {
   scrollbar-width: none; /* Firefox */
 }
+
+body.staffly-overlay-open #root {
+  pointer-events: none;
+}
+
+/* allow interactions inside overlays while the app root is locked */
+body.staffly-overlay-open [data-overlay-root="true"] {
+  pointer-events: auto;
+}

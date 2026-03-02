@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import type { PositionDto } from "../../dictionaries/api";
 import Button from "../../../shared/ui/Button";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
@@ -27,9 +26,9 @@ export default function KnowledgeHeader({
   onCreateCard,
   onCreateTest,
 }: Props) {
-  const createMenuRef = useRef<HTMLDivElement | null>(null);
-
   if (!canManage) return null;
+
+  const selectValue = positionFilter == null ? "all" : String(positionFilter);
 
   return (
     <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
@@ -40,45 +39,55 @@ export default function KnowledgeHeader({
           onChange={(e) => onToggleIncludeInactive(e.target.checked)}
         />
 
-        <DropdownMenu
-          trigger={(triggerProps) => (
-            <Button variant="outline" {...triggerProps}>
-              Фильтр по должности: {positions.find((p) => p.id === positionFilter)?.name ?? "Все должности"}
-            </Button>
-          )}
-          menuClassName="w-72"
-        >
-          {({ close }) => (
-            <>
-              <button
-                type="button"
-                role="menuitem"
-                className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                onClick={() => {
-                  onChangePositionFilter(null);
-                  close();
-                }}
-              >
-                Все должности
-              </button>
-
-              {positions.map((position) => (
-                <button
-                  key={position.id}
-                  type="button"
-                  role="menuitem"
-                  className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                  onClick={() => {
-                    onChangePositionFilter(position.id);
-                    close();
-                  }}
-                >
-                  {position.name}
-                </button>
+        {/* Desktop: компактный select */}
+        <div className="hidden sm:block">
+          <label className="flex items-center gap-2">
+            <span className="text-sm text-muted">Должность</span>
+            <select
+              value={selectValue}
+              onChange={(e) => {
+                const v = e.target.value;
+                onChangePositionFilter(v === "all" ? null : Number(v));
+              }}
+              className={
+                "h-10 rounded-2xl border border-subtle bg-surface px-3 text-sm text-default shadow-[var(--staffly-shadow)] " +
+                "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
+              }
+            >
+              <option value="all">Все должности</option>
+              {positions.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.name}
+                </option>
               ))}
-            </>
-          )}
-        </DropdownMenu>
+            </select>
+          </label>
+        </div>
+
+        {/* Mobile: тоже select (во всю ширину, аккуратный) */}
+        <div className="sm:hidden">
+          <label className="block">
+            <div className="mb-1 text-sm text-muted">Должность</div>
+            <select
+              value={selectValue}
+              onChange={(e) => {
+                const v = e.target.value;
+                onChangePositionFilter(v === "all" ? null : Number(v));
+              }}
+              className={
+                "h-10 w-full rounded-2xl border border-subtle bg-surface px-3 text-sm text-default shadow-[var(--staffly-shadow)] " +
+                "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
+              }
+            >
+              <option value="all">Все должности</option>
+              {positions.map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <div className="hidden flex-wrap gap-2 sm:flex">
           <Button variant="outline" onClick={onCreateFolder}>
@@ -92,7 +101,7 @@ export default function KnowledgeHeader({
           </Button>
         </div>
 
-        <div ref={createMenuRef} className="sm:hidden">
+        <div className="sm:hidden">
           <DropdownMenu trigger={(triggerProps) => <Button variant="outline" {...triggerProps}>Создать</Button>}>
             {({ close }) => (
               <div className="space-y-2">

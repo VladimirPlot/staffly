@@ -4,6 +4,7 @@ import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Icon from "../../../shared/ui/Icon";
 import IconButton from "../../../shared/ui/IconButton";
+import Button from "../../../shared/ui/Button";
 import type { TrainingKnowledgeItemDto } from "../api/types";
 
 type BusyAction = "hide" | "restore" | "delete" | "save" | null;
@@ -13,7 +14,7 @@ type Props = {
   canManage: boolean;
   busyAction: BusyAction;
   onEdit: (item: TrainingKnowledgeItemDto) => void;
-  onHide: (itemId: number) => void;   // safe-delete
+  onHide: (itemId: number) => void; // safe-delete
   onRestore: (itemId: number) => void;
   onDelete: (itemId: number) => void; // hard delete
 };
@@ -76,7 +77,7 @@ export default function KnowledgeItemCard({
             <div className="absolute right-1 top-1">
               <DropdownMenu
                 disabled={isBusy}
-                menuClassName="w-52"
+                menuClassName="w-72"
                 trigger={(triggerProps) => (
                   <IconButton
                     aria-label="Действия с карточкой"
@@ -84,15 +85,10 @@ export default function KnowledgeItemCard({
                     disabled={isBusy}
                     variant="unstyled"
                     className={
-                      // === РАЗМЕР КНОПКИ (меняешь тут) ===
                       "h-10 w-10 " +
-                      // === “СТЕКЛО” ===
                       "bg-white/10 backdrop-blur-md border border-white/20 " +
-                      // === ТЕНЬ/ПЛАВНОСТЬ ===
                       "shadow-sm transition " +
-                      // === ХОВЕР/АКТИВ ===
                       "hover:bg-white/20 active:bg-white/25 " +
-                      // === ЧТОБЫ ИКОНКА БЫЛА ПО ЦЕНТРУ ===
                       "px-0 py-0"
                     }
                     {...triggerProps}
@@ -102,11 +98,10 @@ export default function KnowledgeItemCard({
                 )}
               >
                 {({ close }) => (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="text-default hover:bg-app flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center"
                       disabled={isBusy}
                       onClick={(event) =>
                         stopAnd(event, () => {
@@ -115,48 +110,27 @@ export default function KnowledgeItemCard({
                         })
                       }
                     >
-                      <Icon icon={Pencil} size="sm" />
                       Редактировать
-                    </button>
+                    </Button>
 
-                    {item.active ? (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="text-default hover:bg-app flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
-                        disabled={isBusy}
-                        onClick={(event) =>
-                          stopAnd(event, () => {
-                            close();
-                            onHide(item.id);
-                          })
-                        }
-                      >
-                        <Icon icon={EyeOff} size="sm" />
-                        Скрыть
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="text-default hover:bg-app flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm"
-                        disabled={isBusy}
-                        onClick={(event) =>
-                          stopAnd(event, () => {
-                            close();
-                            onRestore(item.id);
-                          })
-                        }
-                      >
-                        <Icon icon={Eye} size="sm" />
-                        Восстановить
-                      </button>
-                    )}
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center"
+                      disabled={isBusy}
+                      onClick={(event) =>
+                        stopAnd(event, () => {
+                          close();
+                          if (item.active) onHide(item.id);
+                          else onRestore(item.id);
+                        })
+                      }
+                    >
+                      {item.active ? "Скрыть" : "Восстановить"}
+                    </Button>
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="hover:bg-app flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-red-600"
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center"
                       disabled={isBusy}
                       onClick={(event) =>
                         stopAnd(event, () => {
@@ -165,10 +139,9 @@ export default function KnowledgeItemCard({
                         })
                       }
                     >
-                      <Icon icon={Trash2} size="sm" />
                       Удалить
-                    </button>
-                  </>
+                    </Button>
+                  </div>
                 )}
               </DropdownMenu>
             </div>
