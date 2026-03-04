@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Image, Pencil, Trash2 } from "lucide-react";
+import { Image, Pencil } from "lucide-react";
 import { type MouseEvent, useMemo, useState } from "react";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
@@ -38,7 +38,6 @@ export default function KnowledgeItemCard({
   };
 
   const deleteFlow = useMemo(() => {
-    // Активная карточка: "Удалить" = "Скрыть"
     if (item.active) {
       return {
         title: "Удалить карточку?",
@@ -49,7 +48,6 @@ export default function KnowledgeItemCard({
       };
     }
 
-    // Скрытая карточка: "Удалить" = "Удалить навсегда"
     return {
       title: "Удалить карточку навсегда?",
       description: "Действие необратимо. Карточка будет удалена из базы данных, а фото — из хранилища.",
