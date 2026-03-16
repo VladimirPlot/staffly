@@ -6,6 +6,7 @@ type Props = {
   folders: TrainingFolderDto[];
   canManage: boolean;
   actionLoadingId: number | null;
+  positionNameById: Map<number, string>;
   onOpen: (folderId: number) => void;
   onEdit: (folder: TrainingFolderDto) => void;
   onHide: (folderId: number) => void;
@@ -17,6 +18,7 @@ export default function FolderList({
   folders,
   canManage,
   actionLoadingId,
+  positionNameById,
   onOpen,
   onEdit,
   onHide,
@@ -31,6 +33,7 @@ export default function FolderList({
           folder={folder}
           canManage={canManage}
           isBusy={actionLoadingId === folder.id}
+          positionNameById={positionNameById}
           onOpen={onOpen}
           onEdit={onEdit}
           onHide={onHide}

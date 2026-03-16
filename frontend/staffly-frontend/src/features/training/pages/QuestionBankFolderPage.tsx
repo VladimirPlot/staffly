@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { listPositions, type PositionDto } from "../../dictionaries/api";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
@@ -44,6 +45,14 @@ export default function QuestionBankFolderPage() {
   const [deleteDialogModel, setDeleteDialogModel] = useState<QuestionDeleteDialogModel | null>(null);
   const [guardActionLoading, setGuardActionLoading] = useState<"hideAndDelete" | "hideOnly" | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    void listPositions(restaurantId, { includeInactive: false })
+      .then(setPositions)
+      .catch(() => setPositions([]));
+  }, [restaurantId]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -58,6 +67,10 @@ export default function QuestionBankFolderPage() {
   const childFolders = useMemo(
     () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId).sort(bySortOrderAndName),
     [foldersState.folders, currentFolderId]
+  );
+  const positionNameById = useMemo(
+    () => new Map(positions.map((position) => [position.id, position.name])),
+    [positions]
   );
 
   const loadQuestions = useCallback(async () => {
@@ -252,6 +265,7 @@ export default function QuestionBankFolderPage() {
           folders={childFolders}
           canManage={canManage}
           actionLoadingId={foldersState.actionLoadingId}
+          positionNameById={positionNameById}
           onOpen={(id) => navigate(trainingRoutes.questionBankFolder(id))}
           onEdit={(folder) => {
             setEditingFolder(folder);

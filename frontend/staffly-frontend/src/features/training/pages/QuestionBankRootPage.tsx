@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { listPositions, type PositionDto } from "../../dictionaries/api";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import Switch from "../../../shared/ui/Switch";
@@ -19,11 +20,26 @@ export default function QuestionBankRootPage() {
   const navigate = useNavigate();
   const { restaurantId, canManage } = useTrainingAccess();
   const foldersState = useTrainingFolders({ restaurantId, type: "QUESTION_BANK", canManage });
+  const [positions, setPositions] = useState<PositionDto[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<import("../api/types").TrainingFolderDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const rootFolders = useMemo(() => foldersState.folders.filter((folder) => folder.parentId === null).sort(bySortOrderAndName), [foldersState.folders]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    void listPositions(restaurantId, { includeInactive: false })
+      .then(setPositions)
+      .catch(() => setPositions([]));
+  }, [restaurantId]);
+
+  const rootFolders = useMemo(
+    () => foldersState.folders.filter((folder) => folder.parentId === null).sort(bySortOrderAndName),
+    [foldersState.folders]
+  );
+  const positionNameById = useMemo(
+    () => new Map(positions.map((position) => [position.id, position.name])),
+    [positions]
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -34,7 +50,7 @@ export default function QuestionBankRootPage() {
       {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
       {error && <ErrorState message={error} onRetry={foldersState.reload} />}
       {!foldersState.loading && rootFolders.length === 0 && <EmptyState title="Папок пока нет" description="Создайте первую папку для вопросов." />}
-      {rootFolders.length > 0 && <FolderList folders={rootFolders} canManage={canManage} actionLoadingId={foldersState.actionLoadingId} onOpen={(id) => navigate(trainingRoutes.questionBankFolder(id))} onEdit={(f) => { setEditingFolder(f); setModalOpen(true); }} onHide={foldersState.hide} onRestore={foldersState.restore} onDelete={async (id) => { if (!restaurantId) return; try { await deleteFolder(restaurantId, id); await foldersState.reload(); } catch (e) { setError(getTrainingErrorMessage(e, "Не удалось удалить папку.")); } }} />}
+      {rootFolders.length > 0 && <FolderList folders={rootFolders} canManage={canManage} actionLoadingId={foldersState.actionLoadingId} positionNameById={positionNameById} onOpen={(id) => navigate(trainingRoutes.questionBankFolder(id))} onEdit={(f) => { setEditingFolder(f); setModalOpen(true); }} onHide={foldersState.hide} onRestore={foldersState.restore} onDelete={async (id) => { if (!restaurantId) return; try { await deleteFolder(restaurantId, id); await foldersState.reload(); } catch (e) { setError(getTrainingErrorMessage(e, "Не удалось удалить папку.")); } }} />}
       {restaurantId && <TrainingFolderModal open={modalOpen} mode={editingFolder ? "edit" : "create"} restaurantId={restaurantId} type="QUESTION_BANK" initialFolder={editingFolder} onClose={() => setModalOpen(false)} onSaved={foldersState.reload} />}
     </div>
   );

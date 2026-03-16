@@ -72,6 +72,11 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     void listPositions(restaurantId, { includeInactive: false }).then(setPositions).catch(() => setPositions([]));
   }, [restaurantId, canManage]);
 
+  const positionNameById = useMemo(
+    () => new Map(positions.map((position) => [position.id, position.name])),
+    [positions]
+  );
+
   const visiblePositions = useMemo(() => {
     if (!currentFolder || currentFolder.visibilityPositionIds.length === 0) return positions;
     const allowed = new Set(currentFolder.visibilityPositionIds);
@@ -262,6 +267,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
           folders={childFolders}
           canManage={canManage}
           actionLoadingId={actionLoadingId ?? foldersState.actionLoadingId}
+          positionNameById={positionNameById}
           onOpen={(id) => navigate(`${trainingRoutes.knowledge}/${id}`)}
           onEdit={(folder) => { setEditingFolder(folder); setFolderModalOpen(true); }}
           onHide={foldersState.hide}

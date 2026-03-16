@@ -4,11 +4,13 @@ import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
 import IconButton from "../../../shared/ui/IconButton";
 import type { TrainingFolderDto } from "../api/types";
+import { buildVisibilityLabel } from "../utils/visibility";
 
 type Props = {
   folder: TrainingFolderDto;
   canManage: boolean;
   isBusy: boolean;
+  positionNameById: Map<number, string>;
   onOpen: (folderId: number) => void;
   onEdit: (folder: TrainingFolderDto) => void;
   onHide: (folderId: number) => void;
@@ -20,6 +22,7 @@ export default function FolderRow({
   folder,
   canManage,
   isBusy,
+  positionNameById,
   onOpen,
   onEdit,
   onHide,
@@ -53,8 +56,6 @@ export default function FolderRow({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {/* Иконку папки показываем только на desktop (sm+).
-               На мобилке она выглядит как "пустая иконка/квадрат" и не несёт смысла. */}
             <span className="hidden sm:inline-flex">
               <Icon icon={Folder} decorative className="h-6 w-6 text-icon" />
             </span>
@@ -64,9 +65,7 @@ export default function FolderRow({
                 <span className="text-base font-semibold text-strong sm:text-lg">{folder.name}</span>
 
                 <span className="inline-flex rounded-full border border-subtle px-2 py-0.5 text-xs text-muted">
-                  {folder.visibilityPositionIds.length === 0
-                    ? "Всем"
-                    : `${folder.visibilityPositionIds.length} должности`}
+                  {buildVisibilityLabel(folder.visibilityPositionIds, positionNameById, 2)}
                 </span>
 
                 {!folder.active && (

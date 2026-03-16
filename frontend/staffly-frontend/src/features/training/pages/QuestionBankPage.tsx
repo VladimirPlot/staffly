@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
@@ -24,6 +24,7 @@ export default function QuestionBankPage() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
   const [questionActionLoadingId, setQuestionActionLoadingId] = useState<number | null>(null);
+  const positionNameById = useMemo(() => new Map<number, string>(), []);
 
   const loadQuestions = useCallback(async () => {
     if (!restaurantId || !selectedFolder || !canManage) return;
@@ -87,6 +88,7 @@ export default function QuestionBankPage() {
           folders={foldersState.folders}
           canManage={canManage}
           actionLoadingId={foldersState.actionLoadingId}
+          positionNameById={positionNameById}
           onOpen={(folderId) => {
             const folder = foldersState.folders.find((item) => item.id === folderId) ?? null;
             setSelectedFolder(folder);

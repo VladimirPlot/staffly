@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import Button from "../../../shared/ui/Button";
-import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import { createFolder, updateFolder } from "../api/trainingApi";
 import type { TrainingFolderDto, TrainingFolderType } from "../api/types";
 import { getTrainingErrorMessage } from "../utils/errors";
+import VisibilityPositionsField from "./VisibilityPositionsField";
 
 type Props = {
   open: boolean;
@@ -58,6 +58,7 @@ export default function TrainingFolderModal({
         : parentFolder
           ? parentFolder.visibilityPositionIds
           : [];
+
     setName(mode === "edit" ? (initialFolder?.name ?? "") : "");
     setDescription(mode === "edit" ? (initialFolder?.description ?? "") : "");
     setSelectedPositionIds(baseVisibility);
@@ -65,24 +66,26 @@ export default function TrainingFolderModal({
     setConflicts([]);
   }, [open, mode, initialFolder, parentFolder]);
 
-  const parentRestricted = Boolean(parentFolder && parentFolder.visibilityPositionIds.length > 0);
-  const allowedPositionIds = useMemo(() => {
-    if (!parentRestricted) {
-      return new Set(positions.map((position) => position.id));
-    }
-    return new Set(parentFolder?.visibilityPositionIds ?? []);
-  }, [parentRestricted, parentFolder, positions]);
-
-  const availablePositions = useMemo(
-    () => positions.filter((position) => allowedPositionIds.has(position.id)),
-    [positions, allowedPositionIds]
+  const parentVisibilityPositionIds = useMemo(
+    () => parentFolder?.visibilityPositionIds ?? [],
+    [parentFolder]
   );
 
-  const selectedPositions = useMemo(
-    () => selectedPositionIds
-      .map((id) => positions.find((position) => position.id === id))
-      .filter((position): position is PositionDto => Boolean(position)),
-    [selectedPositionIds, positions]
+  useEffect(() => {
+    if (!open || parentVisibilityPositionIds.length === 0) {
+      return;
+    }
+
+    const allowedPositionIds = new Set(parentVisibilityPositionIds);
+    setSelectedPositionIds((prev) => {
+      const filtered = prev.filter((id) => allowedPositionIds.has(id));
+      return filtered.length > 0 ? filtered : [...allowedPositionIds];
+    });
+  }, [open, parentVisibilityPositionIds]);
+
+  const positionNameById = useMemo(
+    () => new Map(positions.map((position) => [position.id, position.name])),
+    [positions]
   );
 
   const handleSave = async () => {
@@ -122,16 +125,6 @@ export default function TrainingFolderModal({
     }
   };
 
-  const addPosition = (positionId: number) => {
-    setSelectedPositionIds((prev) => (prev.includes(positionId) ? prev : [...prev, positionId]));
-  };
-
-  const removePosition = (positionId: number) => {
-    setSelectedPositionIds((prev) => prev.filter((id) => id !== positionId));
-  };
-
-  const remainingPositions = availablePositions.filter((p) => !selectedPositionIds.includes(p.id));
-
   return (
     <Modal
       open={open}
@@ -139,8 +132,12 @@ export default function TrainingFolderModal({
       onClose={onClose}
       footer={
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={onClose} disabled={submitting}>Отмена</Button>
-          <Button onClick={handleSave} disabled={submitting || !name.trim()}>{mode === "edit" ? "Сохранить" : "Создать"}</Button>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            Отмена
+          </Button>
+          <Button onClick={handleSave} disabled={submitting || !name.trim()}>
+            {mode === "edit" ? "Сохранить" : "Создать"}
+          </Button>
         </div>
       }
     >
@@ -148,66 +145,20 @@ export default function TrainingFolderModal({
         <Input label="Название" value={name} onChange={(event) => setName(event.target.value)} />
         <Input label="Описание" value={description} onChange={(event) => setDescription(event.target.value)} />
 
-        <div className="space-y-2">
-          <div className="text-sm text-muted">Кто видит</div>
-          {!parentRestricted && (
-            <Button
-              variant={selectedPositionIds.length === 0 ? "primary" : "outline"}
-              onClick={() => setSelectedPositionIds([])}
-              type="button"
-            >
-              Всем
-            </Button>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {selectedPositions.map((position) => (
-              <button
-                key={position.id}
-                type="button"
-                className="rounded-full border border-subtle px-3 py-1 text-xs"
-                onClick={() => removePosition(position.id)}
-              >
-                {position.name} ×
-              </button>
-            ))}
-          </div>
-
-          <DropdownMenu
-            trigger={(triggerProps) => (
-              <Button variant="outline" type="button" {...triggerProps}>
-                Добавить должность
-              </Button>
-            )}
-            disabled={remainingPositions.length === 0}
-            menuClassName="w-72"
-          >
-            {({ close }) => (
-              <div className="max-h-64 overflow-auto">
-                {remainingPositions.map((position) => (
-                  <button
-                    key={position.id}
-                    type="button"
-                    role="menuitem"
-                    className="text-default hover:bg-app w-full rounded-xl px-3 py-2 text-left text-sm"
-                    onClick={() => {
-                      addPosition(position.id);
-                      close();
-                    }}
-                  >
-                    {position.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </DropdownMenu>
-        </div>
+        <VisibilityPositionsField
+          positions={positions}
+          value={selectedPositionIds}
+          onChange={setSelectedPositionIds}
+          parentVisibilityPositionIds={parentVisibilityPositionIds}
+          disabled={submitting}
+        />
 
         {error && <div className="text-sm text-red-600">{error}</div>}
         {conflicts.length > 0 && (
           <div className="space-y-1 text-sm text-red-600">
             {conflicts.map((conflict) => {
               const names = conflict.offendingPositionIds
-                .map((id) => positions.find((position) => position.id === id)?.name ?? `#${id}`)
+                .map((id) => positionNameById.get(id) ?? `#${id}`)
                 .join(", ");
               return (
                 <div key={conflict.folderId}>
