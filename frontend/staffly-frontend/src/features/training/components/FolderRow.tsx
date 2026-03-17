@@ -46,7 +46,7 @@ export default function FolderRow({
         role="link"
         tabIndex={0}
         aria-label={`Открыть папку ${folder.name}`}
-        className="group border-subtle bg-surface relative flex min-h-24 flex-col justify-between gap-3 rounded-3xl border p-4 transition hover:-translate-y-[1px] hover:shadow-md focus-visible:-translate-y-[1px] focus-visible:shadow-md sm:gap-4 sm:p-6"
+        className="group border-subtle bg-surface relative flex min-h-24 flex-col gap-3 rounded-3xl border p-4 transition hover:-translate-y-[1px] hover:shadow-md focus-visible:-translate-y-[1px] focus-visible:shadow-md sm:gap-4 sm:p-6"
         onClick={handleOpen}
         onKeyDown={(event) => {
           if (event.currentTarget !== event.target) return;
@@ -57,28 +57,98 @@ export default function FolderRow({
         }}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-2">
-            <span className="hidden sm:inline-flex">
-              <Icon icon={Folder} decorative className="h-6 w-6 text-icon" />
-            </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-3">
+              <span className="hidden pt-0.5 sm:inline-flex">
+                <Icon icon={Folder} decorative className="h-6 w-6 text-icon" />
+              </span>
 
-            <div className="relative z-10">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-semibold text-strong sm:text-lg">{folder.name}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3 sm:block">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-semibold text-strong sm:text-lg [overflow-wrap:anywhere]">
+                        {folder.name}
+                      </span>
 
-                {!folder.active && (
-                  <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
-                    Скрыта
-                  </span>
+                      {!folder.active && (
+                        <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
+                          Скрыта
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {canManage && (
+                    <div className="relative z-10 flex shrink-0 items-center gap-1 sm:hidden">
+                      <IconButton
+                        aria-label="Редактировать папку"
+                        title="Редактировать"
+                        onClick={(event) => stopAnd(event, () => onEdit(folder))}
+                        disabled={isBusy}
+                        className="px-2 py-1.5"
+                      >
+                        <Icon icon={Pencil} size="sm" />
+                      </IconButton>
+
+                      {folder.active ? (
+                        <IconButton
+                          aria-label="Скрыть папку"
+                          title="Скрыть"
+                          onClick={(event) => stopAnd(event, () => onHide(folder.id))}
+                          disabled={isBusy}
+                          className="px-2 py-1.5"
+                        >
+                          <Icon icon={EyeOff} size="sm" />
+                        </IconButton>
+                      ) : (
+                        <IconButton
+                          aria-label="Восстановить папку"
+                          title="Восстановить"
+                          onClick={(event) => stopAnd(event, () => onRestore(folder.id))}
+                          disabled={isBusy}
+                          className="px-2 py-1.5"
+                        >
+                          <Icon icon={Eye} size="sm" />
+                        </IconButton>
+                      )}
+
+                      <IconButton
+                        aria-label={folder.active ? "Скрыть папку" : "Удалить папку навсегда"}
+                        title={folder.active ? "Скрыть" : "Удалить навсегда"}
+                        onClick={(event) =>
+                          stopAnd(event, () => {
+                            if (folder.active) {
+                              onHide(folder.id);
+                              return;
+                            }
+                            setConfirmOpen(true);
+                          })
+                        }
+                        disabled={isBusy}
+                        className="px-2 py-1.5"
+                      >
+                        <Icon icon={Trash2} size="sm" />
+                      </IconButton>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-2 text-xs uppercase tracking-wide leading-relaxed text-muted [overflow-wrap:anywhere]">
+                  {visibilityLabel}
+                </div>
+
+                {folder.description && (
+                  <div className="mt-3 text-sm text-muted [overflow-wrap:anywhere]">
+                    {folder.description}
+                  </div>
                 )}
               </div>
-
-              <div className="mt-1 text-xs uppercase tracking-wide text-muted [overflow-wrap:anywhere]">{visibilityLabel}</div>
             </div>
           </div>
 
           {canManage && (
-            <div className="relative z-10 flex items-center gap-1">
+            <div className="relative z-10 hidden shrink-0 items-center gap-1 sm:flex">
               <IconButton
                 aria-label="Редактировать папку"
                 title="Редактировать"
@@ -131,8 +201,6 @@ export default function FolderRow({
             </div>
           )}
         </div>
-
-        {folder.description && <div className="hidden text-sm text-muted sm:block">{folder.description}</div>}
       </div>
 
       <ConfirmDialog

@@ -111,6 +111,16 @@ function getQuestionValidationError(q: AttemptQuestionSnapshotDto, raw: string |
   return raw ? null : "Ответьте на вопрос, чтобы продолжить.";
 }
 
+function canShowQuestionExplanation(q: AttemptQuestionSnapshotDto, raw: string | undefined): boolean {
+  return !getQuestionValidationError(q, raw);
+}
+
+function renderQuestionExplanation(q: AttemptQuestionSnapshotDto, raw: string | undefined) {
+  if (!q.explanation || !canShowQuestionExplanation(q, raw)) return null;
+
+  return <div className="mt-1 text-sm text-muted">{q.explanation}</div>;
+}
+
 export default function ExamRunPage() {
   const { examId, folderId } = useParams<{ examId: string; folderId?: string }>();
   const parsedExamId = Number(examId);
@@ -380,7 +390,7 @@ export default function ExamRunPage() {
           <div className="font-medium">
             {idx + 1}. {q.prompt}
           </div>
-          {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-3 space-y-2">
             {pairs.map((p) => {
@@ -429,7 +439,7 @@ export default function ExamRunPage() {
           <div className="font-medium">
             {idx + 1}. {q.prompt}
           </div>
-          {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-2 space-y-2">
             {opts.map((o) => (
@@ -463,7 +473,7 @@ export default function ExamRunPage() {
           <div className="font-medium">
             {idx + 1}. {q.prompt}
           </div>
-          {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-3 space-y-3">
             {blanks.map((b) => (
@@ -505,7 +515,7 @@ export default function ExamRunPage() {
           <div className="font-medium">
             {idx + 1}. {q.prompt}
           </div>
-          {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-2 space-y-2">
             {opts.map((o) => (

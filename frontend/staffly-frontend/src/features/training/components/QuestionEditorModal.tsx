@@ -9,13 +9,12 @@ import Textarea from "../../../shared/ui/Textarea";
 import { createQuestion, updateQuestion } from "../api/trainingApi";
 import type { TrainingQuestionBlankDto, TrainingQuestionDto, TrainingQuestionType, TrainingQuestionGroup } from "../api/types";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { QUESTION_TYPE_LABELS, QUESTION_TYPE_ORDER } from "../utils/questionLabels";
 
 type Props = { open: boolean; restaurantId: number; folderId: number; question?: TrainingQuestionDto | null; onClose: () => void; onSaved: () => Promise<void> | void; };
 
 type Option = { text: string; correct: boolean };
 type Pair = { leftText: string; rightText: string };
-
-const TYPES: TrainingQuestionType[] = ["SINGLE", "FILL_SELECT", "TRUE_FALSE", "MULTI", "MATCH"];
 
 export default function QuestionEditorModal({ open, restaurantId, folderId, question, onClose, onSaved }: Props) {
   const [step, setStep] = useState<"usage" | "type" | "editor">("usage");
@@ -119,11 +118,39 @@ export default function QuestionEditorModal({ open, restaurantId, folderId, ques
     }
   };
 
+  const renderFooter = () => {
+    if (step === "usage") {
+      return (
+        <>
+          <Button variant="outline" onClick={onClose}>Отмена</Button>
+          <Button onClick={() => setStep("type")}>Далее</Button>
+        </>
+      );
+    }
+
+    if (step === "type") {
+      return (
+        <>
+          <Button variant="outline" onClick={() => setStep("usage")}>Назад</Button>
+          <Button variant="outline" onClick={onClose}>Отмена</Button>
+          <Button onClick={() => setStep("editor")}>Далее</Button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Button variant="outline" onClick={onClose}>Отмена</Button>
+        <Button onClick={submit} isLoading={saving} disabled={!title.trim() || !prompt.trim()}>Сохранить</Button>
+      </>
+    );
+  };
+
   return <Modal open={open} onClose={onClose} title={question ? "Редактирование вопроса" : (step === "usage" ? "Вид вопроса" : step === "type" ? "Тип вопроса" : "Новый вопрос")}
-    footer={<>{step === "editor" && <Button variant="outline" onClick={onClose}>Отмена</Button>}{step === "editor" ? <Button onClick={submit} isLoading={saving} disabled={!title.trim() || !prompt.trim()}>Сохранить</Button> : <Button onClick={() => setStep(step === "usage" ? "type" : "editor")}>Далее</Button>}</>}>
+    footer={renderFooter()}>
     {step === "usage" && <div className="space-y-2"><Button variant={questionGroup === "PRACTICE" ? "primary" : "outline"} className="w-full" onClick={() => setQuestionGroup("PRACTICE") }>Учебный вопрос</Button><Button variant={questionGroup === "CERTIFICATION" ? "primary" : "outline"} className="w-full" onClick={() => setQuestionGroup("CERTIFICATION") }>Аттестационный вопрос</Button></div>}
-    {step === "type" && <SelectField label="Тип" value={type} onChange={(e) => setType(e.target.value as TrainingQuestionType)}>{TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</SelectField>}
-    {step === "editor" && <div className="space-y-3"><Input label="Название" value={title} onChange={(e) => setTitle(e.target.value)} required /><Textarea label="Формулировка" value={prompt} onChange={(e) => setPrompt(e.target.value)} required /><Textarea label="Пояснение" value={explanation} onChange={(e) => setExplanation(e.target.value)} />
+    {step === "type" && <SelectField label="Тип" value={type} onChange={(e) => setType(e.target.value as TrainingQuestionType)}>{QUESTION_TYPE_ORDER.map((questionType) => <option key={questionType} value={questionType}>{QUESTION_TYPE_LABELS[questionType]}</option>)}</SelectField>}
+    {step === "editor" && <div className="space-y-3"><Input label="Название" value={title} onChange={(e) => setTitle(e.target.value)} required /><Textarea label="Формулировка" value={prompt} onChange={(e) => setPrompt(e.target.value)} required /><Textarea label="Пояснение" hint="Показывается пользователю после ответа и объясняет правильный вариант." value={explanation} onChange={(e) => setExplanation(e.target.value)} />
       {type === "MATCH" && <div className="space-y-2">{pairs.map((p, i) => <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2"><Input label="Левая часть" value={p.leftText} onChange={(e) => setPairs((prev) => prev.map((x, idx) => idx === i ? { ...x, leftText: e.target.value } : x))} /><Input label="Правая часть" value={p.rightText} onChange={(e) => setPairs((prev) => prev.map((x, idx) => idx === i ? { ...x, rightText: e.target.value } : x))} /><div className="flex"><IconButton onClick={() => setPairs((prev) => move(prev, i, -1))}><ArrowUp className="h-4 w-4" /></IconButton><IconButton onClick={() => setPairs((prev) => move(prev, i, 1))}><ArrowDown className="h-4 w-4" /></IconButton><IconButton onClick={() => setPairs((prev) => prev.filter((_, idx) => idx !== i))}><Trash2 className="h-4 w-4" /></IconButton></div></div>)}<Button variant="outline" onClick={() => setPairs((prev) => [...prev, { leftText: "", rightText: "" }])}>Добавить пару</Button></div>}
       {(type === "SINGLE" || type === "MULTI") && <div className="space-y-2">{options.map((o, i) => <div key={i} className="flex items-center gap-2"><input type={type === "MULTI" ? "checkbox" : "radio"} checked={o.correct} onChange={() => setOptions((prev) => prev.map((x, idx) => idx === i ? ({ ...x, correct: type === "MULTI" ? !x.correct : true }) : ({ ...x, correct: type === "MULTI" ? x.correct : false })))} /><Input label="Вариант" className="flex-1" value={o.text} onChange={(e) => setOptions((prev) => prev.map((x, idx) => idx === i ? { ...x, text: e.target.value } : x))} error={duplicates.has(`option-${i}`) ? "Дубликат" : undefined} /><IconButton onClick={() => setOptions((prev) => move(prev, i, -1))}><ArrowUp className="h-4 w-4" /></IconButton><IconButton onClick={() => setOptions((prev) => move(prev, i, 1))}><ArrowDown className="h-4 w-4" /></IconButton><IconButton onClick={() => setOptions((prev) => prev.filter((_, idx) => idx !== i))}><Trash2 className="h-4 w-4" /></IconButton></div>)}<Button variant="outline" onClick={() => setOptions((prev) => [...prev, { text: "", correct: false }])}>Добавить вариант</Button></div>}
       {type === "TRUE_FALSE" && <div className="space-y-2"><label className="flex gap-2"><input type="radio" checked={options[0]?.correct ?? true} onChange={() => setOptions([{ text: "Правда", correct: true }, { text: "Ложь", correct: false }])} />Правда</label><label className="flex gap-2"><input type="radio" checked={options[1]?.correct ?? false} onChange={() => setOptions([{ text: "Правда", correct: false }, { text: "Ложь", correct: true }])} />Ложь</label></div>}
