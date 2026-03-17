@@ -38,13 +38,15 @@ export default function FolderRow({
     callback();
   };
 
+  const visibilityLabel = buildVisibilityLabel(folder.visibilityPositionIds, positionNameById);
+
   return (
     <>
       <div
         role="link"
         tabIndex={0}
         aria-label={`Открыть папку ${folder.name}`}
-        className="group border-subtle bg-surface relative flex h-24 flex-col justify-between gap-3 rounded-3xl border p-4 transition hover:-translate-y-[1px] hover:shadow-md focus-visible:-translate-y-[1px] focus-visible:shadow-md sm:h-auto sm:gap-4 sm:p-6"
+        className="group border-subtle bg-surface relative flex min-h-24 flex-col justify-between gap-3 rounded-3xl border p-4 transition hover:-translate-y-[1px] hover:shadow-md focus-visible:-translate-y-[1px] focus-visible:shadow-md sm:gap-4 sm:p-6"
         onClick={handleOpen}
         onKeyDown={(event) => {
           if (event.currentTarget !== event.target) return;
@@ -55,7 +57,7 @@ export default function FolderRow({
         }}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2">
             <span className="hidden sm:inline-flex">
               <Icon icon={Folder} decorative className="h-6 w-6 text-icon" />
             </span>
@@ -64,16 +66,14 @@ export default function FolderRow({
               <div className="flex items-center gap-2">
                 <span className="text-base font-semibold text-strong sm:text-lg">{folder.name}</span>
 
-                <span className="inline-flex rounded-full border border-subtle px-2 py-0.5 text-xs text-muted">
-                  {buildVisibilityLabel(folder.visibilityPositionIds, positionNameById, 2)}
-                </span>
-
                 {!folder.active && (
                   <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
                     Скрыта
                   </span>
                 )}
               </div>
+
+              <div className="mt-1 text-xs uppercase tracking-wide text-muted [overflow-wrap:anywhere]">{visibilityLabel}</div>
             </div>
           </div>
 

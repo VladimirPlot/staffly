@@ -54,9 +54,10 @@ export default function VisibilityPositionsField({
     onChange([...allowedPositionIds]);
   };
 
-  const triggerLabel = isParentRestricted
+  const triggerLabel = (isParentRestricted
     ? buildVisibilityLabel(selectedPositionIds, positionNameById)
-    : buildVisibilityLabel(value, positionNameById);
+    : buildVisibilityLabel(value, positionNameById)
+  ).replace("ВСЕМ", "Всем");
 
   return (
     <div className="space-y-2">

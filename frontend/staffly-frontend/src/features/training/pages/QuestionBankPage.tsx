@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { listPositions, type PositionDto } from "../../dictionaries/api";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
@@ -24,7 +25,17 @@ export default function QuestionBankPage() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
   const [questionActionLoadingId, setQuestionActionLoadingId] = useState<number | null>(null);
-  const positionNameById = useMemo(() => new Map<number, string>(), []);
+  const [positions, setPositions] = useState<PositionDto[]>([]);
+
+  useEffect(() => {
+    if (!restaurantId || !canManage) return;
+    void listPositions(restaurantId, { includeInactive: false }).then(setPositions).catch(() => setPositions([]));
+  }, [restaurantId, canManage]);
+
+  const positionNameById = useMemo(
+    () => new Map(positions.map((position) => [position.id, position.name])),
+    [positions]
+  );
 
   const loadQuestions = useCallback(async () => {
     if (!restaurantId || !selectedFolder || !canManage) return;
