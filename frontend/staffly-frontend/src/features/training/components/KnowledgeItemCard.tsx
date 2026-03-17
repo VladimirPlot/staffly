@@ -14,9 +14,9 @@ type Props = {
   canManage: boolean;
   busyAction: BusyAction;
   onEdit: (item: TrainingKnowledgeItemDto) => void;
-  onHide: (itemId: number) => void; // safe-delete
+  onHide: (itemId: number) => void;
   onRestore: (itemId: number) => void;
-  onDelete: (itemId: number) => void; // hard delete
+  onDelete: (itemId: number) => void;
 };
 
 export default function KnowledgeItemCard({
@@ -31,6 +31,7 @@ export default function KnowledgeItemCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isBusy = busyAction !== null;
+  const hasImage = Boolean(item.imageUrl);
 
   const stopAnd = (event: MouseEvent<HTMLElement>, callback: () => void) => {
     event.stopPropagation();
@@ -57,12 +58,23 @@ export default function KnowledgeItemCard({
     };
   }, [item.active, item.id, onDelete, onHide, busyAction]);
 
+  const description = item.description?.trim() ?? "";
+  const composition = item.composition?.trim() ?? "";
+  const allergens = item.allergens?.trim() ?? "";
+
+  const hasMeta = Boolean(description || composition || allergens);
+
   return (
     <>
       <article className="border-subtle bg-surface overflow-hidden rounded-3xl border shadow-[var(--staffly-shadow)]">
         <div className="relative aspect-[16/10] w-full bg-app">
-          {item.imageUrl ? (
-            <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+          {hasImage ? (
+            <img
+              src={item.imageUrl!}
+              alt={item.title}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
           ) : (
             <div className="border-subtle bg-app flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border p-4 text-center">
               <Icon icon={Image} size="lg" className="text-icon" decorative />
@@ -83,15 +95,17 @@ export default function KnowledgeItemCard({
                     disabled={isBusy}
                     variant="unstyled"
                     className={
-                      "h-10 w-10 " +
-                      "bg-white/10 backdrop-blur-md border border-white/20 " +
-                      "shadow-sm transition " +
-                      "hover:bg-white/20 active:bg-white/25 " +
-                      "px-0 py-0"
+                      hasImage
+                        ? "h-10 w-10 border border-white/20 bg-black/25 px-0 py-0 text-white shadow-sm backdrop-blur-md transition hover:bg-black/35 active:bg-black/40"
+                        : "h-10 w-10 border border-subtle bg-surface/95 px-0 py-0 text-default shadow-sm backdrop-blur-sm transition hover:bg-app active:bg-app"
                     }
                     {...triggerProps}
                   >
-                    <Icon icon={Pencil} size="sm" className="text-white/90" />
+                    <Icon
+                      icon={Pencil}
+                      size="sm"
+                      className={hasImage ? "text-white" : "text-default"}
+                    />
                   </IconButton>
                 )}
               >
@@ -156,22 +170,30 @@ export default function KnowledgeItemCard({
             )}
           </div>
 
-          <div className="space-y-2">
-            <div>
-              <div className="text-xs font-medium text-muted">Описание</div>
-              <p className="text-sm text-default">{item.description || "Описание отсутствует."}</p>
-            </div>
+          {hasMeta && (
+            <div className="space-y-2">
+              {description && (
+                <div>
+                  <div className="text-xs font-medium text-muted">Описание</div>
+                  <p className="text-sm text-default [overflow-wrap:anywhere]">{description}</p>
+                </div>
+              )}
 
-            <div>
-              <div className="text-xs font-medium text-muted">Состав</div>
-              <p className="text-sm text-default">{item.composition || "Состав не указан."}</p>
-            </div>
+              {composition && (
+                <div>
+                  <div className="text-xs font-medium text-muted">Состав</div>
+                  <p className="text-sm text-default [overflow-wrap:anywhere]">{composition}</p>
+                </div>
+              )}
 
-            <div>
-              <div className="text-xs font-medium text-muted">Аллергены</div>
-              <p className="text-sm text-default">{item.allergens || "Аллергены не указаны."}</p>
+              {allergens && (
+                <div>
+                  <div className="text-xs font-medium text-muted">Аллергены</div>
+                  <p className="text-sm text-default [overflow-wrap:anywhere]">{allergens}</p>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </article>
 
