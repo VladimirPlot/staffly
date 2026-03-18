@@ -1,4 +1,4 @@
-import { CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import Button from "../../../shared/ui/Button";
 import IconButton from "../../../shared/ui/IconButton";
@@ -341,30 +341,34 @@ export default function QuestionEditorModal({
                   <div
                     key={i}
                     className={[
-                      "border-subtle bg-surface flex min-w-0 items-center gap-3 rounded-2xl border p-3 transition",
-                      o.correct ? "ring-default ring-2" : "hover:border-default/60",
+                      "border-subtle bg-surface flex min-w-0 items-start gap-3 rounded-2xl border p-3 transition sm:items-center",
+                      o.correct ? "border-default/70 ring-default/15 ring-4" : "hover:border-default/60",
                     ].join(" ")}
                   >
                     <button
                       type="button"
-                      className="flex shrink-0 items-center gap-2 text-left"
+                      aria-label={`Сделать вариант ${i + 1} верным`}
+                      aria-pressed={o.correct}
+                      className="group mt-9 flex h-7 w-7 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-default)] focus-visible:ring-offset-2 sm:mt-0"
                       onClick={() =>
                         setOptions((prev) => prev.map((x, idx) => ({ ...x, correct: idx === i })))
                       }
                     >
                       <span
                         className={[
-                          "border-subtle flex h-6 w-6 items-center justify-center rounded-full border transition",
+                          "border-subtle flex h-6 w-6 items-center justify-center rounded-full border-2 bg-transparent transition",
                           o.correct
-                            ? "border-default bg-default text-white"
-                            : "bg-surface text-transparent",
+                            ? "border-default"
+                            : "group-hover:border-default/70 group-focus-visible:border-default",
                         ].join(" ")}
                         aria-hidden="true"
                       >
-                        <CheckCircle2 className="h-4 w-4" />
-                      </span>
-                      <span className="text-default min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
-                        {o.correct ? "Верный" : "Сделать верным"}
+                        <span
+                          className={[
+                            "bg-default h-3 w-3 rounded-full transition",
+                            o.correct ? "scale-100 opacity-100" : "scale-0 opacity-0",
+                          ].join(" ")}
+                        />
                       </span>
                     </button>
                     <Input
@@ -378,12 +382,14 @@ export default function QuestionEditorModal({
                       }
                       error={duplicates.has(`option-${i}`) ? "Дубликат" : undefined}
                     />
-                    <IconButton
-                      disabled={options.length <= 2}
-                      onClick={() => setOptions((prev) => prev.filter((_, idx) => idx !== i))}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </IconButton>
+                    <div className="flex shrink-0 items-end self-stretch sm:self-auto">
+                      <IconButton
+                        disabled={options.length <= 2}
+                        onClick={() => setOptions((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </IconButton>
+                    </div>
                   </div>
                 ))}
               </div>
