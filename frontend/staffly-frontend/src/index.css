@@ -119,8 +119,8 @@
     color: var(--staffly-text);
   }
 
-  .staffly-phone .PhoneInputCountry {
-    @apply relative flex items-center justify-center rounded-2xl border px-3 shadow-sm transition;
+  .staffly-phone-country {
+    @apply relative flex min-w-[84px] items-center justify-center rounded-2xl border px-3 shadow-sm transition;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
   }
@@ -129,8 +129,14 @@
     @apply absolute inset-0 h-full w-full cursor-pointer opacity-0;
   }
 
-  .staffly-phone .PhoneInputCountryIcon {
-    @apply h-4 w-6 overflow-hidden rounded-sm;
+  .staffly-phone-countryValue {
+    @apply flex items-center gap-2 text-sm font-medium;
+    color: var(--staffly-text);
+  }
+
+  .staffly-phone-countryValue svg {
+    @apply h-4 w-6 shrink-0 overflow-hidden rounded-sm;
+    display: block;
   }
 
   .staffly-phone .PhoneInputInput {
@@ -159,15 +165,17 @@
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1); /* примерно ring-red-200 */
   }
 
-  .staffly-phone.is-error .PhoneInputCountry {
+  .staffly-phone.is-error .staffly-phone-country {
     @apply border-red-500;
   }
 
-  .staffly-phone:has(.PhoneInputInput:focus) .PhoneInputCountry {
+  .staffly-phone:has(.PhoneInputInput:focus) .staffly-phone-country,
+  .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
     box-shadow: 0 0 0 2px var(--staffly-ring);
   }
 
-  .staffly-phone.is-error:has(.PhoneInputInput:focus) .PhoneInputCountry {
+  .staffly-phone.is-error:has(.PhoneInputInput:focus) .staffly-phone-country,
+  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1);
   }
 }

@@ -7,6 +7,8 @@ type Props = {
   label: string;
   value: string | undefined;
   onChange: (value: string | undefined) => void;
+  country?: CountryCode;
+  onCountryChange?: (country: CountryCode) => void;
   error?: string;
   defaultCountry?: CountryCode;
   autoComplete?: string;

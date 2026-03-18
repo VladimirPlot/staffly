@@ -4,6 +4,10 @@ import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
+import {
+  analyzePhoneNumber,
+  inferPhoneCountry,
+} from "../../../shared/utils/phone";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { login, register } from "../../auth/api";
@@ -17,11 +21,6 @@ const getStoredPhone = () => {
   return stored || undefined;
 };
 
-async function isPhoneValid(phone: string): Promise<boolean> {
-  const mod = await import("react-phone-number-input");
-  return mod.isValidPhoneNumber(phone);
-}
-
 export default function LoginRegister() {
   const { loginWithToken } = useAuth();
   const [mode, setMode] = React.useState<Mode>("login");
@@ -30,12 +29,14 @@ export default function LoginRegister() {
 
   // login form
   const [lPhone, setLPhone] = React.useState<string | undefined>(() => getStoredPhone());
+  const [lCountry, setLCountry] = React.useState(() => inferPhoneCountry(getStoredPhone()) || "RU");
   const [lPassword, setLPassword] = React.useState("");
 
   // register form
   const [rFirstName, setRFirstName] = React.useState("");
   const [rLastName, setRLastName] = React.useState("");
   const [rPhone, setRPhone] = React.useState<string | undefined>(undefined);
+  const [rCountry, setRCountry] = React.useState<ReturnType<typeof inferPhoneCountry>>("RU");
   const [rEmail, setREmail] = React.useState("");
   const [rPassword, setRPassword] = React.useState("");
   const [rBirthDate, setRBirthDate] = React.useState("");
@@ -48,7 +49,8 @@ export default function LoginRegister() {
   const onLogin = async () => {
     setError(null);
 
-    if (!lPhone || !(await isPhoneValid(lPhone))) {
+    const loginPhone = analyzePhoneNumber(lPhone, lCountry);
+    if (!loginPhone.e164 || !loginPhone.isValid) {
       setError(PHONE_ERROR);
       return;
     }
@@ -59,10 +61,10 @@ export default function LoginRegister() {
 
     setBusy(true);
     try {
-      const { token } = await login({ phone: lPhone, password: lPassword });
+      const { token } = await login({ phone: loginPhone.e164, password: lPassword });
 
       // ✅ сохраняем телефон сразу после успеха
-      localStorage.setItem("auth.lastPhone", lPhone);
+      localStorage.setItem("auth.lastPhone", loginPhone.e164);
 
       await loginWithToken(token);
     } catch (e: any) {
@@ -75,7 +77,8 @@ export default function LoginRegister() {
   const onRegister = async () => {
     setError(null);
 
-    if (!rPhone || !(await isPhoneValid(rPhone))) {
+    const registerPhone = analyzePhoneNumber(rPhone, rCountry);
+    if (!registerPhone.e164 || !registerPhone.isValid) {
       setError(PHONE_ERROR);
       return;
     }
@@ -83,7 +86,7 @@ export default function LoginRegister() {
     setBusy(true);
     try {
       const { token } = await register({
-        phone: rPhone,
+        phone: registerPhone.e164,
         email: rEmail.trim(),
         firstName: rFirstName.trim(),
         lastName: rLastName.trim(),
@@ -92,7 +95,7 @@ export default function LoginRegister() {
       });
 
       // ✅ тоже сохраняем телефон после успешной регистрации
-      localStorage.setItem("auth.lastPhone", rPhone);
+      localStorage.setItem("auth.lastPhone", registerPhone.e164);
 
       await loginWithToken(token);
     } catch (e: any) {
@@ -139,9 +142,10 @@ export default function LoginRegister() {
             <LazyPhoneInputField
               label="Телефон"
               autoComplete="username"
-              defaultCountry="RU"
               value={lPhone}
               onChange={setLPhone}
+              country={lCountry}
+              onCountryChange={setLCountry}
               error={phoneError}
               disabled={busy}
             />
@@ -179,10 +183,11 @@ export default function LoginRegister() {
 
             <LazyPhoneInputField
               label="Телефон"
-              defaultCountry="RU"
               autoComplete="tel"
               value={rPhone}
               onChange={setRPhone}
+              country={rCountry}
+              onCountryChange={setRCountry}
               error={phoneError}
               disabled={busy}
             />
