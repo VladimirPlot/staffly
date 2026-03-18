@@ -14,6 +14,7 @@ import type { TrainingFolderDto, TrainingQuestionDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { QUESTION_GROUP_LABELS, QUESTION_TYPE_LABELS } from "../utils/questionLabels";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
 export default function QuestionBankPage() {
@@ -29,12 +30,14 @@ export default function QuestionBankPage() {
 
   useEffect(() => {
     if (!restaurantId || !canManage) return;
-    void listPositions(restaurantId, { includeInactive: false }).then(setPositions).catch(() => setPositions([]));
+    void listPositions(restaurantId, { includeInactive: false })
+      .then(setPositions)
+      .catch(() => setPositions([]));
   }, [restaurantId, canManage]);
 
   const positionNameById = useMemo(
     () => new Map(positions.map((position) => [position.id, position.name])),
-    [positions]
+    [positions],
   );
 
   const loadQuestions = useCallback(async () => {
@@ -42,7 +45,11 @@ export default function QuestionBankPage() {
     setQuestionsLoading(true);
     setQuestionsError(null);
     try {
-      const response = await listQuestions(restaurantId, selectedFolder.id, foldersState.includeInactive);
+      const response = await listQuestions(
+        restaurantId,
+        selectedFolder.id,
+        foldersState.includeInactive,
+      );
       setQuestions(mapQuestionsForUi(response));
     } catch (e) {
       setQuestionsError(getTrainingErrorMessage(e, "Не удалось загрузить вопросы."));
@@ -76,10 +83,12 @@ export default function QuestionBankPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Breadcrumbs items={[{ label: "Тренинг", to: trainingRoutes.landing }, { label: "Банк вопросов" }]} />
+      <Breadcrumbs
+        items={[{ label: "Тренинг", to: trainingRoutes.landing }, { label: "Банк вопросов" }]}
+      />
       <h2 className="text-2xl font-semibold">🧠 Банк вопросов</h2>
 
-      <label className="inline-flex items-center gap-2 text-sm text-default">
+      <label className="text-default inline-flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={foldersState.includeInactive}
@@ -89,7 +98,9 @@ export default function QuestionBankPage() {
       </label>
 
       {foldersState.loading && <LoadingState label="Загрузка папок банка вопросов…" />}
-      {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
+      {foldersState.error && (
+        <ErrorState message={foldersState.error} onRetry={foldersState.reload} />
+      )}
       {!foldersState.loading && !foldersState.error && foldersState.folders.length === 0 && (
         <EmptyState title="Папки не найдены" description="Создайте первую папку банка вопросов." />
       )}
@@ -125,17 +136,28 @@ export default function QuestionBankPage() {
           {!questionsLoading && !questionsError && questions.length > 0 && (
             <div className="space-y-2">
               {questions.map((q) => (
-                <div key={q.id} className="rounded-2xl border border-subtle bg-app p-3">
+                <div key={q.id} className="border-subtle bg-app rounded-2xl border p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-medium">{q.prompt}</div>
-                    <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-700">{q.type}</span>
-                    {!q.active && <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">Скрыт</span>}
+                    <span className="border-subtle bg-surface text-muted rounded-full border px-2 py-1 text-xs">
+                      {QUESTION_TYPE_LABELS[q.type]}
+                    </span>
+                    <span className="border-subtle bg-surface text-default rounded-full border px-2 py-1 text-xs">
+                      {QUESTION_GROUP_LABELS[q.questionGroup]}
+                    </span>
+                    {!q.active && (
+                      <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">
+                        Скрыт
+                      </span>
+                    )}
                   </div>
 
-                  {q.explanation && <div className="mt-1 text-sm text-muted">{q.explanation}</div>}
+                  {q.explanation && <div className="text-muted mt-1 text-sm">{q.explanation}</div>}
 
-                  <div className="mt-2 text-xs text-muted">
-                    {q.type === "MATCH" ? `Пар: ${q.matchPairs.length}` : `Вариантов: ${q.options.length}`}
+                  <div className="text-muted mt-2 text-xs">
+                    {q.type === "MATCH"
+                      ? `Пар: ${q.matchPairs.length}`
+                      : `Вариантов: ${q.options.length}`}
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-2">

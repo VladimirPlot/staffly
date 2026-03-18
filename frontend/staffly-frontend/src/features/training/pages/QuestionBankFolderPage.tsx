@@ -15,13 +15,23 @@ import QuestionDeleteGuardModal from "../components/QuestionDeleteGuardModal";
 import QuestionEditorModal from "../components/QuestionEditorModal";
 import TrainingFolderModal from "../components/TrainingFolderModal";
 import TrainingToast from "../components/TrainingToast";
-import { deleteFolder, deleteQuestion, hideQuestion, listQuestions, restoreQuestion } from "../api/trainingApi";
+import {
+  deleteFolder,
+  deleteQuestion,
+  hideQuestion,
+  listQuestions,
+  restoreQuestion,
+} from "../api/trainingApi";
 import type { TrainingFolderDto, TrainingQuestionDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { bySortOrderAndName } from "../utils/sort";
-import { buildQuestionDeleteDialogModel, type QuestionDeleteDialogModel } from "../utils/questionDeleteUx";
+import {
+  buildQuestionDeleteDialogModel,
+  type QuestionDeleteDialogModel,
+} from "../utils/questionDeleteUx";
+import { QUESTION_GROUP_LABELS, QUESTION_TYPE_LABELS } from "../utils/questionLabels";
 import { parseTrainingApiError } from "../utils/trainingApiError";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
@@ -42,8 +52,12 @@ export default function QuestionBankFolderPage() {
   const [editingQuestion, setEditingQuestion] = useState<TrainingQuestionDto | null>(null);
   const [questionActionLoadingId, setQuestionActionLoadingId] = useState<number | null>(null);
   const [guardedQuestion, setGuardedQuestion] = useState<TrainingQuestionDto | null>(null);
-  const [deleteDialogModel, setDeleteDialogModel] = useState<QuestionDeleteDialogModel | null>(null);
-  const [guardActionLoading, setGuardActionLoading] = useState<"hideAndDelete" | "hideOnly" | null>(null);
+  const [deleteDialogModel, setDeleteDialogModel] = useState<QuestionDeleteDialogModel | null>(
+    null,
+  );
+  const [guardActionLoading, setGuardActionLoading] = useState<"hideAndDelete" | "hideOnly" | null>(
+    null,
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [positions, setPositions] = useState<PositionDto[]>([]);
 
@@ -61,16 +75,19 @@ export default function QuestionBankFolderPage() {
 
   const folderMap = useMemo(
     () => new Map(foldersState.folders.map((folder) => [folder.id, folder])),
-    [foldersState.folders]
+    [foldersState.folders],
   );
   const currentFolder = folderMap.get(currentFolderId) ?? null;
   const childFolders = useMemo(
-    () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId).sort(bySortOrderAndName),
-    [foldersState.folders, currentFolderId]
+    () =>
+      foldersState.folders
+        .filter((folder) => folder.parentId === currentFolderId)
+        .sort(bySortOrderAndName),
+    [foldersState.folders, currentFolderId],
   );
   const positionNameById = useMemo(
     () => new Map(positions.map((position) => [position.id, position.name])),
-    [positions]
+    [positions],
   );
 
   const loadQuestions = useCallback(async () => {
@@ -83,8 +100,8 @@ export default function QuestionBankFolderPage() {
           restaurantId,
           currentFolder.id,
           canManage ? foldersState.includeInactive : false,
-          debouncedSearch
-        )
+          debouncedSearch,
+        ),
       );
     } catch (e) {
       setError(getTrainingErrorMessage(e, "Не удалось загрузить вопросы папки."));
@@ -141,7 +158,7 @@ export default function QuestionBankFolderPage() {
         setQuestionActionLoadingId(null);
       }
     },
-    [restaurantId, loadQuestions]
+    [restaurantId, loadQuestions],
   );
 
   const handleHideAndDelete = useCallback(async () => {
@@ -207,16 +224,25 @@ export default function QuestionBankFolderPage() {
     while (cursor && !seen.has(cursor.id)) {
       chain.unshift(cursor);
       seen.add(cursor.id);
-      cursor = cursor.parentId ? folderMap.get(cursor.parentId) ?? null : null;
+      cursor = cursor.parentId ? (folderMap.get(cursor.parentId) ?? null) : null;
     }
     chain.forEach((f, i) =>
-      items.push({ label: f.name, to: i === chain.length - 1 ? undefined : trainingRoutes.questionBankFolder(f.id) })
+      items.push({
+        label: f.name,
+        to: i === chain.length - 1 ? undefined : trainingRoutes.questionBankFolder(f.id),
+      }),
     );
     return items;
   }, [currentFolder, folderMap]);
 
   if (Number.isNaN(currentFolderId)) {
-    return <ErrorState message="Папка не найдена" actionLabel="К списку" onRetry={() => navigate(trainingRoutes.questionBank)} />;
+    return (
+      <ErrorState
+        message="Папка не найдена"
+        actionLabel="К списку"
+        onRetry={() => navigate(trainingRoutes.questionBank)}
+      />
+    );
   }
 
   return (
@@ -253,7 +279,12 @@ export default function QuestionBankFolderPage() {
               </Button>
             </div>
           </div>
-          <Input label="Поиск по вопросам" placeholder="Поиск по вопросам" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input
+            label="Поиск по вопросам"
+            placeholder="Поиск по вопросам"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
       )}
 
@@ -292,15 +323,32 @@ export default function QuestionBankFolderPage() {
           const isQuestionLoading = questionActionLoadingId === question.id;
 
           return (
-            <div key={question.id} className="border-subtle bg-app rounded-2xl border p-3">
-              <div className="flex justify-between">
-                <div>
-                  <div className="font-medium">{question.title}</div>
-                  <div className="text-sm text-muted">{question.prompt}</div>
-                  <div className="text-xs text-muted">{question.type}</div>
+            <div
+              key={question.id}
+              className="border-subtle bg-app space-y-3 rounded-2xl border p-3"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-strong text-sm font-semibold sm:text-base">
+                      {question.title}
+                    </h4>
+                    <span className="border-subtle bg-surface text-default inline-flex rounded-full border px-2 py-0.5 text-xs">
+                      {QUESTION_GROUP_LABELS[question.questionGroup]}
+                    </span>
+                    <span className="border-subtle bg-surface text-muted inline-flex rounded-full border px-2 py-0.5 text-xs">
+                      {QUESTION_TYPE_LABELS[question.type]}
+                    </span>
+                    {!question.active && (
+                      <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
+                        Скрыт
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-muted text-sm">{question.prompt}</p>
                 </div>
                 {canManage && (
-                  <div className="flex gap-1">
+                  <div className="flex shrink-0 gap-1 self-start">
                     <Button
                       variant="ghost"
                       disabled={isQuestionLoading}
@@ -350,7 +398,11 @@ export default function QuestionBankFolderPage() {
           restaurantId={restaurantId}
           type="QUESTION_BANK"
           parentFolder={
-            editingFolder ? (editingFolder.parentId ? folderMap.get(editingFolder.parentId) ?? null : null) : currentFolder
+            editingFolder
+              ? editingFolder.parentId
+                ? (folderMap.get(editingFolder.parentId) ?? null)
+                : null
+              : currentFolder
           }
           initialFolder={editingFolder}
           onClose={() => setFolderModalOpen(false)}
@@ -378,7 +430,9 @@ export default function QuestionBankFolderPage() {
         onHideAndDelete={() => void handleHideAndDelete()}
         onHideOnly={() => void handleHideOnly()}
         onOpenExams={() => {
-          const practiceExam = (deleteDialogModel?.exams ?? []).find((exam) => exam.mode === "PRACTICE" && exam.knowledgeFolderId !== null);
+          const practiceExam = (deleteDialogModel?.exams ?? []).find(
+            (exam) => exam.mode === "PRACTICE" && exam.knowledgeFolderId !== null,
+          );
           if (practiceExam?.knowledgeFolderId != null) {
             navigate(trainingRoutes.knowledgeFolder(practiceExam.knowledgeFolderId));
             return;
