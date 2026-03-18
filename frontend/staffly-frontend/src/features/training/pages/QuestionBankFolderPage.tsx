@@ -330,7 +330,7 @@ export default function QuestionBankFolderPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-strong text-sm font-semibold sm:text-base">
+                    <h4 className="text-strong min-w-0 text-sm font-semibold [overflow-wrap:anywhere] sm:text-base">
                       {question.title}
                     </h4>
                     <span className="border-subtle bg-surface text-default inline-flex rounded-full border px-2 py-0.5 text-xs">
@@ -345,7 +345,9 @@ export default function QuestionBankFolderPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-muted text-sm">{question.prompt}</p>
+                  <p className="text-muted min-w-0 text-sm [overflow-wrap:anywhere]">
+                    {question.prompt}
+                  </p>
                 </div>
                 {canManage && (
                   <div className="flex shrink-0 gap-1 self-start">

@@ -8,21 +8,31 @@ type Props = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
 
 export default function Textarea({ label, error, hint, className = "", ...rest }: Props) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm text-muted">{label}</span>
+    <label className="block min-w-0">
+      <span className="text-muted mb-1 block min-w-0 text-sm [overflow-wrap:anywhere]">
+        {label}
+      </span>
 
       <textarea
         className={[
-          "w-full rounded-2xl border bg-surface p-3 text-[16px] text-default",
-          "outline-none transition focus:ring-2 focus:ring-default",
+          "bg-surface text-default w-full min-w-0 rounded-2xl border p-3 text-[16px] [overflow-wrap:anywhere]",
+          "focus:ring-default transition outline-none focus:ring-2",
           error ? "border-red-500 ring-red-200" : "border-subtle",
           className,
         ].join(" ")}
         {...rest}
       />
 
-      {hint && !error && <span className="mt-1 block text-xs text-muted">{hint}</span>}
-      {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
+      {hint && !error && (
+        <span className="text-muted mt-1 block min-w-0 text-xs [overflow-wrap:anywhere]">
+          {hint}
+        </span>
+      )}
+      {error && (
+        <span className="mt-1 block min-w-0 text-xs [overflow-wrap:anywhere] text-red-600">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

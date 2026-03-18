@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import Button from "../../../shared/ui/Button";
 import IconButton from "../../../shared/ui/IconButton";
@@ -10,8 +10,8 @@ import { createQuestion, updateQuestion } from "../api/trainingApi";
 import type {
   TrainingQuestionBlankDto,
   TrainingQuestionDto,
-  TrainingQuestionType,
   TrainingQuestionGroup,
+  TrainingQuestionType,
 } from "../api/types";
 import { getTrainingErrorMessage } from "../utils/errors";
 import {
@@ -134,20 +134,12 @@ export default function QuestionEditorModal({
     const reindexed = blanks
       .filter((b) => b.index !== index)
       .map((b, i) => ({ ...b, index: i + 1 }));
-    let nextPrompt = prompt.replace(new RegExp(`\\\\{\\\\{${index}}}`, "g"), "");
+    let nextPrompt = prompt.replace(new RegExp(`\\{\\{${index}}}`, "g"), "");
     reindexed.forEach((b, i) => {
-      nextPrompt = nextPrompt.replace(new RegExp(`\\\\{\\\\{${b.index}}}`, "g"), `{{${i + 1}}}`);
+      nextPrompt = nextPrompt.replace(new RegExp(`\\{\\{${b.index}}}`, "g"), `{{${i + 1}}}`);
     });
     setPrompt(nextPrompt.replace(/\s+/g, " ").trim());
     setBlanks(reindexed);
-  };
-
-  const move = <T,>(arr: T[], i: number, dir: -1 | 1): T[] => {
-    const n = i + dir;
-    if (n < 0 || n >= arr.length) return arr;
-    const copy = [...arr];
-    [copy[i], copy[n]] = [copy[n], copy[i]];
-    return copy;
   };
 
   const submit = async () => {
@@ -290,14 +282,17 @@ export default function QuestionEditorModal({
           />
           <Textarea
             label="Пояснение"
-            hint="Показывается пользователю после ответа и объясняет правильный вариант."
+            hint="Показывается пользователю после ответа и объясняет правильный вариант. Оставьте поле пустым, если пояснение не требуется."
             value={explanation}
             onChange={(e) => setExplanation(e.target.value)}
           />
           {type === "MATCH" && (
             <div className="space-y-2">
               {pairs.map((p, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                <div
+                  key={i}
+                  className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                >
                   <Input
                     label="Левая часть"
                     value={p.leftText}
@@ -306,6 +301,7 @@ export default function QuestionEditorModal({
                         prev.map((x, idx) => (idx === i ? { ...x, leftText: e.target.value } : x)),
                       )
                     }
+                    error={duplicates.has(`pair-${i}`) ? "Дубликат пары" : undefined}
                   />
                   <Input
                     label="Правая часть"
@@ -315,14 +311,9 @@ export default function QuestionEditorModal({
                         prev.map((x, idx) => (idx === i ? { ...x, rightText: e.target.value } : x)),
                       )
                     }
+                    error={duplicates.has(`pair-${i}`) ? "Дубликат пары" : undefined}
                   />
-                  <div className="flex">
-                    <IconButton onClick={() => setPairs((prev) => move(prev, i, -1))}>
-                      <ArrowUp className="h-4 w-4" />
-                    </IconButton>
-                    <IconButton onClick={() => setPairs((prev) => move(prev, i, 1))}>
-                      <ArrowDown className="h-4 w-4" />
-                    </IconButton>
+                  <div className="flex items-end justify-end">
                     <IconButton
                       onClick={() => setPairs((prev) => prev.filter((_, idx) => idx !== i))}
                     >
@@ -333,32 +324,94 @@ export default function QuestionEditorModal({
               ))}
               <Button
                 variant="outline"
+                className="w-full"
                 onClick={() => setPairs((prev) => [...prev, { leftText: "", rightText: "" }])}
               >
                 Добавить пару
               </Button>
             </div>
           )}
-          {(type === "SINGLE" || type === "MULTI") && (
+          {type === "SINGLE" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <p className="text-muted text-sm [overflow-wrap:anywhere]">
+                  Отметьте ровно один верный вариант. Эта отметка определяет правильный ответ.
+                </p>
+                {options.map((o, i) => (
+                  <div
+                    key={i}
+                    className={[
+                      "border-subtle bg-surface flex min-w-0 items-center gap-3 rounded-2xl border p-3 transition",
+                      o.correct ? "ring-default ring-2" : "hover:border-default/60",
+                    ].join(" ")}
+                  >
+                    <button
+                      type="button"
+                      className="flex shrink-0 items-center gap-2 text-left"
+                      onClick={() =>
+                        setOptions((prev) => prev.map((x, idx) => ({ ...x, correct: idx === i })))
+                      }
+                    >
+                      <span
+                        className={[
+                          "border-subtle flex h-6 w-6 items-center justify-center rounded-full border transition",
+                          o.correct
+                            ? "border-default bg-default text-white"
+                            : "bg-surface text-transparent",
+                        ].join(" ")}
+                        aria-hidden="true"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </span>
+                      <span className="text-default min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
+                        {o.correct ? "Верный" : "Сделать верным"}
+                      </span>
+                    </button>
+                    <Input
+                      label={`Вариант ${i + 1}`}
+                      className="min-w-0 flex-1"
+                      value={o.text}
+                      onChange={(e) =>
+                        setOptions((prev) =>
+                          prev.map((x, idx) => (idx === i ? { ...x, text: e.target.value } : x)),
+                        )
+                      }
+                      error={duplicates.has(`option-${i}`) ? "Дубликат" : undefined}
+                    />
+                    <IconButton
+                      disabled={options.length <= 2}
+                      onClick={() => setOptions((prev) => prev.filter((_, idx) => idx !== i))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setOptions((prev) => [...prev, { text: "", correct: false }])}
+              >
+                Добавить вариант
+              </Button>
+            </div>
+          )}
+          {type === "MULTI" && (
             <div className="space-y-2">
               {options.map((o, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className="flex min-w-0 items-center gap-2">
                   <input
-                    type={type === "MULTI" ? "checkbox" : "radio"}
+                    type="checkbox"
                     checked={o.correct}
                     onChange={() =>
                       setOptions((prev) =>
-                        prev.map((x, idx) =>
-                          idx === i
-                            ? { ...x, correct: type === "MULTI" ? !x.correct : true }
-                            : { ...x, correct: type === "MULTI" ? x.correct : false },
-                        ),
+                        prev.map((x, idx) => (idx === i ? { ...x, correct: !x.correct } : x)),
                       )
                     }
                   />
                   <Input
                     label="Вариант"
-                    className="flex-1"
+                    className="min-w-0 flex-1"
                     value={o.text}
                     onChange={(e) =>
                       setOptions((prev) =>
@@ -367,13 +420,8 @@ export default function QuestionEditorModal({
                     }
                     error={duplicates.has(`option-${i}`) ? "Дубликат" : undefined}
                   />
-                  <IconButton onClick={() => setOptions((prev) => move(prev, i, -1))}>
-                    <ArrowUp className="h-4 w-4" />
-                  </IconButton>
-                  <IconButton onClick={() => setOptions((prev) => move(prev, i, 1))}>
-                    <ArrowDown className="h-4 w-4" />
-                  </IconButton>
                   <IconButton
+                    disabled={options.length <= 2}
                     onClick={() => setOptions((prev) => prev.filter((_, idx) => idx !== i))}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -382,6 +430,7 @@ export default function QuestionEditorModal({
               ))}
               <Button
                 variant="outline"
+                className="w-full"
                 onClick={() => setOptions((prev) => [...prev, { text: "", correct: false }])}
               >
                 Добавить вариант
@@ -390,7 +439,7 @@ export default function QuestionEditorModal({
           )}
           {type === "TRUE_FALSE" && (
             <div className="space-y-2">
-              <label className="flex gap-2">
+              <label className="flex gap-2 [overflow-wrap:anywhere]">
                 <input
                   type="radio"
                   checked={options[0]?.correct ?? true}
@@ -403,7 +452,7 @@ export default function QuestionEditorModal({
                 />
                 Правда
               </label>
-              <label className="flex gap-2">
+              <label className="flex gap-2 [overflow-wrap:anywhere]">
                 <input
                   type="radio"
                   checked={options[1]?.correct ?? false}
@@ -425,14 +474,16 @@ export default function QuestionEditorModal({
               </Button>
               {blanks.map((blank) => (
                 <div key={blank.index} className="border-subtle space-y-2 rounded-2xl border p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">Пропуск {blank.index}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium [overflow-wrap:anywhere]">
+                      Пропуск {blank.index}
+                    </div>
                     <IconButton onClick={() => removeBlank(blank.index)}>
                       <Trash2 className="h-4 w-4" />
                     </IconButton>
                   </div>
                   {blank.options.map((o, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div key={i} className="flex min-w-0 items-center gap-2">
                       <input
                         type="radio"
                         name={`blank-${blank.index}`}
@@ -455,7 +506,7 @@ export default function QuestionEditorModal({
                       />
                       <Input
                         label="Вариант"
-                        className="flex-1"
+                        className="min-w-0 flex-1"
                         value={o.text}
                         onChange={(e) =>
                           setBlanks((prev) =>
@@ -490,6 +541,7 @@ export default function QuestionEditorModal({
                   ))}
                   <Button
                     variant="outline"
+                    className="w-full"
                     onClick={() =>
                       setBlanks((prev) =>
                         prev.map((b) =>
@@ -512,7 +564,7 @@ export default function QuestionEditorModal({
               ))}
             </div>
           )}
-          {error && <div className="text-sm text-red-600">{error}</div>}
+          {error && <div className="text-sm [overflow-wrap:anywhere] text-red-600">{error}</div>}
         </div>
       )}
     </Modal>
