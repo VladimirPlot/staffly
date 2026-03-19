@@ -1,9 +1,14 @@
 import React from "react";
+import type { CountryCode } from "libphonenumber-js";
 
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
+import {
+  DEFAULT_PHONE_COUNTRY,
+  normalizePhoneForSubmit,
+} from "../../../shared/utils/phone";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { login, register } from "../../auth/api";
@@ -17,30 +22,26 @@ const getStoredPhone = () => {
   return stored || undefined;
 };
 
-async function isPhoneValid(phone: string): Promise<boolean> {
-  const mod = await import("react-phone-number-input");
-  return mod.isValidPhoneNumber(phone);
-}
-
 export default function LoginRegister() {
   const { loginWithToken } = useAuth();
   const [mode, setMode] = React.useState<Mode>("login");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // login form
   const [lPhone, setLPhone] = React.useState<string | undefined>(() => getStoredPhone());
+  const [lCountry, setLCountry] = React.useState<CountryCode | undefined>(DEFAULT_PHONE_COUNTRY);
+  const [lCountryLocked, setLCountryLocked] = React.useState(false);
   const [lPassword, setLPassword] = React.useState("");
 
-  // register form
   const [rFirstName, setRFirstName] = React.useState("");
   const [rLastName, setRLastName] = React.useState("");
   const [rPhone, setRPhone] = React.useState<string | undefined>(undefined);
+  const [rCountry, setRCountry] = React.useState<CountryCode | undefined>(DEFAULT_PHONE_COUNTRY);
+  const [rCountryLocked, setRCountryLocked] = React.useState(false);
   const [rEmail, setREmail] = React.useState("");
   const [rPassword, setRPassword] = React.useState("");
   const [rBirthDate, setRBirthDate] = React.useState("");
 
-  // ✅ сбрасываем ошибки при смене вкладки, чтобы не “тянулось” между режимами
   React.useEffect(() => {
     setError(null);
   }, [mode]);
@@ -48,7 +49,11 @@ export default function LoginRegister() {
   const onLogin = async () => {
     setError(null);
 
-    if (!lPhone || !(await isPhoneValid(lPhone))) {
+    const loginPhone = normalizePhoneForSubmit(lPhone, {
+      selectedCountry: lCountry,
+      isCountryLocked: lCountryLocked,
+    });
+    if (!loginPhone.e164 || !loginPhone.isValid) {
       setError(PHONE_ERROR);
       return;
     }
@@ -59,11 +64,8 @@ export default function LoginRegister() {
 
     setBusy(true);
     try {
-      const { token } = await login({ phone: lPhone, password: lPassword });
-
-      // ✅ сохраняем телефон сразу после успеха
-      localStorage.setItem("auth.lastPhone", lPhone);
-
+      const { token } = await login({ phone: loginPhone.e164, password: lPassword });
+      localStorage.setItem("auth.lastPhone", loginPhone.e164);
       await loginWithToken(token);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка входа");
@@ -75,7 +77,11 @@ export default function LoginRegister() {
   const onRegister = async () => {
     setError(null);
 
-    if (!rPhone || !(await isPhoneValid(rPhone))) {
+    const registerPhone = normalizePhoneForSubmit(rPhone, {
+      selectedCountry: rCountry,
+      isCountryLocked: rCountryLocked,
+    });
+    if (!registerPhone.e164 || !registerPhone.isValid) {
       setError(PHONE_ERROR);
       return;
     }
@@ -83,17 +89,14 @@ export default function LoginRegister() {
     setBusy(true);
     try {
       const { token } = await register({
-        phone: rPhone,
+        phone: registerPhone.e164,
         email: rEmail.trim(),
         firstName: rFirstName.trim(),
         lastName: rLastName.trim(),
         password: rPassword,
         birthDate: rBirthDate.trim(),
       });
-
-      // ✅ тоже сохраняем телефон после успешной регистрации
-      localStorage.setItem("auth.lastPhone", rPhone);
-
+      localStorage.setItem("auth.lastPhone", registerPhone.e164);
       await loginWithToken(token);
     } catch (e: any) {
       setError(e?.friendlyMessage || "Ошибка регистрации");
@@ -113,6 +116,22 @@ export default function LoginRegister() {
     ) && !busy;
 
   const phoneError = error === PHONE_ERROR ? error : undefined;
+
+  const handleLoginCountryChange = (
+    nextCountry: NonNullable<typeof lCountry>,
+    meta?: { manual: boolean; locked: boolean },
+  ) => {
+    setLCountry(nextCountry);
+    setLCountryLocked(meta?.locked || false);
+  };
+
+  const handleRegisterCountryChange = (
+    nextCountry: NonNullable<typeof rCountry>,
+    meta?: { manual: boolean; locked: boolean },
+  ) => {
+    setRCountry(nextCountry);
+    setRCountryLocked(meta?.locked || false);
+  };
 
   return (
     <div className="mx-auto max-w-md">
@@ -139,9 +158,11 @@ export default function LoginRegister() {
             <LazyPhoneInputField
               label="Телефон"
               autoComplete="username"
-              defaultCountry="RU"
               value={lPhone}
               onChange={setLPhone}
+              country={lCountry}
+              countryLocked={lCountryLocked}
+              onCountryChange={handleLoginCountryChange}
               error={phoneError}
               disabled={busy}
             />
@@ -179,10 +200,12 @@ export default function LoginRegister() {
 
             <LazyPhoneInputField
               label="Телефон"
-              defaultCountry="RU"
               autoComplete="tel"
               value={rPhone}
               onChange={setRPhone}
+              country={rCountry}
+              countryLocked={rCountryLocked}
+              onCountryChange={handleRegisterCountryChange}
               error={phoneError}
               disabled={busy}
             />
