@@ -1,15 +1,14 @@
 import React from "react";
 import embeddedFlags from "react-phone-number-input/flags";
+import { parseIncompletePhoneNumber } from "libphonenumber-js/max";
 import type { CountryCode } from "libphonenumber-js";
 
 import {
-  canAppendPhoneInput,
-  formatPhoneForInput,
+  analyzePhoneNumber,
+  canAcceptPhoneInput,
   getCountryFlagEmoji,
   getCountryLabel,
   getPhoneCountryOptions,
-  analyzePhoneNumber,
-  resolvePhoneCountryForInput,
 } from "../utils/phone";
 
 type Props = {
@@ -17,7 +16,8 @@ type Props = {
   value: string | undefined;
   onChange: (value: string | undefined) => void;
   country?: CountryCode;
-  onCountryChange?: (country: CountryCode) => void;
+  countryLocked?: boolean;
+  onCountryChange?: (country: CountryCode, meta?: { manual: boolean; locked: boolean }) => void;
   error?: string;
   defaultCountry?: CountryCode;
   autoComplete?: string;
@@ -29,6 +29,7 @@ export default function PhoneInputField({
   value,
   onChange,
   country,
+  countryLocked,
   onCountryChange,
   error,
   defaultCountry,
@@ -36,120 +37,141 @@ export default function PhoneInputField({
   disabled,
 }: Props) {
   const selectedCountry = country || defaultCountry;
-  const analysis = analyzePhoneNumber(value, selectedCountry);
-  const helperText = error || getPhoneHelperText(analysis, selectedCountry);
+  const analysis = analyzePhoneNumber(value, selectedCountry, countryLocked);
+  const effectiveCountry = analysis.selectedCountry || selectedCountry;
+  const helperText = error || getPhoneHelperText(analysis);
+  const Flag = effectiveCountry ? embeddedFlags[effectiveCountry] : undefined;
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const [inputValue, setInputValue] = React.useState(() =>
-    formatPhoneForInput(value, selectedCountry),
-  );
-  const Flag = selectedCountry ? embeddedFlags[selectedCountry] : undefined;
+  const pendingCaretRef = React.useRef<{ digits: number; keepPlus: boolean } | null>(null);
+  const [displayValue, setDisplayValue] = React.useState(value || "");
 
   React.useEffect(() => {
-    setInputValue(formatPhoneForInput(value, selectedCountry));
-  }, [value, selectedCountry]);
+    if (!value) {
+      setDisplayValue("");
+      return;
+    }
+
+    setDisplayValue(analysis.inputValue || value);
+  }, [analysis.inputValue, value]);
+
+  React.useEffect(() => {
+    if (!value) {
+      return;
+    }
+
+    if (
+      analysis.shouldAutoSwitchCountry &&
+      analysis.selectedCountry &&
+      analysis.selectedCountry !== country
+    ) {
+      onCountryChange?.(analysis.selectedCountry, { manual: false, locked: false });
+    }
+  }, [analysis.selectedCountry, analysis.shouldAutoSwitchCountry, country, onCountryChange, value]);
+
+  React.useLayoutEffect(() => {
+    if (pendingCaretRef.current === null || !inputRef.current) {
+      return;
+    }
+
+    const nextCaret = findCaretPosition(displayValue, pendingCaretRef.current);
+    inputRef.current.setSelectionRange(nextCaret, nextCaret);
+    pendingCaretRef.current = null;
+  }, [displayValue]);
 
   const handleCountryChange = (nextCountry: CountryCode) => {
-    const nextFormatted = formatPhoneForInput(value, nextCountry);
-    setInputValue(nextFormatted);
-    onCountryChange?.(nextCountry);
+    onCountryChange?.(nextCountry, { manual: true, locked: true });
+  };
+
+  const applyPhoneValue = (
+    nextRawValue: string,
+    caret: { digits: number; keepPlus: boolean },
+  ) => {
+    if (!canAcceptPhoneInput(nextRawValue, effectiveCountry, !!countryLocked)) {
+      return;
+    }
+
+    const nextAnalysis = analyzePhoneNumber(nextRawValue, effectiveCountry, !!countryLocked);
+    const nextDraft = parseIncompletePhoneNumber(nextRawValue);
+    pendingCaretRef.current = caret;
+    setDisplayValue(nextAnalysis.inputValue || nextRawValue);
+    onChange(nextDraft || undefined);
+
+    if (!nextRawValue) {
+      onCountryChange?.(defaultCountry || country || "RU", { manual: false, locked: false });
+    }
   };
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const nextRawValue = event.target.value;
-    const nextCountry = resolvePhoneCountryForInput(nextRawValue, selectedCountry);
-    const inputType = (event.nativeEvent as InputEvent).inputType || "";
-    const isDeleting = inputType.startsWith("delete");
+    const selectionStart = event.target.selectionStart ?? nextRawValue.length;
+    const caret = getCaretSnapshot(nextRawValue, selectionStart);
 
-    if (!canAppendPhoneInput(nextRawValue, nextCountry)) {
-      return;
-    }
-
-    const nextFormatted = formatPhoneForInput(nextRawValue, nextCountry);
-    setInputValue(isDeleting ? nextRawValue : nextFormatted);
-    if (nextCountry) {
-      onCountryChange?.(nextCountry);
-    }
-    onChange(nextRawValue);
+    applyPhoneValue(nextRawValue, caret);
   };
 
-  const applyAdjustedDeletion = React.useCallback(
-    (adjustedValue: { value: string; caret: number }) => {
-      const nextCountry = resolvePhoneCountryForInput(adjustedValue.value, selectedCountry);
-      const nextFormatted = formatPhoneForInput(adjustedValue.value, nextCountry);
+  const handleDeleteBySeparator = (
+    input: HTMLInputElement,
+    mode: "backward" | "forward",
+  ) => {
+    const selectionStart = input.selectionStart ?? 0;
+    const selectionEnd = input.selectionEnd ?? selectionStart;
 
-      setInputValue(nextFormatted);
-      if (nextCountry) {
-        onCountryChange?.(nextCountry);
-      }
-      onChange(adjustedValue.value);
+    if (selectionStart !== selectionEnd) {
+      return false;
+    }
 
-      queueMicrotask(() => {
-        const nextInput = inputRef.current;
-        if (!nextInput) {
-          return;
-        }
+    const adjustedValue =
+      mode === "backward"
+        ? removeDigitBeforeCaret(displayValue, selectionStart)
+        : removeDigitAfterCaret(displayValue, selectionStart);
 
-        const nextCaret = Math.min(adjustedValue.caret, nextInput.value.length);
-        nextInput.setSelectionRange(nextCaret, nextCaret);
-      });
-    },
-    [onChange, onCountryChange, selectedCountry],
-  );
+    if (!adjustedValue) {
+      return false;
+    }
+
+    const caret = getCaretSnapshot(adjustedValue.value, adjustedValue.caret);
+    applyPhoneValue(adjustedValue.value, caret);
+    return true;
+  };
 
   const handleBeforeInput = (event: React.FormEvent<HTMLInputElement>) => {
     const nativeEvent = event.nativeEvent as InputEvent;
-    if (
-      nativeEvent.inputType !== "deleteContentBackward" &&
-      nativeEvent.inputType !== "deleteContentForward"
-    ) {
+
+    if (nativeEvent.inputType === "deleteContentBackward") {
+      if (handleDeleteBySeparator(event.currentTarget, "backward")) {
+        event.preventDefault();
+      }
       return;
     }
 
-    const input = event.currentTarget;
-    const selectionStart = input.selectionStart ?? 0;
-    const selectionEnd = input.selectionEnd ?? selectionStart;
-
-    if (selectionStart !== selectionEnd) {
-      return;
+    if (nativeEvent.inputType === "deleteContentForward") {
+      if (handleDeleteBySeparator(event.currentTarget, "forward")) {
+        event.preventDefault();
+      }
     }
-
-    const adjustedValue =
-      nativeEvent.inputType === "deleteContentBackward"
-        ? removeDigitBeforeCaret(input.value, selectionStart)
-        : removeDigitAfterCaret(input.value, selectionStart);
-
-    if (!adjustedValue) {
-      return;
-    }
-
-    event.preventDefault();
-    applyAdjustedDeletion(adjustedValue);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Backspace" && event.key !== "Delete") {
+    if (event.key === "Backspace") {
+      if (handleDeleteBySeparator(event.currentTarget, "backward")) {
+        event.preventDefault();
+      }
       return;
     }
 
-    const input = event.currentTarget;
-    const selectionStart = input.selectionStart ?? 0;
-    const selectionEnd = input.selectionEnd ?? selectionStart;
+    if (event.key === "Delete") {
+      if (handleDeleteBySeparator(event.currentTarget, "forward")) {
+        event.preventDefault();
+      }
+    }
+  };
 
-    if (selectionStart !== selectionEnd) {
+  const handleBlur = () => {
+    if (!analysis.inputValue) {
       return;
     }
 
-    const adjustedValue =
-      event.key === "Backspace"
-        ? removeDigitBeforeCaret(input.value, selectionStart)
-        : removeDigitAfterCaret(input.value, selectionStart);
-
-    if (!adjustedValue) {
-      return;
-    }
-
-    event.preventDefault();
-    applyAdjustedDeletion(adjustedValue);
+    setDisplayValue(analysis.inputValue);
   };
 
   return (
@@ -161,7 +183,7 @@ export default function PhoneInputField({
           <select
             aria-label="Страна номера"
             className="PhoneInputCountrySelect"
-            value={selectedCountry || ""}
+            value={effectiveCountry || ""}
             onChange={(event) => handleCountryChange(event.target.value as CountryCode)}
             disabled={disabled}
           >
@@ -175,14 +197,14 @@ export default function PhoneInputField({
             ))}
           </select>
           <span className="staffly-phone-countryValue">
-            {selectedCountry ? (
+            {effectiveCountry ? (
               <>
                 {Flag ? (
-                  <Flag title={getCountryLabel(selectedCountry)} />
+                  <Flag title={getCountryLabel(effectiveCountry)} />
                 ) : (
-                  <span aria-hidden="true">{getCountryFlagEmoji(selectedCountry)}</span>
+                  <span aria-hidden="true">{getCountryFlagEmoji(effectiveCountry)}</span>
                 )}
-                <span>{selectedCountry}</span>
+                <span>{effectiveCountry}</span>
               </>
             ) : (
               <span className="text-muted">Страна</span>
@@ -193,14 +215,15 @@ export default function PhoneInputField({
         <input
           ref={inputRef}
           type="tel"
-          value={inputValue}
+          value={displayValue}
+          onChange={handleInputChange}
           onBeforeInput={handleBeforeInput}
           onKeyDown={handleKeyDown}
-          onChange={handleInputChange}
+          onBlur={handleBlur}
           autoComplete={autoComplete}
           disabled={disabled}
           className="PhoneInputInput text-default placeholder:text-muted bg-transparent"
-          placeholder={selectedCountry ? "999 888-77-66" : "+7 999 888-77-66"}
+          placeholder={effectiveCountry === "RU" ? "999 888-77-66" : "+1 555 123 45 67"}
         />
       </div>
 
@@ -213,23 +236,58 @@ export default function PhoneInputField({
   );
 }
 
-function getPhoneHelperText(
-  analysis: ReturnType<typeof analyzePhoneNumber>,
-  selectedCountry?: CountryCode,
-) {
+function getPhoneHelperText(analysis: ReturnType<typeof analyzePhoneNumber>) {
   if (analysis.lengthIssue === "TOO_SHORT") {
-    return selectedCountry
-      ? `Номер слишком короткий для ${getCountryLabel(selectedCountry)}.`
+    return analysis.selectedCountry
+      ? `Номер слишком короткий для ${getCountryLabel(analysis.selectedCountry)}.`
       : "Номер слишком короткий.";
   }
 
   if (analysis.lengthIssue === "TOO_LONG") {
-    return selectedCountry
-      ? `Номер слишком длинный для ${getCountryLabel(selectedCountry)}.`
+    return analysis.selectedCountry
+      ? `Номер слишком длинный для ${getCountryLabel(analysis.selectedCountry)}.`
       : "Номер слишком длинный.";
   }
 
   return analysis.warning;
+}
+
+function getCaretSnapshot(value: string, caret: number) {
+  return {
+    digits: countDigitsBeforeCaret(value, caret),
+    keepPlus: value.startsWith("+") && caret > 0 && countDigitsBeforeCaret(value, caret) === 0,
+  };
+}
+
+function countDigitsBeforeCaret(value: string, caret: number) {
+  return value.slice(0, caret).replace(/\D/g, "").length;
+}
+
+function findCaretPosition(
+  value: string,
+  caret: { digits: number; keepPlus: boolean },
+) {
+  if (caret.keepPlus && value.startsWith("+")) {
+    return 1;
+  }
+
+  const digitsCount = caret.digits;
+  if (digitsCount <= 0) {
+    return 0;
+  }
+
+  let seenDigits = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (/\d/.test(value[index])) {
+      seenDigits += 1;
+    }
+
+    if (seenDigits >= digitsCount) {
+      return index + 1;
+    }
+  }
+
+  return value.length;
 }
 
 function removeDigitBeforeCaret(value: string, caret: number) {

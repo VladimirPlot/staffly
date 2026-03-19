@@ -8,7 +8,8 @@ type Props = {
   value: string | undefined;
   onChange: (value: string | undefined) => void;
   country?: CountryCode;
-  onCountryChange?: (country: CountryCode) => void;
+  countryLocked?: boolean;
+  onCountryChange?: (country: CountryCode, meta?: { manual: boolean; locked: boolean }) => void;
   error?: string;
   defaultCountry?: CountryCode;
   autoComplete?: string;
