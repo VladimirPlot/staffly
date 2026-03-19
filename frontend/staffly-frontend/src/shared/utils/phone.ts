@@ -58,8 +58,14 @@ const countryNames =
     ? new Intl.DisplayNames(["ru"], { type: "region" })
     : undefined;
 
+let phoneCountryOptionsCache: Array<{ code: CountryCode; label: string }> | null = null;
+
 export function getPhoneCountryOptions(): Array<{ code: CountryCode; label: string }> {
-  return getCountries()
+  if (phoneCountryOptionsCache) {
+    return phoneCountryOptionsCache;
+  }
+
+  phoneCountryOptionsCache = getCountries()
     .slice()
     .sort((left, right) => {
       const leftPriority = PRIORITY_COUNTRIES.indexOf(left);
@@ -77,6 +83,8 @@ export function getPhoneCountryOptions(): Array<{ code: CountryCode; label: stri
       code,
       label: `${getCountryFlagEmoji(code)} ${getCountryLabel(code)} +${getCountryCallingCode(code)}`,
     }));
+
+  return phoneCountryOptionsCache;
 }
 
 export function getCountryLabel(country: CountryCode) {
@@ -84,9 +92,7 @@ export function getCountryLabel(country: CountryCode) {
 }
 
 export function getCountryFlagEmoji(country: CountryCode) {
-  return String.fromCodePoint(
-    ...country.split("").map((char) => 127397 + char.charCodeAt(0)),
-  );
+  return String.fromCodePoint(...country.split("").map((char) => 127397 + char.charCodeAt(0)));
 }
 
 export function formatPhoneForInput(value?: string, country?: CountryCode) {
@@ -194,12 +200,14 @@ function normalizeInternationalPhone(
   const parsed = parsePhoneNumberFromString(normalized);
   const detectedCountry =
     parsed?.country || inferCountryFromCallingCode(normalized, currentCountry);
-  const selectedCountry =
-    isCountryLocked || !detectedCountry ? currentCountry : detectedCountry;
-  const possibleCountries = parsed?.getPossibleCountries() || (detectedCountry ? [detectedCountry] : []);
+  const selectedCountry = isCountryLocked || !detectedCountry ? currentCountry : detectedCountry;
+  const possibleCountries =
+    parsed?.getPossibleCountries() || (detectedCountry ? [detectedCountry] : []);
   const isValid = parsed?.isValid() || false;
   const lengthIssue =
-    detectedCountry && !isValid ? validatePhoneNumberLength(normalized, detectedCountry) : undefined;
+    detectedCountry && !isValid
+      ? validatePhoneNumberLength(normalized, detectedCountry)
+      : undefined;
 
   return {
     normalized,
@@ -242,9 +250,7 @@ function normalizeCisDraft(
   }
 
   const selectedCountry =
-    !isCountryLocked &&
-    digits.length >= AUTO_DETECTION_THRESHOLD &&
-    zone7Country !== currentCountry
+    !isCountryLocked && digits.length >= AUTO_DETECTION_THRESHOLD && zone7Country !== currentCountry
       ? zone7Country
       : currentCountry;
   const activeCountry = selectedCountry;
@@ -339,7 +345,9 @@ function normalizeNationalPhone(
   if ((currentCountry === "RU" || currentCountry === "KZ") && !looksLikeZone7National(digits)) {
     return {
       normalized: normalizedDraft || normalized,
-      inputValue: normalizedDraft ? formatPhoneForInput(normalizedDraft, currentCountry) : normalized,
+      inputValue: normalizedDraft
+        ? formatPhoneForInput(normalizedDraft, currentCountry)
+        : normalized,
       selectedCountry: currentCountry,
       detectedCountry: currentCountry,
       possibleCountries: [],
@@ -502,10 +510,7 @@ function buildZone7Normalized(digits: string, country: CountryCode) {
   return undefined;
 }
 
-function buildInternationalDraftFromNational(
-  digits: string,
-  country: CountryCode,
-) {
+function buildInternationalDraftFromNational(digits: string, country: CountryCode) {
   if (!digits) {
     return undefined;
   }
@@ -544,11 +549,7 @@ function shouldFormatAsInternationalZone7(digits: string, country: CountryCode) 
   return false;
 }
 
-function getZone7InputValue(
-  digits: string,
-  country: CountryCode,
-  normalizedDraft?: string,
-) {
+function getZone7InputValue(digits: string, country: CountryCode, normalizedDraft?: string) {
   if (digits.startsWith("9") && country === "RU") {
     return formatPhoneForInput(normalizedDraft || `+7${digits}`, country);
   }

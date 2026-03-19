@@ -37,7 +37,11 @@ export default function PhoneInputField({
   disabled,
 }: Props) {
   const selectedCountry = country || defaultCountry;
-  const analysis = analyzePhoneNumber(value, selectedCountry, countryLocked);
+  const phoneCountryOptions = React.useMemo(() => getPhoneCountryOptions(), []);
+  const analysis = React.useMemo(
+    () => analyzePhoneNumber(value, selectedCountry, countryLocked),
+    [value, selectedCountry, countryLocked],
+  );
   const effectiveCountry = analysis.selectedCountry || selectedCountry;
   const helperText = error || getPhoneHelperText(analysis);
   const Flag = effectiveCountry ? embeddedFlags[effectiveCountry] : undefined;
@@ -82,10 +86,7 @@ export default function PhoneInputField({
     onCountryChange?.(nextCountry, { manual: true, locked: true });
   };
 
-  const applyPhoneValue = (
-    nextRawValue: string,
-    caret: { digits: number; keepPlus: boolean },
-  ) => {
+  const applyPhoneValue = (nextRawValue: string, caret: { digits: number; keepPlus: boolean }) => {
     if (!canAcceptPhoneInput(nextRawValue, effectiveCountry, !!countryLocked)) {
       return;
     }
@@ -109,10 +110,7 @@ export default function PhoneInputField({
     applyPhoneValue(nextRawValue, caret);
   };
 
-  const handleDeleteBySeparator = (
-    input: HTMLInputElement,
-    mode: "backward" | "forward",
-  ) => {
+  const handleDeleteBySeparator = (input: HTMLInputElement, mode: "backward" | "forward") => {
     const selectionStart = input.selectionStart ?? 0;
     const selectionEnd = input.selectionEnd ?? selectionStart;
 
@@ -176,9 +174,9 @@ export default function PhoneInputField({
 
   return (
     <label className="block">
-      <span className="mb-1 block text-sm text-muted">{label}</span>
+      <span className="text-muted mb-1 block text-sm">{label}</span>
 
-      <div className={`w-full staffly-phone ${error ? "is-error" : ""}`}>
+      <div className={`staffly-phone w-full ${error ? "is-error" : ""}`}>
         <div className="staffly-phone-country">
           <select
             aria-label="Страна номера"
@@ -190,7 +188,7 @@ export default function PhoneInputField({
             <option value="" disabled>
               Страна
             </option>
-            {getPhoneCountryOptions().map((option) => (
+            {phoneCountryOptions.map((option) => (
               <option key={option.code} value={option.code}>
                 {option.label}
               </option>
@@ -263,10 +261,7 @@ function countDigitsBeforeCaret(value: string, caret: number) {
   return value.slice(0, caret).replace(/\D/g, "").length;
 }
 
-function findCaretPosition(
-  value: string,
-  caret: { digits: number; keepPlus: boolean },
-) {
+function findCaretPosition(value: string, caret: { digits: number; keepPlus: boolean }) {
   if (caret.keepPlus && value.startsWith("+")) {
     return 1;
   }
