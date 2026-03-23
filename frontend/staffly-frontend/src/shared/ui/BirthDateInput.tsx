@@ -108,10 +108,10 @@ export default function BirthDateInput({
           disabled={disabled}
           aria-label="Открыть календарь"
           className={[
-            "absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl border",
-            "border-subtle bg-[linear-gradient(180deg,var(--staffly-surface),var(--staffly-control))] text-icon",
-            "shadow-[var(--staffly-shadow)] transition hover:scale-[1.02] hover:bg-app",
-            "focus:outline-none focus:ring-2 focus:ring-default",
+            "absolute top-1/2 right-2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl border",
+            "border-subtle text-icon bg-[linear-gradient(180deg,var(--staffly-surface),var(--staffly-control))]",
+            "hover:bg-app shadow-[var(--staffly-shadow)] transition hover:scale-[1.02]",
+            "focus:ring-default focus:ring-2 focus:outline-none",
             disabled ? "cursor-not-allowed opacity-60" : "",
           ].join(" ")}
         >
@@ -127,8 +127,8 @@ export default function BirthDateInput({
           aria-hidden="true"
           className={
             prefersNativeTouchPicker
-              ? "absolute right-2 top-1/2 h-10 w-10 -translate-y-1/2 cursor-pointer opacity-0"
-              : "pointer-events-none absolute bottom-0 right-0 h-0 w-0 opacity-0"
+              ? "absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+              : "pointer-events-none absolute right-0 bottom-0 h-0 w-0 opacity-0"
           }
         />
       </div>
