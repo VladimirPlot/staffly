@@ -6,10 +6,7 @@ import Button from "../../../shared/ui/Button";
 import BirthDateInput from "../../../shared/ui/BirthDateInput";
 import Input from "../../../shared/ui/Input";
 import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
-import {
-  DEFAULT_PHONE_COUNTRY,
-  normalizePhoneForSubmit,
-} from "../../../shared/utils/phone";
+import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
 import {
   EMAIL_MAX_LENGTH,
   getEmailDraftError,
@@ -176,24 +173,45 @@ export default function LoginRegister() {
     setRCountryLocked(meta?.locked || false);
   };
 
+  const tabRailClassName =
+    "inline-flex w-full max-w-xs gap-1 rounded-[1.4rem] border " +
+    "border-[var(--staffly-brand-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.72)_0%,rgba(24,24,27,0.04)_100%)] " +
+    "p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-[2px] transition-colors duration-150 ease-out " +
+    "dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.02)_100%)] " +
+    "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
+
+  const tabButtonBaseClassName =
+    "relative flex-1 shadow-none transition-[transform,box-shadow,background-color,color] " +
+    "duration-150 ease-out motion-reduce:transition-none";
+
+  const activeTabClassName =
+    "z-10 -translate-y-px shadow-[0_14px_28px_rgba(9,9,11,0.24)] " +
+    "ring-1 ring-black/5 dark:ring-white/10";
+
+  const inactiveTabClassName = "text-muted hover:bg-[var(--staffly-brand-hover)]";
+
   return (
     <div className="mx-auto max-w-md">
       <Card>
-        <div className="mb-4 flex gap-2">
-          <Button
-            variant={mode === "login" ? "primary" : "outline"}
-            onClick={() => setMode("login")}
-            disabled={busy}
-          >
-            Вход
-          </Button>
-          <Button
-            variant={mode === "register" ? "primary" : "outline"}
-            onClick={() => setMode("register")}
-            disabled={busy}
-          >
-            Регистрация
-          </Button>
+        <div className="mb-4 flex justify-center">
+          <div className={tabRailClassName}>
+            <Button
+              variant={mode === "login" ? "primary" : "ghost"}
+              onClick={() => setMode("login")}
+              disabled={busy}
+              className={`${tabButtonBaseClassName} ${mode === "login" ? activeTabClassName : inactiveTabClassName}`}
+            >
+              Вход
+            </Button>
+            <Button
+              variant={mode === "register" ? "primary" : "ghost"}
+              onClick={() => setMode("register")}
+              disabled={busy}
+              className={`${tabButtonBaseClassName} ${mode === "register" ? activeTabClassName : inactiveTabClassName}`}
+            >
+              Регистрация
+            </Button>
+          </div>
         </div>
 
         {mode === "login" ? (
