@@ -1,3 +1,4 @@
+import { trainingRoutes } from "../utils/trainingRoutes";
 import Card from "../../../shared/ui/Card";
 import type { ExamProgressDto, TrainingExamDto } from "../api/types";
 import ExamRow from "./ExamRow";
@@ -36,6 +37,7 @@ export default function ExamList({
           onRestore={onRestore}
           onDelete={onDelete}
           onReset={onReset}
+          runRoute={trainingRoutes.examRun(exam.id)}
         />
       ))}
     </Card>

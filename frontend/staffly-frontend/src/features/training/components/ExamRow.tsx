@@ -1,34 +1,39 @@
-import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Button from "../../../shared/ui/Button";
 import Icon from "../../../shared/ui/Icon";
 import IconButton from "../../../shared/ui/IconButton";
 import type { ExamProgressDto, TrainingExamDto } from "../api/types";
-import { trainingRoutes } from "../utils/trainingRoutes";
+import type { PracticeExamStatus } from "../utils/practiceExamStatus";
 import ExamProgressBadge from "./ExamProgressBadge";
+import PracticeExamStatusBadge from "./PracticeExamStatusBadge";
 
 type Props = {
   exam: TrainingExamDto;
   canManage: boolean;
   progress?: ExamProgressDto;
+  practiceStatus?: PracticeExamStatus;
   isBusy: boolean;
   onHide: (id: number) => void;
   onRestore: (id: number) => void;
   onDelete: (id: number) => void;
-  onReset: (id: number) => void;
+  onReset?: (id: number) => void;
   onEdit?: (exam: TrainingExamDto) => void;
+  runRoute: string | null;
 };
 
 export default function ExamRow({
   exam,
   canManage,
   progress,
+  practiceStatus,
   isBusy,
   onHide,
   onRestore,
   onDelete,
   onReset,
   onEdit,
+  runRoute,
 }: Props) {
   return (
     <div className="rounded-2xl border border-subtle bg-app p-3">
@@ -36,25 +41,21 @@ export default function ExamRow({
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <div className="font-medium text-default">{exam.title}</div>
-
-            <ExamProgressBadge progress={progress} />
-
-            {!exam.active && (
-              <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
-                Скрыт
-              </span>
+            {practiceStatus ? (
+              <PracticeExamStatusBadge status={practiceStatus} isHidden={!exam.active} />
+            ) : (
+              <>
+                <ExamProgressBadge progress={progress} />
+                {!exam.active && <PracticeExamStatusBadge status={null} isHidden />}
+              </>
             )}
           </div>
 
-          {exam.description && (
-            <div className="text-sm text-muted">{exam.description}</div>
-          )}
+          {exam.description && <div className="text-sm text-muted">{exam.description}</div>}
 
           <div className="text-sm text-muted">
             Вопросов: {exam.questionCount} · Проходной балл: {exam.passPercent}%
-            {typeof progress?.scorePercent === "number"
-              ? ` · Последний результат: ${progress.scorePercent}%`
-              : ""}
+            {typeof progress?.scorePercent === "number" ? ` · Последний результат: ${progress.scorePercent}%` : ""}
           </div>
         </div>
 
@@ -62,47 +63,29 @@ export default function ExamRow({
           {canManage && (
             <>
               {onEdit && (
-                <IconButton
-                  aria-label="Редактировать аттестацию"
-                  title="Редактировать"
-                  onClick={() => onEdit(exam)}
-                  disabled={isBusy}
-                >
+                <IconButton aria-label="Редактировать тест" title="Редактировать" onClick={() => onEdit(exam)} disabled={isBusy}>
                   <Icon icon={Pencil} size="sm" />
                 </IconButton>
               )}
 
-              <IconButton
-                aria-label="Сбросить результаты"
-                title="Сбросить результаты"
-                onClick={() => onReset(exam.id)}
-                disabled={isBusy}
-              >
-                <Icon icon={Trash2} size="sm" />
-              </IconButton>
+              {onReset && (
+                <IconButton aria-label="Сбросить результаты" title="Сбросить результаты" onClick={() => onReset(exam.id)} disabled={isBusy}>
+                  <Icon icon={RotateCcw} size="sm" />
+                </IconButton>
+              )}
 
               {exam.active ? (
-                <IconButton
-                  aria-label="Скрыть аттестацию"
-                  title="Скрыть"
-                  onClick={() => onHide(exam.id)}
-                  disabled={isBusy}
-                >
+                <IconButton aria-label="Скрыть тест" title="Скрыть" onClick={() => onHide(exam.id)} disabled={isBusy}>
                   <Icon icon={EyeOff} size="sm" />
                 </IconButton>
               ) : (
-                <IconButton
-                  aria-label="Восстановить аттестацию"
-                  title="Восстановить"
-                  onClick={() => onRestore(exam.id)}
-                  disabled={isBusy}
-                >
+                <IconButton aria-label="Восстановить тест" title="Восстановить" onClick={() => onRestore(exam.id)} disabled={isBusy}>
                   <Icon icon={Eye} size="sm" />
                 </IconButton>
               )}
 
               <IconButton
-                aria-label={exam.active ? "Скрыть аттестацию" : "Удалить аттестацию навсегда"}
+                aria-label={exam.active ? "Скрыть тест" : "Удалить тест навсегда"}
                 title={exam.active ? "Скрыть" : "Удалить навсегда"}
                 onClick={() => (exam.active ? onHide(exam.id) : onDelete(exam.id))}
                 disabled={isBusy}
@@ -112,9 +95,11 @@ export default function ExamRow({
             </>
           )}
 
-          <Link to={trainingRoutes.examRun(exam.id)}>
-            <Button size="sm">Пройти</Button>
-          </Link>
+          {runRoute && (
+            <Link to={runRoute}>
+              <Button size="sm">Пройти</Button>
+            </Link>
+          )}
         </div>
       </div>
     </div>
