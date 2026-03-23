@@ -6,10 +6,7 @@ import Button from "../../../shared/ui/Button";
 import BirthDateInput from "../../../shared/ui/BirthDateInput";
 import Input from "../../../shared/ui/Input";
 import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
-import {
-  DEFAULT_PHONE_COUNTRY,
-  normalizePhoneForSubmit,
-} from "../../../shared/utils/phone";
+import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
 import {
   EMAIL_MAX_LENGTH,
   getEmailDraftError,
@@ -179,7 +176,7 @@ export default function LoginRegister() {
   return (
     <div className="mx-auto max-w-md">
       <Card>
-        <div className="mb-4 flex gap-2">
+        <div className="mb-4 flex justify-center gap-2">
           <Button
             variant={mode === "login" ? "primary" : "outline"}
             onClick={() => setMode("login")}
