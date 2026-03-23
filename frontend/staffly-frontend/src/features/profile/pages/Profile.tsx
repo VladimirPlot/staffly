@@ -2,6 +2,8 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
+import BirthDateInput from "../../../shared/ui/BirthDateInput";
+import EmailInput from "../../../shared/ui/EmailInput";
 import Input from "../../../shared/ui/Input";
 import Avatar from "../../../shared/ui/Avatar";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
@@ -15,12 +17,33 @@ import {
   type UserProfile,
 } from "../api";
 import { useAuth } from "../../../shared/providers/AuthProvider";
-import { base64UrlToArrayBuffer, getVapidPublicKey, subscribePush, subscriptionToDto, unsubscribePush } from "../../push/api";
-import { applyThemeToDom, getStoredTheme, setStoredTheme, type Theme } from "../../../shared/utils/theme";
+import {
+  base64UrlToArrayBuffer,
+  getVapidPublicKey,
+  subscribePush,
+  subscriptionToDto,
+  unsubscribePush,
+} from "../../push/api";
+import {
+  applyThemeToDom,
+  getStoredTheme,
+  setStoredTheme,
+  type Theme,
+} from "../../../shared/utils/theme";
 import { isAvatarMimeType } from "../utils/avatarCrop";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
 import { exportCroppedImageToFile } from "../../../shared/lib/imageCrop/canvasExport";
 import { pickOutputMimeType, supportsWebp } from "../../../shared/lib/imageCrop/mime";
+import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
+import { DEFAULT_PHONE_COUNTRY, analyzePhoneNumber } from "../../../shared/utils/phone";
+import useValidatedTextField from "../../../shared/hooks/useValidatedTextField";
+import {
+  formatBirthDateFromIso,
+  getBirthDateDraftError,
+  getBirthDateError,
+  normalizeBirthDateForSubmit,
+} from "../../../shared/utils/birthDate";
+import { getEmailDraftError, getEmailError } from "../../../shared/utils/email";
 
 const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
 const CROP_SIZE = 280;
@@ -65,65 +88,71 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
     }
   }, [sourceImageUrl]);
 
-  const onFileSelected = React.useCallback((file: File | null) => {
-    if (!file) return;
-    setError(null);
+  const onFileSelected = React.useCallback(
+    (file: File | null) => {
+      if (!file) return;
+      setError(null);
 
-    if (!isAvatarMimeType(file.type)) {
-      setError("Разрешены только JPEG, PNG или WEBP");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-    if (file.size > MAX_AVATAR_SIZE_BYTES) {
-      setError("Файл больше 5MB");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
+      if (!isAvatarMimeType(file.type)) {
+        setError("Разрешены только JPEG, PNG или WEBP");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+      if (file.size > MAX_AVATAR_SIZE_BYTES) {
+        setError("Файл больше 5MB");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
 
-    if (sourceImageUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(sourceImageUrl);
-    }
+      if (sourceImageUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(sourceImageUrl);
+      }
 
-    selectedFileRef.current = file;
-    setSourceImageUrl(URL.createObjectURL(file));
-    setCropModalOpen(true);
-  }, [sourceImageUrl]);
+      selectedFileRef.current = file;
+      setSourceImageUrl(URL.createObjectURL(file));
+      setCropModalOpen(true);
+    },
+    [sourceImageUrl],
+  );
 
-  const handleSaveCroppedAvatar = React.useCallback(async (croppedAreaPixels: { x: number; y: number; width: number; height: number }) => {
-    if (!sourceImageUrl || !selectedFileRef.current) return;
+  const handleSaveCroppedAvatar = React.useCallback(
+    async (croppedAreaPixels: { x: number; y: number; width: number; height: number }) => {
+      if (!sourceImageUrl || !selectedFileRef.current) return;
 
-    setBusy(true);
-    setError(null);
+      setBusy(true);
+      setError(null);
 
-    try {
-      const { file, previewUrl: nextPreview } = await exportCroppedImageToFile({
-        imageSrc: sourceImageUrl,
-        crop: croppedAreaPixels,
-        exportOptions: {
-          outputWidth: 512,
-          outputHeight: 512,
-          mimeType: pickOutputMimeType({
-            supportsWebp: supportsWebp(),
-            backendAllowsWebp: true,
-            fallback: "image/png",
-          }),
-          quality: 0.92,
-          baseFileName: selectedFileRef.current.name,
-        },
-      });
+      try {
+        const { file, previewUrl: nextPreview } = await exportCroppedImageToFile({
+          imageSrc: sourceImageUrl,
+          crop: croppedAreaPixels,
+          exportOptions: {
+            outputWidth: 512,
+            outputHeight: 512,
+            mimeType: pickOutputMimeType({
+              supportsWebp: supportsWebp(),
+              backendAllowsWebp: true,
+              fallback: "image/png",
+            }),
+            quality: 0.92,
+            baseFileName: selectedFileRef.current.name,
+          },
+        });
 
-      const { avatarUrl } = await uploadMyAvatar(file);
-      setPreviewUrl(nextPreview);
-      await onUploaded();
-      setPreviewUrl(toAbsoluteUrl(avatarUrl) ?? nextPreview);
-      resetCropModal();
-      alert("Аватар обновлён");
-    } catch (e: any) {
-      setError(e?.friendlyMessage || e?.message || "Не удалось обновить аватар");
-    } finally {
-      setBusy(false);
-    }
-  }, [onUploaded, resetCropModal, sourceImageUrl]);
+        const { avatarUrl } = await uploadMyAvatar(file);
+        setPreviewUrl(nextPreview);
+        await onUploaded();
+        setPreviewUrl(toAbsoluteUrl(avatarUrl) ?? nextPreview);
+        resetCropModal();
+        alert("Аватар обновлён");
+      } catch (e: any) {
+        setError(e?.friendlyMessage || e?.message || "Не удалось обновить аватар");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onUploaded, resetCropModal, sourceImageUrl],
+  );
 
   const handleDeleteAvatar = React.useCallback(async () => {
     setDeleteBusy(true);
@@ -141,13 +170,17 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
   }, [onUploaded]);
 
   return (
-    <div className="rounded-2xl border border-subtle p-4">
+    <div className="border-subtle rounded-2xl border p-4">
       <div className="mb-2 text-sm font-medium">Аватар</div>
-      <div className="mb-3 text-xs text-muted">Разрешены: JPEG, PNG, WEBP. Максимум 5MB.</div>
+      <div className="text-muted mb-3 text-xs">Разрешены: JPEG, PNG, WEBP. Максимум 5MB.</div>
 
       {previewUrl && (
         <div className="mb-3">
-          <img src={previewUrl} alt="Аватар" className="h-20 w-20 rounded-full border border-subtle object-cover" />
+          <img
+            src={previewUrl}
+            alt="Аватар"
+            className="border-subtle h-20 w-20 rounded-full border object-cover"
+          />
         </div>
       )}
 
@@ -160,10 +193,20 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy || deleteBusy}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy || deleteBusy}
+        >
           Выбрать файл
         </Button>
-        <Button type="button" variant="ghost" onClick={() => setDeleteConfirmOpen(true)} disabled={!previewUrl || busy || deleteBusy}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => setDeleteConfirmOpen(true)}
+          disabled={!previewUrl || busy || deleteBusy}
+        >
           Удалить аватар
         </Button>
       </div>
@@ -205,8 +248,22 @@ export default function Profile() {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
   const [phone, setPhone] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [birthDate, setBirthDate] = React.useState("");
+  const emailField = useValidatedTextField({
+    initialValue: "",
+    getError: getEmailError,
+    getDraftError: getEmailDraftError,
+  });
+  const birthDateField = useValidatedTextField({
+    initialValue: "",
+    allowEmpty: true,
+    getError: getBirthDateError,
+    getDraftError: getBirthDateDraftError,
+    normalizeForSubmit: normalizeBirthDateForSubmit,
+  });
+  const setProfileEmailValue = emailField.setValue;
+  const setProfileBirthDateValue = birthDateField.setValue;
+  const [phoneCountry, setPhoneCountry] = React.useState(DEFAULT_PHONE_COUNTRY);
+  const [phoneCountryLocked, setPhoneCountryLocked] = React.useState(false);
   const [theme, setTheme] = React.useState<Theme>(getStoredTheme() ?? "light");
   const [themeBusy, setThemeBusy] = React.useState(false);
   const [themeMsg, setThemeMsg] = React.useState<string | null>(null);
@@ -239,8 +296,8 @@ export default function Profile() {
         setFirstName(p.firstName || "");
         setLastName(p.lastName || "");
         setPhone(p.phone || "");
-        setEmail(p.email || "");
-        setBirthDate(p.birthDate || "");
+        setProfileEmailValue(p.email || "");
+        setProfileBirthDateValue(p.birthDate ? formatBirthDateFromIso(p.birthDate) : "");
         if (p.theme === "light" || p.theme === "dark") {
           setTheme(p.theme);
           setStoredTheme(p.theme);
@@ -254,8 +311,10 @@ export default function Profile() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [setProfileBirthDateValue, setProfileEmailValue]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -264,7 +323,8 @@ export default function Profile() {
     setPushSupported(supported);
     setPushPermission(hasNotification ? Notification.permission : "denied");
     setIsStandalone(
-      window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as any).standalone),
+      window.matchMedia("(display-mode: standalone)").matches ||
+        Boolean((navigator as any).standalone),
     );
     setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent));
     if (!supported || (hasNotification ? Notification.permission : "denied") !== "granted") {
@@ -294,18 +354,79 @@ export default function Profile() {
     }
   };
 
+  const phoneError =
+    phone && !analyzePhoneNumber(phone, phoneCountry, phoneCountryLocked).isValid
+      ? "Введите корректный номер телефона"
+      : undefined;
+  const handlePhoneCountryChange = (
+    nextCountry: NonNullable<typeof phoneCountry>,
+    meta?: { manual: boolean; locked: boolean },
+  ) => {
+    setPhoneCountry(nextCountry);
+    setPhoneCountryLocked(meta?.locked || false);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaveMsg(null);
+    emailField.setTouched(true);
+    emailField.setSubmitAttempted(true);
+    birthDateField.setTouched(true);
+    birthDateField.setSubmitAttempted(true);
+
+    const normalizedPhone = analyzePhoneNumber(phone, phoneCountry, phoneCountryLocked);
+    if (!normalizedPhone.e164 || !normalizedPhone.isValid) {
+      alert("Введите корректный номер телефона");
+      return;
+    }
+    if (!emailField.isValid) {
+      alert("Введите корректный email");
+      return;
+    }
+    if (!birthDateField.isValid) {
+      alert("Введите корректную дату рождения");
+      return;
+    }
+
+    try {
+      const normalizedEmail = emailField.getSubmitValue();
+      const normalizedBirthDate = birthDateField.getSubmitValue();
+
+      if (!normalizedEmail) {
+        return;
+      }
+
+      setSaving(true);
+      await updateMyProfile({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: normalizedPhone.e164,
+        email: normalizedEmail,
+        birthDate: normalizedBirthDate,
+      });
+      await refreshMe();
+      setSaveMsg("Сохранено");
+    } catch (e: any) {
+      setSaveMsg(null);
+      alert(e?.friendlyMessage || "Не удалось сохранить профиль");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-xl">
       <Card>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Профиль</h2>
-          <Button variant="outline" onClick={() => navigate("/restaurants")}>Закрыть</Button>
+          <Button variant="outline" onClick={() => navigate("/restaurants")}>
+            Закрыть
+          </Button>
         </div>
 
         {/* Текущий аватар */}
         <div className="mb-4 flex items-center gap-3">
           <Avatar name={user?.name || "Пользователь"} imageUrl={user?.avatarUrl} />
-          <div className="text-sm text-muted">
+          <div className="text-muted text-sm">
             {user?.avatarUrl ? "Аватар загружен" : "Аватар не загружен"}
           </div>
         </div>
@@ -322,47 +443,52 @@ export default function Profile() {
             {/* Контактные данные */}
             <div className="mt-6 grid gap-4">
               <Input label="Имя" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              <Input label="Фамилия" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-              <Input label="Телефон" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <Input label="Дата рождения" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+              <Input
+                label="Фамилия"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+              <LazyPhoneInputField
+                label="Телефон"
+                autoComplete="tel"
+                value={phone}
+                onChange={(value) => setPhone(value ?? "")}
+                country={phoneCountry}
+                countryLocked={phoneCountryLocked}
+                onCountryChange={handlePhoneCountryChange}
+                error={phoneError}
+              />
+              <EmailInput
+                label="Email"
+                value={emailField.value}
+                onChange={emailField.setValue}
+                onBlur={() => emailField.setTouched(true)}
+                error={emailField.error}
+              />
+              <BirthDateInput
+                label="Дата рождения"
+                value={birthDateField.value}
+                onChange={birthDateField.setValue}
+                onBlur={() => birthDateField.setTouched(true)}
+                error={birthDateField.error}
+              />
             </div>
 
             {saveMsg && <div className="mt-2 text-sm text-emerald-700">{saveMsg}</div>}
 
             <div className="mt-4 flex gap-2">
-              <Button
-                onClick={async () => {
-                  try {
-                    setSaving(true);
-                    setSaveMsg(null);
-                    await updateMyProfile({
-                      firstName: firstName.trim(),
-                      lastName: lastName.trim(),
-                      phone: phone.trim(),
-                      email: email.trim(),
-                      birthDate: birthDate.trim() ? birthDate.trim() : null,
-                    });
-                    await refreshMe();
-                    setSaveMsg("Сохранено");
-                  } catch (e: any) {
-                    setSaveMsg(null);
-                    alert(e?.friendlyMessage || "Не удалось сохранить профиль");
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-                disabled={saving}
-              >
+              <Button onClick={() => void handleSaveProfile()} disabled={saving}>
                 {saving ? "Сохраняем…" : "Сохранить"}
               </Button>
-              <Button variant="outline" onClick={() => navigate("/restaurants")}>Отмена</Button>
+              <Button variant="outline" onClick={() => navigate("/restaurants")}>
+                Отмена
+              </Button>
             </div>
 
-            <hr className="my-6 border-subtle" />
+            <hr className="border-subtle my-6" />
 
             <div className="mb-2 text-sm font-medium">Тема</div>
-            <div className="rounded-2xl border border-subtle p-4">
+            <div className="border-subtle rounded-2xl border p-4">
               <div className="flex flex-col gap-2 text-sm">
                 <label className="flex items-center gap-2">
                   <input
@@ -390,25 +516,23 @@ export default function Profile() {
               {themeMsg && <div className="mt-2 text-xs text-amber-700">{themeMsg}</div>}
             </div>
 
-            <hr className="my-6 border-subtle" />
+            <hr className="border-subtle my-6" />
 
             {/* Push уведомления */}
             <div className="mb-2 text-sm font-medium">Push уведомления</div>
             {!pushSupported && (
-              <div className="text-xs text-muted">
+              <div className="text-muted text-xs">
                 Ваш браузер не поддерживает push-уведомления.
               </div>
             )}
             {pushSupported && (
-              <div className="rounded-2xl border border-subtle p-4">
+              <div className="border-subtle rounded-2xl border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium">
                       {pushEnabled ? "Включены" : "Выключены"}
                     </div>
-                    <div className="text-xs text-muted">
-                      Разрешение: {pushPermission}
-                    </div>
+                    <div className="text-muted text-xs">Разрешение: {pushPermission}</div>
                   </div>
                   <Button
                     variant={pushEnabled ? "outline" : "primary"}
@@ -450,7 +574,9 @@ export default function Profile() {
                           setPushEnabled(false);
                         }
                       } catch (e: any) {
-                        setPushError(e?.friendlyMessage || (e as Error)?.message || "Ошибка настройки push");
+                        setPushError(
+                          e?.friendlyMessage || (e as Error)?.message || "Ошибка настройки push",
+                        );
                       } finally {
                         setPushBusy(false);
                       }
@@ -461,18 +587,18 @@ export default function Profile() {
                 </div>
                 {pushError && <div className="mt-2 text-xs text-red-600">{pushError}</div>}
                 {isIOS && !isStandalone && (
-                  <div className="mt-2 text-xs text-muted">
+                  <div className="text-muted mt-2 text-xs">
                     Добавьте приложение на экран «Домой», иначе push не работают на iOS.
                   </div>
                 )}
               </div>
             )}
 
-            <hr className="my-6 border-subtle" />
+            <hr className="border-subtle my-6" />
 
             {/* Смена пароля */}
             <div className="mb-2 text-sm font-medium">Сменить пароль</div>
-            <div className="rounded-2xl border border-subtle p-4 grid gap-3">
+            <div className="border-subtle grid gap-3 rounded-2xl border p-4">
               <Input
                 label="Текущий пароль"
                 type="password"
