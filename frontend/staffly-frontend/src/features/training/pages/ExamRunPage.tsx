@@ -1,4 +1,3 @@
-// D:\staffly\frontend\staffly-frontend\src\features\training\pages\ExamRunPage.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
@@ -21,7 +20,12 @@ import { trainingRoutes } from "../utils/trainingRoutes";
 
 type MatchPairAnswer = { left: string; right: string };
 type FillBlankAnswer = { blankIndex: number; value: string };
-type PersistedExamRunState = { attemptId: number; answers: Record<number, string>; currentIndex: number };
+type PersistedExamRunState = {
+  attemptId: number;
+  answers: Record<number, string>;
+  currentIndex: number;
+  confirmedQuestionIds: number[];
+};
 
 function isMulti(type: TrainingQuestionType) {
   return type === "MULTI";
@@ -111,14 +115,89 @@ function getQuestionValidationError(q: AttemptQuestionSnapshotDto, raw: string |
   return raw ? null : "Ответьте на вопрос, чтобы продолжить.";
 }
 
-function canShowQuestionExplanation(q: AttemptQuestionSnapshotDto, raw: string | undefined): boolean {
-  return !getQuestionValidationError(q, raw);
+function measureTextWidth(text: string, font = '500 16px system-ui') {
+  if (typeof document === "undefined") return 0;
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return 0;
+
+  context.font = font;
+  return context.measureText(text).width;
 }
 
-function renderQuestionExplanation(q: AttemptQuestionSnapshotDto, raw: string | undefined) {
-  if (!q.explanation || !canShowQuestionExplanation(q, raw)) return null;
+function getFillBlankSelectWidth(blankOptions: { text: string }[], selectedValue = "") {
+  const texts = blankOptions
+    .map((option) => option.text.trim())
+    .filter(Boolean);
 
-  return <div className="mt-1 text-sm text-muted">{q.explanation}</div>;
+  if (selectedValue.trim()) {
+    texts.push(selectedValue.trim());
+  }
+
+  const longestText = texts.reduce((longest, current) => {
+    return current.length > longest.length ? current : longest;
+  }, "");
+
+  const textWidth = measureTextWidth(longestText || "000000", '500 16px system-ui');
+
+  // запас:
+  // 24px слева + 32px справа под стрелку + небольшой safety gap
+  const totalWidth = Math.ceil(textWidth + 16 + 28 + 16);
+
+  return `${Math.min(Math.max(totalWidth, 84), 260)}px`;
+}
+
+function buildFillPromptParts(prompt: string) {
+  const result: Array<
+    | { type: "text"; value: string; key: string }
+    | { type: "blank"; blankIndex: number; key: string }
+  > = [];
+
+  const regex = /\{\{(\d+)\}\}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null = null;
+  let tokenIndex = 0;
+
+  while ((match = regex.exec(prompt)) !== null) {
+    if (match.index > lastIndex) {
+      result.push({
+        type: "text",
+        value: prompt.slice(lastIndex, match.index),
+        key: `text-${tokenIndex}-${lastIndex}`,
+      });
+    }
+
+    result.push({
+      type: "blank",
+      blankIndex: Number(match[1]),
+      key: `blank-${tokenIndex}-${match[1]}`,
+    });
+
+    lastIndex = regex.lastIndex;
+    tokenIndex += 1;
+  }
+
+  if (lastIndex < prompt.length) {
+    result.push({
+      type: "text",
+      value: prompt.slice(lastIndex),
+      key: `text-tail-${lastIndex}`,
+    });
+  }
+
+  return result;
+}
+
+function renderQuestionExplanation(
+  q: AttemptQuestionSnapshotDto,
+  raw: string | undefined,
+  isConfirmed: boolean,
+) {
+  if (!q.explanation || !isConfirmed) return null;
+  if (getQuestionValidationError(q, raw)) return null;
+
+  return <div className="mt-3 text-sm text-muted">{q.explanation}</div>;
 }
 
 export default function ExamRunPage() {
@@ -130,9 +209,8 @@ export default function ExamRunPage() {
   const { restaurantId } = useTrainingAccess();
 
   const [attempt, setAttempt] = useState<ExamAttemptDto | null>(null);
-
-  // answers[questionId] = JSON string (answerJson)
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [confirmedQuestionIds, setConfirmedQuestionIds] = useState<number[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -144,12 +222,21 @@ export default function ExamRunPage() {
   const [timeExpired, setTimeExpired] = useState(false);
   const [knowledgeFolders, setKnowledgeFolders] = useState<TrainingFolderDto[]>([]);
 
-  const backRoute = origin === "knowledge" && parsedFolderId != null ? `${trainingRoutes.knowledge}/${parsedFolderId}` : trainingRoutes.exams;
-  const breadcrumbItems = useMemo(() => buildExamRunBreadcrumbs(origin, parsedFolderId, knowledgeFolders), [origin, parsedFolderId, knowledgeFolders]);
+  const backRoute =
+    origin === "knowledge" && parsedFolderId != null
+      ? `${trainingRoutes.knowledge}/${parsedFolderId}`
+      : trainingRoutes.exams;
+
+  const breadcrumbItems = useMemo(
+    () => buildExamRunBreadcrumbs(origin, parsedFolderId, knowledgeFolders),
+    [origin, parsedFolderId, knowledgeFolders],
+  );
 
   useEffect(() => {
     if (!restaurantId || origin !== "knowledge") return;
-    void listFolders(restaurantId, "KNOWLEDGE", false).then(setKnowledgeFolders).catch(() => setKnowledgeFolders([]));
+    void listFolders(restaurantId, "KNOWLEDGE", false)
+      .then(setKnowledgeFolders)
+      .catch(() => setKnowledgeFolders([]));
   }, [restaurantId, origin]);
 
   const loadAttempt = async () => {
@@ -163,10 +250,14 @@ export default function ExamRunPage() {
 
       if (persisted && persisted.attemptId === response.attemptId) {
         setAnswers(persisted.answers ?? {});
-        setCurrentIndex(Math.min(Math.max(persisted.currentIndex ?? 0, 0), Math.max(response.questions.length - 1, 0)));
+        setCurrentIndex(
+          Math.min(Math.max(persisted.currentIndex ?? 0, 0), Math.max(response.questions.length - 1, 0)),
+        );
+        setConfirmedQuestionIds(persisted.confirmedQuestionIds ?? []);
       } else {
         localStorage.removeItem(storageKey);
         setAnswers({});
+        setConfirmedQuestionIds([]);
         setCurrentIndex(0);
       }
 
@@ -190,9 +281,14 @@ export default function ExamRunPage() {
     if (!attempt || Number.isNaN(parsedExamId) || result) return;
     localStorage.setItem(
       getStorageKey(parsedExamId),
-      JSON.stringify({ attemptId: attempt.attemptId, answers, currentIndex }),
+      JSON.stringify({
+        attemptId: attempt.attemptId,
+        answers,
+        currentIndex,
+        confirmedQuestionIds,
+      }),
     );
-  }, [answers, attempt, currentIndex, parsedExamId, result]);
+  }, [answers, attempt, confirmedQuestionIds, currentIndex, parsedExamId, result]);
 
   useEffect(() => {
     if (!attempt || attempt.exam.timeLimitSec == null || result) {
@@ -217,7 +313,6 @@ export default function ExamRunPage() {
     return () => window.clearInterval(intervalId);
   }, [attempt, result]);
 
-  // MATCH: по умолчанию — ПУСТО (без подстановки правильных rightText)
   const initMatchPayloadEmpty = (q: AttemptQuestionSnapshotDto) => {
     const pairs = [...q.matchPairs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const payload: MatchPairAnswer[] = pairs.map((p) => ({ left: p.leftText, right: "" }));
@@ -230,16 +325,22 @@ export default function ExamRunPage() {
     return getQuestionValidationError(currentQuestion, answers[currentQuestion.questionId]);
   }, [answers, currentQuestion]);
 
-  const canGoNext = !submitting && !timeExpired && !currentQuestionError;
+  const isCurrentQuestionConfirmed = currentQuestion
+    ? confirmedQuestionIds.includes(currentQuestion.questionId)
+    : false;
+
   const hasUnsavedAnswers = !result && Object.keys(answers).length > 0;
 
   const setSingleAnswer = (q: AttemptQuestionSnapshotDto, value: string) => {
+    if (confirmedQuestionIds.includes(q.questionId)) return;
     setQuestionError(null);
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(value) }));
   };
 
   const setMultiAnswer = (q: AttemptQuestionSnapshotDto, value: string, checked: boolean) => {
+    if (confirmedQuestionIds.includes(q.questionId)) return;
     setQuestionError(null);
+
     const current = answers[q.questionId];
     let arr: string[] = [];
     try {
@@ -257,7 +358,9 @@ export default function ExamRunPage() {
   };
 
   const setMatchRight = (q: AttemptQuestionSnapshotDto, left: string, right: string) => {
+    if (confirmedQuestionIds.includes(q.questionId)) return;
     setQuestionError(null);
+
     let payload: MatchPairAnswer[] = [];
     try {
       payload = answers[q.questionId]
@@ -268,7 +371,6 @@ export default function ExamRunPage() {
       payload = [];
     }
 
-    // enforce unique rights
     const usedRights = new Set(payload.filter((p) => p.left !== left).map((p) => p.right).filter(Boolean));
     if (right && usedRights.has(right)) return;
 
@@ -277,7 +379,9 @@ export default function ExamRunPage() {
   };
 
   const setFillSelectAnswer = (q: AttemptQuestionSnapshotDto, blankIndex: number, value: string) => {
+    if (confirmedQuestionIds.includes(q.questionId)) return;
     setQuestionError(null);
+
     let payload: FillBlankAnswer[] = [];
     try {
       payload = answers[q.questionId] ? (JSON.parse(answers[q.questionId]) as FillBlankAnswer[]) : [];
@@ -285,20 +389,23 @@ export default function ExamRunPage() {
     } catch {
       payload = [];
     }
+
     const next = payload.filter((p) => p.blankIndex !== blankIndex);
     next.push({ blankIndex, value });
     setAnswers((prev) => ({ ...prev, [q.questionId]: JSON.stringify(next) }));
   };
 
-  // ---- validation before submit (чтобы не отправлять "null" и не ловить 400) ----
-  const validateAllAnswered = useCallback((examAttempt: ExamAttemptDto) => {
-    for (const q of examAttempt.questions) {
-      const validationError = getQuestionValidationError(q, answers[q.questionId]);
-      if (validationError) return "Ответьте на все вопросы перед отправкой.";
-    }
+  const validateAllAnswered = useCallback(
+    (examAttempt: ExamAttemptDto) => {
+      for (const q of examAttempt.questions) {
+        const validationError = getQuestionValidationError(q, answers[q.questionId]);
+        if (validationError) return "Ответьте на все вопросы перед отправкой.";
+      }
 
-    return null;
-  }, [answers]);
+      return null;
+    },
+    [answers],
+  );
 
   const submit = useCallback(async () => {
     if (!restaurantId || !attempt || submitting) return;
@@ -334,13 +441,30 @@ export default function ExamRunPage() {
     void submit();
   }, [attempt, result, submitting, timeExpired, submit]);
 
+  const confirmCurrentAnswer = () => {
+    if (!currentQuestion) return;
+    setQuestionError(null);
+
+    const validationError = getQuestionValidationError(
+      currentQuestion,
+      answers[currentQuestion.questionId],
+    );
+    if (validationError) {
+      setQuestionError(validationError);
+      return;
+    }
+
+    setConfirmedQuestionIds((prev) =>
+      prev.includes(currentQuestion.questionId) ? prev : [...prev, currentQuestion.questionId],
+    );
+  };
+
   const goToNext = () => {
     if (!attempt || !currentQuestion) return;
     setQuestionError(null);
 
-    const validationError = getQuestionValidationError(currentQuestion, answers[currentQuestion.questionId]);
-    if (validationError) {
-      setQuestionError("Ответьте на вопрос, чтобы продолжить.");
+    if (!confirmedQuestionIds.includes(currentQuestion.questionId)) {
+      setQuestionError("Сначала отправьте ответ.");
       return;
     }
 
@@ -360,13 +484,69 @@ export default function ExamRunPage() {
     navigate(backRoute);
   };
 
+  const renderInlineFillPrompt = (
+    q: AttemptQuestionSnapshotDto,
+    byIndex: Map<number, string>,
+    isConfirmed: boolean,
+  ) => {
+    const blanksByIndex = new Map(q.blanks.map((blank) => [blank.blankIndex, blank]));
+    const parts = buildFillPromptParts(q.prompt);
+
+    return (
+      <div className="text-lg font-medium leading-8 text-default">
+        {parts.map((part) => {
+          if (part.type === "text") {
+            return (
+              <span key={part.key} className="whitespace-pre-wrap">
+                {part.value}
+              </span>
+            );
+          }
+
+          const blank = blanksByIndex.get(part.blankIndex);
+          if (!blank) {
+            return (
+              <span key={part.key} className="whitespace-pre-wrap text-rose-600">
+                {`{{${part.blankIndex}}}`}
+              </span>
+            );
+          }
+
+          const selectedValue = byIndex.get(blank.blankIndex) ?? "";
+          const selectWidth = getFillBlankSelectWidth(blank.options, selectedValue);
+
+          return (
+            <span key={part.key} className="mx-1 inline-block align-middle">
+              <select
+                className="h-10 rounded-xl border border-subtle bg-surface px-2 pr-7 text-sm text-default"
+                style={{ width: selectWidth, maxWidth: "100%" }}
+                value={selectedValue}
+                disabled={isConfirmed}
+                onChange={(e) => setFillSelectAnswer(q, blank.blankIndex, e.target.value)}
+              >
+                <option value="">—</option>
+                {blank.options.map((option) => (
+                  <option key={option.text} value={option.text}>
+                    {option.text}
+                  </option>
+                ))}
+              </select>
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderQuestion = (q: AttemptQuestionSnapshotDto, idx: number) => {
     const selected = answers[q.questionId];
+    const isConfirmed = confirmedQuestionIds.includes(q.questionId);
 
-    // MATCH
     if (isMatch(q.type)) {
       const pairs = [...q.matchPairs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-      const rights = Array.from(new Set(pairs.map((p) => p.rightText))).sort((a, b) => a.localeCompare(b, "ru"));
+      const rights = Array.from(new Set(pairs.map((p) => p.rightText))).sort((a, b) =>
+        a.localeCompare(b, "ru"),
+      );
 
       let payload: MatchPairAnswer[] = [];
       try {
@@ -387,26 +567,24 @@ export default function ExamRunPage() {
 
       return (
         <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
-          <div className="font-medium">
+          <div className="font-medium text-default">
             {idx + 1}. {q.prompt}
           </div>
-          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-3 space-y-2">
             {pairs.map((p) => {
               const value = rightByLeft.get(p.leftText) ?? "";
               return (
                 <div key={p.leftText} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm">{p.leftText}</div>
+                  <div className="text-sm text-default">{p.leftText}</div>
 
                   <select
                     className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm text-default sm:max-w-xs"
                     value={value}
+                    disabled={isConfirmed}
                     onChange={(e) => setMatchRight(q, p.leftText, e.target.value)}
                   >
-                    <option value="" disabled>
-                      Выберите...
-                    </option>
+                    <option value="" disabled hidden />
 
                     {optionsFor(value).map((r) => (
                       <option key={r} value={r}>
@@ -418,11 +596,12 @@ export default function ExamRunPage() {
               );
             })}
           </div>
+
+          {renderQuestionExplanation(q, selected, isConfirmed)}
         </div>
       );
     }
 
-    // MULTI
     if (isMulti(q.type)) {
       let current: string[] = [];
       try {
@@ -436,10 +615,9 @@ export default function ExamRunPage() {
 
       return (
         <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
-          <div className="font-medium">
+          <div className="font-medium text-default">
             {idx + 1}. {q.prompt}
           </div>
-          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-2 space-y-2">
             {opts.map((o) => (
@@ -447,12 +625,15 @@ export default function ExamRunPage() {
                 <input
                   type="checkbox"
                   checked={set.has(o.text)}
+                  disabled={isConfirmed}
                   onChange={(e) => setMultiAnswer(q, o.text, e.target.checked)}
                 />
                 {o.text}
               </label>
             ))}
           </div>
+
+          {renderQuestionExplanation(q, selected, isConfirmed)}
         </div>
       );
     }
@@ -465,42 +646,52 @@ export default function ExamRunPage() {
       } catch {
         current = [];
       }
+
       const byIndex = new Map(current.map((x) => [x.blankIndex, x.value]));
-      const blanks = [...q.blanks].sort((a, b) => a.blankIndex - b.blankIndex);
+      const hasTemplateTokens = /\{\{\d+\}\}/.test(q.prompt);
 
       return (
         <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
-          <div className="font-medium">
-            {idx + 1}. {q.prompt}
-          </div>
-          {renderQuestionExplanation(q, selected)}
-
-          <div className="mt-3 space-y-3">
-            {blanks.map((b) => (
-              <div key={b.blankIndex}>
-                <div className="mb-1 text-sm text-muted">Пропуск {b.blankIndex}</div>
-                <select
-                  className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm"
-                  value={byIndex.get(b.blankIndex) ?? ""}
-                  onChange={(e) => setFillSelectAnswer(q, b.blankIndex, e.target.value)}
-                >
-                  <option value="" disabled>
-                    Выберите вариант
-                  </option>
-                  {b.options.map((o) => (
-                    <option key={o.text} value={o.text}>
-                      {o.text}
-                    </option>
-                  ))}
-                </select>
+          {hasTemplateTokens ? (
+            renderInlineFillPrompt(q, byIndex, isConfirmed)
+          ) : (
+            <>
+              <div className="font-medium text-default">
+                {idx + 1}. {q.prompt}
               </div>
-            ))}
-          </div>
+
+              <div className="mt-3 space-y-3">
+                {[...q.blanks]
+                  .sort((a, b) => a.blankIndex - b.blankIndex)
+                  .map((b) => (
+                    <div key={b.blankIndex}>
+                      <div className="mb-1 text-sm text-muted">Пропуск {b.blankIndex}</div>
+                      <select
+                        className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm text-default"
+                        value={byIndex.get(b.blankIndex) ?? ""}
+                        disabled={isConfirmed}
+                        onChange={(e) => setFillSelectAnswer(q, b.blankIndex, e.target.value)}
+                      >
+                        <option value="" disabled>
+                          Выберите вариант
+                        </option>
+                        {b.options.map((o) => (
+                          <option key={o.text} value={o.text}>
+                            {o.text}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+              </div>
+            </>
+          )}
+
+          {renderQuestionExplanation(q, selected, isConfirmed)}
         </div>
       );
     }
 
-    // SINGLE / TRUE_FALSE
     if (isSingleLike(q.type)) {
       let current: string | null = null;
       try {
@@ -512,10 +703,9 @@ export default function ExamRunPage() {
 
       return (
         <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
-          <div className="font-medium">
+          <div className="font-medium text-default">
             {idx + 1}. {q.prompt}
           </div>
-          {renderQuestionExplanation(q, selected)}
 
           <div className="mt-2 space-y-2">
             {opts.map((o) => (
@@ -524,20 +714,22 @@ export default function ExamRunPage() {
                   type="radio"
                   name={`q-${q.questionId}`}
                   checked={current === o.text}
+                  disabled={isConfirmed}
                   onChange={() => setSingleAnswer(q, o.text)}
                 />
                 {o.text}
               </label>
             ))}
           </div>
+
+          {renderQuestionExplanation(q, selected, isConfirmed)}
         </div>
       );
     }
 
-    // fallback
     return (
       <div key={q.questionId} className="rounded-2xl border border-subtle bg-app p-3">
-        <div className="font-medium">
+        <div className="font-medium text-default">
           {idx + 1}. {q.prompt}
         </div>
         <div className="mt-1 text-sm text-amber-700">Этот тип вопроса пока не поддержан на фронте.</div>
@@ -549,7 +741,7 @@ export default function ExamRunPage() {
     <div className="mx-auto max-w-5xl space-y-4">
       <Breadcrumbs items={breadcrumbItems} />
 
-      <h2 className="text-2xl font-semibold">Прохождение теста</h2>
+      <h2 className="text-2xl font-semibold text-default">Прохождение теста</h2>
 
       {loading && <LoadingState label="Запускаем тест…" />}
       {error && <ErrorState message={error} onRetry={loadAttempt} />}
@@ -573,9 +765,20 @@ export default function ExamRunPage() {
 
           {!result && (
             <div className="flex flex-wrap gap-2">
-              <Button onClick={goToNext} isLoading={submitting} disabled={!canGoNext}>
-                {currentIndex === attempt.questions.length - 1 ? "Завершить" : "Далее"}
-              </Button>
+              {!isCurrentQuestionConfirmed ? (
+                <Button
+                  onClick={confirmCurrentAnswer}
+                  isLoading={submitting}
+                  disabled={submitting || timeExpired || !!currentQuestionError}
+                >
+                  Отправить ответ
+                </Button>
+              ) : (
+                <Button onClick={goToNext} isLoading={submitting} disabled={submitting || timeExpired}>
+                  {currentIndex === attempt.questions.length - 1 ? "Завершить тест" : "Далее"}
+                </Button>
+              )}
+
               <Button variant="outline" onClick={handleExit}>
                 К списку
               </Button>
@@ -589,7 +792,7 @@ export default function ExamRunPage() {
                   result.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
                 }`}
               >
-                {result.passed ? "Поздравляем! Тест пройден." : "Тест не пройден."} Результат: {" "}
+                {result.passed ? "Поздравляем! Тест пройден." : "Тест не пройден."} Результат:{" "}
                 {result.scorePercent}%.
               </div>
 

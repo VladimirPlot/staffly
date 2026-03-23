@@ -1,7 +1,9 @@
+import { Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
+import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -12,11 +14,14 @@ import KnowledgeItemModal from "../components/KnowledgeItemModal";
 import KnowledgeItemsGrid from "../components/KnowledgeItemsGrid";
 import LoadingState from "../components/LoadingState";
 import TrainingFolderModal from "../components/TrainingFolderModal";
+import Icon from "../../../shared/ui/Icon";
+import IconButton from "../../../shared/ui/IconButton";
 import { mapExamsForUi, mapKnowledgeItemsForUi } from "../api/mappers";
 import {
   deleteExam,
   deleteFolder,
   deleteKnowledgeItem,
+  getExamProgress,
   hideExam,
   hideKnowledgeItem,
   listKnowledgeExams,
@@ -24,7 +29,12 @@ import {
   restoreExam,
   restoreKnowledgeItem,
 } from "../api/trainingApi";
-import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
+import type {
+  ExamProgressDto,
+  TrainingExamDto,
+  TrainingFolderDto,
+  TrainingKnowledgeItemDto,
+} from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { getTrainingErrorMessage } from "../utils/errors";
@@ -37,6 +47,28 @@ type Props = {
 
 type ItemAction = "hide" | "restore" | "delete";
 type ExamAction = "hide" | "restore" | "delete";
+
+function getExamRunStorageKey(examId: number) {
+  return `training_exam_run_${examId}`;
+}
+
+function hasInProgressExamAttempt(examId: number) {
+  try {
+    return Boolean(localStorage.getItem(getExamRunStorageKey(examId)));
+  } catch {
+    return false;
+  }
+}
+
+function getPracticeExamStatus(
+  examId: number,
+  progress: ExamProgressDto | undefined,
+  inProgressIds: Set<number>,
+) {
+  if (inProgressIds.has(examId)) return "IN_PROGRESS";
+  if (!progress) return null;
+  return progress.passed ? "PASSED" : "FAILED";
+}
 
 export default function KnowledgePageBase({ currentFolderId }: Props) {
   const navigate = useNavigate();
@@ -67,6 +99,9 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const folderMap = useMemo(() => new Map(foldersState.folders.map((folder) => [folder.id, folder])), [foldersState.folders]);
   const currentFolder = currentFolderId == null ? null : folderMap.get(currentFolderId) ?? null;
 
+  const [examProgress, setExamProgress] = useState<ExamProgressDto[]>([]);
+  const [inProgressExamIds, setInProgressExamIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     if (!restaurantId || !canManage) return;
     void listPositions(restaurantId, { includeInactive: false }).then(setPositions).catch(() => setPositions([]));
@@ -75,6 +110,11 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const positionNameById = useMemo(
     () => new Map(positions.map((position) => [position.id, position.name])),
     [positions]
+  );
+
+  const progressByExamId = useMemo(
+    () => new Map(examProgress.map((item) => [item.examId, item])),
+    [examProgress]
   );
 
   const visiblePositions = useMemo(() => {
@@ -128,9 +168,52 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     }
   }, [restaurantId, currentFolderId, canManage, foldersState.includeInactive]);
 
+  const loadExamProgress = useCallback(async () => {
+    if (!restaurantId) {
+      setExamProgress([]);
+      return;
+    }
+
+    try {
+      const response = await getExamProgress(restaurantId);
+      setExamProgress(response);
+    } catch {
+      setExamProgress([]);
+    }
+  }, [restaurantId]);
+
   useEffect(() => {
     void loadPracticeExams();
   }, [loadPracticeExams]);
+
+  const refreshInProgressExamIds = useCallback(() => {
+    setInProgressExamIds(new Set(practiceExams.filter((exam) => hasInProgressExamAttempt(exam.id)).map((exam) => exam.id)));
+  }, [practiceExams]);
+
+  useEffect(() => {
+    void loadExamProgress();
+  }, [loadExamProgress]);
+
+  useEffect(() => {
+    refreshInProgressExamIds();
+  }, [refreshInProgressExamIds]);
+
+  useEffect(() => {
+    const handleFocus = () => refreshInProgressExamIds();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshInProgressExamIds();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshInProgressExamIds]);
 
   const breadcrumbItems = useMemo(() => {
     const crumbs: { label: string; to?: string }[] = [
@@ -207,11 +290,18 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     if (!restaurantId) return;
     setExamActionLoadingId(examId);
     setExamsError(null);
+
     try {
-      if (action === "hide") await hideExam(restaurantId, examId);
-      else if (action === "restore") await restoreExam(restaurantId, examId);
-      else await deleteExam(restaurantId, examId);
-      await loadPracticeExams();
+      if (action === "hide") {
+        await hideExam(restaurantId, examId);
+      } else if (action === "restore") {
+        await restoreExam(restaurantId, examId);
+      } else {
+        await deleteExam(restaurantId, examId);
+      }
+
+      await Promise.all([loadPracticeExams(), loadExamProgress()]);
+      refreshInProgressExamIds();
     } catch (error) {
       setExamsError(getTrainingErrorMessage(error, "Не удалось выполнить действие с тестом."));
     } finally {
@@ -277,31 +367,126 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
       )}
 
       {(examsLoading || examsError || practiceExams.length > 0) && (
-      <Card className="space-y-3">
-        <h3 className="text-lg font-semibold">Практические тесты</h3>
-        {examsLoading && <LoadingState label="Загрузка тестов…" />}
-        {examsError && <ErrorState message={examsError} onRetry={loadPracticeExams} />}
-        {!examsLoading && !examsError && practiceExams.length > 0 && (
-          <div className="space-y-2">
-            {practiceExams.map((exam) => (
-              <div key={exam.id} className="border-subtle bg-app w-full rounded-2xl border p-3 text-left space-y-2">
-                <div className="font-medium">{exam.title}</div>
-                {exam.description && <div className="text-sm text-muted">{exam.description}</div>}
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm" onClick={() => navigate(trainingRoutes.knowledgeExamRun(currentFolderId!, exam.id))}>Пройти</button>
-                  {canManage && (
-                    <>
-                      <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm" onClick={() => { setEditingExam(exam); setExamModalOpen(true); }}>Редактировать</button>
-                      <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm" disabled={examActionLoadingId === exam.id} onClick={() => runExamAction(exam.id, exam.active ? "hide" : "restore")}>{exam.active ? "Скрыть" : "Восстановить"}</button>
-                      <button type="button" className="rounded-xl border border-subtle px-3 py-1 text-sm disabled:opacity-50" disabled={exam.active || examActionLoadingId === exam.id} onClick={() => runExamAction(exam.id, "delete")}>Удалить</button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+        <Card className="space-y-3">
+          <h3 className="text-lg font-semibold">Практические тесты</h3>
+
+          {examsLoading && <LoadingState label="Загрузка тестов…" />}
+          {examsError && <ErrorState message={examsError} onRetry={loadPracticeExams} />}
+
+          {!examsLoading && !examsError && practiceExams.length > 0 && (
+            <div className="space-y-3">
+              {practiceExams.map((exam) => {
+                const isBusy = examActionLoadingId === exam.id;
+                const progress = progressByExamId.get(exam.id);
+                const status = getPracticeExamStatus(exam.id, progress, inProgressExamIds);
+
+                return (
+                  <div
+                    key={exam.id}
+                    className="border-subtle bg-app rounded-2xl border p-3"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-medium text-default">{exam.title}</div>
+
+                          {status === "PASSED" && (
+                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">
+                              Пройден
+                            </span>
+                          )}
+
+                          {status === "FAILED" && (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">
+                              Не пройден
+                            </span>
+                          )}
+
+                          {status === "IN_PROGRESS" && (
+                            <span className="rounded-full bg-sky-100 px-2 py-1 text-xs text-sky-700">
+                              Запущен
+                            </span>
+                          )}
+
+                          {!exam.active && (
+                            <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
+                              Скрыт
+                            </span>
+                          )}
+                        </div>
+
+                        {exam.description && (
+                          <div className="text-sm text-muted">{exam.description}</div>
+                        )}
+
+                        <div className="text-sm text-muted">
+                          Вопросов: {exam.questionCount} · Проходной балл: {exam.passPercent}%
+                          {typeof progress?.scorePercent === "number"
+                            ? ` · Последний результат: ${progress.scorePercent}%`
+                            : ""}
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 self-start">
+                        {canManage && (
+                          <>
+                            <IconButton
+                              aria-label="Редактировать тест"
+                              title="Редактировать"
+                              onClick={() => {
+                                setEditingExam(exam);
+                                setExamModalOpen(true);
+                              }}
+                              disabled={isBusy}
+                            >
+                              <Icon icon={Pencil} size="sm" />
+                            </IconButton>
+
+                            {exam.active ? (
+                              <IconButton
+                                aria-label="Скрыть тест"
+                                title="Скрыть"
+                                onClick={() => runExamAction(exam.id, "hide")}
+                                disabled={isBusy}
+                              >
+                                <Icon icon={EyeOff} size="sm" />
+                              </IconButton>
+                            ) : (
+                              <IconButton
+                                aria-label="Восстановить тест"
+                                title="Восстановить"
+                                onClick={() => runExamAction(exam.id, "restore")}
+                                disabled={isBusy}
+                              >
+                                <Icon icon={Eye} size="sm" />
+                              </IconButton>
+                            )}
+
+                            <IconButton
+                              aria-label={exam.active ? "Скрыть тест" : "Удалить тест навсегда"}
+                              title={exam.active ? "Скрыть" : "Удалить навсегда"}
+                              onClick={() => runExamAction(exam.id, exam.active ? "hide" : "delete")}
+                              disabled={isBusy}
+                            >
+                              <Icon icon={Trash2} size="sm" />
+                            </IconButton>
+                          </>
+                        )}
+
+                        <Button
+                          size="sm"
+                          onClick={() => navigate(trainingRoutes.knowledgeExamRun(currentFolderId!, exam.id))}
+                        >
+                          Пройти
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
       )}
 
       {(itemsLoading || itemsError || items.length > 0) && (
