@@ -4,23 +4,19 @@ import type { CountryCode } from "libphonenumber-js";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import BirthDateInput from "../../../shared/ui/BirthDateInput";
+import EmailInput from "../../../shared/ui/EmailInput";
 import Input from "../../../shared/ui/Input";
 import LazyPhoneInputField from "../../../shared/ui/LazyPhoneInputField";
 import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
-import {
-  EMAIL_MAX_LENGTH,
-  getEmailDraftError,
-  getEmailError,
-  isEmailValid,
-} from "../../../shared/utils/email";
+
+import { useAuth } from "../../../shared/providers/AuthProvider";
+import useValidatedTextField from "../../../shared/hooks/useValidatedTextField";
+import { getEmailDraftError, getEmailError } from "../../../shared/utils/email";
 import {
   getBirthDateDraftError,
   getBirthDateError,
-  isBirthDateValid,
   normalizeBirthDateForSubmit,
 } from "../../../shared/utils/birthDate";
-
-import { useAuth } from "../../../shared/providers/AuthProvider";
 import { login, register } from "../../auth/api";
 
 type Mode = "login" | "register";
@@ -48,32 +44,26 @@ export default function LoginRegister() {
   const [rPhone, setRPhone] = React.useState<string | undefined>(undefined);
   const [rCountry, setRCountry] = React.useState<CountryCode | undefined>(DEFAULT_PHONE_COUNTRY);
   const [rCountryLocked, setRCountryLocked] = React.useState(false);
-  const [rEmail, setREmail] = React.useState("");
-  const [rEmailTouched, setREmailTouched] = React.useState(false);
+  const rEmailField = useValidatedTextField({
+    initialValue: "",
+    getError: getEmailError,
+    getDraftError: getEmailDraftError,
+  });
   const [rPassword, setRPassword] = React.useState("");
-  const [rBirthDate, setRBirthDate] = React.useState("");
-  const [rBirthDateTouched, setRBirthDateTouched] = React.useState(false);
-  const [registerSubmitAttempted, setRegisterSubmitAttempted] = React.useState(false);
-
-  const registerEmailError =
-    registerSubmitAttempted || rEmail.trim()
-      ? getEmailError(rEmail)
-      : rEmailTouched
-        ? getEmailDraftError(rEmail)
-        : undefined;
-  const registerBirthDateError =
-    registerSubmitAttempted || rBirthDate.trim()
-      ? getBirthDateError(rBirthDate)
-      : rBirthDateTouched
-        ? getBirthDateDraftError(rBirthDate)
-        : undefined;
+  const rBirthDateField = useValidatedTextField({
+    initialValue: "",
+    getError: getBirthDateError,
+    getDraftError: getBirthDateDraftError,
+    normalizeForSubmit: normalizeBirthDateForSubmit,
+  });
+  const resetREmailValidation = rEmailField.resetValidation;
+  const resetRBirthDateValidation = rBirthDateField.resetValidation;
 
   React.useEffect(() => {
     setError(null);
-    setREmailTouched(false);
-    setRBirthDateTouched(false);
-    setRegisterSubmitAttempted(false);
-  }, [mode]);
+    resetREmailValidation();
+    resetRBirthDateValidation();
+  }, [mode, resetREmailValidation, resetRBirthDateValidation]);
 
   const onLogin = async () => {
     setError(null);
@@ -105,9 +95,10 @@ export default function LoginRegister() {
 
   const onRegister = async () => {
     setError(null);
-    setREmailTouched(true);
-    setRBirthDateTouched(true);
-    setRegisterSubmitAttempted(true);
+    rEmailField.setTouched(true);
+    rEmailField.setSubmitAttempted(true);
+    rBirthDateField.setTouched(true);
+    rBirthDateField.setSubmitAttempted(true);
 
     const registerPhone = normalizePhoneForSubmit(rPhone, {
       selectedCountry: rCountry,
@@ -117,22 +108,26 @@ export default function LoginRegister() {
       setError(PHONE_ERROR);
       return;
     }
-    if (!isEmailValid(rEmail)) {
-      return;
-    }
-    if (!isBirthDateValid(rBirthDate)) {
+    if (!rEmailField.isValid || !rBirthDateField.isValid) {
       return;
     }
 
     setBusy(true);
     try {
+      const registerEmail = rEmailField.getSubmitValue();
+      const registerBirthDate = rBirthDateField.getSubmitValue();
+
+      if (!registerEmail || !registerBirthDate) {
+        return;
+      }
+
       const { token } = await register({
         phone: registerPhone.e164,
-        email: rEmail.trim(),
+        email: registerEmail,
         firstName: rFirstName.trim(),
         lastName: rLastName.trim(),
         password: rPassword,
-        birthDate: normalizeBirthDateForSubmit(rBirthDate),
+        birthDate: registerBirthDate,
       });
       localStorage.setItem("auth.lastPhone", registerPhone.e164);
       await loginWithToken(token);
@@ -148,11 +143,9 @@ export default function LoginRegister() {
       rFirstName.trim() &&
       rLastName.trim() &&
       rPhone &&
-      rEmail.trim() &&
-      isEmailValid(rEmail) &&
+      rEmailField.isValid &&
       rPassword.trim() &&
-      rBirthDate.trim() &&
-      isBirthDateValid(rBirthDate)
+      rBirthDateField.isValid
     ) && !busy;
 
   const phoneError = error === PHONE_ERROR ? error : undefined;
@@ -271,24 +264,21 @@ export default function LoginRegister() {
               disabled={busy}
             />
 
-            <Input
+            <EmailInput
               label="Email"
-              type="email"
-              value={rEmail}
-              onChange={(e) => setREmail(e.target.value)}
-              onBlur={() => setREmailTouched(true)}
-              placeholder="name@example.com"
-              maxLength={EMAIL_MAX_LENGTH}
-              error={registerEmailError}
+              value={rEmailField.value}
+              onChange={rEmailField.setValue}
+              onBlur={() => rEmailField.setTouched(true)}
+              error={rEmailField.error}
               disabled={busy}
             />
 
             <BirthDateInput
               label="Дата рождения"
-              value={rBirthDate}
-              onChange={setRBirthDate}
-              onBlur={() => setRBirthDateTouched(true)}
-              error={registerBirthDateError}
+              value={rBirthDateField.value}
+              onChange={rBirthDateField.setValue}
+              onBlur={() => rBirthDateField.setTouched(true)}
+              error={rBirthDateField.error}
               disabled={busy}
             />
 
