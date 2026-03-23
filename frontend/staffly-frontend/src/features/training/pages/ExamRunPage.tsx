@@ -14,9 +14,9 @@ export default function ExamRunPage() {
   const navigate = useNavigate();
   const { restaurantId } = useTrainingAccess();
   const state = useExamRunState({
-    restaurantId,
+    restaurantId: restaurantId ?? undefined,
     examId: parsedExamId,
-    folderId: Number.isFinite(parsedFolderId) ? parsedFolderId : undefined,
+    folderId: Number.isFinite(parsedFolderId) ? parsedFolderId : null,
     navigate,
   });
 
