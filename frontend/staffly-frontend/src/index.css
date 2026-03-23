@@ -14,6 +14,12 @@
     --staffly-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
     --staffly-control: rgba(24, 24, 27, 0.04);
     --staffly-control-hover: rgba(24, 24, 27, 0.07);
+    --staffly-brand-surface: rgba(255, 255, 255, 0.88);
+    --staffly-brand-border: rgba(24, 24, 27, 0.1);
+    --staffly-brand-hover: rgba(24, 24, 27, 0.04);
+    --staffly-release-bg: rgba(24, 24, 27, 0.05);
+    --staffly-release-border: rgba(24, 24, 27, 0.08);
+    --staffly-release-text: #3f3f46;
   }
 
   .dark {
@@ -27,7 +33,13 @@
     --staffly-ring: #3f3f46;
     --staffly-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
     --staffly-control: rgba(255, 255, 255, 0.06);
-    --staffly-control-hover: rgba(255, 255, 255, 0.10);
+    --staffly-control-hover: rgba(255, 255, 255, 0.1);
+    --staffly-brand-surface: rgba(24, 24, 27, 0.92);
+    --staffly-brand-border: rgba(250, 250, 250, 0.12);
+    --staffly-brand-hover: rgba(250, 250, 250, 0.06);
+    --staffly-release-bg: rgba(250, 250, 250, 0.08);
+    --staffly-release-border: rgba(250, 250, 250, 0.1);
+    --staffly-release-text: #d4d4d8;
   }
 
   html,
@@ -103,6 +115,66 @@
     border-color: var(--staffly-border);
   }
 
+  .staffly-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    padding: 0 0.85rem;
+    border: 1px solid var(--staffly-brand-border);
+    border-radius: 999px;
+    background: var(--staffly-brand-surface);
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease;
+  }
+
+  .staffly-brand-text {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--staffly-text-strong);
+  }
+
+  .staffly-release-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.75rem;
+    padding: 0 0.65rem;
+    border: 1px solid var(--staffly-release-border);
+    border-radius: 999px;
+    background-color: var(--staffly-release-bg);
+    color: var(--staffly-release-text);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  a:hover .staffly-brand-mark,
+  a:focus-visible .staffly-brand-mark {
+    background: var(--staffly-brand-hover);
+  }
+
+  @media (max-width: 420px) {
+    .staffly-brand-mark {
+      min-height: 2.125rem;
+      padding: 0 0.72rem;
+    }
+
+    .staffly-brand-text {
+      font-size: 0.98rem;
+    }
+
+    .staffly-release-badge {
+      min-height: 1.65rem;
+      padding: 0 0.55rem;
+      font-size: 0.66rem;
+    }
+  }
+
   .topbar-link:hover {
     background-color: var(--staffly-control-hover);
   }
@@ -119,8 +191,8 @@
     color: var(--staffly-text);
   }
 
-  .staffly-phone .PhoneInputCountry {
-    @apply relative flex items-center justify-center rounded-2xl border px-3 shadow-sm transition;
+  .staffly-phone-country {
+    @apply relative flex min-w-[84px] items-center justify-center rounded-2xl border px-3 shadow-sm transition;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
   }
@@ -129,12 +201,18 @@
     @apply absolute inset-0 h-full w-full cursor-pointer opacity-0;
   }
 
-  .staffly-phone .PhoneInputCountryIcon {
-    @apply h-4 w-6 overflow-hidden rounded-sm;
+  .staffly-phone-countryValue {
+    @apply flex items-center gap-2 text-sm font-medium;
+    color: var(--staffly-text);
+  }
+
+  .staffly-phone-countryValue svg {
+    @apply h-4 w-6 shrink-0 overflow-hidden rounded-sm;
+    display: block;
   }
 
   .staffly-phone .PhoneInputInput {
-    @apply w-full rounded-2xl border p-3 text-[16px] outline-none transition;
+    @apply w-full rounded-2xl border p-3 text-[16px] transition outline-none;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
     color: var(--staffly-text);
@@ -159,15 +237,17 @@
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1); /* примерно ring-red-200 */
   }
 
-  .staffly-phone.is-error .PhoneInputCountry {
+  .staffly-phone.is-error .staffly-phone-country {
     @apply border-red-500;
   }
 
-  .staffly-phone:has(.PhoneInputInput:focus) .PhoneInputCountry {
+  .staffly-phone:has(.PhoneInputInput:focus) .staffly-phone-country,
+  .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
     box-shadow: 0 0 0 2px var(--staffly-ring);
   }
 
-  .staffly-phone.is-error:has(.PhoneInputInput:focus) .PhoneInputCountry {
+  .staffly-phone.is-error:has(.PhoneInputInput:focus) .staffly-phone-country,
+  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1);
   }
 }
