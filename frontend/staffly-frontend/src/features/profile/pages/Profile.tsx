@@ -259,14 +259,15 @@ export default function Profile() {
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const supported = "serviceWorker" in navigator && "PushManager" in window;
+    const hasNotification = typeof Notification !== "undefined";
+    const supported = hasNotification && "serviceWorker" in navigator && "PushManager" in window;
     setPushSupported(supported);
-    setPushPermission(Notification.permission);
+    setPushPermission(hasNotification ? Notification.permission : "denied");
     setIsStandalone(
       window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as any).standalone),
     );
     setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent));
-    if (!supported || Notification.permission !== "granted") {
+    if (!supported || (hasNotification ? Notification.permission : "denied") !== "granted") {
       setPushEnabled(false);
       return;
     }
@@ -417,6 +418,12 @@ export default function Profile() {
                       setPushError(null);
                       try {
                         if (!pushEnabled) {
+                          if (typeof Notification === "undefined") {
+                            setPushEnabled(false);
+                            setPushError("Push-уведомления недоступны в этом браузере");
+                            return;
+                          }
+
                           const permission = await Notification.requestPermission();
                           setPushPermission(permission);
                           if (permission !== "granted") {

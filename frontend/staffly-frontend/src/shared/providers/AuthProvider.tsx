@@ -51,6 +51,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
   const syncPushSubscription = React.useCallback(async () => {
     try {
       if (typeof window === "undefined") return;
+      if (typeof Notification === "undefined") return;
       if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
       if (Notification.permission !== "granted") return;
       const reg = await navigator.serviceWorker.ready;
