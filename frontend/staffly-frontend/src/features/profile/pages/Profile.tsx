@@ -413,6 +413,23 @@ export default function Profile() {
     }
   };
 
+  const handlePasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    try {
+      setPwdBusy(true);
+      setPwdMsg(null);
+      await changeMyPassword({ currentPassword: currPass, newPassword: newPass });
+      setPwdMsg("Пароль изменён");
+      setCurrPass("");
+      setNewPass("");
+    } catch (e: any) {
+      alert(e?.friendlyMessage || "Не удалось сменить пароль");
+    } finally {
+      setPwdBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-xl">
       <Card>
@@ -599,16 +616,29 @@ export default function Profile() {
 
             {/* Смена пароля */}
             <div className="mb-2 text-sm font-medium">Сменить пароль</div>
-            <div className="border-subtle grid gap-3 rounded-2xl border p-4">
+            <form
+              className="border-subtle grid gap-3 rounded-2xl border p-4"
+              onSubmit={handlePasswordSubmit}
+            >
               <Input
                 label="Текущий пароль"
                 type="password"
+                name="currentPassword"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
                 value={currPass}
                 onChange={(e) => setCurrPass(e.target.value)}
               />
               <Input
                 label="Новый пароль"
                 type="password"
+                name="newPassword"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
                 value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
               />
@@ -616,27 +646,11 @@ export default function Profile() {
               {pwdMsg && <div className="text-sm text-emerald-700">{pwdMsg}</div>}
 
               <div className="flex gap-2">
-                <Button
-                  onClick={async () => {
-                    try {
-                      setPwdBusy(true);
-                      setPwdMsg(null);
-                      await changeMyPassword({ currentPassword: currPass, newPassword: newPass });
-                      setPwdMsg("Пароль изменён");
-                      setCurrPass("");
-                      setNewPass("");
-                    } catch (e: any) {
-                      alert(e?.friendlyMessage || "Не удалось сменить пароль");
-                    } finally {
-                      setPwdBusy(false);
-                    }
-                  }}
-                  disabled={pwdBusy || !currPass || !newPass}
-                >
+                <Button type="submit" disabled={pwdBusy || !currPass || !newPass}>
                   {pwdBusy ? "Сохраняем…" : "Обновить пароль"}
                 </Button>
               </div>
-            </div>
+            </form>
           </>
         )}
       </Card>
