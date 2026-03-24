@@ -24,12 +24,6 @@ import {
   subscriptionToDto,
   unsubscribePush,
 } from "../../push/api";
-import {
-  applyThemeToDom,
-  getStoredTheme,
-  setStoredTheme,
-  type Theme,
-} from "../../../shared/utils/theme";
 import { isAvatarMimeType } from "../utils/avatarCrop";
 import { toAbsoluteUrl } from "../../../shared/utils/url";
 import { exportCroppedImageToFile } from "../../../shared/lib/imageCrop/canvasExport";
@@ -279,9 +273,6 @@ export default function Profile() {
   const setProfileBirthDateValue = birthDateField.setValue;
   const [phoneCountry, setPhoneCountry] = React.useState(DEFAULT_PHONE_COUNTRY);
   const [phoneCountryLocked, setPhoneCountryLocked] = React.useState(false);
-  const [theme, setTheme] = React.useState<Theme>(getStoredTheme() ?? "light");
-  const [themeBusy, setThemeBusy] = React.useState(false);
-  const [themeMsg, setThemeMsg] = React.useState<string | null>(null);
 
   // сохранение
   const [saving, setSaving] = React.useState(false);
@@ -313,11 +304,6 @@ export default function Profile() {
         setPhone(p.phone || "");
         setProfileEmailValue(p.email || "");
         setProfileBirthDateValue(p.birthDate ? formatBirthDateFromIso(p.birthDate) : "");
-        if (p.theme === "light" || p.theme === "dark") {
-          setTheme(p.theme);
-          setStoredTheme(p.theme);
-          applyThemeToDom(p.theme);
-        }
         setLoadErr(null);
       } catch (e: any) {
         if (!alive) return;
@@ -352,22 +338,6 @@ export default function Profile() {
       setPushEnabled(Boolean(sub));
     })();
   }, []);
-
-  const onChangeTheme = async (next: Theme) => {
-    setTheme(next);
-    setThemeMsg(null);
-    setStoredTheme(next);
-    applyThemeToDom(next);
-    setThemeBusy(true);
-    try {
-      await updateMyProfile({ theme: next });
-      await refreshMe();
-    } catch {
-      setThemeMsg("Сервер недоступен — тема сохранена локально и синхронизируется позже");
-    } finally {
-      setThemeBusy(false);
-    }
-  };
 
   const phoneError =
     phone && !analyzePhoneNumber(phone, phoneCountry, phoneCountryLocked).isValid
@@ -508,37 +478,6 @@ export default function Profile() {
               <Button variant="outline" onClick={() => navigate("/restaurants")}>
                 Отмена
               </Button>
-            </div>
-
-            <hr className="border-subtle my-6" />
-
-            <div className="mb-2 text-sm font-medium">Тема</div>
-            <div className="border-subtle rounded-2xl border p-4">
-              <div className="flex flex-col gap-2 text-sm">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="theme"
-                    value="light"
-                    checked={theme === "light"}
-                    onChange={() => onChangeTheme("light")}
-                    disabled={themeBusy}
-                  />
-                  <span>Светлая</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="theme"
-                    value="dark"
-                    checked={theme === "dark"}
-                    onChange={() => onChangeTheme("dark")}
-                    disabled={themeBusy}
-                  />
-                  <span>Тёмная</span>
-                </label>
-              </div>
-              {themeMsg && <div className="mt-2 text-xs text-amber-700">{themeMsg}</div>}
             </div>
 
             <hr className="border-subtle my-6" />
