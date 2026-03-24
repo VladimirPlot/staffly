@@ -43,10 +43,16 @@ public class TrainingExamAssignment {
     @JoinColumn(name = "assigned_position_id")
     private Position assignedPosition;
 
+    /**
+     * Timestamp of the initial assignment creation (not reset between cycles).
+     */
     @Column(name = "assigned_at", nullable = false)
     @Builder.Default
     private Instant assignedAt = TimeProvider.now();
 
+    /**
+     * Attempts limit snapshot for the current cycle; refreshed only on cycle reset.
+     */
     @Column(name = "attempts_limit_snapshot")
     private Integer attemptsLimitSnapshot;
 

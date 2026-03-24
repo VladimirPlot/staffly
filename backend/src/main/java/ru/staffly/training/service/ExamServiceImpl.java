@@ -124,6 +124,8 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
         }
 
+        // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
+        // For certification exams null/empty means "clear visibility", which is invalid.
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
 
@@ -569,7 +571,7 @@ public class ExamServiceImpl implements ExamService {
     private void validateCertificationVisibility(TrainingExamMode mode, List<Long> visibilityPositionIds) {
         if (mode == TrainingExamMode.CERTIFICATION
                 && (visibilityPositionIds == null || visibilityPositionIds.isEmpty())) {
-            throw new BadRequestException("Для аттестации нужно указать хотя бы одну visibility-позицию.");
+            throw new BadRequestException("Для аттестации нужно указать хотя бы одну visibility-позицию (update работает как полный replace).");
         }
     }
 

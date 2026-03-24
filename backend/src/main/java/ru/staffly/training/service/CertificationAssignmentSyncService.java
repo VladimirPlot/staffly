@@ -37,6 +37,8 @@ class CertificationAssignmentSyncService {
                 assignments.save(createAssignment(exam, member));
                 continue;
             }
+            // Existing active assignment keeps cycle snapshots (attempt limit/version).
+            // Snapshot changes are applied on explicit cycle reset only.
             existing.setAssignedPosition(member.getPosition());
         }
 
@@ -55,6 +57,7 @@ class CertificationAssignmentSyncService {
         }
         var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
         for (var assignment : activeAssignments) {
+            // Start a new cycle: refresh snapshots and counters, but keep initial assignment timestamp.
             assignment.setAttemptsLimitSnapshot(exam.getAttemptLimit());
             assignment.setExamVersionSnapshot(exam.getVersion());
             assignment.setExtraAttempts(0);
