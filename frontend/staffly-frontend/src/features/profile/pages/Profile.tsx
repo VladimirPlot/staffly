@@ -471,6 +471,7 @@ export default function Profile() {
                 onChange={birthDateField.setValue}
                 onBlur={() => birthDateField.setTouched(true)}
                 error={birthDateField.error}
+                preventAutofill
               />
             </div>
 

@@ -16,6 +16,7 @@ type BirthDateInputProps = {
   error?: string;
   disabled?: boolean;
   placeholder?: string;
+  preventAutofill?: boolean;
 };
 
 type PickerInput = HTMLInputElement & {
@@ -30,6 +31,7 @@ export default function BirthDateInput({
   error,
   disabled = false,
   placeholder = "DD-MM-YYYY",
+  preventAutofill = false,
 }: BirthDateInputProps) {
   const pickerRef = React.useRef<PickerInput | null>(null);
   const [prefersNativeTouchPicker, setPrefersNativeTouchPicker] = React.useState(false);
@@ -92,11 +94,18 @@ export default function BirthDateInput({
             error ? "border-red-500 ring-red-200" : "border-subtle",
           ].join(" ")}
           type="text"
+          name={preventAutofill ? "profile_birth_date_manual" : "birthDate"}
           value={value}
           onChange={(event) => onChange(formatBirthDateInput(event.target.value))}
           onBlur={onBlur}
           inputMode="numeric"
-          autoComplete="bday"
+          autoComplete={preventAutofill ? "off" : "bday"}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-lpignore={preventAutofill ? "true" : undefined}
+          data-1p-ignore={preventAutofill ? "true" : undefined}
+          data-form-type={preventAutofill ? "other" : undefined}
           maxLength={10}
           placeholder={placeholder}
           disabled={disabled}
@@ -121,6 +130,7 @@ export default function BirthDateInput({
         <input
           ref={pickerRef}
           type="date"
+          autoComplete={preventAutofill ? "off" : undefined}
           value={isoValue}
           onChange={handlePickerChange}
           tabIndex={-1}
