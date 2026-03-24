@@ -275,7 +275,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private Long requireMemberPositionId(Long restaurantId, Long userId) {
-        var member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a member"));
         if (member.getPosition() == null) {
             throw new ForbiddenException("Обратитесь к менеджеру или в поддержку.");

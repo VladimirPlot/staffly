@@ -60,18 +60,7 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Folder must belong to knowledge base");
         }
 
-        Long positionId = null;
-        if (!isManager) {
-            var visible = examAccessService.listVisibleExams(restaurantId, userId, false, false, null);
-            var visibleIds = visible.stream().map(TrainingExam::getId).collect(Collectors.toSet());
-            return exams.listPracticeByKnowledgeFolder(restaurantId, folderId, includeInactive, null)
-                    .stream()
-                    .filter(exam -> isManager || visibleIds.contains(exam.getId()))
-                    .map(this::toDtoWithSourcesAndVisibility)
-                    .toList();
-        }
-
-        return exams.listPracticeByKnowledgeFolder(restaurantId, folderId, includeInactive, positionId)
+        return examAccessService.listVisiblePracticeExamsByKnowledgeFolder(restaurantId, userId, isManager, folderId, includeInactive)
                 .stream()
                 .map(this::toDtoWithSourcesAndVisibility)
                 .toList();
@@ -185,6 +174,8 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public List<TrainingExamProgressDto> listCurrentUserExamProgress(Long restaurantId, Long userId) {
+        // Progress пока считается в пределах visibility-доступных certification экзаменов.
+        // Это не assignment-progress и не employee-level статус назначений.
         var examIds = examAccessService.listVisibleCertificationExamIdsForUser(restaurantId, userId);
         if (examIds.isEmpty()) {
             return List.of();
@@ -331,6 +322,8 @@ public class ExamServiceImpl implements ExamService {
     private void startNewGlobalResultCycle(TrainingExam exam) {
         // В текущей модели reset-results открывает новый глобальный цикл результатов.
         // Это не per-user reset: все новые попытки будут писаться под новой версией экзамена.
+        // В следующем этапе per-user reset должен быть отдельным сценарным слоем, а не
+        // переиспользованием этого механизма version increment.
         exam.setVersion(exam.getVersion() + 1);
     }
 
