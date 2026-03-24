@@ -1,11 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import BirthDateInput from "../../../shared/ui/BirthDateInput";
 import EmailInput from "../../../shared/ui/EmailInput";
 import Input from "../../../shared/ui/Input";
-import Avatar from "../../../shared/ui/Avatar";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import ImageCropperModal from "../../../shared/ui/ImageCropperModal";
 import {
@@ -170,45 +170,60 @@ function UploadAvatarBlock({ currentAvatarUrl, onUploaded }: UploadAvatarBlockPr
   }, [onUploaded]);
 
   return (
-    <div className="border-subtle rounded-2xl border p-4">
-      <div className="mb-2 text-sm font-medium">Аватар</div>
-      <div className="text-muted mb-3 text-xs">Разрешены: JPEG, PNG, WEBP. Максимум 5MB.</div>
+    <div className="border-subtle rounded-2xl border p-3 sm:p-4">
+      <div className="mb-3">
+        <div className="text-sm font-medium">Аватар</div>
+        <div className="text-muted text-xs">JPEG, PNG, WEBP · до 5 MB</div>
+      </div>
 
-      {previewUrl && (
-        <div className="mb-3">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+        {previewUrl ? (
           <img
             src={previewUrl}
             alt="Аватар"
-            className="border-subtle h-20 w-20 rounded-full border object-cover"
+            className="border-subtle h-12 w-12 shrink-0 rounded-full border object-cover"
           />
+        ) : (
+          <div className="border-subtle text-muted flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-[var(--staffly-control)] text-[10px] font-medium">
+            Нет
+          </div>
+        )}
+
+        <div className="min-w-0">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => onFileSelected(e.currentTarget.files?.[0] ?? null)}
+          />
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 w-full min-w-0 px-3 text-sm whitespace-nowrap"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy || deleteBusy}
+          >
+            Выбрать файл
+          </Button>
         </div>
-      )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
-        className="hidden"
-        onChange={(e) => onFileSelected(e.currentTarget.files?.[0] ?? null)}
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={busy || deleteBusy}
-        >
-          Выбрать файл
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => setDeleteConfirmOpen(true)}
-          disabled={!previewUrl || busy || deleteBusy}
-        >
-          Удалить аватар
-        </Button>
+        <div className="shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0 border-2 border-[color:var(--staffly-muted)] bg-[var(--staffly-surface)] text-[var(--staffly-text)] shadow-sm hover:bg-[var(--staffly-control-hover)]"
+            onClick={() => setDeleteConfirmOpen(true)}
+            disabled={!previewUrl || busy || deleteBusy}
+            aria-label="Удалить аватар"
+            title="Удалить аватар"
+          >
+            <Trash2 className="h-4 w-4 text-[var(--staffly-text)]" />
+          </Button>
+        </div>
       </div>
 
       {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
@@ -438,14 +453,6 @@ export default function Profile() {
           <Button variant="outline" onClick={() => navigate("/restaurants")}>
             Закрыть
           </Button>
-        </div>
-
-        {/* Текущий аватар */}
-        <div className="mb-4 flex items-center gap-3">
-          <Avatar name={user?.name || "Пользователь"} imageUrl={user?.avatarUrl} />
-          <div className="text-muted text-sm">
-            {user?.avatarUrl ? "Аватар загружен" : "Аватар не загружен"}
-          </div>
         </div>
 
         {/* Загрузка нового аватара */}
