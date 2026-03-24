@@ -150,7 +150,10 @@ export default function DropdownMenu({
       let top = t.bottom + GAP_Y;
 
       // clamp into viewport
-      left = Math.max(VIEWPORT_PADDING, Math.min(left, window.innerWidth - VIEWPORT_PADDING - menuW));
+      left = Math.max(
+        VIEWPORT_PADDING,
+        Math.min(left, window.innerWidth - VIEWPORT_PADDING - menuW),
+      );
 
       // if bottom overflow, try placing above
       const menuH = m.height;
@@ -254,7 +257,7 @@ export default function DropdownMenu({
               id={desktopMenuId}
               ref={desktopMenuRef}
               role="menu"
-              className={`border-subtle bg-surface fixed ${Z_MENU} max-w-[calc(100vw-16px)] rounded-2xl border p-1 shadow-[var(--staffly-shadow)] ${menuClassName}`}
+              className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] ${menuClassName}`}
               style={
                 desktopPos
                   ? { top: desktopPos.top, left: desktopPos.left }
@@ -263,7 +266,9 @@ export default function DropdownMenu({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
-              {children({ close })}
+              <div className="border-subtle bg-surface w-full overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
+                {children({ close })}
+              </div>
             </div>
           )}
 
