@@ -9,11 +9,13 @@ import PageLoader from "./shared/ui/PageLoader";
 import Avatar from "./shared/ui/Avatar";
 import Button from "./shared/ui/Button";
 import PwaUpdatePrompt from "./shared/pwa/PwaUpdatePrompt";
+import { updateMyProfile } from "./features/profile/api";
+import { applyThemeToDom, getStoredTheme, setStoredTheme, type Theme } from "./shared/utils/theme";
 
 import { fetchRestaurantName } from "./features/restaurants/api";
 import { fetchInboxUnreadCount } from "./features/inbox/api";
 
-import { Bell, Menu } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Menu, MoonStar, SunMedium, User, Wallet } from "lucide-react";
 import Icon from "./shared/ui/Icon";
 import IconButton from "./shared/ui/IconButton";
 
@@ -71,12 +73,16 @@ const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksPage"));
 
 /* ===== TopBar ===== */
 function TopBar() {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, refreshMe } = useAuth();
   const restaurantId = user?.restaurantId;
   const hasRestaurant = typeof restaurantId === "number";
   const [restName, setRestName] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState<number>(0);
+  const [theme, setTheme] = React.useState<Theme>(() => getStoredTheme() ?? "light");
+  const [themeBusy, setThemeBusy] = React.useState(false);
+  const [themeMsg, setThemeMsg] = React.useState<string | null>(null);
+  const mobileMenuId = React.useId();
 
   React.useEffect(() => {
     let alive = true;
@@ -100,6 +106,12 @@ function TopBar() {
   React.useEffect(() => {
     setMobileOpen(false);
   }, [token, restaurantId]);
+
+  React.useEffect(() => {
+    if (user?.theme === "light" || user?.theme === "dark") {
+      setTheme(user.theme);
+    }
+  }, [user?.theme]);
 
   React.useEffect(() => {
     let alive = true;
@@ -131,6 +143,30 @@ function TopBar() {
   }, [hasRestaurant, restaurantId]);
 
   const homeHref = token ? (hasRestaurant ? "/app" : "/restaurants") : "/login";
+
+  const closeMobileMenu = () => setMobileOpen(false);
+
+  const handleThemeChange = React.useCallback(
+    async (nextTheme: Theme) => {
+      if (themeBusy || nextTheme === theme) return;
+
+      setTheme(nextTheme);
+      setThemeMsg(null);
+      setStoredTheme(nextTheme);
+      applyThemeToDom(nextTheme);
+      setThemeBusy(true);
+
+      try {
+        await updateMyProfile({ theme: nextTheme });
+        await refreshMe();
+      } catch {
+        setThemeMsg("Тема сохранена локально и синхронизируется позже");
+      } finally {
+        setThemeBusy(false);
+      }
+    },
+    [refreshMe, theme, themeBusy],
+  );
 
   return (
     <div className="mb-6">
@@ -200,6 +236,8 @@ function TopBar() {
                 type="button"
                 className="border-subtle bg-surface text-default hover:bg-app ring-default inline-flex items-center justify-center rounded-2xl border px-3 py-2 text-sm font-medium shadow-[var(--staffly-shadow)] focus:ring-2 focus:outline-none"
                 aria-label="Открыть меню"
+                aria-controls={mobileMenuId}
+                aria-haspopup="menu"
                 aria-expanded={mobileOpen}
                 onClick={() => setMobileOpen((v) => !v)}
               >
@@ -215,59 +253,121 @@ function TopBar() {
       </header>
 
       {token && mobileOpen && (
-        <div className="border-subtle bg-surface mt-3 rounded-2xl border p-3 shadow-[var(--staffly-shadow)] sm:hidden">
-          {hasRestaurant && restName && (
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <Link
-                to="/app"
-                className="topbar-pill text-default rounded-full border px-3 py-1 text-xs"
-                onClick={() => setMobileOpen(false)}
-              >
-                {restName}
-              </Link>
-              <Link
-                to="/restaurants"
-                className="text-muted text-xs hover:underline"
-                onClick={() => setMobileOpen(false)}
-              >
-                Сменить ресторан
-              </Link>
-            </div>
-          )}
+        <nav
+          id={mobileMenuId}
+          aria-label="Мобильное меню"
+          className="border-subtle bg-surface mt-3 overflow-hidden rounded-[1.75rem] border shadow-[var(--staffly-shadow)] sm:hidden"
+        >
+          <div className="border-subtle bg-surface border-b p-4">
+            {user && (
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={user.name} imageUrl={user.avatarUrl} className="h-11 w-11" />
+                  <div className="min-w-0">
+                    <div className="text-default truncate text-sm font-semibold">{user.name}</div>
+                    <div className="text-muted truncate text-xs">{user.phone}</div>
+                  </div>
+                </div>
 
-          {user && (
-            <div className="mb-3 text-sm">
-              <div className="text-default font-medium">{user.name}</div>
-              <div className="text-muted">{user.phone}</div>
-            </div>
-          )}
+                <div className="border-subtle inline-flex items-center rounded-full border bg-[color:var(--staffly-control)] p-1">
+                  <button
+                    type="button"
+                    disabled={themeBusy}
+                    onClick={() => void handleThemeChange("light")}
+                    aria-label="Светлая тема"
+                    aria-pressed={theme === "light"}
+                    className={`focus:ring-default inline-flex h-9 w-9 items-center justify-center rounded-full transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                      theme === "light"
+                        ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-[0_6px_14px_rgba(0,0,0,0.18)]"
+                        : "text-default hover:bg-[color:var(--staffly-control-hover)]"
+                    }`}
+                  >
+                    <Icon icon={SunMedium} size="sm" />
+                  </button>
 
-          <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={themeBusy}
+                    onClick={() => void handleThemeChange("dark")}
+                    aria-label="Тёмная тема"
+                    aria-pressed={theme === "dark"}
+                    className={`focus:ring-default inline-flex h-9 w-9 items-center justify-center rounded-full transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                      theme === "dark"
+                        ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-[0_6px_14px_rgba(0,0,0,0.18)]"
+                        : "text-default hover:bg-[color:var(--staffly-control-hover)]"
+                    }`}
+                  >
+                    <Icon icon={MoonStar} size="sm" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {hasRestaurant && restName && (
+              <div className="border-subtle bg-app mt-3 flex items-center justify-between gap-3 rounded-2xl border px-3 py-2">
+                <Link
+                  to="/app"
+                  className="topbar-link text-default inline-flex items-center rounded-full border px-3 py-1 text-xs"
+                  onClick={closeMobileMenu}
+                >
+                  {restName}
+                </Link>
+                <Link
+                  to="/restaurants"
+                  className="text-muted text-xs hover:underline"
+                  onClick={closeMobileMenu}
+                >
+                  Сменить ресторан
+                </Link>
+              </div>
+            )}
+          </div>
+
+          <div className="p-2">
             <Link
               to="/me/income"
-              className="text-default hover:bg-app rounded-xl px-3 py-2"
-              onClick={() => setMobileOpen(false)}
+              className="group text-default flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+              onClick={closeMobileMenu}
             >
-              Мои доходы
+              <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                <Icon icon={Wallet} size="sm" />
+              </span>
+              <span className="min-w-0 flex-1 text-left text-sm font-medium">Мои доходы</span>
+              <Icon icon={ChevronRight} size="sm" className="text-muted" />
             </Link>
+
             <Link
               to="/profile"
-              className="text-default hover:bg-app rounded-xl px-3 py-2"
-              onClick={() => setMobileOpen(false)}
+              className="group text-default flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+              onClick={closeMobileMenu}
             >
-              Профиль
+              <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                <Icon icon={User} size="sm" />
+              </span>
+              <span className="min-w-0 flex-1 text-left text-sm font-medium">Профиль</span>
+              <Icon icon={ChevronRight} size="sm" className="text-muted" />
             </Link>
-            <button
-              className="text-default hover:bg-app rounded-xl px-3 py-2 text-left"
-              onClick={() => {
-                setMobileOpen(false);
-                logout();
-              }}
-            >
-              Выйти
-            </button>
+
+            {themeMsg && <div className="text-muted mt-2 px-1 text-xs">{themeMsg}</div>}
+
+            <div className="border-subtle mt-2 border-t pt-2">
+              <button
+                type="button"
+                className="group text-default flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+                onClick={() => {
+                  closeMobileMenu();
+                  logout();
+                }}
+              >
+                <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                  <Icon icon={LogOut} size="sm" />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-medium">Выйти</span>
+                <Icon icon={ChevronRight} size="sm" className="text-muted" />
+              </button>
+            </div>
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );
