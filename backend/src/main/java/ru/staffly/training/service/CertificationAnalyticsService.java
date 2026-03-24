@@ -1,0 +1,144 @@
+package ru.staffly.training.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.training.dto.*;
+import ru.staffly.training.model.TrainingExamAssignment;
+import ru.staffly.training.model.TrainingExamAssignmentStatus;
+import ru.staffly.training.model.TrainingExamMode;
+import ru.staffly.training.repository.TrainingExamAssignmentRepository;
+import ru.staffly.training.repository.TrainingExamAttemptRepository;
+import ru.staffly.training.repository.TrainingExamRepository;
+
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+class CertificationAnalyticsService {
+    private final TrainingExamRepository exams;
+    private final TrainingExamAssignmentRepository assignments;
+    private final TrainingExamAttemptRepository attempts;
+    private final RestaurantMemberRepository members;
+    private final CertificationAssignmentService assignmentService;
+
+    @Transactional(readOnly = true)
+    public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
+        var rows = loadAssignments(restaurantId, examId);
+        return toSummary(rows);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long examId) {
+        var rows = loadAssignments(restaurantId, examId);
+        return rows.stream()
+                .collect(Collectors.groupingBy(a -> new PositionKey(
+                        a.getAssignedPosition() == null ? null : a.getAssignedPosition().getId(),
+                        a.getAssignedPosition() == null ? "—" : a.getAssignedPosition().getName())))
+                .entrySet().stream()
+                .map(entry -> {
+                    var summary = toSummary(entry.getValue());
+                    return new CertificationExamPositionBreakdownDto(
+                            entry.getKey().positionId(),
+                            entry.getKey().positionName(),
+                            summary.totalAssigned(),
+                            summary.passedCount(),
+                            summary.failedCount(),
+                            summary.inProgressCount(),
+                            summary.notStartedCount(),
+                            summary.exhaustedCount(),
+                            summary.averageScore(),
+                            summary.passRate()
+                    );
+                })
+                .sorted(Comparator.comparing(CertificationExamPositionBreakdownDto::positionName, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long examId) {
+        var rows = loadAssignments(restaurantId, examId);
+        var userIds = rows.stream().map(a -> a.getUser().getId()).toList();
+        var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+                .filter(member -> userIds.contains(member.getUser().getId()))
+                .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
+
+        return rows.stream()
+                .map(assignment -> {
+                    var member = memberByUserId.get(assignment.getUser().getId());
+                    return new CertificationExamEmployeeRowDto(
+                            assignment.getId(),
+                            assignment.getUser().getId(),
+                            assignment.getUser().getFullName(),
+                            assignment.getAssignedPosition() == null ? null : assignment.getAssignedPosition().getId(),
+                            assignment.getAssignedPosition() == null ? null : assignment.getAssignedPosition().getName(),
+                            member == null || member.getPosition() == null ? null : member.getPosition().getId(),
+                            member == null || member.getPosition() == null ? null : member.getPosition().getName(),
+                            assignment.getStatus(),
+                            assignment.getAttemptsUsed(),
+                            assignmentService.calculateAttemptsAllowed(assignment),
+                            assignment.getExtraAttempts(),
+                            assignment.getBestScore(),
+                            assignment.getLastAttemptAt(),
+                            assignment.getPassedAt()
+                    );
+                })
+                .sorted(Comparator.comparing(CertificationExamEmployeeRowDto::fullName, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CertificationExamAttemptHistoryDto> getEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId) {
+        ensureCertificationExam(restaurantId, examId);
+        return attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(examId, restaurantId, userId).stream()
+                .map(attempt -> new CertificationExamAttemptHistoryDto(
+                        attempt.getId(),
+                        attempt.getStartedAt(),
+                        attempt.getFinishedAt(),
+                        attempt.getScorePercent(),
+                        attempt.getPassed(),
+                        attempt.getExamVersion()
+                ))
+                .toList();
+    }
+
+    private List<TrainingExamAssignment> loadAssignments(Long restaurantId, Long examId) {
+        ensureCertificationExam(restaurantId, examId);
+        return assignments.findActiveByExamIdAndRestaurantId(examId, restaurantId);
+    }
+
+    private CertificationExamSummaryDto toSummary(List<TrainingExamAssignment> rows) {
+        int total = rows.size();
+        int passed = countStatus(rows, TrainingExamAssignmentStatus.PASSED);
+        int failed = countStatus(rows, TrainingExamAssignmentStatus.FAILED);
+        int inProgress = countStatus(rows, TrainingExamAssignmentStatus.IN_PROGRESS);
+        int exhausted = countStatus(rows, TrainingExamAssignmentStatus.EXHAUSTED);
+        int notStarted = countStatus(rows, TrainingExamAssignmentStatus.ASSIGNED);
+
+        var scored = rows.stream().map(TrainingExamAssignment::getBestScore).filter(Objects::nonNull).toList();
+        Double avg = scored.isEmpty() ? null : scored.stream().mapToInt(Integer::intValue).average().orElse(0d);
+        Double passRate = total == 0 ? 0d : (passed * 100.0) / total;
+
+        return new CertificationExamSummaryDto(total, passed, failed, inProgress, notStarted, exhausted, avg, passRate);
+    }
+
+    private int countStatus(List<TrainingExamAssignment> rows, TrainingExamAssignmentStatus status) {
+        return (int) rows.stream().filter(a -> a.getStatus() == status).count();
+    }
+
+    private void ensureCertificationExam(Long restaurantId, Long examId) {
+        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Analytics is available only for certification exams.");
+        }
+    }
+
+    private record PositionKey(Long positionId, String positionName) {
+    }
+}

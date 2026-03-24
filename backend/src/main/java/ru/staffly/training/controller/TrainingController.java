@@ -274,8 +274,6 @@ public class TrainingController {
         return examService.listCurrentUserExamProgress(restaurantId, principal.userId());
     }
 
-
-
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
     @GetMapping("/exams/{examId}/results")
     public List<TrainingExamResultDto> listExamResults(@PathVariable Long restaurantId,
@@ -283,6 +281,58 @@ public class TrainingController {
                                                         @AuthenticationPrincipal UserPrincipal principal,
                                                         @RequestParam(required = false) Long positionId) {
         return examService.listExamResults(restaurantId, examId, positionId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/{examId}/assignments/{userId}/reset-attempts")
+    public void resetEmployeeCertificationAttempts(@PathVariable Long restaurantId,
+                                                   @PathVariable Long examId,
+                                                   @PathVariable Long userId,
+                                                   @AuthenticationPrincipal UserPrincipal principal) {
+        examService.resetEmployeeCertificationAttempts(restaurantId, examId, userId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/{examId}/assignments/{userId}/grant-extra-attempt")
+    public void grantEmployeeCertificationExtraAttempt(@PathVariable Long restaurantId,
+                                                       @PathVariable Long examId,
+                                                       @PathVariable Long userId,
+                                                       @AuthenticationPrincipal UserPrincipal principal,
+                                                       @RequestParam(required = false) Integer amount) {
+        examService.grantEmployeeCertificationExtraAttempts(restaurantId, examId, userId, amount);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/summary")
+    public CertificationExamSummaryDto getCertificationSummary(@PathVariable Long restaurantId,
+                                                               @PathVariable Long examId,
+                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamSummary(restaurantId, examId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/positions")
+    public List<CertificationExamPositionBreakdownDto> getCertificationPositionBreakdown(@PathVariable Long restaurantId,
+                                                                                         @PathVariable Long examId,
+                                                                                         @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamPositionBreakdown(restaurantId, examId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/employees")
+    public List<CertificationExamEmployeeRowDto> getCertificationEmployeeTable(@PathVariable Long restaurantId,
+                                                                               @PathVariable Long examId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamEmployeeTable(restaurantId, examId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/employees/{userId}/attempts")
+    public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(@PathVariable Long restaurantId,
+                                                                                           @PathVariable Long examId,
+                                                                                           @PathVariable Long userId,
+                                                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationEmployeeAttemptHistory(restaurantId, examId, userId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")

@@ -18,4 +18,12 @@ public interface ExamService {
     StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager);
     AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
     List<TrainingExamResultDto> listExamResults(Long restaurantId, Long examId, Long positionId);
+
+    void resetEmployeeCertificationAttempts(Long restaurantId, Long examId, Long userId);
+    void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long examId, Long userId, Integer amount);
+
+    CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long examId);
+    List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long examId);
+    List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long examId);
+    List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId);
 }

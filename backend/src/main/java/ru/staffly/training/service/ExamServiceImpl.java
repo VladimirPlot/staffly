@@ -39,6 +39,10 @@ public class ExamServiceImpl implements ExamService {
     private final ExamQuestionPoolResolver questionPoolResolver;
     private final ExamSnapshotService snapshotService;
     private final ExamAttemptEvaluator attemptEvaluator;
+    private final CertificationAssignmentSyncService assignmentSyncService;
+    private final CertificationAssignmentService certificationAssignmentService;
+    private final CertificationManagerActionService certificationManagerActionService;
+    private final CertificationAnalyticsService certificationAnalyticsService;
 
     @Override
     public List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly) {
@@ -86,6 +90,7 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, exam, request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
+        assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -131,6 +136,7 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, exam, request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
+        assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -149,6 +155,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         exam.setActive(true);
+        assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -170,6 +177,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         startNewGlobalResultCycle(exam);
+        assignmentSyncService.resetAssignmentsForNewCycle(exam);
     }
 
     @Override
@@ -211,6 +219,13 @@ public class ExamServiceImpl implements ExamService {
 
         examAccessService.ensureCanStartExam(exam, restaurantId, userId, isManager);
 
+        TrainingExamAssignment assignment = null;
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            assignment = certificationAssignmentService.resolveForStart(exam, restaurantId, userId);
+            certificationAssignmentService.ensureAttemptsAvailable(assignment);
+            certificationAssignmentService.markStarted(assignment);
+        }
+
         var existingAttemptOpt = attempts
                 .findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
                         examId, restaurantId, userId, exam.getVersion());
@@ -218,7 +233,11 @@ public class ExamServiceImpl implements ExamService {
             return resumeAttempt(exam, existingAttemptOpt.get());
         }
 
-        enforceAttemptLimit(exam, restaurantId, userId);
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null) {
+            certificationAssignmentService.ensureAttemptsAvailable(assignment);
+        } else {
+            enforceAttemptLimit(exam, restaurantId, userId);
+        }
 
         var pool = questionPoolResolver.buildQuestionPool(restaurantId, exam);
         if (pool.isEmpty()) {
@@ -227,7 +246,7 @@ public class ExamServiceImpl implements ExamService {
 
         var selectedQuestions = pickQuestionsForAttempt(pool, exam.getQuestionCount());
         var relationData = loadQuestionRelations(selectedQuestions);
-        var attempt = createAttempt(exam, userId);
+        var attempt = createAttempt(exam, userId, assignment);
         var snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
 
         return new StartExamResponseDto(
@@ -280,6 +299,9 @@ public class ExamServiceImpl implements ExamService {
         attempt.setFinishedAt(TimeProvider.now());
         attempt.setScorePercent(scorePercent);
         attempt.setPassed(scorePercent >= attempt.getPassPercentSnapshot());
+        if (attempt.getExam() != null && attempt.getExam().getMode() == TrainingExamMode.CERTIFICATION) {
+            certificationAssignmentService.updateOnSubmit(attempt);
+        }
 
         return new AttemptResultDto(
                 attempt.getId(),
@@ -317,6 +339,36 @@ public class ExamServiceImpl implements ExamService {
                         Boolean.TRUE.equals(r.getPassed())
                 ))
                 .toList();
+    }
+
+    @Override
+    public void resetEmployeeCertificationAttempts(Long restaurantId, Long examId, Long userId) {
+        certificationManagerActionService.resetAttemptsForEmployee(restaurantId, examId, userId);
+    }
+
+    @Override
+    public void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long examId, Long userId, Integer amount) {
+        certificationManagerActionService.grantExtraAttemptForEmployee(restaurantId, examId, userId, amount);
+    }
+
+    @Override
+    public CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long examId) {
+        return certificationAnalyticsService.getExamSummary(restaurantId, examId);
+    }
+
+    @Override
+    public List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long examId) {
+        return certificationAnalyticsService.getPositionBreakdown(restaurantId, examId);
+    }
+
+    @Override
+    public List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long examId) {
+        return certificationAnalyticsService.getEmployeeRows(restaurantId, examId);
+    }
+
+    @Override
+    public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId) {
+        return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, examId, userId);
     }
 
     private void startNewGlobalResultCycle(TrainingExam exam) {
@@ -383,11 +435,12 @@ public class ExamServiceImpl implements ExamService {
         return new QuestionRelations(optionsByQuestion, pairsByQuestion, blanksByQuestion, blankOptionsByBlank);
     }
 
-    private TrainingExamAttempt createAttempt(TrainingExam exam, Long userId) {
+    private TrainingExamAttempt createAttempt(TrainingExam exam, Long userId, TrainingExamAssignment assignment) {
         return attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
                 .examVersion(exam.getVersion())
                 .restaurant(exam.getRestaurant())
+                .assignment(assignment)
                 .user(User.builder().id(userId).build())
                 .startedAt(TimeProvider.now())
                 .passPercentSnapshot(exam.getPassPercent())
