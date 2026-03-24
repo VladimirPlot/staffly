@@ -56,6 +56,7 @@ class CertificationAssignmentSyncService {
         var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
         for (var assignment : activeAssignments) {
             assignment.setAttemptsLimitSnapshot(exam.getAttemptLimit());
+            assignment.setExamVersionSnapshot(exam.getVersion());
             assignment.setExtraAttempts(0);
             assignment.setAttemptsUsed(0);
             assignment.setBestScore(null);
@@ -69,7 +70,8 @@ class CertificationAssignmentSyncService {
         var allMembers = members.findWithUserAndPositionByRestaurantId(exam.getRestaurant().getId());
         var visibilityPositionIds = exam.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet());
         if (visibilityPositionIds.isEmpty()) {
-            return allMembers;
+            // Для аттестаций пустая visibility не должна приводить к неявному расширению аудитории.
+            return List.of();
         }
         return allMembers.stream()
                 .filter(member -> member.getPosition() != null && visibilityPositionIds.contains(member.getPosition().getId()))
@@ -83,6 +85,7 @@ class CertificationAssignmentSyncService {
                 .user(member.getUser())
                 .assignedPosition(member.getPosition())
                 .attemptsLimitSnapshot(exam.getAttemptLimit())
+                .examVersionSnapshot(exam.getVersion())
                 .status(TrainingExamAssignmentStatus.ASSIGNED)
                 .active(true)
                 .build();

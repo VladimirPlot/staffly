@@ -18,7 +18,7 @@ create table if not exists training_exam_assignment (
     constraint fk_training_exam_assignment_exam
         foreign key (exam_id) references training_exam(id) on delete cascade,
     constraint fk_training_exam_assignment_restaurant
-        foreign key (restaurant_id) references restaurant(id) on delete cascade,
+        foreign key (restaurant_id) references restaurants(id) on delete cascade,
     constraint fk_training_exam_assignment_user
         foreign key (user_id) references users(id) on delete cascade,
     constraint fk_training_exam_assignment_position
@@ -35,6 +35,8 @@ create index if not exists idx_training_exam_assignment_restaurant_user
     on training_exam_assignment(restaurant_id, user_id);
 create index if not exists idx_training_exam_assignment_active
     on training_exam_assignment(is_active);
+create index if not exists idx_training_exam_assignment_status
+    on training_exam_assignment(status);
 create unique index if not exists uq_training_exam_assignment_active_scope
     on training_exam_assignment(exam_id, restaurant_id, user_id)
     where is_active = true;

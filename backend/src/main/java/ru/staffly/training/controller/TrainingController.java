@@ -275,6 +275,7 @@ public class TrainingController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @Deprecated(forRemoval = false)
     @GetMapping("/exams/{examId}/results")
     public List<TrainingExamResultDto> listExamResults(@PathVariable Long restaurantId,
                                                         @PathVariable Long examId,

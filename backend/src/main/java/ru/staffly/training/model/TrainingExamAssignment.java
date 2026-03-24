@@ -50,6 +50,9 @@ public class TrainingExamAssignment {
     @Column(name = "attempts_limit_snapshot")
     private Integer attemptsLimitSnapshot;
 
+    @Column(name = "exam_version_snapshot", nullable = false)
+    private int examVersionSnapshot;
+
     @Column(name = "extra_attempts", nullable = false)
     @Builder.Default
     private int extraAttempts = 0;

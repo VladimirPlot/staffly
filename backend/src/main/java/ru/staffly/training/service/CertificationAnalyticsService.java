@@ -29,13 +29,13 @@ class CertificationAnalyticsService {
 
     @Transactional(readOnly = true)
     public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
-        var rows = loadAssignments(restaurantId, examId);
+        var rows = loadActiveAssignmentScope(restaurantId, examId);
         return toSummary(rows);
     }
 
     @Transactional(readOnly = true)
     public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long examId) {
-        var rows = loadAssignments(restaurantId, examId);
+        var rows = loadActiveAssignmentScope(restaurantId, examId);
         return rows.stream()
                 .collect(Collectors.groupingBy(a -> new PositionKey(
                         a.getAssignedPosition() == null ? null : a.getAssignedPosition().getId(),
@@ -56,14 +56,16 @@ class CertificationAnalyticsService {
                             summary.passRate()
                     );
                 })
-                .sorted(Comparator.comparing(CertificationExamPositionBreakdownDto::positionName, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .sorted(Comparator
+                        .comparing(CertificationExamPositionBreakdownDto::positionName, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(CertificationExamPositionBreakdownDto::positionId, Comparator.nullsLast(Long::compareTo)))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long examId) {
-        var rows = loadAssignments(restaurantId, examId);
-        var userIds = rows.stream().map(a -> a.getUser().getId()).toList();
+        var rows = loadActiveAssignmentScope(restaurantId, examId);
+        var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
         var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> userIds.contains(member.getUser().getId()))
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
@@ -95,9 +97,13 @@ class CertificationAnalyticsService {
     @Transactional(readOnly = true)
     public List<CertificationExamAttemptHistoryDto> getEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId) {
         ensureCertificationExam(restaurantId, examId);
+        // История для employee endpoint возвращается как полная история попыток пользователя по exam.
+        // Assignment-поля добавлены для прозрачного понимания связи попыток с циклом назначений.
         return attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(examId, restaurantId, userId).stream()
                 .map(attempt -> new CertificationExamAttemptHistoryDto(
                         attempt.getId(),
+                        attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),
+                        attempt.getAssignment() == null ? null : attempt.getAssignment().getExamVersionSnapshot(),
                         attempt.getStartedAt(),
                         attempt.getFinishedAt(),
                         attempt.getScorePercent(),
@@ -107,7 +113,7 @@ class CertificationAnalyticsService {
                 .toList();
     }
 
-    private List<TrainingExamAssignment> loadAssignments(Long restaurantId, Long examId) {
+    private List<TrainingExamAssignment> loadActiveAssignmentScope(Long restaurantId, Long examId) {
         ensureCertificationExam(restaurantId, examId);
         return assignments.findActiveByExamIdAndRestaurantId(examId, restaurantId);
     }

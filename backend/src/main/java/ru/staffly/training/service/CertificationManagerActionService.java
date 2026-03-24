@@ -17,7 +17,7 @@ class CertificationManagerActionService {
     @Transactional
     public void resetAttemptsForEmployee(Long restaurantId, Long examId, Long userId) {
         ensureCertificationExam(restaurantId, examId);
-        assignments.resetEmployeeAttempts(restaurantId, examId, userId);
+        assignments.fullResetEmployeeAttempts(restaurantId, examId, userId);
     }
 
     @Transactional
@@ -27,7 +27,7 @@ class CertificationManagerActionService {
         if (value < 1) {
             throw new BadRequestException("Amount must be greater than zero.");
         }
-        assignments.grantExtraAttempts(restaurantId, examId, userId, value);
+        assignments.reopenByGrantingExtraAttempts(restaurantId, examId, userId, value);
     }
 
     private void ensureCertificationExam(Long restaurantId, Long examId) {

@@ -73,6 +73,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request) {
+        validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
         var exam = exams.save(TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
@@ -123,6 +124,7 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
         }
 
+        validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
 
         exam.setTitle(request.title());
@@ -222,8 +224,6 @@ public class ExamServiceImpl implements ExamService {
         TrainingExamAssignment assignment = null;
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             assignment = certificationAssignmentService.resolveForStart(exam, restaurantId, userId);
-            certificationAssignmentService.ensureAttemptsAvailable(assignment);
-            certificationAssignmentService.markStarted(assignment);
         }
 
         var existingAttemptOpt = attempts
@@ -235,6 +235,7 @@ public class ExamServiceImpl implements ExamService {
 
         if (exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null) {
             certificationAssignmentService.ensureAttemptsAvailable(assignment);
+            certificationAssignmentService.markStarted(assignment);
         } else {
             enforceAttemptLimit(exam, restaurantId, userId);
         }
@@ -328,6 +329,8 @@ public class ExamServiceImpl implements ExamService {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Отчетность доступна только для аттестаций.");
         }
+        // Legacy/simple view: агрегирует attempts по текущей версии экзамена и не использует assignment-модель.
+        // Для certification-дашбордов и менеджерских действий следует использовать /certification/* endpoints.
         return attempts.listExamResults(restaurantId, examId, exam.getVersion(), positionId)
                 .stream()
                 .map(r -> new TrainingExamResultDto(
@@ -561,6 +564,13 @@ public class ExamServiceImpl implements ExamService {
                 questionIds,
                 visibilityIds
         );
+    }
+
+    private void validateCertificationVisibility(TrainingExamMode mode, List<Long> visibilityPositionIds) {
+        if (mode == TrainingExamMode.CERTIFICATION
+                && (visibilityPositionIds == null || visibilityPositionIds.isEmpty())) {
+            throw new BadRequestException("Для аттестации нужно указать хотя бы одну visibility-позицию.");
+        }
     }
 
     private TrainingFolder resolveKnowledgeFolder(Long restaurantId, TrainingExamMode mode, Long knowledgeFolderId) {

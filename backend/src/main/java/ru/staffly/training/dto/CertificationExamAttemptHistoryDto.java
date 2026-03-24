@@ -4,6 +4,8 @@ import java.time.Instant;
 
 public record CertificationExamAttemptHistoryDto(
         Long attemptId,
+        Long assignmentId,
+        Integer assignmentExamVersionSnapshot,
         Instant startedAt,
         Instant finishedAt,
         Integer scorePercent,

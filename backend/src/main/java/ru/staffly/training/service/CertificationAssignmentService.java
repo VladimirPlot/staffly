@@ -63,9 +63,10 @@ class CertificationAssignmentService {
     }
 
     @Transactional
-    public void resetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
+    public void fullResetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
         var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
                 .orElseThrow(() -> new NotFoundException("Assignment not found"));
+        assignment.setExamVersionSnapshot(assignment.getExam().getVersion());
         assignment.setAttemptsUsed(0);
         assignment.setExtraAttempts(0);
         assignment.setBestScore(null);
@@ -75,14 +76,18 @@ class CertificationAssignmentService {
     }
 
     @Transactional
-    public void grantExtraAttempts(Long restaurantId, Long examId, Long userId, int amount) {
+    public void reopenByGrantingExtraAttempts(Long restaurantId, Long examId, Long userId, int amount) {
         var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
                 .orElseThrow(() -> new NotFoundException("Assignment not found"));
         assignment.setExtraAttempts(assignment.getExtraAttempts() + amount);
-        if (assignment.getStatus() == TrainingExamAssignmentStatus.EXHAUSTED) {
-            assignment.setStatus(assignment.getAttemptsUsed() == 0
-                    ? TrainingExamAssignmentStatus.ASSIGNED
-                    : TrainingExamAssignmentStatus.FAILED);
+        if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED
+                || assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED
+                || assignment.getStatus() == TrainingExamAssignmentStatus.IN_PROGRESS) {
+            return;
+        }
+        Integer allowed = calculateAttemptsAllowed(assignment);
+        if (allowed == null || assignment.getAttemptsUsed() < allowed) {
+            assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
         }
     }
 
