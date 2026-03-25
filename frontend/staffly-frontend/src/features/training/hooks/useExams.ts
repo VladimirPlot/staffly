@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { mapExamsForUi } from "../api/mappers";
-import { deleteExam, hideExam, listExams, resetExamResults, restoreExam } from "../api/trainingApi";
+import { deleteExam, hideExam, listExams, resetCertificationExamResults, restoreExam } from "../api/trainingApi";
 import type { TrainingExamDto } from "../api/types";
 import { getTrainingErrorMessage } from "../utils/errors";
 
@@ -43,7 +43,7 @@ export function useExams({ restaurantId, canManage, certificationOnly }: Params)
       if (action === "hide") await hideExam(restaurantId, examId);
       if (action === "restore") await restoreExam(restaurantId, examId);
       if (action === "delete") await deleteExam(restaurantId, examId);
-      if (action === "reset") await resetExamResults(restaurantId, examId);
+      if (action === "reset") await resetCertificationExamResults(restaurantId, examId);
       await reload();
     } catch (e) {
       setError(getTrainingErrorMessage(e, "Не удалось выполнить действие с аттестацией."));

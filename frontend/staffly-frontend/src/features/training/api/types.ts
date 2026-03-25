@@ -172,13 +172,63 @@ export type ExamProgressDto = {
   scorePercent?: number | null;
 };
 
-export type ExamResultRowDto = {
+export type CertificationExamSummaryDto = {
+  totalAssigned: number;
+  passedCount: number;
+  failedCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  exhaustedCount: number;
+  averageScore?: number | null;
+  passRate?: number | null;
+};
+
+export type CertificationExamPositionBreakdownDto = {
+  positionId: number;
+  positionName: string;
+  assignedCount: number;
+  passedCount: number;
+  failedCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  exhaustedCount: number;
+  averageScore?: number | null;
+  passRate?: number | null;
+};
+
+export type CertificationAssignmentStatus =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "PASSED"
+  | "FAILED"
+  | "EXHAUSTED";
+
+export type CertificationExamEmployeeRowDto = {
+  assignmentId: number;
   userId: number;
   fullName: string;
+  assignedPositionId?: number | null;
+  assignedPositionName?: string | null;
+  currentPositionId?: number | null;
+  currentPositionName?: string | null;
+  status: CertificationAssignmentStatus;
   attemptsUsed: number;
+  attemptsAllowed?: number | null;
+  extraAttempts: number;
   bestScore?: number | null;
   lastAttemptAt?: string | null;
-  passed: boolean;
+  passedAt?: string | null;
+};
+
+export type CertificationExamAttemptHistoryDto = {
+  attemptId: number;
+  assignmentId?: number | null;
+  assignmentExamVersionSnapshot?: number | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  scorePercent?: number | null;
+  passed?: boolean | null;
+  examVersion?: number | null;
 };
 
 export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };

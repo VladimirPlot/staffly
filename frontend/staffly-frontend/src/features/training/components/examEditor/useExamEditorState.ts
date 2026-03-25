@@ -69,6 +69,14 @@ export function useExamEditorState({
   }, [open, exam]);
 
   useEffect(() => {
+    if (!open || mode !== "CERTIFICATION" || positions.length === 0) return;
+    setForm((current) => {
+      if (current.visibilityPositionIds.length > 0) return current;
+      return { ...current, visibilityPositionIds: positions.map((position) => position.id) };
+    });
+  }, [mode, open, positions]);
+
+  useEffect(() => {
     if (!open) return;
 
     const media = window.matchMedia("(min-width: 640px)");
@@ -130,8 +138,8 @@ export function useExamEditorState({
   );
 
   const availabilityLabel = useMemo(
-    () => buildAvailabilityLabel(form.visibilityPositionIds, positions, isDesktop),
-    [form.visibilityPositionIds, positions, isDesktop],
+    () => buildAvailabilityLabel(mode, form.visibilityPositionIds, positions, isDesktop),
+    [mode, form.visibilityPositionIds, positions, isDesktop],
   );
 
   const togglePosition = (positionId: number) => {
@@ -144,7 +152,11 @@ export function useExamEditorState({
   };
 
   const handleSelectAllPositions = () => {
-    setForm((current) => ({ ...current, visibilityPositionIds: [] }));
+    setForm((current) => ({
+      ...current,
+      visibilityPositionIds:
+        mode === "CERTIFICATION" ? positions.map((position) => position.id) : [],
+    }));
   };
 
   const toggleFolder = (folderId: number) => {
@@ -239,6 +251,11 @@ export function useExamEditorState({
       return;
     }
 
+    if (mode === "CERTIFICATION" && form.visibilityPositionIds.length === 0) {
+      setError("Для аттестации нужно выбрать хотя бы одну должность в блоке видимости.");
+      return;
+    }
+
     if (form.sourcesFolders.length === 0 && form.sourceQuestionIds.length === 0) {
       setError("Добавьте хотя бы один источник вопросов.");
       return;
@@ -263,7 +280,10 @@ export function useExamEditorState({
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
         attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
-        visibilityPositionIds: form.visibilityPositionIds,
+        visibilityPositionIds:
+          mode === "CERTIFICATION"
+            ? Array.from(new Set(form.visibilityPositionIds))
+            : form.visibilityPositionIds,
         sourcesFolders: form.sourcesFolders,
         sourceQuestionIds: form.sourceQuestionIds,
       };

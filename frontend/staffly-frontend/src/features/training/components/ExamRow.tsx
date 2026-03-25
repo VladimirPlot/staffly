@@ -69,7 +69,12 @@ export default function ExamRow({
               )}
 
               {onReset && (
-                <IconButton aria-label="Сбросить результаты" title="Сбросить результаты" onClick={() => onReset(exam.id)} disabled={isBusy}>
+                <IconButton
+                  aria-label="Глобально сбросить результаты"
+                  title="Глобально сбросить результаты"
+                  onClick={() => onReset(exam.id)}
+                  disabled={isBusy}
+                >
                   <Icon icon={RotateCcw} size="sm" />
                 </IconButton>
               )}

@@ -7,7 +7,7 @@ import EmptyState from "../components/EmptyState";
 import ExamList from "../components/ExamList";
 import ExamEditorModal from "../components/ExamEditorModal";
 import LoadingState from "../components/LoadingState";
-import { deleteExam, hideExam, resetExamResults, restoreExam } from "../api/trainingApi";
+import { deleteExam, hideExam, resetCertificationExamResults, restoreExam } from "../api/trainingApi";
 import { useExamProgress } from "../hooks/useExamProgress";
 import { useExams } from "../hooks/useExams";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
@@ -47,7 +47,7 @@ export default function ExamsPage() {
           onHide={(id) => action(() => hideExam(restaurantId!, id).then(() => undefined))}
           onRestore={(id) => action(() => restoreExam(restaurantId!, id).then(() => undefined))}
           onDelete={(id) => action(() => deleteExam(restaurantId!, id))}
-          onReset={(id) => action(() => resetExamResults(restaurantId!, id))}
+          onReset={(id) => action(() => resetCertificationExamResults(restaurantId!, id))}
         />
       )}
       {restaurantId && (

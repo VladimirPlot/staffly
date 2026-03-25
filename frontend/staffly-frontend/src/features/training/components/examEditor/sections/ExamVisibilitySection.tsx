@@ -1,7 +1,9 @@
 import { ChevronDown } from "lucide-react";
 import type { PositionDto } from "../../../../dictionaries/api";
+import type { TrainingExamMode } from "../../../api/types";
 
 type Props = {
+  mode: TrainingExamMode;
   positions: PositionDto[];
   visibilityPositionIds: number[];
   availabilityLabel: string;
@@ -12,6 +14,7 @@ type Props = {
 };
 
 export default function ExamVisibilitySection({
+  mode,
   positions,
   visibilityPositionIds,
   availabilityLabel,
@@ -39,10 +42,10 @@ export default function ExamVisibilitySection({
             <button
               type="button"
               onClick={onSelectAll}
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition hover:bg-app ${visibilityPositionIds.length === 0 ? "bg-app font-medium" : ""}`}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition hover:bg-app ${(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : visibilityPositionIds.length === positions.length) ? "bg-app font-medium" : ""}`}
             >
               <span>Всем сотрудникам</span>
-              {visibilityPositionIds.length === 0 && <span>✓</span>}
+              {(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : visibilityPositionIds.length === positions.length) && <span>✓</span>}
             </button>
 
             <div className="my-2 border-t border-subtle" />
@@ -67,7 +70,9 @@ export default function ExamVisibilitySection({
       </div>
 
       <div className="text-xs text-muted">
-        Если не ограничивать доступ по должностям, тест будет доступен всем сотрудникам.
+        {mode === "CERTIFICATION"
+          ? "Для аттестации нужно выбрать минимум одну должность. Выбор «Всем сотрудникам» отметит все должности."
+          : "Если не ограничивать доступ по должностям, тест будет доступен всем сотрудникам."}
       </div>
     </section>
   );
