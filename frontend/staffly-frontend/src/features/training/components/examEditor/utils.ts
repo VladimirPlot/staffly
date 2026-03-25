@@ -106,3 +106,30 @@ export function buildAvailabilityLabel(
     .join(", ");
   return `${visibleNames} +${selected.length - visibleCount}`;
 }
+
+export function resolveInitialVisibilityPositionIds(
+  mode: TrainingExamMode,
+  examVisibilityPositionIds: number[] | undefined,
+  allPositionIds: number[],
+) {
+  if (mode !== "CERTIFICATION") {
+    return examVisibilityPositionIds ?? [];
+  }
+
+  if ((examVisibilityPositionIds ?? []).length > 0) {
+    return examVisibilityPositionIds ?? [];
+  }
+
+  return allPositionIds;
+}
+
+export function normalizeVisibilityForSubmit(
+  mode: TrainingExamMode,
+  visibilityPositionIds: number[],
+) {
+  if (mode === "CERTIFICATION") {
+    return Array.from(new Set(visibilityPositionIds));
+  }
+
+  return visibilityPositionIds;
+}

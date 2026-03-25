@@ -35,9 +35,9 @@ class TrainingExamAccessService {
         return listVisibleExams(restaurantId, context, includeInactive, modeFilter);
     }
 
-    List<Long> listVisibleCertificationExamIdsForUser(Long restaurantId, Long userId) {
+    List<Long> listVisiblePracticeExamIdsForUser(Long restaurantId, Long userId) {
         var context = resolveVisibilityContext(restaurantId, userId, null);
-        return listVisibleExams(restaurantId, context, false, TrainingExamMode.CERTIFICATION)
+        return listVisibleExams(restaurantId, context, false, TrainingExamMode.PRACTICE)
                 .stream()
                 .map(TrainingExam::getId)
                 .toList();

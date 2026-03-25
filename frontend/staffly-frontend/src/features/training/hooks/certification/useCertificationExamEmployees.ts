@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCertificationExamEmployees } from "../../api/trainingApi";
-import type { CertificationExamEmployeeRowDto } from "../../api/types";
+import type { CertificationAssignmentStatus, CertificationExamEmployeeRowDto } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
+
+import type { CertificationAssignmentStatus, CertificationExamEmployeeRowDto } from "../../api/types";
 
 export function useCertificationExamEmployees(
   restaurantId: number | null,
   examId: number | null,
-  statusFilter: string,
+  statusFilter: StatusFilter,
   search: string,
 ) {
   const [employees, setEmployees] = useState<CertificationExamEmployeeRowDto[]>([]);
@@ -16,6 +18,7 @@ export function useCertificationExamEmployees(
   const reload = useCallback(async () => {
     if (!restaurantId || !examId) {
       setEmployees([]);
+      setError(null);
       return;
     }
 

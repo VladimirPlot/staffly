@@ -177,7 +177,7 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public void resetExamResults(Long restaurantId, Long examId) {
+    public void resetCertificationExamCycle(Long restaurantId, Long examId) {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         startNewGlobalResultCycle(exam);
@@ -185,10 +185,9 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
-    public List<TrainingExamProgressDto> listCurrentUserExamProgress(Long restaurantId, Long userId) {
-        // Progress пока считается в пределах visibility-доступных certification экзаменов.
-        // Это не assignment-progress и не employee-level статус назначений.
-        var examIds = examAccessService.listVisibleCertificationExamIdsForUser(restaurantId, userId);
+    public List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId) {
+        // Practice progress endpoint: только по practice-экзаменам, доступным пользователю по visibility.
+        var examIds = examAccessService.listVisiblePracticeExamIdsForUser(restaurantId, userId);
         if (examIds.isEmpty()) {
             return List.of();
         }
@@ -326,27 +325,6 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
-    public List<TrainingExamResultDto> listExamResults(Long restaurantId, Long examId, Long positionId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId).orElseThrow(() -> new NotFoundException("Exam not found"));
-        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            throw new BadRequestException("Отчетность доступна только для аттестаций.");
-        }
-        // Legacy/simple view: агрегирует attempts по текущей версии экзамена и не использует assignment-модель.
-        // Для certification-дашбордов и менеджерских действий следует использовать /certification/* endpoints.
-        return attempts.listExamResults(restaurantId, examId, exam.getVersion(), positionId)
-                .stream()
-                .map(r -> new TrainingExamResultDto(
-                        r.getUserId(),
-                        r.getFullName(),
-                        r.getAttemptsUsed() == null ? 0 : r.getAttemptsUsed(),
-                        r.getBestScore(),
-                        r.getLastAttemptAt(),
-                        Boolean.TRUE.equals(r.getPassed())
-                ))
-                .toList();
-    }
-
-    @Override
     public void resetEmployeeCertificationAttempts(Long restaurantId, Long examId, Long userId) {
         certificationManagerActionService.resetAttemptsForEmployee(restaurantId, examId, userId);
     }
@@ -377,10 +355,8 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private void startNewGlobalResultCycle(TrainingExam exam) {
-        // В текущей модели reset-results открывает новый глобальный цикл результатов.
-        // Это не per-user reset: все новые попытки будут писаться под новой версией экзамена.
-        // В следующем этапе per-user reset должен быть отдельным сценарным слоем, а не
-        // переиспользованием этого механизма version increment.
+        // certification reset-results открывает новый глобальный assignment cycle.
+        // Это не per-user reset: все новые попытки пишутся под новой версией экзамена.
         exam.setVersion(exam.getVersion() + 1);
     }
 

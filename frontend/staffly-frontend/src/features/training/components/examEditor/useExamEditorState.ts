@@ -15,6 +15,8 @@ import {
   calculateTotalQuestions,
   createTreeHelpers,
   flattenTree,
+  normalizeVisibilityForSubmit,
+  resolveInitialVisibilityPositionIds,
 } from "./utils";
 
 const initialFormState: ExamEditorFormState = {
@@ -70,16 +72,12 @@ export function useExamEditorState({
 
   useEffect(() => {
     if (!open || positions.length === 0) return;
-    setForm((current) => {
-      if (mode === "CERTIFICATION" && current.visibilityPositionIds.length === 0) {
-        return { ...current, visibilityPositionIds: positions.map((position) => position.id) };
-      }
-      if (mode === "PRACTICE" && exam == null && current.visibilityPositionIds.length === positions.length) {
-        return { ...current, visibilityPositionIds: [] };
-      }
-      return current;
-    });
-  }, [mode, open, positions, exam]);
+    const allPositionIds = positions.map((position) => position.id);
+    setForm((current) => ({
+      ...current,
+      visibilityPositionIds: resolveInitialVisibilityPositionIds(mode, current.visibilityPositionIds, allPositionIds),
+    }));
+  }, [mode, open, positions]);
 
   useEffect(() => {
     if (!open) return;
@@ -285,10 +283,7 @@ export function useExamEditorState({
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
         attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
-        visibilityPositionIds:
-          mode === "CERTIFICATION"
-            ? Array.from(new Set(form.visibilityPositionIds))
-            : form.visibilityPositionIds,
+        visibilityPositionIds: normalizeVisibilityForSubmit(mode, form.visibilityPositionIds),
         sourcesFolders: form.sourcesFolders,
         sourceQuestionIds: form.sourceQuestionIds,
       };

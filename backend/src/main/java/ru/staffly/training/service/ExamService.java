@@ -13,16 +13,10 @@ public interface ExamService {
     TrainingExamDto hideExam(Long restaurantId, Long examId);
     TrainingExamDto restoreExam(Long restaurantId, Long examId);
     void deleteExam(Long restaurantId, Long examId);
-    void resetExamResults(Long restaurantId, Long examId);
-    List<TrainingExamProgressDto> listCurrentUserExamProgress(Long restaurantId, Long userId);
+    void resetCertificationExamCycle(Long restaurantId, Long examId);
+    List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId);
     StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager);
     AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
-    /**
-     * Legacy/simple certification results view based on attempt aggregates for current exam version.
-     * Prefer certification analytics endpoints for assignment-aware reporting.
-     */
-    @Deprecated(forRemoval = false)
-    List<TrainingExamResultDto> listExamResults(Long restaurantId, Long examId, Long positionId);
 
     void resetEmployeeCertificationAttempts(Long restaurantId, Long examId, Long userId);
     void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long examId, Long userId, Integer amount);

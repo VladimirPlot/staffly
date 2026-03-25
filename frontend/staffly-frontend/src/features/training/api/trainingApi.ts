@@ -1,4 +1,5 @@
 import apiClient from "../../../shared/api/apiClient";
+import { mapExamsForUi } from "./mappers";
 import type {
   CertificationExamAttemptHistoryDto,
   CertificationExamEmployeeRowDto,
@@ -62,11 +63,11 @@ export async function deleteQuestion(restaurantId: number, questionId: number): 
 
 export async function listExams(restaurantId: number, includeInactive = false, certificationOnly?: boolean): Promise<TrainingExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams`, { params: { includeInactive, certificationOnly } });
-  return data as TrainingExamDto[];
+  return mapExamsForUi(data as TrainingExamDto[]);
 }
 export async function listKnowledgeExams(restaurantId: number, folderId: number, includeInactive = false): Promise<TrainingExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-exams`, { params: { folderId, includeInactive } });
-  return data as TrainingExamDto[];
+  return mapExamsForUi(data as TrainingExamDto[]);
 }
 export async function createExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams`, payload); return data as TrainingExamDto; }
 export async function createKnowledgeExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> {

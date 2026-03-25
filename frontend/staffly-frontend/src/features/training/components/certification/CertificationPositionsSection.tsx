@@ -1,0 +1,44 @@
+import Card from "../../../../shared/ui/Card";
+import ErrorState from "../ErrorState";
+import LoadingState from "../LoadingState";
+import type { useCertificationExamPositions } from "../../hooks/certification/useCertificationExamPositions";
+
+type Props = {
+  positionsState: ReturnType<typeof useCertificationExamPositions>;
+};
+
+export default function CertificationPositionsSection({ positionsState }: Props) {
+  return (
+    <Card className="space-y-3">
+      <div className="text-sm font-semibold">Статистика по должностям</div>
+      {positionsState.loading && <LoadingState label="Загрузка статистики..." />}
+      {positionsState.error && <ErrorState message={positionsState.error} onRetry={positionsState.reload} />}
+      {!positionsState.loading && positionsState.positions.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-muted">
+              <tr>
+                <th className="px-2 py-1 text-left">Должность</th>
+                <th className="px-2 py-1 text-right">Назначено</th>
+                <th className="px-2 py-1 text-right">Сдано</th>
+                <th className="px-2 py-1 text-right">Не начато</th>
+                <th className="px-2 py-1 text-right">% прохождения</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positionsState.positions.map((position) => (
+                <tr key={position.positionId} className="border-t border-subtle">
+                  <td className="px-2 py-2">{position.positionName}</td>
+                  <td className="px-2 py-2 text-right">{position.assignedCount}</td>
+                  <td className="px-2 py-2 text-right">{position.passedCount}</td>
+                  <td className="px-2 py-2 text-right">{position.notStartedCount}</td>
+                  <td className="px-2 py-2 text-right">{typeof position.passRate === "number" ? `${position.passRate}%` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}

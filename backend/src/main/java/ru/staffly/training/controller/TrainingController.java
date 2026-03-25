@@ -264,23 +264,14 @@ public class TrainingController {
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/reset-results")
-    public void resetExamResults(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        examService.resetExamResults(restaurantId, examId);
+    public void resetCertificationExamCycle(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
+        examService.resetCertificationExamCycle(restaurantId, examId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @GetMapping("/exams/progress")
     public List<TrainingExamProgressDto> listExamProgress(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.listCurrentUserExamProgress(restaurantId, principal.userId());
-    }
-
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
-    @GetMapping("/exams/{examId}/results")
-    public List<TrainingExamResultDto> listExamResults(@PathVariable Long restaurantId,
-                                                        @PathVariable Long examId,
-                                                        @AuthenticationPrincipal UserPrincipal principal,
-                                                        @RequestParam(required = false) Long positionId) {
-        return examService.listExamResults(restaurantId, examId, positionId);
+        return examService.listCurrentUserPracticeExamProgress(restaurantId, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")

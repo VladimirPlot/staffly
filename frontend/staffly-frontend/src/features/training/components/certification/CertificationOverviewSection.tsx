@@ -1,0 +1,41 @@
+import { RotateCcw } from "lucide-react";
+import Button from "../../../../shared/ui/Button";
+import Card from "../../../../shared/ui/Card";
+import Icon from "../../../../shared/ui/Icon";
+import ErrorState from "../ErrorState";
+import LoadingState from "../LoadingState";
+import CertificationSummaryCards from "./CertificationSummaryCards";
+import type { TrainingExamDto } from "../../api/types";
+import type { useCertificationExamSummary } from "../../hooks/certification/useCertificationExamSummary";
+import type { useCertificationManagerActions } from "../../hooks/certification/useCertificationManagerActions";
+
+type Props = {
+  canManage: boolean;
+  exam: TrainingExamDto | null;
+  summaryState: ReturnType<typeof useCertificationExamSummary>;
+  managerActions: ReturnType<typeof useCertificationManagerActions>;
+};
+
+export default function CertificationOverviewSection({ canManage, exam, summaryState, managerActions }: Props) {
+  if (!exam) return null;
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-lg font-semibold">{exam.title}</div>
+          <div className="text-sm text-muted">Assignment-aware аналитика аттестации</div>
+        </div>
+        {canManage && (
+          <Button variant="outline" isLoading={managerActions.loadingActionKey === "reset:exam"} onClick={() => void managerActions.resetExam()}>
+            <Icon icon={RotateCcw} size="sm" /> <span className="ml-2">Глобально сбросить цикл</span>
+          </Button>
+        )}
+      </div>
+      {managerActions.error && <div className="text-sm text-red-600">{managerActions.error}</div>}
+      {summaryState.loading && <LoadingState label="Загрузка сводки..." />}
+      {summaryState.error && <ErrorState message={summaryState.error} onRetry={summaryState.reload} />}
+      {summaryState.summary && <CertificationSummaryCards summary={summaryState.summary} />}
+    </Card>
+  );
+}

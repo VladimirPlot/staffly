@@ -1,7 +1,7 @@
 import Card from "../../../../shared/ui/Card";
 import ErrorState from "../../components/ErrorState";
 import LoadingState from "../../components/LoadingState";
-import ExamRow from "../../components/ExamRow";
+import PracticeExamRow from "../../components/PracticeExamRow";
 import type { ExamProgressDto, TrainingExamDto } from "../../api/types";
 import { getPracticeExamStatus } from "../../utils/practiceExamStatus";
 import { trainingRoutes } from "../../utils/trainingRoutes";
@@ -45,7 +45,7 @@ export default function KnowledgePracticeExamsSection({
       {!examsLoading && !examsError && practiceExams.length > 0 && (
         <div className="space-y-3">
           {practiceExams.map((exam) => (
-            <ExamRow
+            <PracticeExamRow
               key={exam.id}
               exam={exam}
               canManage={canManage}

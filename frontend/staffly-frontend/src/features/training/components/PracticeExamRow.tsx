@@ -21,7 +21,7 @@ type Props = {
   runRoute: string | null;
 };
 
-export default function ExamRow({
+export default function PracticeExamRow({
   exam,
   canManage,
   progress,
