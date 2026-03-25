@@ -32,6 +32,9 @@ export function useCertificationWorkspaceState({ restaurantId, canManage }: Para
     if (!restaurantId) {
       setExams([]);
       setSelectedExamId(null);
+      setSelectedEmployeeUserId(null);
+      setLoadingExams(false);
+      setExamsError(null);
       return;
     }
 

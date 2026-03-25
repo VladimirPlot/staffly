@@ -17,6 +17,7 @@ export function useCertificationExamEmployees(
   const reload = useCallback(async () => {
     if (!restaurantId || !examId) {
       setEmployees([]);
+      setLoading(false);
       setError(null);
       return;
     }

@@ -11,6 +11,8 @@ export function useCertificationExamPositions(restaurantId: number | null, examI
   const reload = useCallback(async () => {
     if (!restaurantId || !examId) {
       setPositions([]);
+      setLoading(false);
+      setError(null);
       return;
     }
 

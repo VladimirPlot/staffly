@@ -13,6 +13,9 @@ export default function CertificationPositionsSection({ positionsState }: Props)
       <div className="text-sm font-semibold">Статистика по должностям</div>
       {positionsState.loading && <LoadingState label="Загрузка статистики..." />}
       {positionsState.error && <ErrorState message={positionsState.error} onRetry={positionsState.reload} />}
+      {!positionsState.loading && !positionsState.error && positionsState.positions.length === 0 && (
+        <div className="text-sm text-muted">Нет данных по должностям.</div>
+      )}
       {!positionsState.loading && positionsState.positions.length > 0 && (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">

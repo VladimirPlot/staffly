@@ -8,31 +8,29 @@ import type {
 
 export type CertificationStatusFilter = "ALL" | CertificationAssignmentStatus;
 
-export type CertificationSummaryState = {
+type AsyncBaseState = {
+  loading: boolean;
+  error: string | null;
+};
+
+type AsyncReloadState = {
+  reload: () => Promise<void>;
+};
+
+export type CertificationSummaryState = AsyncBaseState & AsyncReloadState & {
   summary: CertificationExamSummaryDto | null;
-  loading: boolean;
-  error: string | null;
-  reload: () => Promise<void>;
 };
 
-export type CertificationPositionsState = {
+export type CertificationPositionsState = AsyncBaseState & AsyncReloadState & {
   positions: CertificationExamPositionBreakdownDto[];
-  loading: boolean;
-  error: string | null;
-  reload: () => Promise<void>;
 };
 
-export type CertificationEmployeesState = {
+export type CertificationEmployeesState = AsyncBaseState & AsyncReloadState & {
   employees: CertificationExamEmployeeRowDto[];
-  loading: boolean;
-  error: string | null;
-  reload: () => Promise<void>;
 };
 
-export type CertificationEmployeeAttemptsState = {
+export type CertificationEmployeeAttemptsState = AsyncBaseState & {
   attempts: CertificationExamAttemptHistoryDto[];
-  loading: boolean;
-  error: string | null;
   load: () => Promise<void>;
 };
 

@@ -11,6 +11,8 @@ export function useCertificationExamSummary(restaurantId: number | null, examId:
   const reload = useCallback(async () => {
     if (!restaurantId || !examId) {
       setSummary(null);
+      setLoading(false);
+      setError(null);
       return;
     }
 

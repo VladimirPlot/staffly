@@ -45,6 +45,9 @@ export default function CertificationEmployeesSection({
 
       {employeesState.loading && <LoadingState label="Загрузка сотрудников..." />}
       {employeesState.error && <ErrorState message={employeesState.error} onRetry={employeesState.reload} />}
+      {!employeesState.loading && !employeesState.error && employeesState.employees.length === 0 && (
+        <div className="text-sm text-muted">Нет сотрудников по текущему фильтру.</div>
+      )}
 
       {!employeesState.loading && employeesState.employees.length > 0 && (
         <div className="space-y-2">
@@ -78,6 +81,7 @@ export default function CertificationEmployeesSection({
   );
 }
 
+// Локальный parser: нужен только для UI select в этом компоненте.
 function toStatusFilter(value: string): CertificationStatusFilter {
   return value === "ALL" || STATUS_OPTIONS.includes(value as CertificationAssignmentStatus)
     ? (value as CertificationStatusFilter)

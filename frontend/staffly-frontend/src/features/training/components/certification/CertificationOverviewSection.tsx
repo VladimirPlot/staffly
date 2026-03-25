@@ -16,7 +16,13 @@ type Props = {
 };
 
 export default function CertificationOverviewSection({ canManage, exam, summaryState, managerActions }: Props) {
-  if (!exam) return null;
+  if (!exam) {
+    return (
+      <Card>
+        <div className="text-sm text-muted">Выберите аттестацию, чтобы увидеть сводку.</div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="space-y-3">
