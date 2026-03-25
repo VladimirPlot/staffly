@@ -1,11 +1,11 @@
 import Card from "../../../../shared/ui/Card";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
-import type { useCertificationEmployeeAttempts } from "../../hooks/certification/useCertificationEmployeeAttempts";
+import type { CertificationEmployeeAttemptsState } from "../../hooks/certification/types";
 
 type Props = {
   selectedEmployeeFullName: string | null;
-  attemptsState: ReturnType<typeof useCertificationEmployeeAttempts>;
+  attemptsState: CertificationEmployeeAttemptsState;
 };
 
 export default function CertificationAttemptsSection({ selectedEmployeeFullName, attemptsState }: Props) {
@@ -16,6 +16,9 @@ export default function CertificationAttemptsSection({ selectedEmployeeFullName,
       <div className="text-sm font-semibold">История попыток: {selectedEmployeeFullName}</div>
       {attemptsState.loading && <LoadingState label="Загрузка попыток..." />}
       {attemptsState.error && <ErrorState message={attemptsState.error} onRetry={() => void attemptsState.load()} />}
+      {!attemptsState.loading && attemptsState.attempts.length === 0 && (
+        <div className="text-sm text-muted">Попыток пока нет.</div>
+      )}
       {!attemptsState.loading && attemptsState.attempts.length > 0 && (
         <div className="space-y-2">
           {attemptsState.attempts.map((attempt) => (

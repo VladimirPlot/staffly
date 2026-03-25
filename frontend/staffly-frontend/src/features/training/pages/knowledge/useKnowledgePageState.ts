@@ -6,7 +6,7 @@ import {
   deleteExam,
   deleteFolder,
   deleteKnowledgeItem,
-  getExamProgress,
+  getPracticeExamProgress,
   hideExam,
   hideKnowledgeItem,
   listKnowledgeExams,
@@ -146,7 +146,7 @@ export function useKnowledgePageState({ currentFolderId, restaurantId, canManage
     }
 
     try {
-      setExamProgress(await getExamProgress(restaurantId));
+      setExamProgress(await getPracticeExamProgress(restaurantId));
     } catch {
       setExamProgress([]);
     }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { mapExamsForUi } from "../../api/mappers";
 import { deleteExam, hideExam, listExams, restoreExam } from "../../api/trainingApi";
-import type { CertificationAssignmentStatus, TrainingExamDto } from "../../api/types";
+import type { TrainingExamDto } from "../../api/types";
+import type { CertificationStatusFilter } from "./types";
 import { getTrainingErrorMessage } from "../../utils/errors";
 import { useCertificationEmployeeAttempts } from "./useCertificationEmployeeAttempts";
 import { useCertificationExamEmployees } from "./useCertificationExamEmployees";
@@ -13,8 +13,6 @@ type Params = {
   restaurantId: number | null;
   canManage: boolean;
 };
-
-export type CertificationStatusFilter = "ALL" | CertificationAssignmentStatus;
 
 export function useCertificationWorkspaceState({ restaurantId, canManage }: Params) {
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -41,11 +39,10 @@ export function useCertificationWorkspaceState({ restaurantId, canManage }: Para
     setExamsError(null);
     try {
       const response = await listExams(restaurantId, canManage ? includeInactive : false, true);
-      const normalized = mapExamsForUi(response);
-      setExams(normalized);
+      setExams(response);
       setSelectedExamId((current) => {
-        if (current && normalized.some((exam) => exam.id === current)) return current;
-        return normalized[0]?.id ?? null;
+        if (current && response.some((exam) => exam.id === current)) return current;
+        return response[0]?.id ?? null;
       });
     } catch (e) {
       setExamsError(getTrainingErrorMessage(e, "Не удалось загрузить аттестации."));
@@ -95,6 +92,12 @@ export function useCertificationWorkspaceState({ restaurantId, canManage }: Para
       setLoadingExamActionId(null);
     }
   }, [restaurantId, loadExams]);
+
+  useEffect(() => {
+    if (!selectedEmployeeUserId) return;
+    if (employeesState.employees.some((employee) => employee.userId === selectedEmployeeUserId)) return;
+    setSelectedEmployeeUserId(null);
+  }, [employeesState.employees, selectedEmployeeUserId]);
 
   const selectedEmployeeFullName = useMemo(
     () => employeesState.employees.find((employee) => employee.userId === selectedEmployeeUserId)?.fullName ?? null,

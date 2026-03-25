@@ -2,9 +2,10 @@ import { useCallback, useState } from "react";
 import {
   grantCertificationEmployeeExtraAttempt,
   resetCertificationEmployeeAttempts,
-  resetCertificationExamResults,
+  resetCertificationExamCycle,
 } from "../../api/trainingApi";
 import { getTrainingErrorMessage } from "../../utils/errors";
+import type { CertificationManagerActionsState } from "./types";
 
 export function useCertificationManagerActions(restaurantId: number | null, examId: number | null, onDone: () => Promise<void>) {
   const [loadingActionKey, setLoadingActionKey] = useState<string | null>(null);
@@ -23,9 +24,9 @@ export function useCertificationManagerActions(restaurantId: number | null, exam
     }
   }, [onDone]);
 
-  const resetExam = useCallback(async () => {
+  const resetExamCycle = useCallback(async () => {
     if (!restaurantId || !examId) return;
-    await run("reset:exam", () => resetCertificationExamResults(restaurantId, examId));
+    await run("reset:exam", () => resetCertificationExamCycle(restaurantId, examId));
   }, [restaurantId, examId, run]);
 
   const resetEmployee = useCallback(async (userId: number) => {
@@ -38,5 +39,13 @@ export function useCertificationManagerActions(restaurantId: number | null, exam
     await run(`grant:${userId}`, () => grantCertificationEmployeeExtraAttempt(restaurantId, examId, userId, amount));
   }, [restaurantId, examId, run]);
 
-  return { loadingActionKey, error, resetExam, resetEmployee, grantEmployeeAttempt };
+  const actions: CertificationManagerActionsState = {
+    loadingActionKey,
+    error,
+    resetExamCycle,
+    resetEmployee,
+    grantEmployeeAttempt,
+  };
+
+  return actions;
 }

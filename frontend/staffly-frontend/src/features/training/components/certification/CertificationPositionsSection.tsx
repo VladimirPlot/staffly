@@ -1,10 +1,10 @@
 import Card from "../../../../shared/ui/Card";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
-import type { useCertificationExamPositions } from "../../hooks/certification/useCertificationExamPositions";
+import type { CertificationPositionsState } from "../../hooks/certification/types";
 
 type Props = {
-  positionsState: ReturnType<typeof useCertificationExamPositions>;
+  positionsState: CertificationPositionsState;
 };
 
 export default function CertificationPositionsSection({ positionsState }: Props) {
@@ -21,7 +21,11 @@ export default function CertificationPositionsSection({ positionsState }: Props)
                 <th className="px-2 py-1 text-left">Должность</th>
                 <th className="px-2 py-1 text-right">Назначено</th>
                 <th className="px-2 py-1 text-right">Сдано</th>
+                <th className="px-2 py-1 text-right">В процессе</th>
+                <th className="px-2 py-1 text-right">Не сдано</th>
+                <th className="px-2 py-1 text-right">Исчерпано</th>
                 <th className="px-2 py-1 text-right">Не начато</th>
+                <th className="px-2 py-1 text-right">Средний балл</th>
                 <th className="px-2 py-1 text-right">% прохождения</th>
               </tr>
             </thead>
@@ -31,7 +35,11 @@ export default function CertificationPositionsSection({ positionsState }: Props)
                   <td className="px-2 py-2">{position.positionName}</td>
                   <td className="px-2 py-2 text-right">{position.assignedCount}</td>
                   <td className="px-2 py-2 text-right">{position.passedCount}</td>
+                  <td className="px-2 py-2 text-right">{position.inProgressCount}</td>
+                  <td className="px-2 py-2 text-right">{position.failedCount}</td>
+                  <td className="px-2 py-2 text-right">{position.exhaustedCount}</td>
                   <td className="px-2 py-2 text-right">{position.notStartedCount}</td>
+                  <td className="px-2 py-2 text-right">{typeof position.averageScore === "number" ? `${position.averageScore}%` : "—"}</td>
                   <td className="px-2 py-2 text-right">{typeof position.passRate === "number" ? `${position.passRate}%` : "—"}</td>
                 </tr>
               ))}

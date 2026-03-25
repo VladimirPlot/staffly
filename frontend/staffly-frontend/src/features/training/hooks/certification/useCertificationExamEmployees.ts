@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCertificationExamEmployees } from "../../api/trainingApi";
-import type { CertificationAssignmentStatus, CertificationExamEmployeeRowDto } from "../../api/types";
+import type { CertificationExamEmployeeRowDto } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
-
-import type { CertificationAssignmentStatus, CertificationExamEmployeeRowDto } from "../../api/types";
+import type { CertificationStatusFilter } from "./types";
 
 export function useCertificationExamEmployees(
   restaurantId: number | null,
   examId: number | null,
-  statusFilter: StatusFilter,
+  statusFilter: CertificationStatusFilter,
   search: string,
 ) {
   const [employees, setEmployees] = useState<CertificationExamEmployeeRowDto[]>([]);

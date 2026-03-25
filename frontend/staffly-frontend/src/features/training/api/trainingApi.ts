@@ -78,8 +78,8 @@ export async function updateExam(restaurantId: number, examId: number, payload: 
 export async function hideExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/hide`); return data as TrainingExamDto; }
 export async function restoreExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/restore`); return data as TrainingExamDto; }
 export async function deleteExam(restaurantId: number, examId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/exams/${examId}`); }
-export async function resetCertificationExamResults(restaurantId: number, examId: number): Promise<void> {
-  await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/reset-results`);
+export async function resetCertificationExamCycle(restaurantId: number, examId: number): Promise<void> {
+  await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/reset-cycle`);
 }
 export async function resetCertificationEmployeeAttempts(restaurantId: number, examId: number, userId: number): Promise<void> {
   await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/assignments/${userId}/reset-attempts`);
@@ -115,7 +115,7 @@ export async function getCertificationEmployeeAttempts(
   return data as CertificationExamAttemptHistoryDto[];
 }
 
-export async function getExamProgress(restaurantId: number): Promise<ExamProgressDto[]> { const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/progress`); return data as ExamProgressDto[]; }
+export async function getPracticeExamProgress(restaurantId: number): Promise<ExamProgressDto[]> { const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/practice-progress`); return data as ExamProgressDto[]; }
 export async function startExam(restaurantId: number, examId: number): Promise<ExamAttemptDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/start`); return data as ExamAttemptDto; }
 export async function submitExamAttempt(restaurantId: number, attemptId: number, payload: ExamSubmitPayload): Promise<ExamSubmitResultDto> {
   const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exam-attempts/${attemptId}/submit`, payload);

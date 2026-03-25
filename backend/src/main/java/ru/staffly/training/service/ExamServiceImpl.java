@@ -180,13 +180,13 @@ public class ExamServiceImpl implements ExamService {
     public void resetCertificationExamCycle(Long restaurantId, Long examId) {
         var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-        startNewGlobalResultCycle(exam);
+        startNewCertificationCycle(exam);
         assignmentSyncService.resetAssignmentsForNewCycle(exam);
     }
 
     @Override
     public List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId) {
-        // Practice progress endpoint: только по practice-экзаменам, доступным пользователю по visibility.
+        // Practice-only progress endpoint: только по practice-экзаменам, доступным пользователю по visibility.
         var examIds = examAccessService.listVisiblePracticeExamIdsForUser(restaurantId, userId);
         if (examIds.isEmpty()) {
             return List.of();
@@ -354,8 +354,8 @@ public class ExamServiceImpl implements ExamService {
         return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, examId, userId);
     }
 
-    private void startNewGlobalResultCycle(TrainingExam exam) {
-        // certification reset-results открывает новый глобальный assignment cycle.
+    private void startNewCertificationCycle(TrainingExam exam) {
+        // certification reset-cycle открывает новый глобальный assignment cycle.
         // Это не per-user reset: все новые попытки пишутся под новой версией экзамена.
         exam.setVersion(exam.getVersion() + 1);
     }

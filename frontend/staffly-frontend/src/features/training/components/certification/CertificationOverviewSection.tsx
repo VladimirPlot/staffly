@@ -6,14 +6,13 @@ import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
 import CertificationSummaryCards from "./CertificationSummaryCards";
 import type { TrainingExamDto } from "../../api/types";
-import type { useCertificationExamSummary } from "../../hooks/certification/useCertificationExamSummary";
-import type { useCertificationManagerActions } from "../../hooks/certification/useCertificationManagerActions";
+import type { CertificationManagerActionsState, CertificationSummaryState } from "../../hooks/certification/types";
 
 type Props = {
   canManage: boolean;
   exam: TrainingExamDto | null;
-  summaryState: ReturnType<typeof useCertificationExamSummary>;
-  managerActions: ReturnType<typeof useCertificationManagerActions>;
+  summaryState: CertificationSummaryState;
+  managerActions: CertificationManagerActionsState;
 };
 
 export default function CertificationOverviewSection({ canManage, exam, summaryState, managerActions }: Props) {
@@ -27,7 +26,7 @@ export default function CertificationOverviewSection({ canManage, exam, summaryS
           <div className="text-sm text-muted">Assignment-aware аналитика аттестации</div>
         </div>
         {canManage && (
-          <Button variant="outline" isLoading={managerActions.loadingActionKey === "reset:exam"} onClick={() => void managerActions.resetExam()}>
+          <Button variant="outline" isLoading={managerActions.loadingActionKey === "reset:exam"} onClick={() => void managerActions.resetExamCycle()}>
             <Icon icon={RotateCcw} size="sm" /> <span className="ml-2">Глобально сбросить цикл</span>
           </Button>
         )}
