@@ -5,7 +5,6 @@ import Icon from "../../../shared/ui/Icon";
 import IconButton from "../../../shared/ui/IconButton";
 import type { ExamProgressDto, TrainingExamDto } from "../api/types";
 import type { PracticeExamStatus } from "../utils/practiceExamStatus";
-import ExamProgressBadge from "./ExamProgressBadge";
 import PracticeExamStatusBadge from "./PracticeExamStatusBadge";
 
 type Props = {
@@ -45,8 +44,7 @@ export default function ExamRow({
               <PracticeExamStatusBadge status={practiceStatus} isHidden={!exam.active} />
             ) : (
               <>
-                <ExamProgressBadge progress={progress} />
-                {!exam.active && <PracticeExamStatusBadge status={null} isHidden />}
+                <PracticeExamStatusBadge status={null} isHidden={!exam.active} />
               </>
             )}
           </div>

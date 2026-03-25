@@ -69,12 +69,17 @@ export function useExamEditorState({
   }, [open, exam]);
 
   useEffect(() => {
-    if (!open || mode !== "CERTIFICATION" || positions.length === 0) return;
+    if (!open || positions.length === 0) return;
     setForm((current) => {
-      if (current.visibilityPositionIds.length > 0) return current;
-      return { ...current, visibilityPositionIds: positions.map((position) => position.id) };
+      if (mode === "CERTIFICATION" && current.visibilityPositionIds.length === 0) {
+        return { ...current, visibilityPositionIds: positions.map((position) => position.id) };
+      }
+      if (mode === "PRACTICE" && exam == null && current.visibilityPositionIds.length === positions.length) {
+        return { ...current, visibilityPositionIds: [] };
+      }
+      return current;
     });
-  }, [mode, open, positions]);
+  }, [mode, open, positions, exam]);
 
   useEffect(() => {
     if (!open) return;
