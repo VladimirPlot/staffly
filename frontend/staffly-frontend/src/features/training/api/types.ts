@@ -197,11 +197,12 @@ export type CertificationExamPositionBreakdownDto = {
 };
 
 export type CertificationAssignmentStatus =
-  | "NOT_STARTED"
+  | "ASSIGNED"
   | "IN_PROGRESS"
   | "PASSED"
   | "FAILED"
-  | "EXHAUSTED";
+  | "EXHAUSTED"
+  | "ARCHIVED";
 
 export type CertificationExamEmployeeRowDto = {
   assignmentId: number;

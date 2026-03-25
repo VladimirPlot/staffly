@@ -42,10 +42,10 @@ export default function ExamVisibilitySection({
             <button
               type="button"
               onClick={onSelectAll}
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition hover:bg-app ${(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : visibilityPositionIds.length === positions.length) ? "bg-app font-medium" : ""}`}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition hover:bg-app ${(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : positions.length > 0 && visibilityPositionIds.length === positions.length) ? "bg-app font-medium" : ""}`}
             >
               <span>Всем сотрудникам</span>
-              {(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : visibilityPositionIds.length === positions.length) && <span>✓</span>}
+              {(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : positions.length > 0 && visibilityPositionIds.length === positions.length) && <span>✓</span>}
             </button>
 
             <div className="my-2 border-t border-subtle" />

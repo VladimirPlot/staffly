@@ -82,7 +82,8 @@ export function buildAvailabilityLabel(
   positions: PositionDto[],
   isDesktop: boolean,
 ) {
-  if (visibilityPositionIds.length === 0) return "Всем сотрудникам";
+  if (mode === "PRACTICE" && visibilityPositionIds.length === 0) return "Всем сотрудникам";
+  if (mode === "CERTIFICATION" && visibilityPositionIds.length === 0) return "Должности не выбраны";
   if (
     mode === "CERTIFICATION"
     && positions.length > 0
@@ -92,7 +93,7 @@ export function buildAvailabilityLabel(
   }
 
   const selected = positions.filter((position) => visibilityPositionIds.includes(position.id));
-  if (selected.length === 0) return "Всем сотрудникам";
+  if (selected.length === 0) return mode === "PRACTICE" ? "Всем сотрудникам" : "Должности не выбраны";
 
   const visibleCount = isDesktop ? 4 : 2;
   if (selected.length <= visibleCount) {
