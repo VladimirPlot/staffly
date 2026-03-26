@@ -240,27 +240,6 @@ function TopBar() {
                 >
                   {({ close }) => (
                     <div className="border-subtle bg-surface w-[20rem] overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-                      {hasRestaurant && restName && (
-                        <div className="border-subtle border-b px-4 py-3">
-                          <div className="flex items-center justify-between gap-3 rounded-[1.1rem] bg-[color:var(--staffly-control)] px-3 py-2">
-                            <Link
-                              to="/app"
-                              className="topbar-link text-default inline-flex items-center rounded-full border px-3 py-1 text-xs"
-                              onClick={close}
-                            >
-                              {restName}
-                            </Link>
-                            <Link
-                              to="/restaurants"
-                              className="text-muted text-xs hover:underline"
-                              onClick={close}
-                            >
-                              Сменить ресторан
-                            </Link>
-                          </div>
-                        </div>
-                      )}
-
                       <div className="flex items-center justify-between gap-3 px-4 py-3">
                         <div className="text-default text-sm font-medium">Тема</div>
 
