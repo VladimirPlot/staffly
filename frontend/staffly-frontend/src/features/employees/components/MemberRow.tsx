@@ -11,6 +11,7 @@ type MemberRowProps = {
   canRemove: boolean;
   isSavingEdit: boolean;
   isRemoving: boolean;
+  onAvatarClick?: (member: MemberDto) => void;
   onEdit: (member: MemberDto) => void;
   onRemove: (member: MemberDto) => void;
 };
@@ -21,23 +22,39 @@ export default function MemberRow({
   canRemove,
   isSavingEdit,
   isRemoving,
+  onAvatarClick,
   onEdit,
   onRemove,
 }: MemberRowProps) {
   return (
     <div className="relative flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-1 items-center gap-3 pr-24 sm:pr-0">
-        <Avatar name={displayNameOf(member)} imageUrl={member.avatarUrl ?? undefined} className="flex-shrink-0" />
+        <button
+          type="button"
+          className={`shrink-0 rounded-full transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--staffly-surface)] ${
+            onAvatarClick ? "cursor-zoom-in hover:scale-[1.03]" : "cursor-default"
+          }`}
+          onClick={onAvatarClick ? () => onAvatarClick(member) : undefined}
+          disabled={!onAvatarClick}
+          aria-label={`Открыть аватар ${displayNameOf(member)}`}
+          title="Открыть увеличенный аватар"
+        >
+          <Avatar
+            name={displayNameOf(member)}
+            imageUrl={member.avatarUrl ?? undefined}
+            className="flex-shrink-0"
+          />
+        </button>
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-medium">{displayNameOf(member)}</div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-            <span className="rounded-full border border-subtle px-2 py-0.5">
+          <div className="text-muted mt-1 flex items-center gap-2 text-xs">
+            <span className="border-subtle rounded-full border px-2 py-0.5">
               {member.positionName || ROLE_LABEL[member.role]}
             </span>
           </div>
         </div>
       </div>
-      <div className="min-w-0 text-sm text-default sm:mr-3">
+      <div className="text-default min-w-0 text-sm sm:mr-3">
         <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
           <span>
             Дата рождения: <span className="font-medium">{formatBirthday(member.birthDate)}</span>
@@ -48,7 +65,7 @@ export default function MemberRow({
           </span>
         </div>
       </div>
-      <div className="absolute right-0 top-3 flex items-center gap-2 sm:static">
+      <div className="absolute top-3 right-0 flex items-center gap-2 sm:static">
         {canEditMembers && (
           <Button
             variant="outline"

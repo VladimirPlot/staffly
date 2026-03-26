@@ -23,6 +23,7 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const lastActiveElementRef = React.useRef<HTMLElement | null>(null);
+  const hasHeader = Boolean(title || description);
 
   // держим актуальный onClose без перезапуска эффектов
   const onCloseRef = React.useRef(onClose);
@@ -129,7 +130,7 @@ const Modal: React.FC<ModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50 bg-black/40" onMouseDown={handleBackdropMouseDown}>
-      <div className="flex min-h-[100vh] items-center justify-center p-4 supports-[height:100dvh]:min-h-[100dvh]">
+      <div className="flex min-h-[100vh] items-center justify-center p-2 supports-[height:100dvh]:min-h-[100dvh] sm:p-4">
         <div
           ref={dialogRef}
           role="dialog"
@@ -138,34 +139,40 @@ const Modal: React.FC<ModalProps> = ({
           aria-describedby={description ? descriptionId : undefined}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className={`flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-subtle bg-surface shadow-2xl max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
+          className={`border-subtle bg-surface flex max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-subtle px-6 py-5">
-            <div className="min-w-0">
-              {title && (
-                <div id={titleId} className="text-lg font-semibold text-strong">
-                  {title}
-                </div>
-              )}
-              {description && (
-                <div id={descriptionId} className="mt-2 text-sm text-muted">
-                  {description}
-                </div>
-              )}
+          {hasHeader && (
+            <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
+              <div className="min-w-0">
+                {title && (
+                  <div id={titleId} className="text-strong text-lg font-semibold">
+                    {title}
+                  </div>
+                )}
+                {description && (
+                  <div id={descriptionId} className="text-muted mt-2 text-sm">
+                    {description}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {children && <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>}
+          {children && (
+            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-6 sm:py-4">
+              {children}
+            </div>
+          )}
 
           {footer && (
-            <div className="border-t border-subtle px-6 py-4">
+            <div className="border-subtle border-t px-3 py-3 sm:px-6 sm:py-4">
               <div className="flex justify-end gap-2">{footer}</div>
             </div>
           )}
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 };
 
