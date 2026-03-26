@@ -84,6 +84,7 @@ export default function EmployeeAvatarPreviewModal({
     <Modal
       open={open && Boolean(member)}
       onClose={handleClose}
+      ariaLabel="Просмотр аватара сотрудника"
       className="max-w-xl"
       footer={
         <Button

@@ -6,6 +6,7 @@ type ModalProps = {
   open: boolean;
   title?: string;
   description?: React.ReactNode;
+  ariaLabel?: string;
   onClose: () => void;
   footer?: React.ReactNode;
   className?: string;
@@ -16,6 +17,7 @@ const Modal: React.FC<ModalProps> = ({
   open,
   title,
   description,
+  ariaLabel,
   onClose,
   footer,
   className = "",
@@ -33,6 +35,11 @@ const Modal: React.FC<ModalProps> = ({
 
   const titleId = React.useId();
   const descriptionId = React.useId();
+  const dialogLabelProps = title
+    ? { "aria-labelledby": titleId }
+    : ariaLabel
+      ? { "aria-label": ariaLabel }
+      : {};
 
   // ✅ lock body scroll while modal is open (mobile-friendly)
   React.useEffect(() => {
@@ -99,9 +106,8 @@ const Modal: React.FC<ModalProps> = ({
   if (!open || typeof document === "undefined") return null;
 
   const handleBackdropMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onCloseRef.current();
-    }
+    if (event.target !== event.currentTarget) return;
+    onCloseRef.current();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -129,17 +135,22 @@ const Modal: React.FC<ModalProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/40" onMouseDown={handleBackdropMouseDown}>
-      <div className="flex min-h-[100vh] items-center justify-center p-2 supports-[height:100dvh]:min-h-[100dvh] sm:p-4">
+    <div className="fixed inset-0 z-50">
+      <div
+        className="absolute inset-0 bg-black/40"
+        aria-hidden="true"
+        onMouseDown={handleBackdropMouseDown}
+      />
+      <div className="pointer-events-none relative flex min-h-[100vh] items-center justify-center p-2 supports-[height:100dvh]:min-h-[100dvh] sm:p-4">
         <div
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
-          aria-labelledby={title ? titleId : undefined}
+          {...dialogLabelProps}
           aria-describedby={description ? descriptionId : undefined}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className={`border-subtle bg-surface flex max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
+          className={`border-subtle bg-surface pointer-events-auto flex max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
         >
           {hasHeader && (
             <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
