@@ -462,10 +462,12 @@ public class ExamServiceImpl implements ExamService {
 
     private void replaceSources(Long restaurantId, TrainingExam exam, List<ExamSourceFolderDto> foldersDto, List<Long> sourceQuestionIds) {
         sourceFolders.deleteByExamId(exam.getId());
+        sourceFolders.flush();
         sourceQuestions.deleteByExamId(exam.getId());
+        sourceQuestions.flush();
 
         var folderEntities = new ArrayList<TrainingExamSourceFolder>();
-        for (var folderSource : (foldersDto == null ? List.<ExamSourceFolderDto>of() : foldersDto).stream().distinct().toList()) {
+        for (var folderSource : normalizeFolderSources(foldersDto)) {
             var folder = folders.findByIdAndRestaurantId(folderSource.folderId(), restaurantId)
                     .orElseThrow(() -> new NotFoundException("Folder not found"));
             if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
@@ -495,6 +497,31 @@ public class ExamServiceImpl implements ExamService {
         if (!questionEntities.isEmpty()) {
             sourceQuestions.saveAll(questionEntities);
         }
+    }
+
+    private List<ExamSourceFolderDto> normalizeFolderSources(List<ExamSourceFolderDto> foldersDto) {
+        if (foldersDto == null || foldersDto.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, ExamSourceFolderDto> uniqueByFolderId = new LinkedHashMap<>();
+        for (var source : foldersDto) {
+            if (source == null || source.folderId() == null) {
+                throw new BadRequestException("Folder source must contain folderId");
+            }
+            var existing = uniqueByFolderId.get(source.folderId());
+            if (existing == null) {
+                uniqueByFolderId.put(source.folderId(), source);
+                continue;
+            }
+
+            boolean sameDefinition = existing.pickMode() == source.pickMode()
+                    && Objects.equals(existing.randomCount(), source.randomCount());
+            if (!sameDefinition) {
+                throw new BadRequestException("Folder source contains duplicate folderId with different pick settings");
+            }
+        }
+        return List.copyOf(uniqueByFolderId.values());
     }
 
     private void replaceVisibility(Long restaurantId, TrainingExam exam, List<Long> visibilityPositionIds) {
