@@ -11,6 +11,7 @@ type MembersListProps = {
   isSavingEditMemberId: number | null;
   isRemovingMemberId: number | null;
   canRemoveMember: (member: MemberDto) => boolean;
+  onAvatarClick: (member: MemberDto) => void;
   onEdit: (member: MemberDto) => void;
   onRemove: (member: MemberDto) => void;
 };
@@ -24,21 +25,22 @@ export default function MembersList({
   isSavingEditMemberId,
   isRemovingMemberId,
   canRemoveMember,
+  onAvatarClick,
   onEdit,
   onRemove,
 }: MembersListProps) {
-  if (loading) return <Card className="text-sm text-muted">Загрузка участников…</Card>;
+  if (loading) return <Card className="text-muted text-sm">Загрузка участников…</Card>;
   if (error) return <Card className="text-sm text-red-600">{error}</Card>;
   if (members.length === 0) {
     return (
-      <Card className="text-sm text-muted">
+      <Card className="text-muted text-sm">
         {totalMembers === 0 ? "Пока нет участников." : "Нет участников с выбранной должностью."}
       </Card>
     );
   }
 
   return (
-    <div className="divide-y divide-subtle">
+    <div className="divide-subtle divide-y">
       {members.map((member) => (
         <MemberRow
           key={member.id}
@@ -47,6 +49,7 @@ export default function MembersList({
           canRemove={canRemoveMember(member)}
           isSavingEdit={isSavingEditMemberId === member.id}
           isRemoving={isRemovingMemberId === member.id}
+          onAvatarClick={onAvatarClick}
           onEdit={onEdit}
           onRemove={onRemove}
         />

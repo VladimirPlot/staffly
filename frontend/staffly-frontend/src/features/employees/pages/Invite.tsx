@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
+import type { MemberDto } from "../api";
 import type { InviteRole } from "../../invitations/api";
+import EmployeeAvatarPreviewModal from "../components/EmployeeAvatarPreviewModal";
 import EditMemberPositionModal from "../components/EditMemberPositionModal";
 import InvitePanel from "../components/InvitePanel";
 import MembersFilterByPosition from "../components/MembersFilterByPosition";
@@ -24,28 +26,27 @@ export default function InvitePage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const currentUserId = user?.id ?? null;
+  const [avatarPreviewMember, setAvatarPreviewMember] = useState<MemberDto | null>(null);
 
   const membersState = useMembers(restaurantId);
   const positionsState = usePositions(restaurantId);
 
   const access = useMemo(
     () => resolveRestaurantAccess(user?.roles, membersState.myRole),
-    [membersState.myRole, user?.roles]
+    [membersState.myRole, user?.roles],
   );
 
   const isStaffInCurrentRestaurant = membersState.myRole === "STAFF";
   const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
   const canEditMembers = membersState.myRole === "ADMIN";
 
-  const roleOptions: InviteRole[] = access.isAdminLike
-    ? ["ADMIN", "MANAGER", "STAFF"]
-    : ["STAFF"];
+  const roleOptions: InviteRole[] = access.isAdminLike ? ["ADMIN", "MANAGER", "STAFF"] : ["STAFF"];
 
   const inviteForm = useInviteForm(
     restaurantId,
     { isManagerLike: canInvite },
     roleOptions,
-    positionsState.getInvitePositions
+    positionsState.getInvitePositions,
   );
 
   const { positionOptions, sortedMembers, positionFilter, setPositionFilter } =
@@ -68,11 +69,19 @@ export default function InvitePage() {
     onSelfRemoved: () => membersState.setMyRole(null),
   });
 
+  const handleOpenAvatarPreview = useCallback((member: MemberDto) => {
+    setAvatarPreviewMember(member);
+  }, []);
+
+  const handleCloseAvatarPreview = useCallback(() => {
+    setAvatarPreviewMember(null);
+  }, []);
+
   if (!restaurantId) {
     return (
       <div className="mx-auto max-w-2xl">
         <Card>
-          <div className="text-sm text-default">Сначала выберите ресторан.</div>
+          <div className="text-default text-sm">Сначала выберите ресторан.</div>
           <div className="mt-3">
             <Button variant="outline" onClick={() => navigate("/restaurants")}>
               К выбору ресторанов
@@ -141,6 +150,7 @@ export default function InvitePage() {
               : null
           }
           canRemoveMember={removalState.canRemoveMember}
+          onAvatarClick={handleOpenAvatarPreview}
           onEdit={editPositionState.open}
           onRemove={removalState.open}
         />
@@ -168,6 +178,12 @@ export default function InvitePage() {
         confirming={removalState.removing}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
+      />
+
+      <EmployeeAvatarPreviewModal
+        open={Boolean(avatarPreviewMember)}
+        member={avatarPreviewMember}
+        onClose={handleCloseAvatarPreview}
       />
     </div>
   );
