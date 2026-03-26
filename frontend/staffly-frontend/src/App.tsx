@@ -42,10 +42,8 @@ const NotesPage = React.lazy(() => import("./features/income/pages/NotesPage"));
 
 const PositionsPage = React.lazy(() => import("./features/dictionaries/pages/Positions"));
 
-const TrainingLandingPage = React.lazy(() => import("./features/training/pages/Landing"));
-const TrainingKnowledgeRootPage = React.lazy(
-  () => import("./features/training/pages/KnowledgeRootPage"),
-);
+const TrainingLandingPage = React.lazy(() => import("./features/training/pages/LandingPage"));
+const TrainingKnowledgePage = React.lazy(() => import("./features/training/pages/KnowledgePage"));
 const TrainingKnowledgeFolderPage = React.lazy(
   () => import("./features/training/pages/KnowledgeFolderPage"),
 );
@@ -632,7 +630,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>
-                    <TrainingKnowledgeRootPage />
+                    <TrainingKnowledgePage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -669,16 +667,6 @@ export default function App() {
             />
             <Route
               path="/training/exams"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <TrainingExamsPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/training/exams/:examId"
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>

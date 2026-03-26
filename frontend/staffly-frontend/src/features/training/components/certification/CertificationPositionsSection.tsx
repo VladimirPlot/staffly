@@ -4,10 +4,19 @@ import LoadingState from "../LoadingState";
 import type { CertificationPositionsState } from "../../hooks/certification/types";
 
 type Props = {
+  hasSelectedExam: boolean;
   positionsState: CertificationPositionsState;
 };
 
-export default function CertificationPositionsSection({ positionsState }: Props) {
+export default function CertificationPositionsSection({ hasSelectedExam, positionsState }: Props) {
+  if (!hasSelectedExam) {
+    return (
+      <Card>
+        <div className="text-sm text-muted">Выберите аттестацию, чтобы увидеть статистику по должностям.</div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="space-y-3">
       <div className="text-sm font-semibold">Статистика по должностям</div>

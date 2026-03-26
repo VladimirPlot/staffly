@@ -66,17 +66,17 @@ export function useCertificationWorkspaceState({ restaurantId, canManage }: Para
   const { reload: reloadSummary } = summaryState;
   const { reload: reloadPositions } = positionsState;
   const { reload: reloadEmployees } = employeesState;
-  const { load: loadAttempts } = attemptsState;
+  const { reload: reloadAttempts } = attemptsState;
 
   const refreshWorkspace = useCallback(async () => {
     await Promise.all([
       reloadSummary(),
       reloadPositions(),
       reloadEmployees(),
-      loadAttempts(),
+      reloadAttempts(),
       loadExams(),
     ]);
-  }, [reloadSummary, reloadPositions, reloadEmployees, loadAttempts, loadExams]);
+  }, [reloadSummary, reloadPositions, reloadEmployees, reloadAttempts, loadExams]);
 
   const managerActions = useCertificationManagerActions(restaurantId, selectedExamId, refreshWorkspace);
 
@@ -101,6 +101,10 @@ export function useCertificationWorkspaceState({ restaurantId, canManage }: Para
     if (employeesState.employees.some((employee) => employee.userId === selectedEmployeeUserId)) return;
     setSelectedEmployeeUserId(null);
   }, [employeesState.employees, selectedEmployeeUserId]);
+
+  useEffect(() => {
+    setSelectedEmployeeUserId(null);
+  }, [selectedExamId]);
 
   const selectedEmployeeFullName = useMemo(
     () => employeesState.employees.find((employee) => employee.userId === selectedEmployeeUserId)?.fullName ?? null,

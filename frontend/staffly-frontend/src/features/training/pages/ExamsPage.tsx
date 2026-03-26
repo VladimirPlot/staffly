@@ -55,9 +55,13 @@ export default function ExamsPage() {
               summaryState={workspace.summaryState}
               managerActions={workspace.managerActions}
             />
-            <CertificationPositionsSection positionsState={workspace.positionsState} />
+            <CertificationPositionsSection
+              hasSelectedExam={workspace.selectedExam != null}
+              positionsState={workspace.positionsState}
+            />
             <CertificationEmployeesSection
               canManage={canManage}
+              hasSelectedExam={workspace.selectedExam != null}
               employeesState={workspace.employeesState}
               managerActions={workspace.managerActions}
               statusFilter={workspace.statusFilter}

@@ -9,6 +9,7 @@ import CertificationStatusBadge from "./CertificationStatusBadge";
 
 type Props = {
   canManage: boolean;
+  hasSelectedExam: boolean;
   employeesState: CertificationEmployeesState;
   managerActions: CertificationManagerActionsState;
   statusFilter: CertificationStatusFilter;
@@ -22,6 +23,7 @@ const STATUS_OPTIONS: CertificationAssignmentStatus[] = ["ASSIGNED", "IN_PROGRES
 
 export default function CertificationEmployeesSection({
   canManage,
+  hasSelectedExam,
   employeesState,
   managerActions,
   statusFilter,
@@ -30,6 +32,14 @@ export default function CertificationEmployeesSection({
   onSearchChange,
   onShowAttempts,
 }: Props) {
+  if (!hasSelectedExam) {
+    return (
+      <Card>
+        <div className="text-sm text-muted">Выберите аттестацию, чтобы увидеть сотрудников и назначения.</div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center justify-between">

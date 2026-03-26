@@ -9,13 +9,19 @@ type Props = {
 };
 
 export default function CertificationAttemptsSection({ selectedEmployeeFullName, attemptsState }: Props) {
-  if (!selectedEmployeeFullName) return null;
+  if (!selectedEmployeeFullName) {
+    return (
+      <Card>
+        <div className="text-sm text-muted">Выберите сотрудника, чтобы увидеть историю попыток.</div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="space-y-3">
       <div className="text-sm font-semibold">История попыток: {selectedEmployeeFullName}</div>
       {attemptsState.loading && <LoadingState label="Загрузка попыток..." />}
-      {attemptsState.error && <ErrorState message={attemptsState.error} onRetry={() => void attemptsState.load()} />}
+      {attemptsState.error && <ErrorState message={attemptsState.error} onRetry={() => void attemptsState.reload()} />}
       {!attemptsState.loading && !attemptsState.error && attemptsState.attempts.length === 0 && (
         <div className="text-sm text-muted">Попыток пока нет.</div>
       )}

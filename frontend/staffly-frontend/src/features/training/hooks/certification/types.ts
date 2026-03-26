@@ -31,7 +31,7 @@ export type CertificationEmployeesState = AsyncBaseState & AsyncReloadState & {
 
 export type CertificationEmployeeAttemptsState = AsyncBaseState & {
   attempts: CertificationExamAttemptHistoryDto[];
-  load: () => Promise<void>;
+  reload: () => Promise<void>;
 };
 
 export type CertificationManagerActionsState = {
