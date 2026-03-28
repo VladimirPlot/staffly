@@ -1,4 +1,5 @@
 import React from "react";
+import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { getFocusableElements } from "./dialogUtils";
 
@@ -10,6 +11,8 @@ type ModalProps = {
   onClose: () => void;
   footer?: React.ReactNode;
   className?: string;
+  overlayCloseButton?: boolean;
+  overlayCloseLabel?: string;
   children?: React.ReactNode;
 };
 
@@ -21,6 +24,8 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   footer,
   className = "",
+  overlayCloseButton = false,
+  overlayCloseLabel = "Закрыть",
   children,
 }) => {
   const dialogRef = React.useRef<HTMLDivElement>(null);
@@ -150,36 +155,51 @@ const Modal: React.FC<ModalProps> = ({
           aria-describedby={description ? descriptionId : undefined}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className={`border-subtle bg-surface pointer-events-auto flex max-h-[calc(100vh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] ${className}`}
+          className={`pointer-events-auto relative w-full max-w-2xl ${className}`}
         >
-          {hasHeader && (
-            <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
-              <div className="min-w-0">
-                {title && (
-                  <div id={titleId} className="text-strong text-lg font-semibold">
-                    {title}
-                  </div>
-                )}
-                {description && (
-                  <div id={descriptionId} className="text-muted mt-2 text-sm">
-                    {description}
-                  </div>
-                )}
+          {overlayCloseButton && (
+            <button
+              type="button"
+              aria-label={overlayCloseLabel}
+              title={overlayCloseLabel}
+              onClick={onClose}
+              className="text-strong [WebkitTapHighlightColor:transparent] absolute top-0 right-0 z-20 inline-flex h-11 w-11 translate-x-[18%] -translate-y-[18%] items-center justify-center rounded-full border border-white/80 bg-white/88 shadow-[0_12px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-[transform,background-color,box-shadow,color] duration-200 ease-out hover:bg-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.22)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--staffly-surface)] active:scale-95 sm:h-12 sm:w-12 sm:translate-x-[22%] sm:-translate-y-[22%]"
+              style={{ WebkitTapHighlightColor: "transparent" }}
+            >
+              <X className="h-[1.125rem] w-[1.125rem] sm:h-5 sm:w-5" strokeWidth={2.25} />
+            </button>
+          )}
+
+          <div className="border-subtle bg-surface flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]">
+            {hasHeader && (
+              <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
+                <div className="min-w-0">
+                  {title && (
+                    <div id={titleId} className="text-strong text-lg font-semibold">
+                      {title}
+                    </div>
+                  )}
+                  {description && (
+                    <div id={descriptionId} className="text-muted mt-2 text-sm">
+                      {description}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {children && (
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-6 sm:py-4">
-              {children}
-            </div>
-          )}
+            {children && (
+              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-6 sm:py-4">
+                {children}
+              </div>
+            )}
 
-          {footer && (
-            <div className="border-subtle border-t px-3 py-3 sm:px-6 sm:py-4">
-              <div className="flex justify-end gap-2">{footer}</div>
-            </div>
-          )}
+            {footer && (
+              <div className="border-subtle border-t px-3 py-3 sm:px-6 sm:py-4">
+                <div className="flex justify-end gap-2">{footer}</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>,

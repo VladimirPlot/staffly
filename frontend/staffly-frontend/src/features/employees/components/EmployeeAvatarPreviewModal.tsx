@@ -3,7 +3,6 @@ import { Copy } from "lucide-react";
 import type { MemberDto } from "../api";
 import { displayNameOf, formatBirthday, ROLE_LABEL } from "../utils/memberUtils";
 import Toast from "../../home/components/Toast";
-import Button from "../../../shared/ui/Button";
 import Modal from "../../../shared/ui/Modal";
 
 type EmployeeAvatarPreviewModalProps = {
@@ -86,15 +85,8 @@ export default function EmployeeAvatarPreviewModal({
       onClose={handleClose}
       ariaLabel="Просмотр аватара сотрудника"
       className="max-w-xl"
-      footer={
-        <Button
-          variant="outline"
-          onClick={handleClose}
-          className="min-h-12 w-full sm:min-h-11 sm:w-auto"
-        >
-          Закрыть
-        </Button>
-      }
+      overlayCloseButton
+      overlayCloseLabel="Закрыть просмотр аватара"
     >
       {member ? (
         <div className="border-subtle relative mx-auto w-full overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,var(--staffly-control),var(--staffly-surface))] shadow-[0_16px_44px_rgba(15,23,42,0.10)] sm:rounded-[32px] sm:shadow-[0_20px_60px_rgba(15,23,42,0.10)]">
