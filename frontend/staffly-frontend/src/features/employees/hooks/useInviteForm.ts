@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { inviteEmployee, type InviteRole } from "../../invitations/api";
+import { inviteEmployee } from "../../invitations/api";
 import type { PositionDto } from "../../dictionaries/api";
 
 type AccessFlags = {
@@ -9,25 +9,16 @@ type AccessFlags = {
 export function useInviteForm(
   restaurantId: number | null,
   access: AccessFlags,
-  roleOptions: InviteRole[],
-  getPositionsByRole: (role: InviteRole) => PositionDto[]
+  positions: PositionDto[]
 ) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteDone, setInviteDone] = useState(false);
   const [phoneOrEmail, setPhoneOrEmail] = useState("");
-  const [role, setRole] = useState<InviteRole>(roleOptions[0] ?? "STAFF");
   const [positionId, setPositionId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const positions = useMemo(() => getPositionsByRole(role), [getPositionsByRole, role]);
   const canInvite = access.isManagerLike;
-
-  useEffect(() => {
-    if (!roleOptions.includes(role)) {
-      setRole(roleOptions[0] ?? "STAFF");
-    }
-  }, [role, roleOptions]);
 
   useEffect(() => {
     if (positions.length === 0) {
@@ -50,10 +41,13 @@ export function useInviteForm(
     setSubmitting(true);
     setError(null);
     try {
+      if (!positionId) {
+        setError("Выберите должность");
+        return;
+      }
       await inviteEmployee(restaurantId, {
         phoneOrEmail: phoneOrEmail.trim(),
-        role,
-        positionId: positionId ?? undefined,
+        positionId,
       });
       setInviteDone(true);
     } catch (e: any) {
@@ -64,8 +58,8 @@ export function useInviteForm(
   };
 
   const isSubmitDisabled = useMemo(
-    () => !phoneOrEmail.trim() || submitting,
-    [phoneOrEmail, submitting]
+    () => !phoneOrEmail.trim() || !positionId || submitting,
+    [phoneOrEmail, positionId, submitting]
   );
 
   return {
@@ -76,8 +70,6 @@ export function useInviteForm(
     inviteDone,
     phoneOrEmail,
     setPhoneOrEmail,
-    role,
-    setRole,
     positionId,
     setPositionId,
     submitting,

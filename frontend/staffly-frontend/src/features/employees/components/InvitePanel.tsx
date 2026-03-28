@@ -1,16 +1,13 @@
 import Input from "../../../shared/ui/Input";
 import SelectField from "../../../shared/ui/SelectField";
 import Button from "../../../shared/ui/Button";
-import type { InviteRole } from "../../invitations/api";
-import type { PositionDto, RestaurantRole } from "../../dictionaries/api";
+import type { PositionDto } from "../../dictionaries/api";
 import { ROLE_LABEL } from "../utils/memberUtils";
 
 type InvitePanelProps = {
   open: boolean;
   inviteDone: boolean;
   phoneOrEmail: string;
-  role: InviteRole;
-  roleOptions: InviteRole[];
   positions: PositionDto[];
   loadingPositions: boolean;
   positionId: number | null;
@@ -18,7 +15,6 @@ type InvitePanelProps = {
   submitting: boolean;
   isSubmitDisabled: boolean;
   onChangePhoneOrEmail: (value: string) => void;
-  onChangeRole: (role: InviteRole) => void;
   onChangePositionId: (positionId: number | null) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -29,8 +25,6 @@ export default function InvitePanel({
   open,
   inviteDone,
   phoneOrEmail,
-  role,
-  roleOptions,
   positions,
   loadingPositions,
   positionId,
@@ -38,7 +32,6 @@ export default function InvitePanel({
   submitting,
   isSubmitDisabled,
   onChangePhoneOrEmail,
-  onChangeRole,
   onChangePositionId,
   onSubmit,
   onCancel,
@@ -68,18 +61,6 @@ export default function InvitePanel({
             onChange={(event) => onChangePhoneOrEmail(event.target.value)}
             placeholder="+79990000000 или name@example.com"
           />
-
-          <SelectField
-            label="Роль доступа"
-            value={role}
-            onChange={(event) => onChangeRole(event.target.value as InviteRole)}
-          >
-            {roleOptions.map((value) => (
-              <option key={value} value={value}>
-                {ROLE_LABEL[value as RestaurantRole] || value}
-              </option>
-            ))}
-          </SelectField>
 
           <SelectField
             label="Должность"
