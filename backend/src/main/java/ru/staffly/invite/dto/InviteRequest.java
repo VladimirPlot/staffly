@@ -5,6 +5,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record InviteRequest(
-        @NotBlank @Size(max = 255) String phoneOrEmail,
+        @NotBlank @Size(max = 32) String phone,
         @NotNull Long positionId
 ) {}

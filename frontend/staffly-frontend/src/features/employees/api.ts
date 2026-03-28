@@ -5,9 +5,8 @@ import { toAbsoluteUrl } from "../../shared/utils/url";
 
 /* ===== Приглашения (оставляем как было) ===== */
 export type InviteRequest = {
-  phoneOrEmail: string;
-  role: RestaurantRole;         // "STAFF" | "MANAGER" | "ADMIN"
-  positionId?: number;          // опционально
+  phone: string;
+  positionId: number;
 };
 
 export type InviteResponse = {

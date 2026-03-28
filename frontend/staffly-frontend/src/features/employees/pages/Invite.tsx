@@ -113,14 +113,21 @@ export default function InvitePage() {
           <InvitePanel
             open={inviteForm.inviteOpen}
             inviteDone={inviteForm.inviteDone}
-            phoneOrEmail={inviteForm.phoneOrEmail}
+            phone={inviteForm.phone}
+            phoneCountry={inviteForm.phoneCountry}
+            phoneCountryLocked={inviteForm.phoneCountryLocked}
+            phoneError={inviteForm.phoneError}
             positions={inviteForm.positions}
             loadingPositions={positionsState.loading}
             positionId={inviteForm.positionId}
             error={inviteForm.error}
             submitting={inviteForm.submitting}
             isSubmitDisabled={inviteForm.isSubmitDisabled}
-            onChangePhoneOrEmail={inviteForm.setPhoneOrEmail}
+            onChangePhone={inviteForm.setPhone}
+            onChangePhoneCountry={(country, meta) => {
+              inviteForm.setPhoneCountry(country);
+              inviteForm.setPhoneCountryLocked(meta?.locked || false);
+            }}
             onChangePositionId={inviteForm.setPositionId}
             onSubmit={inviteForm.submit}
             onCancel={() => inviteForm.setInviteOpen(false)}

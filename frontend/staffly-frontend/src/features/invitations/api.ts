@@ -27,7 +27,7 @@ export async function declineInvite(token: string): Promise<void> {
 }
 
 export type InviteEmployeePayload = {
-  phoneOrEmail: string;     // именно phoneOrEmail (а не phone)
+  phone: string;
   positionId: number;
 };
 

@@ -79,14 +79,12 @@ public class EmployeeServiceImpl implements EmployeeService {
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        if (req == null || !isValidContact(req.phoneOrEmail())) {
-            throw new BadRequestException("Invalid phoneOrEmail");
+        if (req == null || !isPhone(req.phone())) {
+            throw new BadRequestException("Invalid phone");
         }
 
         // нормализуем для консистентности
-        String contact = isEmail(req.phoneOrEmail())
-                ? normalizeEmail(req.phoneOrEmail())
-                : normalizePhone(req.phoneOrEmail());
+        String contact = normalizePhone(req.phone());
 
         // уже есть активный инвайт?
         if (invitations.existsInviteForContact(restaurantId, contact, InvitationStatus.PENDING)) {
@@ -94,7 +92,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
 
         // если контакт уже член ресторана — конфликт
-        users.findByPhoneOrEmail(contact).ifPresent(u -> {
+        users.findByPhone(contact).ifPresent(u -> {
             if (members.existsByRestaurantIdAndUserId(restaurantId, u.getId())) {
                 throw new ConflictException("User already a member");
             }
