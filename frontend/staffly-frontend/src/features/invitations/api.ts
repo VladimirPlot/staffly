@@ -1,6 +1,7 @@
 import api from "../../shared/api/apiClient";
+import type { RestaurantRole } from "../../shared/types/restaurant";
 
-export type InviteRole = "ADMIN" | "MANAGER" | "STAFF";
+export type InviteRole = RestaurantRole;
 
 export type MyInvite = {
   token: string;
@@ -26,9 +27,8 @@ export async function declineInvite(token: string): Promise<void> {
 }
 
 export type InviteEmployeePayload = {
-  phoneOrEmail: string;     // именно phoneOrEmail (а не phone)
-  role: InviteRole;
-  positionId?: number;
+  phone: string;
+  positionId: number;
 };
 
 export type InviteResponse = {

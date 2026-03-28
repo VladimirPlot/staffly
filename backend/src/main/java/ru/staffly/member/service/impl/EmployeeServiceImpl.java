@@ -79,14 +79,12 @@ public class EmployeeServiceImpl implements EmployeeService {
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        if (req == null || !isValidContact(req.phoneOrEmail())) {
-            throw new BadRequestException("Invalid phoneOrEmail");
+        if (req == null || !isPhone(req.phone())) {
+            throw new BadRequestException("Invalid phone");
         }
 
         // нормализуем для консистентности
-        String contact = isEmail(req.phoneOrEmail())
-                ? normalizeEmail(req.phoneOrEmail())
-                : normalizePhone(req.phoneOrEmail());
+        String contact = normalizePhone(req.phone());
 
         // уже есть активный инвайт?
         if (invitations.existsInviteForContact(restaurantId, contact, InvitationStatus.PENDING)) {
@@ -94,34 +92,24 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
 
         // если контакт уже член ресторана — конфликт
-        users.findByPhoneOrEmail(contact).ifPresent(u -> {
+        users.findByPhone(contact).ifPresent(u -> {
             if (members.existsByRestaurantIdAndUserId(restaurantId, u.getId())) {
                 throw new ConflictException("User already a member");
             }
         });
 
-        if (req.role() == null) throw new BadRequestException("Role is required");
-        RestaurantRole desiredRole = req.role();
+        Position desiredPosition = positions.findById(req.positionId())
+                .orElseThrow(() -> new NotFoundException("Position not found: " + req.positionId()));
+        if (!desiredPosition.getRestaurant().getId().equals(restaurantId) || !desiredPosition.isActive()) {
+            throw new BadRequestException("Position is not in this restaurant or inactive");
+        }
+
+        RestaurantRole desiredRole = desiredPosition.getLevel();
 
         // права приглашающего: MANAGER может приглашать только STAFF
         boolean inviterIsAdmin = security.isAdmin(currentUserId, restaurantId);
         if (!inviterIsAdmin && desiredRole != RestaurantRole.STAFF) {
-            throw new ForbiddenException("Managers can invite only STAFF role");
-        }
-
-        Position desiredPosition = null;
-        if (req.positionId() != null) {
-            desiredPosition = positions.findById(req.positionId())
-                    .orElseThrow(() -> new NotFoundException("Position not found: " + req.positionId()));
-            if (!desiredPosition.getRestaurant().getId().equals(restaurantId) || !desiredPosition.isActive()) {
-                throw new BadRequestException("Position is not in this restaurant or inactive");
-            }
-
-            // согласованность уровней: позиция не должна быть «выше» роли
-            // ADMIN >= MANAGER >= STAFF
-            if (!isPositionCompatibleWithRole(desiredPosition.getLevel(), desiredRole)) {
-                throw new ConflictException("Position level is not compatible with invited role");
-            }
+            throw new ForbiddenException("Managers can invite only STAFF positions");
         }
 
         String token = genToken(); // дефолт 24 байта

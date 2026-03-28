@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { inviteEmployee, type InviteRole } from "../../invitations/api";
+import type { CountryCode } from "libphonenumber-js";
+import { inviteEmployee } from "../../invitations/api";
 import type { PositionDto } from "../../dictionaries/api";
+import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
 
 type AccessFlags = {
   isManagerLike: boolean;
@@ -9,25 +11,26 @@ type AccessFlags = {
 export function useInviteForm(
   restaurantId: number | null,
   access: AccessFlags,
-  roleOptions: InviteRole[],
-  getPositionsByRole: (role: InviteRole) => PositionDto[]
+  positions: PositionDto[]
 ) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteDone, setInviteDone] = useState(false);
-  const [phoneOrEmail, setPhoneOrEmail] = useState("");
-  const [role, setRole] = useState<InviteRole>(roleOptions[0] ?? "STAFF");
+  const [phone, setPhone] = useState<string | undefined>(undefined);
+  const [phoneCountry, setPhoneCountry] = useState<CountryCode | undefined>(DEFAULT_PHONE_COUNTRY);
+  const [phoneCountryLocked, setPhoneCountryLocked] = useState(false);
   const [positionId, setPositionId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const positions = useMemo(() => getPositionsByRole(role), [getPositionsByRole, role]);
   const canInvite = access.isManagerLike;
-
-  useEffect(() => {
-    if (!roleOptions.includes(role)) {
-      setRole(roleOptions[0] ?? "STAFF");
-    }
-  }, [role, roleOptions]);
+  const normalizedPhone = normalizePhoneForSubmit(phone, {
+    selectedCountry: phoneCountry,
+    isCountryLocked: phoneCountryLocked,
+  });
+  const phoneError =
+    phone && (!normalizedPhone.e164 || !normalizedPhone.isValid)
+      ? "Введите корректный номер телефона"
+      : undefined;
 
   useEffect(() => {
     if (positions.length === 0) {
@@ -40,20 +43,26 @@ export function useInviteForm(
   }, [positions, positionId]);
 
   const resetForm = () => {
-    setPhoneOrEmail("");
+    setPhone(undefined);
     setInviteDone(false);
     setError(null);
   };
 
   const submit = async () => {
-    if (!restaurantId || !phoneOrEmail.trim()) return;
+    if (!restaurantId || !phone) return;
     setSubmitting(true);
     setError(null);
     try {
+      if (!positionId) {
+        setError("Выберите должность");
+        return;
+      }
+      if (!normalizedPhone.e164 || !normalizedPhone.isValid) {
+        return;
+      }
       await inviteEmployee(restaurantId, {
-        phoneOrEmail: phoneOrEmail.trim(),
-        role,
-        positionId: positionId ?? undefined,
+        phone: normalizedPhone.e164,
+        positionId,
       });
       setInviteDone(true);
     } catch (e: any) {
@@ -64,8 +73,8 @@ export function useInviteForm(
   };
 
   const isSubmitDisabled = useMemo(
-    () => !phoneOrEmail.trim() || submitting,
-    [phoneOrEmail, submitting]
+    () => !phone || !positionId || !normalizedPhone.e164 || !normalizedPhone.isValid || submitting,
+    [normalizedPhone.e164, normalizedPhone.isValid, phone, positionId, submitting]
   );
 
   return {
@@ -74,10 +83,13 @@ export function useInviteForm(
     inviteOpen,
     setInviteOpen,
     inviteDone,
-    phoneOrEmail,
-    setPhoneOrEmail,
-    role,
-    setRole,
+    phone,
+    setPhone,
+    phoneCountry,
+    phoneCountryLocked,
+    phoneError,
+    setPhoneCountry,
+    setPhoneCountryLocked,
     positionId,
     setPositionId,
     submitting,

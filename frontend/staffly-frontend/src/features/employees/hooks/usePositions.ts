@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
-import type { InviteRole } from "../../invitations/api";
-import { allowedLevelsFor } from "../utils/memberUtils";
 
 export function usePositions(restaurantId: number | null) {
   const [allPositions, setAllPositions] = useState<PositionDto[]>([]);
@@ -27,14 +25,6 @@ export function usePositions(restaurantId: number | null) {
     void refresh();
   }, [refresh]);
 
-  const getInvitePositions = useCallback(
-    (role: InviteRole) => {
-      const allowedLevels = allowedLevelsFor(role);
-      return allPositions.filter((position) => position.active && allowedLevels.includes(position.level));
-    },
-    [allPositions]
-  );
-
   const activePositions = useMemo(
     () => allPositions.filter((position) => position.active),
     [allPositions]
@@ -45,7 +35,6 @@ export function usePositions(restaurantId: number | null) {
     error,
     allPositions,
     activePositions,
-    getInvitePositions,
     refresh,
   };
 }

@@ -6,7 +6,7 @@ import Card from "../../../shared/ui/Card";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import type { MemberDto } from "../api";
-import type { InviteRole } from "../../invitations/api";
+import type { PositionDto } from "../../dictionaries/api";
 import EmployeeAvatarPreviewModal from "../components/EmployeeAvatarPreviewModal";
 import EditMemberPositionModal from "../components/EditMemberPositionModal";
 import InvitePanel from "../components/InvitePanel";
@@ -40,13 +40,18 @@ export default function InvitePage() {
   const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
   const canEditMembers = membersState.myRole === "ADMIN";
 
-  const roleOptions: InviteRole[] = access.isAdminLike ? ["ADMIN", "MANAGER", "STAFF"] : ["STAFF"];
+  const invitablePositions = useMemo(
+    () =>
+      positionsState.activePositions.filter((position: PositionDto) =>
+        access.isAdminLike ? true : position.level === "STAFF",
+      ),
+    [access.isAdminLike, positionsState.activePositions],
+  );
 
   const inviteForm = useInviteForm(
     restaurantId,
     { isManagerLike: canInvite },
-    roleOptions,
-    positionsState.getInvitePositions,
+    invitablePositions,
   );
 
   const { positionOptions, sortedMembers, positionFilter, setPositionFilter } =
@@ -108,17 +113,21 @@ export default function InvitePage() {
           <InvitePanel
             open={inviteForm.inviteOpen}
             inviteDone={inviteForm.inviteDone}
-            phoneOrEmail={inviteForm.phoneOrEmail}
-            role={inviteForm.role}
-            roleOptions={roleOptions}
+            phone={inviteForm.phone}
+            phoneCountry={inviteForm.phoneCountry}
+            phoneCountryLocked={inviteForm.phoneCountryLocked}
+            phoneError={inviteForm.phoneError}
             positions={inviteForm.positions}
             loadingPositions={positionsState.loading}
             positionId={inviteForm.positionId}
             error={inviteForm.error}
             submitting={inviteForm.submitting}
             isSubmitDisabled={inviteForm.isSubmitDisabled}
-            onChangePhoneOrEmail={inviteForm.setPhoneOrEmail}
-            onChangeRole={inviteForm.setRole}
+            onChangePhone={inviteForm.setPhone}
+            onChangePhoneCountry={(country, meta) => {
+              inviteForm.setPhoneCountry(country);
+              inviteForm.setPhoneCountryLocked(meta?.locked || false);
+            }}
             onChangePositionId={inviteForm.setPositionId}
             onSubmit={inviteForm.submit}
             onCancel={() => inviteForm.setInviteOpen(false)}
