@@ -70,9 +70,9 @@ function hasManagementAccess(
 export function hasTrainingManagementAccess(
   roles?: Array<string | null | undefined>,
   restaurantRole?: string | null | undefined,
-  trainingExaminer?: boolean
+  specialization?: string | null | undefined
 ): boolean {
-  if (trainingExaminer) {
+  if (specialization === "EXAMINER") {
     return true;
   }
   return hasManagementAccess(roles, restaurantRole);

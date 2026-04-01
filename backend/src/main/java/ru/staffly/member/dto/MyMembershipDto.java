@@ -1,5 +1,6 @@
 package ru.staffly.member.dto;
 
+import ru.staffly.dictionary.model.PositionSpecialization;
 import ru.staffly.restaurant.model.RestaurantRole;
 
 public record MyMembershipDto(
@@ -9,5 +10,5 @@ public record MyMembershipDto(
         String restaurantTimezone,
         boolean restaurantLocked,
         RestaurantRole role,
-        boolean trainingExaminer
+        PositionSpecialization specialization
 ) {}

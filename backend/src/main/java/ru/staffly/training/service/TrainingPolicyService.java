@@ -20,8 +20,11 @@ public class TrainingPolicyService {
     private final PositionRepository positions;
 
     public boolean canManageTraining(Long userId, Long restaurantId) {
-        var context = resolveContext(userId, restaurantId);
-        return context.canManageTraining();
+        return resolveContext(userId, restaurantId).canManageTraining();
+    }
+
+    public Set<RestaurantRole> allowedTrainingTargetLevels(Long userId, Long restaurantId) {
+        return resolveContext(userId, restaurantId).allowedLevels();
     }
 
     public Set<Long> allowedPositionIds(Long userId, Long restaurantId) {
@@ -30,6 +33,20 @@ public class TrainingPolicyService {
                 .filter(position -> context.allowedLevels().contains(position.getLevel()))
                 .map(position -> position.getId())
                 .collect(Collectors.toSet());
+    }
+
+    public boolean canAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
+            return true;
+        }
+        var allowed = allowedPositionIds(userId, restaurantId);
+        return visibilityPositionIds.stream().anyMatch(allowed::contains);
+    }
+
+    public void assertCanAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (!canAccessQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds)) {
+            throw new ForbiddenException("Training policy does not allow access to this question bank scope.");
+        }
     }
 
     public void assertCanUsePositions(Long userId, Long restaurantId, Set<Long> positionIds) {
@@ -64,6 +81,5 @@ public class TrainingPolicyService {
                 .anyMatch(grantedAuthority -> "ROLE_CREATOR".equals(grantedAuthority.getAuthority()));
     }
 
-    private record TrainingPolicyContext(boolean canManageTraining, Set<RestaurantRole> allowedLevels) {
-    }
+    private record TrainingPolicyContext(boolean canManageTraining, Set<RestaurantRole> allowedLevels) {}
 }

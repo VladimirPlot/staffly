@@ -10,7 +10,7 @@ import java.util.List;
 
 public interface KnowledgeService {
     List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive);
-    List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, TrainingExamMode mode, boolean includeInactive);
+    List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, Long userId, TrainingExamMode mode, boolean includeInactive);
     TrainingFolderDto createFolder(Long restaurantId, CreateTrainingFolderRequest request);
     TrainingFolderDto updateFolder(Long restaurantId, Long folderId, UpdateTrainingFolderRequest request);
     TrainingFolderDto hideFolder(Long restaurantId, Long folderId);

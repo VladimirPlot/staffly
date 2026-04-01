@@ -30,9 +30,16 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingExamSourceQuestionRepository questionSources;
     private final TrainingQuestionValidator validator;
     private final TrainingQuestionNestedPersistence nestedPersistence;
+    private final TrainingPolicyService trainingPolicyService;
 
     @Override
-    public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long folderId, ru.staffly.training.model.TrainingQuestionGroup questionGroup, boolean includeInactive, String query) {
+    public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long userId, Long folderId, ru.staffly.training.model.TrainingQuestionGroup questionGroup, boolean includeInactive, String query) {
+        var folder = requireQuestionBankFolder(restaurantId, folderId);
+        trainingPolicyService.assertCanAccessQuestionBankByVisibility(
+                userId,
+                restaurantId,
+                folder.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
+        );
         return toDtos(questions.listForFolder(restaurantId, folderId, questionGroup, includeInactive, query));
     }
 

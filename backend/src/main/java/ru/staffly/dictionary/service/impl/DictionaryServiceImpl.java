@@ -52,6 +52,7 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (requestingExaminerSpecializationWithoutAdmin(dto.specialization(), isAdmin)) {
             throw new ForbiddenException("Only admins can assign EXAMINER specialization");
         }
+        validateSpecializationLevelCompatibility(level, dto.specialization());
 
         Restaurant r = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
@@ -124,6 +125,7 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (requestingExaminerSpecializationWithoutAdmin(specialization, isAdmin)) {
             throw new ForbiddenException("Only admins can assign EXAMINER specialization");
         }
+        validateSpecializationLevelCompatibility(newLevel, specialization);
 
         validateCompensation(dto.payType(), dto.payRate());
 
@@ -246,6 +248,15 @@ public class DictionaryServiceImpl implements DictionaryService {
 
     private String normName(String s) {
         return s == null ? null : s.trim();
+    }
+
+    private void validateSpecializationLevelCompatibility(RestaurantRole level, PositionSpecialization specialization) {
+        if (specialization == null) {
+            return;
+        }
+        if (!specialization.supportsLevel(level)) {
+            throw new BadRequestException("Specialization " + specialization + " is allowed only for levels: MANAGER");
+        }
     }
 
     private boolean requestingExaminerSpecializationWithoutAdmin(PositionSpecialization specialization, boolean isAdmin) {
