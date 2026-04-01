@@ -40,7 +40,7 @@ export default function MembersList({
   }
 
   return (
-    <div className="divide-subtle divide-y">
+    <div className="divide-subtle">
       {members.map((member) => (
         <MemberRow
           key={member.id}

@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from "lucide-react";
+import { Cake, Pencil, Phone, Trash2 } from "lucide-react";
 import Avatar from "../../../shared/ui/Avatar";
 import Button from "../../../shared/ui/Button";
 import Icon from "../../../shared/ui/Icon";
@@ -47,21 +47,28 @@ export default function MemberRow({
         </button>
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-medium">{displayNameOf(member)}</div>
-          <div className="text-muted mt-1 flex items-center gap-2 text-xs">
-            <span className="border-subtle rounded-full border px-2 py-0.5">
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            <span className="border-subtle bg-[color:var(--staffly-control)] inline-flex items-center rounded-full border px-2.5 py-1 text-muted">
               {member.positionName || ROLE_LABEL[member.role]}
             </span>
           </div>
         </div>
       </div>
       <div className="text-default min-w-0 text-sm sm:mr-3">
-        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-          <span>
-            Дата рождения: <span className="font-medium">{formatBirthday(member.birthDate)}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="border-subtle bg-[color:var(--staffly-control)] inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1">
+            <span className="text-muted inline-flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--staffly-surface)]">
+              <Cake className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <span className="text-muted text-[0.72rem] tracking-[0.16em] uppercase">ДР</span>
+            <span className="font-medium tabular-nums">{formatBirthday(member.birthDate)}</span>
           </span>
-          <span className="text-muted">•</span>
-          <span className="min-w-0 truncate">
-            Тел: <span className="font-medium">{member.phone || "—"}</span>
+          <span className="border-subtle bg-[color:var(--staffly-control)] inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1">
+            <span className="text-icon inline-flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--staffly-surface)]">
+              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <span className="text-muted text-[0.72rem] tracking-[0.16em] uppercase">Тел</span>
+            <span className="min-w-0 truncate font-medium tabular-nums">{member.phone || "—"}</span>
           </span>
         </div>
       </div>
