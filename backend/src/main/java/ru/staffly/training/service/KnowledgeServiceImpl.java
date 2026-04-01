@@ -68,13 +68,21 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
-    public List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, TrainingExamMode mode, boolean includeInactive) {
-        var foldersList = folders.findByRestaurantIdAndType(restaurantId, TrainingFolderType.QUESTION_BANK);
+    public List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, Long userId, TrainingExamMode mode, boolean includeInactive) {
+        var foldersList = folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, TrainingFolderType.QUESTION_BANK);
+        var visibleFolders = foldersList.stream()
+                .filter(folder -> includeInactive || folder.isActive())
+                .filter(folder -> trainingPolicyService.canAccessQuestionBankByVisibility(
+                        userId,
+                        restaurantId,
+                        folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+                ))
+                .toList();
         var group = mode == TrainingExamMode.PRACTICE ? TrainingQuestionGroup.PRACTICE : TrainingQuestionGroup.CERTIFICATION;
         var counts = questions.countByFolderForMode(restaurantId, group, includeInactive).stream()
                 .collect(Collectors.toMap(x -> (Long) x[0], x -> (Long) x[1]));
 
-        Map<Long, List<TrainingFolder>> childrenByParent = foldersList.stream()
+        Map<Long, List<TrainingFolder>> childrenByParent = visibleFolders.stream()
                 .collect(Collectors.groupingBy(folder -> folder.getParent() == null ? 0L : folder.getParent().getId()));
 
         Function<TrainingFolder, QuestionBankTreeNodeDto> mapper = new Function<>() {

@@ -33,6 +33,8 @@ function formatPositionLevel(position: PositionDto): string {
   return ROLE_LABEL[position.level];
 }
 
+type PositionSpecialization = "EXAMINER";
+
 type PositionCompensationForm = {
   payType: PayType | "";
   payRate: string;
@@ -134,6 +136,7 @@ export default function PositionsPage() {
   const [editing, setEditing] = React.useState<PositionDto | null>(null);
   const [editName, setEditName] = React.useState("");
   const [editLevel, setEditLevel] = React.useState<RestaurantRole>("STAFF");
+  const [editSpecialization, setEditSpecialization] = React.useState<PositionSpecialization | "">("");
   const [editCompensation, setEditCompensation] = React.useState<PositionCompensationForm>({
     payType: "HOURLY",
     payRate: "",
@@ -143,6 +146,7 @@ export default function PositionsPage() {
 
   const [name, setName] = React.useState("");
   const [level, setLevel] = React.useState<RestaurantRole>("STAFF");
+  const [specialization, setSpecialization] = React.useState<PositionSpecialization | "">("");
   const [createCompensation, setCreateCompensation] = React.useState<PositionCompensationForm>({
     payType: "",
     payRate: "",
@@ -178,6 +182,7 @@ export default function PositionsPage() {
     if (!editing) return;
     setEditName(editing.name);
     setEditLevel(editing.level);
+    setEditSpecialization(editing.specialization === "EXAMINER" ? "EXAMINER" : "");
     setEditCompensation({
       payType: editing.payType ?? "HOURLY",
       payRate: editing.payRate?.toString() ?? "",
@@ -185,6 +190,18 @@ export default function PositionsPage() {
     });
     setFormError(null);
   }, [editing]);
+
+  React.useEffect(() => {
+    if (level !== "MANAGER" && specialization) {
+      setSpecialization("");
+    }
+  }, [level, specialization]);
+
+  React.useEffect(() => {
+    if (editLevel !== "MANAGER" && editSpecialization) {
+      setEditSpecialization("");
+    }
+  }, [editLevel, editSpecialization]);
 
   if (!restaurantId) {
     return (
@@ -234,6 +251,15 @@ export default function PositionsPage() {
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
           </SelectField>
+          <SelectField
+            label="Специализация"
+            value={specialization}
+            disabled={level !== "MANAGER"}
+            onChange={(event) => setSpecialization(event.target.value as PositionSpecialization | "")}
+          >
+            <option value="">Без специализации</option>
+            <option value="EXAMINER">Экзаменатор (только менеджер)</option>
+          </SelectField>
           <PositionCompensationFields
             value={createCompensation}
             onChange={setCreateCompensation}
@@ -256,12 +282,14 @@ export default function PositionsPage() {
                   await createPosition(restaurantId, {
                     name,
                     level,
+                    specialization: specialization || null,
                     payType: compensation.payType,
                     payRate: compensation.payRate,
                     normHours: compensation.normHours,
                   });
                   setName("");
                   setLevel("STAFF");
+                  setSpecialization("");
                   setCreateCompensation({ payType: "", payRate: "", normHours: "" });
                   await load();
                 } catch (e: any) {
@@ -370,6 +398,7 @@ export default function PositionsPage() {
                   await updatePosition(restaurantId, editing.id, {
                     name: editName.trim(),
                     level: editLevel,
+                    specialization: editSpecialization || null,
                     active: editing.active,
                     payType: compensation.payType ?? undefined,
                     payRate: compensation.payRate,
@@ -398,6 +427,15 @@ export default function PositionsPage() {
             <option value="STAFF">Сотрудник</option>
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
+          </SelectField>
+          <SelectField
+            label="Специализация"
+            value={editSpecialization}
+            disabled={editLevel !== "MANAGER"}
+            onChange={(event) => setEditSpecialization(event.target.value as PositionSpecialization | "")}
+          >
+            <option value="">Без специализации</option>
+            <option value="EXAMINER">Экзаменатор (только менеджер)</option>
           </SelectField>
           <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} />
         </div>

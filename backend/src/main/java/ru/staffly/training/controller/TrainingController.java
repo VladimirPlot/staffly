@@ -39,7 +39,7 @@ public class TrainingController {
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @RequestParam TrainingFolderType type,
                                                @RequestParam(defaultValue = "false") boolean includeInactive) {
-        if (type == TrainingFolderType.QUESTION_BANK && !securityService.hasAtLeastManager(principal.userId(), restaurantId)) {
+        if (type == TrainingFolderType.QUESTION_BANK && !trainingPolicyService.canManageTraining(principal.userId(), restaurantId)) {
             throw new ForbiddenException("Only managers can access question bank");
         }
         return knowledgeService.listFolders(restaurantId, principal.userId(), type, includeInactive);
@@ -51,7 +51,7 @@ public class TrainingController {
                                                              @AuthenticationPrincipal UserPrincipal principal,
                                                              @RequestParam TrainingExamMode mode,
                                                              @RequestParam(defaultValue = "false") boolean includeInactive) {
-        return knowledgeService.getQuestionBankTree(restaurantId, mode, includeInactive);
+        return knowledgeService.getQuestionBankTree(restaurantId, principal.userId(), mode, includeInactive);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -158,7 +158,7 @@ public class TrainingController {
                                                    @RequestParam(required = false) TrainingQuestionGroup questionGroup,
                                                    @RequestParam(defaultValue = "false") boolean includeInactive,
                                                    @RequestParam(required = false, name = "q") String query) {
-        return questionService.listQuestions(restaurantId, folderId, questionGroup, includeInactive, query);
+        return questionService.listQuestions(restaurantId, principal.userId(), folderId, questionGroup, includeInactive, query);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")

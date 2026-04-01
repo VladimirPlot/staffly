@@ -1,14 +1,22 @@
 import api from "./apiClient";
 import { normalizeRestaurantRole, type RestaurantRole } from "../types/restaurant";
 
+export type MembershipSpecialization = "EXAMINER";
+
 export type MyMembership = {
   restaurantId: number;
   role: RestaurantRole;
-  trainingExaminer: boolean;
+  specialization: MembershipSpecialization | null;
 };
 
 let cachedMemberships: MyMembership[] | null = null;
 let inflight: Promise<MyMembership[]> | null = null;
+
+function mapSpecialization(value: unknown): MembershipSpecialization | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.toUpperCase();
+  return normalized === "EXAMINER" ? "EXAMINER" : null;
+}
 
 function mapMembership(row: any): MyMembership | null {
   const restaurantId = Number(row?.restaurantId);
@@ -24,7 +32,7 @@ function mapMembership(row: any): MyMembership | null {
   return {
     restaurantId,
     role: roleValue,
-    trainingExaminer: Boolean(row?.trainingExaminer),
+    specialization: mapSpecialization(row?.specialization),
   };
 }
 
@@ -72,22 +80,17 @@ export async function listMyMemberships(options?: { force?: boolean }): Promise<
   return memberships;
 }
 
-export async function getMyRoleIn(restaurantId: number): Promise<RestaurantRole | null> {
+export async function getMyMembershipIn(restaurantId: number): Promise<MyMembership | null> {
   if (!Number.isFinite(restaurantId)) {
     return null;
   }
   const memberships = await listMyMemberships();
-  const found = memberships.find((m) => m.restaurantId === restaurantId);
-  return found?.role ?? null;
+  return memberships.find((m) => m.restaurantId === restaurantId) ?? null;
 }
 
-export async function hasTrainingExaminerIn(restaurantId: number): Promise<boolean> {
-  if (!Number.isFinite(restaurantId)) {
-    return false;
-  }
-  const memberships = await listMyMemberships();
-  const found = memberships.find((m) => m.restaurantId === restaurantId);
-  return Boolean(found?.trainingExaminer);
+export async function getMyRoleIn(restaurantId: number): Promise<RestaurantRole | null> {
+  const membership = await getMyMembershipIn(restaurantId);
+  return membership?.role ?? null;
 }
 
 export function clearMembershipsCache(): void {

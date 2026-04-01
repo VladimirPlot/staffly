@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../shared/providers/AuthProvider";
-import { getMyRoleIn, hasTrainingExaminerIn } from "../../../shared/api/memberships";
+import { getMyMembershipIn } from "../../../shared/api/memberships";
 import { hasTrainingManagementAccess } from "../../../shared/utils/access";
 import type { RestaurantRole } from "../../../shared/types/restaurant";
 
@@ -30,13 +30,10 @@ export function useTrainingAccess() {
 
     void (async () => {
       try {
-        const [role, examiner] = await Promise.all([
-          getMyRoleIn(restaurantId),
-          hasTrainingExaminerIn(restaurantId),
-        ]);
+        const membership = await getMyMembershipIn(restaurantId);
         if (!cancelled) {
-          setMyRole(role);
-          setIsTrainingExaminer(examiner);
+          setMyRole(membership?.role ?? null);
+          setIsTrainingExaminer(membership?.specialization === "EXAMINER");
         }
       } catch (error) {
         if (!cancelled) {
@@ -57,7 +54,7 @@ export function useTrainingAccess() {
   }, [restaurantId, user?.roles]);
 
   const canManage = useMemo(
-    () => hasTrainingManagementAccess(user?.roles, myRole, isTrainingExaminer),
+    () => hasTrainingManagementAccess(user?.roles, myRole, isTrainingExaminer ? "EXAMINER" : null),
     [user?.roles, myRole, isTrainingExaminer]
   );
 
