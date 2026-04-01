@@ -69,8 +69,12 @@ function hasManagementAccess(
 
 export function hasTrainingManagementAccess(
   roles?: Array<string | null | undefined>,
-  restaurantRole?: string | null | undefined
+  restaurantRole?: string | null | undefined,
+  trainingExaminer?: boolean
 ): boolean {
+  if (trainingExaminer) {
+    return true;
+  }
   return hasManagementAccess(roles, restaurantRole);
 }
 

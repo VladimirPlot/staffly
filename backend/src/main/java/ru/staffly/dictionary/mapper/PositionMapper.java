@@ -18,6 +18,7 @@ public class PositionMapper {
                 e.getName(),
                 e.isActive(),
                 e.getLevel(),
+                e.getSpecialization(),
                 e.getPayType(),
                 e.getPayRate(),
                 e.getNormHours()
@@ -32,6 +33,7 @@ public class PositionMapper {
                 .name(dto.name())
                 .active(dto.active())
                 .level(dto.level() != null ? dto.level() : RestaurantRole.STAFF)
+                .specialization(dto.specialization())
                 .payType(dto.payType() != null ? dto.payType() : PayType.HOURLY)
                 .payRate(dto.payRate())
                 .normHours(dto.normHours())
@@ -43,6 +45,7 @@ public class PositionMapper {
         if (restaurant != null) e.setRestaurant(restaurant);
         if (dto.active() != null) e.setActive(dto.active());
         if (dto.level() != null) e.setLevel(dto.level());
+        e.setSpecialization(dto.specialization());
         if (dto.payType() != null) e.setPayType(dto.payType());
         if (dto.payRate() != null || dto.payRate() == null) e.setPayRate(dto.payRate());
         if (dto.normHours() != null || dto.normHours() == null) e.setNormHours(dto.normHours());

@@ -26,6 +26,13 @@ const ROLE_LABEL: Record<RestaurantRole, string> = {
   STAFF: "Сотрудник",
 };
 
+function formatPositionLevel(position: PositionDto): string {
+  if (position.specialization === "EXAMINER") {
+    return `Экзаменатор (${ROLE_LABEL[position.level]})`;
+  }
+  return ROLE_LABEL[position.level];
+}
+
 type PositionCompensationForm = {
   payType: PayType | "";
   payRate: string;
@@ -331,7 +338,7 @@ export default function PositionsPage() {
                 <div className="min-w-0">
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted">
                     <span className="rounded-full border border-subtle px-2 py-0.5 text-muted">
-                      {ROLE_LABEL[position.level]}
+                      {formatPositionLevel(position)}
                     </span>
                   </div>
                 </div>

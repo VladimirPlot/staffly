@@ -35,6 +35,10 @@ public class Position {
     private RestaurantRole level = RestaurantRole.STAFF;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "specialization", length = 40)
+    private PositionSpecialization specialization;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "pay_type", nullable = false, length = 20)
     @Builder.Default
     private PayType payType = PayType.HOURLY;

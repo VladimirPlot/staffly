@@ -4,6 +4,7 @@ import { normalizeRestaurantRole, type RestaurantRole } from "../types/restauran
 export type MyMembership = {
   restaurantId: number;
   role: RestaurantRole;
+  trainingExaminer: boolean;
 };
 
 let cachedMemberships: MyMembership[] | null = null;
@@ -20,7 +21,11 @@ function mapMembership(row: any): MyMembership | null {
     return null;
   }
 
-  return { restaurantId, role: roleValue };
+  return {
+    restaurantId,
+    role: roleValue,
+    trainingExaminer: Boolean(row?.trainingExaminer),
+  };
 }
 
 async function fetchMemberships(): Promise<MyMembership[]> {
@@ -74,6 +79,15 @@ export async function getMyRoleIn(restaurantId: number): Promise<RestaurantRole 
   const memberships = await listMyMemberships();
   const found = memberships.find((m) => m.restaurantId === restaurantId);
   return found?.role ?? null;
+}
+
+export async function hasTrainingExaminerIn(restaurantId: number): Promise<boolean> {
+  if (!Number.isFinite(restaurantId)) {
+    return false;
+  }
+  const memberships = await listMyMemberships();
+  const found = memberships.find((m) => m.restaurantId === restaurantId);
+  return Boolean(found?.trainingExaminer);
 }
 
 export function clearMembershipsCache(): void {

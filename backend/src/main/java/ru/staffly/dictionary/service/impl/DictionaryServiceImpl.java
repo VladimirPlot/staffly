@@ -13,6 +13,7 @@ import ru.staffly.dictionary.dto.ShiftDto;
 import ru.staffly.dictionary.mapper.PositionMapper;
 import ru.staffly.dictionary.mapper.ShiftMapper;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.model.PositionSpecialization;
 import ru.staffly.dictionary.model.Shift;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.dictionary.repository.ShiftRepository;
@@ -48,6 +49,9 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (!isAdmin && level != RestaurantRole.STAFF) {
             throw new ForbiddenException("Managers can create only STAFF-level positions");
         }
+        if (requestingExaminerSpecializationWithoutAdmin(dto.specialization(), isAdmin)) {
+            throw new ForbiddenException("Only admins can assign EXAMINER specialization");
+        }
 
         Restaurant r = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
@@ -63,7 +67,7 @@ public class DictionaryServiceImpl implements DictionaryService {
         validateCompensation(dto.payType(), dto.payRate());
 
         Position p = positionMapper.toEntity(
-                new PositionDto(null, restaurantId, name, Boolean.TRUE, level, dto.payType(), dto.payRate(), dto.normHours()),
+                new PositionDto(null, restaurantId, name, Boolean.TRUE, level, dto.specialization(), dto.payType(), dto.payRate(), dto.normHours()),
                 r
         );
         p = positions.save(p);
@@ -116,6 +120,10 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (!isAdmin && newLevel != RestaurantRole.STAFF) {
             throw new ForbiddenException("Managers can set only STAFF-level positions");
         }
+        PositionSpecialization specialization = dto.specialization() != null ? dto.specialization() : p.getSpecialization();
+        if (requestingExaminerSpecializationWithoutAdmin(specialization, isAdmin)) {
+            throw new ForbiddenException("Only admins can assign EXAMINER specialization");
+        }
 
         validateCompensation(dto.payType(), dto.payRate());
 
@@ -125,6 +133,7 @@ public class DictionaryServiceImpl implements DictionaryService {
                         newName != null ? newName : p.getName(),
                         dto.active(),
                         newLevel,
+                        specialization,
                         dto.payType(),
                         dto.payRate(),
                         dto.normHours()),
@@ -237,6 +246,10 @@ public class DictionaryServiceImpl implements DictionaryService {
 
     private String normName(String s) {
         return s == null ? null : s.trim();
+    }
+
+    private boolean requestingExaminerSpecializationWithoutAdmin(PositionSpecialization specialization, boolean isAdmin) {
+        return !isAdmin && specialization == PositionSpecialization.EXAMINER;
     }
 
     private void validateCompensation(ru.staffly.master_schedule.model.PayType payType, java.math.BigDecimal payRate) {

@@ -9,6 +9,7 @@ export type PositionDto = {
   name: string;
   active: boolean;
   level: RestaurantRole;
+  specialization?: "EXAMINER" | null;
   payType: PayType | null;
   payRate: number | null;
   normHours: number | null;
@@ -33,12 +34,13 @@ export async function listPositions(
 // Создать (name + level). active проставим true.
 export async function createPosition(
   restaurantId: number,
-  payload: { name: string; level: RestaurantRole; payType?: PayType | null; payRate?: number | null; normHours?: number | null }
+  payload: { name: string; level: RestaurantRole; specialization?: "EXAMINER" | null; payType?: PayType | null; payRate?: number | null; normHours?: number | null }
 ): Promise<PositionDto> {
   const body = {
     restaurantId,
     name: payload.name.trim(),
     level: payload.level,
+    specialization: payload.specialization ?? null,
     active: true,
     payType: payload.payType ?? null,
     payRate: payload.payRate ?? null,
@@ -53,7 +55,7 @@ export async function createPosition(
 export async function updatePosition(
   restaurantId: number,
   positionId: number,
-  payload: Partial<Pick<PositionDto, "name" | "level" | "active" | "payType" | "payRate" | "normHours">>
+  payload: Partial<Pick<PositionDto, "name" | "level" | "specialization" | "active" | "payType" | "payRate" | "normHours">>
 ): Promise<PositionDto> {
   const body: any = { restaurantId, ...payload };
   if (typeof body.active !== "boolean") {

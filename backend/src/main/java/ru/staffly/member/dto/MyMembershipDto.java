@@ -8,5 +8,6 @@ public record MyMembershipDto(
         String restaurantDescription,
         String restaurantTimezone,
         boolean restaurantLocked,
-        RestaurantRole role
+        RestaurantRole role,
+        boolean trainingExaminer
 ) {}

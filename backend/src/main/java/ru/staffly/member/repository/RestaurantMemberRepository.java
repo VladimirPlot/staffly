@@ -62,9 +62,11 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
      m.restaurant.description,
      m.restaurant.timezone,
      m.restaurant.locked,
-     m.role
+     m.role,
+     case when p.specialization = 'EXAMINER' then true else false end
    )
    from RestaurantMember m
+   left join m.position p
    where m.user.id = :userId
    order by m.restaurant.id asc
 """)

@@ -39,11 +39,12 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final RestaurantMemberRepository members;
     private final PositionRepository positions;
     private final SecurityService securityService;
+    private final TrainingPolicyService trainingPolicyService;
 
     @Transactional(readOnly = true)
     @Override
     public List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive) {
-        if (!securityService.hasAtLeastManager(userId, restaurantId)) {
+        if (!trainingPolicyService.canManageTraining(userId, restaurantId)) {
             Long positionId = requireMemberPositionId(restaurantId, userId);
             return folders.listFoldersForStaff(restaurantId, type, positionId).stream().map(this::toDto).toList();
         }
@@ -51,7 +52,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var entities = includeInactive
                 ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type)
                 : folders.findByRestaurantIdAndTypeAndActiveTrueWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type);
-        return entities.stream().map(this::toDto).toList();
+        if (type != TrainingFolderType.QUESTION_BANK) {
+            return entities.stream().map(this::toDto).toList();
+        }
+        var allowedPositionIds = trainingPolicyService.allowedPositionIds(userId, restaurantId);
+        return entities.stream()
+                .filter(folder -> {
+                    if (folder.getVisibilityPositions().isEmpty()) {
+                        return true;
+                    }
+                    return folder.getVisibilityPositions().stream().anyMatch(position -> allowedPositionIds.contains(position.getId()));
+                })
+                .map(this::toDto)
+                .toList();
     }
 
     @Override
@@ -167,7 +180,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long userId, Long folderId, boolean includeInactive) {
-        if (!securityService.hasAtLeastManager(userId, restaurantId)) {
+        if (!trainingPolicyService.canManageTraining(userId, restaurantId)) {
             Long positionId = requireMemberPositionId(restaurantId, userId);
             return listKnowledgeItemsForStaff(restaurantId, folderId, positionId);
         }
