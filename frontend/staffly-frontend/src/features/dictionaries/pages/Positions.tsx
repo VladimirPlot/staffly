@@ -59,6 +59,7 @@ function PositionCompensationFields({
           onChange({
             ...value,
             payType: event.target.value as PayType | "",
+            normHours: event.target.value === "SALARY" ? value.normHours : "",
           })
         }
       >
@@ -103,7 +104,12 @@ function parseCompensation(form: PositionCompensationForm): {
 } {
   const payRate = toNullableNumber(form.payRate);
   if (payRate != null && payRate < 0) {
-    return { payType: null, payRate: null, normHours: null, error: "Ставка не может быть меньше 0" };
+    return {
+      payType: null,
+      payRate: null,
+      normHours: null,
+      error: "Ставка не может быть меньше 0",
+    };
   }
 
   if (payRate != null && !form.payType) {
@@ -213,16 +219,16 @@ export default function PositionsPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-default">
+      <div className="text-default mb-3 flex flex-wrap items-center gap-3 text-sm">
         <BackToHome className="text-sm" />
         <Link
           to="/employees/invite"
           title="Сотрудники"
           aria-label="Сотрудники"
           className={
-            "inline-flex items-center gap-0 rounded-2xl border border-subtle " +
-            "bg-surface px-2 py-1 text-sm font-medium text-default shadow-[var(--staffly-shadow)] " +
-            "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
+            "border-subtle inline-flex items-center gap-0 rounded-2xl border " +
+            "bg-surface text-default px-2 py-1 text-sm font-medium shadow-[var(--staffly-shadow)] " +
+            "hover:bg-app ring-default transition focus:ring-2 focus:outline-none"
           }
         >
           <Icon icon={ArrowLeft} size="xs" decorative />
@@ -260,11 +266,7 @@ export default function PositionsPage() {
             <option value="">Без специализации</option>
             <option value="EXAMINER">Экзаменатор (только менеджер)</option>
           </SelectField>
-          <PositionCompensationFields
-            value={createCompensation}
-            onChange={setCreateCompensation}
-            optional
-          />
+          <PositionCompensationFields value={createCompensation} onChange={setCreateCompensation} optional />
           <div className="flex items-end">
             <Button
               disabled={!name.trim() || creating || !canManage}
@@ -316,10 +318,7 @@ export default function PositionsPage() {
         ) : (
           <div className="divide-y">
             {items.map((position) => (
-              <div
-                key={position.id}
-                className="flex flex-col gap-2 py-3"
-              >
+              <div key={position.id} className="flex flex-col gap-2 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-base font-medium">{position.name}</div>
@@ -364,8 +363,8 @@ export default function PositionsPage() {
                 </div>
 
                 <div className="min-w-0">
-                  <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                    <span className="rounded-full border border-subtle px-2 py-0.5 text-muted">
+                  <div className="text-muted mt-1 flex items-center gap-2 text-xs">
+                    <span className="border-subtle text-muted rounded-full border px-2 py-0.5">
                       {formatPositionLevel(position)}
                     </span>
                   </div>
