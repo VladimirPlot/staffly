@@ -24,19 +24,24 @@ export default function IncomePeriodPage() {
     type: "SHIFT",
   });
 
+  const loadPeriod = React.useCallback(async () => {
+    if (!periodId) return;
+    const detail = await getIncomePeriod(Number(periodId));
+    setData(detail);
+  }, [periodId]);
+
   React.useEffect(() => {
     (async () => {
       if (!periodId) return;
       try {
-        const detail = await getIncomePeriod(Number(periodId));
-        setData(detail);
+        await loadPeriod();
       } catch {
         navigate("/me/income");
       } finally {
         setLoading(false);
       }
     })();
-  }, [periodId, navigate]);
+  }, [loadPeriod, periodId, navigate]);
 
   const onChange = (patch: Partial<SaveIncomeShiftPayload>) => {
     setForm((prev) => ({ ...prev, ...patch }));
@@ -67,8 +72,12 @@ export default function IncomePeriodPage() {
             comment: form.comment,
           };
     try {
-      const created = await createIncomeShift(Number(periodId), payload);
-      setData((prev) => (prev ? { ...prev, shifts: [created, ...prev.shifts] } : prev));
+      await createIncomeShift(Number(periodId), payload);
+      try {
+        await loadPeriod();
+      } catch {
+        window.alert("Смена сохранена, но не удалось обновить период. Обновите страницу.");
+      }
       setForm({ date: today(), type });
     } finally {
       setSaving(false);
@@ -78,14 +87,16 @@ export default function IncomePeriodPage() {
   const onDeleteShift = async (shift: IncomeShift) => {
     if (!window.confirm("Удалить смену?")) return;
     await deleteIncomeShift(shift.id);
-    setData((prev) =>
-      prev ? { ...prev, shifts: prev.shifts.filter((s) => s.id !== shift.id) } : prev
-    );
+    try {
+      await loadPeriod();
+    } catch {
+      window.alert("Смена удалена, но не удалось обновить период. Обновите страницу.");
+    }
   };
 
   const hours = type === "HOURLY" && form.startTime && form.endTime ? calcHours(form.startTime, form.endTime) : 0;
 
-  if (loading) return <div className="text-sm text-muted">Загружаем период...</div>;
+  if (loading) return <div className="text-muted text-sm">Загружаем период...</div>;
   if (!data) return null;
 
   return (
@@ -100,9 +111,9 @@ export default function IncomePeriodPage() {
         </div>
       </PersonalNav>
 
-      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
+      <div className="bg-surface rounded-2xl p-4 shadow-[var(--staffly-shadow)]">
         <div className="text-lg font-semibold">Итоги периода</div>
-        <div className="mt-2 grid gap-3 sm:grid-cols-2 md:grid-cols-3 text-sm text-default">
+        <div className="text-default mt-2 grid gap-3 text-sm sm:grid-cols-2 md:grid-cols-3">
           <Stat label="Смен" value={data.period.shiftCount} />
           <Stat label="Часы" value={data.period.totalHours} />
           <Stat label="Доход" value={`${data.period.totalIncome} ₽`} />
@@ -111,7 +122,7 @@ export default function IncomePeriodPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
+      <div className="bg-surface rounded-2xl p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-2 flex items-center justify-between gap-2 text-base font-semibold">
           <span>Добавить смену</span>
           <Button variant="outline" onClick={() => setShowAddShift((prev) => !prev)}>
@@ -127,7 +138,7 @@ export default function IncomePeriodPage() {
               onChange={(e) => onChange({ date: e.target.value })}
               required
             />
-            <div className="flex flex-col gap-2 text-sm text-default">
+            <div className="text-default flex flex-col gap-2 text-sm">
               <span className="text-muted">Тип оплаты</span>
               <div className="flex gap-3">
                 <label className="flex items-center gap-2">
@@ -166,14 +177,12 @@ export default function IncomePeriodPage() {
                 min={0.01}
                 step={0.01}
                 value={form.fixedAmount ?? ""}
-                onChange={(e) =>
-                  onChange({ fixedAmount: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
+                onChange={(e) => onChange({ fixedAmount: e.target.value === "" ? undefined : Number(e.target.value) })}
                 required
                 className="md:col-span-2"
               />
             ) : (
-              <div className="md:col-span-2 grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
                 <Input
                   label="Начало смены"
                   type="time"
@@ -196,18 +205,16 @@ export default function IncomePeriodPage() {
                   min={0}
                   step={0.01}
                   value={form.hourlyRate ?? ""}
-                  onChange={(e) =>
-                    onChange({ hourlyRate: e.target.value === "" ? undefined : Number(e.target.value) })
-                  }
+                  onChange={(e) => onChange({ hourlyRate: e.target.value === "" ? undefined : Number(e.target.value) })}
                   required
                 />
-                <div className="rounded-2xl border border-dashed border-subtle p-3 text-sm text-muted">
+                <div className="border-subtle text-muted rounded-2xl border border-dashed p-3 text-sm">
                   Итого часов: {hours.toFixed(2)}
                 </div>
               </div>
             )}
 
-            <details className="md:col-span-2 rounded-2xl border border-subtle p-3 text-sm">
+            <details className="border-subtle rounded-2xl border p-3 text-sm md:col-span-2">
               <summary className="cursor-pointer font-medium">Дополнительно</summary>
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <Input
@@ -235,7 +242,7 @@ export default function IncomePeriodPage() {
               </div>
             </details>
 
-            <div className="md:col-span-2 flex justify-end">
+            <div className="flex justify-end md:col-span-2">
               <Button type="submit" disabled={saving}>
                 {saving ? "Сохраняем..." : "Сохранить"}
               </Button>
@@ -244,14 +251,14 @@ export default function IncomePeriodPage() {
         )}
       </div>
 
-      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
+      <div className="bg-surface rounded-2xl p-4 shadow-[var(--staffly-shadow)]">
         <div className="mb-3 text-base font-semibold">Смены</div>
         {data.shifts.length === 0 ? (
-          <div className="text-sm text-muted">Пока нет смен в этом периоде.</div>
+          <div className="text-muted text-sm">Пока нет смен в этом периоде.</div>
         ) : (
           <div className="space-y-3">
             {data.shifts.map((shift) => (
-              <div key={shift.id} className="rounded-2xl border border-subtle p-3 text-sm">
+              <div key={shift.id} className="border-subtle rounded-2xl border p-3 text-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-medium">{shift.date}</div>
@@ -290,8 +297,8 @@ export default function IncomePeriodPage() {
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-subtle p-3">
-      <div className="text-xs uppercase text-muted">{label}</div>
+    <div className="border-subtle rounded-2xl border p-3">
+      <div className="text-muted text-xs uppercase">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
     </div>
   );
