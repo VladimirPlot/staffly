@@ -8,6 +8,7 @@ import ru.staffly.master_schedule.model.PayType;
 import ru.staffly.restaurant.model.RestaurantRole;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 public record PositionDto(
         Long id,
@@ -15,7 +16,7 @@ public record PositionDto(
         @NotBlank @Size(max = 100) String name,
         Boolean active,
         RestaurantRole level,
-        PositionSpecialization specialization,
+        Set<PositionSpecialization> specializations,
         PayType payType,
         BigDecimal payRate,
         Integer normHours

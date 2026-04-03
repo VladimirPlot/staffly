@@ -17,6 +17,7 @@ import {
   updatePosition,
   type PayType,
   type PositionDto,
+  type PositionSpecialization,
   type RestaurantRole,
 } from "../api";
 
@@ -26,14 +27,20 @@ const ROLE_LABEL: Record<RestaurantRole, string> = {
   STAFF: "Сотрудник",
 };
 
-function formatPositionLevel(position: PositionDto): string {
-  if (position.specialization === "EXAMINER") {
-    return `Экзаменатор (${ROLE_LABEL[position.level]})`;
-  }
-  return ROLE_LABEL[position.level];
-}
+const SPECIALIZATION_LABEL: Record<PositionSpecialization, string> = {
+  EXAMINER: "Экзаменатор",
+};
 
-type PositionSpecialization = "EXAMINER";
+const SPECIALIZATION_OPTIONS: PositionSpecialization[] = ["EXAMINER"];
+
+function formatPositionLevel(position: PositionDto): string {
+  const specializations = position.specializations ?? [];
+  if (specializations.length === 0) {
+    return ROLE_LABEL[position.level];
+  }
+  const labels = specializations.map((item) => SPECIALIZATION_LABEL[item] ?? item).join(", ");
+  return `${ROLE_LABEL[position.level]} • ${labels}`;
+}
 
 type PositionCompensationForm = {
   payType: PayType | "";
@@ -125,6 +132,46 @@ function parseCompensation(form: PositionCompensationForm): {
   };
 }
 
+function toggleSpecialization(
+  current: PositionSpecialization[],
+  specialization: PositionSpecialization,
+  checked: boolean
+): PositionSpecialization[] {
+  if (checked) {
+    return current.includes(specialization) ? current : [...current, specialization];
+  }
+  return current.filter((item) => item !== specialization);
+}
+
+function SpecializationsField({
+  value,
+  onChange,
+}: {
+  value: PositionSpecialization[];
+  onChange: (next: PositionSpecialization[]) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-subtle p-3">
+      <div className="mb-2 text-sm font-medium">Дополнительные специализации</div>
+      <div className="space-y-2">
+        {SPECIALIZATION_OPTIONS.map((specialization) => (
+          <label key={specialization} className="flex items-center gap-2 text-sm text-default">
+            <input
+              type="checkbox"
+              checked={value.includes(specialization)}
+              onChange={(event) =>
+                onChange(toggleSpecialization(value, specialization, event.target.checked))
+              }
+            />
+            <span>{SPECIALIZATION_LABEL[specialization]}</span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 text-xs text-muted">Можно выбрать несколько или оставить пусто.</div>
+    </div>
+  );
+}
+
 export default function PositionsPage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
@@ -136,7 +183,7 @@ export default function PositionsPage() {
   const [editing, setEditing] = React.useState<PositionDto | null>(null);
   const [editName, setEditName] = React.useState("");
   const [editLevel, setEditLevel] = React.useState<RestaurantRole>("STAFF");
-  const [editSpecialization, setEditSpecialization] = React.useState<PositionSpecialization | "">("");
+  const [editSpecializations, setEditSpecializations] = React.useState<PositionSpecialization[]>([]);
   const [editCompensation, setEditCompensation] = React.useState<PositionCompensationForm>({
     payType: "HOURLY",
     payRate: "",
@@ -146,7 +193,7 @@ export default function PositionsPage() {
 
   const [name, setName] = React.useState("");
   const [level, setLevel] = React.useState<RestaurantRole>("STAFF");
-  const [specialization, setSpecialization] = React.useState<PositionSpecialization | "">("");
+  const [specializations, setSpecializations] = React.useState<PositionSpecialization[]>([]);
   const [createCompensation, setCreateCompensation] = React.useState<PositionCompensationForm>({
     payType: "",
     payRate: "",
@@ -182,7 +229,7 @@ export default function PositionsPage() {
     if (!editing) return;
     setEditName(editing.name);
     setEditLevel(editing.level);
-    setEditSpecialization(editing.specialization === "EXAMINER" ? "EXAMINER" : "");
+    setEditSpecializations(editing.specializations ?? []);
     setEditCompensation({
       payType: editing.payType ?? "HOURLY",
       payRate: editing.payRate?.toString() ?? "",
@@ -190,18 +237,6 @@ export default function PositionsPage() {
     });
     setFormError(null);
   }, [editing]);
-
-  React.useEffect(() => {
-    if (level !== "MANAGER" && specialization) {
-      setSpecialization("");
-    }
-  }, [level, specialization]);
-
-  React.useEffect(() => {
-    if (editLevel !== "MANAGER" && editSpecialization) {
-      setEditSpecialization("");
-    }
-  }, [editLevel, editSpecialization]);
 
   if (!restaurantId) {
     return (
@@ -251,15 +286,7 @@ export default function PositionsPage() {
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
           </SelectField>
-          <SelectField
-            label="Специализация"
-            value={specialization}
-            disabled={level !== "MANAGER"}
-            onChange={(event) => setSpecialization(event.target.value as PositionSpecialization | "")}
-          >
-            <option value="">Без специализации</option>
-            <option value="EXAMINER">Экзаменатор (только менеджер)</option>
-          </SelectField>
+          <SpecializationsField value={specializations} onChange={setSpecializations} />
           <PositionCompensationFields
             value={createCompensation}
             onChange={setCreateCompensation}
@@ -282,14 +309,14 @@ export default function PositionsPage() {
                   await createPosition(restaurantId, {
                     name,
                     level,
-                    specialization: specialization || null,
+                    specializations,
                     payType: compensation.payType,
                     payRate: compensation.payRate,
                     normHours: compensation.normHours,
                   });
                   setName("");
                   setLevel("STAFF");
-                  setSpecialization("");
+                  setSpecializations([]);
                   setCreateCompensation({ payType: "", payRate: "", normHours: "" });
                   await load();
                 } catch (e: any) {
@@ -398,7 +425,7 @@ export default function PositionsPage() {
                   await updatePosition(restaurantId, editing.id, {
                     name: editName.trim(),
                     level: editLevel,
-                    specialization: editSpecialization || null,
+                    specializations: editSpecializations,
                     active: editing.active,
                     payType: compensation.payType ?? undefined,
                     payRate: compensation.payRate,
@@ -428,15 +455,7 @@ export default function PositionsPage() {
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
           </SelectField>
-          <SelectField
-            label="Специализация"
-            value={editSpecialization}
-            disabled={editLevel !== "MANAGER"}
-            onChange={(event) => setEditSpecialization(event.target.value as PositionSpecialization | "")}
-          >
-            <option value="">Без специализации</option>
-            <option value="EXAMINER">Экзаменатор (только менеджер)</option>
-          </SelectField>
+          <SpecializationsField value={editSpecializations} onChange={setEditSpecializations} />
           <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} />
         </div>
         {formError && <div className="mt-2 text-xs text-red-600">{formError}</div>}

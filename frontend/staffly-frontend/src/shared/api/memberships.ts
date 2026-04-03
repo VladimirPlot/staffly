@@ -6,16 +6,17 @@ export type MembershipSpecialization = "EXAMINER";
 export type MyMembership = {
   restaurantId: number;
   role: RestaurantRole;
-  specialization: MembershipSpecialization | null;
+  specializations: MembershipSpecialization[];
 };
 
 let cachedMemberships: MyMembership[] | null = null;
 let inflight: Promise<MyMembership[]> | null = null;
 
-function mapSpecialization(value: unknown): MembershipSpecialization | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.toUpperCase();
-  return normalized === "EXAMINER" ? "EXAMINER" : null;
+function mapSpecializations(value: unknown): MembershipSpecialization[] {
+  const rawValues = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return rawValues
+    .map((item) => (typeof item === "string" ? item.toUpperCase() : ""))
+    .filter((item): item is MembershipSpecialization => item === "EXAMINER");
 }
 
 function mapMembership(row: any): MyMembership | null {
@@ -32,7 +33,7 @@ function mapMembership(row: any): MyMembership | null {
   return {
     restaurantId,
     role: roleValue,
-    specialization: mapSpecialization(row?.specialization),
+    specializations: mapSpecializations(row?.specializations),
   };
 }
 

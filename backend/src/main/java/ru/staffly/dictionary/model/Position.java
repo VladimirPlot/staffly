@@ -2,9 +2,12 @@ package ru.staffly.dictionary.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.master_schedule.model.PayType;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
-import ru.staffly.master_schedule.model.PayType;
+
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "position",
@@ -34,9 +37,12 @@ public class Position {
     @Builder.Default
     private RestaurantRole level = RestaurantRole.STAFF;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "position_specialization", joinColumns = @JoinColumn(name = "position_id"))
+    @Column(name = "specialization", nullable = false, length = 40)
     @Enumerated(EnumType.STRING)
-    @Column(name = "specialization", length = 40)
-    private PositionSpecialization specialization;
+    @Builder.Default
+    private Set<PositionSpecialization> specializations = new HashSet<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pay_type", nullable = false, length = 20)
