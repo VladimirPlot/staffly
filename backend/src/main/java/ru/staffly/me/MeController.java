@@ -15,6 +15,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
@@ -24,7 +25,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 @RestController
 @RequestMapping("/api/me")
@@ -80,7 +80,7 @@ public class MeController {
                         member.getRestaurant().getTimezone(),
                         member.getRestaurant().isLocked(),
                         member.getRole(),
-                        member.getPosition() == null ? Set.of() : Set.copyOf(member.getPosition().getSpecializations())
+                        member.getPosition() == null ? java.util.Set.of() : PositionSpecializations.sortedCopy(member.getPosition().getSpecializations())
                 ))
                 .toList();
     }

@@ -6,7 +6,7 @@ import ru.staffly.master_schedule.model.PayType;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Entity
@@ -37,12 +37,12 @@ public class Position {
     @Builder.Default
     private RestaurantRole level = RestaurantRole.STAFF;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "position_specialization", joinColumns = @JoinColumn(name = "position_id"))
     @Column(name = "specialization", nullable = false, length = 40)
     @Enumerated(EnumType.STRING)
     @Builder.Default
-    private Set<PositionSpecialization> specializations = new HashSet<>();
+    private Set<PositionSpecialization> specializations = new LinkedHashSet<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pay_type", nullable = false, length = 20)

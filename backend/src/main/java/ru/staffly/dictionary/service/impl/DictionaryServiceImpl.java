@@ -14,6 +14,7 @@ import ru.staffly.dictionary.mapper.PositionMapper;
 import ru.staffly.dictionary.mapper.ShiftMapper;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.model.PositionSpecialization;
+import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.dictionary.model.Shift;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.dictionary.repository.ShiftRepository;
@@ -50,7 +51,7 @@ public class DictionaryServiceImpl implements DictionaryService {
         if (!isAdmin && level != RestaurantRole.STAFF) {
             throw new ForbiddenException("Managers can create only STAFF-level positions");
         }
-        Set<PositionSpecialization> specializations = dto.specializations() == null ? Set.of() : Set.copyOf(dto.specializations());
+        Set<PositionSpecialization> specializations = PositionSpecializations.sortedCopy(dto.specializations());
         if (requestingSpecializationsWithoutAdmin(specializations, isAdmin)) {
             throw new ForbiddenException("Only admins can assign position specializations");
         }
@@ -123,8 +124,8 @@ public class DictionaryServiceImpl implements DictionaryService {
             throw new ForbiddenException("Managers can set only STAFF-level positions");
         }
         Set<PositionSpecialization> specializations = dto.specializations() != null
-                ? Set.copyOf(dto.specializations())
-                : Set.copyOf(p.getSpecializations());
+                ? PositionSpecializations.sortedCopy(dto.specializations())
+                : PositionSpecializations.sortedCopy(p.getSpecializations());
         if (requestingSpecializationsWithoutAdmin(specializations, isAdmin)) {
             throw new ForbiddenException("Only admins can assign position specializations");
         }

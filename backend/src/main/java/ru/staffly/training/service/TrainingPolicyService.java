@@ -4,12 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.ForbiddenException;
-import ru.staffly.dictionary.model.PositionSpecialization;
+import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 
+import java.util.EnumSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -58,22 +59,23 @@ public class TrainingPolicyService {
 
     private TrainingPolicyContext resolveContext(Long userId, Long restaurantId) {
         if (isCreator()) {
-            return new TrainingPolicyContext(true, Set.of(RestaurantRole.STAFF, RestaurantRole.MANAGER, RestaurantRole.ADMIN));
+            return new TrainingPolicyContext(true, true, EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER, RestaurantRole.ADMIN));
         }
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a member"));
 
-        boolean examiner = member.getPosition() != null
-                && member.getPosition().getSpecializations().contains(PositionSpecialization.EXAMINER);
-        boolean managerLike = member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER || examiner;
-        Set<RestaurantRole> levels = examiner
-                ? Set.of(RestaurantRole.STAFF, RestaurantRole.MANAGER, RestaurantRole.ADMIN)
+        boolean hasExaminerAuthority = member.getPosition() != null
+                && PositionSpecializations.hasExaminer(member.getPosition().getSpecializations());
+        boolean hasBaseRoleAuthority = member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER;
+
+        Set<RestaurantRole> levels = hasExaminerAuthority
+                ? EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER, RestaurantRole.ADMIN)
                 : switch (member.getRole()) {
-            case ADMIN -> Set.of(RestaurantRole.STAFF, RestaurantRole.MANAGER);
-            case MANAGER -> Set.of(RestaurantRole.STAFF);
-            case STAFF -> Set.of(RestaurantRole.STAFF);
+            case ADMIN -> EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER);
+            case MANAGER -> EnumSet.of(RestaurantRole.STAFF);
+            case STAFF -> EnumSet.of(RestaurantRole.STAFF);
         };
-        return new TrainingPolicyContext(managerLike, levels);
+        return new TrainingPolicyContext(hasExaminerAuthority || hasBaseRoleAuthority, hasExaminerAuthority, levels);
     }
 
     private boolean isCreator() {
@@ -82,5 +84,9 @@ public class TrainingPolicyService {
                 .anyMatch(grantedAuthority -> "ROLE_CREATOR".equals(grantedAuthority.getAuthority()));
     }
 
-    private record TrainingPolicyContext(boolean canManageTraining, Set<RestaurantRole> allowedLevels) {}
+    private record TrainingPolicyContext(
+            boolean canManageTraining,
+            boolean hasExaminerAuthority,
+            Set<RestaurantRole> allowedLevels
+    ) {}
 }

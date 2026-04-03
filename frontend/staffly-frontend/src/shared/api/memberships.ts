@@ -2,6 +2,7 @@ import api from "./apiClient";
 import { normalizeRestaurantRole, type RestaurantRole } from "../types/restaurant";
 
 export type MembershipSpecialization = "EXAMINER";
+const SPECIALIZATION_ORDER: MembershipSpecialization[] = ["EXAMINER"];
 
 export type MyMembership = {
   restaurantId: number;
@@ -14,9 +15,12 @@ let inflight: Promise<MyMembership[]> | null = null;
 
 function mapSpecializations(value: unknown): MembershipSpecialization[] {
   const rawValues = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
-  return rawValues
+  const normalized = rawValues
     .map((item) => (typeof item === "string" ? item.toUpperCase() : ""))
     .filter((item): item is MembershipSpecialization => item === "EXAMINER");
+  const unique = Array.from(new Set(normalized));
+  unique.sort((a, b) => SPECIALIZATION_ORDER.indexOf(a) - SPECIALIZATION_ORDER.indexOf(b));
+  return unique;
 }
 
 function mapMembership(row: any): MyMembership | null {

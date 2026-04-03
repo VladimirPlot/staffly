@@ -33,8 +33,14 @@ const SPECIALIZATION_LABEL: Record<PositionSpecialization, string> = {
 
 const SPECIALIZATION_OPTIONS: PositionSpecialization[] = ["EXAMINER"];
 
+function sortSpecializations(values: PositionSpecialization[]): PositionSpecialization[] {
+  return [...values].sort(
+    (a, b) => SPECIALIZATION_OPTIONS.indexOf(a) - SPECIALIZATION_OPTIONS.indexOf(b)
+  );
+}
+
 function formatPositionLevel(position: PositionDto): string {
-  const specializations = position.specializations ?? [];
+  const specializations = sortSpecializations(position.specializations ?? []);
   if (specializations.length === 0) {
     return ROLE_LABEL[position.level];
   }
