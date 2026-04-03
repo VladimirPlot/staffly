@@ -104,7 +104,13 @@ export default function IncomePeriodPage() {
   return (
     <div className="space-y-4">
       <PersonalNav>
-        <div className="text-lg font-semibold text-balance">{data.period.name}</div>
+        <div className="flex items-center gap-2 text-lg font-semibold">
+          <Link to="/me/income" className="text-muted hover:underline">
+            Мои доходы
+          </Link>
+          <span>/</span>
+          <span>{data.period.name}</span>
+        </div>
       </PersonalNav>
 
       <section className="bg-surface rounded-2xl p-4 shadow-[var(--staffly-shadow)] sm:p-5">
@@ -444,8 +450,8 @@ function calcHours(start: string, end: string) {
   return (endMinutes - startMinutes) / 60;
 }
 
-function formatTimeValue(value?: string) {
-  if (!value) return "";
+function formatTimeValue(value?: string | null) {
+  if (!value) return "—";
   const [hours, minutes] = value.split(":");
   if (!hours || !minutes) return value;
   return `${hours}:${minutes}`;
