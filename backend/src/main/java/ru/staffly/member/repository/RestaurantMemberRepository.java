@@ -2,7 +2,6 @@ package ru.staffly.member.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import ru.staffly.member.dto.MyMembershipDto;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.RestaurantRole;
 
@@ -16,8 +15,9 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findByRestaurantId(Long restaurantId);
 
     @Query("""
-           select m from RestaurantMember m
+           select distinct m from RestaurantMember m
            left join fetch m.position p
+           left join fetch p.specializations
            where m.user.id = :userId and m.restaurant.id = :restaurantId
            """)
     Optional<RestaurantMember> findByUserIdAndRestaurantIdWithPosition(Long userId, Long restaurantId);
@@ -32,9 +32,10 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findByRestaurantIdAndPositionIdIn(Long restaurantId, List<Long> positionIds);
 
     @Query("""
-           select m from RestaurantMember m
+           select distinct m from RestaurantMember m
            join fetch m.user u
            left join fetch m.position p
+           left join fetch p.specializations
            where m.restaurant.id = :restaurantId
            """)
     List<RestaurantMember> findWithUserAndPositionByRestaurantId(Long restaurantId);
@@ -56,19 +57,12 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findByUserId(Long userId);
 
     @Query("""
-   select new ru.staffly.member.dto.MyMembershipDto(
-     m.restaurant.id,
-     m.restaurant.name,
-     m.restaurant.description,
-     m.restaurant.timezone,
-     m.restaurant.locked,
-     m.role,
-     p.specialization
-   )
-   from RestaurantMember m
-   left join m.position p
-   where m.user.id = :userId
-   order by m.restaurant.id asc
-""")
-    List<MyMembershipDto> findMembershipsDtoByUserId(Long userId);
+           select distinct m from RestaurantMember m
+           join fetch m.restaurant r
+           left join fetch m.position p
+           left join fetch p.specializations
+           where m.user.id = :userId
+           order by r.id asc
+           """)
+    List<RestaurantMember> findMembershipsByUserIdWithRestaurantAndPosition(Long userId);
 }

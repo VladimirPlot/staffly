@@ -63,7 +63,8 @@ public class TrainingPolicyService {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a member"));
 
-        boolean examiner = member.getPosition() != null && member.getPosition().getSpecialization() == PositionSpecialization.EXAMINER;
+        boolean examiner = member.getPosition() != null
+                && member.getPosition().getSpecializations().contains(PositionSpecialization.EXAMINER);
         boolean managerLike = member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER || examiner;
         Set<RestaurantRole> levels = examiner
                 ? Set.of(RestaurantRole.STAFF, RestaurantRole.MANAGER, RestaurantRole.ADMIN)
