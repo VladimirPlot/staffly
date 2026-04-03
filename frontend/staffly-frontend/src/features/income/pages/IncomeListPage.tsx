@@ -14,7 +14,8 @@ export default function IncomeListPage() {
   const [description, setDescription] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const trimmedName = name.trim();
-  const fieldCardClassName = "border-subtle bg-[color:var(--staffly-control)]/55 rounded-[1.5rem] border p-3 sm:p-4";
+  const fieldCardClassName =
+    "border-subtle rounded-[1.5rem] border bg-[color:var(--staffly-control)]/40 p-3 sm:bg-[color:var(--staffly-control)]/55 sm:p-4";
 
   React.useEffect(() => {
     (async () => {
@@ -54,7 +55,7 @@ export default function IncomeListPage() {
       </PersonalNav>
 
       <section className="bg-surface rounded-2xl p-4 shadow-[var(--staffly-shadow)] sm:p-5">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:gap-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-1">
               <div className="text-base font-semibold text-balance text-[var(--staffly-text-strong)]">Новый период</div>
@@ -64,8 +65,8 @@ export default function IncomeListPage() {
             </div>
           </div>
 
-          <form className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]" onSubmit={onCreate}>
-            <div className={`${fieldCardClassName} flex h-full flex-col justify-between gap-3`}>
+          <form className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]" onSubmit={onCreate}>
+            <div className={`${fieldCardClassName} flex h-full flex-col gap-2.5 sm:justify-between sm:gap-3`}>
               <Input
                 label="Название периода"
                 placeholder='Например: "Сентябрь 2025"'
@@ -87,7 +88,7 @@ export default function IncomeListPage() {
               </div>
             </div>
 
-            <div className={`${fieldCardClassName} flex h-full flex-col justify-between gap-3`}>
+            <div className={`${fieldCardClassName} flex h-full flex-col gap-2.5 sm:justify-between sm:gap-3`}>
               <Input
                 label={
                   <span className="flex items-baseline gap-2">
@@ -100,18 +101,18 @@ export default function IncomeListPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
-              <p className="text-muted px-1 text-xs leading-5 text-pretty">
+              <p className="text-muted text-xs leading-5 text-pretty sm:px-1">
                 Короткая пометка поможет отличать похожие периоды.
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 lg:col-span-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 pt-1 lg:col-span-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="text-muted text-sm">
                 {trimmedName
                   ? `Период «${trimmedName}» будет создан ниже.`
                   : "Введите название периода, чтобы кнопка создания стала доступна."}
               </div>
-              <Button type="submit" disabled={saving || !trimmedName} className="min-h-11 px-5">
+              <Button type="submit" disabled={saving || !trimmedName} className="min-h-11 w-full px-5 sm:w-auto">
                 {saving ? "Сохраняем..." : "+ Новый период"}
               </Button>
             </div>
@@ -128,27 +129,66 @@ export default function IncomeListPage() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {periods.map((period) => (
-            <div
+            <article
               key={period.id}
-              className="border-subtle bg-surface rounded-2xl border p-4 shadow-[var(--staffly-shadow)]"
+              className="border-subtle bg-surface rounded-[1.75rem] border p-4 shadow-[var(--staffly-shadow)] sm:p-5"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <Link to={`/me/income/periods/${period.id}`} className="text-lg font-semibold hover:underline">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-1.5">
+                  <div className="text-muted text-xs">Период</div>
+                  <Link
+                    to={`/me/income/periods/${period.id}`}
+                    className="block text-xl font-semibold text-balance text-[var(--staffly-text-strong)] hover:underline"
+                  >
                     {period.name}
                   </Link>
-                  {period.description && <ContentText className="text-muted text-sm">{period.description}</ContentText>}
+                  {period.description ? (
+                    <ContentText className="text-muted text-sm text-pretty">{period.description}</ContentText>
+                  ) : (
+                    <div className="text-muted text-sm">Без описания</div>
+                  )}
                 </div>
-                <Button variant="ghost" size="sm" type="button" onClick={() => onDelete(period.id)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => onDelete(period.id)}
+                  className="w-fit shrink-0 self-start rounded-full"
+                >
                   Удалить
                 </Button>
               </div>
-              <div className="text-default mt-3 text-sm">
-                Смен: {period.shiftCount} • Часы: {period.totalHours} • Доход: {period.totalIncome} ₽ • Чаевые:{" "}
-                {period.totalTips} ₽
-                {Number(period.totalPersonalRevenue) > 0 && ` • Личная выручка: ${period.totalPersonalRevenue} ₽`}
+
+              <div className="border-subtle mt-4 border-t pt-4">
+                <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                  <div className="rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2">
+                    <div className="text-muted text-xs">Смен</div>
+                    <div className="text-default text-sm font-semibold tabular-nums">{period.shiftCount}</div>
+                  </div>
+                  <div className="rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2">
+                    <div className="text-muted text-xs">Часы</div>
+                    <div className="text-default text-sm font-semibold tabular-nums">{period.totalHours}</div>
+                  </div>
+                  <div className="rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2">
+                    <div className="text-muted text-xs">Доход</div>
+                    <div className="text-default text-sm font-semibold tabular-nums">{period.totalIncome} ₽</div>
+                  </div>
+                  <div className="rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2">
+                    <div className="text-muted text-xs">Чаевые</div>
+                    <div className="text-default text-sm font-semibold tabular-nums">{period.totalTips} ₽</div>
+                  </div>
+
+                  {Number(period.totalPersonalRevenue) > 0 && (
+                    <div className="col-span-2 rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2 xl:col-span-4">
+                      <div className="text-muted text-xs">Личная выручка</div>
+                      <div className="text-default text-sm font-semibold tabular-nums">
+                        {period.totalPersonalRevenue} ₽
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
