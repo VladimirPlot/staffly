@@ -13,6 +13,8 @@ export default function IncomeListPage() {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const trimmedName = name.trim();
+  const fieldCardClassName = "border-subtle bg-[color:var(--staffly-control)]/55 rounded-[1.5rem] border p-3 sm:p-4";
 
   React.useEffect(() => {
     (async () => {
@@ -27,10 +29,10 @@ export default function IncomeListPage() {
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!trimmedName) return;
     setSaving(true);
     try {
-      const created = await createIncomePeriod({ name, description });
+      const created = await createIncomePeriod({ name: trimmedName, description: description.trim() });
       setPeriods((prev) => [created, ...prev]);
       setName("");
       setDescription("");
@@ -51,56 +53,98 @@ export default function IncomeListPage() {
         <div className="text-lg font-semibold">Мои доходы</div>
       </PersonalNav>
 
-      <div className="rounded-2xl bg-surface p-4 shadow-[var(--staffly-shadow)]">
-        <div className="mb-3 text-base font-medium">Новый период</div>
-        <form className="grid gap-3 sm:grid-cols-2" onSubmit={onCreate}>
-          <Input
-            label="Название"
-            placeholder='Например: "Сентябрь 2025"'
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <Input
-            label="Описание"
-            placeholder="Например: Основная работа в ресторане X"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-          <div className="sm:col-span-2 flex justify-end">
-            <Button type="submit" disabled={saving}>
-              {saving ? "Сохраняем..." : "+ Новый период"}
-            </Button>
+      <section className="bg-surface rounded-2xl p-4 shadow-[var(--staffly-shadow)] sm:p-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-balance text-[var(--staffly-text-strong)]">Новый период</div>
+              <p className="text-muted max-w-xl text-sm leading-6 text-pretty">
+                Назовите период так, как вам будет удобно находить его позже.
+              </p>
+            </div>
           </div>
-        </form>
-      </div>
+
+          <form className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]" onSubmit={onCreate}>
+            <div className={`${fieldCardClassName} flex h-full flex-col justify-between gap-3`}>
+              <Input
+                label="Название периода"
+                placeholder='Например: "Сентябрь 2025"'
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+              <div className="flex flex-wrap gap-2">
+                {['"Сентябрь 2025"', '"Подработка · Октябрь"', '"Зимний сезон 2026"'].map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => setName(example.replaceAll('"', ""))}
+                    className="border-subtle text-default rounded-full border bg-[color:var(--staffly-control)] px-3 py-1.5 text-xs font-medium transition hover:bg-[color:var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={`${fieldCardClassName} flex h-full flex-col justify-between gap-3`}>
+              <Input
+                label={
+                  <span className="flex items-baseline gap-2">
+                    <span>Описание</span>
+                    <span className="text-muted text-xs">необязательно</span>
+                  </span>
+                }
+                labelClassName="mb-2"
+                placeholder="Например: Основная работа в ресторане X"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+              <p className="text-muted px-1 text-xs leading-5 text-pretty">
+                Короткая пометка поможет отличать похожие периоды.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 lg:col-span-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="text-muted text-sm">
+                {trimmedName
+                  ? `Период «${trimmedName}» будет создан ниже.`
+                  : "Введите название периода, чтобы кнопка создания стала доступна."}
+              </div>
+              <Button type="submit" disabled={saving || !trimmedName} className="min-h-11 px-5">
+                {saving ? "Сохраняем..." : "+ Новый период"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </section>
 
       {loading ? (
-        <div className="text-sm text-muted">Загружаем периоды...</div>
+        <div className="text-muted text-sm">Загружаем периоды...</div>
       ) : periods.length === 0 ? (
-        <div className="rounded-2xl bg-surface p-6 text-center text-sm text-muted shadow-[var(--staffly-shadow)]">
+        <div className="bg-surface text-muted rounded-2xl p-6 text-center text-sm shadow-[var(--staffly-shadow)]">
           Вы ещё не добавили ни одного периода. Создайте первый, например «Сентябрь 2025».
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {periods.map((period) => (
-            <div key={period.id} className="rounded-2xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)]">
+            <div
+              key={period.id}
+              className="border-subtle bg-surface rounded-2xl border p-4 shadow-[var(--staffly-shadow)]"
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link to={`/me/income/periods/${period.id}`} className="text-lg font-semibold hover:underline">
                     {period.name}
                   </Link>
-                  {period.description && (
-                    <ContentText className="text-sm text-muted">{period.description}</ContentText>
-                  )}
+                  {period.description && <ContentText className="text-muted text-sm">{period.description}</ContentText>}
                 </div>
                 <Button variant="ghost" size="sm" type="button" onClick={() => onDelete(period.id)}>
                   Удалить
                 </Button>
               </div>
-              <div className="mt-3 text-sm text-default">
-                Смен: {period.shiftCount} • Часы: {period.totalHours} • Доход: {period.totalIncome} ₽ • Чаевые:
-                {" "}
+              <div className="text-default mt-3 text-sm">
+                Смен: {period.shiftCount} • Часы: {period.totalHours} • Доход: {period.totalIncome} ₽ • Чаевые:{" "}
                 {period.totalTips} ₽
                 {Number(period.totalPersonalRevenue) > 0 && ` • Личная выручка: ${period.totalPersonalRevenue} ₽`}
               </div>
