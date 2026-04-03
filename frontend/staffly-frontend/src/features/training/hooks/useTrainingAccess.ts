@@ -9,18 +9,21 @@ export function useTrainingAccess() {
   const restaurantId = user?.restaurantId ?? null;
   const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
   const [isTrainingExaminer, setIsTrainingExaminer] = useState(false);
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (restaurantId == null) {
       setMyRole(null);
       setIsTrainingExaminer(false);
+      setSpecializations([]);
       setLoading(false);
       return;
     }
 
     if (hasTrainingManagementAccess(user?.roles)) {
       setMyRole(null);
+      setSpecializations([]);
       setLoading(false);
       return;
     }
@@ -32,13 +35,16 @@ export function useTrainingAccess() {
       try {
         const membership = await getMyMembershipIn(restaurantId);
         if (!cancelled) {
+          const resolvedSpecializations = membership?.specializations ?? [];
           setMyRole(membership?.role ?? null);
-          setIsTrainingExaminer(membership?.specialization === "EXAMINER");
+          setSpecializations(resolvedSpecializations);
+          setIsTrainingExaminer(resolvedSpecializations.includes("EXAMINER"));
         }
       } catch (error) {
         if (!cancelled) {
           console.error("Failed to load membership role", error);
           setMyRole(null);
+          setSpecializations([]);
           setIsTrainingExaminer(false);
         }
       } finally {
@@ -54,9 +60,9 @@ export function useTrainingAccess() {
   }, [restaurantId, user?.roles]);
 
   const canManage = useMemo(
-    () => hasTrainingManagementAccess(user?.roles, myRole, isTrainingExaminer ? "EXAMINER" : null),
-    [user?.roles, myRole, isTrainingExaminer]
+    () => hasTrainingManagementAccess(user?.roles, myRole, specializations),
+    [user?.roles, myRole, specializations]
   );
 
-  return { canManage, myRole, isTrainingExaminer, loading, restaurantId };
+  return { canManage, myRole, isTrainingExaminer, specializations, loading, restaurantId };
 }

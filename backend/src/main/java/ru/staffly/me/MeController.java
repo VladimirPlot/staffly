@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/me")
@@ -70,7 +71,18 @@ public class MeController {
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/memberships")
     public List<MyMembershipDto> memberships(@AuthenticationPrincipal UserPrincipal principal) {
-        return members.findMembershipsDtoByUserId(principal.userId());
+        return members.findMembershipsByUserIdWithRestaurantAndPosition(principal.userId())
+                .stream()
+                .map(member -> new MyMembershipDto(
+                        member.getRestaurant().getId(),
+                        member.getRestaurant().getName(),
+                        member.getRestaurant().getDescription(),
+                        member.getRestaurant().getTimezone(),
+                        member.getRestaurant().isLocked(),
+                        member.getRole(),
+                        member.getPosition() == null ? Set.of() : Set.copyOf(member.getPosition().getSpecializations())
+                ))
+                .toList();
     }
 
     private static String withBust(String url, LocalDateTime updatedAt) {
