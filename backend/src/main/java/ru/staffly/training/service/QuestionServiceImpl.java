@@ -14,6 +14,7 @@ import ru.staffly.training.model.TrainingQuestionBlank;
 import ru.staffly.training.repository.*;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -27,6 +28,7 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionMatchPairRepository pairs;
     private final TrainingQuestionBlankRepository blanks;
     private final TrainingQuestionBlankOptionRepository blankOptions;
+    private final TrainingExamSourceFolderRepository folderSources;
     private final TrainingExamSourceQuestionRepository questionSources;
     private final TrainingQuestionValidator validator;
     private final TrainingQuestionNestedPersistence nestedPersistence;
@@ -67,6 +69,7 @@ public class QuestionServiceImpl implements QuestionService {
         validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
         var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
 
         entity.setTitle(request.title().trim());
         entity.setPrompt(request.prompt().trim());
@@ -143,6 +146,25 @@ public class QuestionServiceImpl implements QuestionService {
                 question.getFolder().getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
         );
         return question;
+    }
+
+    private void assertQuestionNotUsedInExamsForMutation(Long restaurantId, TrainingQuestion question) {
+        var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
+        questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
+                .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+        folderSources.findExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
+                .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+
+        var usages = List.copyOf(usagesByExamId.values());
+        if (usages.isEmpty()) {
+            return;
+        }
+
+        var firstExamTitle = usages.get(0).getTitle();
+        throw new ConflictException(
+                "Данный вопрос используется в тесте \"" + firstExamTitle + "\", чтобы изменить его, нужно удалить тест или убрать данный вопрос из теста.",
+                Map.of("exams", usages)
+        );
     }
 
     private List<TrainingQuestionDto> toDtos(List<TrainingQuestion> entities) {

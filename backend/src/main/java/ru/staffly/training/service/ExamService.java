@@ -10,16 +10,16 @@ public interface ExamService {
     TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request);
-    TrainingExamDto hideExam(Long restaurantId, Long examId);
-    TrainingExamDto restoreExam(Long restaurantId, Long examId);
-    void deleteExam(Long restaurantId, Long examId);
-    void resetCertificationExamCycle(Long restaurantId, Long examId);
+    TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId);
+    TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId);
+    void deleteExam(Long restaurantId, Long userId, Long examId);
+    void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId);
     List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId);
     StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager);
     AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
 
-    void resetEmployeeCertificationAttempts(Long restaurantId, Long examId, Long userId);
-    void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long examId, Long userId, Integer amount);
+    void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId);
+    void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount);
 
     CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long examId);
     List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long examId);

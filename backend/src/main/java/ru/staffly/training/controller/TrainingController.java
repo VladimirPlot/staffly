@@ -255,25 +255,25 @@ public class TrainingController {
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/hide")
     public TrainingExamDto hideExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.hideExam(restaurantId, examId);
+        return examService.hideExam(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/restore")
     public TrainingExamDto restoreExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.restoreExam(restaurantId, examId);
+        return examService.restoreExam(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/exams/{examId}")
     public void deleteExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        examService.deleteExam(restaurantId, examId);
+        examService.deleteExam(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/certification/reset-cycle")
     public void resetCertificationExamCycle(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        examService.resetCertificationExamCycle(restaurantId, examId);
+        examService.resetCertificationExamCycle(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -288,7 +288,7 @@ public class TrainingController {
                                                    @PathVariable Long examId,
                                                    @PathVariable Long userId,
                                                    @AuthenticationPrincipal UserPrincipal principal) {
-        examService.resetEmployeeCertificationAttempts(restaurantId, examId, userId);
+        examService.resetEmployeeCertificationAttempts(restaurantId, principal.userId(), examId, userId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -298,7 +298,7 @@ public class TrainingController {
                                                        @PathVariable Long userId,
                                                        @AuthenticationPrincipal UserPrincipal principal,
                                                        @RequestParam(required = false) Integer amount) {
-        examService.grantEmployeeCertificationExtraAttempts(restaurantId, examId, userId, amount);
+        examService.grantEmployeeCertificationExtraAttempts(restaurantId, principal.userId(), examId, userId, amount);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")

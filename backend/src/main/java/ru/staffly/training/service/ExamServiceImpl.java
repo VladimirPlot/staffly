@@ -77,7 +77,7 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
+        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
         var exam = exams.save(TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .title(request.title())
@@ -120,8 +120,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
-        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        var exam = requireManageableExam(restaurantId, userId, examId);
 
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
@@ -130,7 +129,7 @@ public class ExamServiceImpl implements ExamService {
         // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
         // For certification exams null/empty means "clear visibility", which is invalid.
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
+        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
 
         exam.setTitle(request.title());
         exam.setDescription(request.description());
@@ -149,18 +148,16 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public TrainingExamDto hideExam(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Exam not found"));
+    public TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId) {
+        var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
     @Override
     @Transactional
-    public TrainingExamDto restoreExam(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Exam not found"));
+    public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
+        var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(true);
         assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
@@ -168,9 +165,8 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public void deleteExam(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Exam not found"));
+    public void deleteExam(Long restaurantId, Long userId, Long examId) {
+        var exam = requireManageableExam(restaurantId, userId, examId);
 
         if (exam.isActive()) {
             throw new ConflictException("Сначала скройте экзамен, затем удаляйте.");
@@ -180,9 +176,8 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public void resetCertificationExamCycle(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Exam not found"));
+    public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
+        var exam = requireManageableCertificationExam(restaurantId, userId, examId);
         startNewCertificationCycle(exam);
         assignmentSyncService.resetAssignmentsForNewCycle(exam);
     }
@@ -328,12 +323,14 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
-    public void resetEmployeeCertificationAttempts(Long restaurantId, Long examId, Long userId) {
+    public void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
         certificationManagerActionService.resetAttemptsForEmployee(restaurantId, examId, userId);
     }
 
     @Override
-    public void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long examId, Long userId, Integer amount) {
+    public void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
         certificationManagerActionService.grantExtraAttemptForEmployee(restaurantId, examId, userId, amount);
     }
 
@@ -611,16 +608,22 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private TrainingFolder resolveKnowledgeFolder(Long restaurantId, TrainingExamMode mode, Long knowledgeFolderId) {
+    private TrainingFolder resolveKnowledgeFolder(Long restaurantId, Long userId, TrainingExamMode mode, Long knowledgeFolderId) {
         if (mode == TrainingExamMode.PRACTICE) {
             if (knowledgeFolderId == null) {
                 throw new BadRequestException("Для учебного теста требуется папка в базе знаний.");
             }
-            var folder = folders.findByIdAndRestaurantId(knowledgeFolderId, restaurantId)
+            var folder = folders.findByIdAndRestaurantIdWithVisibility(knowledgeFolderId, restaurantId)
                     .orElseThrow(() -> new BadRequestException("Папка учебного теста не найдена."));
             if (folder.getType() != TrainingFolderType.KNOWLEDGE) {
                 throw new BadRequestException("Для учебного теста нужна папка из базы знаний.");
             }
+            trainingPolicyService.assertCanAccessTrainingVisibility(
+                    userId,
+                    restaurantId,
+                    folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()),
+                    "Training policy does not allow access to this knowledge folder visibility scope."
+            );
             return folder;
         }
 
@@ -634,6 +637,26 @@ public class ExamServiceImpl implements ExamService {
         return mode == TrainingExamMode.PRACTICE
                 ? TrainingQuestionGroup.PRACTICE
                 : TrainingQuestionGroup.CERTIFICATION;
+    }
+
+    private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        trainingPolicyService.assertCanAccessTrainingVisibility(
+                userId,
+                restaurantId,
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()),
+                "Training policy does not allow managing this exam visibility scope."
+        );
+        return exam;
+    }
+
+    private TrainingExam requireManageableCertificationExam(Long restaurantId, Long userId, Long examId) {
+        var exam = requireManageableExam(restaurantId, userId, examId);
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Операция доступна только для аттестационного теста.");
+        }
+        return exam;
     }
 
     private record QuestionRelations(

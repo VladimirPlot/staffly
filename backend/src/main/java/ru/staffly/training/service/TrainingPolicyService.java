@@ -37,6 +37,10 @@ public class TrainingPolicyService {
     }
 
     public boolean canAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        return canAccessTrainingVisibility(userId, restaurantId, visibilityPositionIds);
+    }
+
+    public boolean canAccessTrainingVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return true;
         }
@@ -45,8 +49,21 @@ public class TrainingPolicyService {
     }
 
     public void assertCanAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
-        if (!canAccessQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds)) {
-            throw new ForbiddenException("Training policy does not allow access to this question bank scope.");
+        assertCanAccessTrainingVisibility(userId, restaurantId, visibilityPositionIds,
+                "Training policy does not allow access to this question bank scope.");
+    }
+
+    public void assertCanAccessTrainingVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        assertCanAccessTrainingVisibility(userId, restaurantId, visibilityPositionIds,
+                "Training policy does not allow access to this training visibility scope.");
+    }
+
+    public void assertCanAccessTrainingVisibility(Long userId,
+                                                  Long restaurantId,
+                                                  Set<Long> visibilityPositionIds,
+                                                  String message) {
+        if (!canAccessTrainingVisibility(userId, restaurantId, visibilityPositionIds)) {
+            throw new ForbiddenException(message);
         }
     }
 
