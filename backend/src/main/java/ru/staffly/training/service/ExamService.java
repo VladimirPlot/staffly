@@ -21,8 +21,8 @@ public interface ExamService {
     void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId);
     void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount);
 
-    CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long examId);
-    List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long examId);
-    List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long examId);
-    List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId);
+    CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long actorUserId, Long examId);
+    List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long actorUserId, Long examId);
+    List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long actorUserId, Long examId);
+    List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId);
 }

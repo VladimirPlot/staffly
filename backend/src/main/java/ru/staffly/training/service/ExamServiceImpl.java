@@ -61,11 +61,17 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional(readOnly = true)
     public List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive) {
-        var folder = folders.findByIdAndRestaurantId(folderId, restaurantId)
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
         if (folder.getType() != TrainingFolderType.KNOWLEDGE) {
             throw new BadRequestException("Folder must belong to knowledge base");
         }
+        trainingPolicyService.assertCanAccessTrainingVisibility(
+                userId,
+                restaurantId,
+                folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()),
+                "Training policy does not allow access to this knowledge folder visibility scope."
+        );
 
         return examAccessService.listVisiblePracticeExamsByKnowledgeFolder(restaurantId, userId, isManager, folderId, includeInactive)
                 .stream()
@@ -335,22 +341,26 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
-    public CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long examId) {
+    public CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long actorUserId, Long examId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
         return certificationAnalyticsService.getExamSummary(restaurantId, examId);
     }
 
     @Override
-    public List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long examId) {
+    public List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long actorUserId, Long examId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
         return certificationAnalyticsService.getPositionBreakdown(restaurantId, examId);
     }
 
     @Override
-    public List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long examId) {
+    public List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long actorUserId, Long examId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
         return certificationAnalyticsService.getEmployeeRows(restaurantId, examId);
     }
 
     @Override
-    public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId) {
+    public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
         return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, examId, userId);
     }
 

@@ -160,9 +160,11 @@ public class QuestionServiceImpl implements QuestionService {
             return;
         }
 
-        var firstExamTitle = usages.get(0).getTitle();
+        var message = usages.size() == 1
+                ? "Данный вопрос используется в тесте \"" + usages.get(0).getTitle() + "\", чтобы изменить его, нужно удалить тест или убрать данный вопрос из теста."
+                : "Данный вопрос используется в нескольких тестах. Чтобы изменить его, нужно удалить эти тесты или убрать из них данный вопрос.";
         throw new ConflictException(
-                "Данный вопрос используется в тесте \"" + firstExamTitle + "\", чтобы изменить его, нужно удалить тест или убрать данный вопрос из теста.",
+                message,
                 Map.of("exams", usages)
         );
     }

@@ -306,7 +306,7 @@ public class TrainingController {
     public CertificationExamSummaryDto getCertificationSummary(@PathVariable Long restaurantId,
                                                                @PathVariable Long examId,
                                                                @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.getCertificationExamSummary(restaurantId, examId);
+        return examService.getCertificationExamSummary(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -314,7 +314,7 @@ public class TrainingController {
     public List<CertificationExamPositionBreakdownDto> getCertificationPositionBreakdown(@PathVariable Long restaurantId,
                                                                                          @PathVariable Long examId,
                                                                                          @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.getCertificationExamPositionBreakdown(restaurantId, examId);
+        return examService.getCertificationExamPositionBreakdown(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -322,7 +322,7 @@ public class TrainingController {
     public List<CertificationExamEmployeeRowDto> getCertificationEmployeeTable(@PathVariable Long restaurantId,
                                                                                @PathVariable Long examId,
                                                                                @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.getCertificationExamEmployeeTable(restaurantId, examId);
+        return examService.getCertificationExamEmployeeTable(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -331,7 +331,7 @@ public class TrainingController {
                                                                                            @PathVariable Long examId,
                                                                                            @PathVariable Long userId,
                                                                                            @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.getCertificationEmployeeAttemptHistory(restaurantId, examId, userId);
+        return examService.getCertificationEmployeeAttemptHistory(restaurantId, principal.userId(), examId, userId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
