@@ -43,8 +43,10 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationAssignmentService certificationAssignmentService;
     private final CertificationManagerActionService certificationManagerActionService;
     private final CertificationAnalyticsService certificationAnalyticsService;
+    private final TrainingPolicyService trainingPolicyService;
 
     @Override
+    @Transactional(readOnly = true)
     public List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly) {
         TrainingExamMode modeFilter = certificationOnly == null
                 ? null
@@ -57,6 +59,7 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive) {
         var folder = folders.findByIdAndRestaurantId(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
@@ -72,7 +75,7 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request) {
+    public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, request.mode(), request.knowledgeFolderId());
         var exam = exams.save(TrainingExam.builder()
@@ -89,7 +92,7 @@ public class ExamServiceImpl implements ExamService {
                 .version(1)
                 .build());
 
-        replaceSources(restaurantId, exam, request.sourcesFolders(), request.sourceQuestionIds());
+        replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
         assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
@@ -97,7 +100,7 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
-    public TrainingExamDto createKnowledgeExam(Long restaurantId, CreateTrainingExamRequest request) {
+    public TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         var normalized = new CreateTrainingExamRequest(
                 request.title(),
                 request.description(),
@@ -111,12 +114,12 @@ public class ExamServiceImpl implements ExamService {
                 request.sourcesFolders(),
                 request.sourceQuestionIds()
         );
-        return createExam(restaurantId, normalized);
+        return createExam(restaurantId, userId, normalized);
     }
 
     @Override
     @Transactional
-    public TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request) {
+    public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
 
@@ -138,7 +141,7 @@ public class ExamServiceImpl implements ExamService {
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(request.active() == null ? exam.isActive() : request.active());
 
-        replaceSources(restaurantId, exam, request.sourcesFolders(), request.sourceQuestionIds());
+        replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
         assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
@@ -460,22 +463,41 @@ public class ExamServiceImpl implements ExamService {
         return snapshots;
     }
 
-    private void replaceSources(Long restaurantId, TrainingExam exam, List<ExamSourceFolderDto> foldersDto, List<Long> sourceQuestionIds) {
+    private void replaceSources(Long restaurantId,
+                                Long userId,
+                                TrainingExam exam,
+                                TrainingExamMode examMode,
+                                List<ExamSourceFolderDto> foldersDto,
+                                List<Long> sourceQuestionIds) {
         sourceFolders.deleteByExamId(exam.getId());
         sourceFolders.flush();
         sourceQuestions.deleteByExamId(exam.getId());
         sourceQuestions.flush();
 
+        var requiredGroup = questionGroupForMode(examMode);
         var folderEntities = new ArrayList<TrainingExamSourceFolder>();
         for (var folderSource : normalizeFolderSources(foldersDto)) {
-            var folder = folders.findByIdAndRestaurantId(folderSource.folderId(), restaurantId)
+            var folder = folders.findByIdAndRestaurantIdWithVisibility(folderSource.folderId(), restaurantId)
                     .orElseThrow(() -> new NotFoundException("Folder not found"));
             if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
                 throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
             }
+            trainingPolicyService.assertCanAccessQuestionBankByVisibility(
+                    userId,
+                    restaurantId,
+                    folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+            );
             if (folderSource.pickMode() == TrainingExamSourcePickMode.RANDOM
                     && (folderSource.randomCount() == null || folderSource.randomCount() < 1)) {
                 throw new BadRequestException("randomCount is required for RANDOM pick mode");
+            }
+            var folderHasQuestionsInExamMode = !questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                    restaurantId,
+                    folder.getId(),
+                    requiredGroup
+            ).isEmpty();
+            if (!folderHasQuestionsInExamMode) {
+                throw new BadRequestException("Folder does not contain active questions for selected exam mode");
             }
             folderEntities.add(TrainingExamSourceFolder.builder()
                     .exam(exam)
@@ -490,8 +512,19 @@ public class ExamServiceImpl implements ExamService {
 
         var questionEntities = new ArrayList<TrainingExamSourceQuestion>();
         for (Long questionId : (sourceQuestionIds == null ? List.<Long>of() : sourceQuestionIds).stream().distinct().toList()) {
-            var question = questions.findByIdAndRestaurantId(questionId, restaurantId)
+            var question = questions.findByIdAndRestaurantIdWithFolderVisibility(questionId, restaurantId)
                     .orElseThrow(() -> new NotFoundException("Question not found"));
+            if (!question.isActive()) {
+                throw new BadRequestException("Inactive questions cannot be used as explicit exam source");
+            }
+            if (question.getQuestionGroup() != requiredGroup) {
+                throw new BadRequestException("Question group does not match exam mode");
+            }
+            trainingPolicyService.assertCanAccessQuestionBankByVisibility(
+                    userId,
+                    restaurantId,
+                    question.getFolder().getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+            );
             questionEntities.add(TrainingExamSourceQuestion.builder().exam(exam).question(question).build());
         }
         if (!questionEntities.isEmpty()) {
@@ -595,6 +628,12 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Для аттестации папка в базе знаний не задаётся.");
         }
         return null;
+    }
+
+    private TrainingQuestionGroup questionGroupForMode(TrainingExamMode mode) {
+        return mode == TrainingExamMode.PRACTICE
+                ? TrainingQuestionGroup.PRACTICE
+                : TrainingQuestionGroup.CERTIFICATION;
     }
 
     private record QuestionRelations(

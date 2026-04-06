@@ -166,7 +166,7 @@ public class TrainingController {
     public TrainingQuestionDto createQuestion(@PathVariable Long restaurantId,
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody CreateTrainingQuestionRequest request) {
-        return questionService.createQuestion(restaurantId, request);
+        return questionService.createQuestion(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -175,27 +175,27 @@ public class TrainingController {
                                               @PathVariable Long questionId,
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody UpdateTrainingQuestionRequest request) {
-        return questionService.updateQuestion(restaurantId, questionId, request);
+        return questionService.updateQuestion(restaurantId, principal.userId(), questionId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/questions/{questionId}/hide")
     public TrainingQuestionDto hideQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId,
                                             @AuthenticationPrincipal UserPrincipal principal) {
-        return questionService.hideQuestion(restaurantId, questionId);
+        return questionService.hideQuestion(restaurantId, principal.userId(), questionId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/questions/{questionId}/restore")
     public TrainingQuestionDto restoreQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId,
                                                @AuthenticationPrincipal UserPrincipal principal) {
-        return questionService.restoreQuestion(restaurantId, questionId);
+        return questionService.restoreQuestion(restaurantId, principal.userId(), questionId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/questions/{questionId}")
     public void deleteQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId, @AuthenticationPrincipal UserPrincipal principal) {
-        questionService.deleteQuestion(restaurantId, questionId);
+        questionService.deleteQuestion(restaurantId, principal.userId(), questionId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -230,7 +230,7 @@ public class TrainingController {
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody CreateTrainingExamRequest request) {
         assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
-        return examService.createExam(restaurantId, request);
+        return examService.createExam(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -239,7 +239,7 @@ public class TrainingController {
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @Valid @RequestBody CreateTrainingExamRequest request) {
         assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
-        return examService.createKnowledgeExam(restaurantId, request);
+        return examService.createKnowledgeExam(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -249,7 +249,7 @@ public class TrainingController {
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody UpdateTrainingExamRequest request) {
         assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
-        return examService.updateExam(restaurantId, examId, request);
+        return examService.updateExam(restaurantId, principal.userId(), examId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
