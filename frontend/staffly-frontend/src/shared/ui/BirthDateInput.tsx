@@ -1,6 +1,6 @@
 import React from "react";
-import { CalendarDays } from "lucide-react";
 
+import DateFieldInput from "./DateFieldInput";
 import {
   formatBirthDateFromIso,
   formatBirthDateInput,
@@ -19,10 +19,6 @@ type BirthDateInputProps = {
   preventAutofill?: boolean;
 };
 
-type PickerInput = HTMLInputElement & {
-  showPicker?: () => void;
-};
-
 export default function BirthDateInput({
   label,
   value,
@@ -30,124 +26,33 @@ export default function BirthDateInput({
   onBlur,
   error,
   disabled = false,
-  placeholder = "DD-MM-YYYY",
+  placeholder = "DD.MM.YYYY",
   preventAutofill = false,
 }: BirthDateInputProps) {
-  const pickerRef = React.useRef<PickerInput | null>(null);
-  const [prefersNativeTouchPicker, setPrefersNativeTouchPicker] = React.useState(false);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-
-    const coarsePointerQuery = window.matchMedia("(pointer: coarse)");
-    const updatePreference = () => {
-      setPrefersNativeTouchPicker(coarsePointerQuery.matches);
-    };
-
-    updatePreference();
-    coarsePointerQuery.addEventListener("change", updatePreference);
-    return () => coarsePointerQuery.removeEventListener("change", updatePreference);
-  }, []);
-
-  const handleOpenPicker = React.useCallback(() => {
-    if (disabled || prefersNativeTouchPicker) {
-      return;
-    }
-
-    const picker = pickerRef.current;
-    if (!picker) {
-      return;
-    }
-
-    if (typeof picker.showPicker === "function") {
-      picker.showPicker();
-      return;
-    }
-
-    picker.focus();
-    picker.click();
-  }, [disabled, prefersNativeTouchPicker]);
-
-  const handlePickerChange = React.useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      onChange(formatBirthDateFromIso(event.target.value));
-    },
-    [onChange],
-  );
-
   const isoValue = isBirthDateValid(value) ? normalizeBirthDateForSubmit(value) : "";
 
   return (
-    <label className="block min-w-0">
-      <span className="text-muted mb-1 block min-w-0 text-sm [overflow-wrap:anywhere]">
-        {label}
-      </span>
-
-      <div className="relative">
-        <input
-          className={[
-            "bg-surface text-default w-full max-w-full min-w-0 rounded-2xl border p-3 pr-14 text-[16px]",
-            "focus:ring-default transition outline-none focus:ring-2",
-            "dark:[color-scheme:dark]",
-            error ? "border-red-500 ring-red-200" : "border-subtle",
-          ].join(" ")}
-          type="text"
-          name={preventAutofill ? "profile_birth_date_manual" : "birthDate"}
-          value={value}
-          onChange={(event) => onChange(formatBirthDateInput(event.target.value))}
-          onBlur={onBlur}
-          inputMode="numeric"
-          autoComplete={preventAutofill ? "off" : "bday"}
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          data-lpignore={preventAutofill ? "true" : undefined}
-          data-1p-ignore={preventAutofill ? "true" : undefined}
-          data-form-type={preventAutofill ? "other" : undefined}
-          maxLength={10}
-          placeholder={placeholder}
-          disabled={disabled}
-        />
-
-        <button
-          type="button"
-          onClick={handleOpenPicker}
-          disabled={disabled}
-          aria-label="Открыть календарь"
-          className={[
-            "absolute top-1/2 right-2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl border",
-            "border-subtle text-icon bg-[linear-gradient(180deg,var(--staffly-surface),var(--staffly-control))]",
-            "hover:bg-app shadow-[var(--staffly-shadow)] transition hover:scale-[1.02]",
-            "focus:ring-default focus:ring-2 focus:outline-none",
-            disabled ? "cursor-not-allowed opacity-60" : "",
-          ].join(" ")}
-        >
-          <CalendarDays className="h-5 w-5" />
-        </button>
-
-        <input
-          ref={pickerRef}
-          type="date"
-          autoComplete={preventAutofill ? "off" : undefined}
-          value={isoValue}
-          onChange={handlePickerChange}
-          tabIndex={-1}
-          aria-hidden="true"
-          className={
-            prefersNativeTouchPicker
-              ? "absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-              : "pointer-events-none absolute right-0 bottom-0 h-0 w-0 opacity-0"
-          }
-        />
-      </div>
-
-      {error && (
-        <span className="mt-1 block min-w-0 text-xs [overflow-wrap:anywhere] text-red-600">
-          {error}
-        </span>
-      )}
-    </label>
+    <DateFieldInput
+      label={label}
+      value={value}
+      onChange={(event) => onChange(formatBirthDateInput(event.target.value))}
+      onBlur={onBlur}
+      error={error}
+      disabled={disabled}
+      placeholder={placeholder}
+      inputProps={{
+        name: preventAutofill ? "profile_birth_date_manual" : "birthDate",
+        autoComplete: preventAutofill ? "off" : "bday",
+        "data-lpignore": preventAutofill ? "true" : undefined,
+        "data-1p-ignore": preventAutofill ? "true" : undefined,
+        "data-form-type": preventAutofill ? "other" : undefined,
+        maxLength: 10,
+      }}
+      nativeValue={isoValue}
+      onNativeChange={(event) => onChange(formatBirthDateFromIso(event.target.value))}
+      nativeProps={{
+        autoComplete: preventAutofill ? "off" : undefined,
+      }}
+    />
   );
 }

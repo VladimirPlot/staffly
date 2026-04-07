@@ -2,16 +2,24 @@ import React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import Button from "../../../shared/ui/Button";
-import DatePickerInput from "../../../shared/ui/DatePickerInput";
 import Input from "../../../shared/ui/Input";
 import ContentText from "../../../shared/ui/ContentText";
 import Icon from "../../../shared/ui/Icon";
 import { cn } from "../../../shared/lib/cn";
+import useValidatedTextField from "../../../shared/hooks/useValidatedTextField";
 import PersonalNav from "../components/PersonalNav";
 import type { IncomePeriodDetail, IncomeShift, SaveIncomeShiftPayload } from "../api";
 import { createIncomeShift, deleteIncomeShift, getIncomePeriod } from "../api";
+import ShiftDateInput from "../components/ShiftDateInput";
+import {
+  formatShiftDateFromIso,
+  getShiftDateDraftError,
+  getShiftDateError,
+  normalizeShiftDateForSubmit,
+} from "../utils/shiftDate";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => formatShiftDateFromIso(new Date().toISOString().slice(0, 10));
+type IncomeShiftForm = Partial<SaveIncomeShiftPayload>;
 
 export default function IncomePeriodPage() {
   const { periodId } = useParams();
@@ -21,8 +29,13 @@ export default function IncomePeriodPage() {
   const [saving, setSaving] = React.useState(false);
   const [type, setType] = React.useState<"SHIFT" | "HOURLY">("SHIFT");
   const [showAddShift, setShowAddShift] = React.useState(false);
-  const [form, setForm] = React.useState<SaveIncomeShiftPayload>({
-    date: today(),
+  const dateField = useValidatedTextField({
+    initialValue: today(),
+    getError: getShiftDateError,
+    getDraftError: getShiftDateDraftError,
+    normalizeForSubmit: normalizeShiftDateForSubmit,
+  });
+  const [form, setForm] = React.useState<IncomeShiftForm>({
     type: "SHIFT",
   });
 
@@ -52,11 +65,21 @@ export default function IncomePeriodPage() {
   const onCreateShift = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!periodId) return;
+    dateField.setSubmitAttempted(true);
+    if (!dateField.isValid) {
+      return;
+    }
+
     setSaving(true);
+    const date = dateField.getSubmitValue();
+    if (!date) {
+      setSaving(false);
+      return;
+    }
     const payload: SaveIncomeShiftPayload =
       type === "SHIFT"
         ? {
-            date: form.date,
+            date,
             type: "SHIFT",
             fixedAmount: form.fixedAmount,
             tipsAmount: form.tipsAmount,
@@ -64,7 +87,7 @@ export default function IncomePeriodPage() {
             comment: form.comment,
           }
         : {
-            date: form.date,
+            date,
             type: "HOURLY",
             startTime: form.startTime,
             endTime: form.endTime,
@@ -80,7 +103,9 @@ export default function IncomePeriodPage() {
       } catch {
         window.alert("Смена сохранена, но не удалось обновить период. Обновите страницу.");
       }
-      setForm({ date: today(), type });
+      dateField.setValue(today());
+      dateField.resetValidation();
+      setForm({ type });
     } finally {
       setSaving(false);
     }
@@ -158,11 +183,12 @@ export default function IncomePeriodPage() {
           <form className="grid gap-4" onSubmit={onCreateShift}>
             <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
               <div className="border-subtle rounded-[1.5rem] border bg-[color:var(--staffly-control)]/45 p-3 sm:p-4">
-                <DatePickerInput
+                <ShiftDateInput
                   label="Дата"
-                  value={form.date}
-                  onChange={(value) => onChange({ date: value })}
-                  required
+                  value={dateField.value}
+                  onChange={dateField.setValue}
+                  onBlur={() => dateField.setTouched(true)}
+                  error={dateField.error}
                 />
               </div>
               <div className="border-subtle rounded-[1.5rem] border bg-[color:var(--staffly-control)]/45 p-3 sm:p-4">
