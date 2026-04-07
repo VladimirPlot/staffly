@@ -7,14 +7,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
-import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.media.TrainingImageStorage;
-import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
-import ru.staffly.security.SecurityService;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
@@ -36,33 +33,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingExamRepository exams;
     private final TrainingQuestionRepository questions;
     private final EntityManager entityManager;
-    private final RestaurantMemberRepository members;
     private final PositionRepository positions;
-    private final SecurityService securityService;
     private final TrainingPolicyService trainingPolicyService;
 
     @Transactional(readOnly = true)
     @Override
     public List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive) {
-        if (!trainingPolicyService.canManageTraining(userId, restaurantId)) {
-            Long positionId = requireMemberPositionId(restaurantId, userId);
-            return folders.listFoldersForStaff(restaurantId, type, positionId).stream().map(this::toDto).toList();
-        }
-
-        var entities = includeInactive
+        boolean canManageTraining = trainingPolicyService.canManageTraining(userId, restaurantId);
+        var entities = includeInactive && canManageTraining
                 ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type)
                 : folders.findByRestaurantIdAndTypeAndActiveTrueWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type);
-        if (type != TrainingFolderType.QUESTION_BANK) {
-            return entities.stream().map(this::toDto).toList();
-        }
-        var allowedPositionIds = trainingPolicyService.allowedPositionIds(userId, restaurantId);
+
         return entities.stream()
-                .filter(folder -> {
-                    if (folder.getVisibilityPositions().isEmpty()) {
-                        return true;
-                    }
-                    return folder.getVisibilityPositions().stream().anyMatch(position -> allowedPositionIds.contains(position.getId()));
-                })
+                .filter(folder -> canAccessFolderByType(userId, restaurantId, folder))
                 .map(this::toDto)
                 .toList();
     }
@@ -111,8 +94,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
-    public TrainingFolderDto createFolder(Long restaurantId, CreateTrainingFolderRequest request) {
-        TrainingFolder parent = resolveParentFolder(restaurantId, request.parentId(), request.type());
+    public TrainingFolderDto createFolder(Long restaurantId, Long userId, CreateTrainingFolderRequest request) {
+        TrainingFolder parent = resolveParentFolder(restaurantId, userId, request.parentId(), request.type());
+        assertCanUseVisibilityPositions(userId, restaurantId, request.type(), request.visibilityPositionIds());
         var visibilityPositions = resolveVisibilityPositionsForCreate(restaurantId, parent, request.visibilityPositionIds());
 
         var entity = TrainingFolder.builder()
@@ -129,14 +113,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
-    public TrainingFolderDto updateFolder(Long restaurantId, Long folderId, UpdateTrainingFolderRequest request) {
-        var entity = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
+    public TrainingFolderDto updateFolder(Long restaurantId, Long userId, Long folderId, UpdateTrainingFolderRequest request) {
+        var entity = requireManageableFolder(restaurantId, userId, folderId);
         entity.setName(request.name());
         entity.setDescription(request.description());
         entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
 
         if (request.visibilityPositionIds() != null) {
+            assertCanUseVisibilityPositions(userId, restaurantId, entity.getType(), request.visibilityPositionIds());
             applyUpdatedVisibility(restaurantId, entity, request.visibilityPositionIds());
         }
         return toDto(folders.save(entity));
@@ -144,9 +128,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     @Transactional
-    public TrainingFolderDto hideFolder(Long restaurantId, Long folderId) {
-        var root = folders.findByIdAndRestaurantId(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
+    public TrainingFolderDto hideFolder(Long restaurantId, Long userId, Long folderId) {
+        var root = requireManageableFolder(restaurantId, userId, folderId);
 
         ensureKnowledgeFolderHasNoPracticeExams(restaurantId, root);
         setFolderTreeActive(restaurantId, root, false);
@@ -157,9 +140,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     @Transactional
-    public TrainingFolderDto restoreFolder(Long restaurantId, Long folderId) {
-        var root = folders.findByIdAndRestaurantId(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
+    public TrainingFolderDto restoreFolder(Long restaurantId, Long userId, Long folderId) {
+        var root = requireManageableFolder(restaurantId, userId, folderId);
 
         setFolderTreeActive(restaurantId, root, true);
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
@@ -168,9 +150,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     @Transactional
-    public void deleteFolder(Long restaurantId, Long folderId) {
-        var root = folders.findByIdAndRestaurantId(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
+    public void deleteFolder(Long restaurantId, Long userId, Long folderId) {
+        var root = requireManageableFolder(restaurantId, userId, folderId);
         if (root.isActive()) {
             throw new ConflictException("Сначала скройте папку, затем удаляйте.");
         }
@@ -188,19 +169,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long userId, Long folderId, boolean includeInactive) {
-        if (!trainingPolicyService.canManageTraining(userId, restaurantId)) {
-            Long positionId = requireMemberPositionId(restaurantId, userId);
-            return listKnowledgeItemsForStaff(restaurantId, folderId, positionId);
+        boolean canManageTraining = trainingPolicyService.canManageTraining(userId, restaurantId);
+        if (folderId != null) {
+            requireAccessibleKnowledgeFolder(restaurantId, userId, folderId);
         }
-
-        return listKnowledgeItemsForManager(restaurantId, folderId, includeInactive);
+        boolean includeInactiveItems = includeInactive && canManageTraining;
+        return listKnowledgeItemsByFolder(restaurantId, folderId, includeInactiveItems);
     }
 
     @Override
-    public TrainingKnowledgeItemDto createKnowledgeItem(Long restaurantId, CreateTrainingKnowledgeItemRequest request) {
+    public TrainingKnowledgeItemDto createKnowledgeItem(Long restaurantId, Long userId, CreateTrainingKnowledgeItemRequest request) {
         TrainingFolder folder = request.folderId() == null
                 ? null
-                : loadFolder(restaurantId, request.folderId(), TrainingFolderType.KNOWLEDGE);
+                : requireManageableKnowledgeFolder(restaurantId, userId, request.folderId());
 
         var entity = TrainingKnowledgeItem.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
@@ -217,9 +198,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     @Override
-    public TrainingKnowledgeItemDto updateKnowledgeItem(Long restaurantId, Long itemId, UpdateTrainingKnowledgeItemRequest request) {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+    public TrainingKnowledgeItemDto updateKnowledgeItem(Long restaurantId, Long userId, Long itemId, UpdateTrainingKnowledgeItemRequest request) {
+        var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
 
         entity.setTitle(request.title());
         entity.setDescription(request.description());
@@ -231,34 +211,31 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (!Objects.equals(request.folderId(), currentFolderId)) {
             entity.setFolder(request.folderId() == null
                     ? null
-                    : loadFolder(restaurantId, request.folderId(), TrainingFolderType.KNOWLEDGE));
+                    : requireManageableKnowledgeFolder(restaurantId, userId, request.folderId()));
         }
         return toDto(items.save(entity));
     }
 
     @Override
     @Transactional
-    public TrainingKnowledgeItemDto hideKnowledgeItem(Long restaurantId, Long itemId) {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+    public TrainingKnowledgeItemDto hideKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
+        var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
         entity.setActive(false);
         return toDto(items.save(entity));
     }
 
     @Override
     @Transactional
-    public TrainingKnowledgeItemDto restoreKnowledgeItem(Long restaurantId, Long itemId) {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+    public TrainingKnowledgeItemDto restoreKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
+        var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
         entity.setActive(true);
         return toDto(items.save(entity));
     }
 
     @Override
     @Transactional
-    public void deleteKnowledgeItem(Long restaurantId, Long itemId) {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+    public void deleteKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
+        var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
         if (entity.isActive()) {
             throw new ConflictException("Сначала скройте материал, затем удаляйте.");
         }
@@ -269,7 +246,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     @Transactional
-    public TrainingKnowledgeItemDto uploadKnowledgeImage(Long restaurantId, Long itemId, MultipartFile file) throws IOException {
+    public TrainingKnowledgeItemDto uploadKnowledgeImage(Long restaurantId, Long userId, Long itemId, MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Файл не выбран");
         }
@@ -278,8 +255,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         }
 
         validateImage(file);
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+        var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
         storage.deleteByPublicUrl(entity.getImageUrl());
         entity.setImageUrl(storage.saveForItem(itemId, file));
         return toDto(entity);
@@ -287,39 +263,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     @Transactional
-    public TrainingKnowledgeItemDto deleteKnowledgeImage(Long restaurantId, Long itemId) throws IOException {
-        var entity = items.findByIdAndRestaurantId(itemId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+    public TrainingKnowledgeItemDto deleteKnowledgeImage(Long restaurantId, Long userId, Long itemId) throws IOException {
+        var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
         storage.deleteByPublicUrl(entity.getImageUrl());
         entity.setImageUrl(null);
         return toDto(entity);
     }
 
-    private Long requireMemberPositionId(Long restaurantId, Long userId) {
-        var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
-                .orElseThrow(() -> new ForbiddenException("Not a member"));
-        if (member.getPosition() == null) {
-            throw new ForbiddenException("Обратитесь к менеджеру или в поддержку.");
-        }
-        return member.getPosition().getId();
-    }
-
-    private List<TrainingKnowledgeItemDto> listKnowledgeItemsForStaff(Long restaurantId, Long folderId, Long positionId) {
-        if (folderId == null) {
-            return items.findByRestaurantIdAndFolderIsNullAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId)
-                    .stream()
-                    .map(this::toDto)
-                    .toList();
-        }
-
-        ensureFolderAccessibleForPosition(restaurantId, folderId, positionId);
-        return items.findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(restaurantId, folderId)
-                .stream()
-                .map(this::toDto)
-                .toList();
-    }
-
-    private List<TrainingKnowledgeItemDto> listKnowledgeItemsForManager(Long restaurantId, Long folderId, boolean includeInactive) {
+    private List<TrainingKnowledgeItemDto> listKnowledgeItemsByFolder(Long restaurantId, Long folderId, boolean includeInactive) {
         if (folderId == null) {
             var rootItems = includeInactive
                     ? items.findByRestaurantIdAndFolderIsNullOrderBySortOrderAscTitleAsc(restaurantId)
@@ -333,26 +284,80 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return folderItems.stream().map(this::toDto).toList();
     }
 
-    private void ensureFolderAccessibleForPosition(Long restaurantId, Long folderId, Long positionId) {
-        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
-        var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
-        if (!visibilityIds.isEmpty() && !visibilityIds.contains(positionId)) {
-            throw new ForbiddenException("Нет доступа к папке.");
-        }
-    }
-
-    private TrainingFolder resolveParentFolder(Long restaurantId, Long parentId, TrainingFolderType expectedType) {
+    private TrainingFolder resolveParentFolder(Long restaurantId, Long userId, Long parentId, TrainingFolderType expectedType) {
         if (parentId == null) {
             return null;
         }
+        return requireManageableFolder(restaurantId, userId, parentId, expectedType);
+    }
 
-        var parent = folders.findByIdAndRestaurantIdWithVisibility(parentId, restaurantId)
+    private boolean canAccessFolderByType(Long userId, Long restaurantId, TrainingFolder folder) {
+        var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        return switch (folder.getType()) {
+            case KNOWLEDGE -> trainingPolicyService.canAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
+            case QUESTION_BANK -> trainingPolicyService.canAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
+        };
+    }
+
+    private void assertCanUseVisibilityPositions(Long userId, Long restaurantId, TrainingFolderType type, List<Long> positionIds) {
+        if (positionIds == null || positionIds.isEmpty()) {
+            return;
+        }
+        var requested = new HashSet<>(positionIds);
+        switch (type) {
+            case KNOWLEDGE -> trainingPolicyService.assertCanUseKnowledgePositions(userId, restaurantId, requested);
+            case QUESTION_BANK -> trainingPolicyService.assertCanUseQuestionBankPositions(userId, restaurantId, requested);
+        }
+    }
+
+    private TrainingFolder requireAccessibleKnowledgeFolder(Long restaurantId, Long userId, Long folderId) {
+        return requireFolderByPolicy(restaurantId, userId, folderId, TrainingFolderType.KNOWLEDGE);
+    }
+
+    private TrainingFolder requireManageableKnowledgeFolder(Long restaurantId, Long userId, Long folderId) {
+        return requireFolderByPolicy(restaurantId, userId, folderId, TrainingFolderType.KNOWLEDGE);
+    }
+
+    private TrainingFolder requireManageableFolder(Long restaurantId, Long userId, Long folderId) {
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
-        if (parent.getType() != expectedType) {
+        assertFolderAccessByType(userId, restaurantId, folder);
+        return folder;
+    }
+
+    private TrainingFolder requireManageableFolder(Long restaurantId, Long userId, Long folderId, TrainingFolderType expectedType) {
+        var folder = requireManageableFolder(restaurantId, userId, folderId);
+        if (folder.getType() != expectedType) {
             throw new BadRequestException("Parent folder type mismatch");
         }
-        return parent;
+        return folder;
+    }
+
+    private TrainingFolder requireFolderByPolicy(Long restaurantId, Long userId, Long folderId, TrainingFolderType expectedType) {
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+        if (folder.getType() != expectedType) {
+            throw new BadRequestException("Folder type mismatch");
+        }
+        assertFolderAccessByType(userId, restaurantId, folder);
+        return folder;
+    }
+
+    private void assertFolderAccessByType(Long userId, Long restaurantId, TrainingFolder folder) {
+        var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        switch (folder.getType()) {
+            case KNOWLEDGE -> trainingPolicyService.assertCanAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
+            case QUESTION_BANK -> trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
+        }
+    }
+
+    private TrainingKnowledgeItem requireManageableKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
+        var item = items.findByIdAndRestaurantId(itemId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
+        if (item.getFolder() != null) {
+            requireManageableKnowledgeFolder(restaurantId, userId, item.getFolder().getId());
+        }
+        return item;
     }
 
     private void applyUpdatedVisibility(Long restaurantId, TrainingFolder entity, List<Long> requestedVisibilityIds) {
@@ -449,15 +454,6 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             queue.addAll(childrenByParent.getOrDefault(id, List.of()));
         }
         return result;
-    }
-
-    private TrainingFolder loadFolder(Long restaurantId, Long folderId, TrainingFolderType type) {
-        var folder = folders.findByIdAndRestaurantId(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
-        if (folder.getType() != type) {
-            throw new BadRequestException("Folder type mismatch");
-        }
-        return folder;
     }
 
     private TrainingFolderDto toDto(TrainingFolder entity) {

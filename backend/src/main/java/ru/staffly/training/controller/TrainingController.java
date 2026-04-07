@@ -20,7 +20,6 @@ import ru.staffly.training.service.QuestionService;
 import ru.staffly.training.service.TrainingPolicyService;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
 
 @RestController
@@ -59,8 +58,7 @@ public class TrainingController {
     public TrainingFolderDto createFolder(@PathVariable Long restaurantId,
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @Valid @RequestBody CreateTrainingFolderRequest request) {
-        assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
-        return knowledgeService.createFolder(restaurantId, request);
+        return knowledgeService.createFolder(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -69,26 +67,25 @@ public class TrainingController {
                                           @PathVariable Long folderId,
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @Valid @RequestBody UpdateTrainingFolderRequest request) {
-        assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
-        return knowledgeService.updateFolder(restaurantId, folderId, request);
+        return knowledgeService.updateFolder(restaurantId, principal.userId(), folderId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/folders/{folderId}/hide")
     public TrainingFolderDto hideFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.hideFolder(restaurantId, folderId);
+        return knowledgeService.hideFolder(restaurantId, principal.userId(), folderId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/folders/{folderId}/restore")
     public TrainingFolderDto restoreFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.restoreFolder(restaurantId, folderId);
+        return knowledgeService.restoreFolder(restaurantId, principal.userId(), folderId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/folders/{folderId}")
     public void deleteFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
-        knowledgeService.deleteFolder(restaurantId, folderId);
+        knowledgeService.deleteFolder(restaurantId, principal.userId(), folderId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -105,7 +102,7 @@ public class TrainingController {
     public TrainingKnowledgeItemDto createKnowledgeItem(@PathVariable Long restaurantId,
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @Valid @RequestBody CreateTrainingKnowledgeItemRequest request) {
-        return knowledgeService.createKnowledgeItem(restaurantId, request);
+        return knowledgeService.createKnowledgeItem(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -114,25 +111,25 @@ public class TrainingController {
                                                          @PathVariable Long itemId,
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @Valid @RequestBody UpdateTrainingKnowledgeItemRequest request) {
-        return knowledgeService.updateKnowledgeItem(restaurantId, itemId, request);
+        return knowledgeService.updateKnowledgeItem(restaurantId, principal.userId(), itemId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/knowledge-items/{itemId}/hide")
     public TrainingKnowledgeItemDto hideKnowledgeItem(@PathVariable Long restaurantId, @PathVariable Long itemId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.hideKnowledgeItem(restaurantId, itemId);
+        return knowledgeService.hideKnowledgeItem(restaurantId, principal.userId(), itemId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/knowledge-items/{itemId}/restore")
     public TrainingKnowledgeItemDto restoreKnowledgeItem(@PathVariable Long restaurantId, @PathVariable Long itemId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.restoreKnowledgeItem(restaurantId, itemId);
+        return knowledgeService.restoreKnowledgeItem(restaurantId, principal.userId(), itemId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/knowledge-items/{itemId}")
     public void deleteKnowledgeItem(@PathVariable Long restaurantId, @PathVariable Long itemId, @AuthenticationPrincipal UserPrincipal principal) {
-        knowledgeService.deleteKnowledgeItem(restaurantId, itemId);
+        knowledgeService.deleteKnowledgeItem(restaurantId, principal.userId(), itemId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -140,14 +137,14 @@ public class TrainingController {
     public TrainingKnowledgeItemDto uploadKnowledgeImage(@PathVariable Long restaurantId, @PathVariable Long itemId,
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @RequestParam("file") MultipartFile file) throws IOException {
-        return knowledgeService.uploadKnowledgeImage(restaurantId, itemId, file);
+        return knowledgeService.uploadKnowledgeImage(restaurantId, principal.userId(), itemId, file);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/knowledge-items/{itemId}/image")
     public TrainingKnowledgeItemDto deleteKnowledgeImage(@PathVariable Long restaurantId, @PathVariable Long itemId,
                                                          @AuthenticationPrincipal UserPrincipal principal) throws IOException {
-        return knowledgeService.deleteKnowledgeImage(restaurantId, itemId);
+        return knowledgeService.deleteKnowledgeImage(restaurantId, principal.userId(), itemId);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -229,7 +226,6 @@ public class TrainingController {
     public TrainingExamDto createExam(@PathVariable Long restaurantId,
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody CreateTrainingExamRequest request) {
-        assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
         return examService.createExam(restaurantId, principal.userId(), request);
     }
 
@@ -238,7 +234,6 @@ public class TrainingController {
     public TrainingExamDto createKnowledgeExam(@PathVariable Long restaurantId,
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @Valid @RequestBody CreateTrainingExamRequest request) {
-        assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
         return examService.createKnowledgeExam(restaurantId, principal.userId(), request);
     }
 
@@ -248,7 +243,6 @@ public class TrainingController {
                                       @PathVariable Long examId,
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody UpdateTrainingExamRequest request) {
-        assertTrainingPolicyForPositions(principal.userId(), restaurantId, request.visibilityPositionIds());
         return examService.updateExam(restaurantId, principal.userId(), examId, request);
     }
 
@@ -348,10 +342,4 @@ public class TrainingController {
         return examService.submitAttempt(restaurantId, attemptId, principal.userId(), request);
     }
 
-    private void assertTrainingPolicyForPositions(Long userId, Long restaurantId, List<Long> positionIds) {
-        if (positionIds == null || positionIds.isEmpty()) {
-            return;
-        }
-        trainingPolicyService.assertCanUsePositions(userId, restaurantId, new HashSet<>(positionIds));
-    }
 }

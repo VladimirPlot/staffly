@@ -66,11 +66,10 @@ public class ExamServiceImpl implements ExamService {
         if (folder.getType() != TrainingFolderType.KNOWLEDGE) {
             throw new BadRequestException("Folder must belong to knowledge base");
         }
-        trainingPolicyService.assertCanAccessTrainingVisibility(
+        trainingPolicyService.assertCanAccessKnowledgeByVisibility(
                 userId,
                 restaurantId,
-                folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()),
-                "Training policy does not allow access to this knowledge folder visibility scope."
+                folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
         );
 
         return examAccessService.listVisiblePracticeExamsByKnowledgeFolder(restaurantId, userId, isManager, folderId, includeInactive)
@@ -99,7 +98,7 @@ public class ExamServiceImpl implements ExamService {
                 .build());
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
-        replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
+        replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
@@ -147,7 +146,7 @@ public class ExamServiceImpl implements ExamService {
         exam.setActive(request.active() == null ? exam.isActive() : request.active());
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
-        replaceVisibility(restaurantId, exam, request.visibilityPositionIds());
+        replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         assignmentSyncService.syncForExam(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
@@ -564,11 +563,16 @@ public class ExamServiceImpl implements ExamService {
         return List.copyOf(uniqueByFolderId.values());
     }
 
-    private void replaceVisibility(Long restaurantId, TrainingExam exam, List<Long> visibilityPositionIds) {
+    private void replaceVisibility(Long restaurantId, Long userId, TrainingExam exam, List<Long> visibilityPositionIds) {
         exam.getVisibilityPositions().clear();
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return;
         }
+        trainingPolicyService.assertCanUseExamTargetPositions(
+                userId,
+                restaurantId,
+                new HashSet<>(visibilityPositionIds)
+        );
 
         var allowed = positions.findByRestaurantId(restaurantId)
                 .stream()
@@ -628,11 +632,10 @@ public class ExamServiceImpl implements ExamService {
             if (folder.getType() != TrainingFolderType.KNOWLEDGE) {
                 throw new BadRequestException("Для учебного теста нужна папка из базы знаний.");
             }
-            trainingPolicyService.assertCanAccessTrainingVisibility(
+            trainingPolicyService.assertCanAccessKnowledgeByVisibility(
                     userId,
                     restaurantId,
-                    folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()),
-                    "Training policy does not allow access to this knowledge folder visibility scope."
+                    folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
             );
             return folder;
         }
@@ -652,11 +655,10 @@ public class ExamServiceImpl implements ExamService {
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-        trainingPolicyService.assertCanAccessTrainingVisibility(
+        trainingPolicyService.assertCanAccessExamTargetByVisibility(
                 userId,
                 restaurantId,
-                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()),
-                "Training policy does not allow managing this exam visibility scope."
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
         );
         return exam;
     }
