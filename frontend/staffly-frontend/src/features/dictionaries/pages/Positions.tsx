@@ -72,6 +72,8 @@ function PositionCompensationFields({
           onChange({
             ...value,
             payType: event.target.value as PayType | "",
+            payRate: event.target.value ? value.payRate : "",
+            normHours: event.target.value === "SALARY" ? value.normHours : "",
           })
         }
       >
@@ -80,15 +82,17 @@ function PositionCompensationFields({
         <option value="SHIFT">Сменная</option>
         <option value="SALARY">Оклад</option>
       </SelectField>
-      <Input
-        label={optional ? "Ставка (опционально)" : "Ставка"}
-        type="number"
-        inputMode="decimal"
-        min="0"
-        value={value.payRate}
-        onChange={(event) => onChange({ ...value, payRate: event.target.value })}
-      />
-      {(value.payType === "SALARY" || (optional && value.normHours !== "")) && (
+      {value.payType && (
+        <Input
+          label={optional ? "Ставка (опционально)" : "Ставка"}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          value={value.payRate}
+          onChange={(event) => onChange({ ...value, payRate: event.target.value })}
+        />
+      )}
+      {value.payType === "SALARY" && (
         <Input
           label={optional ? "Норматив часов (опционально)" : "Норматив часов"}
           type="number"
@@ -237,7 +241,7 @@ export default function PositionsPage() {
     setEditLevel(editing.level);
     setEditSpecializations(editing.specializations ?? []);
     setEditCompensation({
-      payType: editing.payType ?? "HOURLY",
+      payType: editing.payType ?? "",
       payRate: editing.payRate?.toString() ?? "",
       normHours: editing.normHours?.toString() ?? "",
     });
@@ -462,7 +466,7 @@ export default function PositionsPage() {
             <option value="ADMIN">Админ</option>
           </SelectField>
           <SpecializationsField value={editSpecializations} onChange={setEditSpecializations} />
-          <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} />
+          <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} optional />
         </div>
         {formError && <div className="mt-2 text-xs text-red-600">{formError}</div>}
       </Modal>
