@@ -23,6 +23,7 @@ type Props = {
 const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
 const VIEWPORT_PADDING = 8;
 const GAP_Y = 8;
+const DESKTOP_MENU_MAX_HEIGHT = "min(24rem, calc(100vh - 16px))";
 
 // Backdrop must be above any fixed header; menu is above backdrop.
 const Z_BACKDROP = "z-[1000]";
@@ -279,20 +280,21 @@ export default function DropdownMenu({
               id={desktopMenuId}
               ref={desktopMenuRef}
               role="menu"
-              className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] ${menuClassName}`}
+              className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto overscroll-contain ${menuClassName}`}
               style={
                 desktopPos
                   ? {
                       top: desktopPos.top,
                       left: desktopPos.left,
                       width: matchTriggerWidth && triggerWidth ? triggerWidth : undefined,
+                      maxHeight: DESKTOP_MENU_MAX_HEIGHT,
                     }
-                  : { top: -9999, left: -9999 } // пока не посчитали — вне экрана
+                  : { top: -9999, left: -9999, maxHeight: DESKTOP_MENU_MAX_HEIGHT } // пока не посчитали — вне экрана
               }
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="border-subtle bg-surface w-full overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
+              <div className="border-subtle bg-surface w-full rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
                 {children({ close, open })}
               </div>
             </div>
