@@ -1,5 +1,6 @@
 import type { ChangeEvent } from "react";
 import type { AttemptQuestionSnapshotDto } from "../../../api/types";
+import DropdownSelect from "../../../../../shared/ui/DropdownSelect";
 import { parseFillBlankAnswer } from "../answerUtils";
 import { renderInlineFillPrompt } from "../fillSelect";
 import QuestionFrame from "./QuestionFrame";
@@ -37,8 +38,9 @@ export default function FillSelectQuestion({
               .map((blank) => (
                 <div key={blank.blankIndex}>
                   <div className="mb-1 text-sm text-muted">Пропуск {blank.blankIndex}</div>
-                  <select
-                    className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm text-default"
+                  <DropdownSelect
+                    aria-label={`Пропуск ${blank.blankIndex}`}
+                    className="w-full rounded-xl px-3 py-2 text-sm"
                     value={byIndex.get(blank.blankIndex) ?? ""}
                     disabled={isConfirmed}
                     onChange={(event: ChangeEvent<HTMLSelectElement>) => onChange(blank.blankIndex, event.target.value)}
@@ -49,7 +51,7 @@ export default function FillSelectQuestion({
                     {blank.options.map((option) => (
                       <option key={option.text} value={option.text}>{option.text}</option>
                     ))}
-                  </select>
+                  </DropdownSelect>
                 </div>
               ))}
           </div>

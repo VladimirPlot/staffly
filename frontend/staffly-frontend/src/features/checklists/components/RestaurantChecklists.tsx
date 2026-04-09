@@ -6,6 +6,7 @@ import Card from "../../../shared/ui/Card";
 import ContentText from "../../../shared/ui/ContentText";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
@@ -422,8 +423,9 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
           />
           {canManage && (
             <>
-              <select
-                className="rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+              <DropdownSelect
+                aria-label="Фильтр по должности"
+                className="rounded-2xl p-2 text-base"
                 value={positionFilter ?? ""}
                 onChange={(event) => setPositionFilter(event.target.value ? Number(event.target.value) : null)}
               >
@@ -433,7 +435,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                     {position.name}
                   </option>
                 ))}
-              </select>
+              </DropdownSelect>
               <button
                 type="button"
                 onClick={resetFilter}

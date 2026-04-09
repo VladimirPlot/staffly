@@ -1,6 +1,7 @@
 import type { PositionDto } from "../../dictionaries/api";
 import Button from "../../../shared/ui/Button";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Switch from "../../../shared/ui/Switch";
 
 type Props = {
@@ -108,11 +109,12 @@ export default function KnowledgeHeader({
         <div className="hidden sm:block">
           <label className="flex items-center gap-2">
             <span className="text-sm text-muted">Должность</span>
-            <select
+            <DropdownSelect
+              aria-label="Должность"
               value={selectValue}
               onChange={(e) => handleSelectChange(e.target.value)}
               className={
-                "h-10 rounded-2xl border border-subtle bg-surface px-3 text-sm text-default shadow-[var(--staffly-shadow)] " +
+                "h-10 rounded-2xl px-3 text-sm shadow-[var(--staffly-shadow)] " +
                 "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
               }
             >
@@ -122,7 +124,7 @@ export default function KnowledgeHeader({
                   {p.name}
                 </option>
               ))}
-            </select>
+            </DropdownSelect>
           </label>
         </div>
 
@@ -144,11 +146,12 @@ export default function KnowledgeHeader({
       <div className="sm:hidden">
         <label className="block">
           <div className="mb-1 text-sm text-muted">Должность</div>
-          <select
+          <DropdownSelect
+            aria-label="Должность"
             value={selectValue}
             onChange={(e) => handleSelectChange(e.target.value)}
             className={
-              "h-10 w-full rounded-2xl border border-subtle bg-surface px-3 text-sm text-default shadow-[var(--staffly-shadow)] " +
+              "h-10 w-full rounded-2xl px-3 text-sm shadow-[var(--staffly-shadow)] " +
               "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
             }
           >
@@ -158,7 +161,7 @@ export default function KnowledgeHeader({
                 {p.name}
               </option>
             ))}
-          </select>
+          </DropdownSelect>
         </label>
       </div>
     </div>

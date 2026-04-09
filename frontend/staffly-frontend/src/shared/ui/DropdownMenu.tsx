@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type TriggerRenderProps = {
@@ -10,12 +10,14 @@ type TriggerRenderProps = {
 
 type Props = {
   trigger: (props: TriggerRenderProps) => React.ReactNode;
-  children: (helpers: { close: () => void }) => React.ReactNode;
+  children: (helpers: { close: () => void; open: boolean }) => React.ReactNode;
   disabled?: boolean;
   menuClassName?: string;
   alignClassName?: string; // оставляем, но для fixed используем только left/right смысл
   triggerWrapperClassName?: string;
   matchTriggerWidth?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
@@ -39,8 +41,11 @@ export default function DropdownMenu({
   alignClassName = "right-0",
   triggerWrapperClassName = "relative inline-flex",
   matchTriggerWidth = false,
+  open: openProp,
+  onOpenChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
   const [isMobile, setIsMobile] = useState(false);
   const [sheetVisible, setSheetVisible] = useState(false);
 
@@ -60,7 +65,17 @@ export default function DropdownMenu({
     return document.body;
   }, []);
 
-  const close = () => setOpen(false);
+  const setOpen = useCallback((nextOpen: boolean | ((current: boolean) => boolean)) => {
+    const resolved = typeof nextOpen === "function" ? nextOpen(open) : nextOpen;
+
+    if (openProp == null) {
+      setInternalOpen(resolved);
+    }
+
+    onOpenChange?.(resolved);
+  }, [onOpenChange, open, openProp]);
+
+  const close = useCallback(() => setOpen(false), [setOpen]);
 
   // Detect mobile
   useEffect(() => {
@@ -83,7 +98,7 @@ export default function DropdownMenu({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, setOpen]);
 
   // ✅ Lock app interactions ONLY for mobile overlay (prevents click-through on iOS)
   useEffect(() => {
@@ -94,7 +109,7 @@ export default function DropdownMenu({
     else document.body.classList.remove("staffly-overlay-open");
 
     return () => document.body.classList.remove("staffly-overlay-open");
-  }, [open, isMobile]);
+  }, [close, open, isMobile]);
 
   // ✅ iOS passive listener fix: attach non-passive touch listeners ONLY for mobile overlay
   useEffect(() => {
@@ -115,7 +130,7 @@ export default function DropdownMenu({
       el.removeEventListener("touchstart", stop as any);
       el.removeEventListener("touchmove", stop as any);
     };
-  }, [open, isMobile]);
+  }, [close, open, isMobile]);
 
   // Mobile: animate sheet in
   useEffect(() => {
@@ -129,7 +144,7 @@ export default function DropdownMenu({
       window.cancelAnimationFrame(frame);
       setSheetVisible(false);
     };
-  }, [open, isMobile]);
+  }, [close, open, isMobile]);
 
   // ✅ Desktop: compute fixed position relative to trigger (works inside Modal/overflow)
   useEffect(() => {
@@ -204,7 +219,7 @@ export default function DropdownMenu({
 
     document.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => document.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [open, isMobile]);
+  }, [close, open, isMobile]);
 
   const overlay = !isMobile ? null : (
     <div data-overlay-root="true">
@@ -238,7 +253,7 @@ export default function DropdownMenu({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="bg-border/80 mx-auto mb-4 h-1.5 w-12 rounded-full" aria-hidden />
-        {children({ close })}
+        {children({ close, open })}
       </div>
     </div>
   );
@@ -278,7 +293,7 @@ export default function DropdownMenu({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="border-subtle bg-surface w-full overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-                {children({ close })}
+                {children({ close, open })}
               </div>
             </div>
           )}

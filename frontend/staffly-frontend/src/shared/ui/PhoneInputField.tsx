@@ -2,6 +2,7 @@ import React from "react";
 import embeddedFlags from "react-phone-number-input/flags";
 import { parseIncompletePhoneNumber } from "libphonenumber-js/max";
 import type { CountryCode } from "libphonenumber-js";
+import DropdownSelect from "./DropdownSelect";
 
 import {
   analyzePhoneNumber,
@@ -178,12 +179,27 @@ export default function PhoneInputField({
 
       <div className={`staffly-phone w-full ${error ? "is-error" : ""}`}>
         <div className="staffly-phone-country">
-          <select
+          <DropdownSelect
             aria-label="Страна номера"
-            className="PhoneInputCountrySelect"
+            className="h-full rounded-[inherit] border-0 bg-transparent px-0 pr-6 text-sm font-medium shadow-none focus:ring-0"
+            triggerClassName="PhoneInputCountryTrigger"
             value={effectiveCountry || ""}
             onChange={(event) => handleCountryChange(event.target.value as CountryCode)}
             disabled={disabled}
+            renderValue={() =>
+              effectiveCountry ? (
+                <>
+                  {Flag ? (
+                    <Flag title={getCountryLabel(effectiveCountry)} />
+                  ) : (
+                    <span aria-hidden="true">{getCountryFlagEmoji(effectiveCountry)}</span>
+                  )}
+                  <span>{effectiveCountry}</span>
+                </>
+              ) : (
+                <span className="text-muted">Страна</span>
+              )
+            }
           >
             <option value="" disabled>
               Страна
@@ -193,21 +209,7 @@ export default function PhoneInputField({
                 {option.label}
               </option>
             ))}
-          </select>
-          <span className="staffly-phone-countryValue">
-            {effectiveCountry ? (
-              <>
-                {Flag ? (
-                  <Flag title={getCountryLabel(effectiveCountry)} />
-                ) : (
-                  <span aria-hidden="true">{getCountryFlagEmoji(effectiveCountry)}</span>
-                )}
-                <span>{effectiveCountry}</span>
-              </>
-            ) : (
-              <span className="text-muted">Страна</span>
-            )}
-          </span>
+          </DropdownSelect>
         </div>
 
         <input

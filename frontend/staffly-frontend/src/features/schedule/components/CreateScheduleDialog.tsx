@@ -2,6 +2,7 @@ import React from "react";
 
 import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
 import { Trash2 } from "lucide-react";
 
@@ -154,8 +155,9 @@ const CreateScheduleDialog: React.FC<Props> = ({
           <div className="space-y-3">
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-2">
-                <select
-                  className="min-w-0 flex-1 rounded-2xl border border-subtle bg-surface p-3 text-base text-default outline-none transition focus:ring-2 ring-default [color-scheme:dark]"
+                <DropdownSelect
+                  aria-label="Должность"
+                  className="min-w-0 flex-1 rounded-2xl p-3 text-base"
                   value={field.value === "" ? "" : String(field.value)}
                   onChange={(e) => handleFieldChange(field.id, e.target.value)}
                 >
@@ -165,7 +167,7 @@ const CreateScheduleDialog: React.FC<Props> = ({
                       {position.name}
                     </option>
                   ))}
-                </select>
+                </DropdownSelect>
 
                 {positionFields.length > 1 && (
                   <Button
