@@ -14,6 +14,8 @@ type Props = {
   disabled?: boolean;
   menuClassName?: string;
   alignClassName?: string; // оставляем, но для fixed используем только left/right смысл
+  triggerWrapperClassName?: string;
+  matchTriggerWidth?: boolean;
 };
 
 const MOBILE_MEDIA_QUERY = "(max-width: 639px)";
@@ -35,6 +37,8 @@ export default function DropdownMenu({
   disabled = false,
   menuClassName = "w-56",
   alignClassName = "right-0",
+  triggerWrapperClassName = "relative inline-flex",
+  matchTriggerWidth = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -49,6 +53,7 @@ export default function DropdownMenu({
   const backdropRef = useRef<HTMLDivElement>(null);
 
   const [desktopPos, setDesktopPos] = useState<{ top: number; left: number } | null>(null);
+  const [triggerWidth, setTriggerWidth] = useState<number | null>(null);
 
   const portalTarget = useMemo(() => {
     if (typeof document === "undefined") return null;
@@ -130,6 +135,7 @@ export default function DropdownMenu({
   useEffect(() => {
     if (!open || isMobile) {
       setDesktopPos(null);
+      setTriggerWidth(null);
       return;
     }
 
@@ -139,10 +145,11 @@ export default function DropdownMenu({
       if (!triggerEl || !menuEl) return;
 
       const t = triggerEl.getBoundingClientRect();
+      setTriggerWidth(t.width);
 
       // menu size (after render)
       const m = menuEl.getBoundingClientRect();
-      const menuW = m.width;
+      const menuW = matchTriggerWidth ? t.width : m.width;
 
       const wantRight = alignClassName.includes("right");
 
@@ -177,7 +184,7 @@ export default function DropdownMenu({
       window.removeEventListener("resize", compute);
       window.removeEventListener("scroll", compute, true);
     };
-  }, [open, isMobile, alignClassName, menuClassName]);
+  }, [open, isMobile, alignClassName, menuClassName, matchTriggerWidth]);
 
   // ✅ Desktop: close on outside click (capture)
   useEffect(() => {
@@ -237,7 +244,7 @@ export default function DropdownMenu({
   );
 
   return (
-    <span ref={triggerWrapRef} className="relative inline-flex">
+    <span ref={triggerWrapRef} className={triggerWrapperClassName}>
       {trigger({
         onClick: (event) => {
           event.stopPropagation();
@@ -260,7 +267,11 @@ export default function DropdownMenu({
               className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] ${menuClassName}`}
               style={
                 desktopPos
-                  ? { top: desktopPos.top, left: desktopPos.left }
+                  ? {
+                      top: desktopPos.top,
+                      left: desktopPos.left,
+                      width: matchTriggerWidth && triggerWidth ? triggerWidth : undefined,
+                    }
                   : { top: -9999, left: -9999 } // пока не посчитали — вне экрана
               }
               onPointerDown={(event) => event.stopPropagation()}

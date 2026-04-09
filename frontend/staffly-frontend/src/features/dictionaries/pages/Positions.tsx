@@ -1,9 +1,10 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Pencil, Trash2 } from "lucide-react";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
+import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
@@ -144,13 +145,11 @@ function parseCompensation(form: PositionCompensationForm): {
 
 function toggleSpecialization(
   current: PositionSpecialization[],
-  specialization: PositionSpecialization,
-  checked: boolean
+  specialization: PositionSpecialization
 ): PositionSpecialization[] {
-  if (checked) {
-    return current.includes(specialization) ? current : [...current, specialization];
-  }
-  return current.filter((item) => item !== specialization);
+  return current.includes(specialization)
+    ? current.filter((item) => item !== specialization)
+    : [...current, specialization];
 }
 
 function SpecializationsField({
@@ -160,24 +159,64 @@ function SpecializationsField({
   value: PositionSpecialization[];
   onChange: (next: PositionSpecialization[]) => void;
 }) {
+  const sortedValue = sortSpecializations(value);
+  const isEmpty = sortedValue.length === 0;
+  const triggerLabel =
+    isEmpty
+      ? "Без специализации"
+      : sortedValue.map((item) => SPECIALIZATION_LABEL[item] ?? item).join(", ");
+
   return (
-    <div className="rounded-lg border border-subtle p-3">
-      <div className="mb-2 text-sm font-medium">Дополнительные специализации</div>
-      <div className="space-y-2">
-        {SPECIALIZATION_OPTIONS.map((specialization) => (
-          <label key={specialization} className="flex items-center gap-2 text-sm text-default">
-            <input
-              type="checkbox"
-              checked={value.includes(specialization)}
-              onChange={(event) =>
-                onChange(toggleSpecialization(value, specialization, event.target.checked))
-              }
-            />
-            <span>{SPECIALIZATION_LABEL[specialization]}</span>
-          </label>
-        ))}
-      </div>
-      <div className="mt-2 text-xs text-muted">Можно выбрать несколько или оставить пусто.</div>
+    <div className="min-w-0">
+      <label className="mb-1 block text-sm font-medium text-muted">Специализации</label>
+      <DropdownMenu
+        triggerWrapperClassName="relative flex w-full"
+        menuClassName="max-w-[calc(100vw-16px)]"
+        alignClassName="left-0"
+        matchTriggerWidth
+        trigger={(triggerProps) => (
+          <button
+            type="button"
+            className="border-subtle bg-surface focus:ring-default relative h-10 w-full rounded-2xl border px-4 pr-10 text-left text-sm outline-none transition focus:ring-2"
+            {...triggerProps}
+          >
+            <span className={`block truncate ${isEmpty ? "text-muted" : "text-default"}`}>{triggerLabel}</span>
+            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          </button>
+        )}
+      >
+        {() => (
+          <div className="space-y-1 p-1">
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={sortedValue.length === 0}
+              className="text-default hover:bg-app flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm"
+              onClick={() => onChange([])}
+            >
+              <span>Без специализации</span>
+              {sortedValue.length === 0 && <Check className="h-4 w-4 text-default" />}
+            </button>
+
+            {SPECIALIZATION_OPTIONS.map((specialization) => {
+              const checked = sortedValue.includes(specialization);
+              return (
+                <button
+                  key={specialization}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={checked}
+                  className="text-default hover:bg-app flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm"
+                  onClick={() => onChange(toggleSpecialization(sortedValue, specialization))}
+                >
+                  <span>{SPECIALIZATION_LABEL[specialization]}</span>
+                  {checked && <Check className="h-4 w-4 text-default" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </DropdownMenu>
     </div>
   );
 }
