@@ -181,25 +181,30 @@ export default function PhoneInputField({
         <div className="staffly-phone-country">
           <DropdownSelect
             aria-label="Страна номера"
-            className="h-full rounded-[inherit] border-0 bg-transparent px-0 pr-6 text-sm font-medium shadow-none focus:ring-0"
+            className="h-full min-w-[5.75rem] rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none focus:ring-0"
             triggerClassName="PhoneInputCountryTrigger"
+            menuClassName="w-[min(18rem,calc(100vw-16px))]"
             value={effectiveCountry || ""}
             onChange={(event) => handleCountryChange(event.target.value as CountryCode)}
             disabled={disabled}
+            matchTriggerWidth={false}
             renderValue={() =>
               effectiveCountry ? (
-                <>
+                <span className="staffly-phone-countryValue">
                   {Flag ? (
                     <Flag title={getCountryLabel(effectiveCountry)} />
                   ) : (
                     <span aria-hidden="true">{getCountryFlagEmoji(effectiveCountry)}</span>
                   )}
                   <span>{effectiveCountry}</span>
-                </>
+                </span>
               ) : (
-                <span className="text-muted">Страна</span>
+                <span className="staffly-phone-countryValue text-muted">Страна</span>
               )
             }
+            renderOption={(option) => (
+              <span className="staffly-phone-countryOption">{option.label}</span>
+            )}
           >
             <option value="" disabled>
               Страна

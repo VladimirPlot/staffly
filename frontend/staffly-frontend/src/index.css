@@ -200,7 +200,7 @@
   }
 
   .staffly-phone-country {
-    @apply relative flex min-w-[84px] items-center justify-center rounded-2xl border px-3 shadow-sm transition;
+    @apply relative flex min-w-[96px] items-center justify-start rounded-2xl border px-2 shadow-sm transition;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
   }
@@ -208,6 +208,10 @@
   .staffly-phone-countryValue {
     @apply flex items-center gap-2 text-sm font-medium;
     color: var(--staffly-text);
+  }
+
+  .staffly-phone-countryOption {
+    @apply flex items-center gap-2 whitespace-nowrap;
   }
 
   .staffly-phone-countryValue svg {

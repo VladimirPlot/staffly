@@ -16,6 +16,8 @@ type Props = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children"> & {
   menuClassName?: string;
   placeholder?: React.ReactNode;
   renderValue?: (option: Option | undefined) => React.ReactNode;
+  renderOption?: (option: Option, state: { selected: boolean; active: boolean }) => React.ReactNode;
+  matchTriggerWidth?: boolean;
 };
 
 function parseOptions(children: React.ReactNode): Option[] {
@@ -74,9 +76,11 @@ export default function DropdownSelect({
   disabled = false,
   placeholder,
   renderValue,
+  renderOption,
   "aria-label": ariaLabel,
   id,
   style,
+  matchTriggerWidth = true,
 }: Props) {
   const options = useMemo(() => parseOptions(children), [children]);
   const isControlled = value != null;
@@ -195,7 +199,7 @@ export default function DropdownSelect({
         triggerWrapperClassName="relative flex w-full"
         menuClassName={`max-w-[calc(100vw-16px)] ${menuClassName}`.trim()}
         alignClassName="left-0"
-        matchTriggerWidth
+        matchTriggerWidth={matchTriggerWidth}
         trigger={(triggerProps) => (
           <button
             {...triggerProps}
@@ -259,7 +263,9 @@ export default function DropdownSelect({
                     commitValue(option.value);
                   }}
                 >
-                  <span className="truncate">{option.label}</span>
+                  <div className="min-w-0 flex-1 truncate">
+                    {renderOption?.(option, { selected, active }) ?? option.label}
+                  </div>
                   {selected && <Check className="ml-3 h-4 w-4 shrink-0 text-default" />}
                 </button>
               );
