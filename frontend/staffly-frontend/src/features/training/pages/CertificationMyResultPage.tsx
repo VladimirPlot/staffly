@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
-import { getMyCertificationResult, startExam } from "../api/trainingApi";
-import type { CertificationMyResultDto, CertificationMyResultQuestionDto } from "../api/types";
+import { getMyCertificationResult } from "../api/trainingApi";
+import type { CertificationMyResultDto } from "../api/types";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
@@ -16,26 +16,41 @@ function formatDateTime(value?: string | null): string {
   return new Date(value).toLocaleString("ru-RU");
 }
 
-function renderAnswer(question: CertificationMyResultQuestionDto): string {
-  if (!question.chosenAnswerJson) return "Ответ не указан";
-  try {
-    const parsed = JSON.parse(question.chosenAnswerJson);
-    if (typeof parsed === "string") return parsed;
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map((item) => {
-          if (typeof item === "string") return item;
-          if (item && typeof item === "object") {
-            if ("left" in item && "right" in item) return `${String(item.left)} → ${String(item.right ?? "")}`;
-            if ("blankIndex" in item && "value" in item) return `${String(item.blankIndex)}: ${String(item.value ?? "")}`;
+function formatParsedAnswer(parsed: unknown): string {
+  if (typeof parsed === "string") return parsed;
+  if (Array.isArray(parsed)) {
+    return parsed
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          if ("left" in item && "right" in item) return `${String(item.left)} → ${String(item.right ?? "")}`;
+          if ("blankIndex" in item && "value" in item) return `${String(item.blankIndex)}: ${String(item.value ?? "")}`;
+          if ("blankIndex" in item && "correct" in item) {
+            return `${String(item.blankIndex)}: ${String(item.correct ?? "")}`;
           }
-          return JSON.stringify(item);
-        })
-        .join(", ");
+        }
+        return JSON.stringify(item);
+      })
+      .join(", ");
+  }
+  if (parsed && typeof parsed === "object") {
+    if ("blankIndex" in parsed && "value" in parsed) {
+      return `${String(parsed.blankIndex)}: ${String(parsed.value ?? "")}`;
     }
-    return JSON.stringify(parsed);
+    if ("blankIndex" in parsed && "correct" in parsed) {
+      return `${String(parsed.blankIndex)}: ${String(parsed.correct ?? "")}`;
+    }
+  }
+  return JSON.stringify(parsed);
+}
+
+function renderAnswer(rawAnswerJson?: string | null, emptyLabel = "Ответ не указан"): string {
+  if (!rawAnswerJson) return emptyLabel;
+  try {
+    const parsed = JSON.parse(rawAnswerJson);
+    return formatParsedAnswer(parsed);
   } catch {
-    return question.chosenAnswerJson;
+    return rawAnswerJson;
   }
 }
 
@@ -82,14 +97,11 @@ export default function CertificationMyResultPage() {
   }, [data, onlyWrong]);
 
   const restart = async () => {
-    if (!restaurantId || !data || restarting) return;
+    if (!data || restarting) return;
     setRestarting(true);
     setError(null);
     try {
-      await startExam(restaurantId, data.examId);
       navigate(trainingRoutes.examRun(data.examId));
-    } catch (e) {
-      setError(getTrainingErrorMessage(e, "Не удалось запустить новую попытку."));
     } finally {
       setRestarting(false);
     }
@@ -142,9 +154,9 @@ export default function CertificationMyResultPage() {
                 {questions.map((question, index) => (
                   <div key={`${question.questionId}-${index}`} className={`rounded-xl border p-3 ${question.correct ? "border-emerald-200" : "border-rose-200 bg-rose-50/40"}`}>
                     <div className="text-sm font-medium">#{index + 1}. {question.prompt}</div>
-                    <div className="mt-1 text-sm text-muted">Ваш ответ: {renderAnswer(question)}</div>
+                    <div className="mt-1 text-sm text-muted">Ваш ответ: {renderAnswer(question.chosenAnswerJson)}</div>
                     {data.revealCorrectAnswers && (
-                      <div className="mt-1 text-sm text-muted">Правильный ответ: {question.correctAnswerJson ? renderAnswer({ ...question, chosenAnswerJson: question.correctAnswerJson }) : "—"}</div>
+                      <div className="mt-1 text-sm text-muted">Правильный ответ: {renderAnswer(question.correctAnswerJson, "—")}</div>
                     )}
                     <div className={`mt-1 text-sm ${question.correct ? "text-emerald-700" : "text-rose-700"}`}>{question.correct ? "Верно" : "Ошибка"}</div>
                     {question.explanation && <div className="mt-2 text-sm text-muted">Пояснение: {question.explanation}</div>}

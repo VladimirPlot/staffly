@@ -88,6 +88,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
         setAnswers({});
         setConfirmedQuestionIds([]);
         setCurrentIndex(0);
+        setRemainingSec(null);
       }
 
       setAttempt(response);
@@ -118,6 +119,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   useEffect(() => {
     if (!attempt || attempt.exam.timeLimitSec == null || result) {
       setRemainingSec(null);
+      setTimeExpired(false);
       return;
     }
 
@@ -130,6 +132,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
         return;
       }
       setRemainingSec(secondsLeft);
+      setTimeExpired(false);
     };
 
     tick();
@@ -224,9 +227,9 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   }, [answers, attempt, examId, restaurantId, submitting, validateAllAnswered]);
 
   useEffect(() => {
-    if (!timeExpired || !attempt || result || submitting) return;
+    if (!timeExpired || remainingSec !== 0 || !attempt || result || submitting) return;
     void submit({ force: true });
-  }, [attempt, result, submit, submitting, timeExpired]);
+  }, [attempt, remainingSec, result, submit, submitting, timeExpired]);
 
   useEffect(() => {
     if (!result || !isCertificationExam || !resultRoute) return;
