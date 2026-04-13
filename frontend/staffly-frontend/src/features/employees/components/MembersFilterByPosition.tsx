@@ -15,7 +15,7 @@ export default function MembersFilterByPosition({ options, value, onChange, onRe
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-      <label className="flex items-center gap-2 text-default">
+      <div className="flex items-center gap-2 text-default">
         <span>Фильтр по должности:</span>
         <DropdownSelect
           aria-label="Фильтр по должности"
@@ -30,7 +30,7 @@ export default function MembersFilterByPosition({ options, value, onChange, onRe
             </option>
           ))}
         </DropdownSelect>
-      </label>
+      </div>
       {value && (
         <Button variant="ghost" className="text-sm" onClick={onReset}>
           Сбросить фильтр
