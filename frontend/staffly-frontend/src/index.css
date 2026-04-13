@@ -200,13 +200,14 @@
   }
 
   .staffly-phone-country {
-    @apply relative flex min-w-[96px] items-center justify-start rounded-2xl border px-2 shadow-sm transition;
+    @apply relative flex min-w-[96px] items-stretch justify-start rounded-2xl border px-2 shadow-sm transition;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
   }
 
   .staffly-phone-country .PhoneInputCountryTrigger {
-    @apply h-full min-w-[5.75rem] rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none outline-none;
+    @apply flex-1 self-stretch rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none outline-none;
+    min-width: 0;
     box-shadow: none;
   }
 
