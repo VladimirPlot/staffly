@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import { useAuth } from "../../../shared/providers/AuthProvider";
@@ -14,8 +14,14 @@ import ExamEditorModal from "../components/ExamEditorModal";
 import LoadingState from "../components/LoadingState";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
-import { deleteExam, hideExam, listExams, restoreExam } from "../api/trainingApi";
-import type { TrainingExamDto } from "../api/types";
+import {
+  deleteExam,
+  hideExam,
+  listExams,
+  listMyCertificationExams,
+  restoreExam,
+} from "../api/trainingApi";
+import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
@@ -29,14 +35,21 @@ import {
 export default function ExamsPage() {
   const { user } = useAuth();
   const { restaurantId, canManage, myRole, isTrainingExaminer } = useTrainingAccess();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [exams, setExams] = useState<TrainingExamDto[]>([]);
+  const [manageExams, setManageExams] = useState<TrainingExamDto[]>([]);
+  const [myExams, setMyExams] = useState<CurrentUserCertificationExamDto[]>([]);
   const [positions, setPositions] = useState<PositionDto[]>([]);
-  const [loadingExams, setLoadingExams] = useState(false);
+
+  const [loadingManageExams, setLoadingManageExams] = useState(false);
+  const [loadingMyExams, setLoadingMyExams] = useState(false);
   const [loadingPositions, setLoadingPositions] = useState(false);
-  const [examsError, setExamsError] = useState<string | null>(null);
+
+  const [manageExamsError, setManageExamsError] = useState<string | null>(null);
+  const [myExamsError, setMyExamsError] = useState<string | null>(null);
   const [positionsError, setPositionsError] = useState<string | null>(null);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [loadingExamActionId, setLoadingExamActionId] = useState<number | null>(null);
@@ -54,62 +67,73 @@ export default function ExamsPage() {
   const showMySection = !restaurantAccess.isCreator && !isTrainingExaminer;
   const showManageSection = canManage;
 
-  const loadExams = async () => {
-    if (!restaurantId) {
-      setExams([]);
+  const loadManageExams = useCallback(async () => {
+    if (!restaurantId || !showManageSection) {
+      setManageExams([]);
       return;
     }
 
-    setLoadingExams(true);
-    setExamsError(null);
+    setLoadingManageExams(true);
+    setManageExamsError(null);
     try {
       const response = await listExams(restaurantId, includeInactive, true);
-      setExams(response);
+      setManageExams(response);
     } catch (error) {
-      setExamsError(getTrainingErrorMessage(error, "Не удалось загрузить аттестации."));
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось загрузить управляемые аттестации."));
     } finally {
-      setLoadingExams(false);
+      setLoadingManageExams(false);
     }
-  };
+  }, [restaurantId, showManageSection, includeInactive]);
 
-  useEffect(() => {
-    void loadExams();
-  }, [restaurantId, includeInactive]);
+  const loadMyExams = useCallback(async () => {
+    if (!restaurantId || !showMySection) {
+      setMyExams([]);
+      return;
+    }
 
-  useEffect(() => {
-    if (!restaurantId) {
+    setLoadingMyExams(true);
+    setMyExamsError(null);
+    try {
+      const response = await listMyCertificationExams(restaurantId);
+      setMyExams(response);
+    } catch (error) {
+      setMyExamsError(getTrainingErrorMessage(error, "Не удалось загрузить мои аттестации."));
+    } finally {
+      setLoadingMyExams(false);
+    }
+  }, [restaurantId, showMySection]);
+
+  const loadPositions = useCallback(async () => {
+    if (!restaurantId || !showManageSection) {
       setPositions([]);
       return;
     }
 
-    let cancelled = false;
     setLoadingPositions(true);
     setPositionsError(null);
+    try {
+      const response = await listPositions(restaurantId, { includeInactive: false });
+      setPositions(response);
+    } catch (error) {
+      setPositionsError(getTrainingErrorMessage(error, "Не удалось загрузить должности."));
+    } finally {
+      setLoadingPositions(false);
+    }
+  }, [restaurantId, showManageSection]);
 
-    void (async () => {
-      try {
-        const response = await listPositions(restaurantId, { includeInactive: false });
-        if (!cancelled) setPositions(response);
-      } catch (error) {
-        if (!cancelled) setPositionsError(getTrainingErrorMessage(error, "Не удалось загрузить должности."));
-      } finally {
-        if (!cancelled) setLoadingPositions(false);
-      }
-    })();
+  useEffect(() => {
+    void loadManageExams();
+  }, [loadManageExams]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [restaurantId]);
+  useEffect(() => {
+    void loadMyExams();
+  }, [loadMyExams]);
+
+  useEffect(() => {
+    void loadPositions();
+  }, [loadPositions]);
 
   const positionById = useMemo(() => new Map(positions.map((position) => [position.id, position])), [positions]);
-
-  const myExams = useMemo(() => {
-    if (!showMySection) return [];
-
-    const all = exams.filter((exam) => exam.active);
-    return [...all].sort((left, right) => right.id - left.id);
-  }, [exams, showMySection]);
 
   const manageablePositions = useMemo(
     () => getManageablePositions(positions, allowedAudienceRoles),
@@ -119,11 +143,11 @@ export default function ExamsPage() {
   const manageableExams = useMemo(() => {
     if (!showManageSection) return [];
 
-    const byAudience = exams.filter((exam) => examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles));
+    const byAudience = manageExams.filter((exam) => examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles));
     const byPosition = positionFilter == null ? byAudience : byAudience.filter((exam) => exam.visibilityPositionIds.includes(positionFilter));
 
     return sortManageExams(byPosition, positionById);
-  }, [showManageSection, exams, positionById, allowedAudienceRoles, positionFilter]);
+  }, [showManageSection, manageExams, positionById, allowedAudienceRoles, positionFilter]);
 
   const updateQuery = (next: { includeInactive?: boolean; position?: number | null }) => {
     const updated = new URLSearchParams(searchParams);
@@ -144,44 +168,45 @@ export default function ExamsPage() {
   const runExamAction = async (examId: number, action: "hide" | "restore" | "delete") => {
     if (!restaurantId) return;
     setLoadingExamActionId(examId);
-    setExamsError(null);
+    setManageExamsError(null);
     try {
       if (action === "hide") await hideExam(restaurantId, examId);
       else if (action === "restore") await restoreExam(restaurantId, examId);
       else await deleteExam(restaurantId, examId);
-      await loadExams();
+      await loadManageExams();
     } catch (error) {
-      setExamsError(getTrainingErrorMessage(error, "Не удалось выполнить действие с аттестацией."));
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось выполнить действие с аттестацией."));
     } finally {
       setLoadingExamActionId(null);
     }
   };
+
+  const analyticsReturnTo = encodeURIComponent(`${trainingRoutes.exams}${location.search}`);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <Breadcrumbs items={[{ label: "Тренинг", to: trainingRoutes.landing }, { label: "Аттестации" }]} />
       <h2 className="text-2xl font-semibold">Аттестации</h2>
 
-      {(loadingExams || loadingPositions) && <LoadingState label="Загрузка аттестаций..." />}
-      {examsError && <ErrorState message={examsError} onRetry={loadExams} />}
-      {positionsError && <ErrorState message={positionsError} onRetry={() => window.location.reload()} />}
-
-      {showMySection && !loadingExams && (
+      {showMySection && (
         <section className="space-y-3 rounded-2xl border border-subtle bg-surface p-4">
           <h3 className="text-lg font-semibold">Мои аттестации</h3>
-          {myExams.length === 0 ? (
+          {loadingMyExams && <LoadingState label="Загрузка моих аттестаций..." />}
+          {myExamsError && <ErrorState message={myExamsError} onRetry={loadMyExams} />}
+
+          {!loadingMyExams && !myExamsError && (myExams.length === 0 ? (
             <div className="text-sm text-muted">Пока для вас аттестаций нет</div>
           ) : (
             <div className="space-y-3">
               {myExams.map((exam) => (
-                <CertificationMyExamCard key={exam.id} exam={exam} />
+                <CertificationMyExamCard key={exam.assignmentId} exam={exam} />
               ))}
             </div>
-          )}
+          ))}
         </section>
       )}
 
-      {showManageSection && !loadingExams && (
+      {showManageSection && (
         <section className="space-y-3 rounded-2xl border border-subtle bg-surface p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h3 className="text-lg font-semibold">Управление аттестациями</h3>
@@ -202,7 +227,12 @@ export default function ExamsPage() {
             </div>
           </div>
 
-          {manageableExams.length === 0 ? (
+          {loadingManageExams && <LoadingState label="Загрузка управляемых аттестаций..." />}
+          {manageExamsError && <ErrorState message={manageExamsError} onRetry={loadManageExams} />}
+          {positionsError && <ErrorState message={positionsError} onRetry={loadPositions} />}
+          {loadingPositions && <LoadingState label="Загрузка должностей..." />}
+
+          {!loadingManageExams && !loadingPositions && !manageExamsError && !positionsError && (manageableExams.length === 0 ? (
             <EmptyState title="Нет управляемых аттестаций" description="Создайте первую аттестацию или измените фильтры." />
           ) : (
             <div className="space-y-3">
@@ -210,6 +240,7 @@ export default function ExamsPage() {
                 <CertificationManageExamCard
                   key={exam.id}
                   exam={exam}
+                  analyticsHref={`${trainingRoutes.examAnalytics(exam.id)}?returnTo=${analyticsReturnTo}`}
                   loading={loadingExamActionId === exam.id}
                   positionsById={positionById}
                   onEdit={(value) => {
@@ -220,7 +251,7 @@ export default function ExamsPage() {
                 />
               ))}
             </div>
-          )}
+          ))}
         </section>
       )}
 
@@ -237,7 +268,7 @@ export default function ExamsPage() {
           onSaved={async () => {
             setModalOpen(false);
             setEditingExam(null);
-            await loadExams();
+            await loadManageExams();
           }}
         />
       )}

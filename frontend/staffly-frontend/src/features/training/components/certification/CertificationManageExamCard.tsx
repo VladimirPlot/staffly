@@ -3,17 +3,24 @@ import { Link } from "react-router-dom";
 import IconButton from "../../../../shared/ui/IconButton";
 import type { PositionDto } from "../../../dictionaries/api";
 import type { TrainingExamDto } from "../../api/types";
-import { trainingRoutes } from "../../utils/trainingRoutes";
 
 type Props = {
   exam: TrainingExamDto;
+  analyticsHref: string;
   loading: boolean;
   positionsById: Map<number, PositionDto>;
   onEdit: (exam: TrainingExamDto) => void;
   onAction: (examId: number, action: "hide" | "restore" | "delete") => void;
 };
 
-export default function CertificationManageExamCard({ exam, loading, positionsById, onEdit, onAction }: Props) {
+export default function CertificationManageExamCard({
+  exam,
+  analyticsHref,
+  loading,
+  positionsById,
+  onEdit,
+  onAction,
+}: Props) {
   const targets = exam.visibilityPositionIds
     .map((id) => positionsById.get(id)?.name)
     .filter((item): item is string => Boolean(item));
@@ -30,7 +37,7 @@ export default function CertificationManageExamCard({ exam, loading, positionsBy
         </div>
 
         <div className="flex items-center gap-1">
-          <Link to={trainingRoutes.examAnalytics(exam.id)} className="rounded-xl border border-subtle px-3 py-1.5 text-xs font-medium hover:bg-app">
+          <Link to={analyticsHref} className="rounded-xl border border-subtle px-3 py-1.5 text-xs font-medium hover:bg-app">
             Открыть
           </Link>
           <IconButton aria-label="Редактировать аттестацию" title="Редактировать" disabled={loading} onClick={() => onEdit(exam)}>

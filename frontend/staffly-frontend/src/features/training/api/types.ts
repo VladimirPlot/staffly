@@ -150,6 +150,27 @@ export type TrainingExamDto = {
   visibilityPositionIds: number[];
 };
 
+export type CurrentUserCertificationExamDto = {
+  examId: number;
+  title: string;
+  description?: string | null;
+  questionCount: number;
+  passPercent: number;
+  timeLimitSec?: number | null;
+  attemptLimit?: number | null;
+  active: boolean;
+  assignmentId: number;
+  assignmentStatus: CertificationAssignmentStatus;
+  assignedAt: string;
+  examVersionSnapshot?: number | null;
+  attemptsUsed: number;
+  attemptsAllowed?: number | null;
+  extraAttempts: number;
+  bestScore?: number | null;
+  lastAttemptAt?: string | null;
+  passedAt?: string | null;
+};
+
 export type UpsertExamPayload = {
   title: string;
   description?: string | null;

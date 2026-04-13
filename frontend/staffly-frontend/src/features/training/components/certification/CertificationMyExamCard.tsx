@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import type { TrainingExamDto } from "../../api/types";
+import type { CurrentUserCertificationExamDto } from "../../api/types";
 import { trainingRoutes } from "../../utils/trainingRoutes";
+import CertificationStatusBadge from "./CertificationStatusBadge";
 
 type Props = {
-  exam: TrainingExamDto;
+  exam: CurrentUserCertificationExamDto;
 };
 
 function formatDuration(seconds?: number | null): string {
@@ -13,6 +14,13 @@ function formatDuration(seconds?: number | null): string {
 }
 
 export default function CertificationMyExamCard({ exam }: Props) {
+  const resultText = exam.bestScore == null ? null : `${exam.bestScore}%`;
+  const attemptsText = exam.attemptsAllowed == null
+    ? `${exam.attemptsUsed}/∞`
+    : `${exam.attemptsUsed}/${exam.attemptsAllowed}`;
+  const hasAttemptsLeft = exam.attemptsAllowed == null || exam.attemptsUsed < exam.attemptsAllowed;
+  const actionLabel = hasAttemptsLeft ? "Открыть аттестацию" : "Посмотреть результат";
+
   return (
     <div className="rounded-xl border border-subtle p-4">
       <div className="flex items-start justify-between gap-3">
@@ -20,16 +28,26 @@ export default function CertificationMyExamCard({ exam }: Props) {
           <div className="font-medium text-default">{exam.title}</div>
           {exam.description && <div className="mt-1 text-sm text-muted">{exam.description}</div>}
         </div>
-        {!exam.active && <span className="text-xs text-amber-700">Скрыт в управлении</span>}
+        <CertificationStatusBadge status={exam.assignmentStatus} />
+      </div>
+
+      {!exam.active && (
+        <div className="mt-2 text-xs text-amber-700">
+          Скрыта в управлении, но доступна по вашему назначению
+        </div>
+      )}
+
+      <div className="mt-2 text-sm text-muted">
+        Вопросов: {exam.questionCount} · Проходной: {exam.passPercent}% · Попыток: {attemptsText} · Время: {formatDuration(exam.timeLimitSec)}
       </div>
 
       <div className="mt-2 text-sm text-muted">
-        Вопросов: {exam.questionCount} · Проходной: {exam.passPercent}% · Попыток: {exam.attemptLimit ?? "∞"} · Время: {formatDuration(exam.timeLimitSec)}
+        {resultText ? `Лучший результат: ${resultText}` : "Итогового результата пока нет"}
       </div>
 
       <div className="mt-3">
-        <Link to={trainingRoutes.examRun(exam.id)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
-          Открыть аттестацию
+        <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
+          {actionLabel}
         </Link>
       </div>
     </div>

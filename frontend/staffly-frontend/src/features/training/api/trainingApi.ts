@@ -5,6 +5,7 @@ import type {
   CertificationExamEmployeeRowDto,
   CertificationExamPositionBreakdownDto,
   CertificationExamSummaryDto,
+  CurrentUserCertificationExamDto,
   CreateKnowledgeItemPayload,
   CreateQuestionPayload,
   CreateTrainingFolderPayload,
@@ -64,6 +65,10 @@ export async function deleteQuestion(restaurantId: number, questionId: number): 
 export async function listExams(restaurantId: number, includeInactive = false, certificationOnly?: boolean): Promise<TrainingExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams`, { params: { includeInactive, certificationOnly } });
   return mapExamsForUi(data as TrainingExamDto[]);
+}
+export async function listMyCertificationExams(restaurantId: number): Promise<CurrentUserCertificationExamDto[]> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/my-certifications`);
+  return data as CurrentUserCertificationExamDto[];
 }
 export async function listKnowledgeExams(restaurantId: number, folderId: number, includeInactive = false): Promise<TrainingExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-exams`, { params: { folderId, includeInactive } });
