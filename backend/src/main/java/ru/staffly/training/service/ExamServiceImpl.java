@@ -15,6 +15,7 @@ import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
 import ru.staffly.user.model.User;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -256,7 +257,13 @@ public class ExamServiceImpl implements ExamService {
                 .findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
                         examId, restaurantId, userId, attemptVersion);
         if (existingAttemptOpt.isPresent()) {
-            return resumeAttempt(exam, existingAttemptOpt.get());
+            var existingAttempt = existingAttemptOpt.get();
+            Instant now = TimeProvider.now();
+            if (isExpiredUnfinishedAttempt(existingAttempt, now)) {
+                finalizeAttempt(existingAttempt, Map.of(), now);
+            } else {
+                return resumeAttempt(exam, existingAttempt);
+            }
         }
 
         if (exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null) {
@@ -297,58 +304,9 @@ public class ExamServiceImpl implements ExamService {
             throw new ConflictException("Attempt already finished");
         }
 
-        var existingQuestions = attemptQuestions.findByAttemptId(attemptId);
         var answersByQuestionId = request.answers().stream()
                 .collect(Collectors.toMap(SubmitAttemptAnswerDto::questionId, Function.identity(), (first, second) -> second));
-
-        int correctAnswers = 0;
-        for (var item : existingQuestions) {
-            var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
-            var answer = answersByQuestionId.get(snapshot.questionId());
-            if (answer == null || answer.answerJson() == null || answer.answerJson().isBlank()) {
-                item.setChosenAnswerJson(null);
-                item.setCorrect(false);
-                continue;
-            }
-
-            attemptEvaluator.validateAnswerForType(answer.answerJson(), snapshot);
-            item.setChosenAnswerJson(answer.answerJson());
-
-            boolean correct = attemptEvaluator.isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson(), snapshot.type());
-            item.setCorrect(correct);
-            if (correct) {
-                correctAnswers++;
-            }
-        }
-
-        int scorePercent = existingQuestions.isEmpty()
-                ? 0
-                : (int) Math.round((correctAnswers * 100.0) / existingQuestions.size());
-
-        attempt.setFinishedAt(TimeProvider.now());
-        attempt.setScorePercent(scorePercent);
-        attempt.setPassed(scorePercent >= attempt.getPassPercentSnapshot());
-        if (attempt.getExam() != null && attempt.getExam().getMode() == TrainingExamMode.CERTIFICATION) {
-            certificationAssignmentService.updateOnSubmit(attempt);
-        }
-
-        return new AttemptResultDto(
-                attempt.getId(),
-                attempt.getExam() == null ? null : attempt.getExam().getId(),
-                attempt.getExamVersion(),
-                attempt.getUser().getId(),
-                attempt.getStartedAt(),
-                attempt.getFinishedAt(),
-                attempt.getScorePercent(),
-                attempt.getPassed(),
-                existingQuestions.stream()
-                        .map(question -> new AttemptResultQuestionDto(
-                                snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
-                                question.getChosenAnswerJson(),
-                                question.isCorrect()
-                        ))
-                        .toList()
-        );
+        return finalizeAttempt(attempt, answersByQuestionId, TimeProvider.now());
     }
 
     @Override
@@ -404,6 +362,87 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getExamVersion(),
                 toDtoWithSourcesAndVisibility(exam),
                 snapshots
+        );
+    }
+
+    private boolean isExpiredUnfinishedAttempt(TrainingExamAttempt attempt, Instant now) {
+        if (attempt.getFinishedAt() != null) {
+            return false;
+        }
+        if (attempt.getTimeLimitSecSnapshot() == null) {
+            return false;
+        }
+        return attempt.getStartedAt()
+                .plusSeconds(attempt.getTimeLimitSecSnapshot())
+                .compareTo(now) <= 0;
+    }
+
+    private AttemptResultDto finalizeAttempt(TrainingExamAttempt attempt,
+                                             Map<Long, SubmitAttemptAnswerDto> answersByQuestionId,
+                                             Instant finishedAt) {
+        var existingQuestions = attemptQuestions.findByAttemptId(attempt.getId());
+        int correctAnswers = 0;
+        for (var item : existingQuestions) {
+            var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
+            var answer = answersByQuestionId.get(snapshot.questionId());
+
+            if (answer != null) {
+                if (answer.answerJson() == null || answer.answerJson().isBlank()) {
+                    item.setChosenAnswerJson(null);
+                    item.setCorrect(false);
+                    continue;
+                }
+
+                attemptEvaluator.validateAnswerForType(answer.answerJson(), snapshot);
+                item.setChosenAnswerJson(answer.answerJson());
+                boolean correct = attemptEvaluator.isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson(), snapshot.type());
+                item.setCorrect(correct);
+                if (correct) {
+                    correctAnswers++;
+                }
+                continue;
+            }
+
+            if (item.getChosenAnswerJson() == null || item.getChosenAnswerJson().isBlank()) {
+                item.setChosenAnswerJson(null);
+                item.setCorrect(false);
+                continue;
+            }
+
+            boolean correct = attemptEvaluator.isAnswerCorrect(item.getChosenAnswerJson(), item.getCorrectKeyJson(), snapshot.type());
+            item.setCorrect(correct);
+            if (correct) {
+                correctAnswers++;
+            }
+        }
+
+        int scorePercent = existingQuestions.isEmpty()
+                ? 0
+                : (int) Math.round((correctAnswers * 100.0) / existingQuestions.size());
+
+        attempt.setFinishedAt(finishedAt);
+        attempt.setScorePercent(scorePercent);
+        attempt.setPassed(scorePercent >= attempt.getPassPercentSnapshot());
+        if (attempt.getExam() != null && attempt.getExam().getMode() == TrainingExamMode.CERTIFICATION) {
+            certificationAssignmentService.updateOnSubmit(attempt);
+        }
+
+        return new AttemptResultDto(
+                attempt.getId(),
+                attempt.getExam() == null ? null : attempt.getExam().getId(),
+                attempt.getExamVersion(),
+                attempt.getUser().getId(),
+                attempt.getStartedAt(),
+                attempt.getFinishedAt(),
+                attempt.getScorePercent(),
+                attempt.getPassed(),
+                existingQuestions.stream()
+                        .map(question -> new AttemptResultQuestionDto(
+                                snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
+                                question.getChosenAnswerJson(),
+                                question.isCorrect()
+                        ))
+                        .toList()
         );
     }
 
