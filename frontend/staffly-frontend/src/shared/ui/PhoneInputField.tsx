@@ -181,6 +181,7 @@ export default function PhoneInputField({
         <div className="staffly-phone-country" aria-label="Страна номера">
           <DropdownSelect
             aria-label="Страна номера"
+            triggerVariant="plain"
             className="h-full min-w-[5.75rem] rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none focus:ring-0"
             triggerClassName="PhoneInputCountryTrigger"
             menuClassName="w-[min(18rem,calc(100vw-16px))]"

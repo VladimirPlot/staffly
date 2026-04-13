@@ -205,6 +205,17 @@
     background-color: var(--staffly-surface);
   }
 
+  .staffly-phone-country .PhoneInputCountryTrigger {
+    @apply h-full min-w-[5.75rem] rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none outline-none;
+    box-shadow: none;
+  }
+
+  .staffly-phone-country .PhoneInputCountryTrigger:focus,
+  .staffly-phone-country .PhoneInputCountryTrigger:focus-visible {
+    box-shadow: none;
+    outline: none;
+  }
+
   .staffly-phone-countryValue {
     @apply flex items-center gap-2 text-sm font-medium;
     color: var(--staffly-text);
@@ -250,12 +261,12 @@
   }
 
   .staffly-phone:has(.PhoneInputInput:focus) .staffly-phone-country,
-  .staffly-phone-country:has(.PhoneInputCountryTrigger:focus) {
+  .staffly-phone-country:has(.PhoneInputCountryTrigger:focus-visible) {
     box-shadow: 0 0 0 2px var(--staffly-ring);
   }
 
   .staffly-phone.is-error:has(.PhoneInputInput:focus) .staffly-phone-country,
-  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountryTrigger:focus) {
+  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountryTrigger:focus-visible) {
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1);
   }
 }

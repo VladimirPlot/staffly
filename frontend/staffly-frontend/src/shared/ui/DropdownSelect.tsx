@@ -19,6 +19,7 @@ type Props = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children"> & {
   renderValue?: (option: Option | undefined) => React.ReactNode;
   renderOption?: (option: Option, state: { selected: boolean; active: boolean }) => React.ReactNode;
   matchTriggerWidth?: boolean;
+  triggerVariant?: "default" | "plain";
 };
 
 function getNodeText(node: React.ReactNode): string {
@@ -86,6 +87,7 @@ export default function DropdownSelect({
   id,
   style,
   matchTriggerWidth = true,
+  triggerVariant = "default",
   name,
   required,
 }: Props) {
@@ -107,6 +109,16 @@ export default function DropdownSelect({
     selectedOption == null ||
     selectedValue === "" ||
     (selectedOption.disabled && selectedOption.value === "");
+  const triggerBaseClassName =
+    triggerVariant === "plain"
+      ? [
+          "relative flex h-10 w-full items-center text-left text-sm outline-none transition",
+          "disabled:cursor-not-allowed disabled:text-muted data-[placeholder]:text-muted",
+        ].join(" ")
+      : [
+          "border-subtle bg-surface focus:ring-default relative flex h-10 w-full items-center rounded-2xl border px-4 pr-10 text-left text-sm outline-none transition",
+          "disabled:cursor-not-allowed disabled:bg-app disabled:text-muted data-[placeholder]:text-muted focus:ring-2",
+        ].join(" ");
 
   const handleValueChange = React.useCallback((nextValue: string) => {
     if (!isControlled) {
@@ -148,8 +160,7 @@ export default function DropdownSelect({
           aria-labelledby={ariaLabel ? undefined : label ? labelId : undefined}
           style={style}
           className={[
-            "border-subtle bg-surface focus:ring-default relative flex h-10 w-full items-center rounded-2xl border px-4 pr-10 text-left text-sm outline-none transition",
-            "disabled:cursor-not-allowed disabled:bg-app disabled:text-muted data-[placeholder]:text-muted focus:ring-2",
+            triggerBaseClassName,
             error ? "border-red-500 ring-red-200" : "",
             className,
             triggerClassName,
