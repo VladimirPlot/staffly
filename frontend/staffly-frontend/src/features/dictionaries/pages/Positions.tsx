@@ -174,6 +174,10 @@ function SpecializationsField({
         menuClassName="max-w-[calc(100vw-16px)]"
         alignClassName="left-0"
         matchTriggerWidth
+        mobileSheetTitle="Специализации"
+        mobileSheetSubtitle="Можно выбрать несколько ролей"
+        mobileSheetClassName="bg-surface/98"
+        mobileBackdropClassName="bg-black/15"
         trigger={(triggerProps) => (
           <button
             type="button"
@@ -185,13 +189,16 @@ function SpecializationsField({
           </button>
         )}
       >
-        {() => (
-          <div className="space-y-1 p-1">
+        {({ isMobile }) => (
+          <div className={isMobile ? "space-y-2" : "space-y-1 p-1"}>
             <button
               type="button"
               role="menuitemcheckbox"
               aria-checked={sortedValue.length === 0}
-              className="text-default hover:bg-app flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm"
+              className={[
+                "text-default hover:bg-app flex w-full items-center justify-between rounded-2xl text-left text-sm outline-none transition",
+                isMobile ? "min-h-12 px-4 py-3 active:bg-app/80" : "px-3 py-2",
+              ].join(" ")}
               onClick={() => onChange([])}
             >
               <span>Без специализации</span>
@@ -206,7 +213,10 @@ function SpecializationsField({
                   type="button"
                   role="menuitemcheckbox"
                   aria-checked={checked}
-                  className="text-default hover:bg-app flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm"
+                  className={[
+                    "text-default hover:bg-app flex w-full items-center justify-between rounded-2xl text-left text-sm outline-none transition",
+                    isMobile ? "min-h-12 px-4 py-3 active:bg-app/80" : "px-3 py-2",
+                  ].join(" ")}
                   onClick={() => onChange(toggleSpecialization(sortedValue, specialization))}
                 >
                   <span>{SPECIALIZATION_LABEL[specialization]}</span>

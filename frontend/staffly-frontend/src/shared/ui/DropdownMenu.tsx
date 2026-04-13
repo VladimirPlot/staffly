@@ -10,12 +10,16 @@ type TriggerRenderProps = {
 
 type Props = {
   trigger: (props: TriggerRenderProps) => React.ReactNode;
-  children: (helpers: { close: () => void; open: boolean }) => React.ReactNode;
+  children: (helpers: { close: () => void; open: boolean; isMobile: boolean }) => React.ReactNode;
   disabled?: boolean;
   menuClassName?: string;
   alignClassName?: string; // оставляем, но для fixed используем только left/right смысл
   triggerWrapperClassName?: string;
   matchTriggerWidth?: boolean;
+  mobileSheetTitle?: React.ReactNode;
+  mobileSheetSubtitle?: React.ReactNode;
+  mobileSheetClassName?: string;
+  mobileBackdropClassName?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
@@ -42,6 +46,10 @@ export default function DropdownMenu({
   alignClassName = "right-0",
   triggerWrapperClassName = "relative inline-flex",
   matchTriggerWidth = false,
+  mobileSheetTitle,
+  mobileSheetSubtitle,
+  mobileSheetClassName = "",
+  mobileBackdropClassName = "",
   open: openProp,
   onOpenChange,
 }: Props) {
@@ -226,7 +234,7 @@ export default function DropdownMenu({
     <div data-overlay-root="true">
       <div
         ref={backdropRef}
-        className={`fixed inset-0 ${Z_BACKDROP} bg-black/30 backdrop-blur-[2px]`}
+        className={`fixed inset-0 ${Z_BACKDROP} bg-black/20 backdrop-blur-[1px] ${mobileBackdropClassName}`}
         aria-hidden
         onPointerDown={(event) => {
           event.preventDefault();
@@ -247,14 +255,26 @@ export default function DropdownMenu({
       <div
         id={mobileMenuId}
         role="menu"
-        className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} max-h-[min(85vh,640px)] overflow-y-auto rounded-t-3xl border-t p-4 pb-[calc(16px+env(safe-area-inset-bottom))] shadow-[var(--staffly-shadow)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+        className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} flex max-h-[min(82vh,560px)] flex-col overflow-hidden rounded-t-[1.75rem] border-t border-subtle shadow-[0_-12px_40px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out motion-reduce:transition-none ${mobileSheetClassName} ${
           sheetVisible ? "translate-y-0" : "translate-y-full"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="bg-border/80 mx-auto mb-4 h-1.5 w-12 rounded-full" aria-hidden />
-        {children({ close, open })}
+        <div className="flex-none px-4 pt-3">
+          <div className="bg-border/80 mx-auto mb-3 h-1.5 w-12 rounded-full" aria-hidden />
+
+          {(mobileSheetTitle || mobileSheetSubtitle) && (
+            <div className="mb-3 px-1 text-center">
+              {mobileSheetTitle && <div className="text-base font-semibold text-default">{mobileSheetTitle}</div>}
+              {mobileSheetSubtitle && <div className="mt-1 text-sm leading-5 text-muted">{mobileSheetSubtitle}</div>}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
+          {children({ close, open, isMobile })}
+        </div>
       </div>
     </div>
   );
@@ -295,7 +315,7 @@ export default function DropdownMenu({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="border-subtle bg-surface w-full rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-                {children({ close, open })}
+                {children({ close, open, isMobile })}
               </div>
             </div>
           )}
