@@ -19,7 +19,8 @@ export default function CertificationMyExamCard({ exam }: Props) {
     ? `${exam.attemptsUsed}/∞`
     : `${exam.attemptsUsed}/${exam.attemptsAllowed}`;
   const hasAttemptsLeft = exam.attemptsAllowed == null || exam.attemptsUsed < exam.attemptsAllowed;
-  const actionLabel = hasAttemptsLeft ? "Открыть аттестацию" : "Посмотреть результат";
+  const hasCompletedResult = exam.bestScore != null || exam.assignmentStatus === "PASSED" || exam.assignmentStatus === "FAILED" || exam.assignmentStatus === "EXHAUSTED";
+  const hasInProgressAttempt = exam.assignmentStatus === "IN_PROGRESS";
 
   return (
     <div className="rounded-xl border border-subtle p-4">
@@ -45,10 +46,30 @@ export default function CertificationMyExamCard({ exam }: Props) {
         {resultText ? `Лучший результат: ${resultText}` : "Итогового результата пока нет"}
       </div>
 
-      <div className="mt-3">
-        <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
-          {actionLabel}
-        </Link>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {!hasCompletedResult && !hasInProgressAttempt && (
+          <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
+            Начать аттестацию
+          </Link>
+        )}
+
+        {hasInProgressAttempt && (
+          <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
+            Продолжить аттестацию
+          </Link>
+        )}
+
+        {hasCompletedResult && (
+          <Link to={trainingRoutes.examResult(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
+            Посмотреть результат
+          </Link>
+        )}
+
+        {hasCompletedResult && hasAttemptsLeft && (
+          <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
+            Перезапустить
+          </Link>
+        )}
       </div>
     </div>
   );

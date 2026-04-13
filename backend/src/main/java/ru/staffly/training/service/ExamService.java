@@ -7,6 +7,7 @@ import java.util.List;
 public interface ExamService {
     List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly);
     List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId);
+    CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager);
     List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive);
     TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);

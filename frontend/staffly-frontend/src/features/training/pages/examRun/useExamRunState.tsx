@@ -146,6 +146,8 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     ? confirmedQuestionIds.includes(currentQuestion.questionId)
     : false;
   const hasUnsavedAnswers = !result && Object.keys(answers).length > 0;
+  const isCertificationExam = attempt?.exam.mode === "CERTIFICATION";
+  const resultRoute = isCertificationExam && attempt ? trainingRoutes.examResult(attempt.exam.id) : null;
 
   const setSingleAnswer = (question: AttemptQuestionSnapshotDto, value: string) => {
     if (confirmedQuestionIds.includes(question.questionId)) return;
@@ -286,6 +288,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     remainingSec,
     renderQuestionExplanation,
     result,
+    resultRoute,
     setFillSelectAnswer,
     setMatchRight,
     setMultiAnswer,
@@ -295,5 +298,6 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     timeExpired,
     confirmCurrentAnswer,
     goToNext,
+    isCertificationExam,
   };
 }

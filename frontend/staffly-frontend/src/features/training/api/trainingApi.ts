@@ -4,6 +4,7 @@ import type {
   CertificationExamAttemptHistoryDto,
   CertificationExamEmployeeRowDto,
   CertificationExamPositionBreakdownDto,
+  CertificationMyResultDto,
   CertificationExamSummaryDto,
   CurrentUserCertificationExamDto,
   CreateKnowledgeItemPayload,
@@ -69,6 +70,10 @@ export async function listExams(restaurantId: number, includeInactive = false, c
 export async function listMyCertificationExams(restaurantId: number): Promise<CurrentUserCertificationExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/my-certifications`);
   return data as CurrentUserCertificationExamDto[];
+}
+export async function getMyCertificationResult(restaurantId: number, examId: number): Promise<CertificationMyResultDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/my-result`);
+  return data as CertificationMyResultDto;
 }
 export async function listKnowledgeExams(restaurantId: number, folderId: number, includeInactive = false): Promise<TrainingExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-exams`, { params: { folderId, includeInactive } });

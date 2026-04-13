@@ -44,6 +44,7 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationAssignmentService certificationAssignmentService;
     private final CertificationManagerActionService certificationManagerActionService;
     private final CertificationAnalyticsService certificationAnalyticsService;
+    private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
 
     @Override
@@ -66,6 +67,15 @@ public class ExamServiceImpl implements ExamService {
                 .stream()
                 .map(this::toCurrentUserCertificationExamDto)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        examAccessService.ensureCanStartExam(exam, restaurantId, userId, isManager);
+        return certificationSelfResultService.getCurrentUserResult(exam, restaurantId, userId);
     }
 
     @Override
@@ -236,13 +246,16 @@ public class ExamServiceImpl implements ExamService {
         examAccessService.ensureCanStartExam(exam, restaurantId, userId, isManager);
 
         TrainingExamAssignment assignment = null;
+        int attemptVersion = exam.getVersion();
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             assignment = certificationAssignmentService.resolveForStart(exam, restaurantId, userId);
+            attemptVersion = assignment.getExamVersionSnapshot();
+            syncCertificationAttemptCounters(exam, assignment, restaurantId, userId, attemptVersion);
         }
 
         var existingAttemptOpt = attempts
                 .findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
-                        examId, restaurantId, userId, exam.getVersion());
+                        examId, restaurantId, userId, attemptVersion);
         if (existingAttemptOpt.isPresent()) {
             return resumeAttempt(exam, existingAttemptOpt.get());
         }
@@ -251,7 +264,7 @@ public class ExamServiceImpl implements ExamService {
             certificationAssignmentService.ensureAttemptsAvailable(assignment);
             certificationAssignmentService.markStarted(assignment);
         } else {
-            enforceAttemptLimit(exam, restaurantId, userId);
+            enforceAttemptLimit(exam, restaurantId, userId, attemptVersion);
         }
 
         var pool = questionPoolResolver.buildQuestionPool(restaurantId, exam);
@@ -261,7 +274,7 @@ public class ExamServiceImpl implements ExamService {
 
         var selectedQuestions = pickQuestionsForAttempt(pool, exam.getQuestionCount());
         var relationData = loadQuestionRelations(selectedQuestions);
-        var attempt = createAttempt(exam, userId, assignment);
+        var attempt = createAttempt(exam, userId, assignment, attemptVersion);
         var snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
 
         return new StartExamResponseDto(
@@ -393,7 +406,7 @@ public class ExamServiceImpl implements ExamService {
         );
     }
 
-    private void enforceAttemptLimit(TrainingExam exam, Long restaurantId, Long userId) {
+    private void enforceAttemptLimit(TrainingExam exam, Long restaurantId, Long userId, int examVersion) {
         if (exam.getAttemptLimit() == null) {
             return;
         }
@@ -402,7 +415,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getId(),
                 restaurantId,
                 userId,
-                exam.getVersion()
+                examVersion
         );
         if (usedAttempts >= exam.getAttemptLimit()) {
             throw new ConflictException("Достигнут лимит попыток для этого теста.");
@@ -435,10 +448,10 @@ public class ExamServiceImpl implements ExamService {
         return new QuestionRelations(optionsByQuestion, pairsByQuestion, blanksByQuestion, blankOptionsByBlank);
     }
 
-    private TrainingExamAttempt createAttempt(TrainingExam exam, Long userId, TrainingExamAssignment assignment) {
+    private TrainingExamAttempt createAttempt(TrainingExam exam, Long userId, TrainingExamAssignment assignment, int examVersion) {
         return attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
-                .examVersion(exam.getVersion())
+                .examVersion(examVersion)
                 .restaurant(exam.getRestaurant())
                 .assignment(assignment)
                 .user(User.builder().id(userId).build())
@@ -448,6 +461,23 @@ public class ExamServiceImpl implements ExamService {
                 .questionCountSnapshot(exam.getQuestionCount())
                 .timeLimitSecSnapshot(exam.getTimeLimitSec())
                 .build());
+    }
+
+    private void syncCertificationAttemptCounters(TrainingExam exam,
+                                                  TrainingExamAssignment assignment,
+                                                  Long restaurantId,
+                                                  Long userId,
+                                                  int attemptVersion) {
+        long finishedAttempts = attempts.countByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNotNull(
+                exam.getId(),
+                restaurantId,
+                userId,
+                attemptVersion
+        );
+        int normalizedAttemptsUsed = Math.max(assignment.getAttemptsUsed(), (int) Math.min(finishedAttempts, Integer.MAX_VALUE));
+        if (normalizedAttemptsUsed != assignment.getAttemptsUsed()) {
+            assignment.setAttemptsUsed(normalizedAttemptsUsed);
+        }
     }
 
     private List<AttemptQuestionSnapshotDto> persistAttemptQuestions(TrainingExamAttempt attempt,

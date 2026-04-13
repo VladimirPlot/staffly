@@ -171,6 +171,30 @@ export type CurrentUserCertificationExamDto = {
   passedAt?: string | null;
 };
 
+export type CertificationMyResultQuestionDto = {
+  questionId: number;
+  questionType: TrainingQuestionType;
+  prompt: string;
+  chosenAnswerJson?: string | null;
+  correct: boolean;
+  explanation?: string | null;
+};
+
+export type CertificationMyResultDto = {
+  examId: number;
+  title: string;
+  description?: string | null;
+  assignmentStatus: CertificationAssignmentStatus;
+  scorePercent?: number | null;
+  passPercent: number;
+  attemptsUsed: number;
+  attemptsAllowed?: number | null;
+  bestScore?: number | null;
+  lastAttemptAt?: string | null;
+  passedAt?: string | null;
+  questions: CertificationMyResultQuestionDto[];
+};
+
 export type UpsertExamPayload = {
   title: string;
   description?: string | null;

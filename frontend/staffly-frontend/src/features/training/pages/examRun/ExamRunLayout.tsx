@@ -17,7 +17,7 @@ type Props = {
   onConfirm: () => void;
   onNext: () => void;
   onExit: () => void;
-  onRestart: () => void;
+  onRestart?: () => void;
   onFinish: () => void;
   disableConfirm: boolean;
 };
@@ -79,7 +79,7 @@ export default function ExamRunLayout({
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={onFinish}>Завершить</Button>
-            <Button variant="outline" onClick={onRestart}>Повторить</Button>
+            {onRestart && <Button variant="outline" onClick={onRestart}>Повторить</Button>}
           </div>
         </div>
       )}
