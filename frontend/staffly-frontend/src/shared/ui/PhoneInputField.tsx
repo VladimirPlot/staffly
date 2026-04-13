@@ -174,11 +174,11 @@ export default function PhoneInputField({
   };
 
   return (
-    <label className="block">
+    <div className="block">
       <span className="text-muted mb-1 block text-sm">{label}</span>
 
       <div className={`staffly-phone w-full ${error ? "is-error" : ""}`}>
-        <div className="staffly-phone-country">
+        <div className="staffly-phone-country" aria-label="Страна номера">
           <DropdownSelect
             aria-label="Страна номера"
             className="h-full min-w-[5.75rem] rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none focus:ring-0"
@@ -237,7 +237,7 @@ export default function PhoneInputField({
           {helperText}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 

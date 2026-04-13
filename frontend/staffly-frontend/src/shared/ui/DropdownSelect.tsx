@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as RadixSelect from "@radix-ui/react-select";
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 
 type Option = {
   value: string;
@@ -89,6 +89,7 @@ export default function DropdownSelect({
   name,
   required,
 }: Props) {
+  const labelId = React.useId();
   const options = React.useMemo(() => parseOptions(children), [children]);
   const isControlled = value != null;
   const [internalValue, setInternalValue] = React.useState(defaultValue == null ? "" : String(defaultValue));
@@ -125,8 +126,12 @@ export default function DropdownSelect({
   }, [open, selectableOptions, selectedOption]);
 
   return (
-    <label className="block min-w-0">
-      {label && <span className="mb-1 block text-sm font-medium text-muted">{label}</span>}
+    <div className="block min-w-0">
+      {label && (
+        <span id={labelId} className="mb-1 block text-sm font-medium text-muted">
+          {label}
+        </span>
+      )}
 
       <RadixSelect.Root
         value={selectedValue}
@@ -140,6 +145,7 @@ export default function DropdownSelect({
         <RadixSelect.Trigger
           id={id}
           aria-label={ariaLabel}
+          aria-labelledby={ariaLabel ? undefined : label ? labelId : undefined}
           style={style}
           className={[
             "border-subtle bg-surface focus:ring-default relative flex h-10 w-full items-center rounded-2xl border px-4 pr-10 text-left text-sm outline-none transition",
@@ -181,10 +187,6 @@ export default function DropdownSelect({
                   }
             }
           >
-            <RadixSelect.ScrollUpButton className="bg-surface/96 text-muted flex h-7 items-center justify-center border-b">
-              <ChevronUp className="h-4 w-4" />
-            </RadixSelect.ScrollUpButton>
-
             <RadixSelect.Viewport className="no-scrollbar max-h-[inherit] overflow-y-auto p-1">
               {selectableOptions.map((option) => {
                 const selected = option.value === selectedValue;
@@ -217,15 +219,11 @@ export default function DropdownSelect({
                 );
               })}
             </RadixSelect.Viewport>
-
-            <RadixSelect.ScrollDownButton className="bg-surface/96 text-muted flex h-7 items-center justify-center border-t">
-              <ChevronDown className="h-4 w-4" />
-            </RadixSelect.ScrollDownButton>
           </RadixSelect.Content>
         </RadixSelect.Portal>
       </RadixSelect.Root>
 
       {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
-    </label>
+    </div>
   );
 }

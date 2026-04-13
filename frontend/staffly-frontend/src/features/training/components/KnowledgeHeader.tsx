@@ -107,7 +107,7 @@ export default function KnowledgeHeader({
 
         {/* Desktop: compact select in row */}
         <div className="hidden sm:block">
-          <label className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="text-sm text-muted">Должность</span>
             <DropdownSelect
               aria-label="Должность"
@@ -125,7 +125,7 @@ export default function KnowledgeHeader({
                 </option>
               ))}
             </DropdownSelect>
-          </label>
+          </div>
         </div>
 
         {/* Desktop: create buttons */}
@@ -144,7 +144,7 @@ export default function KnowledgeHeader({
 
       {/* Mobile: select goes under the top line */}
       <div className="sm:hidden">
-        <label className="block">
+        <div className="block">
           <div className="mb-1 text-sm text-muted">Должность</div>
           <DropdownSelect
             aria-label="Должность"
@@ -162,7 +162,7 @@ export default function KnowledgeHeader({
               </option>
             ))}
           </DropdownSelect>
-        </label>
+        </div>
       </div>
     </div>
   );
