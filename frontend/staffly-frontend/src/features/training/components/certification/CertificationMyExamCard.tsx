@@ -19,8 +19,9 @@ export default function CertificationMyExamCard({ exam }: Props) {
     ? `${exam.attemptsUsed}/∞`
     : `${exam.attemptsUsed}/${exam.attemptsAllowed}`;
   const hasAttemptsLeft = exam.attemptsAllowed == null || exam.attemptsUsed < exam.attemptsAllowed;
-  const hasCompletedResult = exam.bestScore != null || exam.assignmentStatus === "PASSED" || exam.assignmentStatus === "FAILED" || exam.assignmentStatus === "EXHAUSTED";
   const hasInProgressAttempt = exam.assignmentStatus === "IN_PROGRESS";
+  const hasFinishedAttempt = exam.assignmentStatus === "FAILED" || exam.assignmentStatus === "EXHAUSTED" || exam.assignmentStatus === "PASSED";
+  const canRestart = hasFinishedAttempt && exam.assignmentStatus !== "PASSED" && hasAttemptsLeft;
 
   return (
     <div className="rounded-xl border border-subtle p-4">
@@ -47,7 +48,7 @@ export default function CertificationMyExamCard({ exam }: Props) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {!hasCompletedResult && !hasInProgressAttempt && (
+        {!hasFinishedAttempt && !hasInProgressAttempt && (
           <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
             Начать аттестацию
           </Link>
@@ -59,13 +60,13 @@ export default function CertificationMyExamCard({ exam }: Props) {
           </Link>
         )}
 
-        {hasCompletedResult && (
+        {hasFinishedAttempt && (
           <Link to={trainingRoutes.examResult(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
             Посмотреть результат
           </Link>
         )}
 
-        {hasCompletedResult && hasAttemptsLeft && (
+        {canRestart && (
           <Link to={trainingRoutes.examRun(exam.examId)} className="inline-flex items-center rounded-xl border border-subtle px-3 py-2 text-sm font-medium text-default hover:bg-app">
             Перезапустить
           </Link>

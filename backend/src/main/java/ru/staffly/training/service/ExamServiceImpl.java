@@ -74,7 +74,6 @@ public class ExamServiceImpl implements ExamService {
     public CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-        examAccessService.ensureCanStartExam(exam, restaurantId, userId, isManager);
         return certificationSelfResultService.getCurrentUserResult(exam, restaurantId, userId);
     }
 
@@ -306,8 +305,10 @@ public class ExamServiceImpl implements ExamService {
         for (var item : existingQuestions) {
             var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
             var answer = answersByQuestionId.get(snapshot.questionId());
-            if (answer == null) {
-                throw new BadRequestException("Missing answer for question " + snapshot.questionId());
+            if (answer == null || answer.answerJson() == null || answer.answerJson().isBlank()) {
+                item.setChosenAnswerJson(null);
+                item.setCorrect(false);
+                continue;
             }
 
             attemptEvaluator.validateAnswerForType(answer.answerJson(), snapshot);

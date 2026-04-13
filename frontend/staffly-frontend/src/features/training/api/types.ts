@@ -177,6 +177,7 @@ export type CertificationMyResultQuestionDto = {
   prompt: string;
   chosenAnswerJson?: string | null;
   correct: boolean;
+  correctAnswerJson?: string | null;
   explanation?: string | null;
 };
 
@@ -189,6 +190,7 @@ export type CertificationMyResultDto = {
   passPercent: number;
   attemptsUsed: number;
   attemptsAllowed?: number | null;
+  revealCorrectAnswers: boolean;
   bestScore?: number | null;
   lastAttemptAt?: string | null;
   passedAt?: string | null;
@@ -301,7 +303,7 @@ export type ExamAttemptDto = {
   questions: AttemptQuestionSnapshotDto[];
 };
 
-export type ExamSubmitAnswerDto = { questionId: number; answerJson: string };
+export type ExamSubmitAnswerDto = { questionId: number; answerJson?: string | null };
 export type ExamSubmitPayload = { answers: ExamSubmitAnswerDto[] };
 
 export type AttemptResultQuestionDto = { questionId: number; chosenAnswerJson: string | null; correct: boolean };

@@ -10,6 +10,7 @@ import ru.staffly.training.dto.CertificationMyResultQuestionDto;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamAssignment;
 import ru.staffly.training.model.TrainingExamMode;
+import ru.staffly.training.model.TrainingExamAssignmentStatus;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptQuestionRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
@@ -32,14 +33,34 @@ class CertificationSelfResultService {
             throw new BadRequestException("Personal result is available only for certification exams.");
         }
 
-        var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId)
-                .orElseThrow(() -> new ConflictException("Для вас нет активного назначения на эту аттестацию."));
-
-        var lastFinishedAttempt = attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(exam.getId(), restaurantId, userId)
-                .stream()
+        var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId).orElse(null);
+        var finishedAttempts = attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(exam.getId(), restaurantId, userId).stream()
                 .filter(attempt -> attempt.getFinishedAt() != null)
-                .filter(attempt -> attempt.getAssignment() != null && assignment.getId().equals(attempt.getAssignment().getId()))
+                .filter(attempt -> attempt.getAssignment() != null)
+                .toList();
+
+        if (assignment == null && finishedAttempts.isEmpty()) {
+            throw new ConflictException("Для вас нет назначения или истории попыток по этой аттестации.");
+        }
+
+        var assignmentForResult = assignment != null
+                ? assignment
+                : finishedAttempts.stream()
+                .map(attempt -> attempt.getAssignment())
+                .max(Comparator.comparing(TrainingExamAssignment::getAssignedAt))
+                .orElseThrow(() -> new ConflictException("Assignment context is missing."));
+
+        var lastFinishedAttempt = finishedAttempts.stream()
+                .filter(attempt -> attempt.getAssignment() != null
+                        && assignmentForResult.getId().equals(attempt.getAssignment().getId()))
                 .max(Comparator.comparing(attempt -> attempt.getFinishedAt()));
+
+        Integer attemptsAllowed = certificationAssignmentService.calculateAttemptsAllowed(assignmentForResult);
+        boolean passed = lastFinishedAttempt.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
+                || assignmentForResult.getPassedAt() != null
+                || assignmentForResult.getStatus() == TrainingExamAssignmentStatus.PASSED;
+        boolean attemptsRemain = attemptsAllowed == null || assignmentForResult.getAttemptsUsed() < attemptsAllowed;
+        boolean revealCorrectAnswers = !attemptsRemain || passed;
 
         var questions = lastFinishedAttempt
                 .map(attempt -> attemptQuestions.findByAttemptId(attempt.getId()).stream()
@@ -51,6 +72,7 @@ class CertificationSelfResultService {
                                     snapshot.prompt(),
                                     item.getChosenAnswerJson(),
                                     item.isCorrect(),
+                                    revealCorrectAnswers ? item.getCorrectKeyJson() : null,
                                     snapshot.explanation()
                             );
                         })
@@ -61,14 +83,15 @@ class CertificationSelfResultService {
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
-                assignment.getStatus(),
+                assignmentForResult.getStatus(),
                 lastFinishedAttempt.map(attempt -> attempt.getScorePercent()).orElse(null),
                 exam.getPassPercent(),
-                assignment.getAttemptsUsed(),
-                certificationAssignmentService.calculateAttemptsAllowed(assignment),
-                assignment.getBestScore(),
-                assignment.getLastAttemptAt(),
-                assignment.getPassedAt(),
+                assignmentForResult.getAttemptsUsed(),
+                attemptsAllowed,
+                revealCorrectAnswers,
+                assignmentForResult.getBestScore(),
+                assignmentForResult.getLastAttemptAt(),
+                assignmentForResult.getPassedAt(),
                 questions
         );
     }

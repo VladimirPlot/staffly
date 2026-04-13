@@ -20,6 +20,9 @@ class CertificationAssignmentService {
     }
 
     public void ensureAttemptsAvailable(TrainingExamAssignment assignment) {
+        if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED || assignment.getPassedAt() != null) {
+            throw new ConflictException("Аттестация уже успешно пройдена. Повторная попытка недоступна.");
+        }
         Integer allowed = calculateAttemptsAllowed(assignment);
         if (allowed != null && assignment.getAttemptsUsed() >= allowed) {
             throw new ConflictException("Лимит попыток по назначенной аттестации исчерпан.");

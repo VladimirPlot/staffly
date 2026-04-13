@@ -39,6 +39,12 @@ function renderAnswer(question: CertificationMyResultQuestionDto): string {
   }
 }
 
+function isPassedResult(data: CertificationMyResultDto): boolean {
+  if (data.passedAt) return true;
+  if (data.scorePercent == null) return false;
+  return data.scorePercent >= data.passPercent;
+}
+
 export default function CertificationMyResultPage() {
   const { examId } = useParams<{ examId: string }>();
   const parsedExamId = Number(examId);
@@ -69,7 +75,7 @@ export default function CertificationMyResultPage() {
   }, [load]);
 
   const attemptsLeft = data == null || data.attemptsAllowed == null ? null : data.attemptsAllowed - data.attemptsUsed;
-  const canRestart = data != null && (attemptsLeft == null || attemptsLeft > 0);
+  const canRestart = data != null && !isPassedResult(data) && (attemptsLeft == null || attemptsLeft > 0);
   const questions = useMemo(() => {
     if (!data) return [];
     return onlyWrong ? data.questions.filter((question) => !question.correct) : data.questions;
@@ -127,11 +133,19 @@ export default function CertificationMyResultPage() {
                   Показать только ошибки
                 </label>
               </div>
+              {!data.revealCorrectAnswers && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Правильные ответы будут доступны после завершения всех попыток.
+                </div>
+              )}
               <div className="space-y-3">
                 {questions.map((question, index) => (
                   <div key={`${question.questionId}-${index}`} className={`rounded-xl border p-3 ${question.correct ? "border-emerald-200" : "border-rose-200 bg-rose-50/40"}`}>
                     <div className="text-sm font-medium">#{index + 1}. {question.prompt}</div>
                     <div className="mt-1 text-sm text-muted">Ваш ответ: {renderAnswer(question)}</div>
+                    {data.revealCorrectAnswers && (
+                      <div className="mt-1 text-sm text-muted">Правильный ответ: {question.correctAnswerJson ? renderAnswer({ ...question, chosenAnswerJson: question.correctAnswerJson }) : "—"}</div>
+                    )}
                     <div className={`mt-1 text-sm ${question.correct ? "text-emerald-700" : "text-rose-700"}`}>{question.correct ? "Верно" : "Ошибка"}</div>
                     {question.explanation && <div className="mt-2 text-sm text-muted">Пояснение: {question.explanation}</div>}
                   </div>

@@ -195,12 +195,14 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     [answers],
   );
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (options?: { force?: boolean }) => {
     if (!restaurantId || !attempt || submitting) return;
-    const validationError = validateAllAnswered(attempt);
-    if (validationError) {
-      setError(validationError);
-      return;
+    if (!options?.force) {
+      const validationError = validateAllAnswered(attempt);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -209,7 +211,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
       const response = await submitExamAttempt(restaurantId, attempt.attemptId, {
         answers: attempt.questions.map((question) => ({
           questionId: question.questionId,
-          answerJson: answers[question.questionId],
+          answerJson: answers[question.questionId] ?? null,
         })),
       });
       setResult(response);
@@ -223,8 +225,13 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
 
   useEffect(() => {
     if (!timeExpired || !attempt || result || submitting) return;
-    void submit();
+    void submit({ force: true });
   }, [attempt, result, submit, submitting, timeExpired]);
+
+  useEffect(() => {
+    if (!result || !isCertificationExam || !resultRoute) return;
+    navigate(resultRoute, { replace: true });
+  }, [isCertificationExam, navigate, result, resultRoute]);
 
   const confirmCurrentAnswer = () => {
     if (!currentQuestion) return;

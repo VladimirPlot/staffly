@@ -14,6 +14,7 @@ public record CertificationMyResultDto(
         int passPercent,
         int attemptsUsed,
         Integer attemptsAllowed,
+        boolean revealCorrectAnswers,
         Integer bestScore,
         Instant lastAttemptAt,
         Instant passedAt,
