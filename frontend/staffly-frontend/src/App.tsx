@@ -54,6 +54,7 @@ const TrainingQuestionBankFolderPage = React.lazy(
   () => import("./features/training/pages/QuestionBankFolderPage"),
 );
 const TrainingExamsPage = React.lazy(() => import("./features/training/pages/ExamsPage"));
+const TrainingCertificationAnalyticsPage = React.lazy(() => import("./features/training/pages/CertificationAnalyticsPage"));
 const TrainingExamRunPage = React.lazy(() => import("./features/training/pages/ExamRunPage"));
 
 const RestaurantHome = React.lazy(() => import("./features/home/pages/RestaurantHome"));
@@ -650,6 +651,16 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TrainingExamsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/exams/:examId/analytics"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCertificationAnalyticsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
