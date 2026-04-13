@@ -29,6 +29,18 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
 
     @Query("""
             select a from TrainingExamAssignment a
+            join fetch a.exam e
+            where a.restaurant.id = :restaurantId
+              and a.user.id = :userId
+              and a.active = true
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+            order by a.assignedAt desc, a.id desc
+            """)
+    List<TrainingExamAssignment> findActiveCertificationAssignmentsForUser(@Param("restaurantId") Long restaurantId,
+                                                                           @Param("userId") Long userId);
+
+    @Query("""
+            select a from TrainingExamAssignment a
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true

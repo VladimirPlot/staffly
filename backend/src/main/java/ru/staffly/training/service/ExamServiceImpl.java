@@ -32,6 +32,7 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingQuestionBlankOptionRepository questionBlankOptions;
     private final TrainingExamAttemptRepository attempts;
     private final TrainingExamAttemptQuestionRepository attemptQuestions;
+    private final TrainingExamAssignmentRepository assignments;
     private final TrainingFolderRepository folders;
     private final PositionRepository positions;
 
@@ -55,6 +56,15 @@ public class ExamServiceImpl implements ExamService {
         return examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter)
                 .stream()
                 .map(this::toDtoWithSourcesAndVisibility)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId) {
+        return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
+                .stream()
+                .map(this::toCurrentUserCertificationExamDto)
                 .toList();
     }
 
@@ -612,6 +622,30 @@ public class ExamServiceImpl implements ExamService {
                 folders,
                 questionIds,
                 visibilityIds
+        );
+    }
+
+    private CurrentUserCertificationExamDto toCurrentUserCertificationExamDto(TrainingExamAssignment assignment) {
+        var exam = assignment.getExam();
+        return new CurrentUserCertificationExamDto(
+                exam.getId(),
+                exam.getTitle(),
+                exam.getDescription(),
+                exam.getQuestionCount(),
+                exam.getPassPercent(),
+                exam.getTimeLimitSec(),
+                exam.getAttemptLimit(),
+                exam.isActive(),
+                assignment.getId(),
+                assignment.getStatus(),
+                assignment.getAssignedAt(),
+                assignment.getExamVersionSnapshot(),
+                assignment.getAttemptsUsed(),
+                certificationAssignmentService.calculateAttemptsAllowed(assignment),
+                assignment.getExtraAttempts(),
+                assignment.getBestScore(),
+                assignment.getLastAttemptAt(),
+                assignment.getPassedAt()
         );
     }
 

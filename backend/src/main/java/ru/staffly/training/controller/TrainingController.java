@@ -209,6 +209,13 @@ public class TrainingController {
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/my-certifications")
+    public List<CurrentUserCertificationExamDto> listCurrentUserCertifications(@PathVariable Long restaurantId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.listCurrentUserCertificationExams(restaurantId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @GetMapping("/knowledge-exams")
     public List<TrainingExamDto> listKnowledgeExams(@PathVariable Long restaurantId,
                                                     @AuthenticationPrincipal UserPrincipal principal,
