@@ -10,13 +10,13 @@ type Props = React.InputHTMLAttributes<HTMLInputElement> & {
 export default function Input({ label, error, labelClassName, className = "", ...rest }: Props) {
   return (
     <label className="block min-w-0">
-      <span className={cn("text-muted mb-1 block min-w-0 text-sm [overflow-wrap:anywhere]", labelClassName)}>
+      <span className={cn("text-muted mb-1 block min-w-0 text-sm font-medium [overflow-wrap:anywhere]", labelClassName)}>
         {label}
       </span>
 
       <input
         className={cn(
-          "bg-surface text-default w-full max-w-full min-w-0 rounded-2xl border p-3 text-[16px]",
+          "bg-surface text-default h-10 w-full max-w-full min-w-0 rounded-2xl border px-4 text-[16px]",
           "focus:ring-default transition outline-none focus:ring-2",
           "dark:[color-scheme:dark]",
           error ? "border-red-500 ring-red-200" : "border-subtle",
