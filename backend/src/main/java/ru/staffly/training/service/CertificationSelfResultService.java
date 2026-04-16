@@ -28,12 +28,17 @@ class CertificationSelfResultService {
     private final ExamSnapshotService snapshotService;
 
     @Transactional(readOnly = true)
-    public CertificationMyResultDto getCurrentUserResult(TrainingExam exam, Long restaurantId, Long userId) {
+    public CertificationMyResultDto getCurrentUserResult(TrainingExam exam,
+                                                         Long restaurantId,
+                                                         Long userId,
+                                                         TrainingExamAssignment normalizedActiveAssignment) {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Personal result is available only for certification exams.");
         }
 
-        var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId).orElse(null);
+        var assignment = normalizedActiveAssignment != null
+                ? normalizedActiveAssignment
+                : assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId).orElse(null);
         var finishedAttempts = attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(exam.getId(), restaurantId, userId).stream()
                 .filter(attempt -> attempt.getFinishedAt() != null)
                 .filter(attempt -> attempt.getAssignment() != null)
