@@ -7,13 +7,17 @@ import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
+import ru.staffly.training.repository.TrainingExamAttemptRepository;
 
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 class CertificationAssignmentService {
     private final TrainingExamAssignmentRepository assignments;
+    private final TrainingExamAttemptRepository attempts;
 
     @Transactional(readOnly = true)
     public TrainingExamAssignment resolveForStart(TrainingExam exam, Long restaurantId, Long userId) {
@@ -72,6 +76,54 @@ class CertificationAssignmentService {
         }
     }
 
+    public void reconcileDerivedStateFromFinishedAttempts(TrainingExamAssignment assignment) {
+        var finishedAttempts = attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+                assignment.getId(),
+                assignment.getExamVersionSnapshot()
+        );
+        assignment.setAttemptsUsed(finishedAttempts.size());
+        assignment.setLastAttemptAt(finishedAttempts.stream()
+                .map(TrainingExamAttempt::getFinishedAt)
+                .filter(item -> item != null)
+                .max(Comparator.naturalOrder())
+                .orElse(null));
+        assignment.setBestScore(finishedAttempts.stream()
+                .map(TrainingExamAttempt::getScorePercent)
+                .filter(item -> item != null)
+                .max(Integer::compareTo)
+                .orElse(null));
+        assignment.setPassedAt(finishedAttempts.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getPassed()))
+                .map(TrainingExamAttempt::getFinishedAt)
+                .filter(item -> item != null)
+                .min(Instant::compareTo)
+                .orElse(null));
+    }
+
+    public void refreshStatus(TrainingExamAssignment assignment, boolean hasActiveUnfinishedAttempt) {
+        if (assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
+            return;
+        }
+        if (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
+            assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
+            return;
+        }
+        if (hasActiveUnfinishedAttempt) {
+            assignment.setStatus(TrainingExamAssignmentStatus.IN_PROGRESS);
+            return;
+        }
+
+        Integer attemptsAllowed = calculateAttemptsAllowed(assignment);
+        if (attemptsAllowed != null && assignment.getAttemptsUsed() >= attemptsAllowed) {
+            assignment.setStatus(TrainingExamAssignmentStatus.EXHAUSTED);
+            return;
+        }
+
+        assignment.setStatus(assignment.getAttemptsUsed() > 0
+                ? TrainingExamAssignmentStatus.FAILED
+                : TrainingExamAssignmentStatus.ASSIGNED);
+    }
+
     @Transactional
     public void fullResetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
         var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
@@ -90,15 +142,13 @@ class CertificationAssignmentService {
         var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
                 .orElseThrow(() -> new NotFoundException("Assignment not found"));
         assignment.setExtraAttempts(assignment.getExtraAttempts() + amount);
+        reconcileDerivedStateFromFinishedAttempts(assignment);
         if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED
                 || assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED
                 || assignment.getStatus() == TrainingExamAssignmentStatus.IN_PROGRESS) {
             return;
         }
-        Integer allowed = calculateAttemptsAllowed(assignment);
-        if (allowed == null || assignment.getAttemptsUsed() < allowed) {
-            assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
-        }
+        refreshStatus(assignment, false);
     }
 
     public Integer calculateAttemptsAllowed(TrainingExamAssignment assignment) {

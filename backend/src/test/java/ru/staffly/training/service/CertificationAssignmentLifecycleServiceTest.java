@@ -11,8 +11,7 @@ import ru.staffly.training.repository.TrainingExamAttemptRepository;
 import ru.staffly.user.model.User;
 
 import java.time.Instant;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -24,12 +23,14 @@ class CertificationAssignmentLifecycleServiceTest {
     private TrainingExamAttemptRepository attempts;
     @Mock
     private CertificationAssignmentService assignmentService;
+    @Mock
+    private CertificationExpiredAttemptFinalizer expiredAttemptFinalizer;
 
     private CertificationAssignmentLifecycleService lifecycleService;
 
     @BeforeEach
     void setUp() {
-        lifecycleService = new CertificationAssignmentLifecycleService(attempts, assignmentService);
+        lifecycleService = new CertificationAssignmentLifecycleService(attempts, assignmentService, expiredAttemptFinalizer);
     }
 
     @Test
@@ -37,15 +38,14 @@ class CertificationAssignmentLifecycleServiceTest {
         var assignment = assignment(2, 2, 0, TrainingExamAssignmentStatus.IN_PROGRESS);
         var expiredAttempt = unfinishedAttempt(assignment, Instant.parse("2026-04-16T10:00:00Z"), 60);
 
-        when(attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
-                .thenReturn(Optional.of(expiredAttempt), Optional.empty());
-        when(assignmentService.calculateAttemptsAllowed(assignment)).thenReturn(2);
+        when(attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
+                .thenReturn(List.of(expiredAttempt));
 
-        AtomicBoolean finalized = new AtomicBoolean(false);
-        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"), attempt -> finalized.set(true));
+        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        assertTrue(finalized.get());
-        assertEquals(TrainingExamAssignmentStatus.EXHAUSTED, assignment.getStatus());
+        verify(expiredAttemptFinalizer).finalizeExpiredAttempt(eq(expiredAttempt), eq(Instant.parse("2026-04-16T10:10:00Z")));
+        verify(assignmentService).reconcileDerivedStateFromFinishedAttempts(assignment);
+        verify(assignmentService).refreshStatus(assignment, false);
     }
 
     @Test
@@ -53,27 +53,26 @@ class CertificationAssignmentLifecycleServiceTest {
         var assignment = assignment(10, 1, 0, TrainingExamAssignmentStatus.ASSIGNED);
         var activeAttempt = unfinishedAttempt(assignment, Instant.parse("2026-04-16T10:00:00Z"), 3600);
 
-        when(attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
-                .thenReturn(Optional.of(activeAttempt));
+        when(attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
+                .thenReturn(List.of(activeAttempt));
 
-        AtomicBoolean finalized = new AtomicBoolean(false);
-        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"), attempt -> finalized.set(true));
+        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        assertFalse(finalized.get());
-        assertEquals(TrainingExamAssignmentStatus.IN_PROGRESS, assignment.getStatus());
+        verify(expiredAttemptFinalizer, never()).finalizeExpiredAttempt(any(), any());
+        verify(assignmentService).reconcileDerivedStateFromFinishedAttempts(assignment);
+        verify(assignmentService).refreshStatus(assignment, true);
     }
 
     @Test
     void normalizeReopensExhaustedAssignmentWhenExtraAttemptsGranted() {
         var assignment = assignment(1, 1, 1, TrainingExamAssignmentStatus.EXHAUSTED);
 
-        when(attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
-                .thenReturn(Optional.empty());
-        when(assignmentService.calculateAttemptsAllowed(assignment)).thenReturn(2);
+        when(attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
+                .thenReturn(List.of());
 
-        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"), attempt -> fail("No finalize expected"));
+        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        assertNotEquals(TrainingExamAssignmentStatus.EXHAUSTED, assignment.getStatus());
+        verify(assignmentService).refreshStatus(assignment, false);
     }
 
     @Test
@@ -81,12 +80,12 @@ class CertificationAssignmentLifecycleServiceTest {
         var assignment = assignment(3, 1, 0, TrainingExamAssignmentStatus.PASSED);
         assignment.setPassedAt(Instant.parse("2026-04-16T09:00:00Z"));
 
-        when(attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
-                .thenReturn(Optional.empty());
+        when(attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
+                .thenReturn(List.of());
 
-        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"), attempt -> fail("No finalize expected"));
+        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        assertEquals(TrainingExamAssignmentStatus.PASSED, assignment.getStatus());
+        verify(assignmentService).refreshStatus(assignment, false);
     }
 
     @Test
@@ -94,15 +93,28 @@ class CertificationAssignmentLifecycleServiceTest {
         var assignment = assignment(1, 0, 0, TrainingExamAssignmentStatus.IN_PROGRESS);
         var zeroLimitAttempt = unfinishedAttempt(assignment, Instant.parse("2026-04-16T10:00:00Z"), 0);
 
-        when(attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
-                .thenReturn(Optional.of(zeroLimitAttempt), Optional.empty());
-        when(assignmentService.calculateAttemptsAllowed(assignment)).thenReturn(1);
+        when(attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
+                .thenReturn(List.of(zeroLimitAttempt));
 
-        AtomicBoolean finalized = new AtomicBoolean(false);
-        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:00:00Z"), attempt -> finalized.set(true));
+        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:00:00Z"));
 
-        assertTrue(finalized.get());
-        assertEquals(TrainingExamAssignmentStatus.FAILED, assignment.getStatus());
+        verify(expiredAttemptFinalizer).finalizeExpiredAttempt(eq(zeroLimitAttempt), eq(Instant.parse("2026-04-16T10:00:00Z")));
+    }
+
+    @Test
+    void normalizeFinalizesDuplicateUnfinishedAttemptsAndKeepsNewestAsActive() {
+        var assignment = assignment(3, 1, 0, TrainingExamAssignmentStatus.IN_PROGRESS);
+        var latest = unfinishedAttempt(assignment, Instant.parse("2026-04-16T10:09:00Z"), 3600);
+        var staleDuplicate = unfinishedAttempt(assignment, Instant.parse("2026-04-16T10:00:00Z"), 3600);
+        staleDuplicate.setId(78L);
+
+        when(attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(assignment.getId(), 3))
+                .thenReturn(List.of(latest, staleDuplicate), List.of(latest));
+
+        lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
+
+        verify(expiredAttemptFinalizer).finalizeExpiredAttempt(eq(staleDuplicate), eq(Instant.parse("2026-04-16T10:10:00Z")));
+        verify(assignmentService).refreshStatus(assignment, true);
     }
 
     private TrainingExamAssignment assignment(int allowed, int used, int extra, TrainingExamAssignmentStatus status) {
