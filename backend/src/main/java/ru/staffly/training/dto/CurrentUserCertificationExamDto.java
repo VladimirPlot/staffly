@@ -11,7 +11,7 @@ public record CurrentUserCertificationExamDto(
         Integer questionCount,
         Integer passPercent,
         Integer timeLimitSec,
-        Integer attemptLimit,
+        Integer baseAttemptLimit,
         Boolean active,
         Long assignmentId,
         TrainingExamAssignmentStatus assignmentStatus,

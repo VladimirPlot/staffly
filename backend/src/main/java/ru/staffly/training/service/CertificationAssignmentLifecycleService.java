@@ -1,6 +1,7 @@
 package ru.staffly.training.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamAssignment;
@@ -9,39 +10,64 @@ import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 class CertificationAssignmentLifecycleService {
     private final TrainingExamAttemptRepository attempts;
     private final CertificationAssignmentService assignmentService;
+    private final CertificationExpiredAttemptFinalizer expiredAttemptFinalizer;
 
     public TrainingExamAssignment normalizeForStart(TrainingExam exam,
                                                     Long restaurantId,
                                                     Long userId,
-                                                    Instant now,
-                                                    Consumer<TrainingExamAttempt> expiredAttemptFinalizer) {
+                                                    Instant now) {
         var assignment = assignmentService.resolveForStart(exam, restaurantId, userId);
-        return normalize(assignment, now, expiredAttemptFinalizer);
+        return normalize(assignment, now);
     }
 
-    public TrainingExamAssignment normalize(TrainingExamAssignment assignment,
-                                            Instant now,
-                                            Consumer<TrainingExamAttempt> expiredAttemptFinalizer) {
-        var unfinished = findUnfinishedCurrentAttempt(assignment);
-        if (unfinished.isPresent() && isExpiredUnfinishedAttempt(unfinished.get(), now)) {
-            expiredAttemptFinalizer.accept(unfinished.get());
-            unfinished = findUnfinishedCurrentAttempt(assignment);
+    public TrainingExamAssignment normalize(TrainingExamAssignment assignment, Instant now) {
+        // Full lifecycle normalization for certification assignment.
+        // This is intentionally allowed to mutate DB state (read-repair) by:
+        // 1) force-finalizing stale unfinished attempts,
+        // 2) finalizing expired current unfinished attempt,
+        // 3) reconciling persisted derived fields from finished attempts,
+        // 4) recomputing assignment status from canonical data.
+        var unfinishedAttempts = findUnfinishedCurrentAttempts(assignment);
+        if (unfinishedAttempts.size() > 1) {
+            log.warn("Found {} active unfinished certification attempts for assignmentId={} examVersion={}. " +
+                            "Keeping latest, force-finalizing stale duplicates for lifecycle repair.",
+                    unfinishedAttempts.size(), assignment.getId(), assignment.getExamVersionSnapshot());
+            for (int i = 1; i < unfinishedAttempts.size(); i++) {
+                expiredAttemptFinalizer.finalizeExpiredAttempt(unfinishedAttempts.get(i), now);
+            }
+            unfinishedAttempts = findUnfinishedCurrentAttempts(assignment);
         }
 
-        refreshStatus(assignment, unfinished.isPresent());
+        Optional<TrainingExamAttempt> unfinished = unfinishedAttempts.stream().findFirst();
+        if (unfinished.isPresent() && (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED)) {
+            expiredAttemptFinalizer.finalizeExpiredAttempt(unfinished.get(), now);
+            unfinished = Optional.empty();
+        }
+        if (unfinished.isPresent() && isExpiredUnfinishedAttempt(unfinished.get(), now)) {
+            expiredAttemptFinalizer.finalizeExpiredAttempt(unfinished.get(), now);
+            unfinished = Optional.empty();
+        }
+
+        assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
+        assignmentService.refreshStatus(assignment, unfinished.isPresent());
         return assignment;
     }
 
     public Optional<TrainingExamAttempt> findUnfinishedCurrentAttempt(TrainingExamAssignment assignment) {
-        return attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+        return findUnfinishedCurrentAttempts(assignment).stream().findFirst();
+    }
+
+    private List<TrainingExamAttempt> findUnfinishedCurrentAttempts(TrainingExamAssignment assignment) {
+        return attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
                 assignment.getId(),
                 assignment.getExamVersionSnapshot()
         );
@@ -52,29 +78,5 @@ class CertificationAssignmentLifecycleService {
             return false;
         }
         return attempt.getStartedAt().plusSeconds(attempt.getTimeLimitSecSnapshot()).compareTo(now) <= 0;
-    }
-
-    private void refreshStatus(TrainingExamAssignment assignment, boolean hasActiveUnfinishedAttempt) {
-        if (assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
-            return;
-        }
-        if (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
-            assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
-            return;
-        }
-        if (hasActiveUnfinishedAttempt) {
-            assignment.setStatus(TrainingExamAssignmentStatus.IN_PROGRESS);
-            return;
-        }
-
-        Integer attemptsAllowed = assignmentService.calculateAttemptsAllowed(assignment);
-        if (attemptsAllowed != null && assignment.getAttemptsUsed() >= attemptsAllowed) {
-            assignment.setStatus(TrainingExamAssignmentStatus.EXHAUSTED);
-            return;
-        }
-
-        assignment.setStatus(assignment.getAttemptsUsed() > 0
-                ? TrainingExamAssignmentStatus.FAILED
-                : TrainingExamAssignmentStatus.ASSIGNED);
     }
 }

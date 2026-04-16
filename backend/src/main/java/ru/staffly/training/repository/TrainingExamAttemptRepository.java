@@ -58,5 +58,15 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             int examVersion
     );
 
+    List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+            Long assignmentId,
+            int examVersion
+    );
+
+    List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+            Long assignmentId,
+            int examVersion
+    );
+
     List<TrainingExamAttempt> findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(Long examId, Long restaurantId, Long userId);
 }

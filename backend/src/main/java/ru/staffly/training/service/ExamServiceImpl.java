@@ -65,13 +65,12 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId) {
+        // Read-repair semantics: listing certifications can finalize stale expired unfinished attempts
+        // and update assignment derived fields/status to keep list/start/result consistent.
+        Instant now = TimeProvider.now();
         return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
                 .stream()
-                .map(assignment -> certificationAssignmentLifecycleService.normalize(
-                        assignment,
-                        TimeProvider.now(),
-                        attempt -> finalizeAttempt(attempt, Map.of(), TimeProvider.now())
-                ))
+                .map(assignment -> certificationAssignmentLifecycleService.normalize(assignment, now))
                 .map(this::toCurrentUserCertificationExamDto)
                 .toList();
     }
@@ -79,14 +78,13 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        // Read-repair semantics: self-result can mutate DB by repairing stale lifecycle state
+        // (e.g. finalize expired unfinished attempt before building result).
+        Instant now = TimeProvider.now();
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         var assignment = certificationAssignmentService.findActiveForExamAndUser(examId, restaurantId, userId)
-                .map(item -> certificationAssignmentLifecycleService.normalize(
-                        item,
-                        TimeProvider.now(),
-                        attempt -> finalizeAttempt(attempt, Map.of(), TimeProvider.now())
-                ))
+                .map(item -> certificationAssignmentLifecycleService.normalize(item, now))
                 .orElse(null);
         return certificationSelfResultService.getCurrentUserResult(exam, restaurantId, userId, assignment);
     }
@@ -249,6 +247,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        Instant now = TimeProvider.now();
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
 
@@ -265,8 +264,7 @@ public class ExamServiceImpl implements ExamService {
                     exam,
                     restaurantId,
                     userId,
-                    TimeProvider.now(),
-                    attempt -> finalizeAttempt(attempt, Map.of(), TimeProvider.now())
+                    now
             );
             attemptVersion = assignment.getExamVersionSnapshot();
         }
@@ -293,7 +291,7 @@ public class ExamServiceImpl implements ExamService {
 
         var selectedQuestions = pickQuestionsForAttempt(pool, exam.getQuestionCount());
         var relationData = loadQuestionRelations(selectedQuestions);
-        var attempt = createAttempt(exam, userId, assignment, attemptVersion);
+        var attempt = createAttempt(exam, userId, assignment, attemptVersion, now);
         var snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
 
         return new StartExamResponseDto(
@@ -489,14 +487,18 @@ public class ExamServiceImpl implements ExamService {
         return new QuestionRelations(optionsByQuestion, pairsByQuestion, blanksByQuestion, blankOptionsByBlank);
     }
 
-    private TrainingExamAttempt createAttempt(TrainingExam exam, Long userId, TrainingExamAssignment assignment, int examVersion) {
+    private TrainingExamAttempt createAttempt(TrainingExam exam,
+                                              Long userId,
+                                              TrainingExamAssignment assignment,
+                                              int examVersion,
+                                              Instant now) {
         return attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
                 .examVersion(examVersion)
                 .restaurant(exam.getRestaurant())
                 .assignment(assignment)
                 .user(User.builder().id(userId).build())
-                .startedAt(TimeProvider.now())
+                .startedAt(now)
                 .passPercentSnapshot(exam.getPassPercent())
                 .titleSnapshot(exam.getTitle())
                 .questionCountSnapshot(exam.getQuestionCount())
