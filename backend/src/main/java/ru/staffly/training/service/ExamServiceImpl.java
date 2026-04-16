@@ -43,6 +43,7 @@ public class ExamServiceImpl implements ExamService {
     private final ExamAttemptEvaluator attemptEvaluator;
     private final CertificationAssignmentSyncService assignmentSyncService;
     private final CertificationAssignmentService certificationAssignmentService;
+    private final CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
     private final CertificationManagerActionService certificationManagerActionService;
     private final CertificationAnalyticsService certificationAnalyticsService;
     private final CertificationSelfResultService certificationSelfResultService;
@@ -62,20 +63,32 @@ public class ExamServiceImpl implements ExamService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId) {
         return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
                 .stream()
+                .map(assignment -> certificationAssignmentLifecycleService.normalize(
+                        assignment,
+                        TimeProvider.now(),
+                        attempt -> finalizeAttempt(attempt, Map.of(), TimeProvider.now())
+                ))
                 .map(this::toCurrentUserCertificationExamDto)
                 .toList();
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-        return certificationSelfResultService.getCurrentUserResult(exam, restaurantId, userId);
+        var assignment = certificationAssignmentService.findActiveForExamAndUser(examId, restaurantId, userId)
+                .map(item -> certificationAssignmentLifecycleService.normalize(
+                        item,
+                        TimeProvider.now(),
+                        attempt -> finalizeAttempt(attempt, Map.of(), TimeProvider.now())
+                ))
+                .orElse(null);
+        return certificationSelfResultService.getCurrentUserResult(exam, restaurantId, userId, assignment);
     }
 
     @Override
@@ -248,22 +261,22 @@ public class ExamServiceImpl implements ExamService {
         TrainingExamAssignment assignment = null;
         int attemptVersion = exam.getVersion();
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
-            assignment = certificationAssignmentService.resolveForStart(exam, restaurantId, userId);
+            assignment = certificationAssignmentLifecycleService.normalizeForStart(
+                    exam,
+                    restaurantId,
+                    userId,
+                    TimeProvider.now(),
+                    attempt -> finalizeAttempt(attempt, Map.of(), TimeProvider.now())
+            );
             attemptVersion = assignment.getExamVersionSnapshot();
-            syncCertificationAttemptCounters(exam, assignment, restaurantId, userId, attemptVersion);
         }
 
-        var existingAttemptOpt = attempts
-                .findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
-                        examId, restaurantId, userId, attemptVersion);
+        var existingAttemptOpt = exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null
+                ? certificationAssignmentLifecycleService.findUnfinishedCurrentAttempt(assignment)
+                : attempts.findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+                examId, restaurantId, userId, attemptVersion);
         if (existingAttemptOpt.isPresent()) {
-            var existingAttempt = existingAttemptOpt.get();
-            Instant now = TimeProvider.now();
-            if (isExpiredUnfinishedAttempt(existingAttempt, now)) {
-                finalizeAttempt(existingAttempt, Map.of(), now);
-            } else {
-                return resumeAttempt(exam, existingAttempt);
-            }
+            return resumeAttempt(exam, existingAttemptOpt.get());
         }
 
         if (exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null) {
@@ -363,18 +376,6 @@ public class ExamServiceImpl implements ExamService {
                 toDtoWithSourcesAndVisibility(exam),
                 snapshots
         );
-    }
-
-    private boolean isExpiredUnfinishedAttempt(TrainingExamAttempt attempt, Instant now) {
-        if (attempt.getFinishedAt() != null) {
-            return false;
-        }
-        if (attempt.getTimeLimitSecSnapshot() == null) {
-            return false;
-        }
-        return attempt.getStartedAt()
-                .plusSeconds(attempt.getTimeLimitSecSnapshot())
-                .compareTo(now) <= 0;
     }
 
     private AttemptResultDto finalizeAttempt(TrainingExamAttempt attempt,
@@ -501,23 +502,6 @@ public class ExamServiceImpl implements ExamService {
                 .questionCountSnapshot(exam.getQuestionCount())
                 .timeLimitSecSnapshot(exam.getTimeLimitSec())
                 .build());
-    }
-
-    private void syncCertificationAttemptCounters(TrainingExam exam,
-                                                  TrainingExamAssignment assignment,
-                                                  Long restaurantId,
-                                                  Long userId,
-                                                  int attemptVersion) {
-        long finishedAttempts = attempts.countByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNotNull(
-                exam.getId(),
-                restaurantId,
-                userId,
-                attemptVersion
-        );
-        int normalizedAttemptsUsed = Math.max(assignment.getAttemptsUsed(), (int) Math.min(finishedAttempts, Integer.MAX_VALUE));
-        if (normalizedAttemptsUsed != assignment.getAttemptsUsed()) {
-            assignment.setAttemptsUsed(normalizedAttemptsUsed);
-        }
     }
 
     private List<AttemptQuestionSnapshotDto> persistAttemptQuestions(TrainingExamAttempt attempt,
@@ -704,7 +688,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getQuestionCount(),
                 exam.getPassPercent(),
                 exam.getTimeLimitSec(),
-                exam.getAttemptLimit(),
+                assignment.getAttemptsLimitSnapshot(),
                 exam.isActive(),
                 assignment.getId(),
                 assignment.getStatus(),

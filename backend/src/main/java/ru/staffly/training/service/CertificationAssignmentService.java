@@ -8,6 +8,8 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 class CertificationAssignmentService {
@@ -17,6 +19,11 @@ class CertificationAssignmentService {
     public TrainingExamAssignment resolveForStart(TrainingExam exam, Long restaurantId, Long userId) {
         return assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId)
                 .orElseThrow(() -> new ConflictException("Для вас нет активного назначения на эту аттестацию."));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<TrainingExamAssignment> findActiveForExamAndUser(Long examId, Long restaurantId, Long userId) {
+        return assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId);
     }
 
     public void ensureAttemptsAvailable(TrainingExamAssignment assignment) {
