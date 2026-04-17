@@ -40,10 +40,10 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAccessService examAccessService;
     private final ExamQuestionPoolResolver questionPoolResolver;
     private final ExamSnapshotService snapshotService;
-    private final ExamAttemptEvaluator attemptEvaluator;
     private final CertificationAssignmentSyncService assignmentSyncService;
     private final CertificationAssignmentService certificationAssignmentService;
     private final CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
+    private final CertificationAttemptFinalizationService certificationAttemptFinalizationService;
     private final CertificationManagerActionService certificationManagerActionService;
     private final CertificationAnalyticsService certificationAnalyticsService;
     private final CertificationSelfResultService certificationSelfResultService;
@@ -317,7 +317,12 @@ public class ExamServiceImpl implements ExamService {
 
         var answersByQuestionId = request.answers().stream()
                 .collect(Collectors.toMap(SubmitAttemptAnswerDto::questionId, Function.identity(), (first, second) -> second));
-        return finalizeAttempt(attempt, answersByQuestionId, TimeProvider.now());
+        var finalizedAttempt = certificationAttemptFinalizationService.finalizeUserSubmission(
+                attempt,
+                answersByQuestionId,
+                TimeProvider.now()
+        );
+        return toAttemptResultDto(finalizedAttempt);
     }
 
     @Override
@@ -376,56 +381,9 @@ public class ExamServiceImpl implements ExamService {
         );
     }
 
-    private AttemptResultDto finalizeAttempt(TrainingExamAttempt attempt,
-                                             Map<Long, SubmitAttemptAnswerDto> answersByQuestionId,
-                                             Instant finishedAt) {
-        var existingQuestions = attemptQuestions.findByAttemptId(attempt.getId());
-        int correctAnswers = 0;
-        for (var item : existingQuestions) {
-            var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
-            var answer = answersByQuestionId.get(snapshot.questionId());
-
-            if (answer != null) {
-                if (answer.answerJson() == null || answer.answerJson().isBlank()) {
-                    item.setChosenAnswerJson(null);
-                    item.setCorrect(false);
-                    continue;
-                }
-
-                attemptEvaluator.validateAnswerForType(answer.answerJson(), snapshot);
-                item.setChosenAnswerJson(answer.answerJson());
-                boolean correct = attemptEvaluator.isAnswerCorrect(answer.answerJson(), item.getCorrectKeyJson(), snapshot.type());
-                item.setCorrect(correct);
-                if (correct) {
-                    correctAnswers++;
-                }
-                continue;
-            }
-
-            if (item.getChosenAnswerJson() == null || item.getChosenAnswerJson().isBlank()) {
-                item.setChosenAnswerJson(null);
-                item.setCorrect(false);
-                continue;
-            }
-
-            boolean correct = attemptEvaluator.isAnswerCorrect(item.getChosenAnswerJson(), item.getCorrectKeyJson(), snapshot.type());
-            item.setCorrect(correct);
-            if (correct) {
-                correctAnswers++;
-            }
-        }
-
-        int scorePercent = existingQuestions.isEmpty()
-                ? 0
-                : (int) Math.round((correctAnswers * 100.0) / existingQuestions.size());
-
-        attempt.setFinishedAt(finishedAt);
-        attempt.setScorePercent(scorePercent);
-        attempt.setPassed(scorePercent >= attempt.getPassPercentSnapshot());
-        if (attempt.getExam() != null && attempt.getExam().getMode() == TrainingExamMode.CERTIFICATION) {
-            certificationAssignmentService.updateOnSubmit(attempt);
-        }
-
+    private AttemptResultDto toAttemptResultDto(CertificationAttemptFinalizationService.FinalizedAttemptPayload finalizedAttempt) {
+        var attempt = finalizedAttempt.attempt();
+        var existingQuestions = finalizedAttempt.questions();
         return new AttemptResultDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),

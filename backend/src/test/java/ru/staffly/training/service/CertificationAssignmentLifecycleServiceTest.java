@@ -24,13 +24,13 @@ class CertificationAssignmentLifecycleServiceTest {
     @Mock
     private CertificationAssignmentService assignmentService;
     @Mock
-    private CertificationExpiredAttemptFinalizer expiredAttemptFinalizer;
+    private CertificationAttemptFinalizationService attemptFinalizationService;
 
     private CertificationAssignmentLifecycleService lifecycleService;
 
     @BeforeEach
     void setUp() {
-        lifecycleService = new CertificationAssignmentLifecycleService(attempts, assignmentService, expiredAttemptFinalizer);
+        lifecycleService = new CertificationAssignmentLifecycleService(attempts, assignmentService, attemptFinalizationService);
     }
 
     @Test
@@ -43,7 +43,7 @@ class CertificationAssignmentLifecycleServiceTest {
 
         lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        verify(expiredAttemptFinalizer).finalizeExpiredAttempt(eq(expiredAttempt), eq(Instant.parse("2026-04-16T10:10:00Z")));
+        verify(attemptFinalizationService).finalizeExpiredUnfinishedAttempt(eq(expiredAttempt), eq(Instant.parse("2026-04-16T10:10:00Z")));
         verify(assignmentService).reconcileDerivedStateFromFinishedAttempts(assignment);
         verify(assignmentService).refreshStatus(assignment, false);
     }
@@ -58,7 +58,7 @@ class CertificationAssignmentLifecycleServiceTest {
 
         lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        verify(expiredAttemptFinalizer, never()).finalizeExpiredAttempt(any(), any());
+        verify(attemptFinalizationService, never()).finalizeExpiredUnfinishedAttempt(any(), any());
         verify(assignmentService).reconcileDerivedStateFromFinishedAttempts(assignment);
         verify(assignmentService).refreshStatus(assignment, true);
     }
@@ -98,7 +98,7 @@ class CertificationAssignmentLifecycleServiceTest {
 
         lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:00:00Z"));
 
-        verify(expiredAttemptFinalizer).finalizeExpiredAttempt(eq(zeroLimitAttempt), eq(Instant.parse("2026-04-16T10:00:00Z")));
+        verify(attemptFinalizationService).finalizeExpiredUnfinishedAttempt(eq(zeroLimitAttempt), eq(Instant.parse("2026-04-16T10:00:00Z")));
     }
 
     @Test
@@ -113,7 +113,7 @@ class CertificationAssignmentLifecycleServiceTest {
 
         lifecycleService.normalize(assignment, Instant.parse("2026-04-16T10:10:00Z"));
 
-        verify(expiredAttemptFinalizer).finalizeExpiredAttempt(eq(staleDuplicate), eq(Instant.parse("2026-04-16T10:10:00Z")));
+        verify(attemptFinalizationService).finalizeStaleUnfinishedAttemptForLifecycleRepair(eq(staleDuplicate), eq(Instant.parse("2026-04-16T10:10:00Z")));
         verify(assignmentService).refreshStatus(assignment, true);
     }
 

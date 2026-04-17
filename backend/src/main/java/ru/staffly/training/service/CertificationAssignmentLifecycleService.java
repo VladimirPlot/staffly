@@ -19,7 +19,7 @@ import java.util.Optional;
 class CertificationAssignmentLifecycleService {
     private final TrainingExamAttemptRepository attempts;
     private final CertificationAssignmentService assignmentService;
-    private final CertificationExpiredAttemptFinalizer expiredAttemptFinalizer;
+    private final CertificationAttemptFinalizationService attemptFinalizationService;
 
     public TrainingExamAssignment normalizeForStart(TrainingExam exam,
                                                     Long restaurantId,
@@ -42,18 +42,18 @@ class CertificationAssignmentLifecycleService {
                             "Keeping latest, force-finalizing stale duplicates for lifecycle repair.",
                     unfinishedAttempts.size(), assignment.getId(), assignment.getExamVersionSnapshot());
             for (int i = 1; i < unfinishedAttempts.size(); i++) {
-                expiredAttemptFinalizer.finalizeExpiredAttempt(unfinishedAttempts.get(i), now);
+                attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinishedAttempts.get(i), now);
             }
             unfinishedAttempts = findUnfinishedCurrentAttempts(assignment);
         }
 
         Optional<TrainingExamAttempt> unfinished = unfinishedAttempts.stream().findFirst();
         if (unfinished.isPresent() && (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED)) {
-            expiredAttemptFinalizer.finalizeExpiredAttempt(unfinished.get(), now);
+            attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished.get(), now);
             unfinished = Optional.empty();
         }
         if (unfinished.isPresent() && isExpiredUnfinishedAttempt(unfinished.get(), now)) {
-            expiredAttemptFinalizer.finalizeExpiredAttempt(unfinished.get(), now);
+            attemptFinalizationService.finalizeExpiredUnfinishedAttempt(unfinished.get(), now);
             unfinished = Optional.empty();
         }
 

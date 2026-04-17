@@ -39,7 +39,7 @@ class ExamServiceImplTest {
     @Mock private TrainingExamAccessService examAccessService;
     @Mock private ExamQuestionPoolResolver questionPoolResolver;
     @Mock private ExamSnapshotService snapshotService;
-    @Mock private ExamAttemptEvaluator attemptEvaluator;
+    @Mock private CertificationAttemptFinalizationService certificationAttemptFinalizationService;
     @Mock private CertificationAssignmentSyncService assignmentSyncService;
     @Mock private CertificationAssignmentService certificationAssignmentService;
     @Mock private CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
@@ -199,7 +199,7 @@ class ExamServiceImplTest {
         var result = service.getCurrentUserCertificationResult(10L, 100L, 501L, false);
 
         assertEquals(2, result.attemptsUsed());
-        assertEquals(TrainingExamAssignmentStatus.EXHAUSTED, result.status());
+        assertEquals(TrainingExamAssignmentStatus.EXHAUSTED, result.assignmentStatus());
         verify(certificationSelfResultService).getCurrentUserResult(exam, 10L, 501L, normalized);
     }
 
