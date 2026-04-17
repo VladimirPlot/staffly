@@ -2,6 +2,8 @@ import * as React from "react";
 import * as RadixSelect from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 
+const DROPDOWN_SELECT_OPEN_EVENT = "staffly:dropdown-select-open";
+
 type Option = {
   value: string;
   label: React.ReactNode;
@@ -91,6 +93,7 @@ export default function DropdownSelect({
   name,
   required,
 }: Props) {
+  const instanceId = React.useId();
   const labelId = React.useId();
   const options = React.useMemo(() => parseOptions(children), [children]);
   const isControlled = value != null;
@@ -137,6 +140,34 @@ export default function DropdownSelect({
     setHighlightedValue(selectedOption?.value ?? selectableOptions.find((option) => !option.disabled)?.value ?? null);
   }, [open, selectableOptions, selectedOption]);
 
+  React.useEffect(() => {
+    const handleAnotherSelectOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ instanceId: string }>;
+
+      if (customEvent.detail.instanceId !== instanceId) {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener(DROPDOWN_SELECT_OPEN_EVENT, handleAnotherSelectOpen);
+    return () => window.removeEventListener(DROPDOWN_SELECT_OPEN_EVENT, handleAnotherSelectOpen);
+  }, [instanceId]);
+
+  const handleOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen) {
+        window.dispatchEvent(
+          new CustomEvent(DROPDOWN_SELECT_OPEN_EVENT, {
+            detail: { instanceId },
+          }),
+        );
+      }
+
+      setOpen(nextOpen);
+    },
+    [instanceId],
+  );
+
   return (
     <div className="block min-w-0">
       {label && (
@@ -149,7 +180,7 @@ export default function DropdownSelect({
         value={selectedValue}
         onValueChange={handleValueChange}
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={handleOpenChange}
         disabled={disabled || enabledOptionsCount === 0}
         name={name}
         required={required}
