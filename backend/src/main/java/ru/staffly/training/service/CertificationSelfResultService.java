@@ -15,7 +15,6 @@ import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptQuestionRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 
-import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -39,26 +38,20 @@ class CertificationSelfResultService {
         var assignment = normalizedActiveAssignment != null
                 ? normalizedActiveAssignment
                 : assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId).orElse(null);
-        var finishedAttempts = attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(exam.getId(), restaurantId, userId).stream()
-                .filter(attempt -> attempt.getFinishedAt() != null)
-                .filter(attempt -> attempt.getAssignment() != null)
-                .toList();
+        var fallbackAssignment = assignment == null
+                ? assignments.findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(exam.getId(), restaurantId, userId).orElse(null)
+                : null;
+        var assignmentForResult = assignment != null ? assignment : fallbackAssignment;
 
-        if (assignment == null && finishedAttempts.isEmpty()) {
+        if (assignmentForResult == null) {
             throw new ConflictException("Для вас нет назначения или истории попыток по этой аттестации.");
         }
 
-        var assignmentForResult = assignment != null
-                ? assignment
-                : finishedAttempts.stream()
-                .map(attempt -> attempt.getAssignment())
-                .max(Comparator.comparing(TrainingExamAssignment::getAssignedAt))
-                .orElseThrow(() -> new ConflictException("Assignment context is missing."));
-
-        var lastFinishedAttempt = finishedAttempts.stream()
-                .filter(attempt -> attempt.getAssignment() != null
-                        && assignmentForResult.getId().equals(attempt.getAssignment().getId()))
-                .max(Comparator.comparing(attempt -> attempt.getFinishedAt()));
+        var finishedAttempts = attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+                assignmentForResult.getId(),
+                assignmentForResult.getExamVersionSnapshot()
+        );
+        var lastFinishedAttempt = finishedAttempts.stream().findFirst();
 
         Integer attemptsAllowed = certificationAssignmentService.calculateAttemptsAllowed(assignmentForResult);
         boolean passed = lastFinishedAttempt.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)

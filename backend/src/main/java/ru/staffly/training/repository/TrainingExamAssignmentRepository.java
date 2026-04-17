@@ -25,6 +25,12 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
 
     Optional<TrainingExamAssignment> findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(Long examId, Long restaurantId, Long userId);
 
+    Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
+            Long examId,
+            Long restaurantId,
+            Long userId
+    );
+
     List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndActiveTrue(Long examId, Long restaurantId);
 
     @Query("""

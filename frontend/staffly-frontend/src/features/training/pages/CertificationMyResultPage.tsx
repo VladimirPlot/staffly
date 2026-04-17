@@ -56,8 +56,7 @@ function renderAnswer(rawAnswerJson?: string | null, emptyLabel = "Ответ н
 
 function isPassedResult(data: CertificationMyResultDto): boolean {
   if (data.passedAt) return true;
-  if (data.scorePercent == null) return false;
-  return data.scorePercent >= data.passPercent;
+  return data.assignmentStatus === "PASSED";
 }
 
 export default function CertificationMyResultPage() {
@@ -120,7 +119,7 @@ export default function CertificationMyResultPage() {
             <div className="text-lg font-semibold">{data.title}</div>
             {data.description && <div className="text-sm text-muted">{data.description}</div>}
             <div className="text-sm text-muted">
-              Статус: {data.scorePercent == null ? "нет завершённой попытки" : data.scorePercent >= data.passPercent ? "сдано" : "не сдано"} ·
+              Статус: {data.scorePercent == null ? "нет завершённой попытки" : isPassedResult(data) ? "сдано" : "не сдано"} ·
               Итог: {data.scorePercent == null ? "—" : `${data.scorePercent}%`} ·
               Лучший результат: {data.bestScore == null ? "—" : `${data.bestScore}%`} ·
               Попыток: {data.attemptsAllowed == null ? `${data.attemptsUsed}/∞` : `${data.attemptsUsed}/${data.attemptsAllowed}`}

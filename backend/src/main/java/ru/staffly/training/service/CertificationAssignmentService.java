@@ -183,13 +183,28 @@ class CertificationAssignmentService {
     public void fullResetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
         var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
                 .orElseThrow(() -> new NotFoundException("Assignment not found"));
-        assignment.setExamVersionSnapshot(assignment.getExam().getVersion());
-        assignment.setAttemptsUsed(0);
-        assignment.setExtraAttempts(0);
-        assignment.setBestScore(null);
-        assignment.setLastAttemptAt(null);
-        assignment.setPassedAt(null);
-        assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+        assignment.setActive(false);
+        assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
+
+        var memberPosition = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+                .map(RestaurantMember::getPosition)
+                .orElse(null);
+        var assignedPosition = memberPosition != null ? memberPosition : assignment.getAssignedPosition();
+        assignments.save(TrainingExamAssignment.builder()
+                .exam(assignment.getExam())
+                .restaurant(assignment.getRestaurant())
+                .user(assignment.getUser())
+                .assignedPosition(assignedPosition)
+                .attemptsLimitSnapshot(assignment.getExam().getAttemptLimit())
+                .examVersionSnapshot(assignment.getExam().getVersion())
+                .extraAttempts(0)
+                .attemptsUsed(0)
+                .bestScore(null)
+                .lastAttemptAt(null)
+                .passedAt(null)
+                .status(TrainingExamAssignmentStatus.ASSIGNED)
+                .active(true)
+                .build());
     }
 
     @Transactional
