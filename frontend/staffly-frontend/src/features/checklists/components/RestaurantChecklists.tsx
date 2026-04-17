@@ -413,7 +413,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
     <Card className="mt-4">
       <div className="flex flex-col gap-4">
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
           <Input
             label="Поиск"
             value={searchTerm}
@@ -425,7 +425,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
             <>
               <DropdownSelect
                 aria-label="Фильтр по должности"
-                className="rounded-2xl p-2 text-base"
+                className="h-10 rounded-2xl px-3 text-sm shadow-[var(--staffly-shadow)] transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
                 value={positionFilter ?? ""}
                 onChange={(event) => setPositionFilter(event.target.value ? Number(event.target.value) : null)}
               >
