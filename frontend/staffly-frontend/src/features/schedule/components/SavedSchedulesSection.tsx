@@ -2,6 +2,7 @@ import React from "react";
 
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import { type PositionDto } from "../../dictionaries/api";
 import { type ScheduleSummary } from "../api";
 import Icon from "../../../shared/ui/Icon";
@@ -70,10 +71,11 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
           </div>
         </div>
         {canManage && (
-          <div className="flex items-center gap-2 text-sm text-default">
-            <span>Должность:</span>
-            <select
-              className="rounded-lg border border-subtle bg-surface px-3 py-2 text-base text-default focus:outline-none focus:ring-2 ring-default [color-scheme:dark]"
+          <div className="flex flex-wrap items-center gap-2 text-sm text-default">
+            <span className="shrink-0 whitespace-nowrap text-muted">Должность:</span>
+            <DropdownSelect
+              aria-label="Должность"
+              className="!w-auto min-w-[5.75rem] shrink-0 rounded-2xl px-3 py-2 text-base shadow-[var(--staffly-shadow)] sm:!w-[9.5rem]"
               value={positionFilter}
               onChange={(e) =>
                 onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))
@@ -85,7 +87,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                   {position.name}
                 </option>
               ))}
-            </select>
+            </DropdownSelect>
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import React from "react";
 
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type { ScheduleData, ScheduleCellKey, ShiftMode } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import {
@@ -449,7 +450,8 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
 
   return (
     <div className="flex w-full items-center justify-center gap-1">
-      <select
+      <DropdownSelect
+        aria-label="Часы"
         value={selectedHour}
         onChange={(event) => {
           const rawValue = event.target.value;
@@ -463,9 +465,10 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
             {String(hour).padStart(2, "0")}
           </option>
         ))}
-      </select>
+      </DropdownSelect>
 
-      <select
+      <DropdownSelect
+        aria-label="Минуты"
         value={selectedMinute}
         onChange={(event) => {
           const rawValue = event.target.value;
@@ -481,7 +484,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
             {String(minute).padStart(2, "0")}
           </option>
         ))}
-      </select>
+      </DropdownSelect>
     </div>
   );
 }

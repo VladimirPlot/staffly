@@ -200,18 +200,30 @@
   }
 
   .staffly-phone-country {
-    @apply relative flex min-w-[84px] items-center justify-center rounded-2xl border px-3 shadow-sm transition;
+    @apply relative flex min-w-[96px] items-stretch justify-start rounded-2xl border px-2 shadow-sm transition;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
   }
 
-  .staffly-phone .PhoneInputCountrySelect {
-    @apply absolute inset-0 h-full w-full cursor-pointer opacity-0;
+  .staffly-phone-country .PhoneInputCountryTrigger {
+    @apply flex-1 self-stretch rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none outline-none;
+    min-width: 0;
+    box-shadow: none;
+  }
+
+  .staffly-phone-country .PhoneInputCountryTrigger:focus,
+  .staffly-phone-country .PhoneInputCountryTrigger:focus-visible {
+    box-shadow: none;
+    outline: none;
   }
 
   .staffly-phone-countryValue {
     @apply flex items-center gap-2 text-sm font-medium;
     color: var(--staffly-text);
+  }
+
+  .staffly-phone-countryOption {
+    @apply flex items-center gap-2 whitespace-nowrap;
   }
 
   .staffly-phone-countryValue svg {
@@ -250,12 +262,12 @@
   }
 
   .staffly-phone:has(.PhoneInputInput:focus) .staffly-phone-country,
-  .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
+  .staffly-phone-country:has(.PhoneInputCountryTrigger:focus-visible) {
     box-shadow: 0 0 0 2px var(--staffly-ring);
   }
 
   .staffly-phone.is-error:has(.PhoneInputInput:focus) .staffly-phone-country,
-  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
+  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountryTrigger:focus-visible) {
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1);
   }
 }

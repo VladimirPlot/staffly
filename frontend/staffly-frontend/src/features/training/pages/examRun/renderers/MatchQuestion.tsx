@@ -1,4 +1,5 @@
 import type { AttemptQuestionSnapshotDto } from "../../../api/types";
+import DropdownSelect from "../../../../../shared/ui/DropdownSelect";
 import { parseMatchAnswer } from "../answerUtils";
 import QuestionFrame from "./QuestionFrame";
 
@@ -35,8 +36,9 @@ export default function MatchQuestion({
           return (
             <div key={pair.leftText} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-default">{pair.leftText}</div>
-              <select
-                className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm text-default sm:max-w-xs"
+              <DropdownSelect
+                aria-label={pair.leftText}
+                className="w-full rounded-xl px-3 py-2 text-sm sm:max-w-xs"
                 value={value}
                 disabled={isConfirmed}
                 onChange={(event) => onChange(pair.leftText, event.target.value)}
@@ -45,7 +47,7 @@ export default function MatchQuestion({
                 {optionsFor(value).map((right) => (
                   <option key={right} value={right}>{right}</option>
                 ))}
-              </select>
+              </DropdownSelect>
             </div>
           );
         })}
