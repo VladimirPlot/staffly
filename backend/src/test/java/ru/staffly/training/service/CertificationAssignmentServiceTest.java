@@ -5,6 +5,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
@@ -22,6 +23,8 @@ class CertificationAssignmentServiceTest {
     private TrainingExamAssignmentRepository assignments;
     @Mock
     private TrainingExamAttemptRepository attempts;
+    @Mock
+    private RestaurantMemberRepository members;
 
     @InjectMocks
     private CertificationAssignmentService service;

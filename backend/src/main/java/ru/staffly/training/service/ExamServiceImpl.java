@@ -40,7 +40,6 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAccessService examAccessService;
     private final ExamQuestionPoolResolver questionPoolResolver;
     private final ExamSnapshotService snapshotService;
-    private final CertificationAssignmentSyncService assignmentSyncService;
     private final CertificationAssignmentService certificationAssignmentService;
     private final CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
     private final CertificationAttemptFinalizationService certificationAttemptFinalizationService;
@@ -130,7 +129,7 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        assignmentSyncService.syncForExam(exam);
+        certificationAssignmentService.syncAudienceAssignments(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -178,7 +177,7 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        assignmentSyncService.syncForExam(exam);
+        certificationAssignmentService.syncAudienceAssignments(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -195,7 +194,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(true);
-        assignmentSyncService.syncForExam(exam);
+        certificationAssignmentService.syncAudienceAssignments(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -215,7 +214,7 @@ public class ExamServiceImpl implements ExamService {
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableCertificationExam(restaurantId, userId, examId);
         startNewCertificationCycle(exam);
-        assignmentSyncService.resetAssignmentsForNewCycle(exam);
+        certificationAssignmentService.resetAssignmentsForNewCycle(exam);
     }
 
     @Override

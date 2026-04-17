@@ -18,6 +18,9 @@ export default function CertificationMyExamCard({ exam }: Props) {
   const attemptsText = exam.attemptsAllowed == null
     ? `${exam.attemptsUsed}/∞`
     : `${exam.attemptsUsed}/${exam.attemptsAllowed}`;
+  const attemptsDetailsText = exam.baseAttemptLimit == null
+    ? `Дополнительные попытки: +${exam.extraAttempts}`
+    : `Базовый лимит: ${exam.baseAttemptLimit} · Дополнительные: +${exam.extraAttempts}`;
   const hasAttemptsLeft = exam.attemptsAllowed == null || exam.attemptsUsed < exam.attemptsAllowed;
   const hasInProgressAttempt = exam.assignmentStatus === "IN_PROGRESS";
   const hasFinishedAttempt = exam.assignmentStatus === "FAILED" || exam.assignmentStatus === "EXHAUSTED" || exam.assignmentStatus === "PASSED";
@@ -42,6 +45,7 @@ export default function CertificationMyExamCard({ exam }: Props) {
       <div className="mt-2 text-sm text-muted">
         Вопросов: {exam.questionCount} · Проходной: {exam.passPercent}% · Попыток: {attemptsText} · Время: {formatDuration(exam.timeLimitSec)}
       </div>
+      <div className="mt-1 text-sm text-muted">{attemptsDetailsText}</div>
 
       <div className="mt-2 text-sm text-muted">
         {resultText ? `Лучший результат: ${resultText}` : "Итогового результата пока нет"}

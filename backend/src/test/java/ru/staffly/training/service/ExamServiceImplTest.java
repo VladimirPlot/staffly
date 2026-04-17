@@ -40,7 +40,6 @@ class ExamServiceImplTest {
     @Mock private ExamQuestionPoolResolver questionPoolResolver;
     @Mock private ExamSnapshotService snapshotService;
     @Mock private CertificationAttemptFinalizationService certificationAttemptFinalizationService;
-    @Mock private CertificationAssignmentSyncService assignmentSyncService;
     @Mock private CertificationAssignmentService certificationAssignmentService;
     @Mock private CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
     @Mock private CertificationManagerActionService certificationManagerActionService;

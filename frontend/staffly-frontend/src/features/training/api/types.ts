@@ -157,7 +157,7 @@ export type CurrentUserCertificationExamDto = {
   questionCount: number;
   passPercent: number;
   timeLimitSec?: number | null;
-  attemptLimit?: number | null;
+  baseAttemptLimit?: number | null;
   active: boolean;
   assignmentId: number;
   assignmentStatus: CertificationAssignmentStatus;
