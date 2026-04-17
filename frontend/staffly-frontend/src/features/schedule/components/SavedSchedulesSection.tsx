@@ -71,11 +71,11 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
           </div>
         </div>
         {canManage && (
-          <div className="flex items-center gap-2 text-sm text-default">
-            <span>Должность:</span>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-default">
+            <span className="shrink-0 whitespace-nowrap text-muted">Должность:</span>
             <DropdownSelect
               aria-label="Должность"
-              className="rounded-lg px-3 py-2 text-base"
+              className="!w-auto min-w-[5.75rem] shrink-0 rounded-2xl px-3 py-2 text-base shadow-[var(--staffly-shadow)] sm:!w-[9.5rem]"
               value={positionFilter}
               onChange={(e) =>
                 onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))
