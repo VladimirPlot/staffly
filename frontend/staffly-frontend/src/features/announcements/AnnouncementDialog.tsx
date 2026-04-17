@@ -4,6 +4,7 @@ import Modal from "../../shared/ui/Modal";
 import Input from "../../shared/ui/Input";
 import Textarea from "../../shared/ui/Textarea";
 import Button from "../../shared/ui/Button";
+import DropdownSelect from "../../shared/ui/DropdownSelect";
 import type { AnnouncementRequest } from "./api";
 import type { PositionDto } from "../dictionaries/api";
 import Icon from "../../shared/ui/Icon";
@@ -138,8 +139,9 @@ const AnnouncementDialog = ({
           <div className="space-y-3">
             {fields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
-                <select
-                  className="flex-1 rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                <DropdownSelect
+                  aria-label="Должность"
+                  className="flex-1 rounded-2xl p-2 text-base"
                   value={field.value}
                   onChange={(event) => handleChange(field.id, event.target.value)}
                   disabled={submitting}
@@ -155,7 +157,7 @@ const AnnouncementDialog = ({
                       {!position.active ? " (неактивна)" : ""}
                     </option>
                   ))}
-                </select>
+                </DropdownSelect>
                 <Button
                   variant="outline"
                   size="icon"

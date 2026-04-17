@@ -2,6 +2,7 @@ import React from "react";
 
 import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Textarea from "../../../shared/ui/Textarea";
 import type { MemberDto } from "../../employees/api";
 import type { ScheduleData } from "../types";
@@ -103,8 +104,9 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="text-sm font-medium text-default">Моя смена</div>
-          <select
-            className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
+          <DropdownSelect
+            aria-label="Моя смена"
+            className="w-full rounded-2xl px-3 py-2 text-base"
             value={selectedDay}
             onChange={(e) => setSelectedDay(e.target.value)}
           >
@@ -114,13 +116,14 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
                 {formatLabel(item)}
               </option>
             ))}
-          </select>
+          </DropdownSelect>
         </div>
 
         <div className="space-y-2">
           <div className="text-sm font-medium text-default">Кто меня заменяет</div>
-          <select
-            className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
+          <DropdownSelect
+            aria-label="Кто меня заменяет"
+            className="w-full rounded-2xl px-3 py-2 text-base"
             value={selectedMember}
             onChange={(e) => setSelectedMember(e.target.value)}
             disabled={!selectedDay}
@@ -131,7 +134,7 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
                 {memberDisplayName(member, displayNames)}
               </option>
             ))}
-          </select>
+          </DropdownSelect>
           {!selectedDay && <div className="text-xs text-muted">Сначала выберите день.</div>}
         </div>
 

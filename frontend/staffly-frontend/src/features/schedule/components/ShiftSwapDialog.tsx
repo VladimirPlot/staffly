@@ -2,6 +2,7 @@ import React from "react";
 
 import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Textarea from "../../../shared/ui/Textarea";
 import type { MemberDto } from "../../employees/api";
 import type { ScheduleData } from "../types";
@@ -148,8 +149,9 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="text-sm font-medium text-default">Моя смена</div>
-          <select
-            className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
+          <DropdownSelect
+            aria-label="Моя смена"
+            className="w-full rounded-2xl px-3 py-2 text-base"
             value={myDay}
             onChange={(e) => setMyDay(e.target.value)}
           >
@@ -159,13 +161,14 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
                 {formatLabel(item)}
               </option>
             ))}
-          </select>
+          </DropdownSelect>
         </div>
 
         <div className="space-y-2">
           <div className="text-sm font-medium text-default">С кем обменяться</div>
-          <select
-            className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
+          <DropdownSelect
+            aria-label="С кем обменяться"
+            className="w-full rounded-2xl px-3 py-2 text-base"
             value={targetMemberId}
             onChange={(e) => setTargetMemberId(e.target.value)}
             disabled={!myDay}
@@ -176,15 +179,16 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
                 {memberDisplayName(member, displayNames)}
               </option>
             ))}
-          </select>
+          </DropdownSelect>
           {!myDay && <div className="text-xs text-muted">Сначала выберите свою смену.</div>}
         </div>
 
         {targetMemberId && (
           <div className="space-y-2">
             <div className="text-sm font-medium text-default">Смена коллеги</div>
-            <select
-              className="w-full rounded-2xl border border-subtle px-3 py-2 text-base"
+            <DropdownSelect
+              aria-label="Смена коллеги"
+              className="w-full rounded-2xl px-3 py-2 text-base"
               value={targetDay}
               onChange={(e) => setTargetDay(e.target.value)}
             >
@@ -194,7 +198,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
                   {formatLabel(item)}
                 </option>
               ))}
-            </select>
+            </DropdownSelect>
           </div>
         )}
 

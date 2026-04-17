@@ -1,5 +1,6 @@
 import Button from "../../../../shared/ui/Button";
 import Card from "../../../../shared/ui/Card";
+import DropdownSelect from "../../../../shared/ui/DropdownSelect";
 import type { CertificationAssignmentStatus } from "../../api/types";
 import type { CertificationEmployeesState, CertificationManagerActionsState, CertificationStatusFilter } from "../../hooks/certification/types";
 import { getCertificationAssignmentStatusLabel } from "../../utils/certificationAssignment";
@@ -46,10 +47,10 @@ export default function CertificationEmployeesSection({
         <div className="text-sm font-semibold">Сотрудники</div>
         <div className="flex flex-wrap gap-2">
           <input className="rounded-xl border border-subtle bg-surface px-3 py-2 text-sm" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Поиск по ФИО" />
-          <select className="rounded-xl border border-subtle bg-surface px-3 text-sm" value={statusFilter} onChange={(event) => onStatusFilterChange(toStatusFilter(event.target.value))}>
+          <DropdownSelect aria-label="Статус" className="rounded-xl px-3 text-sm" value={statusFilter} onChange={(event) => onStatusFilterChange(toStatusFilter(event.target.value))}>
             <option value="ALL">Все статусы</option>
             {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{getCertificationAssignmentStatusLabel(status)}</option>)}
-          </select>
+          </DropdownSelect>
         </div>
       </div>
 
