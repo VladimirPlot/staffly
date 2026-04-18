@@ -16,6 +16,7 @@ type Props = {
   alignClassName?: string; // оставляем, но для fixed используем только left/right смысл
   triggerWrapperClassName?: string;
   matchTriggerWidth?: boolean;
+  positionAnchorRef?: React.RefObject<HTMLElement | null>;
   mobileSheetTitle?: React.ReactNode;
   mobileSheetSubtitle?: React.ReactNode;
   mobileSheetClassName?: string;
@@ -46,6 +47,7 @@ export default function DropdownMenu({
   alignClassName = "right-0",
   triggerWrapperClassName = "relative inline-flex",
   matchTriggerWidth = false,
+  positionAnchorRef,
   mobileSheetTitle,
   mobileSheetSubtitle,
   mobileSheetClassName = "",
@@ -165,10 +167,11 @@ export default function DropdownMenu({
 
     const compute = () => {
       const triggerEl = triggerWrapRef.current;
+      const anchorEl = positionAnchorRef?.current ?? triggerEl;
       const menuEl = desktopMenuRef.current;
-      if (!triggerEl || !menuEl) return;
+      if (!anchorEl || !menuEl) return;
 
-      const t = triggerEl.getBoundingClientRect();
+      const t = anchorEl.getBoundingClientRect();
       setTriggerWidth(t.width);
 
       // menu size (after render)
@@ -199,16 +202,31 @@ export default function DropdownMenu({
     // initial + next frame (чтобы размеры меню точно были)
     compute();
     const raf = window.requestAnimationFrame(compute);
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            compute();
+          });
+
+    const triggerEl = triggerWrapRef.current;
+    const anchorEl = positionAnchorRef?.current ?? triggerEl;
+    const menuEl = desktopMenuRef.current;
+
+    if (anchorEl) resizeObserver?.observe(anchorEl);
+    if (menuEl) resizeObserver?.observe(menuEl);
+    if (triggerEl && triggerEl !== anchorEl) resizeObserver?.observe(triggerEl);
 
     window.addEventListener("resize", compute);
     window.addEventListener("scroll", compute, true);
 
     return () => {
       window.cancelAnimationFrame(raf);
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", compute);
       window.removeEventListener("scroll", compute, true);
     };
-  }, [open, isMobile, alignClassName, menuClassName, matchTriggerWidth]);
+  }, [open, isMobile, alignClassName, matchTriggerWidth, positionAnchorRef]);
 
   // ✅ Desktop: close on outside click (capture)
   useEffect(() => {

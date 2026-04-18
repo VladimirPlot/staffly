@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 
 import Modal from "../../shared/ui/Modal";
@@ -43,6 +43,7 @@ const AnnouncementDialog = ({
   const [positionQuery, setPositionQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const positionFieldRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -159,12 +160,13 @@ const AnnouncementDialog = ({
       <div className="space-y-4">
         <div>
           <div className="mb-2 text-sm text-muted">Должности</div>
-          <div className="space-y-2">
+          <div ref={positionFieldRef} className="space-y-2">
             <DropdownMenu
               disabled={submitting || availablePositions.length === 0}
               open={pickerOpen}
               onOpenChange={setPickerOpen}
               matchTriggerWidth
+              positionAnchorRef={positionFieldRef}
               alignClassName="left-0"
               menuClassName="w-[min(30rem,calc(100vw-1rem))]"
               mobileSheetTitle="Должности"
