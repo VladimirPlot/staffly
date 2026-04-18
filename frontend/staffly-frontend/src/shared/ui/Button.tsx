@@ -23,7 +23,7 @@ export default function Button({
   ...rest
 }: Props) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-2xl font-medium transition shadow-sm " +
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl font-medium leading-none transition shadow-sm " +
     "focus:outline-none focus:ring-2 " +
     "disabled:cursor-not-allowed disabled:opacity-60";
 

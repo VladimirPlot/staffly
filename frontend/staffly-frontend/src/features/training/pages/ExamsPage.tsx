@@ -207,23 +207,42 @@ export default function ExamsPage() {
       )}
 
       {showManageSection && (
-        <section className="space-y-3 rounded-2xl border border-subtle bg-surface p-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <h3 className="text-lg font-semibold">Управление аттестациями</h3>
-            <Button variant="outline" onClick={() => { setEditingExam(null); setModalOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" />Создать аттестацию
+        <section className="space-y-4 rounded-2xl border border-subtle bg-surface p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <h3 className="text-balance text-lg font-semibold">Управление аттестациями</h3>
+            <Button
+              variant="outline"
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => {
+                setEditingExam(null);
+                setModalOpen(true);
+              }}
+            >
+              Создать аттестацию
             </Button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <SelectField label="Должность" value={positionFilter ?? ""} onChange={(event) => updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })}>
-              <option value="">Все должности</option>
-              {manageablePositions.map((position) => (
-                <option key={position.id} value={position.id}>{position.name}</option>
-              ))}
-            </SelectField>
-            <div className="pt-6">
-              <Switch label="Показать скрытые" checked={includeInactive} onChange={(event) => updateQuery({ includeInactive: event.target.checked })} />
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="min-w-0 md:flex-1 md:max-w-xl">
+              <SelectField
+                label="Должность"
+                value={positionFilter ?? ""}
+                onChange={(event) => updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })}
+              >
+                <option value="">Все должности</option>
+                {manageablePositions.map((position) => (
+                  <option key={position.id} value={position.id}>
+                    {position.name}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+            <div className="md:shrink-0">
+              <Switch
+                label="Показать скрытые"
+                checked={includeInactive}
+                onChange={(event) => updateQuery({ includeInactive: event.target.checked })}
+              />
             </div>
           </div>
 
