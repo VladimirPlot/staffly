@@ -69,4 +69,28 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
     );
 
     List<TrainingExamAttempt> findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(Long examId, Long restaurantId, Long userId);
+
+    @Query("""
+            select a from TrainingExamAttempt a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.user.id = :userId
+              and a.examVersion = :examVersion
+              and a.finishedAt is null
+              and (
+                (:assignmentId is null and a.assignment is null)
+                or a.assignment.id = :assignmentId
+              )
+            order by a.startedAt desc, a.id desc
+            """)
+    Optional<TrainingExamAttempt> findTopUnfinishedForStartContext(@Param("examId") Long examId,
+                                                                   @Param("restaurantId") Long restaurantId,
+                                                                   @Param("userId") Long userId,
+                                                                   @Param("examVersion") int examVersion,
+                                                                   @Param("assignmentId") Long assignmentId);
+
+    Optional<TrainingExamAttempt> findTopByAssignmentIdAndExamVersionAndPassedTrueAndFinishedAtIsNotNullOrderByFinishedAtAscIdAsc(
+            Long assignmentId,
+            int examVersion
+    );
 }

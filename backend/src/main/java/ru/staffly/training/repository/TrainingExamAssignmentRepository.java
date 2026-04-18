@@ -1,10 +1,12 @@
 package ru.staffly.training.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExamAssignment;
 
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -24,6 +26,18 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     Optional<TrainingExamAssignment> findByIdAndExamIdAndRestaurantIdAndActiveTrue(Long id, Long examId, Long restaurantId);
 
     Optional<TrainingExamAssignment> findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(Long examId, Long restaurantId, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.user.id = :userId
+              and a.active = true
+            """)
+    Optional<TrainingExamAssignment> findActiveForStartUpdate(@Param("examId") Long examId,
+                                                              @Param("restaurantId") Long restaurantId,
+                                                              @Param("userId") Long userId);
 
     Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
             Long examId,

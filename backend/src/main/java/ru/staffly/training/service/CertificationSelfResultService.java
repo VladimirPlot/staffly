@@ -11,11 +11,13 @@ import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamAssignment;
 import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingExamAssignmentStatus;
+import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptQuestionRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -52,15 +54,20 @@ class CertificationSelfResultService {
                 assignmentForResult.getExamVersionSnapshot()
         );
         var lastFinishedAttempt = finishedAttempts.stream().findFirst();
+        var passedAttempt = attempts.findTopByAssignmentIdAndExamVersionAndPassedTrueAndFinishedAtIsNotNullOrderByFinishedAtAscIdAsc(
+                assignmentForResult.getId(),
+                assignmentForResult.getExamVersionSnapshot()
+        );
+        var attemptForDetails = resolveAttemptForDetails(assignmentForResult, passedAttempt, lastFinishedAttempt);
 
         Integer attemptsAllowed = certificationAssignmentService.calculateAttemptsAllowed(assignmentForResult);
-        boolean passed = lastFinishedAttempt.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
+        boolean passed = attemptForDetails.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
                 || assignmentForResult.getPassedAt() != null
                 || assignmentForResult.getStatus() == TrainingExamAssignmentStatus.PASSED;
         boolean attemptsRemain = attemptsAllowed == null || assignmentForResult.getAttemptsUsed() < attemptsAllowed;
         boolean revealCorrectAnswers = !attemptsRemain || passed;
 
-        var questions = lastFinishedAttempt
+        var questions = attemptForDetails
                 .map(attempt -> attemptQuestions.findByAttemptId(attempt.getId()).stream()
                         .map(item -> {
                             var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
@@ -82,7 +89,7 @@ class CertificationSelfResultService {
                 exam.getTitle(),
                 exam.getDescription(),
                 assignmentForResult.getStatus(),
-                lastFinishedAttempt.map(attempt -> attempt.getScorePercent()).orElse(null),
+                attemptForDetails.map(attempt -> attempt.getScorePercent()).orElse(null),
                 exam.getPassPercent(),
                 assignmentForResult.getAttemptsUsed(),
                 attemptsAllowed,
@@ -92,5 +99,16 @@ class CertificationSelfResultService {
                 assignmentForResult.getPassedAt(),
                 questions
         );
+    }
+
+    private Optional<TrainingExamAttempt> resolveAttemptForDetails(
+            TrainingExamAssignment assignment,
+            Optional<TrainingExamAttempt> passedAttempt,
+            Optional<TrainingExamAttempt> lastFinishedAttempt
+    ) {
+        if (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
+            return passedAttempt.or(() -> lastFinishedAttempt);
+        }
+        return lastFinishedAttempt;
     }
 }

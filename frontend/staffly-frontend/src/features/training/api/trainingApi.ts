@@ -27,6 +27,18 @@ import type {
   UpsertExamPayload,
 } from "./types";
 
+const requestSingleFlight = new Map<string, Promise<unknown>>();
+
+function runSingleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const inFlight = requestSingleFlight.get(key) as Promise<T> | undefined;
+  if (inFlight) return inFlight;
+  const nextPromise = fn().finally(() => {
+    requestSingleFlight.delete(key);
+  });
+  requestSingleFlight.set(key, nextPromise);
+  return nextPromise;
+}
+
 export async function listFolders(restaurantId: number, type: TrainingFolderType, includeInactive = false): Promise<TrainingFolderDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/folders`, { params: { type, includeInactive } });
   return data as TrainingFolderDto[];
@@ -68,12 +80,16 @@ export async function listExams(restaurantId: number, includeInactive = false, c
   return mapExamsForUi(data as TrainingExamDto[]);
 }
 export async function listMyCertificationExams(restaurantId: number): Promise<CurrentUserCertificationExamDto[]> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/my-certifications`);
-  return data as CurrentUserCertificationExamDto[];
+  return runSingleFlight(`training/my-certifications/${restaurantId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/my-certifications`);
+    return data as CurrentUserCertificationExamDto[];
+  });
 }
 export async function getMyCertificationResult(restaurantId: number, examId: number): Promise<CertificationMyResultDto> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/my-result`);
-  return data as CertificationMyResultDto;
+  return runSingleFlight(`training/my-result/${restaurantId}/${examId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/my-result`);
+    return data as CertificationMyResultDto;
+  });
 }
 export async function listKnowledgeExams(restaurantId: number, folderId: number, includeInactive = false): Promise<TrainingExamDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-exams`, { params: { folderId, includeInactive } });
@@ -126,7 +142,12 @@ export async function getCertificationEmployeeAttempts(
 }
 
 export async function getPracticeExamProgress(restaurantId: number): Promise<ExamProgressDto[]> { const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/practice-progress`); return data as ExamProgressDto[]; }
-export async function startExam(restaurantId: number, examId: number): Promise<ExamAttemptDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/start`); return data as ExamAttemptDto; }
+export async function startExam(restaurantId: number, examId: number): Promise<ExamAttemptDto> {
+  return runSingleFlight(`training/start-exam/${restaurantId}/${examId}`, async () => {
+    const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/start`);
+    return data as ExamAttemptDto;
+  });
+}
 export async function submitExamAttempt(restaurantId: number, attemptId: number, payload: ExamSubmitPayload): Promise<ExamSubmitResultDto> {
   const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exam-attempts/${attemptId}/submit`, payload);
   return data as ExamSubmitResultDto;

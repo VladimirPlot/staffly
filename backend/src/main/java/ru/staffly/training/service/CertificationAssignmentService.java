@@ -25,9 +25,9 @@ class CertificationAssignmentService {
     private final TrainingExamAttemptRepository attempts;
     private final RestaurantMemberRepository members;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TrainingExamAssignment resolveForStart(TrainingExam exam, Long restaurantId, Long userId) {
-        return assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId)
+        return assignments.findActiveForStartUpdate(exam.getId(), restaurantId, userId)
                 .orElseThrow(() -> new ConflictException("Для вас нет активного назначения на эту аттестацию."));
     }
 

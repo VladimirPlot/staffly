@@ -3,6 +3,7 @@ package ru.staffly.training.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
@@ -268,6 +269,7 @@ public class ExamServiceImpl implements ExamService {
             attemptVersion = assignment.getExamVersionSnapshot();
         }
 
+        var assignmentId = assignment == null ? null : assignment.getId();
         var existingAttemptOpt = exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null
                 ? certificationAssignmentLifecycleService.findUnfinishedCurrentAttempt(assignment)
                 : attempts.findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
@@ -290,8 +292,16 @@ public class ExamServiceImpl implements ExamService {
 
         var selectedQuestions = pickQuestionsForAttempt(pool, exam.getQuestionCount());
         var relationData = loadQuestionRelations(selectedQuestions);
-        var attempt = createAttempt(exam, userId, assignment, attemptVersion, now);
-        var snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
+        TrainingExamAttempt attempt;
+        List<AttemptQuestionSnapshotDto> snapshots;
+        try {
+            attempt = createAttempt(exam, userId, assignment, attemptVersion, now);
+            snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
+        } catch (DataIntegrityViolationException duplicateStartError) {
+            var resumed = attempts.findTopUnfinishedForStartContext(examId, restaurantId, userId, attemptVersion, assignmentId)
+                    .orElseThrow(() -> duplicateStartError);
+            return resumeAttempt(exam, resumed);
+        }
 
         return new StartExamResponseDto(
                 attempt.getId(),
@@ -311,7 +321,7 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Attempt belongs to another user");
         }
         if (attempt.getFinishedAt() != null) {
-            throw new ConflictException("Attempt already finished");
+            return toExistingAttemptResultDto(attempt);
         }
 
         var answersByQuestionId = request.answers().stream()
@@ -383,6 +393,27 @@ public class ExamServiceImpl implements ExamService {
     private AttemptResultDto toAttemptResultDto(CertificationAttemptFinalizationService.FinalizedAttemptPayload finalizedAttempt) {
         var attempt = finalizedAttempt.attempt();
         var existingQuestions = finalizedAttempt.questions();
+        return new AttemptResultDto(
+                attempt.getId(),
+                attempt.getExam() == null ? null : attempt.getExam().getId(),
+                attempt.getExamVersion(),
+                attempt.getUser().getId(),
+                attempt.getStartedAt(),
+                attempt.getFinishedAt(),
+                attempt.getScorePercent(),
+                attempt.getPassed(),
+                existingQuestions.stream()
+                        .map(question -> new AttemptResultQuestionDto(
+                                snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
+                                question.getChosenAnswerJson(),
+                                question.isCorrect()
+                        ))
+                        .toList()
+        );
+    }
+
+    private AttemptResultDto toExistingAttemptResultDto(TrainingExamAttempt attempt) {
+        var existingQuestions = attemptQuestions.findByAttemptId(attempt.getId());
         return new AttemptResultDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
