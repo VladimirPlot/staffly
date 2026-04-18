@@ -3,11 +3,14 @@ import * as RadixSelect from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 
 const DROPDOWN_SELECT_OPEN_EVENT = "staffly:dropdown-select-open";
+const EMPTY_OPTION_VALUE = "__staffly_select_empty__";
 
 type Option = {
   value: string;
+  rawValue: string;
   label: React.ReactNode;
   disabled?: boolean;
+  hidden?: boolean;
   textValue: string;
 };
 
@@ -41,6 +44,7 @@ function parseOptions(children: React.ReactNode): Option[] {
     const optionChild = child as React.ReactElement<{
       value?: string | number;
       disabled?: boolean;
+      hidden?: boolean;
       children?: React.ReactNode;
     }>;
 
@@ -52,12 +56,15 @@ function parseOptions(children: React.ReactNode): Option[] {
 
     const valueProp = optionChild.props.value;
     const label = optionChild.props.children;
+    const rawValue = valueProp == null ? "" : String(valueProp);
 
     return [
       {
-        value: valueProp == null ? "" : String(valueProp),
+        value: rawValue === "" ? EMPTY_OPTION_VALUE : rawValue,
+        rawValue,
         label,
         disabled: Boolean(optionChild.props.disabled),
+        hidden: Boolean(optionChild.props.hidden),
         textValue: getNodeText(label),
       },
     ];
@@ -101,17 +108,19 @@ export default function DropdownSelect({
   const [open, setOpen] = React.useState(false);
   const [highlightedValue, setHighlightedValue] = React.useState<string | null>(null);
 
-  const selectedValue = isControlled ? String(value ?? "") : internalValue;
-  const selectedOption = options.find((option) => option.value === selectedValue);
-  const placeholderOption = options.find((option) => option.value === "");
-  const selectableOptions = options.filter((option) => option.value !== "");
+  const rawSelectedValue = isControlled ? String(value ?? "") : internalValue;
+  const hasEmptyOption = options.some((option) => option.rawValue === "");
+  const selectedValue = rawSelectedValue === "" && hasEmptyOption ? EMPTY_OPTION_VALUE : rawSelectedValue;
+  const selectedOption = options.find((option) => option.rawValue === rawSelectedValue);
+  const placeholderOption = options.find((option) => option.rawValue === "");
+  const selectableOptions = options.filter((option) => !option.hidden);
   const enabledOptionsCount = selectableOptions.filter((option) => !option.disabled).length;
   const triggerLabel = selectedOption?.label ?? placeholder ?? placeholderOption?.label ?? "";
   const renderedValue = renderValue?.(selectedOption) ?? triggerLabel;
   const isPlaceholder =
     selectedOption == null ||
-    selectedValue === "" ||
-    (selectedOption.disabled && selectedOption.value === "");
+    (rawSelectedValue === "" && !hasEmptyOption) ||
+    (selectedOption.disabled && selectedOption.rawValue === "");
   const triggerBaseClassName =
     triggerVariant === "plain"
       ? [
@@ -124,11 +133,13 @@ export default function DropdownSelect({
         ].join(" ");
 
   const handleValueChange = React.useCallback((nextValue: string) => {
+    const nextRawValue = nextValue === EMPTY_OPTION_VALUE ? "" : nextValue;
+
     if (!isControlled) {
-      setInternalValue(nextValue);
+      setInternalValue(nextRawValue);
     }
 
-    onChange?.(createChangeEvent(nextValue));
+    onChange?.(createChangeEvent(nextRawValue));
   }, [isControlled, onChange]);
 
   React.useEffect(() => {
@@ -182,7 +193,6 @@ export default function DropdownSelect({
         open={open}
         onOpenChange={handleOpenChange}
         disabled={disabled || enabledOptionsCount === 0}
-        name={name}
         required={required}
       >
         <RadixSelect.Trigger
@@ -221,12 +231,14 @@ export default function DropdownSelect({
             style={
               matchTriggerWidth
                 ? {
-                    width: "var(--radix-select-trigger-width)",
+                    minWidth: "var(--radix-select-trigger-width)",
+                    width: "max-content",
                     maxHeight: "min(24rem, calc(100vh - 16px))",
+                    maxWidth: "min(24rem, calc(100vw - 16px))",
                   }
                 : {
-                    maxHeight: "min(24rem, calc(100vh - 16px))",
-                  }
+                  maxHeight: "min(24rem, calc(100vh - 16px))",
+                }
             }
           >
             <RadixSelect.Viewport className="no-scrollbar max-h-[inherit] overflow-y-auto p-1">
@@ -249,7 +261,7 @@ export default function DropdownSelect({
                     onPointerMove={() => setHighlightedValue(option.value)}
                   >
                     <RadixSelect.ItemText asChild>
-                      <div className="min-w-0 flex-1 truncate">
+                      <div className="min-w-0 flex-1 whitespace-nowrap">
                         {renderOption?.(option, { selected, active }) ?? option.label}
                       </div>
                     </RadixSelect.ItemText>
@@ -264,6 +276,8 @@ export default function DropdownSelect({
           </RadixSelect.Content>
         </RadixSelect.Portal>
       </RadixSelect.Root>
+
+      {name && <input type="hidden" name={name} value={rawSelectedValue} disabled={disabled} />}
 
       {error && <span className="mt-1 block text-xs text-red-600">{error}</span>}
     </div>
