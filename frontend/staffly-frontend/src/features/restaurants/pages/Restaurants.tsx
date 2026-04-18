@@ -123,9 +123,6 @@ export default function Restaurants() {
                     <div className="break-words text-base font-medium text-strong">
                       {inv.restaurantName}
                     </div>
-                    <div>
-                      <span className="text-muted">Права:</span> {inv.desiredRole}
-                    </div>
                     {inv.positionName && (
                       <div>
                         <span className="text-muted">Должность:</span> {inv.positionName}
