@@ -31,19 +31,20 @@ export default function MatchQuestion({
   return (
     <QuestionFrame index={index} prompt={question.prompt} explanation={explanation}>
       <div className="mt-3 space-y-2">
-        {pairs.map((pair) => {
+        {pairs.map((pair, pairIndex) => {
           const value = rightByLeft.get(pair.leftText) ?? "";
           return (
             <div
               key={pair.leftText}
-              className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,11rem)] sm:items-center sm:gap-3"
+              className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center sm:gap-3"
             >
-              <div className="min-w-0 text-sm text-default">{pair.leftText}</div>
+              <div className="min-w-0 text-sm leading-5 text-default break-words text-pretty">{pair.leftText}</div>
               <div className="min-w-0">
                 <DropdownSelect
-                  aria-label={pair.leftText}
+                  aria-label={`${pairIndex + 1}. ${pair.leftText}`}
                   className="w-full rounded-xl px-3 py-2 text-sm"
-                  style={{ minHeight: 44 }}
+                  matchTriggerWidth={false}
+                  menuClassName="w-[min(16rem,calc(100vw-1rem))] sm:w-72"
                   value={value}
                   disabled={isConfirmed}
                   onChange={(event) => onChange(pair.leftText, event.target.value)}
