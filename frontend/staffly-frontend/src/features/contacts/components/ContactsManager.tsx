@@ -82,6 +82,15 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [menuFor]);
 
+  useEffect(() => {
+    if (menuFor == null) return;
+
+    const visibleContactIds = new Set(filteredContacts.map((contact) => contact.id));
+    if (!visibleContactIds.has(menuFor)) {
+      setMenuFor(null);
+    }
+  }, [filteredContacts, menuFor]);
+
   const openCreateDialog = useCallback(() => {
     setEditing(null);
     setDialogError(null);
