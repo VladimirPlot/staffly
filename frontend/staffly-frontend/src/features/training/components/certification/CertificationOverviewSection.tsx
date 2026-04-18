@@ -32,8 +32,15 @@ export default function CertificationOverviewSection({ canManage, exam, summaryS
           <div className="text-sm text-muted">Assignment-aware аналитика аттестации</div>
         </div>
         {canManage && (
-          <Button variant="outline" isLoading={managerActions.loadingActionKey === "reset:exam"} onClick={() => void managerActions.resetExamCycle()}>
-            <Icon icon={RotateCcw} size="sm" /> <span className="ml-2">Глобально сбросить цикл</span>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Icon icon={RotateCcw} size="xs" />}
+            className="shrink-0 self-start"
+            isLoading={managerActions.loadingActionKey === "reset:exam"}
+            onClick={() => void managerActions.resetExamCycle()}
+          >
+            Глобально сбросить цикл
           </Button>
         )}
       </div>
