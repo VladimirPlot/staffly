@@ -34,20 +34,28 @@ export default function MatchQuestion({
         {pairs.map((pair) => {
           const value = rightByLeft.get(pair.leftText) ?? "";
           return (
-            <div key={pair.leftText} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-default">{pair.leftText}</div>
-              <DropdownSelect
-                aria-label={pair.leftText}
-                className="w-full rounded-xl px-3 py-2 text-sm sm:max-w-xs"
-                value={value}
-                disabled={isConfirmed}
-                onChange={(event) => onChange(pair.leftText, event.target.value)}
-              >
-                <option value="" disabled hidden />
-                {optionsFor(value).map((right) => (
-                  <option key={right} value={right}>{right}</option>
-                ))}
-              </DropdownSelect>
+            <div
+              key={pair.leftText}
+              className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,11rem)] sm:items-center sm:gap-3"
+            >
+              <div className="min-w-0 text-sm text-default">{pair.leftText}</div>
+              <div className="min-w-0">
+                <DropdownSelect
+                  aria-label={pair.leftText}
+                  className="w-full rounded-xl px-3 py-2 text-sm"
+                  style={{ minHeight: 44 }}
+                  value={value}
+                  disabled={isConfirmed}
+                  onChange={(event) => onChange(pair.leftText, event.target.value)}
+                >
+                  <option value="" disabled hidden />
+                  {optionsFor(value).map((right) => (
+                    <option key={right} value={right}>
+                      {right}
+                    </option>
+                  ))}
+                </DropdownSelect>
+              </div>
             </div>
           );
         })}
