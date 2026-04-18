@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
@@ -6,6 +6,8 @@ import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import ContentText from "../../../shared/ui/ContentText";
 import Icon from "../../../shared/ui/Icon";
+import SearchBar from "../../../shared/ui/SearchBar";
+import { matchesPhoneSearch, matchesSearchText } from "../../../shared/utils/search";
 import {
   createContact,
   deleteContact,
@@ -24,6 +26,7 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
   const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogSubmitting, setDialogSubmitting] = useState(false);
@@ -34,6 +37,19 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
 
   const [deleteTarget, setDeleteTarget] = useState<ContactDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const hasSearch = searchTerm.trim().length > 0;
+
+  const filteredContacts = useMemo(() => {
+    if (!hasSearch) return contacts;
+
+    return contacts.filter((contact) => {
+      const matchesText = matchesSearchText([contact.name, contact.description ?? "", contact.phone], searchTerm);
+      const matchesPhone = matchesPhoneSearch(contact.phone, searchTerm);
+
+      return matchesText || matchesPhone;
+    });
+  }, [contacts, hasSearch, searchTerm]);
 
   const loadContacts = useCallback(async () => {
     setLoading(true);
@@ -123,6 +139,10 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
     setDeleteTarget(null);
   }, [deleting]);
 
+  const resetSearch = useCallback(() => {
+    setSearchTerm("");
+  }, []);
+
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -139,12 +159,14 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h3 className="text-xl font-semibold">Контакты ресторана</h3>
-          <p className="text-sm text-muted">Добавляйте важные номера и заметки.</p>
+          <h3 className="text-balance text-xl font-semibold">Контакты ресторана</h3>
+          <p className="text-pretty text-sm text-muted">Добавляйте важные номера и заметки.</p>
         </div>
-        <Button onClick={openCreateDialog}>Добавить контакт</Button>
+        <Button size="sm" onClick={openCreateDialog} className="hidden w-full sm:inline-flex sm:w-auto">
+          Добавить контакт
+        </Button>
       </div>
 
       {loading ? (
@@ -164,60 +186,102 @@ const ContactsManager = ({ restaurantId }: ContactsManagerProps) => {
           </div>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {contacts.map((contact) => (
-            <Card key={contact.id} className="relative" data-contact-card>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1">
-                  <ContentText className="text-lg font-semibold">{contact.name}</ContentText>
-                  <div className="text-sm text-default">
-                    Телефон: {" "}
-                    <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
-                      {contact.phone}
-                    </a>
+        <>
+          <div className="space-y-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <SearchBar
+                label="Поиск по контактам"
+                value={searchTerm}
+                onValueChange={setSearchTerm}
+                onClear={resetSearch}
+                placeholder="Имя, описание или телефон"
+                totalCount={contacts.length}
+                resultCount={filteredContacts.length}
+                className="w-full sm:max-w-md"
+              />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={openCreateDialog}
+                className="w-full sm:hidden"
+              >
+                Добавить контакт
+              </Button>
+            </div>
+          </div>
+
+          {filteredContacts.length === 0 ? (
+            <Card className="rounded-2xl p-4 shadow-none sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="font-medium">Ничего не найдено</div>
+                  <div className="text-sm text-muted">
+                    Попробуйте другое имя, часть описания или номер телефона.
                   </div>
-                  {contact.description && (
-                    <ContentText className="text-sm text-default">{contact.description}</ContentText>
-                  )}
                 </div>
-
-                <div className="relative" data-contact-menu>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => toggleMenu(contact.id)}
-                    data-contact-trigger
-                    aria-label="Открыть меню контакта"
-                    leftIcon={<Icon icon={Pencil} size="sm" decorative />}
-                  >
-                  </Button>
-                  {menuFor === contact.id && (
-                    <div className="absolute right-0 z-10 mt-2 w-48 rounded-2xl border border-subtle bg-surface p-2 shadow-[var(--staffly-shadow)] space-y-2">
-                      <Button
-                        variant="outline"
-                        className="w-full justify-center text-center text-sm"
-                        onClick={() => {
-                          openEditDialog(contact);
-                          setMenuFor(null);
-                        }}
-                      >
-                        Изменить контакт
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full justify-center text-center text-sm text-red-600"
-                        onClick={() => askDelete(contact)}
-                      >
-                        Удалить контакт
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                <Button variant="outline" onClick={resetSearch} className="w-full sm:w-auto">
+                  Сбросить поиск
+                </Button>
               </div>
             </Card>
-          ))}
-        </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredContacts.map((contact) => (
+                <Card key={contact.id} className="relative rounded-2xl p-4 shadow-none sm:p-5" data-contact-card>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <ContentText className="text-lg font-semibold">{contact.name}</ContentText>
+                      <div className="text-sm text-default">
+                        Телефон: {" "}
+                        <a href={`tel:${contact.phone}`} className="text-blue-600 hover:underline">
+                          {contact.phone}
+                        </a>
+                      </div>
+                      {contact.description && (
+                        <ContentText className="text-sm text-default">{contact.description}</ContentText>
+                      )}
+                    </div>
+
+                    <div className="relative" data-contact-menu>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => toggleMenu(contact.id)}
+                        data-contact-trigger
+                        aria-label="Открыть меню контакта"
+                        leftIcon={<Icon icon={Pencil} size="sm" decorative />}
+                      >
+                      </Button>
+                      {menuFor === contact.id && (
+                        <div className="absolute right-0 z-10 mt-2 w-48 rounded-2xl border border-subtle bg-surface p-2 shadow-[var(--staffly-shadow)] space-y-2">
+                          <Button
+                            variant="outline"
+                            className="w-full justify-center text-center text-sm"
+                            onClick={() => {
+                              openEditDialog(contact);
+                              setMenuFor(null);
+                            }}
+                          >
+                            Изменить контакт
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            className="w-full justify-center text-center text-sm text-red-600"
+                            onClick={() => askDelete(contact)}
+                          >
+                            Удалить контакт
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <ContactDialog
