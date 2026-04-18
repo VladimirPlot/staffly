@@ -23,6 +23,11 @@ import {
   type MyInvite,
 } from "../../invitations/api";
 
+const invitationDateFormatter = new Intl.DateTimeFormat("ru-RU", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 export default function Restaurants() {
   const navigate = useNavigate();
 
@@ -100,62 +105,67 @@ export default function Restaurants() {
         </div>
 
         {invites.length > 0 && (
-          <div className="mb-4 rounded-2xl border border-subtle bg-surface p-3 shadow-[var(--staffly-shadow)]">
-            <div className="mb-2 text-sm font-medium">У вас есть приглашения:</div>
+          <div className="mb-4 rounded-3xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)] sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium text-default">У вас есть приглашения</div>
+              <div className="rounded-full border border-subtle bg-[var(--staffly-control)] px-2.5 py-1 text-xs font-medium text-muted">
+                {invites.length}
+              </div>
+            </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               {invites.map((inv) => (
                 <div
                   key={inv.token}
-                  className="flex flex-col gap-2 rounded-2xl border border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="grid gap-3 rounded-2xl border border-subtle bg-[var(--staffly-control)] p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
-                  <div className="min-w-0 space-y-1 text-sm leading-snug">
-                    <div className="font-medium break-words">{inv.restaurantName}</div>
-                    <div className="text-default">Права: {inv.desiredRole}</div>
+                  <div className="min-w-0 space-y-1 text-sm leading-snug text-default">
+                    <div className="break-words text-base font-medium text-strong">
+                      {inv.restaurantName}
+                    </div>
+                    <div>
+                      <span className="text-muted">Права:</span> {inv.desiredRole}
+                    </div>
                     {inv.positionName && (
-                      <div className="text-default">Дольжность: {inv.positionName}</div>
+                      <div>
+                        <span className="text-muted">Должность:</span> {inv.positionName}
+                      </div>
                     )}
-                    <div className="text-xs text-muted">
-                      истекает: {new Date(inv.expiresAt).toLocaleString()}
+                    <div className="text-xs text-muted tabular-nums">
+                      Истекает: {invitationDateFormatter.format(new Date(inv.expiresAt))}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                     <Button
-                      className="w-full sm:w-auto"
+                      className="w-full sm:w-36"
                       onClick={async () => {
                         try {
-                      await acceptInvite(inv.token);
-                      await switchRestaurant(inv.restaurantId);
-                      await refreshMe();
-                      navigate("/app", { replace: true });
-                    } catch (e: any) {
-                      alert(
-                        e?.friendlyMessage || "Не удалось принять приглашение"
-                      );
-                    }
-                  }}
-                >
-                  Принять
+                          await acceptInvite(inv.token);
+                          await switchRestaurant(inv.restaurantId);
+                          await refreshMe();
+                          navigate("/app", { replace: true });
+                        } catch (e: any) {
+                          alert(e?.friendlyMessage || "Не удалось принять приглашение");
+                        }
+                      }}
+                    >
+                      Принять
                     </Button>
 
                     <Button
-                      className="w-full sm:w-auto"
+                      className="w-full sm:w-36"
                       variant="outline"
                       onClick={async () => {
-                      try {
-                        await declineInvite(inv.token);
-                        setInvites((prev) =>
-                          prev.filter((x) => x.token !== inv.token)
-                        );
-                      } catch (e: any) {
-                        alert(
-                          e?.friendlyMessage || "Не удалось отклонить"
-                        );
-                      }
-                    }}
-                  >
-                    Отклонить
+                        try {
+                          await declineInvite(inv.token);
+                          setInvites((prev) => prev.filter((x) => x.token !== inv.token));
+                        } catch (e: any) {
+                          alert(e?.friendlyMessage || "Не удалось отклонить");
+                        }
+                      }}
+                    >
+                      Отклонить
                     </Button>
                   </div>
                 </div>
