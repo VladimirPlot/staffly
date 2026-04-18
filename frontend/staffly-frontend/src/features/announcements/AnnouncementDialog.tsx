@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 import Modal from "../../shared/ui/Modal";
 import Input from "../../shared/ui/Input";
 import Textarea from "../../shared/ui/Textarea";
 import Button from "../../shared/ui/Button";
-import DropdownSelect from "../../shared/ui/DropdownSelect";
+import DropdownMenu from "../../shared/ui/DropdownMenu";
 import type { AnnouncementRequest } from "./api";
 import type { PositionDto } from "../dictionaries/api";
 import Icon from "../../shared/ui/Icon";
-import { Trash2 } from "lucide-react";
-
-type PositionField = { id: string; value: number | "" };
+import SearchBar from "../../shared/ui/SearchBar";
+import { cn } from "../../shared/lib/cn";
+import { matchesSearchText } from "../../shared/utils/search";
 
 type AnnouncementDialogProps = {
   open: boolean;
@@ -23,13 +24,6 @@ type AnnouncementDialogProps = {
   onClose: () => void;
   onSubmit: (payload: AnnouncementRequest) => void;
 };
-
-function createId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2, 10);
-}
 
 const AnnouncementDialog = ({
   open,
@@ -45,24 +39,25 @@ const AnnouncementDialog = ({
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [content, setContent] = useState(initialData?.content ?? "");
   const [expiresAt, setExpiresAt] = useState(initialData?.expiresAt ?? "");
-  const [fields, setFields] = useState<PositionField[]>([{ id: createId(), value: "" }]);
+  const [selectedPositionIds, setSelectedPositionIds] = useState<number[]>([]);
+  const [positionQuery, setPositionQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setContent(initialData?.content ?? "");
     setExpiresAt(initialData?.expiresAt ?? "");
-    if (initialData?.positionIds && initialData.positionIds.length > 0) {
-      setFields(initialData.positionIds.map((id) => ({ id: createId(), value: id })));
-    } else {
-      setFields([{ id: createId(), value: "" }]);
-    }
+    setSelectedPositionIds(initialData?.positionIds ?? []);
+    setPositionQuery("");
+    setPickerOpen(false);
     setLocalError(null);
   }, [open, initialData?.content, initialData?.expiresAt, initialData?.positionIds]);
 
   useEffect(() => {
     if (!open) {
-      setFields([]);
+      setPositionQuery("");
+      setPickerOpen(false);
     }
   }, [open]);
 
@@ -71,18 +66,35 @@ const AnnouncementDialog = ({
     [positions],
   );
 
-  const handleAdd = useCallback(() => {
-    setFields((prev) => [...prev, { id: createId(), value: "" }]);
-  }, []);
+  const selectedPositions = useMemo(
+    () =>
+      selectedPositionIds
+        .map((positionId) => positionOptions.find((position) => position.id === positionId))
+        .filter((position): position is PositionDto => Boolean(position)),
+    [positionOptions, selectedPositionIds],
+  );
 
-  const handleRemove = useCallback((id: string) => {
-    setFields((prev) => (prev.length <= 1 ? prev : prev.filter((field) => field.id !== id)));
-  }, []);
+  const availablePositions = useMemo(
+    () => positionOptions.filter((position) => !selectedPositionIds.includes(position.id)),
+    [positionOptions, selectedPositionIds],
+  );
 
-  const handleChange = useCallback((id: string, value: string) => {
-    setFields((prev) =>
-      prev.map((field) => (field.id === id ? { ...field, value: value ? Number(value) : "" } : field)),
+  const filteredPositions = useMemo(() => {
+    const query = positionQuery.trim();
+    if (!query) return availablePositions;
+    return availablePositions.filter((position) =>
+      matchesSearchText([position.name, position.active ? "активна" : "неактивна"], query),
     );
+  }, [availablePositions, positionQuery]);
+
+  const handleAddPosition = useCallback((positionId: number) => {
+    setSelectedPositionIds((prev) => [...prev, positionId]);
+    setPositionQuery("");
+    setLocalError(null);
+  }, []);
+
+  const handleRemovePosition = useCallback((positionId: number) => {
+    setSelectedPositionIds((prev) => prev.filter((id) => id !== positionId));
   }, []);
 
   const handleSubmit = useCallback(() => {
@@ -91,31 +103,42 @@ const AnnouncementDialog = ({
       setLocalError("Добавьте текст объявления");
       return;
     }
-    const selectedIds = fields
-      .map((field) => field.value)
-      .filter((value): value is number => typeof value === "number" && !Number.isNaN(value));
-    if (selectedIds.length === 0) {
+    if (selectedPositionIds.length === 0) {
       setLocalError("Добавьте хотя бы одну должность");
-      return;
-    }
-    const uniqueIds = Array.from(new Set(selectedIds));
-    if (uniqueIds.length !== selectedIds.length) {
-      setLocalError("Каждую должность нужно выбрать только один раз");
       return;
     }
     setLocalError(null);
     onSubmit({
       content: trimmed,
       expiresAt: expiresAt?.trim() ? expiresAt.trim() : null,
-      positionIds: uniqueIds,
+      positionIds: selectedPositionIds,
     });
-  }, [content, expiresAt, fields, onSubmit]);
+  }, [content, expiresAt, onSubmit, selectedPositionIds]);
 
   const effectiveError = error || localError;
-  const selectedPositionIds = useMemo(
-    () => new Set(fields.map((field) => field.value).filter((value): value is number => typeof value === "number")),
-    [fields],
-  );
+  const triggerLabel = useMemo(() => {
+    if (selectedPositions.length === 0) {
+      return "Выберите должности";
+    }
+
+    if (selectedPositions.length === 1) {
+      return selectedPositions[0].name;
+    }
+
+    return `${selectedPositions.length} должности выбрано`;
+  }, [selectedPositions]);
+
+  const chipBase =
+    "group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border " +
+    "border-[var(--staffly-border)] bg-[var(--staffly-control)] px-2.5 py-1 text-xs " +
+    "font-medium leading-none text-[var(--staffly-text)] shadow-none transition-colors " +
+    "hover:bg-[var(--staffly-control-hover)]";
+
+  const chipRemoveBase =
+    "inline-flex size-5 shrink-0 items-center justify-center rounded-md text-[var(--staffly-text-muted)] " +
+    "transition-colors hover:bg-[var(--staffly-surface)] hover:text-[var(--staffly-text-strong)] " +
+    "group-hover:text-[var(--staffly-text-strong)] " +
+    "focus:outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]";
 
   return (
     <Modal
@@ -136,44 +159,96 @@ const AnnouncementDialog = ({
       <div className="space-y-4">
         <div>
           <div className="mb-2 text-sm text-muted">Должности</div>
-          <div className="space-y-3">
-            {fields.map((field) => (
-              <div key={field.id} className="flex items-center gap-3">
-                <DropdownSelect
-                  aria-label="Должность"
-                  className="flex-1 rounded-2xl p-2 text-base"
-                  value={field.value}
-                  onChange={(event) => handleChange(field.id, event.target.value)}
-                  disabled={submitting}
+          <div className="space-y-2">
+            <DropdownMenu
+              disabled={submitting || availablePositions.length === 0}
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              matchTriggerWidth
+              alignClassName="left-0"
+              menuClassName="w-[min(30rem,calc(100vw-1rem))]"
+              mobileSheetTitle="Должности"
+              triggerWrapperClassName="block"
+              trigger={(triggerProps) => (
+                <button
+                  type="button"
+                  className="border-subtle bg-surface focus:ring-default flex h-9 w-full items-center justify-between rounded-xl border px-3 text-left text-sm transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-app disabled:text-muted"
+                  {...triggerProps}
                 >
-                  <option value="">Выберите должность</option>
-                  {positionOptions.map((position) => (
-                    <option
-                      key={position.id}
-                      value={position.id}
-                      disabled={selectedPositionIds.has(position.id) && field.value !== position.id}
-                    >
+                  <span className="min-w-0 truncate font-medium text-default">{triggerLabel}</span>
+                  <ChevronDown className="ml-3 h-4 w-4 shrink-0 text-muted" />
+                </button>
+              )}
+            >
+              {({ close }) => (
+                <div className="space-y-2 p-1">
+                  <SearchBar
+                    label="Поиск должности"
+                    value={positionQuery}
+                    onValueChange={setPositionQuery}
+                    placeholder="Найти должность"
+                    disabled={submitting}
+                  />
+
+                  <div className="max-h-64 space-y-0.5 overflow-y-auto pr-1">
+                    {filteredPositions.length > 0 ? (
+                      filteredPositions.map((position) => (
+                        <button
+                          key={position.id}
+                          type="button"
+                          className="text-default hover:bg-app focus:bg-app flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition focus:outline-none"
+                          onClick={() => {
+                            handleAddPosition(position.id);
+                            if (filteredPositions.length <= 1) close();
+                          }}
+                        >
+                          <div className="min-w-0 pr-3">
+                            <div className="truncate font-medium">
+                              {position.name}
+                              {!position.active ? " (неактивна)" : ""}
+                            </div>
+                          </div>
+                          <div className="rounded-full border border-subtle bg-surface p-1 text-muted">
+                            <span className="sr-only">Добавить {position.name}</span>
+                            <Icon icon={Plus} size="xs" decorative />
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-xl px-3 py-5 text-center text-sm text-muted">
+                        Ничего не найдено
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </DropdownMenu>
+
+            {selectedPositions.length > 0 ? (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {selectedPositions.map((position) => (
+                  <div
+                    key={position.id}
+                    className={cn(chipBase)}
+                  >
+                    <span className="min-w-0 truncate">
                       {position.name}
                       {!position.active ? " (неактивна)" : ""}
-                    </option>
-                  ))}
-                </DropdownSelect>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Удалить должность"
-                  onClick={() => handleRemove(field.id)}
-                  disabled={fields.length <= 1 || submitting}
-                  className="text-default"
-                >
-                  <Icon icon={Trash2} size="sm" decorative />
-                </Button>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Удалить должность ${position.name}`}
+                      onClick={() => handleRemovePosition(position.id)}
+                      disabled={submitting}
+                      className={cn(chipRemoveBase, "disabled:cursor-not-allowed disabled:opacity-50")}
+                    >
+                      <Icon icon={X} size="xs" decorative />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : null}
           </div>
-          <Button variant="outline" onClick={handleAdd} disabled={submitting} className="mt-2 text-sm">
-            Добавить должность
-          </Button>
         </div>
 
         <Input
