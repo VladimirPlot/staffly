@@ -149,7 +149,6 @@ class CertificationAnalyticsService {
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
                 attempt.getTitleSnapshot(),
-                attempt.getExam() == null ? null : attempt.getExam().getDescription(),
                 attempt.getUser().getId(),
                 attempt.getUser().getFullName(),
                 attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),

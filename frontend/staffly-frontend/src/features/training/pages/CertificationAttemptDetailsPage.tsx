@@ -83,7 +83,6 @@ export default function CertificationAttemptDetailsPage() {
         <>
           <Card className="space-y-3">
             <div className="text-lg font-semibold">{data.examTitle}</div>
-            {data.examDescription && <div className="text-sm text-muted">{data.examDescription}</div>}
             <div className="text-sm text-muted">
               Сотрудник: {data.userFullName} · Статус: {data.passed ? "сдано" : "не сдано"} · Итог: {data.scorePercent ?? "—"}% · Проходной балл: {data.passPercent}%
             </div>

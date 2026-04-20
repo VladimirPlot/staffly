@@ -7,7 +7,6 @@ public record CertificationAttemptDetailsDto(
         Long attemptId,
         Long examId,
         String examTitle,
-        String examDescription,
         Long userId,
         String userFullName,
         Long assignmentId,

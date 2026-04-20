@@ -146,8 +146,10 @@ export async function getCertificationAttemptDetails(
   examId: number,
   attemptId: number,
 ): Promise<CertificationAttemptDetailsDto> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/attempts/${attemptId}`);
-  return data as CertificationAttemptDetailsDto;
+  return runSingleFlight(`training/certification-attempt-details/${restaurantId}/${examId}/${attemptId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/attempts/${attemptId}`);
+    return data as CertificationAttemptDetailsDto;
+  });
 }
 
 export async function getPracticeExamProgress(restaurantId: number): Promise<ExamProgressDto[]> { const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/practice-progress`); return data as ExamProgressDto[]; }

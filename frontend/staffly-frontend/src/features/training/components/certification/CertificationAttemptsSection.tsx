@@ -15,7 +15,9 @@ type Props = {
 
 export default function CertificationAttemptsSection({ examId, selectedEmployeeUserId, selectedEmployeeFullName, attemptsState }: Props) {
   const [searchParams] = useSearchParams();
-  const returnTo = encodeURIComponent(`/training/exams/${examId}/analytics?${searchParams.toString()}`);
+  const search = searchParams.toString();
+  const analyticsPath = trainingRoutes.examAnalytics(examId);
+  const returnTo = encodeURIComponent(search ? `${analyticsPath}?${search}` : analyticsPath);
 
   if (!selectedEmployeeFullName) {
     return (

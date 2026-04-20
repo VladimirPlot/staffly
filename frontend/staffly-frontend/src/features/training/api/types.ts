@@ -296,7 +296,6 @@ export type CertificationAttemptDetailsDto = {
   attemptId: number;
   examId: number;
   examTitle: string;
-  examDescription?: string | null;
   userId: number;
   userFullName: string;
   assignmentId?: number | null;

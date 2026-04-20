@@ -20,9 +20,14 @@ type Props = {
 export default function CertificationQuestionReviewSection({ questions, revealCorrectAnswers, hiddenCorrectAnswersHint }: Props) {
   const [onlyWrong, setOnlyWrong] = useState(false);
 
+  const preparedQuestions = useMemo(
+    () => questions.map((question, index) => ({ ...question, displayIndex: index + 1 })),
+    [questions],
+  );
+
   const visibleQuestions = useMemo(() => (
-    onlyWrong ? questions.filter((question) => !question.correct) : questions
-  ), [onlyWrong, questions]);
+    onlyWrong ? preparedQuestions.filter((question) => !question.correct) : preparedQuestions
+  ), [onlyWrong, preparedQuestions]);
 
   if (questions.length === 0) return null;
 
@@ -41,9 +46,9 @@ export default function CertificationQuestionReviewSection({ questions, revealCo
         </div>
       )}
       <div className="space-y-3">
-        {visibleQuestions.map((question, index) => (
-          <div key={`${question.questionId}-${index}`} className={`rounded-xl border p-3 ${question.correct ? "border-emerald-200" : "border-rose-200 bg-rose-50/40"}`}>
-            <div className="text-sm font-medium">#{index + 1}. {question.prompt}</div>
+        {visibleQuestions.map((question) => (
+          <div key={`${question.questionId}-${question.displayIndex}`} className={`rounded-xl border p-3 ${question.correct ? "border-emerald-200" : "border-rose-200 bg-rose-50/40"}`}>
+            <div className="text-sm font-medium">#{question.displayIndex}. {question.prompt}</div>
             <div className="mt-1 text-sm text-muted">Ваш ответ: {renderAnswer(question.chosenAnswerJson)}</div>
             {revealCorrectAnswers && (
               <div className="mt-1 text-sm text-muted">Правильный ответ: {renderAnswer(question.correctAnswerJson, "—")}</div>
