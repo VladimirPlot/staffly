@@ -192,6 +192,8 @@ export type CertificationMyResultDto = {
   attemptsAllowed?: number | null;
   revealCorrectAnswers: boolean;
   bestScore?: number | null;
+  lastAttemptStartedAt?: string | null;
+  lastAttemptFinishedAt?: string | null;
   lastAttemptAt?: string | null;
   passedAt?: string | null;
   questions: CertificationMyResultQuestionDto[];
@@ -225,7 +227,6 @@ export type CertificationExamSummaryDto = {
   failedCount: number;
   inProgressCount: number;
   notStartedCount: number;
-  exhaustedCount: number;
   averageScore?: number | null;
   passRate?: number | null;
 };
@@ -238,10 +239,11 @@ export type CertificationExamPositionBreakdownDto = {
   failedCount: number;
   inProgressCount: number;
   notStartedCount: number;
-  exhaustedCount: number;
   averageScore?: number | null;
   passRate?: number | null;
 };
+
+export type CertificationAnalyticsStatus = "NOT_STARTED" | "IN_PROGRESS" | "PASSED" | "FAILED";
 
 export type CertificationAssignmentStatus =
   | "ASSIGNED"
@@ -260,6 +262,7 @@ export type CertificationExamEmployeeRowDto = {
   currentPositionId?: number | null;
   currentPositionName?: string | null;
   status: CertificationAssignmentStatus;
+  analyticsStatus: CertificationAnalyticsStatus;
   attemptsUsed: number;
   attemptsAllowed?: number | null;
   extraAttempts: number;

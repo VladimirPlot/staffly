@@ -1,9 +1,9 @@
 import Button from "../../../../shared/ui/Button";
 import Card from "../../../../shared/ui/Card";
 import DropdownSelect from "../../../../shared/ui/DropdownSelect";
-import type { CertificationAssignmentStatus } from "../../api/types";
+import type { CertificationAnalyticsStatus } from "../../api/types";
 import type { CertificationEmployeesState, CertificationManagerActionsState, CertificationStatusFilter } from "../../hooks/certification/types";
-import { getCertificationAssignmentStatusLabel } from "../../utils/certificationAssignment";
+import { getCertificationAnalyticsStatusLabel } from "../../utils/certificationAssignment";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
 import CertificationStatusBadge from "./CertificationStatusBadge";
@@ -20,7 +20,7 @@ type Props = {
   onShowAttempts: (userId: number | null) => void;
 };
 
-const STATUS_OPTIONS: CertificationAssignmentStatus[] = ["ASSIGNED", "IN_PROGRESS", "PASSED", "FAILED", "EXHAUSTED", "ARCHIVED"];
+const STATUS_OPTIONS: CertificationAnalyticsStatus[] = ["NOT_STARTED", "IN_PROGRESS", "PASSED", "FAILED"];
 
 export default function CertificationEmployeesSection({
   canManage,
@@ -49,7 +49,7 @@ export default function CertificationEmployeesSection({
           <input className="rounded-xl border border-subtle bg-surface px-3 py-2 text-sm" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Поиск по ФИО" />
           <DropdownSelect aria-label="Статус" className="rounded-xl px-3 text-sm" value={statusFilter} onChange={(event) => onStatusFilterChange(toStatusFilter(event.target.value))}>
             <option value="ALL">Все статусы</option>
-            {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{getCertificationAssignmentStatusLabel(status)}</option>)}
+            {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{getCertificationAnalyticsStatusLabel(status)}</option>)}
           </DropdownSelect>
         </div>
       </div>
@@ -67,9 +67,12 @@ export default function CertificationEmployeesSection({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="font-medium">{employee.fullName}</div>
-                  <div className="text-xs text-muted">Попытки: {employee.attemptsUsed} / {employee.attemptsAllowed ?? "∞"} · Лучший балл: {employee.bestScore ?? "—"}%</div>
+                  <div className="text-xs text-muted">
+                    Попытки: {employee.attemptsUsed} / {employee.attemptsAllowed ?? "∞"} · Лучший балл: {employee.bestScore ?? "—"}%
+                    {employee.attemptsAllowed != null && employee.attemptsUsed >= employee.attemptsAllowed && " · Лимит исчерпан"}
+                  </div>
                 </div>
-                <CertificationStatusBadge status={employee.status} />
+                <CertificationStatusBadge status={employee.analyticsStatus} />
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => onShowAttempts(employee.userId)}>История попыток</Button>
@@ -94,7 +97,7 @@ export default function CertificationEmployeesSection({
 
 // Локальный parser: нужен только для UI select в этом компоненте.
 function toStatusFilter(value: string): CertificationStatusFilter {
-  return value === "ALL" || STATUS_OPTIONS.includes(value as CertificationAssignmentStatus)
+  return value === "ALL" || STATUS_OPTIONS.includes(value as CertificationAnalyticsStatus)
     ? (value as CertificationStatusFilter)
     : "ALL";
 }

@@ -8,7 +8,6 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingExamAssignment;
-import ru.staffly.training.model.TrainingExamAssignmentStatus;
 import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
@@ -51,7 +50,6 @@ class CertificationAnalyticsService {
                             summary.failedCount(),
                             summary.inProgressCount(),
                             summary.notStartedCount(),
-                            summary.exhaustedCount(),
                             summary.averageScore(),
                             summary.passRate()
                     );
@@ -82,6 +80,7 @@ class CertificationAnalyticsService {
                             member == null || member.getPosition() == null ? null : member.getPosition().getId(),
                             member == null || member.getPosition() == null ? null : member.getPosition().getName(),
                             assignment.getStatus(),
+                            CertificationAnalyticsStatusMapper.fromLifecycle(assignment.getStatus()),
                             assignment.getAttemptsUsed(),
                             assignmentService.calculateAttemptsAllowed(assignment),
                             assignment.getExtraAttempts(),
@@ -120,21 +119,24 @@ class CertificationAnalyticsService {
 
     private CertificationExamSummaryDto toSummary(List<TrainingExamAssignment> rows) {
         int total = rows.size();
-        int passed = countStatus(rows, TrainingExamAssignmentStatus.PASSED);
-        int failed = countStatus(rows, TrainingExamAssignmentStatus.FAILED);
-        int inProgress = countStatus(rows, TrainingExamAssignmentStatus.IN_PROGRESS);
-        int exhausted = countStatus(rows, TrainingExamAssignmentStatus.EXHAUSTED);
-        int notStarted = countStatus(rows, TrainingExamAssignmentStatus.ASSIGNED);
+        int passed = countAnalyticsStatus(rows, CertificationAnalyticsStatus.PASSED);
+        int failed = countAnalyticsStatus(rows, CertificationAnalyticsStatus.FAILED);
+        int inProgress = countAnalyticsStatus(rows, CertificationAnalyticsStatus.IN_PROGRESS);
+        int notStarted = countAnalyticsStatus(rows, CertificationAnalyticsStatus.NOT_STARTED);
 
         var scored = rows.stream().map(TrainingExamAssignment::getBestScore).filter(Objects::nonNull).toList();
         Double avg = scored.isEmpty() ? null : scored.stream().mapToInt(Integer::intValue).average().orElse(0d);
         Double passRate = total == 0 ? 0d : (passed * 100.0) / total;
 
-        return new CertificationExamSummaryDto(total, passed, failed, inProgress, notStarted, exhausted, avg, passRate);
+        return new CertificationExamSummaryDto(total, passed, failed, inProgress, notStarted, avg, passRate);
     }
 
-    private int countStatus(List<TrainingExamAssignment> rows, TrainingExamAssignmentStatus status) {
-        return (int) rows.stream().filter(a -> a.getStatus() == status).count();
+    private int countAnalyticsStatus(List<TrainingExamAssignment> rows, CertificationAnalyticsStatus status) {
+        return (int) rows.stream()
+                .map(TrainingExamAssignment::getStatus)
+                .map(CertificationAnalyticsStatusMapper::fromLifecycle)
+                .filter(item -> item == status)
+                .count();
     }
 
     private void ensureCertificationExam(Long restaurantId, Long examId) {

@@ -1,10 +1,19 @@
-import type { CertificationAssignmentStatus } from "../api/types";
+import type { CertificationAnalyticsStatus, CertificationAssignmentStatus } from "../api/types";
+
+export function mapCertificationLifecycleToAnalyticsStatus(status: CertificationAssignmentStatus): CertificationAnalyticsStatus {
+  if (status === "ASSIGNED" || status === "ARCHIVED") return "NOT_STARTED";
+  if (status === "IN_PROGRESS") return "IN_PROGRESS";
+  if (status === "PASSED") return "PASSED";
+  return "FAILED";
+}
 
 export function getCertificationAssignmentStatusLabel(status: CertificationAssignmentStatus) {
-  if (status === "ASSIGNED") return "Не начато";
+  return getCertificationAnalyticsStatusLabel(mapCertificationLifecycleToAnalyticsStatus(status));
+}
+
+export function getCertificationAnalyticsStatusLabel(status: CertificationAnalyticsStatus) {
+  if (status === "NOT_STARTED") return "Не начато";
   if (status === "IN_PROGRESS") return "В процессе";
   if (status === "PASSED") return "Сдано";
-  if (status === "FAILED") return "Не сдано";
-  if (status === "EXHAUSTED") return "Лимит исчерпан";
-  return "Архив";
+  return "Не сдано";
 }

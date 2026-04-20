@@ -35,7 +35,6 @@ export default function CertificationPositionsSection({ hasSelectedExam, positio
                 <th className="px-2 py-1 text-right">Сдано</th>
                 <th className="px-2 py-1 text-right">В процессе</th>
                 <th className="px-2 py-1 text-right">Не сдано</th>
-                <th className="px-2 py-1 text-right">Исчерпано</th>
                 <th className="px-2 py-1 text-right">Не начато</th>
                 <th className="px-2 py-1 text-right">Средний балл</th>
                 <th className="px-2 py-1 text-right">% прохождения</th>
@@ -49,7 +48,6 @@ export default function CertificationPositionsSection({ hasSelectedExam, positio
                   <td className="px-2 py-2 text-right">{position.passedCount}</td>
                   <td className="px-2 py-2 text-right">{position.inProgressCount}</td>
                   <td className="px-2 py-2 text-right">{position.failedCount}</td>
-                  <td className="px-2 py-2 text-right">{position.exhaustedCount}</td>
                   <td className="px-2 py-2 text-right">{position.notStartedCount}</td>
                   <td className="px-2 py-2 text-right">{typeof position.averageScore === "number" ? `${position.averageScore}%` : "—"}</td>
                   <td className="px-2 py-2 text-right">{typeof position.passRate === "number" ? `${position.passRate}%` : "—"}</td>

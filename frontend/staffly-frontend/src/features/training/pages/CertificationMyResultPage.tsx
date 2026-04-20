@@ -16,6 +16,13 @@ function formatDateTime(value?: string | null): string {
   return new Date(value).toLocaleString("ru-RU");
 }
 
+function getAttemptPeriodText(data: CertificationMyResultDto): string {
+  if (!data.lastAttemptStartedAt && !data.lastAttemptFinishedAt) {
+    return "—";
+  }
+  return `Начало попытки: ${formatDateTime(data.lastAttemptStartedAt)} · Завершение: ${formatDateTime(data.lastAttemptFinishedAt)}`;
+}
+
 function formatParsedAnswer(parsed: unknown): string {
   if (typeof parsed === "string") return parsed;
   if (Array.isArray(parsed)) {
@@ -125,7 +132,8 @@ export default function CertificationMyResultPage() {
               Попыток: {data.attemptsAllowed == null ? `${data.attemptsUsed}/∞` : `${data.attemptsUsed}/${data.attemptsAllowed}`}
             </div>
             <div className="text-sm text-muted">
-              Последняя попытка: {formatDateTime(data.lastAttemptAt)} · Дата сдачи: {formatDateTime(data.passedAt)}
+              {getAttemptPeriodText(data)}
+              {data.passedAt && ` · Дата сдачи: ${formatDateTime(data.passedAt)}`}
             </div>
             <div className="flex flex-wrap gap-2">
               <Link to={trainingRoutes.exams}><Button variant="outline">К аттестациям</Button></Link>

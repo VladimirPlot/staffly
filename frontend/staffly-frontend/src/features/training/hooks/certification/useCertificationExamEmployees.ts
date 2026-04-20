@@ -50,7 +50,7 @@ export function useCertificationExamEmployees(
   const filteredEmployees = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return employees.filter((employee) => {
-      if (statusFilter !== "ALL" && employee.status !== statusFilter) return false;
+      if (statusFilter !== "ALL" && employee.analyticsStatus !== statusFilter) return false;
       if (!needle) return true;
       return employee.fullName.toLowerCase().includes(needle);
     });

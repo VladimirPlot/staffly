@@ -1,12 +1,12 @@
 import type {
-  CertificationAssignmentStatus,
+  CertificationAnalyticsStatus,
   CertificationExamAttemptHistoryDto,
   CertificationExamEmployeeRowDto,
   CertificationExamPositionBreakdownDto,
   CertificationExamSummaryDto,
 } from "../../api/types";
 
-export type CertificationStatusFilter = "ALL" | CertificationAssignmentStatus;
+export type CertificationStatusFilter = "ALL" | CertificationAnalyticsStatus;
 
 type AsyncBaseState = {
   loading: boolean;

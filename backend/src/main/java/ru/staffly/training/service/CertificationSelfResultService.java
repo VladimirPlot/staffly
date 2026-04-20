@@ -95,6 +95,8 @@ class CertificationSelfResultService {
                 attemptsAllowed,
                 revealCorrectAnswers,
                 assignmentForResult.getBestScore(),
+                attemptForDetails.map(TrainingExamAttempt::getStartedAt).orElse(null),
+                attemptForDetails.map(TrainingExamAttempt::getFinishedAt).orElse(null),
                 assignmentForResult.getLastAttemptAt(),
                 assignmentForResult.getPassedAt(),
                 questions

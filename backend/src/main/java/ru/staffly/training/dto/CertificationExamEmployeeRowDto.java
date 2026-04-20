@@ -13,6 +13,7 @@ public record CertificationExamEmployeeRowDto(
         Long currentPositionId,
         String currentPositionName,
         TrainingExamAssignmentStatus status,
+        CertificationAnalyticsStatus analyticsStatus,
         int attemptsUsed,
         Integer attemptsAllowed,
         int extraAttempts,

@@ -16,6 +16,9 @@ public record CertificationMyResultDto(
         Integer attemptsAllowed,
         boolean revealCorrectAnswers,
         Integer bestScore,
+        Instant lastAttemptStartedAt,
+        Instant lastAttemptFinishedAt,
+        @Deprecated
         Instant lastAttemptAt,
         Instant passedAt,
         List<CertificationMyResultQuestionDto> questions

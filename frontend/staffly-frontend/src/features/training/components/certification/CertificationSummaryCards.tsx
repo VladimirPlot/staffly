@@ -11,7 +11,6 @@ export default function CertificationSummaryCards({ summary }: Props) {
     ["Не сдано", summary.failedCount],
     ["В процессе", summary.inProgressCount],
     ["Не начато", summary.notStartedCount],
-    ["Исчерпано", summary.exhaustedCount],
   ];
 
   return (

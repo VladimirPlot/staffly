@@ -8,7 +8,6 @@ public record CertificationExamPositionBreakdownDto(
         int failedCount,
         int inProgressCount,
         int notStartedCount,
-        int exhaustedCount,
         Double averageScore,
         Double passRate
 ) {
