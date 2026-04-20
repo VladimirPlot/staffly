@@ -42,6 +42,11 @@ class CertificationAssignmentService {
             return;
         }
 
+        if (!exam.isActive()) {
+            archiveAllActiveAssignments(exam);
+            return;
+        }
+
         var audience = resolveAudienceMembers(exam);
         var audienceUserIds = audience.stream().map(member -> member.getUser().getId()).collect(Collectors.toSet());
 
@@ -63,6 +68,14 @@ class CertificationAssignmentService {
                 assignment.setActive(false);
                 assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
             }
+        }
+    }
+
+    private void archiveAllActiveAssignments(TrainingExam exam) {
+        var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
+        for (var assignment : activeAssignments) {
+            assignment.setActive(false);
+            assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
         }
     }
 

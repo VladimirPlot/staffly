@@ -42,6 +42,7 @@ public class ExamServiceImpl implements ExamService {
     private final ExamQuestionPoolResolver questionPoolResolver;
     private final ExamSnapshotService snapshotService;
     private final CertificationAssignmentService certificationAssignmentService;
+    private final CertificationAudienceSyncService certificationAudienceSyncService;
     private final CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
     private final CertificationAttemptFinalizationService certificationAttemptFinalizationService;
     private final CertificationManagerActionService certificationManagerActionService;
@@ -130,7 +131,7 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        certificationAssignmentService.syncAudienceAssignments(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -178,7 +179,7 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        certificationAssignmentService.syncAudienceAssignments(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -187,6 +188,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
+        certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -195,7 +197,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(true);
-        certificationAssignmentService.syncAudienceAssignments(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam);
     }
 
@@ -214,6 +216,7 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableCertificationExam(restaurantId, userId, examId);
+        certificationAudienceSyncService.syncExamAudience(exam);
         startNewCertificationCycle(exam);
         certificationAssignmentService.resetAssignmentsForNewCycle(exam);
     }

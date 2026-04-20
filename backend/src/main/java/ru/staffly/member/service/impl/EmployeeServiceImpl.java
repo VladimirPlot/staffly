@@ -27,6 +27,7 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
+import ru.staffly.training.service.CertificationAudienceSyncService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
@@ -52,6 +53,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final InvitationMapper invitationMapper;
     private final MemberMapper memberMapper;
     private final SecurityService security;
+    private final CertificationAudienceSyncService certificationAudienceSyncService;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -206,6 +208,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         inv.setStatus(InvitationStatus.ACCEPTED);
         invitations.save(inv);
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
 
         return memberMapper.toDto(m);
     }
@@ -296,6 +299,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         member.setPosition(position);
         member = members.save(member);
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
         return memberMapper.toDto(member);
     }
 
@@ -336,6 +340,7 @@ public class EmployeeServiceImpl implements EmployeeService {
             }
         }
         members.deleteById(memberId);
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
     }
 
     private boolean isPositionCompatibleWithRole(RestaurantRole positionLevel, RestaurantRole role) {

@@ -54,6 +54,7 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
               and a.user.id = :userId
               and a.active = true
               and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.active = true
             order by a.assignedAt desc, a.id desc
             """)
     List<TrainingExamAssignment> findActiveCertificationAssignmentsForUser(@Param("restaurantId") Long restaurantId,
