@@ -36,6 +36,35 @@ class CertificationAnalyticsService {
     }
 
     @Transactional(readOnly = true)
+    public Map<Long, CertificationExamSummaryPreviewDto> getExamSummaryPreviewBatch(Long restaurantId, Collection<Long> examIds) {
+        if (examIds == null || examIds.isEmpty()) {
+            return Map.of();
+        }
+
+        var distinctExamIds = examIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinctExamIds.isEmpty()) {
+            return Map.of();
+        }
+
+        var rows = assignments.findActiveByRestaurantIdAndExamIds(restaurantId, distinctExamIds);
+        var grouped = rows.stream().collect(Collectors.groupingBy(row -> row.getExam().getId()));
+
+        Map<Long, CertificationExamSummaryPreviewDto> summaryByExamId = new HashMap<>();
+        for (Long examId : distinctExamIds) {
+            var summary = toSummary(grouped.getOrDefault(examId, List.of()));
+            summaryByExamId.put(examId, new CertificationExamSummaryPreviewDto(
+                    summary.totalAssigned(),
+                    summary.passedCount(),
+                    summary.failedCount(),
+                    summary.inProgressCount(),
+                    summary.notStartedCount(),
+                    summary.completedCount()
+            ));
+        }
+        return summaryByExamId;
+    }
+
+    @Transactional(readOnly = true)
     public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long examId) {
         var rows = loadActiveAssignmentScope(restaurantId, examId);
         return rows.stream()
@@ -175,12 +204,13 @@ class CertificationAnalyticsService {
         int failed = countAnalyticsStatus(rows, CertificationAnalyticsStatus.FAILED);
         int inProgress = countAnalyticsStatus(rows, CertificationAnalyticsStatus.IN_PROGRESS);
         int notStarted = countAnalyticsStatus(rows, CertificationAnalyticsStatus.NOT_STARTED);
+        int completed = passed + failed;
 
         var scored = rows.stream().map(TrainingExamAssignment::getBestScore).filter(Objects::nonNull).toList();
         Double avg = scored.isEmpty() ? null : scored.stream().mapToInt(Integer::intValue).average().orElse(0d);
         Double passRate = total == 0 ? 0d : (passed * 100.0) / total;
 
-        return new CertificationExamSummaryDto(total, passed, failed, inProgress, notStarted, avg, passRate);
+        return new CertificationExamSummaryDto(total, passed, failed, inProgress, notStarted, completed, avg, passRate);
     }
 
     private int countAnalyticsStatus(List<TrainingExamAssignment> rows, CertificationAnalyticsStatus status) {

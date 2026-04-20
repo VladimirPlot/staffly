@@ -148,6 +148,16 @@ export type TrainingExamDto = {
   sourcesFolders: ExamSourceFolderDto[];
   sourceQuestionIds: number[];
   visibilityPositionIds: number[];
+  certificationSummaryPreview?: CertificationExamSummaryPreviewDto | null;
+};
+
+export type CertificationExamSummaryPreviewDto = {
+  totalAssigned: number;
+  passedCount: number;
+  failedCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  completedCount: number;
 };
 
 export type CurrentUserCertificationExamDto = {
@@ -227,6 +237,7 @@ export type CertificationExamSummaryDto = {
   failedCount: number;
   inProgressCount: number;
   notStartedCount: number;
+  completedCount: number;
   averageScore?: number | null;
   passRate?: number | null;
 };

@@ -6,6 +6,7 @@ public record CertificationExamSummaryDto(
         int failedCount,
         int inProgressCount,
         int notStartedCount,
+        int completedCount,
         Double averageScore,
         Double passRate
 ) {

@@ -57,9 +57,16 @@ public class ExamServiceImpl implements ExamService {
                 ? null
                 : (certificationOnly ? TrainingExamMode.CERTIFICATION : TrainingExamMode.PRACTICE);
 
-        return examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter)
+        var visibleExams = examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter);
+        var certificationExamIds = visibleExams.stream()
+                .filter(exam -> exam.getMode() == TrainingExamMode.CERTIFICATION)
+                .map(TrainingExam::getId)
+                .toList();
+        var summaryPreviewByExamId = certificationAnalyticsService.getExamSummaryPreviewBatch(restaurantId, certificationExamIds);
+
+        return visibleExams
                 .stream()
-                .map(this::toDtoWithSourcesAndVisibility)
+                .map(exam -> toDtoWithSourcesAndVisibility(exam, summaryPreviewByExamId.get(exam.getId())))
                 .toList();
     }
 
@@ -106,7 +113,7 @@ public class ExamServiceImpl implements ExamService {
 
         return examAccessService.listVisiblePracticeExamsByKnowledgeFolder(restaurantId, userId, isManager, folderId, includeInactive)
                 .stream()
-                .map(this::toDtoWithSourcesAndVisibility)
+                .map(exam -> toDtoWithSourcesAndVisibility(exam, null))
                 .toList();
     }
 
@@ -132,7 +139,7 @@ public class ExamServiceImpl implements ExamService {
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         certificationAudienceSyncService.syncExamAudience(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -180,7 +187,7 @@ public class ExamServiceImpl implements ExamService {
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         certificationAudienceSyncService.syncExamAudience(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -189,7 +196,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
         certificationAudienceSyncService.syncExamAudience(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -198,7 +205,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(true);
         certificationAudienceSyncService.syncExamAudience(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -310,7 +317,7 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getId(),
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam),
+                toDtoWithSourcesAndVisibility(exam, null),
                 snapshots
         );
     }
@@ -394,7 +401,7 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getId(),
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam),
+                toDtoWithSourcesAndVisibility(exam, null),
                 snapshots
         );
     }
@@ -650,7 +657,7 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private TrainingExamDto toDtoWithSourcesAndVisibility(TrainingExam exam) {
+    private TrainingExamDto toDtoWithSourcesAndVisibility(TrainingExam exam, CertificationExamSummaryPreviewDto summaryPreview) {
         var folders = sourceFolders.findByExamId(exam.getId()).stream()
                 .map(source -> new ExamSourceFolderDto(source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
                 .toList();
@@ -674,7 +681,8 @@ public class ExamServiceImpl implements ExamService {
                 exam.isActive(),
                 folders,
                 questionIds,
-                visibilityIds
+                visibilityIds,
+                summaryPreview
         );
     }
 

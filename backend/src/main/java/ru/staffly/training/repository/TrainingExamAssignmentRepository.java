@@ -49,6 +49,15 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
 
     @Query("""
             select a from TrainingExamAssignment a
+            where a.restaurant.id = :restaurantId
+              and a.active = true
+              and a.exam.id in :examIds
+            """)
+    List<TrainingExamAssignment> findActiveByRestaurantIdAndExamIds(@Param("restaurantId") Long restaurantId,
+                                                                    @Param("examIds") Collection<Long> examIds);
+
+    @Query("""
+            select a from TrainingExamAssignment a
             join fetch a.exam e
             where a.restaurant.id = :restaurantId
               and a.user.id = :userId
