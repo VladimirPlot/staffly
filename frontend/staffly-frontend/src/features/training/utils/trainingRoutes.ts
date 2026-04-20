@@ -8,5 +8,6 @@ export const trainingRoutes = {
   examRun: (examId: number) => `/training/exams/${examId}/run`,
   examResult: (examId: number) => `/training/exams/${examId}/result`,
   examAnalytics: (examId: number) => `/training/exams/${examId}/analytics`,
+  examAttemptAnalytics: (examId: number, attemptId: number) => `/training/exams/${examId}/analytics/attempts/${attemptId}`,
   knowledgeExamRun: (folderId: number, examId: number) => `/training/knowledge/${folderId}/exams/${examId}/run`,
 } as const;

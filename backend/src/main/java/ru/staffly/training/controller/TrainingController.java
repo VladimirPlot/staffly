@@ -348,6 +348,15 @@ public class TrainingController {
         return examService.getCertificationEmployeeAttemptHistory(restaurantId, principal.userId(), examId, userId);
     }
 
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/attempts/{attemptId}")
+    public CertificationAttemptDetailsDto getCertificationAttemptDetails(@PathVariable Long restaurantId,
+                                                                         @PathVariable Long examId,
+                                                                         @PathVariable Long attemptId,
+                                                                         @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationAttemptDetails(restaurantId, principal.userId(), examId, attemptId);
+    }
+
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/start")
     public StartExamResponseDto startExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
