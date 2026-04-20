@@ -10,6 +10,7 @@ import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingExamAssignment;
 import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
+import ru.staffly.training.repository.TrainingExamAttemptQuestionRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 import ru.staffly.training.repository.TrainingExamRepository;
 
@@ -23,8 +24,10 @@ class CertificationAnalyticsService {
     private final TrainingExamRepository exams;
     private final TrainingExamAssignmentRepository assignments;
     private final TrainingExamAttemptRepository attempts;
+    private final TrainingExamAttemptQuestionRepository attemptQuestions;
     private final RestaurantMemberRepository members;
     private final CertificationAssignmentService assignmentService;
+    private final ExamSnapshotService snapshotService;
 
     @Transactional(readOnly = true)
     public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
@@ -110,6 +113,56 @@ class CertificationAnalyticsService {
                         attempt.getExamVersion()
                 ))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CertificationAttemptDetailsDto getAttemptDetails(Long restaurantId, Long examId, Long attemptId) {
+        ensureCertificationExam(restaurantId, examId);
+        var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Attempt not found"));
+        if (attempt.getExam() == null || !Objects.equals(attempt.getExam().getId(), examId)) {
+            throw new NotFoundException("Attempt not found for this exam");
+        }
+
+        var questions = attemptQuestions.findByAttemptId(attemptId).stream()
+                .map(item -> {
+                    var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
+                    return new CertificationAttemptDetailsQuestionDto(
+                            snapshot.questionId(),
+                            snapshot.type(),
+                            snapshot.prompt(),
+                            item.getChosenAnswerJson(),
+                            item.isCorrect(),
+                            item.getCorrectKeyJson(),
+                            snapshot.explanation()
+                    );
+                })
+                .toList();
+
+        var startedAt = attempt.getStartedAt();
+        var finishedAt = attempt.getFinishedAt();
+        Long durationSec = startedAt != null && finishedAt != null
+                ? Math.max(0L, finishedAt.getEpochSecond() - startedAt.getEpochSecond())
+                : null;
+
+        return new CertificationAttemptDetailsDto(
+                attempt.getId(),
+                attempt.getExam() == null ? null : attempt.getExam().getId(),
+                attempt.getTitleSnapshot(),
+                attempt.getExam() == null ? null : attempt.getExam().getDescription(),
+                attempt.getUser().getId(),
+                attempt.getUser().getFullName(),
+                attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),
+                attempt.getExamVersion(),
+                startedAt,
+                finishedAt,
+                attempt.getScorePercent(),
+                attempt.getPassPercentSnapshot(),
+                Boolean.TRUE.equals(attempt.getPassed()),
+                attempt.getQuestionCountSnapshot(),
+                durationSec,
+                questions
+        );
     }
 
     private List<TrainingExamAssignment> loadActiveAssignmentScope(Long restaurantId, Long examId) {

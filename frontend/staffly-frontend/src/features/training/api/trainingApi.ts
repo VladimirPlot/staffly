@@ -4,6 +4,7 @@ import type {
   CertificationExamAttemptHistoryDto,
   CertificationExamEmployeeRowDto,
   CertificationExamPositionBreakdownDto,
+  CertificationAttemptDetailsDto,
   CertificationMyResultDto,
   CertificationExamSummaryDto,
   CurrentUserCertificationExamDto,
@@ -139,6 +140,14 @@ export async function getCertificationEmployeeAttempts(
 ): Promise<CertificationExamAttemptHistoryDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/employees/${userId}/attempts`);
   return data as CertificationExamAttemptHistoryDto[];
+}
+export async function getCertificationAttemptDetails(
+  restaurantId: number,
+  examId: number,
+  attemptId: number,
+): Promise<CertificationAttemptDetailsDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/attempts/${attemptId}`);
+  return data as CertificationAttemptDetailsDto;
 }
 
 export async function getPracticeExamProgress(restaurantId: number): Promise<ExamProgressDto[]> { const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/practice-progress`); return data as ExamProgressDto[]; }

@@ -282,6 +282,35 @@ export type CertificationExamAttemptHistoryDto = {
   examVersion?: number | null;
 };
 
+export type CertificationAttemptDetailsQuestionDto = {
+  questionId: number;
+  questionType: TrainingQuestionType;
+  prompt: string;
+  chosenAnswerJson?: string | null;
+  correct: boolean;
+  correctAnswerJson?: string | null;
+  explanation?: string | null;
+};
+
+export type CertificationAttemptDetailsDto = {
+  attemptId: number;
+  examId: number;
+  examTitle: string;
+  examDescription?: string | null;
+  userId: number;
+  userFullName: string;
+  assignmentId?: number | null;
+  examVersion?: number | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  scorePercent?: number | null;
+  passPercent: number;
+  passed: boolean;
+  questionCount?: number | null;
+  durationSec?: number | null;
+  questions: CertificationAttemptDetailsQuestionDto[];
+};
+
 export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };
 export type ExamStartQuestionMatchPairViewDto = { sortOrder: number; leftText: string; rightText: string };
 

@@ -373,6 +373,12 @@ public class ExamServiceImpl implements ExamService {
         return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, examId, userId);
     }
 
+    @Override
+    public CertificationAttemptDetailsDto getCertificationAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        return certificationAnalyticsService.getAttemptDetails(restaurantId, examId, attemptId);
+    }
+
     private void startNewCertificationCycle(TrainingExam exam) {
         // certification reset-cycle открывает новый глобальный assignment cycle.
         // Это не per-user reset: все новые попытки пишутся под новой версией экзамена.

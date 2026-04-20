@@ -1,14 +1,22 @@
 import Card from "../../../../shared/ui/Card";
+import { Link, useSearchParams } from "react-router-dom";
+import Button from "../../../../shared/ui/Button";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
 import type { CertificationEmployeeAttemptsState } from "../../hooks/certification/types";
+import { trainingRoutes } from "../../utils/trainingRoutes";
 
 type Props = {
+  examId: number;
+  selectedEmployeeUserId: number | null;
   selectedEmployeeFullName: string | null;
   attemptsState: CertificationEmployeeAttemptsState;
 };
 
-export default function CertificationAttemptsSection({ selectedEmployeeFullName, attemptsState }: Props) {
+export default function CertificationAttemptsSection({ examId, selectedEmployeeUserId, selectedEmployeeFullName, attemptsState }: Props) {
+  const [searchParams] = useSearchParams();
+  const returnTo = encodeURIComponent(`/training/exams/${examId}/analytics?${searchParams.toString()}`);
+
   if (!selectedEmployeeFullName) {
     return (
       <Card>
@@ -34,6 +42,15 @@ export default function CertificationAttemptsSection({ selectedEmployeeFullName,
               <div>Балл: {attempt.scorePercent ?? "—"}%</div>
               <div>Версия экзамена: {attempt.assignmentExamVersionSnapshot ?? attempt.examVersion ?? "—"}</div>
               <div>Статус: {attempt.passed == null ? "—" : attempt.passed ? "Сдано" : "Не сдано"}</div>
+              {selectedEmployeeUserId && (
+                <div className="mt-2">
+                  <Link
+                    to={`${trainingRoutes.examAttemptAnalytics(examId, attempt.attemptId)}?userId=${selectedEmployeeUserId}&returnTo=${returnTo}`}
+                  >
+                    <Button size="sm" variant="outline">Подробнее</Button>
+                  </Link>
+                </div>
+              )}
             </div>
           ))}
         </div>

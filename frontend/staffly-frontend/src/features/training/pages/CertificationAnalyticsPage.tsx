@@ -134,7 +134,12 @@ export default function CertificationAnalyticsPage() {
             onSearchChange={setSearch}
             onShowAttempts={setSelectedEmployeeUserId}
           />
-          <CertificationAttemptsSection selectedEmployeeFullName={selectedEmployeeFullName} attemptsState={attemptsState} />
+          <CertificationAttemptsSection
+            examId={exam.id}
+            selectedEmployeeUserId={selectedEmployeeUserId}
+            selectedEmployeeFullName={selectedEmployeeFullName}
+            attemptsState={attemptsState}
+          />
         </div>
       )}
     </div>
