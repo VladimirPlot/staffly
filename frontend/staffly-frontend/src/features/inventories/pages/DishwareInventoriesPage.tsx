@@ -104,9 +104,6 @@ export default function DishwareInventoriesPage() {
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center justify-between gap-3">
         <BackToHome />
-        <Button variant="outline" onClick={() => navigate("/inventories")}>
-          Все инвентаризации
-        </Button>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -116,7 +113,18 @@ export default function DishwareInventoriesPage() {
             Каждая инвентаризация — отдельный документ. На основе прошлой создается только копия.
           </div>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>Новая инвентаризация</Button>
+        <div className="inline-flex flex-col gap-2 rounded-[1.75rem] border border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/45 p-1.5 shadow-[var(--staffly-shadow)] sm:flex-row sm:items-center">
+          <Button
+            variant="outline"
+            className="shadow-none"
+            onClick={() => navigate("/inventories")}
+          >
+            Все инвентаризации
+          </Button>
+          <Button className="shadow-none" onClick={() => setCreateOpen(true)}>
+            Новая инвентаризация
+          </Button>
+        </div>
       </div>
 
       {loading ? <Card className="text-sm text-muted">Загружаем инвентаризации…</Card> : null}
