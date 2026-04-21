@@ -57,15 +57,19 @@ export default function CreateDishwareInventoryModal({
         <Button variant="outline" onClick={onClose} disabled={submitting}>
           Отмена
         </Button>
-        <Button onClick={() => {
-          if (!canSubmit) return;
-          void onSubmit({
-            title: title.trim() || null,
-            inventoryDate,
-            sourceInventoryId: mode === "copy" && sourceInventoryId ? Number(sourceInventoryId) : null,
-            comment: comment.trim() || null,
-          });
-        }} disabled={!canSubmit} isLoading={submitting}>
+        <Button
+          onClick={() => {
+            if (!canSubmit) return;
+            void onSubmit({
+              title: title.trim() || null,
+              inventoryDate,
+              sourceInventoryId: mode === "copy" && sourceInventoryId ? Number(sourceInventoryId) : null,
+              comment: comment.trim() || null,
+            });
+          }}
+          disabled={!canSubmit}
+          isLoading={submitting}
+        >
           Создать
         </Button>
       </>
@@ -74,27 +78,29 @@ export default function CreateDishwareInventoryModal({
   );
 
   return (
-      <Modal
-        open={open}
-        title="Новая инвентаризация посуды"
-      description="Можно создать пустой документ или продолжить на основе предыдущей инвентаризации."
-        onClose={onClose}
-        footer={footer}
-        className="max-w-xl"
-      >
+    <Modal
+      open={open}
+      title="Новая инвентаризация посуды"
+      description="Создай пустой документ или копию прошлой."
+      onClose={onClose}
+      footer={footer}
+      className="max-w-xl"
+    >
       <div className="space-y-4">
         <DropdownSelect
           label="Как начать"
           value={mode}
           onChange={(event) => setMode((event.target.value as Mode) || "empty")}
         >
-          <option value="empty">С пустой инвентаризации</option>
-          <option value="copy" disabled={!hasSourceOptions}>На основе прошлой</option>
+          <option value="empty">С нуля</option>
+          <option value="copy" disabled={!hasSourceOptions}>
+            По прошлой инвентаризации
+          </option>
         </DropdownSelect>
 
         {mode === "copy" && (
           <DropdownSelect
-            label="Откуда скопировать позиции"
+            label="Выбери источник"
             value={sourceInventoryId}
             onChange={(event) => setSourceInventoryId(event.target.value)}
             placeholder="Выбери прошлую инвентаризацию"
@@ -110,6 +116,8 @@ export default function CreateDishwareInventoryModal({
 
         <Input
           label="Дата инвентаризации"
+          labelClassName="mb-0.5 text-xs font-medium"
+          className="h-9 rounded-xl px-3"
           type="date"
           value={inventoryDate}
           onChange={(event) => setInventoryDate(event.target.value)}
@@ -117,17 +125,23 @@ export default function CreateDishwareInventoryModal({
 
         <Input
           label="Название"
+          labelClassName="mb-0.5 text-xs font-medium"
+          className="h-9 rounded-xl px-3"
           value={title}
+          maxLength={200}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="Если пусто, система подставит название сама"
+          placeholder="Например, инвентаризация посуды за апрель"
         />
 
         <Textarea
           label="Комментарий"
+          labelClassName="mb-0.5 text-xs font-medium"
+          className="rounded-xl px-3 py-2.5"
           value={comment}
+          maxLength={5000}
           onChange={(event) => setComment(event.target.value)}
-          rows={3}
-          placeholder="Например: ежемесячная сверка по залу"
+          rows={2}
+          placeholder="Например: ежемесячная сверка по залу или смене"
         />
 
         {error ? <div className="text-sm text-red-600">{error}</div> : null}

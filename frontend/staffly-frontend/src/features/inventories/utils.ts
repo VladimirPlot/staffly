@@ -12,6 +12,7 @@ export type DishwareInventoryDraftItem = {
   name: string;
   photoUrl?: string | null;
   previousQty: string;
+  incomingQty: string;
   currentQty: string;
   unitPrice: string;
   note: string;
@@ -33,6 +34,10 @@ export type DishwareInventoryDraft = {
 
 export type DishwareInventorySummary = {
   itemCount: number;
+  previousQty: number;
+  incomingQty: number;
+  expectedQty: number;
+  currentQty: number;
   lossQty: number;
   gainQty: number;
   totalLossAmount: number;
@@ -53,6 +58,7 @@ export function createEmptyDishwareDraftItem(): DishwareInventoryDraftItem {
     name: "",
     photoUrl: null,
     previousQty: "0",
+    incomingQty: "0",
     currentQty: "",
     unitPrice: "",
     note: "",
@@ -84,6 +90,7 @@ export function createDishwareDraftFromDto(inventory: DishwareInventoryDto): Dis
       name: item.name,
       photoUrl: item.photoUrl ?? null,
       previousQty: formatNumberInput(item.previousQty),
+      incomingQty: formatNumberInput(item.incomingQty ?? null),
       currentQty: formatNumberInput(item.currentQty),
       unitPrice: formatNumberInput(item.unitPrice ?? null),
       note: item.note ?? "",
@@ -120,11 +127,18 @@ export function parseMoney(value: string): number | null {
 
 export function computeDishwareItemMetrics(item: {
   previousQty: string | number;
+  incomingQty?: string | number | null;
   currentQty: string | number;
   unitPrice?: string | number | null;
 }) {
   const previousQty =
     typeof item.previousQty === "number" ? Math.max(item.previousQty, 0) : parseCount(item.previousQty);
+  const incomingQty =
+    typeof item.incomingQty === "number"
+      ? Math.max(item.incomingQty, 0)
+      : item.incomingQty === null || item.incomingQty === undefined
+        ? 0
+        : parseCount(item.incomingQty);
   const currentQty =
     typeof item.currentQty === "number" ? Math.max(item.currentQty, 0) : parseCount(item.currentQty);
   const unitPrice =
@@ -134,14 +148,17 @@ export function computeDishwareItemMetrics(item: {
         ? null
         : parseMoney(item.unitPrice);
 
-  const diff = currentQty - previousQty;
-  const lossQty = Math.max(previousQty - currentQty, 0);
-  const gainQty = Math.max(currentQty - previousQty, 0);
+  const expectedQty = previousQty + incomingQty;
+  const diff = currentQty - expectedQty;
+  const lossQty = Math.max(expectedQty - currentQty, 0);
+  const gainQty = Math.max(currentQty - expectedQty, 0);
   const totalAmount = unitPrice !== null ? currentQty * unitPrice : 0;
   const lossAmount = unitPrice !== null ? lossQty * unitPrice : 0;
 
   return {
     previousQty,
+    incomingQty,
+    expectedQty,
     currentQty,
     unitPrice,
     diff,
@@ -152,11 +169,22 @@ export function computeDishwareItemMetrics(item: {
   };
 }
 
-export function computeDishwareSummary(items: DishwareInventoryDraftItem[]): DishwareInventorySummary {
+export function computeDishwareSummary(
+  items: Array<{
+    previousQty: string | number;
+    incomingQty?: string | number | null;
+    currentQty: string | number;
+    unitPrice?: string | number | null;
+  }>,
+): DishwareInventorySummary {
   return items.reduce<DishwareInventorySummary>(
     (acc, item) => {
       const metrics = computeDishwareItemMetrics(item);
       acc.itemCount += 1;
+      acc.previousQty += metrics.previousQty;
+      acc.incomingQty += metrics.incomingQty;
+      acc.expectedQty += metrics.expectedQty;
+      acc.currentQty += metrics.currentQty;
       acc.lossQty += metrics.lossQty;
       acc.gainQty += metrics.gainQty;
       acc.totalLossAmount += metrics.lossAmount;
@@ -165,7 +193,17 @@ export function computeDishwareSummary(items: DishwareInventoryDraftItem[]): Dis
       }
       return acc;
     },
-    { itemCount: 0, lossQty: 0, gainQty: 0, totalLossAmount: 0, positionsWithLoss: 0 },
+    {
+      itemCount: 0,
+      previousQty: 0,
+      incomingQty: 0,
+      expectedQty: 0,
+      currentQty: 0,
+      lossQty: 0,
+      gainQty: 0,
+      totalLossAmount: 0,
+      positionsWithLoss: 0,
+    },
   );
 }
 
@@ -187,6 +225,7 @@ export function buildDishwareUpdatePayload(draft: DishwareInventoryDraft): {
       id: item.id,
       name: trimmedName,
       previousQty: metrics.previousQty,
+      incomingQty: metrics.incomingQty,
       currentQty: metrics.currentQty,
       unitPrice: metrics.unitPrice,
       note: item.note.trim() || null,

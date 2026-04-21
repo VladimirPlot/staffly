@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record UpdateDishwareInventoryRequest(
-        String title,
+        @Size(max = 200) String title,
         @NotNull LocalDate inventoryDate,
         @NotNull String status,
         @Size(max = 5000) String comment,

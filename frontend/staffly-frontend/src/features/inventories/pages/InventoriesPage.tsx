@@ -63,13 +63,13 @@ export default function InventoriesPage() {
 
       <div className="space-y-1">
         <h2 className="text-2xl font-semibold text-balance">Инвентаризации</h2>
-        <div className="text-pretty text-sm text-muted">Выбери раздел, с которым хочешь работать.</div>
+        <div className="text-pretty text-sm text-muted">Выбери раздел и открой нужный рабочий поток.</div>
       </div>
 
       <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
         <InventoryCard
           title="Посуда"
-          description="Журнал инвентаризаций посуды, создание новых документов и сверка расхождений."
+          description="Инвентаризации посуды."
           to="/inventories/dishware"
           icon={PackageOpen}
         />

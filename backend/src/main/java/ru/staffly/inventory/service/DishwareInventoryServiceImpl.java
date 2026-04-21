@@ -96,6 +96,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                             .name(sourceItem.getName())
                             .photoUrl(null)
                             .previousQty(sourceItem.getCurrentQty())
+                            .incomingQty(0)
                             .currentQty(sourceItem.getCurrentQty())
                             .unitPrice(sourceItem.getUnitPrice())
                             .note(sourceItem.getNote())
@@ -290,12 +291,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             throw new BadRequestException("Название позиции обязательно");
         }
         int previousQty = normalizeQty(request.previousQty());
+        int incomingQty = normalizeQty(request.incomingQty());
         int currentQty = normalizeQty(request.currentQty());
         BigDecimal unitPrice = normalizeUnitPrice(request.unitPrice());
         String note = normalizeText(request.note(), false);
 
         item.setName(name);
         item.setPreviousQty(previousQty);
+        item.setIncomingQty(incomingQty);
         item.setCurrentQty(currentQty);
         item.setUnitPrice(unitPrice);
         item.setSortOrder(request.sortOrder() != null ? request.sortOrder() : index);

@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ArrowDownRight,
-  BadgeRussianRuble,
-  Check,
-  List,
-  Pencil,
-  Save,
-  SquareActivity,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+import { Check, Pencil, Save, SquareActivity, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import BackToHome from "../../../shared/ui/BackToHome";
@@ -18,6 +8,7 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import DishwareInventoryItemCard from "../components/DishwareInventoryItemCard";
+import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
@@ -31,12 +22,13 @@ import {
   type DishwareInventoryStatus,
   type UpdateDishwareInventoryItemRequest,
 } from "../api";
-import { formatInventoryLossAmount, formatInventoryLossCount, getInventoryStatusBadgeClass } from "../utils";
+import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
 
-type EditableDishwareItem = Omit<UpdateDishwareInventoryItemRequest, "id"> & {
+type EditableDishwareItem = Omit<UpdateDishwareInventoryItemRequest, "id" | "incomingQty"> & {
   clientId: string;
   id?: number;
   photoUrl?: string | null;
+  incomingQty: number;
 };
 
 function createClientId(): string {
@@ -50,6 +42,7 @@ function toEditableItems(inventory: DishwareInventoryDto): EditableDishwareItem[
     name: item.name,
     photoUrl: item.photoUrl ?? null,
     previousQty: item.previousQty,
+    incomingQty: item.incomingQty ?? 0,
     currentQty: item.currentQty,
     unitPrice: item.unitPrice ?? null,
     sortOrder: item.sortOrder ?? index,
@@ -106,21 +99,7 @@ export default function DishwareInventoryEditorPage() {
   }, [loadInventory]);
 
   const summary = useMemo(() => {
-    let totalLossQty = 0;
-    let totalLossAmount = 0;
-    for (const item of items) {
-      const lossQty = Math.max((item.previousQty ?? 0) - (item.currentQty ?? 0), 0);
-      totalLossQty += lossQty;
-      if (item.unitPrice != null && lossQty > 0) {
-        totalLossAmount += Number(item.unitPrice) * lossQty;
-      }
-    }
-
-    return {
-      itemsCount: items.length,
-      totalLossQty,
-      totalLossAmount,
-    };
+    return computeDishwareSummary(items);
   }, [items]);
 
   const updateItem = useCallback((clientId: string, patch: Partial<EditableDishwareItem>) => {
@@ -135,6 +114,7 @@ export default function DishwareInventoryEditorPage() {
         name: "",
         photoUrl: null,
         previousQty: 0,
+        incomingQty: 0,
         currentQty: 0,
         unitPrice: null,
         sortOrder: prev.length,
@@ -180,6 +160,7 @@ export default function DishwareInventoryEditorPage() {
           id: item.id,
           name: item.name,
           previousQty: Number(item.previousQty) || 0,
+          incomingQty: Number(item.incomingQty) || 0,
           currentQty: Number(item.currentQty) || 0,
           unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
           sortOrder: index,
@@ -260,71 +241,66 @@ export default function DishwareInventoryEditorPage() {
         </Button>
       </div>
 
-      <Card className="space-y-4 rounded-[2rem] p-4 sm:p-5">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+      <Card className="space-y-3 rounded-[1.75rem] p-3 sm:p-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <Input label="Название" value={title} onChange={(event) => setTitle(event.target.value)} />
+              <Input
+                label="Название"
+                labelClassName="mb-0.5 text-xs font-medium"
+                className="h-9 rounded-xl px-3"
+                value={title}
+                maxLength={200}
+                onChange={(event) => setTitle(event.target.value)}
+              />
             </div>
-            <Input label="Дата инвентаризации" type="date" value={inventoryDate} onChange={(event) => setInventoryDate(event.target.value)} />
+            <Input
+              label="Дата инвентаризации"
+              labelClassName="mb-0.5 text-xs font-medium"
+              className="h-9 rounded-xl px-3"
+              type="date"
+              value={inventoryDate}
+              onChange={(event) => setInventoryDate(event.target.value)}
+            />
             <div className="sm:col-span-2">
               <Textarea
                 label="Комментарий"
+                labelClassName="mb-0.5 text-xs font-medium"
+                className="rounded-xl px-3 py-2.5"
                 value={comment}
+                maxLength={5000}
                 onChange={(event) => setComment(event.target.value)}
-                rows={3}
+                rows={2}
               />
             </div>
             {inventory.sourceInventoryTitle ? (
-              <div className="sm:col-span-2 text-sm text-muted">Создана по образцу: {inventory.sourceInventoryTitle}</div>
+              <div className="sm:col-span-2 text-xs text-muted">Источник: {inventory.sourceInventoryTitle}</div>
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1 lg:gap-2">
-            <div className="border-subtle bg-app rounded-2xl border px-3 py-2">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <Icon icon={List} size="xs" decorative className="shrink-0 text-icon opacity-60" />
-                <div className="text-xs text-muted">Позиции</div>
-              </div>
-              <div className="text-lg font-semibold leading-none">{summary.itemsCount}</div>
+          <div className="space-y-2 rounded-2xl border border-subtle bg-app px-3 py-3">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted">
+              <Icon icon={SquareActivity} size="xs" decorative className="shrink-0 text-icon opacity-60" />
+              <div>Статус</div>
             </div>
-            <div className="border-subtle bg-app rounded-2xl border px-3 py-2">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <Icon icon={ArrowDownRight} size="xs" decorative className="shrink-0 text-icon opacity-60" />
-                <div className="text-xs text-muted">Потеряно шт</div>
-              </div>
-              <div className="text-lg font-semibold leading-none">{formatInventoryLossCount(summary.totalLossQty)}</div>
-            </div>
-            <div className="border-subtle bg-app col-span-2 rounded-2xl border px-3 py-2 sm:col-span-1">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <Icon icon={BadgeRussianRuble} size="xs" decorative className="shrink-0 text-icon opacity-60" />
-                <div className="text-xs text-muted">Сумма потерь</div>
-              </div>
-              <div className="text-lg font-semibold leading-none">{formatInventoryLossAmount(summary.totalLossAmount)}</div>
-            </div>
-            <div className="col-span-2 rounded-2xl border border-subtle bg-app px-3 py-2 text-xs text-muted sm:col-span-3 lg:col-span-1">
-              <div className="mb-1.5 flex items-center gap-1.5">
-                <Icon icon={SquareActivity} size="xs" decorative className="shrink-0 text-icon opacity-60" />
-                <div className="text-xs text-muted">Статус</div>
-              </div>
-              <div className={getInventoryStatusBadgeClass(status) + " text-sm"}>
-                <Icon
-                  icon={status === "COMPLETED" ? Check : Pencil}
-                  size="xs"
-                  decorative
-                  className={status === "COMPLETED" ? "shrink-0 text-emerald-600" : "shrink-0 text-icon"}
-                />
-                <span>{status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
-              </div>
+            <div className={getInventoryStatusBadgeClass(status) + " text-sm"}>
+              <Icon
+                icon={status === "COMPLETED" ? Check : Pencil}
+                size="xs"
+                decorative
+                className={status === "COMPLETED" ? "shrink-0 text-emerald-600" : "shrink-0 text-icon"}
+              />
+              <span>{status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button leftIcon={<Icon icon={Save} size="sm" decorative />} isLoading={saving} onClick={() => void handleSave()}>
+          <Button size="sm" leftIcon={<Icon icon={Save} size="sm" decorative />} isLoading={saving} onClick={() => void handleSave()}>
             Сохранить
           </Button>
           <Button
+            size="sm"
             variant="outline"
             isLoading={saving}
             leftIcon={<Icon icon={Undo2} size="sm" decorative />}
@@ -333,6 +309,7 @@ export default function DishwareInventoryEditorPage() {
             {status === "COMPLETED" ? "Вернуть в черновик" : "Завершить инвентаризацию"}
           </Button>
           <Button
+            size="sm"
             variant="outline"
             className="text-red-600"
             leftIcon={<Icon icon={Trash2} size="sm" decorative />}
@@ -345,12 +322,16 @@ export default function DishwareInventoryEditorPage() {
         {saveError ? <div className="text-sm text-red-600">{saveError}</div> : null}
       </Card>
 
+      <DishwareInventorySummary summary={summary} />
+
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-xl font-semibold">Позиции</h3>
-          <div className="text-sm text-muted">Для новых строк фото станет доступно сразу после сохранения документа.</div>
+          <div className="text-sm text-muted">Было / Приход / Стало</div>
         </div>
-        <Button onClick={addItem}>Добавить позицию</Button>
+        <Button size="sm" onClick={addItem}>
+          Добавить позицию
+        </Button>
       </div>
 
       <div className="space-y-3">

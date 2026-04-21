@@ -7,6 +7,7 @@ export type DishwareInventoryItemDto = {
   name: string;
   photoUrl?: string | null;
   previousQty: number;
+  incomingQty?: number | null;
   currentQty: number;
   unitPrice?: number | null;
   sortOrder: number;
@@ -49,6 +50,7 @@ export type UpdateDishwareInventoryItemRequest = {
   id?: number;
   name: string;
   previousQty: number;
+  incomingQty?: number | null;
   currentQty: number;
   unitPrice?: number | null;
   sortOrder?: number;

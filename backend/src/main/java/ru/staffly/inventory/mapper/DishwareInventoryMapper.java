@@ -63,26 +63,23 @@ public class DishwareInventoryMapper {
     }
 
     public DishwareInventoryItemDto toItemDto(DishwareInventoryItem item) {
-        int diffQty = item.getCurrentQty() - item.getPreviousQty();
-        int lossQty = Math.max(item.getPreviousQty() - item.getCurrentQty(), 0);
-        int gainQty = Math.max(item.getCurrentQty() - item.getPreviousQty(), 0);
-        BigDecimal lossAmount = item.getUnitPrice() == null
-                ? BigDecimal.ZERO
-                : item.getUnitPrice().multiply(BigDecimal.valueOf(lossQty));
+        Metrics metrics = metrics(item);
 
         return new DishwareInventoryItemDto(
                 item.getId(),
                 item.getName(),
                 item.getPhotoUrl(),
                 item.getPreviousQty(),
+                item.getIncomingQty(),
                 item.getCurrentQty(),
+                metrics.expectedQty(),
                 item.getUnitPrice(),
                 item.getSortOrder(),
                 item.getNote(),
-                diffQty,
-                lossQty,
-                gainQty,
-                lossAmount
+                metrics.diffQty(),
+                metrics.lossQty(),
+                metrics.gainQty(),
+                metrics.lossAmount()
         );
     }
 
@@ -94,15 +91,28 @@ public class DishwareInventoryMapper {
         int totalLossQty = 0;
         BigDecimal totalLossAmount = BigDecimal.ZERO;
         for (DishwareInventoryItem item : items) {
-            int lossQty = Math.max(item.getPreviousQty() - item.getCurrentQty(), 0);
-            totalLossQty += lossQty;
-            if (item.getUnitPrice() != null && lossQty > 0) {
-                totalLossAmount = totalLossAmount.add(item.getUnitPrice().multiply(BigDecimal.valueOf(lossQty)));
+            Metrics metrics = metrics(item);
+            totalLossQty += metrics.lossQty();
+            if (metrics.lossAmount().compareTo(BigDecimal.ZERO) > 0) {
+                totalLossAmount = totalLossAmount.add(metrics.lossAmount());
             }
         }
 
         return new Summary(items.size(), totalLossQty, totalLossAmount);
     }
 
+    private Metrics metrics(DishwareInventoryItem item) {
+        int expectedQty = item.getPreviousQty() + item.getIncomingQty();
+        int diffQty = item.getCurrentQty() - expectedQty;
+        int lossQty = Math.max(expectedQty - item.getCurrentQty(), 0);
+        int gainQty = Math.max(item.getCurrentQty() - expectedQty, 0);
+        BigDecimal lossAmount = item.getUnitPrice() == null
+                ? BigDecimal.ZERO
+                : item.getUnitPrice().multiply(BigDecimal.valueOf(lossQty));
+
+        return new Metrics(expectedQty, diffQty, lossQty, gainQty, lossAmount);
+    }
+
     private record Summary(int itemsCount, int totalLossQty, BigDecimal totalLossAmount) {}
+    private record Metrics(int expectedQty, int diffQty, int lossQty, int gainQty, BigDecimal lossAmount) {}
 }

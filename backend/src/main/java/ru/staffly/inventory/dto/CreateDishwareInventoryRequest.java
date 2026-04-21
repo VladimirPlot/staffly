@@ -1,12 +1,13 @@
 package ru.staffly.inventory.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 
 public record CreateDishwareInventoryRequest(
-        String title,
+        @Size(max = 200) String title,
         @NotNull LocalDate inventoryDate,
         Long sourceInventoryId,
-        String comment
+        @Size(max = 5000) String comment
 ) {}

@@ -10,6 +10,7 @@ public record UpsertDishwareInventoryItemRequest(
         Long id,
         @NotBlank @Size(max = 200) String name,
         @PositiveOrZero Integer previousQty,
+        @PositiveOrZero Integer incomingQty,
         @PositiveOrZero Integer currentQty,
         @PositiveOrZero BigDecimal unitPrice,
         Integer sortOrder,

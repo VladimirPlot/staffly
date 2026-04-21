@@ -4,12 +4,13 @@ type Props = React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label: string;
   error?: string;
   hint?: string;
+  labelClassName?: string;
 };
 
-export default function Textarea({ label, error, hint, className = "", ...rest }: Props) {
+export default function Textarea({ label, error, hint, labelClassName, className = "", ...rest }: Props) {
   return (
     <label className="block min-w-0">
-      <span className="text-muted mb-1 block min-w-0 text-sm [overflow-wrap:anywhere]">
+      <span className={`text-muted mb-1 block min-w-0 text-sm [overflow-wrap:anywhere] ${labelClassName ?? ""}`}>
         {label}
       </span>
 

@@ -43,6 +43,10 @@ public class DishwareInventoryItem {
     @Builder.Default
     private int previousQty = 0;
 
+    @Column(name = "incoming_qty", nullable = false)
+    @Builder.Default
+    private int incomingQty = 0;
+
     @Column(name = "current_qty", nullable = false)
     @Builder.Default
     private int currentQty = 0;

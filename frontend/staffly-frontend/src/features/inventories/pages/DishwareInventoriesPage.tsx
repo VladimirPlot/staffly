@@ -102,17 +102,18 @@ export default function DishwareInventoriesPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold">Инвентаризации посуды</h2>
-          <div className="text-sm text-muted">Отдельные документы по инвентаризации посуды с историей расхождений.</div>
+          <div className="text-sm text-muted">Список документов по посуде.</div>
         </div>
         <div className="inline-flex flex-col gap-2 rounded-[1.75rem] border border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/45 p-1.5 shadow-[var(--staffly-shadow)] sm:flex-row sm:items-center">
           <Button
+            size="sm"
             variant="outline"
             className="shadow-none"
             onClick={() => navigate("/inventories")}
           >
             Все инвентаризации
           </Button>
-          <Button className="shadow-none" onClick={() => setCreateOpen(true)}>
+          <Button size="sm" className="shadow-none" onClick={() => setCreateOpen(true)}>
             Новая инвентаризация
           </Button>
         </div>
@@ -124,7 +125,9 @@ export default function DishwareInventoriesPage() {
       {!loading && !error && inventories.length === 0 ? (
         <Card className="space-y-3">
           <div className="font-medium">Инвентаризаций пока нет</div>
-          <div className="text-sm text-muted">Создай первый пустой документ или продолжи работу от предыдущей инвентаризации.</div>
+          <div className="text-sm text-muted">
+            Создай первый документ с нуля или подтяни позиции из предыдущей инвентаризации.
+          </div>
           <div>
             <Button onClick={() => setCreateOpen(true)}>Создать первую</Button>
           </div>
@@ -134,7 +137,7 @@ export default function DishwareInventoriesPage() {
       {!loading && !error ? (
         <div className="space-y-3">
           {inventories.map((inventory) => (
-            <Card key={inventory.id} className="rounded-[2rem] p-4 sm:p-5">
+            <Card key={inventory.id} className="rounded-[1.75rem] p-3 sm:p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -152,24 +155,25 @@ export default function DishwareInventoriesPage() {
                   {inventory.comment ? <div className="mt-2 text-sm text-default">{inventory.comment}</div> : null}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 sm:min-w-[260px]">
-                  <div className="bg-app rounded-2xl px-3 py-2">
-                    <div className="text-xs text-muted">Позиции</div>
-                    <div className="font-semibold">{inventory.itemsCount}</div>
+                <div className="grid grid-cols-2 gap-2 sm:min-w-[260px] xl:grid-cols-3">
+                  <div className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/45 px-3 py-2">
+                    <div className="text-[11px] font-medium text-muted">Позиции</div>
+                    <div className="mt-1 font-semibold tabular-nums">{inventory.itemsCount}</div>
                   </div>
-                  <div className="bg-app rounded-2xl px-3 py-2">
-                    <div className="text-xs text-muted">Потеряно шт</div>
-                    <div className="font-semibold">{formatInventoryLossCount(inventory.totalLossQty)}</div>
+                  <div className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/45 px-3 py-2">
+                    <div className="text-[11px] font-medium text-muted">Потери, шт</div>
+                    <div className="mt-1 font-semibold tabular-nums">{formatInventoryLossCount(inventory.totalLossQty)}</div>
                   </div>
-                  <div className="bg-app col-span-2 rounded-2xl px-3 py-2">
-                    <div className="text-xs text-muted">Сумма потерь</div>
-                    <div className="font-semibold">{formatInventoryLossAmount(inventory.totalLossAmount)}</div>
+                  <div className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/45 px-3 py-2">
+                    <div className="text-[11px] font-medium text-muted">Сумма потерь</div>
+                    <div className="mt-1 font-semibold tabular-nums">{formatInventoryLossAmount(inventory.totalLossAmount)}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-2">
+              <div className="mt-3 flex gap-2">
                 <Button
+                  size="sm"
                   variant="outline"
                   leftIcon={<Icon icon={Pencil} size="sm" decorative />}
                   onClick={() => navigate(`/inventories/dishware/${inventory.id}`)}
@@ -177,6 +181,7 @@ export default function DishwareInventoriesPage() {
                   Открыть
                 </Button>
                 <Button
+                  size="sm"
                   variant="outline"
                   className="text-red-600"
                   leftIcon={<Icon icon={Trash2} size="sm" decorative />}
