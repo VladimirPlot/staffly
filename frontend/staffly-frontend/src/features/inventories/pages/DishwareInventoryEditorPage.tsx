@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ImagePlus, Save, Trash2, Undo2 } from "lucide-react";
+import {
+  ArrowDownRight,
+  BadgeRussianRuble,
+  Check,
+  ImagePlus,
+  List,
+  Pencil,
+  Save,
+  SquareActivity,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import BackToHome from "../../../shared/ui/BackToHome";
@@ -241,15 +252,15 @@ export default function DishwareInventoryEditorPage() {
   }, [inventoryId, mergeItemPhotoFromServer, restaurantId]);
 
   if (loading) {
-    return <div className="mx-auto max-w-5xl"><Card className="text-sm text-muted">Загружаем инвентаризацию…</Card></div>;
+    return <div className="mx-auto max-w-4xl"><Card className="text-sm text-muted">Загружаем инвентаризацию…</Card></div>;
   }
 
   if (error || !inventory) {
-    return <div className="mx-auto max-w-5xl"><Card className="text-sm text-red-600">{error ?? "Инвентаризация не найдена"}</Card></div>;
+    return <div className="mx-auto max-w-4xl"><Card className="text-sm text-red-600">{error ?? "Инвентаризация не найдена"}</Card></div>;
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center justify-between gap-3">
         <BackToHome />
         <Button variant="outline" onClick={() => navigate("/inventories/dishware")}>
@@ -257,37 +268,67 @@ export default function DishwareInventoryEditorPage() {
         </Button>
       </div>
 
-      <Card className="space-y-4 rounded-[2rem]">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-3 lg:max-w-2xl">
-            <Input label="Название" value={title} onChange={(event) => setTitle(event.target.value)} />
+      <Card className="space-y-4 rounded-[2rem] p-4 sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Input label="Название" value={title} onChange={(event) => setTitle(event.target.value)} />
+            </div>
             <Input label="Дата инвентаризации" type="date" value={inventoryDate} onChange={(event) => setInventoryDate(event.target.value)} />
-            <Textarea label="Комментарий" value={comment} onChange={(event) => setComment(event.target.value)} rows={3} />
+            <div className="sm:col-span-2">
+              <Textarea
+                label="Комментарий"
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                rows={3}
+              />
+            </div>
             {inventory.sourceInventoryTitle ? (
-              <div className="text-sm text-muted">Создана по образцу: {inventory.sourceInventoryTitle}</div>
+              <div className="sm:col-span-2 text-sm text-muted">Создана по образцу: {inventory.sourceInventoryTitle}</div>
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 lg:min-w-[260px]">
-            <div className="bg-app rounded-2xl px-3 py-2">
-              <div className="text-xs text-muted">Позиции</div>
-              <div className="font-semibold">{summary.itemsCount}</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1 lg:gap-2">
+            <div className="border-subtle bg-app rounded-2xl border px-3 py-2">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Icon icon={List} size="xs" decorative className="shrink-0 text-icon opacity-60" />
+                <div className="text-xs text-muted">Позиции</div>
+              </div>
+              <div className="text-lg font-semibold leading-none">{summary.itemsCount}</div>
             </div>
-            <div className="bg-app rounded-2xl px-3 py-2">
-              <div className="text-xs text-muted">Потеряно шт</div>
-              <div className="font-semibold">{summary.totalLossQty}</div>
+            <div className="border-subtle bg-app rounded-2xl border px-3 py-2">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Icon icon={ArrowDownRight} size="xs" decorative className="shrink-0 text-icon opacity-60" />
+                <div className="text-xs text-muted">Потеряно шт</div>
+              </div>
+              <div className="text-lg font-semibold leading-none">{summary.totalLossQty}</div>
             </div>
-            <div className="bg-app col-span-2 rounded-2xl px-3 py-2">
-              <div className="text-xs text-muted">Сумма потерь</div>
-              <div className="font-semibold">{formatMoney(summary.totalLossAmount)}</div>
+            <div className="border-subtle bg-app col-span-2 rounded-2xl border px-3 py-2 sm:col-span-1">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Icon icon={BadgeRussianRuble} size="xs" decorative className="shrink-0 text-icon opacity-60" />
+                <div className="text-xs text-muted">Сумма потерь</div>
+              </div>
+              <div className="text-lg font-semibold leading-none">{formatMoney(summary.totalLossAmount)}</div>
             </div>
-            <div className="col-span-2 text-xs text-muted">
-              Статус: {status === "COMPLETED" ? "Завершена" : "Черновик"}
+            <div className="col-span-2 rounded-2xl border border-subtle bg-app px-3 py-2 text-xs text-muted sm:col-span-3 lg:col-span-1">
+              <div className="mb-1.5 flex items-center gap-1.5">
+                <Icon icon={SquareActivity} size="xs" decorative className="shrink-0 text-icon opacity-60" />
+                <div className="text-xs text-muted">Статус</div>
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2 py-1 text-sm font-medium text-default">
+                <Icon
+                  icon={status === "COMPLETED" ? Check : Pencil}
+                  size="xs"
+                  decorative
+                  className={status === "COMPLETED" ? "shrink-0 text-emerald-600" : "shrink-0 text-icon"}
+                />
+                <span>{status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Button leftIcon={<Icon icon={Save} size="sm" decorative />} isLoading={saving} onClick={() => void handleSave()}>
             Сохранить
           </Button>
@@ -325,7 +366,7 @@ export default function DishwareInventoryEditorPage() {
           const lossQty = Math.max((item.previousQty ?? 0) - (item.currentQty ?? 0), 0);
           const lossAmount = item.unitPrice != null ? Number(item.unitPrice) * lossQty : 0;
           return (
-            <Card key={item.clientId} className="space-y-4 rounded-[2rem] p-4 sm:p-5">
+            <Card key={item.clientId} className="space-y-4 rounded-[2rem] p-3 sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-sm font-medium text-muted">Позиция #{index + 1}</div>
                 <Button variant="outline" className="text-red-600" onClick={() => removeItem(item.clientId)}>
@@ -333,7 +374,7 @@ export default function DishwareInventoryEditorPage() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[160px_minmax(0,1fr)]">
                 <div className="space-y-2">
                   <div className="bg-app flex aspect-square items-center justify-center overflow-hidden rounded-[1.5rem]">
                     {item.photoUrl ? (
