@@ -219,6 +219,16 @@ export function getInventoryStatusLabel(status: DishwareInventoryDto["status"] |
   return status === "COMPLETED" ? "Завершена" : "Черновик";
 }
 
+export function getInventoryStatusBadgeClass(status: DishwareInventoryDto["status"] | DishwareInventorySummaryDto["status"]) {
+  const isCompleted = status === "COMPLETED";
+
+  return [
+    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium shadow-sm",
+    "border-subtle bg-[color:var(--staffly-control-hover)]",
+    isCompleted ? "text-[var(--staffly-text-strong)]" : "text-default",
+  ].join(" ");
+}
+
 export function findServerItemMatch(
   serverItems: DishwareInventoryItemDto[],
   draftItem: DishwareInventoryDraftItem,

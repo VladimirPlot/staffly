@@ -31,6 +31,7 @@ import {
   type DishwareInventoryStatus,
   type UpdateDishwareInventoryItemRequest,
 } from "../api";
+import { getInventoryStatusBadgeClass } from "../utils";
 
 type EditableDishwareItem = Omit<UpdateDishwareInventoryItemRequest, "id"> & {
   clientId: string;
@@ -315,7 +316,7 @@ export default function DishwareInventoryEditorPage() {
                 <Icon icon={SquareActivity} size="xs" decorative className="shrink-0 text-icon opacity-60" />
                 <div className="text-xs text-muted">Статус</div>
               </div>
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2 py-1 text-sm font-medium text-default">
+              <div className={getInventoryStatusBadgeClass(status) + " text-sm"}>
                 <Icon
                   icon={status === "COMPLETED" ? Check : Pencil}
                   size="xs"

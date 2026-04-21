@@ -16,6 +16,7 @@ import {
   type DishwareInventorySummaryDto,
 } from "../api";
 import CreateDishwareInventoryModal from "../components/CreateDishwareInventoryModal";
+import { getInventoryStatusBadgeClass } from "../utils";
 import { formatDateFromIso } from "../../../shared/utils/date";
 
 function formatDate(value: string): string {
@@ -150,11 +151,7 @@ export default function DishwareInventoriesPage() {
                     <Link to={`/inventories/dishware/${inventory.id}`} className="text-lg font-semibold hover:underline">
                       {inventory.title}
                     </Link>
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      inventory.status === "COMPLETED"
-                        ? "bg-[var(--staffly-control-hover)] text-[var(--staffly-text-strong)]"
-                        : "bg-app text-muted"
-                    }`}>
+                    <span className={getInventoryStatusBadgeClass(inventory.status)}>
                       {inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
                     </span>
                   </div>
