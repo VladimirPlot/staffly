@@ -16,6 +16,7 @@ import {
   AlarmClock,
   CalendarCog,
   CalendarDays,
+  ClipboardList,
   GraduationCap,
   LayoutList,
   ListChecks,
@@ -157,6 +158,17 @@ export default function RestaurantHome() {
         to: "/tasks",
         icon: LayoutList,
       },
+      ...(access.isManagerLike
+        ? [
+            {
+              id: "inventories-dishware",
+              title: "Инвентаризации",
+              description: "Ведите инвентаризации посуды по документам и фиксируйте потери.",
+              to: "/inventories",
+              icon: ClipboardList,
+            },
+          ]
+        : []),
       {
         id: "checklists",
         title: "Чек-листы",
@@ -179,6 +191,7 @@ export default function RestaurantHome() {
       canManageNotifications,
       hasScheduleIndicator,
       hasUnreadAnonymousLetters,
+      access.isManagerLike,
       shouldShowNotificationsEntry,
     ]
   );
