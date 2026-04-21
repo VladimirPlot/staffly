@@ -74,14 +74,14 @@ export default function CreateDishwareInventoryModal({
   );
 
   return (
-    <Modal
-      open={open}
-      title="Новая инвентаризация посуды"
-      description="Можно начать с пустого документа или взять за основу прошлую инвентаризацию."
-      onClose={onClose}
-      footer={footer}
-      className="max-w-xl"
-    >
+      <Modal
+        open={open}
+        title="Новая инвентаризация посуды"
+      description="Можно создать пустой документ или продолжить на основе предыдущей инвентаризации."
+        onClose={onClose}
+        footer={footer}
+        className="max-w-xl"
+      >
       <div className="space-y-4">
         <DropdownSelect
           label="Как начать"

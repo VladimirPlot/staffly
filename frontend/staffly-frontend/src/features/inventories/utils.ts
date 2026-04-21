@@ -202,17 +202,24 @@ export function formatInventoryDateLabel(value: string) {
 }
 
 export function formatInventoryLossAmount(value: number) {
+  const normalized = value === 0 ? 0 : -Math.abs(value);
+
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(normalized);
 }
 
 export function formatInventoryCount(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+export function formatInventoryLossCount(value: number) {
+  const normalized = value === 0 ? 0 : -Math.abs(value);
+  return formatInventoryCount(normalized);
 }
 
 export function getInventoryStatusLabel(status: DishwareInventoryDto["status"] | DishwareInventorySummaryDto["status"]) {

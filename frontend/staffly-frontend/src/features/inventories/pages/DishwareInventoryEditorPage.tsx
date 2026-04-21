@@ -31,7 +31,7 @@ import {
   type DishwareInventoryStatus,
   type UpdateDishwareInventoryItemRequest,
 } from "../api";
-import { getInventoryStatusBadgeClass } from "../utils";
+import { formatInventoryLossAmount, formatInventoryLossCount, getInventoryStatusBadgeClass } from "../utils";
 
 type EditableDishwareItem = Omit<UpdateDishwareInventoryItemRequest, "id"> & {
   clientId: string;
@@ -41,14 +41,6 @@ type EditableDishwareItem = Omit<UpdateDishwareInventoryItemRequest, "id"> & {
 
 function createClientId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    maximumFractionDigits: 2,
-  }).format(value || 0);
 }
 
 function toEditableItems(inventory: DishwareInventoryDto): EditableDishwareItem[] {
@@ -301,14 +293,14 @@ export default function DishwareInventoryEditorPage() {
                 <Icon icon={ArrowDownRight} size="xs" decorative className="shrink-0 text-icon opacity-60" />
                 <div className="text-xs text-muted">Потеряно шт</div>
               </div>
-              <div className="text-lg font-semibold leading-none">{summary.totalLossQty}</div>
+              <div className="text-lg font-semibold leading-none">{formatInventoryLossCount(summary.totalLossQty)}</div>
             </div>
             <div className="border-subtle bg-app col-span-2 rounded-2xl border px-3 py-2 sm:col-span-1">
               <div className="mb-1.5 flex items-center gap-1.5">
                 <Icon icon={BadgeRussianRuble} size="xs" decorative className="shrink-0 text-icon opacity-60" />
                 <div className="text-xs text-muted">Сумма потерь</div>
               </div>
-              <div className="text-lg font-semibold leading-none">{formatMoney(summary.totalLossAmount)}</div>
+              <div className="text-lg font-semibold leading-none">{formatInventoryLossAmount(summary.totalLossAmount)}</div>
             </div>
             <div className="col-span-2 rounded-2xl border border-subtle bg-app px-3 py-2 text-xs text-muted sm:col-span-3 lg:col-span-1">
               <div className="mb-1.5 flex items-center gap-1.5">

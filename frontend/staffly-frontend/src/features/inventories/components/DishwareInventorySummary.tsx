@@ -1,5 +1,5 @@
 import Card from "../../../shared/ui/Card";
-import { formatInventoryCount, formatInventoryLossAmount, type DishwareInventorySummary } from "../utils";
+import { formatInventoryCount, formatInventoryLossAmount, formatInventoryLossCount, type DishwareInventorySummary } from "../utils";
 
 type DishwareInventorySummaryProps = {
   summary: DishwareInventorySummary;
@@ -18,7 +18,7 @@ export default function DishwareInventorySummary({ summary }: DishwareInventoryS
         <div>
           <div className="text-muted text-xs">Потери, шт</div>
           <div className="mt-1 text-xl font-semibold text-red-600">
-            {formatInventoryCount(summary.lossQty)}
+            {formatInventoryLossCount(summary.lossQty)}
           </div>
         </div>
         <div>

@@ -7,7 +7,7 @@ import Card from "../../../shared/ui/Card";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
-import { computeDishwareItemMetrics, formatInventoryCount, formatInventoryLossAmount } from "../utils";
+import { computeDishwareItemMetrics, formatInventoryCount, formatInventoryLossAmount, formatInventoryLossCount } from "../utils";
 
 type EditableDishwareItemCardItem = {
   clientId: string;
@@ -51,7 +51,7 @@ export default function DishwareInventoryItemCard({
 
   const deltaDescription =
     metrics.lossQty > 0
-      ? `Недостача ${formatInventoryCount(metrics.lossQty)} шт`
+      ? `Недостача ${formatInventoryLossCount(metrics.lossQty)} шт`
       : metrics.gainQty > 0
         ? `Излишек ${formatInventoryCount(metrics.gainQty)} шт`
         : "Количество совпадает";
@@ -204,7 +204,7 @@ export default function DishwareInventoryItemCard({
                     <Icon icon={ArrowDownRight} size="xs" decorative className="text-icon opacity-70" />
                     <dt className="text-xs font-medium text-muted">Недостача, шт</dt>
                   </div>
-                  <dd className="text-base font-semibold tabular-nums text-default">{formatInventoryCount(metrics.lossQty)}</dd>
+                  <dd className="text-base font-semibold tabular-nums text-default">{formatInventoryLossCount(metrics.lossQty)}</dd>
                 </div>
 
                 <div className={cn(metricCardClassName, "sm:col-span-2 xl:col-span-1")}>
@@ -224,7 +224,7 @@ export default function DishwareInventoryItemCard({
               value={item.note ?? ""}
               onChange={(event) => onChange(item.clientId, { note: event.target.value })}
               rows={3}
-              placeholder="Например, новая партия, бой в зале или причина расхождения."
+              placeholder="Например, новая партия, износ или причина расхождения."
             />
           </div>
         </div>

@@ -163,7 +163,7 @@ export default function RestaurantHome() {
             {
               id: "inventories-dishware",
               title: "Инвентаризации",
-              description: "Ведите инвентаризации посуды по документам и фиксируйте потери.",
+              description: "Ведите инвентаризации посуды по документам и отслеживайте расхождения.",
               to: "/inventories",
               icon: ClipboardList,
             },

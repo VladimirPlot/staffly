@@ -16,19 +16,11 @@ import {
   type DishwareInventorySummaryDto,
 } from "../api";
 import CreateDishwareInventoryModal from "../components/CreateDishwareInventoryModal";
-import { getInventoryStatusBadgeClass } from "../utils";
+import { formatInventoryLossAmount, formatInventoryLossCount, getInventoryStatusBadgeClass } from "../utils";
 import { formatDateFromIso } from "../../../shared/utils/date";
 
 function formatDate(value: string): string {
   return formatDateFromIso(value);
-}
-
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    maximumFractionDigits: 2,
-  }).format(value || 0);
 }
 
 export default function DishwareInventoriesPage() {
@@ -110,9 +102,7 @@ export default function DishwareInventoriesPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold">Инвентаризации посуды</h2>
-          <div className="text-sm text-muted">
-            Каждая инвентаризация — отдельный документ. Предыдущую можно использовать как шаблон для новой.
-          </div>
+          <div className="text-sm text-muted">Отдельные документы по инвентаризации посуды с историей расхождений.</div>
         </div>
         <div className="inline-flex flex-col gap-2 rounded-[1.75rem] border border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/45 p-1.5 shadow-[var(--staffly-shadow)] sm:flex-row sm:items-center">
           <Button
@@ -134,7 +124,7 @@ export default function DishwareInventoriesPage() {
       {!loading && !error && inventories.length === 0 ? (
         <Card className="space-y-3">
           <div className="font-medium">Инвентаризаций пока нет</div>
-          <div className="text-sm text-muted">Создай первую пустую инвентаризацию или начни с документа по образцу в будущем.</div>
+          <div className="text-sm text-muted">Создай первый пустой документ или продолжи работу от предыдущей инвентаризации.</div>
           <div>
             <Button onClick={() => setCreateOpen(true)}>Создать первую</Button>
           </div>
@@ -157,7 +147,7 @@ export default function DishwareInventoriesPage() {
                   </div>
                   <div className="mt-1 text-sm text-muted">
                     Дата: {formatDate(inventory.inventoryDate)}
-                    {inventory.sourceInventoryTitle ? ` • Создана по образцу: ${inventory.sourceInventoryTitle}` : ""}
+                    {inventory.sourceInventoryTitle ? ` • На основе: ${inventory.sourceInventoryTitle}` : ""}
                   </div>
                   {inventory.comment ? <div className="mt-2 text-sm text-default">{inventory.comment}</div> : null}
                 </div>
@@ -169,11 +159,11 @@ export default function DishwareInventoriesPage() {
                   </div>
                   <div className="bg-app rounded-2xl px-3 py-2">
                     <div className="text-xs text-muted">Потеряно шт</div>
-                    <div className="font-semibold">{inventory.totalLossQty}</div>
+                    <div className="font-semibold">{formatInventoryLossCount(inventory.totalLossQty)}</div>
                   </div>
                   <div className="bg-app col-span-2 rounded-2xl px-3 py-2">
                     <div className="text-xs text-muted">Сумма потерь</div>
-                    <div className="font-semibold">{formatMoney(inventory.totalLossAmount)}</div>
+                    <div className="font-semibold">{formatInventoryLossAmount(inventory.totalLossAmount)}</div>
                   </div>
                 </div>
               </div>

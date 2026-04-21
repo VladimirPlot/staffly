@@ -28,11 +28,11 @@ function InventoryCard({ title, description, to, icon, disabled = false }: Inven
         </div>
         <div className="flex min-w-0 flex-1 flex-col self-stretch">
           <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <div className="text-lg font-semibold text-balance">{title}</div>
               {disabled ? (
                 <span className="rounded-full border border-[var(--staffly-border)] bg-[var(--staffly-control)] px-2 py-0.5 text-[11px] font-medium text-muted">
-                  Скоро будет
+                  В разработке
                 </span>
               ) : null}
             </div>
@@ -63,25 +63,25 @@ export default function InventoriesPage() {
 
       <div className="space-y-1">
         <h2 className="text-2xl font-semibold text-balance">Инвентаризации</h2>
-        <div className="text-pretty text-sm text-muted">Выбери направление, с которым хочешь работать.</div>
+        <div className="text-pretty text-sm text-muted">Выбери раздел, с которым хочешь работать.</div>
       </div>
 
       <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2">
         <InventoryCard
           title="Посуда"
-          description="История инвентаризаций, создание новой и сверка потерь по позициям."
+          description="Журнал инвентаризаций посуды, создание новых документов и сверка расхождений."
           to="/inventories/dishware"
           icon={PackageOpen}
         />
         <InventoryCard
           title="Бар"
-          description="Отдельный модуль для барного инвентаря и бокалов."
+          description="Отдельный модуль для учета барного инвентаря, стекла и бокалов."
           icon={GlassWater}
           disabled
         />
         <InventoryCard
           title="Кухня"
-          description="Инвентарь кухни."
+          description="Отдельный модуль для учета кухонного инвентаря и расходных позиций."
           icon={ChefHat}
           disabled
         />
