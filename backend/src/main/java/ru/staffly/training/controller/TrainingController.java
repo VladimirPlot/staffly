@@ -15,6 +15,7 @@ import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingFolderType;
 import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.service.ExamService;
+import ru.staffly.training.service.CertificationEmployeeAnalyticsService;
 import ru.staffly.training.service.KnowledgeService;
 import ru.staffly.training.service.QuestionService;
 import ru.staffly.training.service.TrainingPolicyService;
@@ -29,6 +30,7 @@ public class TrainingController {
     private final KnowledgeService knowledgeService;
     private final QuestionService questionService;
     private final ExamService examService;
+    private final CertificationEmployeeAnalyticsService certificationEmployeeAnalyticsService;
     private final SecurityService securityService;
     private final TrainingPolicyService trainingPolicyService;
 
@@ -355,6 +357,23 @@ public class TrainingController {
                                                                          @PathVariable Long attemptId,
                                                                          @AuthenticationPrincipal UserPrincipal principal) {
         return examService.getCertificationAttemptDetails(restaurantId, principal.userId(), examId, attemptId);
+    }
+
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees")
+    public List<CertificationEmployeeSummaryDto> findCertificationEmployees(@PathVariable Long restaurantId,
+                                                                            @AuthenticationPrincipal UserPrincipal principal,
+                                                                            @RequestParam(required = false) Long positionId,
+                                                                            @RequestParam(required = false, name = "q") String query) {
+        return certificationEmployeeAnalyticsService.findEmployees(restaurantId, principal.userId(), positionId, query);
+    }
+
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees/{userId}/exams")
+    public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(@PathVariable Long restaurantId,
+                                                                             @PathVariable Long userId,
+                                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return certificationEmployeeAnalyticsService.getEmployeeExams(restaurantId, principal.userId(), userId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
