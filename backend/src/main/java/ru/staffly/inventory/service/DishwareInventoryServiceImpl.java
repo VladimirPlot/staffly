@@ -73,7 +73,8 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         LocalDate inventoryDate = requireInventoryDate(request.inventoryDate());
         DishwareInventory sourceInventory = null;
         if (request.sourceInventoryId() != null) {
-            sourceInventory = requireInventory(restaurantId, request.sourceInventoryId());
+            sourceInventory = requireInventoryForUpdate(restaurantId, request.sourceInventoryId());
+            requireCompletedSource(sourceInventory);
         }
 
         DishwareInventory entity = DishwareInventory.builder()
@@ -118,14 +119,13 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     public DishwareInventoryDto update(Long restaurantId, Long currentUserId, Long inventoryId, UpdateDishwareInventoryRequest request) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        requireDraft(entity, "Завершенную инвентаризацию нельзя редактировать");
 
         LocalDate inventoryDate = requireInventoryDate(request.inventoryDate());
-        DishwareInventoryStatus status = parseStatus(request.status());
 
         entity.setTitle(resolveTitle(request.title(), inventoryDate));
         entity.setInventoryDate(inventoryDate);
         entity.setComment(normalizeComment(request.comment()));
-        applyStatus(entity, status);
         syncItems(entity, request.items());
 
         entity = inventories.save(entity);
@@ -134,9 +134,34 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
 
     @Override
     @Transactional
+    public DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        requireDraft(entity, "Инвентаризация уже завершена");
+        requireCompletable(entity);
+
+        applyStatus(entity, DishwareInventoryStatus.COMPLETED);
+        return mapper.toDto(inventories.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
+        requireCompleted(entity, "Вернуть в черновик можно только завершенную инвентаризацию");
+        requireNoDerivedInventories(entity);
+
+        applyStatus(entity, DishwareInventoryStatus.DRAFT);
+        return mapper.toDto(inventories.save(entity));
+    }
+
+    @Override
+    @Transactional
     public void delete(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        requireDraft(entity, "Завершенную инвентаризацию нельзя удалить");
         List<Long> itemIds = entity.getItems().stream()
                 .map(DishwareInventoryItem::getId)
                 .filter(Objects::nonNull)
@@ -172,6 +197,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         validateImage(file);
         DishwareInventoryItem item = items.findByIdAndInventoryIdAndRestaurantId(itemId, inventoryId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Inventory item not found"));
+        requireDraft(item.getInventory(), "В завершенной инвентаризации нельзя менять фото");
 
         String previousPhotoUrl = item.getPhotoUrl();
         String uploadedPhotoUrl = storage.saveForItem(itemId, file);
@@ -193,6 +219,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventoryItem item = items.findByIdAndInventoryIdAndRestaurantId(itemId, inventoryId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Inventory item not found"));
+        requireDraft(item.getInventory(), "В завершенной инвентаризации нельзя удалять фото");
 
         String previousPhotoUrl = item.getPhotoUrl();
         item.setPhotoUrl(null);
@@ -209,22 +236,16 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .orElseThrow(() -> new NotFoundException("Inventory not found: " + inventoryId));
     }
 
+    private DishwareInventory requireInventoryForUpdate(Long restaurantId, Long inventoryId) {
+        return inventories.findWithLockByIdAndRestaurantId(inventoryId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Inventory not found: " + inventoryId));
+    }
+
     private LocalDate requireInventoryDate(LocalDate inventoryDate) {
         if (inventoryDate == null) {
             throw new BadRequestException("Дата инвентаризации обязательна");
         }
         return inventoryDate;
-    }
-
-    private DishwareInventoryStatus parseStatus(String rawStatus) {
-        if (rawStatus == null || rawStatus.isBlank()) {
-            return DishwareInventoryStatus.DRAFT;
-        }
-        try {
-            return DishwareInventoryStatus.valueOf(rawStatus.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("Неизвестный статус инвентаризации");
-        }
     }
 
     private void applyStatus(DishwareInventory entity, DishwareInventoryStatus nextStatus) {
@@ -236,6 +257,36 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             entity.setCompletedAt(Instant.now());
         } else {
             entity.setCompletedAt(null);
+        }
+    }
+
+    private void requireDraft(DishwareInventory entity, String message) {
+        if (entity.getStatus() != DishwareInventoryStatus.DRAFT) {
+            throw new BadRequestException(message);
+        }
+    }
+
+    private void requireCompleted(DishwareInventory entity, String message) {
+        if (entity.getStatus() != DishwareInventoryStatus.COMPLETED) {
+            throw new BadRequestException(message);
+        }
+    }
+
+    private void requireCompletable(DishwareInventory entity) {
+        if (entity.getItems() == null || entity.getItems().isEmpty()) {
+            throw new BadRequestException("Нельзя завершить пустую инвентаризацию");
+        }
+    }
+
+    private void requireCompletedSource(DishwareInventory sourceInventory) {
+        if (sourceInventory.getStatus() != DishwareInventoryStatus.COMPLETED) {
+            throw new BadRequestException("Новой инвентаризации можно брать за основу только завершенный документ");
+        }
+    }
+
+    private void requireNoDerivedInventories(DishwareInventory entity) {
+        if (entity.getId() != null && inventories.existsBySourceInventoryId(entity.getId())) {
+            throw new BadRequestException("Нельзя вернуть в черновик документ, на основе которого уже создали новую инвентаризацию");
         }
     }
 

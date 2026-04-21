@@ -13,13 +13,14 @@ import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
 import {
+  completeDishwareInventory,
   deleteDishwareInventory,
   deleteDishwareItemImage,
   getDishwareInventory,
+  reopenDishwareInventory,
   updateDishwareInventory,
   uploadDishwareItemImage,
   type DishwareInventoryDto,
-  type DishwareInventoryStatus,
   type UpdateDishwareInventoryItemRequest,
 } from "../api";
 import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
@@ -64,7 +65,6 @@ export default function DishwareInventoryEditorPage() {
   const [title, setTitle] = useState("");
   const [inventoryDate, setInventoryDate] = useState("");
   const [comment, setComment] = useState("");
-  const [status, setStatus] = useState<DishwareInventoryStatus>("DRAFT");
   const [items, setItems] = useState<EditableDishwareItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +84,6 @@ export default function DishwareInventoryEditorPage() {
       setTitle(data.title);
       setInventoryDate(data.inventoryDate);
       setComment(data.comment ?? "");
-      setStatus(data.status);
       setItems(toEditableItems(data));
     } catch (e) {
       console.error("Failed to load inventory", e);
@@ -101,6 +100,8 @@ export default function DishwareInventoryEditorPage() {
   const summary = useMemo(() => {
     return computeDishwareSummary(items);
   }, [items]);
+  const isCompleted = inventory?.status === "COMPLETED";
+  const isEditingLocked = isCompleted || saving;
 
   const updateItem = useCallback((clientId: string, patch: Partial<EditableDishwareItem>) => {
     setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)));
@@ -146,40 +147,82 @@ export default function DishwareInventoryEditorPage() {
     );
   }, []);
 
-  const handleSave = useCallback(async (nextStatus?: DishwareInventoryStatus) => {
+  const applyLoadedInventory = useCallback((data: DishwareInventoryDto) => {
+    setInventory(data);
+    setTitle(data.title);
+    setInventoryDate(data.inventoryDate);
+    setComment(data.comment ?? "");
+    setItems(toEditableItems(data));
+  }, []);
+
+  const saveDraft = useCallback(async () => {
+    if (!restaurantId || !inventoryId) {
+      return null;
+    }
+
+    const saved = await updateDishwareInventory(restaurantId, Number(inventoryId), {
+      title,
+      inventoryDate,
+      comment,
+      items: items.map((item, index) => ({
+        id: item.id,
+        name: item.name,
+        previousQty: Number(item.previousQty) || 0,
+        incomingQty: Number(item.incomingQty) || 0,
+        currentQty: Number(item.currentQty) || 0,
+        unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
+        sortOrder: index,
+        note: item.note ?? null,
+      })),
+    });
+    applyLoadedInventory(saved);
+    return saved;
+  }, [applyLoadedInventory, comment, inventoryId, inventoryDate, items, restaurantId, title]);
+
+  const handleSave = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await updateDishwareInventory(restaurantId, Number(inventoryId), {
-        title,
-        inventoryDate,
-        status: nextStatus ?? status,
-        comment,
-        items: items.map((item, index) => ({
-          id: item.id,
-          name: item.name,
-          previousQty: Number(item.previousQty) || 0,
-          incomingQty: Number(item.incomingQty) || 0,
-          currentQty: Number(item.currentQty) || 0,
-          unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
-          sortOrder: index,
-          note: item.note ?? null,
-        })),
-      });
-      setInventory(saved);
-      setTitle(saved.title);
-      setInventoryDate(saved.inventoryDate);
-      setComment(saved.comment ?? "");
-      setStatus(saved.status);
-      setItems(toEditableItems(saved));
+      await saveDraft();
     } catch (e: any) {
       console.error("Failed to save inventory", e);
       setSaveError(e?.friendlyMessage || "Не удалось сохранить инвентаризацию");
     } finally {
       setSaving(false);
     }
-  }, [comment, inventoryId, inventoryDate, items, restaurantId, status, title]);
+  }, [inventoryId, restaurantId, saveDraft]);
+
+  const handleComplete = useCallback(async () => {
+    if (!restaurantId || !inventoryId) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveDraft();
+      const completed = await completeDishwareInventory(restaurantId, Number(inventoryId));
+      applyLoadedInventory(completed);
+    } catch (e: any) {
+      console.error("Failed to complete inventory", e);
+      setSaveError(e?.friendlyMessage || "Не удалось завершить инвентаризацию");
+    } finally {
+      setSaving(false);
+    }
+  }, [applyLoadedInventory, inventoryId, restaurantId, saveDraft]);
+
+  const handleReopen = useCallback(async () => {
+    if (!restaurantId || !inventoryId) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const reopened = await reopenDishwareInventory(restaurantId, Number(inventoryId));
+      applyLoadedInventory(reopened);
+    } catch (e: any) {
+      console.error("Failed to reopen inventory", e);
+      setSaveError(e?.friendlyMessage || "Не удалось вернуть документ в черновик");
+    } finally {
+      setSaving(false);
+    }
+  }, [applyLoadedInventory, inventoryId, restaurantId]);
 
   const handleDelete = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -251,6 +294,7 @@ export default function DishwareInventoryEditorPage() {
                 className="h-9 rounded-xl px-3"
                 value={title}
                 maxLength={200}
+                disabled={isEditingLocked}
                 onChange={(event) => setTitle(event.target.value)}
               />
             </div>
@@ -260,6 +304,7 @@ export default function DishwareInventoryEditorPage() {
               className="h-9 rounded-xl px-3"
               type="date"
               value={inventoryDate}
+              disabled={isEditingLocked}
               onChange={(event) => setInventoryDate(event.target.value)}
             />
             <div className="sm:col-span-2">
@@ -269,6 +314,7 @@ export default function DishwareInventoryEditorPage() {
                 className="rounded-xl px-3 py-2.5"
                 value={comment}
                 maxLength={5000}
+                disabled={isEditingLocked}
                 onChange={(event) => setComment(event.target.value)}
                 rows={2}
               />
@@ -283,42 +329,62 @@ export default function DishwareInventoryEditorPage() {
               <Icon icon={SquareActivity} size="xs" decorative className="shrink-0 text-icon opacity-60" />
               <div>Статус</div>
             </div>
-            <div className={getInventoryStatusBadgeClass(status) + " text-sm"}>
+            <div className={getInventoryStatusBadgeClass(inventory.status) + " text-sm"}>
               <Icon
-                icon={status === "COMPLETED" ? Check : Pencil}
+                icon={inventory.status === "COMPLETED" ? Check : Pencil}
                 size="xs"
                 decorative
-                className={status === "COMPLETED" ? "shrink-0 text-emerald-600" : "shrink-0 text-icon"}
+                className={inventory.status === "COMPLETED" ? "shrink-0 text-emerald-600" : "shrink-0 text-icon"}
               />
-              <span>{status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
+              <span>{inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button size="sm" leftIcon={<Icon icon={Save} size="sm" decorative />} isLoading={saving} onClick={() => void handleSave()}>
-            Сохранить
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            isLoading={saving}
-            leftIcon={<Icon icon={Undo2} size="sm" decorative />}
-            onClick={() => void handleSave(status === "COMPLETED" ? "DRAFT" : "COMPLETED")}
-          >
-            {status === "COMPLETED" ? "Вернуть в черновик" : "Завершить инвентаризацию"}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-red-600"
-            leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-            onClick={() => setDeleteOpen(true)}
-          >
-            Удалить документ
-          </Button>
+          {!isCompleted ? (
+            <>
+              <Button size="sm" leftIcon={<Icon icon={Save} size="sm" decorative />} isLoading={saving} onClick={() => void handleSave()}>
+                Сохранить
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                isLoading={saving}
+                leftIcon={<Icon icon={Check} size="sm" decorative />}
+                onClick={() => void handleComplete()}
+              >
+                Завершить инвентаризацию
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-600"
+                leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                disabled={saving}
+                onClick={() => setDeleteOpen(true)}
+              >
+                Удалить документ
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              isLoading={saving}
+              leftIcon={<Icon icon={Undo2} size="sm" decorative />}
+              onClick={() => void handleReopen()}
+            >
+              Вернуть в черновик
+            </Button>
+          )}
         </div>
 
+        {isCompleted ? (
+          <div className="text-sm text-muted">
+            Документ зафиксирован. Чтобы внести изменения, сначала верни его в черновик.
+          </div>
+        ) : null}
         {saveError ? <div className="text-sm text-red-600">{saveError}</div> : null}
       </Card>
 
@@ -329,9 +395,11 @@ export default function DishwareInventoryEditorPage() {
           <h3 className="text-xl font-semibold">Позиции</h3>
           <div className="text-sm text-muted">Было / Приход / Стало</div>
         </div>
-        <Button size="sm" onClick={addItem}>
-          Добавить позицию
-        </Button>
+        {!isCompleted ? (
+          <Button size="sm" disabled={saving} onClick={addItem}>
+            Добавить позицию
+          </Button>
+        ) : null}
       </div>
 
       <div className="space-y-3">
@@ -341,6 +409,7 @@ export default function DishwareInventoryEditorPage() {
             item={item}
             index={index}
             uploading={uploadingItemId === item.id}
+            readOnly={isEditingLocked}
             onChange={updateItem}
             onRemove={removeItem}
             onUploadImage={(itemId, file) => void handleUploadImage(itemId, file)}

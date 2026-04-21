@@ -29,6 +29,7 @@ type DishwareInventoryItemCardProps = {
   item: EditableDishwareItemCardItem;
   index: number;
   uploading?: boolean;
+  readOnly?: boolean;
   onChange: (clientId: string, patch: Partial<EditableDishwareItemCardItem>) => void;
   onRemove: (clientId: string) => void;
   onUploadImage: (itemId: number, file: File) => void;
@@ -39,6 +40,7 @@ export default function DishwareInventoryItemCard({
   item,
   index,
   uploading = false,
+  readOnly = false,
   onChange,
   onRemove,
   onUploadImage,
@@ -109,16 +111,18 @@ export default function DishwareInventoryItemCard({
             </h4>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 text-red-600"
-            onClick={() => onRemove(item.clientId)}
-            aria-label={`Удалить позицию ${index + 1}`}
-          >
-            Удалить
-          </Button>
+          {!readOnly ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 text-red-600"
+              onClick={() => onRemove(item.clientId)}
+              aria-label={`Удалить позицию ${index + 1}`}
+            >
+              Удалить
+            </Button>
+          ) : null}
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[132px_minmax(0,1fr)] lg:items-start">
@@ -159,13 +163,13 @@ export default function DishwareInventoryItemCard({
                 size="sm"
                 className="w-full justify-center"
                 leftIcon={<Icon icon={ImagePlus} size="sm" decorative />}
-                disabled={!item.id || uploading}
+                disabled={readOnly || !item.id || uploading}
                 onClick={() => fileInputRef.current?.click()}
               >
                 {hasPhoto ? "Заменить фото" : "Добавить фото"}
               </Button>
 
-              {hasPhoto && item.id ? (
+              {hasPhoto && item.id && !readOnly ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -187,6 +191,7 @@ export default function DishwareInventoryItemCard({
                 labelClassName="mb-0.5 text-xs font-medium"
                 className="h-9 rounded-xl px-3"
                 value={item.name}
+                disabled={readOnly}
                 onChange={(event) => onChange(item.clientId, { name: event.target.value })}
                 placeholder="Например, тарелка суповая"
               />
@@ -199,6 +204,7 @@ export default function DishwareInventoryItemCard({
                 step="0.01"
                 inputMode="decimal"
                 value={item.unitPrice ?? ""}
+                disabled={readOnly}
                 onChange={(event) =>
                   onChange(item.clientId, {
                     unitPrice: event.target.value === "" ? null : Number(event.target.value),
@@ -217,6 +223,7 @@ export default function DishwareInventoryItemCard({
                 min={0}
                 inputMode="numeric"
                 value={String(item.previousQty ?? 0)}
+                disabled={readOnly}
                 onChange={(event) => onChange(item.clientId, { previousQty: Number(event.target.value) || 0 })}
               />
               <Input
@@ -227,6 +234,7 @@ export default function DishwareInventoryItemCard({
                 min={0}
                 inputMode="numeric"
                 value={String(item.incomingQty ?? 0)}
+                disabled={readOnly}
                 onChange={(event) => onChange(item.clientId, { incomingQty: Number(event.target.value) || 0 })}
               />
               <Input
@@ -237,6 +245,7 @@ export default function DishwareInventoryItemCard({
                 min={0}
                 inputMode="numeric"
                 value={String(item.currentQty ?? 0)}
+                disabled={readOnly}
                 onChange={(event) => onChange(item.clientId, { currentQty: Number(event.target.value) || 0 })}
               />
 
@@ -284,7 +293,13 @@ export default function DishwareInventoryItemCard({
                     </span>
                   </div>
                   <div className="mt-0.5 text-xs text-muted">
-                    {isNoteExpanded ? "Можно редактировать внутри карточки" : hasNote ? "Свернута, чтобы не занимать место" : "Добавьте заметку при необходимости"}
+                    {isNoteExpanded
+                      ? readOnly
+                        ? "Заметка открыта для просмотра"
+                        : "Можно редактировать внутри карточки"
+                      : hasNote
+                        ? "Свернута, чтобы не занимать место"
+                        : "Добавьте заметку при необходимости"}
                   </div>
                 </div>
 
@@ -305,7 +320,7 @@ export default function DishwareInventoryItemCard({
                   aria-controls={notePanelId}
                   onClick={() => setIsNoteExpanded((value) => !value)}
                 >
-                  {isNoteExpanded ? "Свернуть" : hasNote ? "Изменить" : "Добавить"}
+                  {isNoteExpanded ? "Свернуть" : hasNote ? (readOnly ? "Открыть" : "Изменить") : "Добавить"}
                 </Button>
               </div>
 
@@ -316,9 +331,10 @@ export default function DishwareInventoryItemCard({
                     labelClassName="sr-only"
                     className="rounded-xl px-3 py-2.5"
                     value={item.note ?? ""}
+                    disabled={readOnly}
                     onChange={(event) => onChange(item.clientId, { note: event.target.value })}
                     rows={3}
-                    autoFocus
+                    autoFocus={!readOnly}
                     placeholder="Например, новая партия, износ или причина."
                   />
                 </div>

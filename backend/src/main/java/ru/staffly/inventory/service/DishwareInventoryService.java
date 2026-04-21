@@ -19,6 +19,10 @@ public interface DishwareInventoryService {
 
     DishwareInventoryDto update(Long restaurantId, Long currentUserId, Long inventoryId, UpdateDishwareInventoryRequest request);
 
+    DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId);
+
+    DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId);
+
     void delete(Long restaurantId, Long currentUserId, Long inventoryId);
 
     DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, MultipartFile file) throws IOException;

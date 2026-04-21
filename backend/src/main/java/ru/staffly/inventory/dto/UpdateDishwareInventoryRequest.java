@@ -10,7 +10,6 @@ import java.util.List;
 public record UpdateDishwareInventoryRequest(
         @Size(max = 200) String title,
         @NotNull LocalDate inventoryDate,
-        @NotNull String status,
         @Size(max = 5000) String comment,
         @NotNull @Valid List<UpsertDishwareInventoryItemRequest> items
 ) {}

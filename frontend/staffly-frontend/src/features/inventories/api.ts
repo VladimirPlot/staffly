@@ -60,7 +60,6 @@ export type UpdateDishwareInventoryItemRequest = {
 export type UpdateDishwareInventoryRequest = {
   title?: string | null;
   inventoryDate: string;
-  status: DishwareInventoryStatus;
   comment?: string | null;
   items: UpdateDishwareInventoryItemRequest[];
 };
@@ -89,6 +88,22 @@ export async function updateDishwareInventory(
   payload: UpdateDishwareInventoryRequest,
 ): Promise<DishwareInventoryDto> {
   const { data } = await api.put(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}`, payload);
+  return data as DishwareInventoryDto;
+}
+
+export async function completeDishwareInventory(
+  restaurantId: number,
+  inventoryId: number,
+): Promise<DishwareInventoryDto> {
+  const { data } = await api.post(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/complete`);
+  return data as DishwareInventoryDto;
+}
+
+export async function reopenDishwareInventory(
+  restaurantId: number,
+  inventoryId: number,
+): Promise<DishwareInventoryDto> {
+  const { data } = await api.post(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/reopen`);
   return data as DishwareInventoryDto;
 }
 

@@ -57,6 +57,22 @@ public class DishwareInventoryController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/{inventoryId}/complete")
+    public DishwareInventoryDto complete(@PathVariable Long restaurantId,
+                                         @PathVariable Long inventoryId,
+                                         @AuthenticationPrincipal UserPrincipal principal) {
+        return service.complete(restaurantId, principal.userId(), inventoryId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/{inventoryId}/reopen")
+    public DishwareInventoryDto reopen(@PathVariable Long restaurantId,
+                                       @PathVariable Long inventoryId,
+                                       @AuthenticationPrincipal UserPrincipal principal) {
+        return service.reopen(restaurantId, principal.userId(), inventoryId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @DeleteMapping("/{inventoryId}")
     public void delete(@PathVariable Long restaurantId,
                        @PathVariable Long inventoryId,

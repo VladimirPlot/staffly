@@ -58,7 +58,7 @@ export default function DishwareInventoriesPage() {
   }, [loadInventories]);
 
   const sourceOptions = useMemo(
-    () => inventories.filter((inventory) => inventory.status === "COMPLETED" || inventory.itemsCount > 0),
+    () => inventories.filter((inventory) => inventory.status === "COMPLETED"),
     [inventories],
   );
 
@@ -180,15 +180,17 @@ export default function DishwareInventoriesPage() {
                 >
                   Открыть
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-red-600"
-                  leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-                  onClick={() => setDeleteTarget(inventory)}
-                >
-                  Удалить
-                </Button>
+                {inventory.status === "DRAFT" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600"
+                    leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                    onClick={() => setDeleteTarget(inventory)}
+                  >
+                    Удалить
+                  </Button>
+                ) : null}
               </div>
             </Card>
           ))}
