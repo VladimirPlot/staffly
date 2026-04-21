@@ -81,7 +81,7 @@ export default function InventoriesPage() {
         />
         <InventoryCard
           title="Кухня"
-          description="Инвентарь кухни и технологические позиции."
+          description="Инвентарь кухни."
           icon={ChefHat}
           disabled
         />

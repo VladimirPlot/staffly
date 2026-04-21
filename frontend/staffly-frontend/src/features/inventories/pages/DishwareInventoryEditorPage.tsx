@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowDownRight,
   BadgeRussianRuble,
   Check,
-  ImagePlus,
   List,
   Pencil,
   Save,
@@ -18,6 +17,7 @@ import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import DishwareInventoryItemCard from "../components/DishwareInventoryItemCard";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
@@ -88,7 +88,6 @@ export default function DishwareInventoryEditorPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingItemId, setUploadingItemId] = useState<number | null>(null);
-  const fileInputsRef = useRef<Map<string, HTMLInputElement | null>>(new Map());
 
   const loadInventory = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -363,112 +362,18 @@ export default function DishwareInventoryEditorPage() {
       </div>
 
       <div className="space-y-3">
-        {items.map((item, index) => {
-          const lossQty = Math.max((item.previousQty ?? 0) - (item.currentQty ?? 0), 0);
-          const lossAmount = item.unitPrice != null ? Number(item.unitPrice) * lossQty : 0;
-          return (
-            <Card key={item.clientId} className="space-y-4 rounded-[2rem] p-3 sm:p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-medium text-muted">Позиция #{index + 1}</div>
-                <Button variant="outline" className="text-red-600" onClick={() => removeItem(item.clientId)}>
-                  Удалить строку
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[160px_minmax(0,1fr)]">
-                <div className="space-y-2">
-                  <div className="bg-app flex aspect-square items-center justify-center overflow-hidden rounded-[1.5rem]">
-                    {item.photoUrl ? (
-                      <img src={item.photoUrl} alt={item.name || "Фото позиции"} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="px-4 text-center text-sm text-muted">Фото не добавлено</div>
-                    )}
-                  </div>
-                  <input
-                    ref={(node) => { fileInputsRef.current.set(item.clientId, node); }}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file || !item.id) return;
-                      void handleUploadImage(item.id, file);
-                      event.target.value = "";
-                    }}
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      leftIcon={<Icon icon={ImagePlus} size="sm" decorative />}
-                      disabled={!item.id || uploadingItemId === item.id}
-                      onClick={() => fileInputsRef.current.get(item.clientId)?.click()}
-                    >
-                      {item.photoUrl ? "Заменить фото" : "Добавить фото"}
-                    </Button>
-                    {item.photoUrl && item.id ? (
-                      <Button
-                        variant="outline"
-                        className="text-red-600"
-                        disabled={uploadingItemId === item.id}
-                        onClick={() => void handleDeleteImage(item.id ?? 0)}
-                      >
-                        Удалить фото
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Input
-                    label="Название"
-                    value={item.name}
-                    onChange={(event) => updateItem(item.clientId, { name: event.target.value })}
-                  />
-                  <Input
-                    label="Цена за шт"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={item.unitPrice ?? ""}
-                    onChange={(event) => updateItem(item.clientId, {
-                      unitPrice: event.target.value === "" ? null : Number(event.target.value),
-                    })}
-                  />
-                  <Input
-                    label="Было"
-                    type="number"
-                    min={0}
-                    value={String(item.previousQty ?? 0)}
-                    onChange={(event) => updateItem(item.clientId, { previousQty: Number(event.target.value) || 0 })}
-                  />
-                  <Input
-                    label="Стало"
-                    type="number"
-                    min={0}
-                    value={String(item.currentQty ?? 0)}
-                    onChange={(event) => updateItem(item.clientId, { currentQty: Number(event.target.value) || 0 })}
-                  />
-                  <div className="bg-app rounded-2xl px-4 py-3">
-                    <div className="text-xs text-muted">Разница</div>
-                    <div className="text-base font-semibold">{(item.currentQty ?? 0) - (item.previousQty ?? 0)}</div>
-                  </div>
-                  <div className="bg-app rounded-2xl px-4 py-3">
-                    <div className="text-xs text-muted">Недостача</div>
-                    <div className="text-base font-semibold">{formatMoney(lossAmount)}</div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Textarea
-                      label="Заметка"
-                      value={item.note ?? ""}
-                      onChange={(event) => updateItem(item.clientId, { note: event.target.value })}
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
+        {items.map((item, index) => (
+          <DishwareInventoryItemCard
+            key={item.clientId}
+            item={item}
+            index={index}
+            uploading={uploadingItemId === item.id}
+            onChange={updateItem}
+            onRemove={removeItem}
+            onUploadImage={(itemId, file) => void handleUploadImage(itemId, file)}
+            onDeleteImage={(itemId) => void handleDeleteImage(itemId)}
+          />
+        ))}
       </div>
 
       <ConfirmDialog

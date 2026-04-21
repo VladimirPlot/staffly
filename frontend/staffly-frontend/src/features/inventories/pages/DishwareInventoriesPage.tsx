@@ -111,7 +111,7 @@ export default function DishwareInventoriesPage() {
         <div>
           <h2 className="text-2xl font-semibold">Инвентаризации посуды</h2>
           <div className="text-sm text-muted">
-            Каждая инвентаризация — отдельный документ. На основе прошлой создается только копия.
+            Каждая инвентаризация — отдельный документ. Предыдущую можно использовать как шаблон для новой.
           </div>
         </div>
         <div className="inline-flex flex-col gap-2 rounded-[1.75rem] border border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/45 p-1.5 shadow-[var(--staffly-shadow)] sm:flex-row sm:items-center">
