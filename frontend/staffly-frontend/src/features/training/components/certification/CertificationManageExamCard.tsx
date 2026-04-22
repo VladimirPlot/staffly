@@ -4,6 +4,7 @@ import IconButton from "../../../../shared/ui/IconButton";
 import type { PositionDto } from "../../../dictionaries/api";
 import type { TrainingExamDto } from "../../api/types";
 import CertificationCompletionProgress from "./CertificationCompletionProgress";
+import CertificationResultMetrics from "./CertificationResultMetrics";
 
 type Props = {
   exam: TrainingExamDto;
@@ -13,15 +14,6 @@ type Props = {
   onEdit: (exam: TrainingExamDto) => void;
   onAction: (examId: number, action: "hide" | "restore" | "delete") => void;
 };
-
-function MetricPill({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg bg-app px-3 py-1.5 text-xs text-muted">
-      <span>{label}: </span>
-      <span className="font-medium text-default">{value}</span>
-    </div>
-  );
-}
 
 export default function CertificationManageExamCard({
   exam,
@@ -85,10 +77,11 @@ export default function CertificationManageExamCard({
           </IconButton>
         </div>
 
-        <div className="flex w-[132px] flex-col gap-1">
-          <MetricPill label="Сдали" value={passed} />
-          <MetricPill label="Не сдали" value={failed} />
-        </div>
+        <CertificationResultMetrics
+          passedCount={passed}
+          failedCount={failed}
+          preset="md"
+        />
       </div>
 
       <Link
@@ -124,6 +117,7 @@ export default function CertificationManageExamCard({
                 completed={completed}
                 assigned={assigned}
                 size={104}
+                preset="lg"
               />
             </div>
           </div>

@@ -11,6 +11,7 @@ import { trainingRoutes } from "../../utils/trainingRoutes";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
 import CertificationCompletionProgress from "./CertificationCompletionProgress";
+import CertificationResultMetrics from "./CertificationResultMetrics";
 
 type Props = {
   positions: PositionDto[];
@@ -29,15 +30,6 @@ type Props = {
   onRetry: () => void;
   onRetryPositions: () => void;
 };
-
-function MetricPill({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg bg-app px-3 py-1.5 text-xs text-muted">
-      <span>{label}: </span>
-      <span className="font-medium text-default">{value}</span>
-    </div>
-  );
-}
 
 export default function CertificationEmployeeStatisticsSection({
   positions,
@@ -145,10 +137,13 @@ export default function CertificationEmployeeStatisticsSection({
                       </Button>
                     </Link>
 
-                    <div className="flex w-[132px] flex-col gap-1">
-                      <MetricPill label="Сдали" value={employee.passedCount} />
-                      <MetricPill label="Не сдали" value={employee.failedCount} />
-                    </div>
+                    <CertificationResultMetrics
+                      passedCount={employee.passedCount}
+                      failedCount={employee.failedCount}
+                      passedLabel="Сдано"
+                      failedLabel="Не сдано"
+                      preset="sm"
+                    />
                   </div>
 
                   <div className="pr-40">
@@ -174,7 +169,8 @@ export default function CertificationEmployeeStatisticsSection({
                         <CertificationCompletionProgress
                           completed={employee.completedCount}
                           assigned={employee.assignedCount}
-                          size={104}
+                          size={88}
+                          preset="sm"
                         />
                       </div>
                     </div>
