@@ -22,7 +22,10 @@ export default function CertificationEmployeeAnalyticsPage() {
   const { canManage, restaurantId } = useTrainingAccess();
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
 
-  const returnTo = useMemo(() => normalizeTrainingExamsReturnTo(searchParams.get("returnTo")), [searchParams]);
+  const returnTo = useMemo(
+    () => normalizeTrainingExamsReturnTo(searchParams.get("returnTo")),
+    [searchParams],
+  );
 
   const summaryState = useCertificationEmployeeSummary(
     canManage && Number.isFinite(parsedUserId) ? restaurantId : null,
@@ -34,13 +37,19 @@ export default function CertificationEmployeeAnalyticsPage() {
     Number.isFinite(parsedUserId) ? parsedUserId : null,
   );
 
-  const employeeDetailPath = withReturnToParam(trainingRoutes.employeeCertificationAnalytics(parsedUserId), returnTo);
+  const employeeDetailPath = withReturnToParam(
+    trainingRoutes.employeeCertificationAnalytics(parsedUserId),
+    returnTo,
+  );
 
   const validSelectedExamId = useMemo(() => {
     if (selectedExamId == null) {
       return null;
     }
-    return examsState.exams.some((exam) => exam.examId === selectedExamId) ? selectedExamId : null;
+
+    return examsState.exams.some((exam) => exam.examId === selectedExamId)
+      ? selectedExamId
+      : null;
   }, [examsState.exams, selectedExamId]);
 
   useEffect(() => {
@@ -49,6 +58,12 @@ export default function CertificationEmployeeAnalyticsPage() {
     }
   }, [selectedExamId, validSelectedExamId]);
 
+  useEffect(() => {
+    if (validSelectedExamId == null && examsState.exams.length > 0) {
+      setSelectedExamId(examsState.exams[0].examId);
+    }
+  }, [validSelectedExamId, examsState.exams]);
+
   const attemptsState = useCertificationEmployeeAttempts(
     canManage && Number.isFinite(parsedUserId) ? restaurantId : null,
     validSelectedExamId,
@@ -56,11 +71,21 @@ export default function CertificationEmployeeAnalyticsPage() {
   );
 
   if (!canManage) {
-    return <ErrorState message="У вас нет доступа к статистике по сотрудникам." onRetry={() => navigate(returnTo)} />;
+    return (
+      <ErrorState
+        message="У вас нет доступа к статистике по сотрудникам."
+        onRetry={() => navigate(returnTo)}
+      />
+    );
   }
 
   if (!Number.isFinite(parsedUserId)) {
-    return <ErrorState message="Сотрудник не найден." onRetry={() => navigate(returnTo)} />;
+    return (
+      <ErrorState
+        message="Сотрудник не найден."
+        onRetry={() => navigate(returnTo)}
+      />
+    );
   }
 
   const summary = summaryState.summary;
@@ -76,13 +101,24 @@ export default function CertificationEmployeeAnalyticsPage() {
       />
 
       <Card className="space-y-3">
-        {summaryState.loading && <div className="text-sm text-muted">Загрузка сводки сотрудника...</div>}
-        {summaryState.error && <ErrorState message={summaryState.error} onRetry={() => void summaryState.reload()} />}
+        {summaryState.loading && (
+          <div className="text-sm text-muted">Загрузка сводки сотрудника...</div>
+        )}
+        {summaryState.error && (
+          <ErrorState
+            message={summaryState.error}
+            onRetry={() => void summaryState.reload()}
+          />
+        )}
 
         {!summaryState.loading && !summaryState.error && summary && (
           <>
-            <div className="text-xl font-semibold text-default">{summary.fullName || "Сотрудник"}</div>
-            <div className="text-sm text-muted">{summary.positionName?.trim() || "Должность не указана"}</div>
+            <div className="text-xl font-semibold text-default">
+              {summary.fullName || "Сотрудник"}
+            </div>
+            <div className="text-sm text-muted">
+              {summary.positionName?.trim() || "Должность не указана"}
+            </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted md:grid-cols-4">
               <div>Назначено: {summary.assignedCount}</div>
               <div>Завершено: {summary.completedCount}</div>
@@ -96,11 +132,20 @@ export default function CertificationEmployeeAnalyticsPage() {
       <Card className="space-y-3">
         <div className="text-sm font-semibold">Текущие активные аттестации</div>
 
-        {examsState.loading && <div className="text-sm text-muted">Загрузка аттестаций...</div>}
-        {examsState.error && <ErrorState message={examsState.error} onRetry={() => void examsState.reload()} />}
+        {examsState.loading && (
+          <div className="text-sm text-muted">Загрузка аттестаций...</div>
+        )}
+        {examsState.error && (
+          <ErrorState
+            message={examsState.error}
+            onRetry={() => void examsState.reload()}
+          />
+        )}
 
         {!examsState.loading && !examsState.error && examsState.exams.length === 0 && (
-          <div className="text-sm text-muted">Активных аттестаций для сотрудника не найдено.</div>
+          <div className="text-sm text-muted">
+            Активных аттестаций для сотрудника не найдено.
+          </div>
         )}
 
         {!examsState.loading && !examsState.error && examsState.exams.length > 0 && (
@@ -114,10 +159,11 @@ export default function CertificationEmployeeAnalyticsPage() {
                     <div className="space-y-1">
                       <div className="font-medium text-default">{exam.examTitle}</div>
                       <div className="text-sm text-muted">
-                        Лучший балл: {exam.bestScore ?? "—"}% · Последняя попытка: {formatDateTime(exam.lastAttemptAt)}
+                        Лучший балл: {exam.bestScore ?? "—"}% · Последняя попытка:{" "}
+                        {formatDateTime(exam.lastAttemptAt)}
                       </div>
                       <div className="text-sm text-muted">
-                        Попытки: {exam.attemptsUsed ?? 0} / {exam.attemptsAllowed ?? "∞"}
+                        Попытки: {exam.attemptsUsed} / {exam.attemptsAllowed ?? "∞"}
                       </div>
                     </div>
                     <CertificationStatusBadge status={exam.analyticsStatus} />
@@ -128,7 +174,9 @@ export default function CertificationEmployeeAnalyticsPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setSelectedExamId((prev) => (prev === exam.examId ? null : exam.examId));
+                        setSelectedExamId((prev) =>
+                          prev === exam.examId ? null : exam.examId,
+                        );
                       }}
                     >
                       История попыток

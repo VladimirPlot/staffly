@@ -310,7 +310,7 @@ export type CertificationEmployeeExamDto = {
   analyticsStatus: CertificationAnalyticsStatus;
   bestScore?: number | null;
   lastAttemptAt?: string | null;
-  attemptsUsed?: number | null;
+  attemptsUsed: number;
   attemptsAllowed?: number | null;
 };
 
