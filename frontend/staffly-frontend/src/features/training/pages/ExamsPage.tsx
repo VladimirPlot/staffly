@@ -26,7 +26,7 @@ import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/ty
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
 import { getTrainingErrorMessage } from "../utils/errors";
-import { normalizeTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
+import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
 import {
   examTargetsAllowedAudience,
@@ -202,7 +202,7 @@ export default function ExamsPage() {
     }
   };
 
-  const examsReturnTo = normalizeTrainingExamsReturnTo(`${trainingRoutes.exams}${location.search}`);
+  const examsReturnTo = buildTrainingExamsReturnTo(trainingRoutes.exams, location.search);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">

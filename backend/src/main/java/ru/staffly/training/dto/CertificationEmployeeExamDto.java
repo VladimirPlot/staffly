@@ -5,7 +5,7 @@ import java.time.Instant;
 public record CertificationEmployeeExamDto(
         Long examId,
         String examTitle,
-        CertificationAnalyticsStatus status,
+        CertificationAnalyticsStatus analyticsStatus,
         Integer bestScore,
         Instant lastAttemptAt,
         Integer attemptsUsed,

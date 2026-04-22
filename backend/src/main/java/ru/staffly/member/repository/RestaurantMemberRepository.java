@@ -40,14 +40,19 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            """)
     List<RestaurantMember> findWithUserAndPositionByRestaurantId(Long restaurantId);
 
+    // Не используем u.fullName в JPQL: в legacy БД встречался bytea в users.full_name.
     @Query("""
-           select distinct m from RestaurantMember m
-           join fetch m.user u
-           left join fetch m.position p
-           where m.restaurant.id = :restaurantId
-             and (:positionId is null or p.id = :positionId)
-             and (:query is null or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like lower(concat('%', :query, '%')))
-           """)
+       select distinct m from RestaurantMember m
+       join fetch m.user u
+       left join fetch m.position p
+       where m.restaurant.id = :restaurantId
+         and (:positionId is null or p.id = :positionId)
+         and (:query is null
+              or lower(coalesce(u.firstName, '')) like lower(concat('%', :query, '%'))
+              or lower(coalesce(u.lastName, '')) like lower(concat('%', :query, '%'))
+              or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like lower(concat('%', :query, '%'))
+              or lower(concat(coalesce(u.lastName, ''), ' ', coalesce(u.firstName, ''))) like lower(concat('%', :query, '%')))
+       """)
     List<RestaurantMember> findWithUserAndPositionByRestaurantIdAndFilters(Long restaurantId, Long positionId, String query);
 
     long countByRestaurantIdAndRole(Long restaurantId, RestaurantRole role);

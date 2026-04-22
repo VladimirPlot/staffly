@@ -1,7 +1,7 @@
 import Card from "../../../../shared/ui/Card";
 import { useSearchParams } from "react-router-dom";
 import type { CertificationEmployeeAttemptsState } from "../../hooks/certification/types";
-import { normalizeTrainingExamsReturnTo } from "../../utils/returnTo";
+import { buildTrainingExamsReturnTo } from "../../utils/returnTo";
 import { trainingRoutes } from "../../utils/trainingRoutes";
 import CertificationAttemptHistoryList from "./CertificationAttemptHistoryList";
 
@@ -16,7 +16,7 @@ export default function CertificationAttemptsSection({ examId, selectedEmployeeU
   const [searchParams] = useSearchParams();
   const search = searchParams.toString();
   const analyticsPath = trainingRoutes.examAnalytics(examId);
-  const returnTo = normalizeTrainingExamsReturnTo(search ? `${analyticsPath}?${search}` : analyticsPath);
+  const returnTo = buildTrainingExamsReturnTo(analyticsPath, search ? `?${search}` : "");
 
   if (!selectedEmployeeFullName) {
     return (

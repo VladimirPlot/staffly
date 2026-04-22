@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
@@ -34,9 +34,24 @@ export default function CertificationEmployeeAnalyticsPage() {
     Number.isFinite(parsedUserId) ? parsedUserId : null,
   );
 
+  const employeeDetailPath = withReturnToParam(trainingRoutes.employeeCertificationAnalytics(parsedUserId), returnTo);
+
+  const validSelectedExamId = useMemo(() => {
+    if (selectedExamId == null) {
+      return null;
+    }
+    return examsState.exams.some((exam) => exam.examId === selectedExamId) ? selectedExamId : null;
+  }, [examsState.exams, selectedExamId]);
+
+  useEffect(() => {
+    if (selectedExamId != null && validSelectedExamId == null) {
+      setSelectedExamId(null);
+    }
+  }, [selectedExamId, validSelectedExamId]);
+
   const attemptsState = useCertificationEmployeeAttempts(
     canManage && Number.isFinite(parsedUserId) ? restaurantId : null,
-    selectedExamId,
+    validSelectedExamId,
     Number.isFinite(parsedUserId) ? parsedUserId : null,
   );
 
@@ -91,8 +106,7 @@ export default function CertificationEmployeeAnalyticsPage() {
         {!examsState.loading && !examsState.error && examsState.exams.length > 0 && (
           <div className="space-y-3">
             {examsState.exams.map((exam) => {
-              const isAttemptsOpen = selectedExamId === exam.examId;
-              const employeeDetailPath = withReturnToParam(trainingRoutes.employeeCertificationAnalytics(parsedUserId), returnTo);
+              const isAttemptsOpen = validSelectedExamId === exam.examId;
 
               return (
                 <div key={exam.examId} className="rounded-xl border border-subtle p-3">
@@ -106,7 +120,7 @@ export default function CertificationEmployeeAnalyticsPage() {
                         Попытки: {exam.attemptsUsed ?? 0} / {exam.attemptsAllowed ?? "∞"}
                       </div>
                     </div>
-                    <CertificationStatusBadge status={exam.status} />
+                    <CertificationStatusBadge status={exam.analyticsStatus} />
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">

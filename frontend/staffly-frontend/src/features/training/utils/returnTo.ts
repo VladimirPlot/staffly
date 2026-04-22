@@ -1,6 +1,7 @@
 import { trainingRoutes } from "./trainingRoutes";
 
 const TRAINING_EXAMS_PREFIX = trainingRoutes.exams;
+const TRAINING_EXAMS_ALLOWED_PATTERN = /^\/training\/exams(?:$|[/?].*)/;
 
 function trimTrailingQuestion(path: string): string {
   return path.endsWith("?") ? path.slice(0, -1) : path;
@@ -27,7 +28,7 @@ export function normalizeTrainingExamsReturnTo(rawReturnTo: string | null | unde
     return TRAINING_EXAMS_PREFIX;
   }
 
-  if (!decoded.startsWith(TRAINING_EXAMS_PREFIX)) {
+  if (!TRAINING_EXAMS_ALLOWED_PATTERN.test(decoded)) {
     return TRAINING_EXAMS_PREFIX;
   }
 
@@ -36,5 +37,14 @@ export function normalizeTrainingExamsReturnTo(rawReturnTo: string | null | unde
 
 export function withReturnToParam(pathname: string, returnTo: string): string {
   const normalizedReturnTo = normalizeTrainingExamsReturnTo(returnTo);
-  return `${pathname}?returnTo=${encodeURIComponent(normalizedReturnTo)}`;
+  const [pathOnly, query = ""] = pathname.split("?", 2);
+  const params = new URLSearchParams(query);
+  params.set("returnTo", normalizedReturnTo);
+  const nextQuery = params.toString();
+  return nextQuery ? `${pathOnly}?${nextQuery}` : pathOnly;
+}
+
+export function buildTrainingExamsReturnTo(pathname: string, search = ""): string {
+  const candidate = `${pathname}${search}`;
+  return normalizeTrainingExamsReturnTo(candidate);
 }

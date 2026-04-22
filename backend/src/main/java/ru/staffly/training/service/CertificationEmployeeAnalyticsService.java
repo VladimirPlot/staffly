@@ -71,10 +71,7 @@ public class CertificationEmployeeAnalyticsService {
     @Transactional(readOnly = true)
     public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(Long restaurantId, Long actorUserId, Long userId) {
         var member = requireAccessibleMember(restaurantId, actorUserId, userId);
-
-        return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
-                .stream()
-                .filter(assignment -> isCurrentPositionAssignment(assignment, member))
+        return loadActiveCurrentPositionAssignments(restaurantId, userId, member)
                 .map(assignment -> new CertificationEmployeeExamDto(
                         assignment.getExam().getId(),
                         assignment.getExam().getTitle(),
@@ -93,10 +90,7 @@ public class CertificationEmployeeAnalyticsService {
     @Transactional(readOnly = true)
     public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(Long restaurantId, Long actorUserId, Long userId) {
         var member = requireAccessibleMember(restaurantId, actorUserId, userId);
-        var userAssignments = assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
-                .stream()
-                .filter(assignment -> isCurrentPositionAssignment(assignment, member))
-                .toList();
+        var userAssignments = loadActiveCurrentPositionAssignments(restaurantId, userId, member).toList();
         return toSummaryDto(member, userAssignments);
     }
 
@@ -149,5 +143,13 @@ public class CertificationEmployeeAnalyticsService {
         }
         String normalized = query.trim();
         return normalized.isBlank() ? null : normalized;
+    }
+
+    private java.util.stream.Stream<TrainingExamAssignment> loadActiveCurrentPositionAssignments(Long restaurantId,
+                                                                                                 Long userId,
+                                                                                                 RestaurantMember member) {
+        return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
+                .stream()
+                .filter(assignment -> isCurrentPositionAssignment(assignment, member));
     }
 }

@@ -679,7 +679,7 @@ export default function App() {
               }
             />
             <Route
-              path="/training/certification/employees/:userId"
+              path="/training/exams/employees/:userId"
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>

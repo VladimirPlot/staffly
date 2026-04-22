@@ -307,7 +307,7 @@ export type CertificationEmployeeSummaryDto = {
 export type CertificationEmployeeExamDto = {
   examId: number;
   examTitle: string;
-  status: CertificationAnalyticsStatus;
+  analyticsStatus: CertificationAnalyticsStatus;
   bestScore?: number | null;
   lastAttemptAt?: string | null;
   attemptsUsed?: number | null;
