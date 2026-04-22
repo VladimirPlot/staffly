@@ -90,7 +90,7 @@ public class CertificationEmployeeAnalyticsService {
                 ))
                 .sorted(Comparator
                         .comparing(CertificationEmployeeExamDto::lastAttemptAt, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(CertificationEmployeeExamDto::examTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .thenComparing(CertificationEmployeeExamDto::examTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
 
