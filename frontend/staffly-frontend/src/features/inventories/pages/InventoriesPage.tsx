@@ -5,6 +5,7 @@ import { cn } from "../../../shared/lib/cn";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Card from "../../../shared/ui/Card";
 import Icon from "../../../shared/ui/Icon";
+import InventoryAccessGuard from "../components/InventoryAccessGuard";
 
 type InventoryCardProps = {
   title: string;
@@ -54,7 +55,7 @@ function InventoryCard({ title, description, to, icon, disabled = false }: Inven
   );
 }
 
-export default function InventoriesPage() {
+function AuthorizedInventoriesPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -87,5 +88,13 @@ export default function InventoriesPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function InventoriesPage() {
+  return (
+    <InventoryAccessGuard>
+      <AuthorizedInventoriesPage />
+    </InventoryAccessGuard>
   );
 }

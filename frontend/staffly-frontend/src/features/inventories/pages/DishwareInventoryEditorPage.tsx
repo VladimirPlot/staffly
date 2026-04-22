@@ -8,6 +8,7 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import DishwareInventoryItemCard from "../components/DishwareInventoryItemCard";
+import InventoryAccessGuard from "../components/InventoryAccessGuard";
 import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
@@ -55,7 +56,7 @@ function findServerItemById(inventory: DishwareInventoryDto, itemId: number) {
   return inventory.items.find((item) => item.id === itemId) ?? null;
 }
 
-export default function DishwareInventoryEditorPage() {
+function AuthorizedDishwareInventoryEditorPage() {
   const { inventoryId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -431,5 +432,13 @@ export default function DishwareInventoryEditorPage() {
         onConfirm={handleDelete}
       />
     </div>
+  );
+}
+
+export default function DishwareInventoryEditorPage() {
+  return (
+    <InventoryAccessGuard>
+      <AuthorizedDishwareInventoryEditorPage />
+    </InventoryAccessGuard>
   );
 }

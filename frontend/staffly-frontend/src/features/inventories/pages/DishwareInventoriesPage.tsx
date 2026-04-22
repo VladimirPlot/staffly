@@ -16,6 +16,7 @@ import {
   type DishwareInventorySummaryDto,
 } from "../api";
 import CreateDishwareInventoryModal from "../components/CreateDishwareInventoryModal";
+import InventoryAccessGuard from "../components/InventoryAccessGuard";
 import { formatInventoryLossAmount, formatInventoryLossCount, getInventoryStatusBadgeClass } from "../utils";
 import { formatDateFromIso } from "../../../shared/utils/date";
 
@@ -23,7 +24,7 @@ function formatDate(value: string): string {
   return formatDateFromIso(value);
 }
 
-export default function DishwareInventoriesPage() {
+function AuthorizedDishwareInventoriesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const restaurantId = user?.restaurantId ?? null;
@@ -223,5 +224,13 @@ export default function DishwareInventoriesPage() {
         onConfirm={handleDelete}
       />
     </div>
+  );
+}
+
+export default function DishwareInventoriesPage() {
+  return (
+    <InventoryAccessGuard>
+      <AuthorizedDishwareInventoriesPage />
+    </InventoryAccessGuard>
   );
 }

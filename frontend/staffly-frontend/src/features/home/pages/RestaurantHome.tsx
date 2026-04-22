@@ -26,6 +26,17 @@ import {
   Users,
 } from "lucide-react";
 
+type DashboardAccess = {
+  canAccessContacts: boolean;
+  canAccessMasterSchedules: boolean;
+  canAccessSchedules: boolean;
+  canManageNotifications: boolean;
+  hasUnreadAnonymousLetters: boolean;
+  hasScheduleIndicator: boolean;
+  isManagerLike: boolean;
+  shouldShowNotificationsEntry: boolean;
+};
+
 function normalizeOrder(layout: string[], availableIds: string[]): string[] {
   const order = new Set<string>();
   layout.forEach((id) => {
@@ -33,6 +44,181 @@ function normalizeOrder(layout: string[], availableIds: string[]): string[] {
   });
   availableIds.forEach((id) => order.add(id));
   return Array.from(order);
+}
+
+function createDashboardCards(access: DashboardAccess): DashboardCardItem[] {
+  const cards: DashboardCardItem[] = [];
+
+  cards.push({
+    id: "employees",
+    title: "Сотрудники",
+    description: "Приглашайте сотрудников и назначайте роли/позиции.",
+    to: "/employees/invite",
+    icon: Users,
+  });
+
+  if (access.shouldShowNotificationsEntry) {
+    cards.push({
+      id: "announcements",
+      title: "Объявления",
+      description: access.canManageNotifications
+        ? "Создавайте и редактируйте сообщения для сотрудников."
+        : "Посмотрите новые сообщения от руководства.",
+      to: "/announcements",
+      icon: Megaphone,
+    });
+  }
+
+  if (access.canAccessContacts) {
+    cards.push({
+      id: "contacts",
+      title: "Контакты",
+      description: "Храните телефоны и информацию о важных поставщиках и службах.",
+      to: "/contacts",
+      icon: Phone,
+    });
+  }
+
+  cards.push({
+    id: "anonymous-letter",
+    title: "Анонимное письмо",
+    description: "Отправьте обращение руководителю ресторана или прочитайте новые письма.",
+    to: "/anonymous-letter",
+    icon: MailQuestion,
+    showIndicator: access.hasUnreadAnonymousLetters,
+  });
+
+  if (access.canAccessSchedules) {
+    cards.push({
+      id: "schedule",
+      title: "График",
+      description: "Создавайте смены и распределяйте сотрудников по дням.",
+      to: "/schedule",
+      icon: CalendarDays,
+      showIndicator: access.hasScheduleIndicator,
+    });
+  }
+
+  if (access.canAccessMasterSchedules) {
+    cards.push({
+      id: "master-schedule",
+      title: "Мастер график",
+      description: "Планируйте ФОТ и рассчитывайте LC% по периодам.",
+      to: "/master-schedules",
+      icon: CalendarCog,
+    });
+  }
+
+  cards.push({
+    id: "training",
+    title: "Тренинг",
+    description: "Категории и карточки меню, бара, вина, сервиса и аттестация",
+    to: "/training",
+    icon: GraduationCap,
+  });
+
+  cards.push({
+    id: "tasks",
+    title: "Доска задач",
+    description: "Назначайте задачи сотрудникам и следите за сроками.",
+    to: "/tasks",
+    icon: LayoutList,
+  });
+
+  if (access.isManagerLike) {
+    cards.push({
+      id: "inventories-dishware",
+      title: "Инвентаризации",
+      description: "Ведите инвентаризации посуды по документам и отслеживайте расхождения.",
+      to: "/inventories",
+      icon: ClipboardList,
+    });
+  }
+
+  cards.push({
+    id: "checklists",
+    title: "Чек-листы",
+    description: "Готовые инструкции для сотрудников",
+    to: "/checklists",
+    icon: ListChecks,
+  });
+
+  cards.push({
+    id: "reminders",
+    title: "Напоминания",
+    description: "Регулярные напоминания для сотрудников и команд",
+    to: "/reminders",
+    icon: AlarmClock,
+  });
+
+  return cards;
+}
+
+function getReorderContainerStyle(
+  isReorderMode: boolean,
+  availableScrollHeight?: number
+): React.CSSProperties | undefined {
+  if (!isReorderMode) {
+    return undefined;
+  }
+
+  return {
+    maxHeight:
+      availableScrollHeight != null
+        ? `calc(${availableScrollHeight}px - env(safe-area-inset-bottom, 0px))`
+        : undefined,
+    overflowY: "auto",
+    overflowX: "hidden",
+    WebkitOverflowScrolling: "touch",
+    overscrollBehavior: "contain",
+    scrollbarGutter: "stable",
+    padding: 10,
+    marginLeft: -10,
+    marginRight: -10,
+  };
+}
+
+function renderAnnouncementsSection(params: {
+  announcementsPreview: React.ComponentProps<typeof AnnouncementsPreviewCard>["announcements"];
+  announcementsPreviewHidden: boolean;
+  canManageNotifications: boolean;
+  hasRelevantNotifications: boolean;
+  hideAnnouncementsPreview: () => void;
+  showAnnouncementsPreview: () => void;
+}) {
+  const {
+    announcementsPreview,
+    announcementsPreviewHidden,
+    canManageNotifications,
+    hasRelevantNotifications,
+    hideAnnouncementsPreview,
+    showAnnouncementsPreview,
+  } = params;
+
+  if (canManageNotifications || !hasRelevantNotifications) {
+    return null;
+  }
+
+  if (announcementsPreviewHidden) {
+    return (
+      <div className="flex justify-end">
+        <Button
+          variant="ghost"
+          className="text-sm text-zinc-600"
+          onClick={showAnnouncementsPreview}
+        >
+          Показать объявления
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <AnnouncementsPreviewCard
+      announcements={announcementsPreview}
+      onHide={hideAnnouncementsPreview}
+    />
+  );
 }
 
 export default function RestaurantHome() {
@@ -80,120 +266,32 @@ export default function RestaurantHome() {
 
   const hasScheduleIndicator = hasPendingSavedSchedules || hasUnreadScheduleEvents;
 
-  const dashboardCards = React.useMemo<DashboardCardItem[]>(
-    () => [
-      {
-        id: "employees",
-        title: "Сотрудники",
-        description: "Приглашайте сотрудников и назначайте роли/позиции.",
-        to: "/employees/invite",
-        icon: Users,
-      },
-      ...(shouldShowNotificationsEntry
-        ? [
-            {
-              id: "announcements",
-              title: "Объявления",
-              description: canManageNotifications
-                ? "Создавайте и редактируйте сообщения для сотрудников."
-                : "Посмотрите новые сообщения от руководства.",
-              to: "/announcements",
-              icon: Megaphone,
-            },
-          ]
-        : []),
-      ...(canAccessContacts
-        ? [
-            {
-              id: "contacts",
-              title: "Контакты",
-              description: "Храните телефоны и информацию о важных поставщиках и службах.",
-              to: "/contacts",
-              icon: Phone,
-            },
-          ]
-        : []),
-      {
-        id: "anonymous-letter",
-        title: "Анонимное письмо",
-        description: "Отправьте обращение руководителю ресторана или прочитайте новые письма.",
-        to: "/anonymous-letter",
-        icon: MailQuestion,
-        showIndicator: hasUnreadAnonymousLetters,
-      },
-      ...(canAccessSchedules
-        ? [
-            {
-              id: "schedule",
-              title: "График",
-              description: "Создавайте смены и распределяйте сотрудников по дням.",
-              to: "/schedule",
-              icon: CalendarDays,
-              showIndicator: hasScheduleIndicator,
-            },
-          ]
-        : []),
-      ...(canAccessMasterSchedules
-        ? [
-            {
-              id: "master-schedule",
-              title: "Мастер график",
-              description: "Планируйте ФОТ и рассчитывайте LC% по периодам.",
-              to: "/master-schedules",
-              icon: CalendarCog,
-            },
-          ]
-        : []),
-      {
-        id: "training",
-        title: "Тренинг",
-        description: "Категории и карточки меню, бара, вина, сервиса и аттестация",
-        to: "/training",
-        icon: GraduationCap,
-      },
-      {
-        id: "tasks",
-        title: "Доска задач",
-        description: "Назначайте задачи сотрудникам и следите за сроками.",
-        to: "/tasks",
-        icon: LayoutList,
-      },
-      ...(access.isManagerLike
-        ? [
-            {
-              id: "inventories-dishware",
-              title: "Инвентаризации",
-              description: "Ведите инвентаризации посуды по документам и отслеживайте расхождения.",
-              to: "/inventories",
-              icon: ClipboardList,
-            },
-          ]
-        : []),
-      {
-        id: "checklists",
-        title: "Чек-листы",
-        description: "Готовые инструкции для сотрудников",
-        to: "/checklists",
-        icon: ListChecks,
-      },
-      {
-        id: "reminders",
-        title: "Напоминания",
-        description: "Регулярные напоминания для сотрудников и команд",
-        to: "/reminders",
-        icon: AlarmClock,
-      },
-    ],
+  const dashboardAccess = React.useMemo<DashboardAccess>(
+    () => ({
+      canAccessContacts,
+      canAccessMasterSchedules,
+      canAccessSchedules,
+      canManageNotifications,
+      hasUnreadAnonymousLetters,
+      hasScheduleIndicator,
+      isManagerLike: access.isManagerLike,
+      shouldShowNotificationsEntry,
+    }),
     [
       canAccessContacts,
       canAccessMasterSchedules,
       canAccessSchedules,
       canManageNotifications,
-      hasScheduleIndicator,
       hasUnreadAnonymousLetters,
+      hasScheduleIndicator,
       access.isManagerLike,
       shouldShowNotificationsEntry,
     ]
+  );
+
+  const dashboardCards = React.useMemo<DashboardCardItem[]>(
+    () => createDashboardCards(dashboardAccess),
+    [dashboardAccess]
   );
 
   const availableIds = React.useMemo(
@@ -248,6 +346,34 @@ export default function RestaurantHome() {
     },
   });
 
+  const announcementsSection = renderAnnouncementsSection({
+    announcementsPreview,
+    announcementsPreviewHidden,
+    canManageNotifications,
+    hasRelevantNotifications,
+    hideAnnouncementsPreview,
+    showAnnouncementsPreview,
+  });
+
+  const layoutStatus = isLayoutLoading ? (
+    <div className="text-xs text-zinc-500">Загрузка порядка карточек…</div>
+  ) : loadError ? (
+    <div className="text-xs text-zinc-500">{loadError}</div>
+  ) : null;
+
+  const reorderAction = isReorderMode ? (
+    <div className="flex justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        data-reorder-exit
+        onClick={() => void exitReorderMode()}
+      >
+        Готово
+      </Button>
+    </div>
+  ) : null;
+
   return (
     <div className="mx-auto max-w-3xl">
       <div ref={topContentRef} className="space-y-3">
@@ -256,66 +382,15 @@ export default function RestaurantHome() {
           <h2 className="text-2xl font-semibold">{restaurantName || "…"}</h2>
         </Card>
 
-        {!canManageNotifications && hasRelevantNotifications &&
-          (announcementsPreviewHidden ? (
-            <div className="flex justify-end">
-              <Button
-                variant="ghost"
-                className="text-sm text-zinc-600"
-                onClick={showAnnouncementsPreview}
-              >
-                Показать объявления
-              </Button>
-            </div>
-          ) : (
-            <AnnouncementsPreviewCard
-              announcements={announcementsPreview}
-              onHide={hideAnnouncementsPreview}
-            />
-          ))}
-
-        {isLayoutLoading && (
-          <div className="text-xs text-zinc-500">Загрузка порядка карточек…</div>
-        )}
-        {loadError && <div className="text-xs text-zinc-500">{loadError}</div>}
-        {isReorderMode && (
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              data-reorder-exit
-              onClick={() => void exitReorderMode()}
-            >
-              Готово
-            </Button>
-          </div>
-        )}
+        {announcementsSection}
+        {layoutStatus}
+        {reorderAction}
       </div>
 
       <div
         ref={scrollContainerRef}
         className="mt-3"
-        style={
-          isReorderMode
-            ? {
-                maxHeight:
-                  availableScrollHeight != null
-                    ? `calc(${availableScrollHeight}px - env(safe-area-inset-bottom, 0px))`
-                    : undefined,
-
-                overflowY: "auto",
-                overflowX: "hidden",              // ✅ отключаем горизонтальный скролл
-                WebkitOverflowScrolling: "touch",
-                overscrollBehavior: "contain",
-
-                scrollbarGutter: "stable",         // ✅ ширина не прыгает при появлении скроллбара
-
-                padding: 10,                       // ✅ воздух для jiggle
-                marginLeft: -10,                   // ✅ компенсация, чтобы ширина визуально не “съехала”
-                marginRight: -10,
-              }
-            : undefined
-        }
+        style={getReorderContainerStyle(isReorderMode, availableScrollHeight)}
       >
         <DashboardGrid cards={dashboardCards} order={resolvedOrder} dndState={dashboardDnD} />
       </div>
