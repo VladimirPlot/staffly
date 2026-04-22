@@ -49,7 +49,6 @@ export default function DishwareInventoryItemCard({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputId = useId();
   const titleId = useId();
-  const formulaHintId = useId();
   const photoHintId = useId();
   const notePanelId = useId();
   const [isNoteExpanded, setIsNoteExpanded] = useState(false);
@@ -254,7 +253,6 @@ export default function DishwareInventoryItemCard({
                 inputMode="numeric"
                 value={String(item.previousQty ?? 0)}
                 disabled={readOnly}
-                aria-describedby={formulaHintId}
                 onChange={(event) => onChange(item.clientId, { previousQty: Number(event.target.value) || 0 })}
               />
               <Input
@@ -266,7 +264,6 @@ export default function DishwareInventoryItemCard({
                 inputMode="numeric"
                 value={String(item.incomingQty ?? 0)}
                 disabled={readOnly}
-                aria-describedby={formulaHintId}
                 onChange={(event) => onChange(item.clientId, { incomingQty: Number(event.target.value) || 0 })}
               />
               <Input
@@ -278,7 +275,6 @@ export default function DishwareInventoryItemCard({
                 inputMode="numeric"
                 value={String(item.currentQty ?? 0)}
                 disabled={readOnly}
-                aria-describedby={formulaHintId}
                 onChange={(event) => onChange(item.clientId, { currentQty: Number(event.target.value) || 0 })}
               />
 
@@ -291,13 +287,6 @@ export default function DishwareInventoryItemCard({
                 </div>
               ))}
             </div>
-
-            <p
-              id={formulaHintId}
-              className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/25 px-3 py-2 text-xs leading-5 text-muted"
-            >
-              Проверьте, что текущий остаток совпадает с ожидаемым количеством.
-            </p>
 
             <div className="grid gap-2 sm:grid-cols-3" aria-live="polite">
               {resultMetricItems.map((metric) => (
