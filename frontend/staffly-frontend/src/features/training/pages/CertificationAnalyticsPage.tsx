@@ -18,19 +18,8 @@ import { useCertificationManagerActions } from "../hooks/certification/useCertif
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { parseTrainingApiError } from "../utils/trainingApiError";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { normalizeTrainingExamsReturnTo } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
-
-function resolveReturnTo(raw: string | null): string {
-  if (!raw) return trainingRoutes.exams;
-  let decoded: string = trainingRoutes.exams;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {
-    return trainingRoutes.exams;
-  }
-  if (!decoded.startsWith(trainingRoutes.exams)) return trainingRoutes.exams;
-  return decoded;
-}
 
 export default function CertificationAnalyticsPage() {
   const navigate = useNavigate();
@@ -38,7 +27,7 @@ export default function CertificationAnalyticsPage() {
   const [searchParams] = useSearchParams();
   const parsedExamId = Number(examId);
   const { restaurantId, canManage } = useTrainingAccess();
-  const returnTo = resolveReturnTo(searchParams.get("returnTo"));
+  const returnTo = normalizeTrainingExamsReturnTo(searchParams.get("returnTo"));
 
   const [exam, setExam] = useState<TrainingExamDto | null>(null);
   const [examLoading, setExamLoading] = useState(false);

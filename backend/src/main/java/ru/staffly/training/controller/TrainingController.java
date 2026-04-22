@@ -373,7 +373,15 @@ public class TrainingController {
     public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(@PathVariable Long restaurantId,
                                                                              @PathVariable Long userId,
                                                                              @AuthenticationPrincipal UserPrincipal principal) {
-        return certificationEmployeeAnalyticsService.getEmployeeExams(restaurantId, principal.userId(), userId);
+        return certificationEmployeeAnalyticsService.getCertificationEmployeeExams(restaurantId, principal.userId(), userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees/{userId}/summary")
+    public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(@PathVariable Long restaurantId,
+                                                                           @PathVariable Long userId,
+                                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        return certificationEmployeeAnalyticsService.getCertificationEmployeeSummary(restaurantId, principal.userId(), userId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")

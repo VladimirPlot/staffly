@@ -26,6 +26,7 @@ import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/ty
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { normalizeTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
 import {
   examTargetsAllowedAudience,
@@ -201,7 +202,7 @@ export default function ExamsPage() {
     }
   };
 
-  const analyticsReturnTo = encodeURIComponent(`${trainingRoutes.exams}${location.search}`);
+  const examsReturnTo = normalizeTrainingExamsReturnTo(`${trainingRoutes.exams}${location.search}`);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -279,7 +280,7 @@ export default function ExamsPage() {
                 <CertificationManageExamCard
                   key={exam.id}
                   exam={exam}
-                  analyticsHref={`${trainingRoutes.examAnalytics(exam.id)}?returnTo=${analyticsReturnTo}`}
+                  analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
                   loading={loadingExamActionId === exam.id}
                   positionsById={positionById}
                   onEdit={(value) => {
@@ -306,7 +307,7 @@ export default function ExamsPage() {
           positionFilter={employeePositionFilter}
           search={employeeSearch}
           hasFilters={employeeSearchState.hasFilters}
-          returnTo={`${trainingRoutes.exams}${location.search}`}
+          returnTo={examsReturnTo}
           onPositionFilterChange={setEmployeePositionFilter}
           onSearchChange={setEmployeeSearch}
           onRetry={() => void employeeSearchState.reload()}

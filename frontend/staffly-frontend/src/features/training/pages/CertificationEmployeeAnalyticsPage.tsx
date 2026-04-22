@@ -8,14 +8,11 @@ import CertificationAttemptHistoryList from "../components/certification/Certifi
 import CertificationStatusBadge from "../components/certification/CertificationStatusBadge";
 import { useCertificationEmployeeAttempts } from "../hooks/certification/useCertificationEmployeeAttempts";
 import { useCertificationEmployeeExams } from "../hooks/certification/useCertificationEmployeeExams";
+import { useCertificationEmployeeSummary } from "../hooks/certification/useCertificationEmployeeSummary";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { formatDateTime } from "../utils/certificationResultFormatting";
+import { normalizeTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
-
-function parseCounter(raw: string | null): number {
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 export default function CertificationEmployeeAnalyticsPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -25,18 +22,12 @@ export default function CertificationEmployeeAnalyticsPage() {
   const { canManage, restaurantId } = useTrainingAccess();
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
 
-  const returnTo = useMemo(() => {
-    const raw = searchParams.get("returnTo");
-    if (!raw) return trainingRoutes.exams;
-    return raw.startsWith(trainingRoutes.exams) ? raw : trainingRoutes.exams;
-  }, [searchParams]);
+  const returnTo = useMemo(() => normalizeTrainingExamsReturnTo(searchParams.get("returnTo")), [searchParams]);
 
-  const fullName = searchParams.get("fullName")?.trim() || "Сотрудник";
-  const positionName = searchParams.get("positionName")?.trim() || "Должность не указана";
-  const assignedCount = parseCounter(searchParams.get("assignedCount"));
-  const completedCount = parseCounter(searchParams.get("completedCount"));
-  const passedCount = parseCounter(searchParams.get("passedCount"));
-  const failedCount = parseCounter(searchParams.get("failedCount"));
+  const summaryState = useCertificationEmployeeSummary(
+    canManage && Number.isFinite(parsedUserId) ? restaurantId : null,
+    Number.isFinite(parsedUserId) ? parsedUserId : null,
+  );
 
   const examsState = useCertificationEmployeeExams(
     canManage && Number.isFinite(parsedUserId) ? restaurantId : null,
@@ -57,6 +48,8 @@ export default function CertificationEmployeeAnalyticsPage() {
     return <ErrorState message="Сотрудник не найден." onRetry={() => navigate(returnTo)} />;
   }
 
+  const summary = summaryState.summary;
+
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <Breadcrumbs
@@ -68,14 +61,21 @@ export default function CertificationEmployeeAnalyticsPage() {
       />
 
       <Card className="space-y-3">
-        <div className="text-xl font-semibold text-default">{fullName}</div>
-        <div className="text-sm text-muted">{positionName}</div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted md:grid-cols-4">
-          <div>Назначено: {assignedCount}</div>
-          <div>Завершено: {completedCount}</div>
-          <div>Сдано: {passedCount}</div>
-          <div>Не сдано: {failedCount}</div>
-        </div>
+        {summaryState.loading && <div className="text-sm text-muted">Загрузка сводки сотрудника...</div>}
+        {summaryState.error && <ErrorState message={summaryState.error} onRetry={() => void summaryState.reload()} />}
+
+        {!summaryState.loading && !summaryState.error && summary && (
+          <>
+            <div className="text-xl font-semibold text-default">{summary.fullName || "Сотрудник"}</div>
+            <div className="text-sm text-muted">{summary.positionName?.trim() || "Должность не указана"}</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted md:grid-cols-4">
+              <div>Назначено: {summary.assignedCount}</div>
+              <div>Завершено: {summary.completedCount}</div>
+              <div>Сдано: {summary.passedCount}</div>
+              <div>Не сдано: {summary.failedCount}</div>
+            </div>
+          </>
+        )}
       </Card>
 
       <Card className="space-y-3">
@@ -92,7 +92,7 @@ export default function CertificationEmployeeAnalyticsPage() {
           <div className="space-y-3">
             {examsState.exams.map((exam) => {
               const isAttemptsOpen = selectedExamId === exam.examId;
-              const employeeDetailPathWithSearch = `${trainingRoutes.employeeCertificationAnalytics(parsedUserId)}?${searchParams.toString()}`;
+              const employeeDetailPath = withReturnToParam(trainingRoutes.employeeCertificationAnalytics(parsedUserId), returnTo);
 
               return (
                 <div key={exam.examId} className="rounded-xl border border-subtle p-3">
@@ -125,11 +125,10 @@ export default function CertificationEmployeeAnalyticsPage() {
                     <div className="mt-3 border-t border-subtle pt-3">
                       <CertificationAttemptHistoryList
                         examId={exam.examId}
-                        userId={parsedUserId}
                         attempts={attemptsState.attempts}
                         loading={attemptsState.loading}
                         error={attemptsState.error}
-                        returnTo={employeeDetailPathWithSearch}
+                        returnTo={employeeDetailPath}
                         onRetry={() => void attemptsState.reload()}
                         emptyLabel="Попыток по этой аттестации пока нет."
                       />

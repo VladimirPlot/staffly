@@ -1,60 +1,54 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { findCertificationEmployees } from "../../api/trainingApi";
+import { getCertificationEmployeeSummary } from "../../api/trainingApi";
 import type { CertificationEmployeeSummaryDto } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
 
-export function useCertificationEmployeeSearch(
+export function useCertificationEmployeeSummary(
   restaurantId: number | null,
-  positionId: number | null,
-  query: string,
+  userId: number | null,
 ) {
-  const [employees, setEmployees] = useState<CertificationEmployeeSummaryDto[]>([]);
+  const [summary, setSummary] = useState<CertificationEmployeeSummaryDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
 
-  const hasFilters = positionId != null || query.trim().length > 0;
-
   const reload = useCallback(async () => {
-    if (!restaurantId || !hasFilters) {
+    if (!restaurantId || !userId) {
       requestIdRef.current += 1;
-      setEmployees([]);
+      setSummary(null);
       setLoading(false);
       setError(null);
       return;
     }
 
     const requestId = ++requestIdRef.current;
+    setSummary(null);
     setLoading(true);
     setError(null);
 
     try {
-      const response = await findCertificationEmployees(restaurantId, {
-        positionId,
-        q: query,
-      });
+      const response = await getCertificationEmployeeSummary(restaurantId, userId);
       if (requestId !== requestIdRef.current) return;
-      setEmployees(response);
+      setSummary(response);
     } catch (e) {
       if (requestId !== requestIdRef.current) return;
-      setEmployees([]);
-      setError(getTrainingErrorMessage(e, "Не удалось загрузить сотрудников."));
+      setSummary(null);
+      setError(getTrainingErrorMessage(e, "Не удалось загрузить сводку по сотруднику."));
     } finally {
       if (requestId === requestIdRef.current) {
         setLoading(false);
       }
     }
-  }, [restaurantId, hasFilters, positionId, query]);
+  }, [restaurantId, userId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   return {
-    employees,
+    summary,
     loading,
     error,
-    hasFilters,
     reload,
   };
 }

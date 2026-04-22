@@ -172,6 +172,16 @@ export async function getCertificationEmployeeExams(
   });
 }
 
+export async function getCertificationEmployeeSummary(
+  restaurantId: number,
+  userId: number,
+): Promise<CertificationEmployeeSummaryDto> {
+  return runSingleFlight(`training/certification-employee-summary/${restaurantId}/${userId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/employees/${userId}/summary`);
+    return data as CertificationEmployeeSummaryDto;
+  });
+}
+
 export async function getCertificationAttemptDetails(
   restaurantId: number,
   examId: number,

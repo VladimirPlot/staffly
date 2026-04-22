@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.training.dto.*;
@@ -28,6 +29,7 @@ class CertificationAnalyticsService {
     private final RestaurantMemberRepository members;
     private final CertificationAssignmentService assignmentService;
     private final ExamSnapshotService snapshotService;
+    private final TrainingPolicyService trainingPolicyService;
 
     @Transactional(readOnly = true)
     public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
@@ -93,14 +95,16 @@ class CertificationAnalyticsService {
     }
 
     @Transactional(readOnly = true)
-    public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long examId) {
+    public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long actorUserId, Long examId) {
         var rows = loadActiveAssignmentScope(restaurantId, examId);
         var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
         var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> userIds.contains(member.getUser().getId()))
+                .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole()))
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
 
         return rows.stream()
+                .filter(assignment -> memberByUserId.containsKey(assignment.getUser().getId()))
                 .map(assignment -> {
                     var member = memberByUserId.get(assignment.getUser().getId());
                     return new CertificationExamEmployeeRowDto(
@@ -126,8 +130,9 @@ class CertificationAnalyticsService {
     }
 
     @Transactional(readOnly = true)
-    public List<CertificationExamAttemptHistoryDto> getEmployeeAttemptHistory(Long restaurantId, Long examId, Long userId) {
+    public List<CertificationExamAttemptHistoryDto> getEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId) {
         ensureCertificationExam(restaurantId, examId);
+        assertCanAccessEmployeeByRole(restaurantId, actorUserId, userId);
         // История для employee endpoint возвращается как полная история попыток пользователя по exam.
         // Assignment-поля добавлены для прозрачного понимания связи попыток с циклом назначений.
         return attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(examId, restaurantId, userId).stream()
@@ -145,13 +150,14 @@ class CertificationAnalyticsService {
     }
 
     @Transactional(readOnly = true)
-    public CertificationAttemptDetailsDto getAttemptDetails(Long restaurantId, Long examId, Long attemptId) {
+    public CertificationAttemptDetailsDto getAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId) {
         ensureCertificationExam(restaurantId, examId);
         var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Attempt not found"));
         if (attempt.getExam() == null || !Objects.equals(attempt.getExam().getId(), examId)) {
             throw new NotFoundException("Attempt not found for this exam");
         }
+        assertCanAccessEmployeeByRole(restaurantId, actorUserId, attempt.getUser().getId());
 
         var questions = attemptQuestions.findByAttemptId(attemptId).stream()
                 .map(item -> {
@@ -226,6 +232,14 @@ class CertificationAnalyticsService {
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Analytics is available only for certification exams.");
+        }
+    }
+
+    private void assertCanAccessEmployeeByRole(Long restaurantId, Long actorUserId, Long userId) {
+        var member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Employee not found"));
+        if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole())) {
+            throw new ForbiddenException("Employee analytics is unavailable for selected employee role.");
         }
     }
 

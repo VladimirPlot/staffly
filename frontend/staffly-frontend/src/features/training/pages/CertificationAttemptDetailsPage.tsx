@@ -11,6 +11,7 @@ import CertificationQuestionReviewSection from "../components/certification/Cert
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { formatDateTime } from "../utils/certificationResultFormatting";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { normalizeTrainingExamsReturnTo } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
 function formatDuration(durationSec?: number | null): string {
@@ -31,16 +32,7 @@ export default function CertificationAttemptDetailsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const returnTo = useMemo(() => {
-    const raw = searchParams.get("returnTo");
-    if (!raw) return trainingRoutes.exams;
-    try {
-      const decoded = decodeURIComponent(raw);
-      return decoded.startsWith("/training/exams") ? decoded : trainingRoutes.exams;
-    } catch {
-      return trainingRoutes.exams;
-    }
-  }, [searchParams]);
+  const returnTo = useMemo(() => normalizeTrainingExamsReturnTo(searchParams.get("returnTo")), [searchParams]);
 
   const load = useCallback(async () => {
     if (!restaurantId || !Number.isFinite(parsedExamId) || !Number.isFinite(parsedAttemptId)) return;

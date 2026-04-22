@@ -8,6 +8,7 @@ import type { CertificationEmployeeSummaryDto } from "../../api/types";
 import type { RestaurantRole } from "../../../../shared/types/restaurant";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
+import { withReturnToParam } from "../../utils/returnTo";
 import { trainingRoutes } from "../../utils/trainingRoutes";
 
 type Props = {
@@ -57,7 +58,7 @@ export default function CertificationEmployeeStatisticsSection({
           value={positionFilter ?? ""}
           onChange={(event) => onPositionFilterChange(event.target.value === "" ? null : Number(event.target.value))}
         >
-          <option value="">Все должности</option>
+          <option value="">Выберите должность</option>
           {manageablePositions.map((position) => (
             <option key={position.id} value={position.id}>
               {position.name}
@@ -95,15 +96,7 @@ export default function CertificationEmployeeStatisticsSection({
       {!positionsLoading && !positionsError && !loading && !error && employees.length > 0 && (
         <div className="grid gap-3 lg:grid-cols-2">
           {employees.map((employee) => {
-            const detailParams = new URLSearchParams({
-              returnTo,
-              fullName: employee.fullName,
-              positionName: employee.positionName ?? "",
-              assignedCount: String(employee.assignedCount),
-              completedCount: String(employee.completedCount),
-              passedCount: String(employee.passedCount),
-              failedCount: String(employee.failedCount),
-            });
+            const detailHref = withReturnToParam(trainingRoutes.employeeCertificationAnalytics(employee.userId), returnTo);
 
             return (
               <Card key={employee.userId} className="space-y-3 p-4 sm:p-4">
@@ -120,7 +113,7 @@ export default function CertificationEmployeeStatisticsSection({
                 </div>
 
                 <div>
-                  <Link to={`${trainingRoutes.employeeCertificationAnalytics(employee.userId)}?${detailParams.toString()}`}>
+                  <Link to={detailHref}>
                     <Button size="sm" variant="outline">Подробнее</Button>
                   </Link>
                 </div>

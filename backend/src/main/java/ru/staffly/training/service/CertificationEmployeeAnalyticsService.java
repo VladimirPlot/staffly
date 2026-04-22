@@ -69,12 +69,8 @@ public class CertificationEmployeeAnalyticsService {
     }
 
     @Transactional(readOnly = true)
-    public List<CertificationEmployeeExamDto> getEmployeeExams(Long restaurantId, Long actorUserId, Long userId) {
-        var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Employee not found"));
-        if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole())) {
-            throw new ForbiddenException("Not enough rights to access employee analytics");
-        }
+    public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(Long restaurantId, Long actorUserId, Long userId) {
+        var member = requireAccessibleMember(restaurantId, actorUserId, userId);
 
         return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
                 .stream()
@@ -90,8 +86,27 @@ public class CertificationEmployeeAnalyticsService {
                 ))
                 .sorted(Comparator
                         .comparing(CertificationEmployeeExamDto::lastAttemptAt, Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(CertificationEmployeeExamDto::examTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
+                        .thenComparing(CertificationEmployeeExamDto::examTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(Long restaurantId, Long actorUserId, Long userId) {
+        var member = requireAccessibleMember(restaurantId, actorUserId, userId);
+        var userAssignments = assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
+                .stream()
+                .filter(assignment -> isCurrentPositionAssignment(assignment, member))
+                .toList();
+        return toSummaryDto(member, userAssignments);
+    }
+
+    private RestaurantMember requireAccessibleMember(Long restaurantId, Long actorUserId, Long userId) {
+        var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Employee not found"));
+        if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole())) {
+            throw new ForbiddenException("Not enough rights to access employee analytics");
+        }
+        return member;
     }
 
     private CertificationEmployeeSummaryDto toSummaryDto(RestaurantMember member, List<TrainingExamAssignment> userAssignments) {

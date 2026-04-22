@@ -371,19 +371,19 @@ public class ExamServiceImpl implements ExamService {
     @Override
     public List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long actorUserId, Long examId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getEmployeeRows(restaurantId, examId);
+        return certificationAnalyticsService.getEmployeeRows(restaurantId, actorUserId, examId);
     }
 
     @Override
     public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, examId, userId);
+        return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, actorUserId, examId, userId);
     }
 
     @Override
     public CertificationAttemptDetailsDto getCertificationAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getAttemptDetails(restaurantId, examId, attemptId);
+        return certificationAnalyticsService.getAttemptDetails(restaurantId, actorUserId, examId, attemptId);
     }
 
     private void startNewCertificationCycle(TrainingExam exam) {

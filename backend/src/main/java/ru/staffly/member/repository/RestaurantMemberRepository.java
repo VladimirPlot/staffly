@@ -46,7 +46,7 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            left join fetch m.position p
            where m.restaurant.id = :restaurantId
              and (:positionId is null or p.id = :positionId)
-             and (:query is null or lower(u.fullName) like lower(concat('%', :query, '%')))
+             and (:query is null or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like lower(concat('%', :query, '%')))
            """)
     List<RestaurantMember> findWithUserAndPositionByRestaurantIdAndFilters(Long restaurantId, Long positionId, String query);
 

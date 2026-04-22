@@ -2,13 +2,13 @@ import { Link } from "react-router-dom";
 import Button from "../../../../shared/ui/Button";
 import type { CertificationExamAttemptHistoryDto } from "../../api/types";
 import { formatDateTime } from "../../utils/certificationResultFormatting";
+import { withReturnToParam } from "../../utils/returnTo";
 import { trainingRoutes } from "../../utils/trainingRoutes";
 import ErrorState from "../ErrorState";
 import LoadingState from "../LoadingState";
 
 type Props = {
   examId: number;
-  userId: number;
   attempts: CertificationExamAttemptHistoryDto[];
   loading: boolean;
   error: string | null;
@@ -19,7 +19,6 @@ type Props = {
 
 export default function CertificationAttemptHistoryList({
   examId,
-  userId,
   attempts,
   loading,
   error,
@@ -50,7 +49,7 @@ export default function CertificationAttemptHistoryList({
           <div>Статус: {attempt.passed == null ? "—" : attempt.passed ? "Сдано" : "Не сдано"}</div>
           <div className="mt-2">
             <Link
-              to={`${trainingRoutes.examAttemptAnalytics(examId, attempt.attemptId)}?userId=${userId}&returnTo=${encodeURIComponent(returnTo)}`}
+              to={withReturnToParam(trainingRoutes.examAttemptAnalytics(examId, attempt.attemptId), returnTo)}
             >
               <Button size="sm" variant="outline">Подробнее</Button>
             </Link>
