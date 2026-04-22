@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -39,11 +40,24 @@ public class CertificationEmployeeAnalyticsService {
             return List.of();
         }
 
-        List<RestaurantMember> filteredMembers = members.findWithUserAndPositionByRestaurantIdAndFilters(
-                restaurantId,
-                positionId,
-                normalizedQuery
-        );
+        List<RestaurantMember> filteredMembers;
+        if (positionId != null && normalizedQuery != null) {
+            filteredMembers = members.findAnalyticsEmployeesByRestaurantIdAndPositionIdAndQuery(
+                    restaurantId,
+                    positionId,
+                    normalizedQuery
+            );
+        } else if (positionId != null) {
+            filteredMembers = members.findAnalyticsEmployeesByRestaurantIdAndPositionId(
+                    restaurantId,
+                    positionId
+            );
+        } else {
+            filteredMembers = members.findAnalyticsEmployeesByRestaurantIdAndQuery(
+                    restaurantId,
+                    normalizedQuery
+            );
+        }
 
         List<RestaurantMember> visibleMembers = filteredMembers.stream()
                 .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(
@@ -51,27 +65,42 @@ public class CertificationEmployeeAnalyticsService {
                         restaurantId,
                         member.getRole()))
                 .toList();
+
         if (visibleMembers.isEmpty()) {
             return List.of();
         }
 
         var memberByUserId = visibleMembers.stream()
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
+
         List<Long> userIds = new ArrayList<>(memberByUserId.keySet());
+
         var assignmentsByUserId = assignments.findActiveByRestaurantIdAndUserIds(restaurantId, userIds)
                 .stream()
-                .filter(assignment -> isCurrentPositionAssignment(assignment, memberByUserId.get(assignment.getUser().getId())))
+                .filter(assignment -> isCurrentPositionAssignment(
+                        assignment,
+                        memberByUserId.get(assignment.getUser().getId())
+                ))
                 .collect(Collectors.groupingBy(assignment -> assignment.getUser().getId()));
 
         return visibleMembers.stream()
-                .map(member -> toSummaryDto(member, assignmentsByUserId.getOrDefault(member.getUser().getId(), List.of())))
-                .sorted(Comparator.comparing(CertificationEmployeeSummaryDto::fullName, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(member -> toSummaryDto(
+                        member,
+                        assignmentsByUserId.getOrDefault(member.getUser().getId(), List.of())
+                ))
+                .sorted(Comparator.comparing(
+                        CertificationEmployeeSummaryDto::fullName,
+                        Comparator.nullsLast(String::compareToIgnoreCase)
+                ))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(Long restaurantId, Long actorUserId, Long userId) {
+    public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(Long restaurantId,
+                                                                            Long actorUserId,
+                                                                            Long userId) {
         var member = requireAccessibleMember(restaurantId, actorUserId, userId);
+
         return loadActiveCurrentPositionAssignments(restaurantId, userId, member)
                 .map(assignment -> new CertificationEmployeeExamDto(
                         assignment.getExam().getId(),
@@ -83,13 +112,17 @@ public class CertificationEmployeeAnalyticsService {
                         certificationAssignmentService.calculateAttemptsAllowed(assignment)
                 ))
                 .sorted(Comparator
-                        .comparing(CertificationEmployeeExamDto::lastAttemptAt, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(CertificationEmployeeExamDto::examTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
+                        .comparing(CertificationEmployeeExamDto::lastAttemptAt,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(CertificationEmployeeExamDto::examTitle,
+                                Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(Long restaurantId, Long actorUserId, Long userId) {
+    public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(Long restaurantId,
+                                                                           Long actorUserId,
+                                                                           Long userId) {
         var member = requireAccessibleMember(restaurantId, actorUserId, userId);
         var userAssignments = loadActiveCurrentPositionAssignments(restaurantId, userId, member).toList();
         return toSummaryDto(member, userAssignments);
@@ -98,17 +131,25 @@ public class CertificationEmployeeAnalyticsService {
     private RestaurantMember requireAccessibleMember(Long restaurantId, Long actorUserId, Long userId) {
         var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Employee not found"));
-        if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole())) {
+
+        if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(
+                actorUserId,
+                restaurantId,
+                member.getRole()
+        )) {
             throw new ForbiddenException("Not enough rights to access employee analytics");
         }
+
         return member;
     }
 
-    private CertificationEmployeeSummaryDto toSummaryDto(RestaurantMember member, List<TrainingExamAssignment> userAssignments) {
+    private CertificationEmployeeSummaryDto toSummaryDto(RestaurantMember member,
+                                                         List<TrainingExamAssignment> userAssignments) {
         int assignedCount = userAssignments.size();
         int passedCount = countWithStatus(userAssignments, CertificationAnalyticsStatus.PASSED);
         int failedCount = countWithStatus(userAssignments, CertificationAnalyticsStatus.FAILED);
         int completedCount = passedCount + failedCount;
+
         return new CertificationEmployeeSummaryDto(
                 member.getUser().getId(),
                 member.getUser().getFullName(),
@@ -146,9 +187,9 @@ public class CertificationEmployeeAnalyticsService {
         return normalized.isBlank() ? null : normalized.toLowerCase(Locale.ROOT);
     }
 
-    private java.util.stream.Stream<TrainingExamAssignment> loadActiveCurrentPositionAssignments(Long restaurantId,
-                                                                                                 Long userId,
-                                                                                                 RestaurantMember member) {
+    private Stream<TrainingExamAssignment> loadActiveCurrentPositionAssignments(Long restaurantId,
+                                                                                Long userId,
+                                                                                RestaurantMember member) {
         return assignments.findActiveCertificationAssignmentsForUser(restaurantId, userId)
                 .stream()
                 .filter(assignment -> isCurrentPositionAssignment(assignment, member));

@@ -40,20 +40,43 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            """)
     List<RestaurantMember> findWithUserAndPositionByRestaurantId(Long restaurantId);
 
-    // Не используем u.fullName в JPQL: legacy БД могла содержать bytea в name-колонках users.
     @Query("""
-       select distinct m from RestaurantMember m
-       join fetch m.user u
-       left join fetch m.position p
-       where m.restaurant.id = :restaurantId
-         and (:positionId is null or p.id = :positionId)
-         and (:query is null
-              or lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
-              or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
-              or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like concat('%', :query, '%')
-              or lower(concat(coalesce(u.lastName, ''), ' ', coalesce(u.firstName, ''))) like concat('%', :query, '%'))
-       """)
-    List<RestaurantMember> findWithUserAndPositionByRestaurantIdAndFilters(Long restaurantId, Long positionId, String query);
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and p.id = :positionId
+           """)
+    List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndPositionId(Long restaurantId, Long positionId);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and (
+                  lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
+                  or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.lastName, ''), ' ', coalesce(u.firstName, ''))) like concat('%', :query, '%')
+             )
+           """)
+    List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndQuery(Long restaurantId, String query);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and p.id = :positionId
+             and (
+                  lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
+                  or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.lastName, ''), ' ', coalesce(u.firstName, ''))) like concat('%', :query, '%')
+             )
+           """)
+    List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndPositionIdAndQuery(Long restaurantId, Long positionId, String query);
 
     long countByRestaurantIdAndRole(Long restaurantId, RestaurantRole role);
 
@@ -61,7 +84,6 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
 
     boolean existsByRestaurantIdAndUserId(Long restaurantId, Long userId);
 
-    // ADMIN или MANAGER
     @Query("""
            select m from RestaurantMember m
            where m.restaurant.id = :restaurantId
