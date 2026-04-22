@@ -49,11 +49,22 @@ export default function DishwareInventoryItemCard({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputId = useId();
   const titleId = useId();
+  const formulaHintId = useId();
+  const photoHintId = useId();
   const notePanelId = useId();
   const [isNoteExpanded, setIsNoteExpanded] = useState(false);
   const hasPhoto = Boolean(item.photoUrl);
   const noteText = item.note?.trim() ?? "";
   const hasNote = noteText.length > 0;
+  const isPhotoBlockedByUnsavedItem = !item.id && !readOnly;
+  const photoButtonLabel = !item.id ? "Фото после сохранения" : hasPhoto ? "Заменить фото" : "Добавить фото";
+  const noteButtonLabel = isNoteExpanded
+    ? "Свернуть"
+    : readOnly
+      ? "Посмотреть заметку"
+      : hasNote
+        ? "Изменить заметку"
+        : "Добавить заметку";
   const metrics = computeDishwareItemMetrics({
     previousQty: item.previousQty,
     incomingQty: item.incomingQty,
@@ -67,7 +78,7 @@ export default function DishwareInventoryItemCard({
       tone: "default" as const,
     },
     {
-      label: "Отклонение",
+      label: "Разница к ожиданию",
       value:
         metrics.diff > 0 ? `+${formatInventoryCount(metrics.diff)}` : formatInventoryLossCount(metrics.diff),
       tone: metrics.diff < 0 ? ("loss" as const) : metrics.diff > 0 ? ("gain" as const) : ("default" as const),
@@ -93,9 +104,21 @@ export default function DishwareInventoryItemCard({
   const resultMetricItems = primaryMetricItems.slice(2);
 
   function getToneClass(tone: (typeof primaryMetricItems)[number]["tone"]) {
-    if (tone === "loss") return "text-red-600";
-    if (tone === "gain") return "text-emerald-600";
+    if (tone === "loss") return "text-amber-700";
+    if (tone === "gain") return "text-emerald-700";
     return "text-default";
+  }
+
+  function getMetricCardClass(tone: (typeof primaryMetricItems)[number]["tone"]) {
+    if (tone === "loss") {
+      return "border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20";
+    }
+
+    if (tone === "gain") {
+      return "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20";
+    }
+
+    return "border-subtle bg-[color:var(--staffly-control)]/45";
   }
 
   return (
@@ -164,10 +187,17 @@ export default function DishwareInventoryItemCard({
                 className="w-full justify-center"
                 leftIcon={<Icon icon={ImagePlus} size="sm" decorative />}
                 disabled={readOnly || !item.id || uploading}
+                aria-describedby={isPhotoBlockedByUnsavedItem ? photoHintId : undefined}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {hasPhoto ? "Заменить фото" : "Добавить фото"}
+                {photoButtonLabel}
               </Button>
+
+              {isPhotoBlockedByUnsavedItem ? (
+                <p id={photoHintId} className="px-1 text-xs leading-5 text-muted">
+                  Сначала сохраните документ, потом можно будет прикрепить фото.
+                </p>
+              ) : null}
 
               {hasPhoto && item.id && !readOnly ? (
                 <Button
@@ -224,10 +254,11 @@ export default function DishwareInventoryItemCard({
                 inputMode="numeric"
                 value={String(item.previousQty ?? 0)}
                 disabled={readOnly}
+                aria-describedby={formulaHintId}
                 onChange={(event) => onChange(item.clientId, { previousQty: Number(event.target.value) || 0 })}
               />
               <Input
-                label="Приход"
+                label="Докупили"
                 labelClassName="mb-0.5 text-xs font-medium"
                 className="h-9 rounded-xl px-3"
                 type="number"
@@ -235,6 +266,7 @@ export default function DishwareInventoryItemCard({
                 inputMode="numeric"
                 value={String(item.incomingQty ?? 0)}
                 disabled={readOnly}
+                aria-describedby={formulaHintId}
                 onChange={(event) => onChange(item.clientId, { incomingQty: Number(event.target.value) || 0 })}
               />
               <Input
@@ -246,14 +278,12 @@ export default function DishwareInventoryItemCard({
                 inputMode="numeric"
                 value={String(item.currentQty ?? 0)}
                 disabled={readOnly}
+                aria-describedby={formulaHintId}
                 onChange={(event) => onChange(item.clientId, { currentQty: Number(event.target.value) || 0 })}
               />
 
               {summaryMetricItems.map((metric) => (
-                <div
-                  key={metric.label}
-                  className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/45 px-3 py-2"
-                >
+                <div key={metric.label} className={`rounded-2xl border px-3 py-2 ${getMetricCardClass(metric.tone)}`}>
                   <div className="text-[11px] font-medium text-muted">{metric.label}</div>
                   <div className={`mt-1 text-base font-semibold tabular-nums ${getToneClass(metric.tone)}`}>
                     {metric.value}
@@ -262,12 +292,16 @@ export default function DishwareInventoryItemCard({
               ))}
             </div>
 
+            <p
+              id={formulaHintId}
+              className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/25 px-3 py-2 text-xs leading-5 text-muted"
+            >
+              Проверьте, что текущий остаток совпадает с ожидаемым количеством.
+            </p>
+
             <div className="grid gap-2 sm:grid-cols-3" aria-live="polite">
               {resultMetricItems.map((metric) => (
-                <div
-                  key={metric.label}
-                  className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/45 px-3 py-2"
-                >
+                <div key={metric.label} className={`rounded-2xl border px-3 py-2 ${getMetricCardClass(metric.tone)}`}>
                   <div className="text-[11px] font-medium text-muted">{metric.label}</div>
                   <div className={`mt-1 text-base font-semibold tabular-nums ${getToneClass(metric.tone)}`}>
                     {metric.value}
@@ -295,11 +329,11 @@ export default function DishwareInventoryItemCard({
                   <div className="mt-0.5 text-xs text-muted">
                     {isNoteExpanded
                       ? readOnly
-                        ? "Заметка открыта для просмотра"
-                        : "Можно редактировать внутри карточки"
+                        ? "Заметка открыта для просмотра."
+                        : "Здесь можно коротко указать партию, износ или причину расхождения."
                       : hasNote
-                        ? "Свернута, чтобы не занимать место"
-                        : "Добавьте заметку при необходимости"}
+                        ? "Заметка сохранена в карточке и свернута, чтобы не занимать место."
+                        : "Короткая заметка помогает запомнить партию, износ или причину расхождения."}
                   </div>
                 </div>
 
@@ -320,7 +354,7 @@ export default function DishwareInventoryItemCard({
                   aria-controls={notePanelId}
                   onClick={() => setIsNoteExpanded((value) => !value)}
                 >
-                  {isNoteExpanded ? "Свернуть" : hasNote ? (readOnly ? "Открыть" : "Изменить") : "Добавить"}
+                  {noteButtonLabel}
                 </Button>
               </div>
 
@@ -335,7 +369,7 @@ export default function DishwareInventoryItemCard({
                     onChange={(event) => onChange(item.clientId, { note: event.target.value })}
                     rows={3}
                     autoFocus={!readOnly}
-                    placeholder="Например, новая партия, износ или причина."
+                    placeholder="Например, новая партия или бой."
                   />
                 </div>
               ) : null}

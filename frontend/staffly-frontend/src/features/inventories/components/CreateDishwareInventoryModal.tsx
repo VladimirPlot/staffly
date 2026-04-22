@@ -80,8 +80,8 @@ export default function CreateDishwareInventoryModal({
   return (
     <Modal
       open={open}
-      title="Новая инвентаризация посуды"
-      description="Создай пустой документ или копию прошлой."
+      title="Создание инвентаризации посуды"
+      description="Выберите способ старта и заполните документ."
       onClose={onClose}
       footer={footer}
       className="max-w-xl"
@@ -91,6 +91,11 @@ export default function CreateDishwareInventoryModal({
           label="Как начать"
           value={mode}
           onChange={(event) => setMode((event.target.value as Mode) || "empty")}
+          renderOption={(option) => (
+            <div className="min-w-0">
+              <div className="truncate text-sm text-default">{option.label}</div>
+            </div>
+          )}
         >
           <option value="empty">С нуля</option>
           <option value="copy" disabled={!hasSourceOptions}>
@@ -100,12 +105,12 @@ export default function CreateDishwareInventoryModal({
 
         {mode === "copy" && (
           <DropdownSelect
-            label="Выбери источник"
+            label="Источник"
             value={sourceInventoryId}
             onChange={(event) => setSourceInventoryId(event.target.value)}
-            placeholder="Выбери прошлую инвентаризацию"
+            placeholder="Выберите прошлый документ"
           >
-            <option value="">Выбери инвентаризацию</option>
+            <option value="">Выберите документ</option>
             {sourceOptions.map((inventory) => (
               <option key={inventory.id} value={inventory.id}>
                 {inventory.title}
@@ -115,7 +120,7 @@ export default function CreateDishwareInventoryModal({
         )}
 
         <Input
-          label="Дата инвентаризации"
+          label="Дата"
           labelClassName="mb-0.5 text-xs font-medium"
           className="h-9 rounded-xl px-3"
           type="date"
@@ -134,14 +139,14 @@ export default function CreateDishwareInventoryModal({
         />
 
         <Textarea
-          label="Комментарий"
+          label="Примечание"
           labelClassName="mb-0.5 text-xs font-medium"
           className="rounded-xl px-3 py-2.5"
           value={comment}
           maxLength={5000}
           onChange={(event) => setComment(event.target.value)}
           rows={2}
-          placeholder="Например: ежемесячная сверка по залу или смене"
+          placeholder="Например: сверка по смене или залу"
         />
 
         {error ? <div className="text-sm text-red-600">{error}</div> : null}
