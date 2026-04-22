@@ -13,7 +13,10 @@ import ru.staffly.training.dto.CertificationEmployeeSummaryDto;
 import ru.staffly.training.model.TrainingExamAssignment;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -26,10 +29,10 @@ public class CertificationEmployeeAnalyticsService {
     private final CertificationAssignmentService certificationAssignmentService;
 
     @Transactional(readOnly = true)
-    public List<CertificationEmployeeSummaryDto> findEmployees(Long restaurantId,
-                                                               Long actorUserId,
-                                                               Long positionId,
-                                                               String query) {
+    public List<CertificationEmployeeSummaryDto> findCertificationEmployees(Long restaurantId,
+                                                                            Long actorUserId,
+                                                                            Long positionId,
+                                                                            String query) {
         String normalizedQuery = normalizeQuery(query);
         if (positionId == null && normalizedQuery == null) {
             return List.of();
@@ -85,6 +88,9 @@ public class CertificationEmployeeAnalyticsService {
                         assignment.getAttemptsUsed(),
                         certificationAssignmentService.calculateAttemptsAllowed(assignment)
                 ))
+                .sorted(Comparator
+                        .comparing(CertificationEmployeeExamDto::lastAttemptAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(CertificationEmployeeExamDto::examTitle, Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
 

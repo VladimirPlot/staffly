@@ -359,16 +359,16 @@ public class TrainingController {
         return examService.getCertificationAttemptDetails(restaurantId, principal.userId(), examId, attemptId);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @GetMapping("/certification/employees")
     public List<CertificationEmployeeSummaryDto> findCertificationEmployees(@PathVariable Long restaurantId,
                                                                             @AuthenticationPrincipal UserPrincipal principal,
                                                                             @RequestParam(required = false) Long positionId,
                                                                             @RequestParam(required = false, name = "q") String query) {
-        return certificationEmployeeAnalyticsService.findEmployees(restaurantId, principal.userId(), positionId, query);
+        return certificationEmployeeAnalyticsService.findCertificationEmployees(restaurantId, principal.userId(), positionId, query);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @GetMapping("/certification/employees/{userId}/exams")
     public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(@PathVariable Long restaurantId,
                                                                              @PathVariable Long userId,
