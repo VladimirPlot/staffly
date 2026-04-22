@@ -14,6 +14,7 @@ import ExamEditorModal from "../components/ExamEditorModal";
 import LoadingState from "../components/LoadingState";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
+import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
 import {
   deleteExam,
   hideExam,
@@ -23,6 +24,7 @@ import {
 } from "../api/trainingApi";
 import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
+import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
 import {
@@ -53,6 +55,9 @@ export default function ExamsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [loadingExamActionId, setLoadingExamActionId] = useState<number | null>(null);
+  const [employeePositionFilter, setEmployeePositionFilter] = useState<number | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState("");
 
   const includeInactive = searchParams.get("includeInactive") === "1";
   const positionFilter = Number(searchParams.get("position") ?? "0") || null;
@@ -66,6 +71,15 @@ export default function ExamsPage() {
 
   const showMySection = !restaurantAccess.isCreator && !isTrainingExaminer;
   const showManageSection = canManage;
+  const showEmployeeStatsSection = canManage;
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedEmployeeSearch(employeeSearch);
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [employeeSearch]);
 
   const loadManageExams = useCallback(async () => {
     if (!restaurantId || !showManageSection) {
@@ -138,6 +152,12 @@ export default function ExamsPage() {
   const manageablePositions = useMemo(
     () => getManageablePositions(positions, allowedAudienceRoles),
     [positions, allowedAudienceRoles],
+  );
+
+  const employeeSearchState = useCertificationEmployeeSearch(
+    showEmployeeStatsSection ? restaurantId : null,
+    employeePositionFilter,
+    debouncedEmployeeSearch,
   );
 
   const manageableExams = useMemo(() => {
@@ -272,6 +292,26 @@ export default function ExamsPage() {
             </div>
           ))}
         </section>
+      )}
+
+      {showEmployeeStatsSection && (
+        <CertificationEmployeeStatisticsSection
+          positions={positions}
+          employees={employeeSearchState.employees}
+          loading={employeeSearchState.loading}
+          error={employeeSearchState.error}
+          positionsLoading={loadingPositions}
+          positionsError={positionsError}
+          allowedRoles={allowedAudienceRoles}
+          positionFilter={employeePositionFilter}
+          search={employeeSearch}
+          hasFilters={employeeSearchState.hasFilters}
+          returnTo={`${trainingRoutes.exams}${location.search}`}
+          onPositionFilterChange={setEmployeePositionFilter}
+          onSearchChange={setEmployeeSearch}
+          onRetry={() => void employeeSearchState.reload()}
+          onRetryPositions={loadPositions}
+        />
       )}
 
       {restaurantId && (

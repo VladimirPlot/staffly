@@ -293,6 +293,27 @@ export type CertificationExamAttemptHistoryDto = {
   examVersion?: number | null;
 };
 
+export type CertificationEmployeeSummaryDto = {
+  userId: number;
+  fullName: string;
+  positionId?: number | null;
+  positionName?: string | null;
+  assignedCount: number;
+  completedCount: number;
+  passedCount: number;
+  failedCount: number;
+};
+
+export type CertificationEmployeeExamDto = {
+  examId: number;
+  examTitle: string;
+  status: CertificationAnalyticsStatus;
+  bestScore?: number | null;
+  lastAttemptAt?: string | null;
+  attemptsUsed?: number | null;
+  attemptsAllowed?: number | null;
+};
+
 export type CertificationAttemptDetailsQuestionDto = {
   questionId: number;
   questionType: TrainingQuestionType;

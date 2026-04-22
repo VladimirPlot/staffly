@@ -2,6 +2,8 @@ import apiClient from "../../../shared/api/apiClient";
 import { mapExamsForUi } from "./mappers";
 import type {
   CertificationExamAttemptHistoryDto,
+  CertificationEmployeeExamDto,
+  CertificationEmployeeSummaryDto,
   CertificationExamEmployeeRowDto,
   CertificationExamPositionBreakdownDto,
   CertificationAttemptDetailsDto,
@@ -141,6 +143,35 @@ export async function getCertificationEmployeeAttempts(
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/employees/${userId}/attempts`);
   return data as CertificationExamAttemptHistoryDto[];
 }
+
+export async function findCertificationEmployees(
+  restaurantId: number,
+  params: { positionId?: number | null; q?: string | null },
+): Promise<CertificationEmployeeSummaryDto[]> {
+  const normalizedQuery = params.q?.trim() ?? "";
+  const normalizedPositionId = params.positionId ?? "all";
+
+  return runSingleFlight(`training/certification-employees/${restaurantId}/${normalizedPositionId}/${normalizedQuery}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/employees`, {
+      params: {
+        positionId: params.positionId ?? undefined,
+        q: normalizedQuery.length > 0 ? normalizedQuery : undefined,
+      },
+    });
+    return data as CertificationEmployeeSummaryDto[];
+  });
+}
+
+export async function getCertificationEmployeeExams(
+  restaurantId: number,
+  userId: number,
+): Promise<CertificationEmployeeExamDto[]> {
+  return runSingleFlight(`training/certification-employee-exams/${restaurantId}/${userId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/employees/${userId}/exams`);
+    return data as CertificationEmployeeExamDto[];
+  });
+}
+
 export async function getCertificationAttemptDetails(
   restaurantId: number,
   examId: number,
