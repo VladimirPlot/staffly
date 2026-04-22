@@ -16,6 +16,7 @@ import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -142,7 +143,7 @@ public class CertificationEmployeeAnalyticsService {
             return null;
         }
         String normalized = query.trim();
-        return normalized.isBlank() ? null : normalized;
+        return normalized.isBlank() ? null : normalized.toLowerCase(Locale.ROOT);
     }
 
     private java.util.stream.Stream<TrainingExamAssignment> loadActiveCurrentPositionAssignments(Long restaurantId,
