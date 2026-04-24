@@ -45,7 +45,8 @@ type MoveTarget =
 
 type PermanentDeleteTarget =
   | { kind: "folder"; id: number; title: string }
-  | { kind: "inventory"; id: number; title: string };
+  | { kind: "inventory"; id: number; title: string }
+  | { kind: "all"; title: string };
 
 function formatDate(value: string): string {
   return formatDateFromIso(value);
@@ -86,6 +87,22 @@ function descendantIds(rootId: number, folders: DishwareInventoryFolderDto[]) {
     queue.push(...(children.get(id) ?? []));
   }
   return result;
+}
+
+function rootTrashedFolders(folders: DishwareInventoryFolderDto[]) {
+  const trashedIds = new Set(folders.filter((folder) => folder.trashedAt).map((folder) => folder.id));
+  const folderMap = new Map(folders.map((folder) => [folder.id, folder]));
+  return folders.filter((folder) => {
+    if (!folder.trashedAt) return false;
+    let parent = folder.parentId == null ? null : (folderMap.get(folder.parentId) ?? null);
+    const seen = new Set<number>();
+    while (parent && !seen.has(parent.id)) {
+      if (trashedIds.has(parent.id)) return false;
+      seen.add(parent.id);
+      parent = parent.parentId == null ? null : (folderMap.get(parent.parentId) ?? null);
+    }
+    return true;
+  });
 }
 
 function FolderEditorModal({
@@ -221,6 +238,7 @@ function TrashModal({
   onRestoreInventory,
   onDeleteFolder,
   onDeleteInventory,
+  onDeleteAll,
 }: {
   open: boolean;
   folders: DishwareInventoryFolderDto[];
@@ -232,12 +250,30 @@ function TrashModal({
   onRestoreInventory: (inventory: DishwareInventorySummaryDto) => void;
   onDeleteFolder: (folder: DishwareInventoryFolderDto) => void;
   onDeleteInventory: (inventory: DishwareInventorySummaryDto) => void;
+  onDeleteAll: () => void;
 }) {
   const trashedFolders = folders.filter((folder) => folder.trashedAt).sort(sortFolders);
+  const hasItems = trashedFolders.length > 0 || inventories.length > 0;
 
   return (
     <Modal open={open} title="Корзина" onClose={onClose} className="max-w-3xl">
       <div className="space-y-3">
+        {hasItems ? (
+          <div className="flex items-center justify-between gap-3 border-b border-subtle pb-3">
+            <div className="text-sm text-muted">
+              {trashedFolders.length + inventories.length} элементов в корзине
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-red-600"
+              leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+              onClick={onDeleteAll}
+            >
+              Удалить все
+            </Button>
+          </div>
+        ) : null}
         {loading ? <div className="text-sm text-muted">Загружаем корзину...</div> : null}
         {!loading && trashedFolders.length === 0 && inventories.length === 0 ? (
           <div className="text-sm text-muted">Корзина пуста.</div>
@@ -253,25 +289,26 @@ function TrashModal({
                 </div>
                 {folder.description ? <div className="mt-1 text-sm text-muted">{folder.description}</div> : null}
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+              <div className="flex shrink-0 gap-1">
                 <Button
-                  size="sm"
+                  size="icon"
                   variant="outline"
+                  className="h-9 w-9"
+                  title="Восстановить"
+                  aria-label={`Восстановить папку ${folder.name}`}
                   isLoading={actionLoading === `restore-folder-${folder.id}`}
                   leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
                   onClick={() => onRestoreFolder(folder)}
-                >
-                  Вернуть
-                </Button>
+                />
                 <Button
-                  size="sm"
+                  size="icon"
                   variant="outline"
-                  className="text-red-600"
+                  className="h-9 w-9 text-red-600"
+                  title="Удалить навсегда"
+                  aria-label={`Удалить папку ${folder.name} навсегда`}
                   leftIcon={<Icon icon={Trash2} size="sm" decorative />}
                   onClick={() => onDeleteFolder(folder)}
-                >
-                  Навсегда
-                </Button>
+                />
               </div>
             </div>
           </div>
@@ -284,25 +321,26 @@ function TrashModal({
                 <div className="font-medium [overflow-wrap:anywhere]">{inventory.title}</div>
                 <div className="mt-1 text-sm text-muted">Дата: {formatDate(inventory.inventoryDate)}</div>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+              <div className="flex shrink-0 gap-1">
                 <Button
-                  size="sm"
+                  size="icon"
                   variant="outline"
+                  className="h-9 w-9"
+                  title="Восстановить"
+                  aria-label={`Восстановить документ ${inventory.title}`}
                   isLoading={actionLoading === `restore-inventory-${inventory.id}`}
                   leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
                   onClick={() => onRestoreInventory(inventory)}
-                >
-                  Вернуть
-                </Button>
+                />
                 <Button
-                  size="sm"
+                  size="icon"
                   variant="outline"
-                  className="text-red-600"
+                  className="h-9 w-9 text-red-600"
+                  title="Удалить навсегда"
+                  aria-label={`Удалить документ ${inventory.title} навсегда`}
                   leftIcon={<Icon icon={Trash2} size="sm" decorative />}
                   onClick={() => onDeleteInventory(inventory)}
-                >
-                  Навсегда
-                </Button>
+                />
               </div>
             </div>
           </div>
@@ -510,9 +548,25 @@ function AuthorizedDishwareInventoriesPage() {
 
   const runPermanentDelete = useCallback(async () => {
     if (!restaurantId || !permanentDeleteTarget) return;
-    setActionLoading(`delete-${permanentDeleteTarget.kind}-${permanentDeleteTarget.id}`);
+    setActionLoading(
+      permanentDeleteTarget.kind === "all"
+        ? "delete-all"
+        : `delete-${permanentDeleteTarget.kind}-${permanentDeleteTarget.id}`,
+    );
     try {
-      if (permanentDeleteTarget.kind === "folder") {
+      if (permanentDeleteTarget.kind === "all") {
+        const folderRoots = rootTrashedFolders(trashFolders);
+        const deletedFolderIds = new Set<number>();
+        folderRoots.forEach((folder) => {
+          descendantIds(folder.id, trashFolders).forEach((id) => deletedFolderIds.add(id));
+        });
+        await Promise.all(folderRoots.map((folder) => deleteDishwareInventoryFolder(restaurantId, folder.id)));
+        await Promise.all(
+          trashInventories
+            .filter((inventory) => inventory.folderId == null || !deletedFolderIds.has(inventory.folderId))
+            .map((inventory) => deleteDishwareInventory(restaurantId, inventory.id)),
+        );
+      } else if (permanentDeleteTarget.kind === "folder") {
         await deleteDishwareInventoryFolder(restaurantId, permanentDeleteTarget.id);
       } else {
         await deleteDishwareInventory(restaurantId, permanentDeleteTarget.id);
@@ -522,7 +576,7 @@ function AuthorizedDishwareInventoriesPage() {
     } finally {
       setActionLoading(null);
     }
-  }, [loadActive, loadTrash, permanentDeleteTarget, restaurantId]);
+  }, [loadActive, loadTrash, permanentDeleteTarget, restaurantId, trashFolders, trashInventories]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -809,15 +863,18 @@ function AuthorizedDishwareInventoriesPage() {
         onRestoreInventory={(inventory) => void runRestoreInventory(inventory)}
         onDeleteFolder={(folder) => setPermanentDeleteTarget({ kind: "folder", id: folder.id, title: folder.name })}
         onDeleteInventory={(inventory) => setPermanentDeleteTarget({ kind: "inventory", id: inventory.id, title: inventory.title })}
+        onDeleteAll={() => setPermanentDeleteTarget({ kind: "all", title: "все элементы корзины" })}
       />
 
       <ConfirmDialog
         open={Boolean(permanentDeleteTarget)}
         title="Удалить навсегда"
         description={
-          permanentDeleteTarget?.kind === "folder"
-            ? "Папка, все вложенные папки, документы и фото внутри будут удалены безвозвратно."
-            : "Документ, все строки и фото будут удалены безвозвратно."
+          permanentDeleteTarget?.kind === "all"
+            ? "Все папки, документы и фото в корзине будут удалены безвозвратно."
+            : permanentDeleteTarget?.kind === "folder"
+              ? "Папка, все вложенные папки, документы и фото внутри будут удалены безвозвратно."
+              : "Документ, все строки и фото будут удалены безвозвратно."
         }
         confirming={Boolean(actionLoading?.startsWith("delete-"))}
         confirmText="Удалить навсегда"
