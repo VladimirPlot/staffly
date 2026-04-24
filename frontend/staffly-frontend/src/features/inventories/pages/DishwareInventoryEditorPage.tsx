@@ -15,10 +15,10 @@ import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
 import {
   completeDishwareInventory,
-  deleteDishwareInventory,
   deleteDishwareItemImage,
   getDishwareInventory,
   reopenDishwareInventory,
+  trashDishwareInventory,
   updateDishwareInventory,
   uploadDishwareItemImage,
   type DishwareInventoryDto,
@@ -162,9 +162,10 @@ function AuthorizedDishwareInventoryEditorPage() {
     }
 
     const saved = await updateDishwareInventory(restaurantId, Number(inventoryId), {
-      title,
-      inventoryDate,
-      comment,
+        title,
+        inventoryDate,
+        folderId: inventory?.folderId ?? null,
+        comment,
       items: items.map((item, index) => ({
         id: item.id,
         name: item.name,
@@ -178,7 +179,7 @@ function AuthorizedDishwareInventoryEditorPage() {
     });
     applyLoadedInventory(saved);
     return saved;
-  }, [applyLoadedInventory, comment, inventoryId, inventoryDate, items, restaurantId, title]);
+  }, [applyLoadedInventory, comment, inventory?.folderId, inventoryId, inventoryDate, items, restaurantId, title]);
 
   const handleSave = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -229,7 +230,7 @@ function AuthorizedDishwareInventoryEditorPage() {
     if (!restaurantId || !inventoryId) return;
     setDeleting(true);
     try {
-      await deleteDishwareInventory(restaurantId, Number(inventoryId));
+      await trashDishwareInventory(restaurantId, Number(inventoryId));
       navigate("/inventories/dishware");
     } catch (e) {
       console.error("Failed to delete inventory", e);
@@ -365,7 +366,7 @@ function AuthorizedDishwareInventoryEditorPage() {
                 disabled={saving}
                 onClick={() => setDeleteOpen(true)}
               >
-                Удалить документ
+                В корзину
               </Button>
             </>
           ) : (
@@ -421,10 +422,10 @@ function AuthorizedDishwareInventoryEditorPage() {
 
       <ConfirmDialog
         open={deleteOpen}
-        title="Удалить инвентаризацию"
-        description="Документ и все его строки будут удалены. Уже созданные на его основе копии не изменятся."
+        title="Переместить в корзину"
+        description="Документ исчезнет из активного списка. В корзине его можно восстановить или удалить навсегда."
         confirming={deleting}
-        confirmText={deleting ? "Удаляем…" : "Удалить"}
+        confirmText={deleting ? "Перемещаем…" : "В корзину"}
         onCancel={() => {
           if (deleting) return;
           setDeleteOpen(false);

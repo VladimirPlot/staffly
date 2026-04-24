@@ -22,6 +22,7 @@ public class DishwareInventoryMapper {
                 entity.getTitle(),
                 entity.getInventoryDate(),
                 entity.getStatus().name(),
+                entity.getFolder() == null ? null : entity.getFolder().getId(),
                 entity.getSourceInventory() != null ? entity.getSourceInventory().getId() : null,
                 entity.getSourceInventoryTitle(),
                 entity.getComment(),
@@ -30,7 +31,8 @@ public class DishwareInventoryMapper {
                 summary.totalLossAmount(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
-                entity.getCompletedAt()
+                entity.getCompletedAt(),
+                entity.getTrashedAt()
         );
     }
 
@@ -49,6 +51,7 @@ public class DishwareInventoryMapper {
                 entity.getTitle(),
                 entity.getInventoryDate(),
                 entity.getStatus().name(),
+                entity.getFolder() == null ? null : entity.getFolder().getId(),
                 entity.getSourceInventory() != null ? entity.getSourceInventory().getId() : null,
                 entity.getSourceInventoryTitle(),
                 entity.getComment(),
@@ -58,6 +61,7 @@ public class DishwareInventoryMapper {
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
                 entity.getCompletedAt(),
+                entity.getTrashedAt(),
                 items
         );
     }

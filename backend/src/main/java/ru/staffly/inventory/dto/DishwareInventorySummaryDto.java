@@ -10,6 +10,7 @@ public record DishwareInventorySummaryDto(
         String title,
         LocalDate inventoryDate,
         String status,
+        Long folderId,
         Long sourceInventoryId,
         String sourceInventoryTitle,
         String comment,
@@ -18,5 +19,6 @@ public record DishwareInventorySummaryDto(
         BigDecimal totalLossAmount,
         Instant createdAt,
         Instant updatedAt,
-        Instant completedAt
+        Instant completedAt,
+        Instant trashedAt
 ) {}

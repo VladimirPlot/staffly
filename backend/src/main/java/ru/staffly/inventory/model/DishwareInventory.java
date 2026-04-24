@@ -15,7 +15,9 @@ import java.util.List;
         name = "dishware_inventory",
         indexes = {
                 @Index(name = "idx_dishware_inventory_restaurant_date", columnList = "restaurant_id, inventory_date, updated_at"),
-                @Index(name = "idx_dishware_inventory_source", columnList = "source_inventory_id")
+                @Index(name = "idx_dishware_inventory_source", columnList = "source_inventory_id"),
+                @Index(name = "idx_dishware_inventory_restaurant_folder", columnList = "restaurant_id, folder_id"),
+                @Index(name = "idx_dishware_inventory_trash", columnList = "restaurant_id, trashed_at")
         }
 )
 @Getter
@@ -36,6 +38,10 @@ public class DishwareInventory {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_inventory_id")
     private DishwareInventory sourceInventory;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "folder_id")
+    private DishwareInventoryFolder folder;
 
     @Column(name = "source_inventory_title", length = 255)
     private String sourceInventoryTitle;
@@ -67,6 +73,9 @@ public class DishwareInventory {
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @Column(name = "trashed_at")
+    private Instant trashedAt;
 
     @PrePersist
     void prePersist() {

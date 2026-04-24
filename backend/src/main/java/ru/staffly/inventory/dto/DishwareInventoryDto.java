@@ -11,6 +11,7 @@ public record DishwareInventoryDto(
         String title,
         LocalDate inventoryDate,
         String status,
+        Long folderId,
         Long sourceInventoryId,
         String sourceInventoryTitle,
         String comment,
@@ -20,5 +21,6 @@ public record DishwareInventoryDto(
         Instant createdAt,
         Instant updatedAt,
         Instant completedAt,
+        Instant trashedAt,
         List<DishwareInventoryItemDto> items
 ) {}

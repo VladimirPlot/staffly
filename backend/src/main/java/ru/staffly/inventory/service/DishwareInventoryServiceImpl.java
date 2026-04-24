@@ -8,15 +8,13 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
-import ru.staffly.inventory.dto.CreateDishwareInventoryRequest;
-import ru.staffly.inventory.dto.DishwareInventoryDto;
-import ru.staffly.inventory.dto.DishwareInventorySummaryDto;
-import ru.staffly.inventory.dto.UpdateDishwareInventoryRequest;
-import ru.staffly.inventory.dto.UpsertDishwareInventoryItemRequest;
+import ru.staffly.inventory.dto.*;
 import ru.staffly.inventory.mapper.DishwareInventoryMapper;
 import ru.staffly.inventory.model.DishwareInventory;
+import ru.staffly.inventory.model.DishwareInventoryFolder;
 import ru.staffly.inventory.model.DishwareInventoryItem;
 import ru.staffly.inventory.model.DishwareInventoryStatus;
+import ru.staffly.inventory.repository.DishwareInventoryFolderRepository;
 import ru.staffly.inventory.repository.DishwareInventoryItemRepository;
 import ru.staffly.inventory.repository.DishwareInventoryRepository;
 import ru.staffly.media.DishwareInventoryImageStorage;
@@ -41,6 +39,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     private static final DateTimeFormatter TITLE_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final DishwareInventoryRepository inventories;
+    private final DishwareInventoryFolderRepository folders;
     private final DishwareInventoryItemRepository items;
     private final RestaurantRepository restaurants;
     private final DishwareInventoryMapper mapper;
@@ -51,16 +50,120 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     @Transactional(Transactional.TxType.SUPPORTS)
     public List<DishwareInventorySummaryDto> list(Long restaurantId, Long currentUserId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        return inventories.findByRestaurantIdOrderByInventoryDateDescUpdatedAtDesc(restaurantId).stream()
+        Set<Long> effectivelyTrashedFolderIds = effectivelyTrashedFolderIds(restaurantId);
+        return inventories.findByRestaurantIdAndTrashedAtIsNullOrderByInventoryDateDescUpdatedAtDesc(restaurantId).stream()
+                .filter(inventory -> !isInTrashedFolder(inventory, effectivelyTrashedFolderIds))
                 .map(mapper::toSummaryDto)
                 .toList();
     }
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
+    public List<DishwareInventorySummaryDto> listTrash(Long restaurantId, Long currentUserId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        Set<Long> effectivelyTrashedFolderIds = effectivelyTrashedFolderIds(restaurantId);
+        return inventories.findByRestaurantIdOrderByInventoryDateDescUpdatedAtDesc(restaurantId).stream()
+                .filter(inventory -> inventory.getTrashedAt() != null || isInTrashedFolder(inventory, effectivelyTrashedFolderIds))
+                .map(mapper::toSummaryDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public List<DishwareInventoryFolderDto> listFolders(Long restaurantId, Long currentUserId, boolean includeTrashed) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        Set<Long> effectivelyTrashedFolderIds = effectivelyTrashedFolderIds(restaurantId);
+        return folders.findByRestaurantIdOrderBySortOrderAscNameAsc(restaurantId).stream()
+                .filter(folder -> includeTrashed || !effectivelyTrashedFolderIds.contains(folder.getId()))
+                .map(this::toFolderDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryFolderDto createFolder(Long restaurantId, Long currentUserId, CreateDishwareInventoryFolderRequest request) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        Restaurant restaurant = restaurants.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
+        DishwareInventoryFolder parent = resolveActiveFolder(restaurantId, request.parentId());
+        DishwareInventoryFolder entity = DishwareInventoryFolder.builder()
+                .restaurant(restaurant)
+                .parent(parent)
+                .name(normalizeFolderName(request.name()))
+                .description(normalizeText(request.description(), false))
+                .sortOrder(request.sortOrder() == null ? 0 : request.sortOrder())
+                .build();
+        return toFolderDto(folders.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryFolderDto updateFolder(Long restaurantId, Long currentUserId, Long folderId, UpdateDishwareInventoryFolderRequest request) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventoryFolder entity = requireFolder(restaurantId, folderId);
+        entity.setName(normalizeFolderName(request.name()));
+        entity.setDescription(normalizeText(request.description(), false));
+        entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
+        return toFolderDto(folders.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryFolderDto moveFolder(Long restaurantId, Long currentUserId, Long folderId, MoveDishwareInventoryFolderRequest request) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventoryFolder entity = requireFolder(restaurantId, folderId);
+        DishwareInventoryFolder parent = resolveActiveFolder(restaurantId, request.parentId());
+        if (parent != null) {
+            ensureNotMovingIntoSelfOrDescendant(restaurantId, entity.getId(), parent.getId());
+        }
+        entity.setParent(parent);
+        if (request.sortOrder() != null) {
+            entity.setSortOrder(request.sortOrder());
+        }
+        return toFolderDto(folders.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryFolderDto trashFolder(Long restaurantId, Long currentUserId, Long folderId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventoryFolder entity = requireFolder(restaurantId, folderId);
+        if (entity.getTrashedAt() == null) {
+            entity.setTrashedAt(Instant.now());
+        }
+        return toFolderDto(folders.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryFolderDto restoreFolder(Long restaurantId, Long currentUserId, Long folderId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventoryFolder entity = requireFolder(restaurantId, folderId);
+        entity.setTrashedAt(null);
+        return toFolderDto(folders.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public void deleteFolderPermanently(Long restaurantId, Long currentUserId, Long folderId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventoryFolder root = requireFolder(restaurantId, folderId);
+        if (root.getTrashedAt() == null) {
+            throw new BadRequestException("Сначала переместите папку в корзину");
+        }
+        List<Long> folderIds = collectFolderIds(restaurantId, folderId);
+        List<DishwareInventory> folderInventories = inventories.findByRestaurantIdAndFolderIdIn(restaurantId, folderIds);
+        deleteInventoriesPermanently(folderInventories);
+        folders.deleteAllByIdInBatch(folderIds);
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
     public DishwareInventoryDto get(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        return mapper.toDto(requireInventory(restaurantId, inventoryId));
+        DishwareInventory inventory = requireInventory(restaurantId, inventoryId);
+        requireNotTrashed(inventory);
+        return mapper.toDto(inventory);
     }
 
     @Override
@@ -74,11 +177,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         DishwareInventory sourceInventory = null;
         if (request.sourceInventoryId() != null) {
             sourceInventory = requireInventoryForUpdate(restaurantId, request.sourceInventoryId());
+            requireNotTrashed(sourceInventory);
             requireCompletedSource(sourceInventory);
         }
+        DishwareInventoryFolder folder = resolveActiveFolder(restaurantId, request.folderId());
 
         DishwareInventory entity = DishwareInventory.builder()
                 .restaurant(restaurant)
+                .folder(folder)
                 .sourceInventory(sourceInventory)
                 .sourceInventoryTitle(sourceInventory != null ? sourceInventory.getTitle() : null)
                 .title(resolveTitle(request.title(), inventoryDate))
@@ -119,12 +225,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     public DishwareInventoryDto update(Long restaurantId, Long currentUserId, Long inventoryId, UpdateDishwareInventoryRequest request) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        requireNotTrashed(entity);
         requireDraft(entity, "Завершенную инвентаризацию нельзя редактировать");
 
         LocalDate inventoryDate = requireInventoryDate(request.inventoryDate());
 
         entity.setTitle(resolveTitle(request.title(), inventoryDate));
         entity.setInventoryDate(inventoryDate);
+        entity.setFolder(resolveActiveFolder(restaurantId, request.folderId()));
         entity.setComment(normalizeComment(request.comment()));
         syncItems(entity, request.items());
 
@@ -137,6 +245,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     public DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        requireNotTrashed(entity);
         requireDraft(entity, "Инвентаризация уже завершена");
         requireCompletable(entity);
 
@@ -149,6 +258,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     public DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
+        requireNotTrashed(entity);
         requireCompleted(entity, "Вернуть в черновик можно только завершенную инвентаризацию");
         requireNoDerivedInventories(entity);
 
@@ -161,7 +271,43 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     public void delete(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventory(restaurantId, inventoryId);
-        requireDraft(entity, "Завершенную инвентаризацию нельзя удалить");
+        if (entity.getTrashedAt() == null && !isInTrashedFolder(entity, effectivelyTrashedFolderIds(restaurantId))) {
+            throw new BadRequestException("Сначала переместите документ в корзину");
+        }
+        deleteInventoriesPermanently(List.of(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryDto move(Long restaurantId, Long currentUserId, Long inventoryId, MoveDishwareInventoryRequest request) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        requireNotTrashed(entity);
+        entity.setFolder(resolveActiveFolder(restaurantId, request.folderId()));
+        return mapper.toDto(inventories.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryDto trash(Long restaurantId, Long currentUserId, Long inventoryId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        if (entity.getTrashedAt() == null) {
+            entity.setTrashedAt(Instant.now());
+        }
+        return mapper.toDto(inventories.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryDto restore(Long restaurantId, Long currentUserId, Long inventoryId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        entity.setTrashedAt(null);
+        return mapper.toDto(inventories.save(entity));
+    }
+
+    private void deleteInventoryPermanently(DishwareInventory entity) {
         List<Long> itemIds = entity.getItems().stream()
                 .map(DishwareInventoryItem::getId)
                 .filter(Objects::nonNull)
@@ -239,6 +385,119 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     private DishwareInventory requireInventoryForUpdate(Long restaurantId, Long inventoryId) {
         return inventories.findWithLockByIdAndRestaurantId(inventoryId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Inventory not found: " + inventoryId));
+    }
+
+    private DishwareInventoryFolder requireFolder(Long restaurantId, Long folderId) {
+        return folders.findByIdAndRestaurantId(folderId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Inventory folder not found: " + folderId));
+    }
+
+    private DishwareInventoryFolder resolveActiveFolder(Long restaurantId, Long folderId) {
+        if (folderId == null) {
+            return null;
+        }
+        DishwareInventoryFolder folder = requireFolder(restaurantId, folderId);
+        if (effectivelyTrashedFolderIds(restaurantId).contains(folder.getId())) {
+            throw new BadRequestException("Нельзя выбрать папку из корзины");
+        }
+        return folder;
+    }
+
+    private void requireNotTrashed(DishwareInventory inventory) {
+        if (inventory.getTrashedAt() != null) {
+            throw new NotFoundException("Inventory not found: " + inventory.getId());
+        }
+        if (inventory.getFolder() != null && effectivelyTrashedFolderIds(inventory.getRestaurant().getId()).contains(inventory.getFolder().getId())) {
+            throw new NotFoundException("Inventory not found: " + inventory.getId());
+        }
+    }
+
+    private boolean isInTrashedFolder(DishwareInventory inventory, Set<Long> effectivelyTrashedFolderIds) {
+        return inventory.getFolder() != null && effectivelyTrashedFolderIds.contains(inventory.getFolder().getId());
+    }
+
+    private Set<Long> effectivelyTrashedFolderIds(Long restaurantId) {
+        List<DishwareInventoryFolder> allFolders = folders.findByRestaurantIdOrderBySortOrderAscNameAsc(restaurantId);
+        Map<Long, DishwareInventoryFolder> folderById = allFolders.stream()
+                .collect(Collectors.toMap(DishwareInventoryFolder::getId, folder -> folder));
+        Set<Long> trashed = new HashSet<>();
+        for (DishwareInventoryFolder folder : allFolders) {
+            if (isFolderEffectivelyTrashed(folder, folderById, trashed, new HashSet<>())) {
+                trashed.add(folder.getId());
+            }
+        }
+        return trashed;
+    }
+
+    private boolean isFolderEffectivelyTrashed(DishwareInventoryFolder folder,
+                                               Map<Long, DishwareInventoryFolder> folderById,
+                                               Set<Long> knownTrashed,
+                                               Set<Long> seen) {
+        if (folder.getTrashedAt() != null || knownTrashed.contains(folder.getId())) {
+            return true;
+        }
+        if (folder.getParent() == null || folder.getParent().getId() == null || !seen.add(folder.getId())) {
+            return false;
+        }
+        DishwareInventoryFolder parent = folderById.get(folder.getParent().getId());
+        return parent != null && isFolderEffectivelyTrashed(parent, folderById, knownTrashed, seen);
+    }
+
+    private void ensureNotMovingIntoSelfOrDescendant(Long restaurantId, Long folderId, Long candidateParentId) {
+        if (Objects.equals(folderId, candidateParentId)) {
+            throw new BadRequestException("Нельзя переместить папку в саму себя");
+        }
+        if (collectFolderIds(restaurantId, folderId).contains(candidateParentId)) {
+            throw new BadRequestException("Нельзя переместить папку в свою подпапку");
+        }
+    }
+
+    private List<Long> collectFolderIds(Long restaurantId, Long rootId) {
+        List<DishwareInventoryFolder> allFolders = folders.findByRestaurantIdOrderBySortOrderAscNameAsc(restaurantId);
+        Map<Long, List<Long>> childrenByParent = allFolders.stream()
+                .filter(folder -> folder.getParent() != null)
+                .collect(Collectors.groupingBy(
+                        folder -> folder.getParent().getId(),
+                        Collectors.mapping(DishwareInventoryFolder::getId, Collectors.toList())
+                ));
+
+        List<Long> result = new ArrayList<>();
+        ArrayDeque<Long> queue = new ArrayDeque<>();
+        queue.add(rootId);
+        while (!queue.isEmpty()) {
+            Long id = queue.removeFirst();
+            result.add(id);
+            queue.addAll(childrenByParent.getOrDefault(id, List.of()));
+        }
+        return result;
+    }
+
+    private DishwareInventoryFolderDto toFolderDto(DishwareInventoryFolder entity) {
+        return new DishwareInventoryFolderDto(
+                entity.getId(),
+                entity.getRestaurant().getId(),
+                entity.getParent() == null ? null : entity.getParent().getId(),
+                entity.getName(),
+                entity.getDescription(),
+                entity.getSortOrder(),
+                entity.getTrashedAt(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
+        );
+    }
+
+    private String normalizeFolderName(String value) {
+        String name = normalizeText(value, true);
+        if (name == null || name.isBlank()) {
+            throw new BadRequestException("Название папки обязательно");
+        }
+        return name;
+    }
+
+    private void deleteInventoriesPermanently(List<DishwareInventory> entities) {
+        for (DishwareInventory entity : entities) {
+            deleteInventoryPermanently(entity);
+        }
     }
 
     private LocalDate requireInventoryDate(LocalDate inventoryDate) {
