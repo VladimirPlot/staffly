@@ -126,7 +126,9 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, []);
 
   const removeItem = useCallback((clientId: string) => {
-    setItems((prev) => prev.filter((item) => item.clientId !== clientId).map((item, index) => ({ ...item, sortOrder: index })));
+    setItems((prev) =>
+      prev.filter((item) => item.clientId !== clientId).map((item, index) => ({ ...item, sortOrder: index })),
+    );
   }, []);
 
   const mergeItemPhotoFromServer = useCallback((updatedInventory: DishwareInventoryDto, itemId: number) => {
@@ -162,10 +164,10 @@ function AuthorizedDishwareInventoryEditorPage() {
     }
 
     const saved = await updateDishwareInventory(restaurantId, Number(inventoryId), {
-        title,
-        inventoryDate,
-        folderId: inventory?.folderId ?? null,
-        comment,
+      title,
+      inventoryDate,
+      folderId: inventory?.folderId ?? null,
+      comment,
       items: items.map((item, index) => ({
         id: item.id,
         name: item.name,
@@ -239,42 +241,56 @@ function AuthorizedDishwareInventoryEditorPage() {
     }
   }, [inventoryId, navigate, restaurantId]);
 
-  const handleUploadImage = useCallback(async (itemId: number, file: File) => {
-    if (!restaurantId || !inventoryId) return;
-    setUploadingItemId(itemId);
-    setSaveError(null);
-    try {
-      const updated = await uploadDishwareItemImage(restaurantId, Number(inventoryId), itemId, file);
-      mergeItemPhotoFromServer(updated, itemId);
-    } catch (e: any) {
-      console.error("Failed to upload item image", e);
-      setSaveError(e?.friendlyMessage || "Не удалось загрузить фото");
-    } finally {
-      setUploadingItemId(null);
-    }
-  }, [inventoryId, mergeItemPhotoFromServer, restaurantId]);
+  const handleUploadImage = useCallback(
+    async (itemId: number, file: File) => {
+      if (!restaurantId || !inventoryId) return;
+      setUploadingItemId(itemId);
+      setSaveError(null);
+      try {
+        const updated = await uploadDishwareItemImage(restaurantId, Number(inventoryId), itemId, file);
+        mergeItemPhotoFromServer(updated, itemId);
+      } catch (e: any) {
+        console.error("Failed to upload item image", e);
+        setSaveError(e?.friendlyMessage || "Не удалось загрузить фото");
+      } finally {
+        setUploadingItemId(null);
+      }
+    },
+    [inventoryId, mergeItemPhotoFromServer, restaurantId],
+  );
 
-  const handleDeleteImage = useCallback(async (itemId: number) => {
-    if (!restaurantId || !inventoryId) return;
-    setUploadingItemId(itemId);
-    setSaveError(null);
-    try {
-      const updated = await deleteDishwareItemImage(restaurantId, Number(inventoryId), itemId);
-      mergeItemPhotoFromServer(updated, itemId);
-    } catch (e: any) {
-      console.error("Failed to delete item image", e);
-      setSaveError(e?.friendlyMessage || "Не удалось удалить фото");
-    } finally {
-      setUploadingItemId(null);
-    }
-  }, [inventoryId, mergeItemPhotoFromServer, restaurantId]);
+  const handleDeleteImage = useCallback(
+    async (itemId: number) => {
+      if (!restaurantId || !inventoryId) return;
+      setUploadingItemId(itemId);
+      setSaveError(null);
+      try {
+        const updated = await deleteDishwareItemImage(restaurantId, Number(inventoryId), itemId);
+        mergeItemPhotoFromServer(updated, itemId);
+      } catch (e: any) {
+        console.error("Failed to delete item image", e);
+        setSaveError(e?.friendlyMessage || "Не удалось удалить фото");
+      } finally {
+        setUploadingItemId(null);
+      }
+    },
+    [inventoryId, mergeItemPhotoFromServer, restaurantId],
+  );
 
   if (loading) {
-    return <div className="mx-auto max-w-4xl"><Card className="text-sm text-muted">Загружаем инвентаризацию…</Card></div>;
+    return (
+      <div className="mx-auto max-w-4xl">
+        <Card className="text-muted text-sm">Загружаем инвентаризацию…</Card>
+      </div>
+    );
   }
 
   if (error || !inventory) {
-    return <div className="mx-auto max-w-4xl"><Card className="text-sm text-red-600">{error ?? "Инвентаризация не найдена"}</Card></div>;
+    return (
+      <div className="mx-auto max-w-4xl">
+        <Card className="text-sm text-red-600">{error ?? "Инвентаризация не найдена"}</Card>
+      </div>
+    );
   }
 
   return (
@@ -287,66 +303,66 @@ function AuthorizedDishwareInventoryEditorPage() {
       </div>
 
       <Card className="space-y-3 rounded-[1.75rem] p-3 sm:p-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Input
-                label="Название"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="h-9 rounded-xl px-3"
-                value={title}
-                maxLength={200}
-                disabled={isEditingLocked}
-                onChange={(event) => setTitle(event.target.value)}
-              />
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_168px] lg:items-end">
+          <Input
+            label="Название"
+            labelClassName="mb-0.5 text-xs font-medium"
+            className="h-9 rounded-xl px-3"
+            value={title}
+            maxLength={200}
+            disabled={isEditingLocked}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+          <Input
+            label="Дата инвентаризации"
+            labelClassName="mb-0.5 text-xs font-medium"
+            className="h-9 rounded-xl px-3"
+            type="date"
+            value={inventoryDate}
+            disabled={isEditingLocked}
+            onChange={(event) => setInventoryDate(event.target.value)}
+          />
+          <div className="min-w-0">
+            <div className="text-muted mb-0.5 flex items-center gap-1.5 text-xs font-medium">
+              <Icon icon={SquareActivity} size="xs" decorative className="text-icon shrink-0 opacity-60" />
+              <span>Статус</span>
             </div>
-            <Input
-              label="Дата инвентаризации"
-              labelClassName="mb-0.5 text-xs font-medium"
-              className="h-9 rounded-xl px-3"
-              type="date"
-              value={inventoryDate}
-              disabled={isEditingLocked}
-              onChange={(event) => setInventoryDate(event.target.value)}
-            />
-            <div className="sm:col-span-2">
-              <Textarea
-                label="Комментарий"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="rounded-xl px-3 py-2.5"
-                value={comment}
-                maxLength={5000}
-                disabled={isEditingLocked}
-                onChange={(event) => setComment(event.target.value)}
-                rows={2}
-              />
-            </div>
-            {inventory.sourceInventoryTitle ? (
-              <div className="sm:col-span-2 text-xs text-muted">Источник: {inventory.sourceInventoryTitle}</div>
-            ) : null}
-          </div>
-
-          <div className="space-y-2 rounded-2xl border border-subtle bg-app px-3 py-3">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted">
-              <Icon icon={SquareActivity} size="xs" decorative className="shrink-0 text-icon opacity-60" />
-              <div>Статус</div>
-            </div>
-            <div className={getInventoryStatusBadgeClass(inventory.status) + " text-sm"}>
+            <div className={getInventoryStatusBadgeClass(inventory.status) + " h-9 justify-start rounded-xl text-sm"}>
               <Icon
                 icon={inventory.status === "COMPLETED" ? Check : Pencil}
                 size="xs"
                 decorative
-                className={inventory.status === "COMPLETED" ? "shrink-0 text-emerald-600" : "shrink-0 text-icon"}
+                className={inventory.status === "COMPLETED" ? "shrink-0 text-emerald-600" : "text-icon shrink-0"}
               />
               <span>{inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
             </div>
           </div>
+          <div className="lg:col-span-3">
+            <Textarea
+              label="Комментарий"
+              labelClassName="mb-0.5 text-xs font-medium"
+              className="min-h-16 rounded-xl px-3 py-2"
+              value={comment}
+              maxLength={5000}
+              disabled={isEditingLocked}
+              onChange={(event) => setComment(event.target.value)}
+              rows={2}
+            />
+          </div>
+          {inventory.sourceInventoryTitle ? (
+            <div className="text-muted text-xs lg:col-span-3">Источник: {inventory.sourceInventoryTitle}</div>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           {!isCompleted ? (
             <>
-              <Button size="sm" leftIcon={<Icon icon={Save} size="sm" decorative />} isLoading={saving} onClick={() => void handleSave()}>
+              <Button
+                size="sm"
+                leftIcon={<Icon icon={Save} size="sm" decorative />}
+                isLoading={saving}
+                onClick={() => void handleSave()}
+              >
                 Сохранить
               </Button>
               <Button
@@ -383,7 +399,7 @@ function AuthorizedDishwareInventoryEditorPage() {
         </div>
 
         {isCompleted ? (
-          <div className="text-sm text-muted">
+          <div className="text-muted text-sm">
             Документ зафиксирован. Чтобы внести изменения, сначала верни его в черновик.
           </div>
         ) : null}
@@ -395,7 +411,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-xl font-semibold">Позиции</h3>
-          <div className="text-sm text-muted">Было / Приход / Стало</div>
+          <div className="text-muted text-sm">Было / Приход / Стало</div>
         </div>
         {!isCompleted ? (
           <Button size="sm" disabled={saving} onClick={addItem}>

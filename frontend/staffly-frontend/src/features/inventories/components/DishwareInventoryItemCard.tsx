@@ -1,4 +1,5 @@
-import { ChevronDown, ImagePlus } from "lucide-react";
+import { ChevronDown, ImagePlus, StickyNote } from "lucide-react";
+import type { CSSProperties } from "react";
 import { useId, useRef, useState } from "react";
 
 import Button from "../../../shared/ui/Button";
@@ -6,6 +7,7 @@ import Card from "../../../shared/ui/Card";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
+import { cn } from "../../../shared/lib/cn";
 import {
   computeDishwareItemMetrics,
   formatInventoryCount,
@@ -35,6 +37,8 @@ type DishwareInventoryItemCardProps = {
   onUploadImage: (itemId: number, file: File) => void;
   onDeleteImage: (itemId: number) => void;
 };
+
+type MetricTone = "default" | "loss" | "gain";
 
 export default function DishwareInventoryItemCard({
   item,
@@ -77,9 +81,8 @@ export default function DishwareInventoryItemCard({
       tone: "default" as const,
     },
     {
-      label: "Разница к ожиданию",
-      value:
-        metrics.diff > 0 ? `+${formatInventoryCount(metrics.diff)}` : formatInventoryLossCount(metrics.diff),
+      label: "Отклонение",
+      value: metrics.diff > 0 ? `+${formatInventoryCount(metrics.diff)}` : formatInventoryLossCount(metrics.diff),
       tone: metrics.diff < 0 ? ("loss" as const) : metrics.diff > 0 ? ("gain" as const) : ("default" as const),
     },
     {
@@ -99,66 +102,95 @@ export default function DishwareInventoryItemCard({
     },
   ];
 
-  const summaryMetricItems = primaryMetricItems.slice(0, 2);
-  const resultMetricItems = primaryMetricItems.slice(2);
+  const resultMetricItems = primaryMetricItems;
+  const statusLabel =
+    metrics.diff < 0
+      ? `${formatInventoryLossCount(metrics.diff)} недостача`
+      : metrics.diff > 0
+        ? `+${formatInventoryCount(metrics.diff)} излишек`
+        : "0 без расхождения";
+  const statusValue =
+    metrics.diff < 0
+      ? formatInventoryLossCount(metrics.diff)
+      : metrics.diff > 0
+        ? `+${formatInventoryCount(metrics.diff)}`
+        : "0";
+  const statusCaption = metrics.diff < 0 ? "недостача" : metrics.diff > 0 ? "излишек" : "ровно";
+  const statusTone: MetricTone = metrics.diff < 0 ? "loss" : metrics.diff > 0 ? "gain" : "default";
 
-  function getToneClass(tone: (typeof primaryMetricItems)[number]["tone"]) {
-    if (tone === "loss") return "text-amber-700";
-    if (tone === "gain") return "text-emerald-700";
+  function getToneClass(tone: MetricTone) {
+    if (tone === "gain") return "text-emerald-700 dark:text-emerald-200";
     return "text-default";
   }
 
-  function getMetricCardClass(tone: (typeof primaryMetricItems)[number]["tone"]) {
+  function getToneStyle(tone: MetricTone): CSSProperties | undefined {
     if (tone === "loss") {
-      return "border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20";
+      return {
+        color: "#dc2626",
+        WebkitTextFillColor: "#dc2626",
+        opacity: 1,
+      };
     }
 
     if (tone === "gain") {
-      return "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20";
+      return {
+        color: "#047857",
+        WebkitTextFillColor: "#047857",
+        opacity: 1,
+      };
     }
 
-    return "border-subtle bg-[color:var(--staffly-control)]/45";
+    return undefined;
+  }
+
+  function getMetricCardClass(tone: MetricTone) {
+    return cn(
+      "border-subtle bg-[color:var(--staffly-surface)]",
+      tone === "loss" && "border-[#fecaca] bg-[#fff7f7] dark:border-red-900/40 dark:bg-red-950/10",
+      tone === "gain" && "border-[#a7f3d0] bg-[#f0fdf4] dark:border-emerald-900/40 dark:bg-emerald-950/10",
+    );
+  }
+
+  function getStatusClass(tone: MetricTone) {
+    return cn(
+      "border-subtle bg-[color:var(--staffly-surface)] text-default",
+      tone === "loss" &&
+        "border-red-200 bg-red-50/25 text-red-700 dark:border-red-900/40 dark:bg-red-950/10 dark:text-red-300",
+      tone === "gain" &&
+        "border-emerald-200 bg-emerald-50/25 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/10 dark:text-emerald-300",
+    );
   }
 
   return (
     <article aria-labelledby={titleId}>
-      <Card className="space-y-3 rounded-[1.75rem] p-3 sm:p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <span className="inline-flex items-center rounded-full border border-subtle bg-[color:var(--staffly-control)] px-2.5 py-1 text-[11px] font-medium text-muted">
-              Позиция {index + 1}
-            </span>
-            <h4 id={titleId} className="text-base font-semibold text-strong text-balance">
+      <Card className="rounded-3xl p-3 sm:p-3.5">
+        <div className="grid gap-3 md:grid-cols-[116px_minmax(0,1fr)] lg:grid-cols-[124px_minmax(0,1fr)] lg:items-start">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+              <span className="border-subtle text-muted inline-flex items-center rounded-full border bg-[color:var(--staffly-control)] px-2 py-0.5 text-[11px] leading-5 font-medium">
+                Позиция {index + 1}
+              </span>
+              <span className="text-muted max-w-[8rem] truncate text-[11px] leading-5 md:hidden">
+                {item.name.trim() || "Новая позиция"}
+              </span>
+            </div>
+            <h4 id={titleId} className="sr-only">
               {item.name.trim() || "Новая позиция"}
             </h4>
-          </div>
-
-          {!readOnly ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 text-red-600"
-              onClick={() => onRemove(item.clientId)}
-              aria-label={`Удалить позицию ${index + 1}`}
-            >
-              Удалить
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-[132px_minmax(0,1fr)] lg:items-start">
-          <div className="space-y-2">
-            <div className="border-subtle bg-app overflow-hidden rounded-[1.25rem] border">
+            <div className="border-subtle bg-app overflow-hidden rounded-2xl border">
               <div className="aspect-square">
                 {hasPhoto ? (
-                  <img src={item.photoUrl!} alt={item.name.trim() || `Фото позиции ${index + 1}`} className="h-full w-full object-cover" />
+                  <img
+                    src={item.photoUrl!}
+                    alt={item.name.trim() || `Фото позиции ${index + 1}`}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-                    <div className="flex size-9 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] text-icon">
-                      <Icon icon={ImagePlus} size="md" decorative />
+                  <div className="flex h-full flex-col items-center justify-center gap-1.5 px-3 text-center">
+                    <div className="text-icon flex size-8 items-center justify-center rounded-xl bg-[color:var(--staffly-control)]">
+                      <Icon icon={ImagePlus} size="sm" decorative />
                     </div>
-                    <p className="text-sm font-medium text-default">Фото не добавлено</p>
+                    <p className="text-default text-xs leading-4 font-medium">Фото не добавлено</p>
                   </div>
                 )}
               </div>
@@ -178,12 +210,12 @@ export default function DishwareInventoryItemCard({
               }}
             />
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="w-full justify-center"
+                className="h-8 w-full justify-center px-2 text-xs"
                 leftIcon={<Icon icon={ImagePlus} size="sm" decorative />}
                 disabled={readOnly || !item.id || uploading}
                 aria-describedby={isPhotoBlockedByUnsavedItem ? photoHintId : undefined}
@@ -193,7 +225,7 @@ export default function DishwareInventoryItemCard({
               </Button>
 
               {isPhotoBlockedByUnsavedItem ? (
-                <p id={photoHintId} className="px-1 text-xs leading-5 text-muted">
+                <p id={photoHintId} className="text-muted px-1 text-xs leading-4">
                   Сначала сохраните документ, потом можно будет прикрепить фото.
                 </p>
               ) : null}
@@ -203,7 +235,7 @@ export default function DishwareInventoryItemCard({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-center text-sm text-red-600"
+                  className="h-8 w-full justify-center px-2 text-xs text-red-600"
                   disabled={uploading}
                   onClick={() => onDeleteImage(item.id!)}
                 >
@@ -213,21 +245,21 @@ export default function DishwareInventoryItemCard({
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)]">
+          <div className="space-y-2">
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1.35fr)_minmax(118px,0.45fr)_minmax(132px,0.48fr)_auto] lg:items-end">
               <Input
                 label="Название"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="h-9 rounded-xl px-3"
+                labelClassName="mb-0.5 text-[11px] font-medium"
+                className="h-9 rounded-xl px-3 text-sm"
                 value={item.name}
                 disabled={readOnly}
                 onChange={(event) => onChange(item.clientId, { name: event.target.value })}
                 placeholder="Например, тарелка суповая"
               />
               <Input
-                label="Цена за шт"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="h-9 rounded-xl px-3"
+                label="Цена"
+                labelClassName="mb-0.5 text-[11px] font-medium"
+                className="h-9 rounded-xl px-3 text-sm"
                 type="number"
                 min={0}
                 step="0.01"
@@ -239,15 +271,40 @@ export default function DishwareInventoryItemCard({
                     unitPrice: event.target.value === "" ? null : Number(event.target.value),
                   })
                 }
-                placeholder="Необязательно"
+                placeholder="0,00"
               />
+              <div className="min-w-0">
+                <div className="text-muted mb-0.5 text-[11px] font-medium">Итог</div>
+                <span
+                  className={cn(
+                    "inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border px-3 tabular-nums",
+                    getStatusClass(statusTone),
+                  )}
+                  title={statusLabel}
+                >
+                  <span className="text-sm leading-none font-medium">{statusValue}</span>
+                  <span className="text-[11px] leading-none opacity-80">{statusCaption}</span>
+                </span>
+              </div>
+              {!readOnly ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 self-end px-3 text-xs text-red-600"
+                  onClick={() => onRemove(item.clientId)}
+                  aria-label={`Удалить позицию ${index + 1}`}
+                >
+                  Удалить
+                </Button>
+              ) : null}
             </div>
 
-            <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_repeat(2,minmax(0,0.9fr))]">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               <Input
                 label="Было"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="h-9 rounded-xl px-3"
+                labelClassName="mb-0.5 text-[11px] font-medium"
+                className="h-9 rounded-xl px-3 text-sm"
                 type="number"
                 min={0}
                 inputMode="numeric"
@@ -257,8 +314,8 @@ export default function DishwareInventoryItemCard({
               />
               <Input
                 label="Докупили"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="h-9 rounded-xl px-3"
+                labelClassName="mb-0.5 text-[11px] font-medium"
+                className="h-9 rounded-xl px-3 text-sm"
                 type="number"
                 min={0}
                 inputMode="numeric"
@@ -268,8 +325,8 @@ export default function DishwareInventoryItemCard({
               />
               <Input
                 label="Стало"
-                labelClassName="mb-0.5 text-xs font-medium"
-                className="h-9 rounded-xl px-3"
+                labelClassName="mb-0.5 text-[11px] font-medium"
+                className="h-9 rounded-xl px-3 text-sm"
                 type="number"
                 min={0}
                 inputMode="numeric"
@@ -277,53 +334,47 @@ export default function DishwareInventoryItemCard({
                 disabled={readOnly}
                 onChange={(event) => onChange(item.clientId, { currentQty: Number(event.target.value) || 0 })}
               />
-
-              {summaryMetricItems.map((metric) => (
-                <div key={metric.label} className={`rounded-2xl border px-3 py-2 ${getMetricCardClass(metric.tone)}`}>
-                  <div className="text-[11px] font-medium text-muted">{metric.label}</div>
-                  <div className={`mt-1 text-base font-semibold tabular-nums ${getToneClass(metric.tone)}`}>
-                    {metric.value}
-                  </div>
-                </div>
-              ))}
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-3" aria-live="polite">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5" aria-live="polite">
               {resultMetricItems.map((metric) => (
-                <div key={metric.label} className={`rounded-2xl border px-3 py-2 ${getMetricCardClass(metric.tone)}`}>
-                  <div className="text-[11px] font-medium text-muted">{metric.label}</div>
-                  <div className={`mt-1 text-base font-semibold tabular-nums ${getToneClass(metric.tone)}`}>
+                <div
+                  key={metric.label}
+                  className={cn("rounded-xl border px-3 py-1.5 lg:min-h-[50px]", getMetricCardClass(metric.tone))}
+                >
+                  <div className="text-muted text-[11px] leading-4 font-medium">{metric.label}</div>
+                  <div
+                    className={cn("text-sm leading-5 font-bold tabular-nums", getToneClass(metric.tone))}
+                    style={getToneStyle(metric.tone)}
+                  >
                     {metric.value}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-2xl border border-subtle bg-[color:var(--staffly-control)]/30">
-              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+            <div className="border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/25">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-medium text-muted">Заметка</span>
+                    <span className="text-muted inline-flex items-center gap-1 text-[11px] font-medium">
+                      <Icon icon={StickyNote} size="xs" decorative />
+                      Заметка
+                    </span>
                     <span
                       className={[
-                        "rounded-full px-2 py-0.5 text-[10px] font-medium leading-none",
+                        "rounded-full px-2 py-0.5 text-[10px] leading-none font-medium",
                         hasNote
-                          ? "bg-[color:var(--staffly-surface)] text-default"
-                          : "bg-[color:var(--staffly-control)] text-muted",
+                          ? "text-default bg-[color:var(--staffly-surface)]"
+                          : "text-muted bg-[color:var(--staffly-control)]",
                       ].join(" ")}
                     >
-                      {hasNote ? "Есть текст" : "Пусто"}
+                      {hasNote ? "Есть" : "Без заметки"}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-xs text-muted">
-                    {isNoteExpanded
-                      ? readOnly
-                        ? "Заметка открыта для просмотра."
-                        : "Здесь можно коротко указать партию, износ или причину расхождения."
-                      : hasNote
-                        ? "Заметка сохранена в карточке и свернута, чтобы не занимать место."
-                        : "Короткая заметка помогает запомнить партию, износ или причину расхождения."}
-                  </div>
+                  {hasNote && !isNoteExpanded ? (
+                    <div className="text-muted mt-0.5 max-w-[56ch] truncate text-xs">{noteText}</div>
+                  ) : null}
                 </div>
 
                 <Button
@@ -348,15 +399,15 @@ export default function DishwareInventoryItemCard({
               </div>
 
               {isNoteExpanded ? (
-                <div id={notePanelId} className="border-t border-subtle px-3 pb-3 pt-3">
+                <div id={notePanelId} className="border-subtle border-t px-3 pt-2 pb-3">
                   <Textarea
                     label="Заметка"
                     labelClassName="sr-only"
-                    className="rounded-xl px-3 py-2.5"
+                    className="rounded-xl px-3 py-2 text-sm"
                     value={item.note ?? ""}
                     disabled={readOnly}
                     onChange={(event) => onChange(item.clientId, { note: event.target.value })}
-                    rows={3}
+                    rows={2}
                     autoFocus={!readOnly}
                     placeholder="Например, новая партия или бой."
                   />
