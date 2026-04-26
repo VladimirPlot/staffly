@@ -81,11 +81,6 @@ export default function DishwareInventoryItemCard({
       tone: "default" as const,
     },
     {
-      label: "Отклонение",
-      value: metrics.diff > 0 ? `+${formatInventoryCount(metrics.diff)}` : formatInventoryLossCount(metrics.diff),
-      tone: metrics.diff < 0 ? ("loss" as const) : metrics.diff > 0 ? ("gain" as const) : ("default" as const),
-    },
-    {
       label: "Недостача, шт",
       value: formatInventoryLossCount(metrics.lossQty),
       tone: metrics.lossQty > 0 ? ("loss" as const) : ("default" as const),
@@ -336,7 +331,7 @@ export default function DishwareInventoryItemCard({
               />
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5" aria-live="polite">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-live="polite">
               {resultMetricItems.map((metric) => (
                 <div
                   key={metric.label}
