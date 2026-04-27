@@ -269,6 +269,32 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/owner")
+    public TrainingExamDto changeCertificationExamOwner(@PathVariable Long restaurantId,
+                                                        @PathVariable Long examId,
+                                                        @AuthenticationPrincipal UserPrincipal principal,
+                                                        @Valid @RequestBody ReassignTrainingExamOwnerRequest request) {
+        return examService.changeCertificationExamOwner(restaurantId, principal.userId(), examId, request.ownerUserId());
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/owners/{userId}/reassignment-options")
+    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(@PathVariable Long restaurantId,
+                                                                                             @PathVariable Long userId,
+                                                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationOwnerReassignmentOptions(restaurantId, principal.userId(), userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/certification/owners/{userId}/reassign")
+    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(@PathVariable Long restaurantId,
+                                                                                    @PathVariable Long userId,
+                                                                                    @AuthenticationPrincipal UserPrincipal principal,
+                                                                                    @Valid @RequestBody CertificationOwnerBatchReassignmentRequest request) {
+        return examService.reassignCertificationOwnerBatch(restaurantId, principal.userId(), userId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/hide")
     public TrainingExamDto hideExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
         return examService.hideExam(restaurantId, principal.userId(), examId);

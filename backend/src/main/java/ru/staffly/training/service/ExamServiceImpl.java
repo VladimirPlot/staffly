@@ -49,6 +49,7 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationAnalyticsService certificationAnalyticsService;
     private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
+    private final TrainingExamOwnershipService trainingExamOwnershipService;
 
     @Override
     @Transactional(readOnly = true)
@@ -122,7 +123,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
-        var exam = exams.save(TrainingExam.builder()
+        var examEntity = TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .title(request.title())
                 .description(request.description())
@@ -134,7 +135,9 @@ public class ExamServiceImpl implements ExamService {
                 .attemptLimit(request.attemptLimit())
                 .active(true)
                 .version(1)
-                .build());
+                .build();
+        trainingExamOwnershipService.assignInitialOwner(examEntity, userId);
+        var exam = exams.save(examEntity);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
@@ -384,6 +387,31 @@ public class ExamServiceImpl implements ExamService {
     public CertificationAttemptDetailsDto getCertificationAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
         return certificationAnalyticsService.getAttemptDetails(restaurantId, actorUserId, examId, attemptId);
+    }
+
+    @Override
+    @Transactional
+    public TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId) {
+        var exam = trainingExamOwnershipService.changeOwner(restaurantId, actorUserId, examId, ownerUserId);
+        return toDtoWithSourcesAndVisibility(exam, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId) {
+        return trainingExamOwnershipService.buildReassignmentOptions(restaurantId, actorUserId, userId);
+    }
+
+    @Override
+    @Transactional
+    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
+                                                                                    Long actorUserId,
+                                                                                    Long userId,
+                                                                                    CertificationOwnerBatchReassignmentRequest request) {
+        var entries = request.items().stream()
+                .map(item -> Map.entry(item.examId(), item.newOwnerUserId()))
+                .toList();
+        return trainingExamOwnershipService.batchReassign(restaurantId, actorUserId, userId, entries);
     }
 
     private void startNewCertificationCycle(TrainingExam exam) {
@@ -682,6 +710,10 @@ public class ExamServiceImpl implements ExamService {
                 folders,
                 questionIds,
                 visibilityIds,
+                exam.getCreatedBy() == null ? null : exam.getCreatedBy().getId(),
+                exam.getCreatedBy() == null ? null : exam.getCreatedBy().getFullName(),
+                exam.getOwner() == null ? null : exam.getOwner().getId(),
+                exam.getOwner() == null ? null : exam.getOwner().getFullName(),
                 summaryPreview
         );
     }

@@ -20,5 +20,9 @@ public record TrainingExamDto(
         List<ExamSourceFolderDto> sourcesFolders,
         List<Long> sourceQuestionIds,
         List<Long> visibilityPositionIds,
+        Long createdByUserId,
+        String createdByFullName,
+        Long ownerUserId,
+        String ownerFullName,
         CertificationExamSummaryPreviewDto certificationSummaryPreview
 ) {}

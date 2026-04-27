@@ -28,6 +28,7 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 import ru.staffly.training.service.CertificationAudienceSyncService;
+import ru.staffly.training.service.TrainingExamOwnershipService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
@@ -54,6 +55,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final MemberMapper memberMapper;
     private final SecurityService security;
     private final CertificationAudienceSyncService certificationAudienceSyncService;
+    private final TrainingExamOwnershipService trainingExamOwnershipService;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -330,6 +332,10 @@ public class EmployeeServiceImpl implements EmployeeService {
                 }
                 case STAFF -> throw new ForbiddenException("Staff can remove only themselves");
             }
+        }
+
+        if (targetMember.getUser() != null) {
+            trainingExamOwnershipService.assertNoActiveOwnedCertificationExams(restaurantId, targetMember.getUser().getId());
         }
 
         // Нельзя удалить последнего ADMIN
