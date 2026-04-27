@@ -1,4 +1,4 @@
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2, UserRoundCog } from "lucide-react";
 import { Link } from "react-router-dom";
 import IconButton from "../../../../shared/ui/IconButton";
 import type { PositionDto } from "../../../dictionaries/api";
@@ -12,6 +12,7 @@ type Props = {
   loading: boolean;
   positionsById: Map<number, PositionDto>;
   onEdit: (exam: TrainingExamDto) => void;
+  onChangeOwner: (exam: TrainingExamDto) => void;
   onAction: (examId: number, action: "hide" | "restore" | "delete") => void;
 };
 
@@ -21,6 +22,7 @@ export default function CertificationManageExamCard({
   loading,
   positionsById,
   onEdit,
+  onChangeOwner,
   onAction,
 }: Props) {
   const targets = exam.visibilityPositionIds
@@ -32,6 +34,7 @@ export default function CertificationManageExamCard({
   const passed = summary?.passedCount ?? 0;
   const failed = summary?.failedCount ?? 0;
   const completed = summary?.completedCount ?? passed + failed;
+  const ownerLabel = exam.ownerFullName?.trim() ? `Ответственный: ${exam.ownerFullName}` : "Ответственный не назначен";
 
   return (
     <div className="group relative rounded-2xl border border-subtle bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--staffly-border)] hover:shadow-md sm:p-5">
@@ -123,6 +126,23 @@ export default function CertificationManageExamCard({
           </div>
         </div>
       </Link>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="text-xs text-muted">{ownerLabel}</div>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-md border border-subtle px-2 py-1 text-xs text-muted transition-colors hover:bg-white/70 hover:text-default disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={loading}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onChangeOwner(exam);
+          }}
+        >
+          <UserRoundCog className="h-3.5 w-3.5" />
+          Сменить ответственного
+        </button>
+      </div>
     </div>
   );
 }

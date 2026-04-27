@@ -148,7 +148,40 @@ export type TrainingExamDto = {
   sourcesFolders: ExamSourceFolderDto[];
   sourceQuestionIds: number[];
   visibilityPositionIds: number[];
+  createdByUserId?: number | null;
+  createdByFullName?: string | null;
+  ownerUserId?: number | null;
+  ownerFullName?: string | null;
   certificationSummaryPreview?: CertificationExamSummaryPreviewDto | null;
+};
+
+export type CertificationOwnerCandidateDto = {
+  userId: number;
+  fullName: string;
+  role: string;
+  positionId?: number | null;
+  positionName?: string | null;
+};
+
+export type OwnedCertificationExamDto = {
+  examId: number;
+  title: string;
+  visibilityPositionIds: number[];
+  visibilityPositionNames: string[];
+  candidates: CertificationOwnerCandidateDto[];
+};
+
+export type CertificationOwnerReassignmentOptionsDto = {
+  userId: number;
+  fullName?: string | null;
+  ownedExams: OwnedCertificationExamDto[];
+};
+
+export type CertificationOwnerBatchReassignmentRequest = {
+  items: Array<{
+    examId: number;
+    newOwnerUserId: number;
+  }>;
 };
 
 export type CertificationExamSummaryPreviewDto = {

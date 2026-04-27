@@ -15,6 +15,7 @@ import LoadingState from "../components/LoadingState";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
 import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
+import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
 import {
   deleteExam,
   hideExam,
@@ -56,6 +57,7 @@ export default function ExamsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [loadingExamActionId, setLoadingExamActionId] = useState<number | null>(null);
+  const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
   const [employeePositionFilter, setEmployeePositionFilter] = useState<number | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState("");
@@ -287,6 +289,9 @@ export default function ExamsPage() {
                     setEditingExam(value);
                     setModalOpen(true);
                   }}
+                  onChangeOwner={(value) => {
+                    setChangeOwnerExam(value);
+                  }}
                   onAction={runExamAction}
                 />
               ))}
@@ -330,6 +335,16 @@ export default function ExamsPage() {
             setEditingExam(null);
             await loadManageExams();
           }}
+        />
+      )}
+
+      {restaurantId && (
+        <ChangeCertificationOwnerModal
+          open={Boolean(changeOwnerExam)}
+          exam={changeOwnerExam}
+          restaurantId={restaurantId}
+          onClose={() => setChangeOwnerExam(null)}
+          onSaved={loadManageExams}
         />
       )}
     </div>
