@@ -1,6 +1,7 @@
 package ru.staffly.training.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
     private final TrainingExamSourceFolderRepository sourceFolders;
@@ -50,6 +52,7 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
+    private final TrainingCertificationNotificationService trainingCertificationNotificationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -344,6 +347,13 @@ public class ExamServiceImpl implements ExamService {
                 answersByQuestionId,
                 TimeProvider.now()
         );
+        try {
+            trainingCertificationNotificationService.notifyUserResultOnSubmit(finalizedAttempt.attempt());
+            trainingCertificationNotificationService.notifyOwnerMilestoneOnSubmit(finalizedAttempt.attempt());
+        } catch (Exception ex) {
+            log.warn("Failed to process certification notifications after submit (restaurantId={}, attemptId={})",
+                    restaurantId, attemptId, ex);
+        }
         return toAttemptResultDto(finalizedAttempt);
     }
 

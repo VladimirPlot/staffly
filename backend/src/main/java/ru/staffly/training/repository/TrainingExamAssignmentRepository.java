@@ -10,6 +10,7 @@ import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import ru.staffly.training.model.TrainingExamAssignmentStatus;
 
 public interface TrainingExamAssignmentRepository extends JpaRepository<TrainingExamAssignment, Long> {
     @Query("""
@@ -106,4 +107,10 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     List<TrainingExamAssignment> findActiveHistoryByExamAndUser(@Param("examId") Long examId,
                                                                 @Param("restaurantId") Long restaurantId,
                                                                 @Param("userId") Long userId);
+
+    long countByExamIdAndRestaurantIdAndActiveTrue(Long examId, Long restaurantId);
+
+    long countByExamIdAndRestaurantIdAndActiveTrueAndStatusIn(Long examId,
+                                                              Long restaurantId,
+                                                              Collection<TrainingExamAssignmentStatus> statuses);
 }

@@ -37,14 +37,14 @@ class CertificationAssignmentService {
     }
 
     @Transactional
-    public void syncAudienceAssignments(TrainingExam exam) {
+    public List<TrainingExamAssignment> syncAudienceAssignments(TrainingExam exam) {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            return;
+            return List.of();
         }
 
         if (!exam.isActive()) {
             archiveAllActiveAssignments(exam);
-            return;
+            return List.of();
         }
 
         var audience = resolveAudienceMembers(exam);
@@ -54,10 +54,11 @@ class CertificationAssignmentService {
         var activeByUserId = activeAssignments.stream()
                 .collect(Collectors.toMap(a -> a.getUser().getId(), Function.identity(), (first, second) -> first));
 
+        var createdAssignments = new java.util.ArrayList<TrainingExamAssignment>();
         for (var member : audience) {
             var existing = activeByUserId.get(member.getUser().getId());
             if (existing == null) {
-                assignments.save(createAssignment(exam, member));
+                createdAssignments.add(assignments.save(createAssignment(exam, member)));
                 continue;
             }
             existing.setAssignedPosition(member.getPosition());
@@ -69,6 +70,7 @@ class CertificationAssignmentService {
                 assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
             }
         }
+        return createdAssignments;
     }
 
     private void archiveAllActiveAssignments(TrainingExam exam) {

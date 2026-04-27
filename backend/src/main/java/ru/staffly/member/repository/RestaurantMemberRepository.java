@@ -7,12 +7,21 @@ import ru.staffly.restaurant.model.RestaurantRole;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface RestaurantMemberRepository extends JpaRepository<RestaurantMember, Long> {
 
     Optional<RestaurantMember> findByUserIdAndRestaurantId(Long userId, Long restaurantId);
 
     List<RestaurantMember> findByRestaurantId(Long restaurantId);
+
+    @Query("""
+           select m from RestaurantMember m
+           join fetch m.user u
+           where m.restaurant.id = :restaurantId
+             and u.id in :userIds
+           """)
+    List<RestaurantMember> findByRestaurantIdAndUserIdIn(Long restaurantId, Set<Long> userIds);
 
     @Query("""
            select distinct m from RestaurantMember m
