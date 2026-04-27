@@ -4,7 +4,7 @@ import Modal from "../../../../shared/ui/Modal";
 import SelectField from "../../../../shared/ui/SelectField";
 import {
   changeCertificationExamOwner,
-  getCertificationOwnerReassignmentOptions,
+  getCertificationExamOwnerCandidates,
 } from "../../api/trainingApi";
 import type { CertificationOwnerCandidateDto, TrainingExamDto } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
@@ -25,9 +25,9 @@ export default function ChangeCertificationOwnerModal({ exam, restaurantId, open
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CertificationOwnerCandidateDto[]>([]);
   const [selectedOwnerUserId, setSelectedOwnerUserId] = useState<string>("");
+  const [currentOwnerFullName, setCurrentOwnerFullName] = useState<string | null>(null);
 
-  const ownerName = exam?.ownerFullName?.trim();
-  const hasOwner = Boolean(exam?.ownerUserId);
+  const ownerName = (currentOwnerFullName ?? exam?.ownerFullName ?? null)?.trim();
 
   const selectedCandidate = useMemo(
     () => candidates.find((candidate) => String(candidate.userId) === selectedOwnerUserId) ?? null,
@@ -38,22 +38,20 @@ export default function ChangeCertificationOwnerModal({ exam, restaurantId, open
     if (!open || !exam) {
       setCandidates([]);
       setSelectedOwnerUserId("");
+      setCurrentOwnerFullName(null);
       return;
     }
 
     setError(null);
     setCandidates([]);
     setSelectedOwnerUserId("");
-
-    if (!exam.ownerUserId) {
-      return;
-    }
+    setCurrentOwnerFullName(null);
 
     setLoading(true);
     try {
-      const options = await getCertificationOwnerReassignmentOptions(restaurantId, exam.ownerUserId);
-      const ownedExam = options.ownedExams.find((item) => item.examId === exam.id);
-      const nextCandidates = ownedExam?.candidates ?? [];
+      const options = await getCertificationExamOwnerCandidates(restaurantId, exam.id);
+      const nextCandidates = options.candidates;
+      setCurrentOwnerFullName(options.currentOwnerFullName ?? null);
       setCandidates(nextCandidates);
 
       if (nextCandidates.length > 0) {
@@ -115,22 +113,15 @@ export default function ChangeCertificationOwnerModal({ exam, restaurantId, open
           {ownerName && ownerName.length > 0 ? ownerName : "не назначен"}
         </div>
 
-        {!hasOwner && (
-          <div className="rounded-xl border border-subtle bg-surface-muted p-3 text-sm text-muted">
-            Пока нельзя безопасно выбрать нового ответственного, если у аттестации нет текущего owner. TODO: добавить backend endpoint
-            с кандидатами по examId.
-          </div>
-        )}
+        {loading && <LoadingState label="Загрузка кандидатов..." />}
 
-        {hasOwner && loading && <LoadingState label="Загрузка кандидатов..." />}
-
-        {hasOwner && !loading && !error && candidates.length === 0 && (
+        {!loading && !error && candidates.length === 0 && (
           <div className="rounded-xl border border-subtle bg-surface-muted p-3 text-sm text-muted">
             Для этой аттестации пока нет доступных кандидатов для переназначения.
           </div>
         )}
 
-        {hasOwner && !loading && candidates.length > 0 && (
+        {!loading && candidates.length > 0 && (
           <SelectField
             label="Новый ответственный"
             value={selectedOwnerUserId}
@@ -145,7 +136,7 @@ export default function ChangeCertificationOwnerModal({ exam, restaurantId, open
           </SelectField>
         )}
 
-        {error && <ErrorState message={error} onRetry={hasOwner ? () => void loadCandidates() : undefined} />}
+        {error && <ErrorState message={error} onRetry={() => void loadCandidates()} />}
       </div>
     </Modal>
   );

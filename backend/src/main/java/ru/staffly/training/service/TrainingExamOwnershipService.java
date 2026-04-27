@@ -12,6 +12,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.training.dto.CertificationOwnerCandidateDto;
+import ru.staffly.training.dto.CertificationOwnerCandidatesDto;
 import ru.staffly.training.dto.CertificationOwnerReassignmentOptionsDto;
 import ru.staffly.training.dto.OwnedCertificationExamDto;
 import ru.staffly.training.model.TrainingExam;
@@ -41,6 +42,29 @@ public class TrainingExamOwnershipService {
         validateOwnerCandidate(exam, newOwnerUserId);
         exam.setOwner(User.builder().id(newOwnerUserId).build());
         return exam;
+    }
+
+    public CertificationOwnerCandidatesDto getOwnerCandidates(Long restaurantId, Long actorUserId, Long examId) {
+        if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
+            throw new ForbiddenException("Only managers can manage exam ownership");
+        }
+
+        var exam = requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        var currentOwner = exam.getOwner();
+
+        List<RestaurantMember> candidateMembers = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+                .filter(member -> member.getUser() != null)
+                .filter(member -> !Objects.equals(member.getUser().getId(), currentOwner == null ? null : currentOwner.getId()))
+                .filter(member -> canManageTrainingSafely(member.getUser().getId(), restaurantId))
+                .toList();
+
+        return new CertificationOwnerCandidatesDto(
+                exam.getId(),
+                exam.getTitle(),
+                currentOwner == null ? null : currentOwner.getId(),
+                currentOwner == null ? null : currentOwner.getFullName(),
+                buildCandidatesForExam(exam, candidateMembers)
+        );
     }
 
     public List<TrainingExam> findActiveOwnedCertificationExams(Long restaurantId, Long ownerUserId) {
@@ -159,7 +183,17 @@ public class TrainingExamOwnershipService {
         var visibilityIds = visibilityPositions.stream().map(Position::getId).toList();
         var visibilityNames = visibilityPositions.stream().map(Position::getName).toList();
 
-        var candidates = candidateMembers.stream()
+        return new OwnedCertificationExamDto(
+                exam.getId(),
+                exam.getTitle(),
+                visibilityIds,
+                visibilityNames,
+                buildCandidatesForExam(exam, candidateMembers)
+        );
+    }
+
+    private List<CertificationOwnerCandidateDto> buildCandidatesForExam(TrainingExam exam, List<RestaurantMember> candidateMembers) {
+        return candidateMembers.stream()
                 .filter(member -> canManageExamVisibility(member, exam))
                 .map(member -> new CertificationOwnerCandidateDto(
                         member.getUser().getId(),
@@ -169,14 +203,6 @@ public class TrainingExamOwnershipService {
                         member.getPosition() == null ? null : member.getPosition().getName()
                 ))
                 .toList();
-
-        return new OwnedCertificationExamDto(
-                exam.getId(),
-                exam.getTitle(),
-                visibilityIds,
-                visibilityNames,
-                candidates
-        );
     }
 
     private boolean canManageExamVisibility(RestaurantMember candidateMember, TrainingExam exam) {

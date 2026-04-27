@@ -2,6 +2,7 @@ import apiClient from "../../../shared/api/apiClient";
 import { mapExamsForUi } from "./mappers";
 import type {
   CertificationOwnerBatchReassignmentRequest,
+  CertificationOwnerCandidatesDto,
   CertificationOwnerReassignmentOptionsDto,
   CertificationExamAttemptHistoryDto,
   CertificationEmployeeExamDto,
@@ -119,6 +120,13 @@ export async function changeCertificationExamOwner(
 ): Promise<TrainingExamDto> {
   const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/owner`, { ownerUserId });
   return data as TrainingExamDto;
+}
+export async function getCertificationExamOwnerCandidates(
+  restaurantId: number,
+  examId: number,
+): Promise<CertificationOwnerCandidatesDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/owner-candidates`);
+  return data as CertificationOwnerCandidatesDto;
 }
 export async function getCertificationOwnerReassignmentOptions(
   restaurantId: number,
