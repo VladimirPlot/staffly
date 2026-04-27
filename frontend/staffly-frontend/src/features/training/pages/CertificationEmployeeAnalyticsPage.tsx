@@ -11,7 +11,10 @@ import { useCertificationEmployeeExams } from "../hooks/certification/useCertifi
 import { useCertificationEmployeeSummary } from "../hooks/certification/useCertificationEmployeeSummary";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { formatDateTime } from "../utils/certificationResultFormatting";
-import { normalizeTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
+import {
+  normalizeTrainingExamsReturnTo,
+  withReturnToParam,
+} from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
 export default function CertificationEmployeeAnalyticsPage() {
@@ -20,6 +23,7 @@ export default function CertificationEmployeeAnalyticsPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { canManage, restaurantId } = useTrainingAccess();
+
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
 
   const returnTo = useMemo(
@@ -57,12 +61,6 @@ export default function CertificationEmployeeAnalyticsPage() {
       setSelectedExamId(null);
     }
   }, [selectedExamId, validSelectedExamId]);
-
-  useEffect(() => {
-    if (validSelectedExamId == null && examsState.exams.length > 0) {
-      setSelectedExamId(examsState.exams[0].examId);
-    }
-  }, [validSelectedExamId, examsState.exams]);
 
   const attemptsState = useCertificationEmployeeAttempts(
     canManage && Number.isFinite(parsedUserId) ? restaurantId : null,
@@ -154,18 +152,25 @@ export default function CertificationEmployeeAnalyticsPage() {
               const isAttemptsOpen = validSelectedExamId === exam.examId;
 
               return (
-                <div key={exam.examId} className="rounded-xl border border-subtle p-3">
+                <div
+                  key={exam.examId}
+                  className="rounded-xl border border-subtle p-3"
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-1">
-                      <div className="font-medium text-default">{exam.examTitle}</div>
+                      <div className="font-medium text-default">
+                        {exam.examTitle}
+                      </div>
                       <div className="text-sm text-muted">
                         Лучший балл: {exam.bestScore ?? "—"}% · Последняя попытка:{" "}
                         {formatDateTime(exam.lastAttemptAt)}
                       </div>
                       <div className="text-sm text-muted">
-                        Попытки: {exam.attemptsUsed} / {exam.attemptsAllowed ?? "∞"}
+                        Попытки: {exam.attemptsUsed ?? 0} /{" "}
+                        {exam.attemptsAllowed ?? "∞"}
                       </div>
                     </div>
+
                     <CertificationStatusBadge status={exam.analyticsStatus} />
                   </div>
 
@@ -179,7 +184,7 @@ export default function CertificationEmployeeAnalyticsPage() {
                         );
                       }}
                     >
-                      История попыток
+                      {isAttemptsOpen ? "Скрыть историю" : "История попыток"}
                     </Button>
                   </div>
 
