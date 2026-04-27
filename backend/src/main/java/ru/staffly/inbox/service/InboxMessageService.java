@@ -20,6 +20,7 @@ import ru.staffly.user.model.User;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 @Service
@@ -49,7 +50,7 @@ public class InboxMessageService {
                 .build();
 
         message = messages.save(message);
-        List<RestaurantMember> savedRecipients = saveRecipients(message, targets);
+        List<RestaurantMember> savedRecipients = saveRecipients(message, normalizeTargets(targets));
         pushEnqueueService.enqueueForMessage(message, savedRecipients);
         return message;
     }
@@ -83,7 +84,7 @@ public class InboxMessageService {
 
         try {
             message = messages.save(message);
-            List<RestaurantMember> savedRecipients = saveRecipients(message, targets);
+            List<RestaurantMember> savedRecipients = saveRecipients(message, normalizeTargets(targets));
             pushEnqueueService.enqueueForMessage(message, savedRecipients);
             return message;
         } catch (DataIntegrityViolationException duplicateMetaConflict) {
@@ -113,7 +114,7 @@ public class InboxMessageService {
 
         message = messages.save(message);
         if (!recipientsList.isEmpty()) {
-            List<RestaurantMember> savedRecipients = saveRecipients(message, recipientsList);
+            List<RestaurantMember> savedRecipients = saveRecipients(message, normalizeTargets(recipientsList));
             pushEnqueueService.enqueueForMessage(message, savedRecipients);
         }
         return message;
@@ -134,11 +135,12 @@ public class InboxMessageService {
 
     @Transactional
     public void ensureRecipientsBulk(InboxMessage message, List<RestaurantMember> targets) {
-        if (targets == null || targets.isEmpty()) {
+        List<RestaurantMember> normalizedTargets = normalizeTargets(targets);
+        if (normalizedTargets.isEmpty()) {
             return;
         }
         HashSet<Long> existingIds = new HashSet<>(recipients.findMemberIdsByMessageId(message.getId()));
-        List<RestaurantMember> missingRecipients = targets.stream()
+        List<RestaurantMember> missingRecipients = normalizedTargets.stream()
                 .filter(member -> member.getId() != null && !existingIds.contains(member.getId()))
                 .toList();
         if (missingRecipients.isEmpty()) {
@@ -149,6 +151,9 @@ public class InboxMessageService {
     }
 
     private List<RestaurantMember> saveRecipients(InboxMessage message, List<RestaurantMember> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return List.of();
+        }
         Instant now = TimeProvider.now();
         List<InboxRecipient> newRecipients = targets.stream()
                 .map(member -> InboxRecipient.builder()
@@ -160,6 +165,21 @@ public class InboxMessageService {
         recipients.saveAll(newRecipients);
         return targets;
     }
+
+    private List<RestaurantMember> normalizeTargets(List<RestaurantMember> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashMap<Long, RestaurantMember> byMemberId = new LinkedHashMap<>();
+        for (RestaurantMember target : targets) {
+            if (target == null || target.getId() == null) {
+                continue;
+            }
+            byMemberId.putIfAbsent(target.getId(), target);
+        }
+        return List.copyOf(byMemberId.values());
+    }
+
     private String ensureMeta(String meta) {
         if (meta == null || meta.isBlank()) {
             throw new IllegalArgumentException("Inbox message meta must be provided");
