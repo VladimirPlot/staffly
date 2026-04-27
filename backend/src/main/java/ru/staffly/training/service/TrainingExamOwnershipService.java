@@ -7,8 +7,10 @@ import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.training.dto.CertificationOwnerCandidateDto;
 import ru.staffly.training.dto.CertificationOwnerReassignmentOptionsDto;
 import ru.staffly.training.dto.OwnedCertificationExamDto;
@@ -47,7 +49,7 @@ public class TrainingExamOwnershipService {
 
     public void assertNoActiveOwnedCertificationExams(Long restaurantId, Long ownerUserId) {
         if (!findActiveOwnedCertificationExams(restaurantId, ownerUserId).isEmpty()) {
-            throw new ConflictException("Сотрудник является ответственным за активные аттестации. Перед увольнением переназначьте ответственного.");
+            throw new ConflictException("Сотрудник является ответственным за активные аттестации. Перед удалением/увольнением переназначьте ответственного.");
         }
     }
 
@@ -74,7 +76,7 @@ public class TrainingExamOwnershipService {
         List<RestaurantMember> candidateMembers = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> member.getUser() != null)
                 .filter(member -> !Objects.equals(member.getUser().getId(), ownerUserId))
-                .filter(member -> trainingPolicyService.canManageTraining(member.getUser().getId(), restaurantId))
+                .filter(member -> canManageTrainingSafely(member.getUser().getId(), restaurantId))
                 .toList();
 
         List<OwnedCertificationExamDto> examDtos = ownedExams.stream()
@@ -125,6 +127,7 @@ public class TrainingExamOwnershipService {
         for (var item : reassignments) {
             examsById.get(item.getKey()).setOwner(User.builder().id(item.getValue()).build());
         }
+        exams.flush();
 
         return buildReassignmentOptions(restaurantId, actorUserId, ownerUserId);
     }
@@ -137,7 +140,7 @@ public class TrainingExamOwnershipService {
         var candidate = members.findByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("Owner must be a restaurant member"));
 
-        if (!trainingPolicyService.canManageTraining(ownerUserId, restaurantId)) {
+        if (!canManageTrainingAsMember(candidate)) {
             throw new ForbiddenException("Selected owner cannot manage training");
         }
 
@@ -187,7 +190,10 @@ public class TrainingExamOwnershipService {
                     exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
             );
             return true;
-        } catch (ForbiddenException ex) {
+        } catch (RuntimeException ex) {
+            if (!isAccessPolicyDomainException(ex)) {
+                throw ex;
+            }
             return false;
         }
     }
@@ -215,5 +221,32 @@ public class TrainingExamOwnershipService {
         } catch (ForbiddenException ex) {
             return false;
         }
+    }
+
+    private boolean canManageTrainingSafely(Long userId, Long restaurantId) {
+        try {
+            return trainingPolicyService.canManageTraining(userId, restaurantId);
+        } catch (RuntimeException ex) {
+            if (!isAccessPolicyDomainException(ex)) {
+                throw ex;
+            }
+            return false;
+        }
+    }
+
+    private boolean canManageTrainingAsMember(RestaurantMember member) {
+        if (member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER) {
+            return true;
+        }
+        return member.getPosition() != null
+                && PositionSpecializations.hasExaminer(member.getPosition().getSpecializations());
+    }
+
+    private boolean isAccessPolicyDomainException(RuntimeException ex) {
+        return ex instanceof ForbiddenException
+                || ex instanceof NotFoundException
+                || ex instanceof BadRequestException
+                || ex instanceof ConflictException
+                || ex instanceof IllegalStateException;
     }
 }
