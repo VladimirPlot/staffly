@@ -410,6 +410,12 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional(readOnly = true)
+    public CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(Long restaurantId, Long actorUserId, Long examId) {
+        return trainingExamOwnershipService.getOwnerCandidates(restaurantId, actorUserId, examId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId) {
         return trainingExamOwnershipService.buildReassignmentOptions(restaurantId, actorUserId, userId);
     }

@@ -177,6 +177,14 @@ export type CertificationOwnerReassignmentOptionsDto = {
   ownedExams: OwnedCertificationExamDto[];
 };
 
+export type CertificationOwnerCandidatesDto = {
+  examId: number;
+  title: string;
+  currentOwnerUserId?: number | null;
+  currentOwnerFullName?: string | null;
+  candidates: CertificationOwnerCandidateDto[];
+};
+
 export type CertificationOwnerBatchReassignmentRequest = {
   items: Array<{
     examId: number;

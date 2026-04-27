@@ -278,6 +278,14 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/owner-candidates")
+    public CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(@PathVariable Long restaurantId,
+                                                                               @PathVariable Long examId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamOwnerCandidates(restaurantId, principal.userId(), examId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @GetMapping("/certification/owners/{userId}/reassignment-options")
     public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(@PathVariable Long restaurantId,
                                                                                              @PathVariable Long userId,
