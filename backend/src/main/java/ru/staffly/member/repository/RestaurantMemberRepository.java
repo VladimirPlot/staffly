@@ -13,6 +13,14 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
 
     Optional<RestaurantMember> findByUserIdAndRestaurantId(Long userId, Long restaurantId);
 
+    @Query("""
+           select m from RestaurantMember m
+           join fetch m.user u
+           where u.id = :userId
+             and m.restaurant.id = :restaurantId
+           """)
+    Optional<RestaurantMember> findWithUserByUserIdAndRestaurantId(Long userId, Long restaurantId);
+
     List<RestaurantMember> findByRestaurantId(Long restaurantId);
 
     @Query("""

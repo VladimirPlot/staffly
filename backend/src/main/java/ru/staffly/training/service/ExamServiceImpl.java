@@ -141,6 +141,7 @@ public class ExamServiceImpl implements ExamService {
                 .build();
         trainingExamOwnershipService.assignInitialOwner(examEntity, userId);
         var exam = exams.save(examEntity);
+        trainingCertificationNotificationService.ensureStateExistsForExam(exam);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
@@ -232,6 +233,7 @@ public class ExamServiceImpl implements ExamService {
         certificationAudienceSyncService.syncExamAudience(exam);
         startNewCertificationCycle(exam);
         certificationAssignmentService.resetAssignmentsForNewCycle(exam);
+        trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
     }
 
     @Override

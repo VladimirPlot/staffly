@@ -1,6 +1,7 @@
 package ru.staffly.inbox.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.time.TimeProvider;
@@ -64,6 +65,12 @@ public class InboxMessageService {
         String resolvedMeta = meta == null || meta.isBlank()
                 ? "event:" + TimeProvider.now().toEpochMilli() + ":" + restaurant.getId()
                 : meta.trim();
+        var deduplicated = messages.findByRestaurantIdAndTypeAndMeta(restaurant.getId(), InboxMessageType.EVENT, resolvedMeta);
+        if (deduplicated.isPresent()) {
+            ensureRecipientsBulk(deduplicated.get(), targets);
+            return deduplicated.get();
+        }
+
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.EVENT)
@@ -74,10 +81,17 @@ public class InboxMessageService {
                 .createdBy(creator)
                 .build();
 
-        message = messages.save(message);
-        List<RestaurantMember> savedRecipients = saveRecipients(message, targets);
-        pushEnqueueService.enqueueForMessage(message, savedRecipients);
-        return message;
+        try {
+            message = messages.save(message);
+            List<RestaurantMember> savedRecipients = saveRecipients(message, targets);
+            pushEnqueueService.enqueueForMessage(message, savedRecipients);
+            return message;
+        } catch (DataIntegrityViolationException duplicateMetaConflict) {
+            var existing = messages.findByRestaurantIdAndTypeAndMeta(restaurant.getId(), InboxMessageType.EVENT, resolvedMeta)
+                    .orElseThrow(() -> duplicateMetaConflict);
+            ensureRecipientsBulk(existing, targets);
+            return existing;
+        }
     }
 
     @Transactional

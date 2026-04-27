@@ -2,6 +2,9 @@ package ru.staffly.training.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.inbox.model.InboxEventSubtype;
@@ -32,6 +35,36 @@ public class TrainingCertificationNotificationService {
     private final TrainingExamAssignmentRepository assignmentRepository;
     private final TrainingExamNotificationStateRepository notificationStateRepository;
     private final TrainingPolicyService trainingPolicyService;
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Transactional
+    public void ensureStateExistsForExam(TrainingExam exam) {
+        if (exam == null || exam.getId() == null || exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            return;
+        }
+        if (notificationStateRepository.existsById(exam.getId())) {
+            return;
+        }
+        try {
+            notificationStateRepository.saveAndFlush(TrainingExamNotificationState.builder()
+                    .exam(exam)
+                    .lastCompletedMilestone(0)
+                    .build());
+        } catch (DataIntegrityViolationException ignoredConcurrentCreate) {
+            // Another transaction created state first.
+        }
+    }
+
+    @Transactional
+    public void resetMilestoneStateForExam(TrainingExam exam) {
+        if (exam == null || exam.getId() == null || exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            return;
+        }
+        var state = getOrCreateStateForUpdate(exam);
+        state.setLastCompletedMilestone(0);
+        notificationStateRepository.save(state);
+    }
 
     @Transactional
     public void notifyAssignmentsCreated(TrainingExam exam, List<TrainingExamAssignment> createdAssignments) {
@@ -72,9 +105,10 @@ public class TrainingCertificationNotificationService {
             String meta = "certification:assigned:" + exam.getId() + ":" + assignment.getId();
             String content = "Вам назначили аттестацию «" + resolveExamTitle(exam, assignment) + "»";
             try {
+                var creator = resolveCreator(exam, member);
                 inboxMessageService.createEvent(
                         exam.getRestaurant(),
-                        resolveCreator(exam),
+                        creator,
                         content,
                         InboxEventSubtype.CERTIFICATION,
                         meta,
@@ -113,13 +147,15 @@ public class TrainingCertificationNotificationService {
                 : "Вы не сдали аттестацию «" + attempt.getTitleSnapshot() + "». Результат: " + score + "%";
 
         try {
+            var recipient = memberOpt.get();
+            var creator = resolveCreator(exam, recipient);
             inboxMessageService.createEvent(
                     exam.getRestaurant(),
-                    resolveCreator(exam),
+                    creator,
                     content,
                     InboxEventSubtype.CERTIFICATION,
                     "certification:result:" + attempt.getId(),
-                    List.of(memberOpt.get()),
+                    List.of(recipient),
                     null
             );
         } catch (Exception ex) {
@@ -137,6 +173,8 @@ public class TrainingCertificationNotificationService {
         var exam = attempt.getExam();
         Long examId = exam.getId();
         Long restaurantId = exam.getRestaurant().getId();
+        // Ensure aggregate counts include assignment status just finalized in this transaction.
+        entityManager.flush();
 
         long total = assignmentRepository.countByExamIdAndRestaurantIdAndActiveTrue(examId, restaurantId);
         if (total <= 0) {
@@ -150,11 +188,7 @@ public class TrainingCertificationNotificationService {
         );
 
         int percent = (int) ((completed * 100) / total);
-        var state = notificationStateRepository.findByExamIdForUpdate(examId)
-                .orElseGet(() -> TrainingExamNotificationState.builder()
-                        .exam(exam)
-                        .lastCompletedMilestone(0)
-                        .build());
+        var state = getOrCreateStateForUpdate(exam);
 
         int highestCrossedMilestone = MILESTONES.stream()
                 .filter(milestone -> milestone > state.getLastCompletedMilestone() && percent >= milestone)
@@ -164,28 +198,36 @@ public class TrainingCertificationNotificationService {
             return;
         }
 
+        boolean notificationAccepted = false;
         try {
             var ownerRecipient = resolveOwnerRecipient(exam);
             if (ownerRecipient == null) {
                 log.warn("Cannot send certification milestone notification: no eligible recipient (restaurantId={}, examId={}, milestone={})",
                         restaurantId, examId, highestCrossedMilestone);
+                notificationAccepted = true;
             } else {
                 String content = "Аттестация «" + exam.getTitle() + "»: завершено " + percent + "% сотрудников ("
                         + completed + "/" + total + ")";
+                var creator = resolveCreator(exam, ownerRecipient);
                 inboxMessageService.createEvent(
                         exam.getRestaurant(),
-                        resolveCreator(exam),
+                        creator,
                         content,
                         InboxEventSubtype.CERTIFICATION,
                         "certification:milestone:" + examId + ":" + highestCrossedMilestone,
                         List.of(ownerRecipient),
                         null
                 );
+                notificationAccepted = true;
             }
         } catch (Exception ex) {
             log.warn("Failed to send certification milestone notification (restaurantId={}, examId={}, milestone={})",
                     restaurantId, examId, highestCrossedMilestone, ex);
-        } finally {
+        }
+        if (notificationAccepted) {
+            // We advance milestone state only when inbox accepted the event (or when no recipient exists).
+            // This keeps retries possible on transient notification failures without emitting duplicates:
+            // inbox event meta is idempotent (restaurant_id + type + meta unique key).
             state.setLastCompletedMilestone(highestCrossedMilestone);
             notificationStateRepository.save(state);
         }
@@ -196,13 +238,13 @@ public class TrainingCertificationNotificationService {
         Long ownerUserId = exam.getOwner() == null ? null : exam.getOwner().getId();
 
         if (ownerUserId != null) {
-            var ownerMember = memberRepository.findByUserIdAndRestaurantId(ownerUserId, restaurantId).orElse(null);
+            var ownerMember = memberRepository.findWithUserByUserIdAndRestaurantId(ownerUserId, restaurantId).orElse(null);
             if (ownerMember != null && canManageTraining(ownerUserId, restaurantId)) {
                 return ownerMember;
             }
         }
 
-        var restaurantMembers = memberRepository.findByRestaurantId(restaurantId).stream()
+        var restaurantMembers = memberRepository.findWithUserByRestaurantId(restaurantId).stream()
                 .sorted(Comparator.comparing(RestaurantMember::getId))
                 .toList();
         var admin = restaurantMembers.stream().filter(member -> member.getRole() == RestaurantRole.ADMIN).findFirst();
@@ -230,10 +272,31 @@ public class TrainingCertificationNotificationService {
         return "аттестация";
     }
 
-    private ru.staffly.user.model.User resolveCreator(TrainingExam exam) {
+    private ru.staffly.user.model.User resolveCreator(TrainingExam exam, RestaurantMember fallbackRecipient) {
         if (exam.getOwner() != null) {
             return exam.getOwner();
         }
-        return exam.getCreatedBy();
+        if (exam.getCreatedBy() != null) {
+            return exam.getCreatedBy();
+        }
+        return fallbackRecipient == null ? null : fallbackRecipient.getUser();
+    }
+
+    private TrainingExamNotificationState getOrCreateStateForUpdate(TrainingExam exam) {
+        Long examId = exam.getId();
+        var existing = notificationStateRepository.findByExamIdForUpdate(examId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        try {
+            notificationStateRepository.saveAndFlush(TrainingExamNotificationState.builder()
+                    .exam(exam)
+                    .lastCompletedMilestone(0)
+                    .build());
+        } catch (DataIntegrityViolationException ignoredConcurrentCreate) {
+            // Created by concurrent submit or by exam initialization in another transaction.
+        }
+        return notificationStateRepository.findByExamIdForUpdate(examId)
+                .orElseThrow(() -> new IllegalStateException("Failed to resolve certification notification state for exam " + examId));
     }
 }
