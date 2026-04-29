@@ -9,5 +9,7 @@ public record ScheduleDto(
         ScheduleConfigDto config,
         List<ScheduleDayDto> days,
         List<ScheduleRowDto> rows,
-        Map<String, String> cellValues
+        Map<String, String> cellValues,
+        ScheduleOwnerDto owner,
+        ScheduleCreatedByDto createdBy
 ) {}

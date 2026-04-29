@@ -22,6 +22,7 @@ import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.model.ScheduleShiftRequestType;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
+import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleShiftRequestService;
 import ru.staffly.security.SecurityService;
 import ru.staffly.restaurant.model.RestaurantRole;
@@ -48,11 +49,13 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private final RestaurantMemberRepository members;
     private final InboxMessageService inboxMessages;
     private final SecurityService securityService;
+    private final ScheduleAccessService scheduleAccessService;
 
     @Override
     public ShiftRequestDto createReplacement(Long restaurantId, Long scheduleId, Long userId, CreateReplacementShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        scheduleAccessService.assertCanViewSchedule(userId, schedule);
 
         LocalDate day = parseDate(request.day(), "day");
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
@@ -83,6 +86,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        notifyOwnerOnCreate(saved, initiator.getUser());
         return toDto(saved);
     }
 
@@ -90,6 +94,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public ShiftRequestDto createSwap(Long restaurantId, Long scheduleId, Long userId, CreateSwapShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        scheduleAccessService.assertCanViewSchedule(userId, schedule);
 
         LocalDate myDay = parseDate(request.myDay(), "myDay");
         LocalDate targetDay = parseDate(request.targetDay(), "targetDay");
@@ -128,6 +133,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        notifyOwnerOnCreate(saved, initiator.getUser());
         return toDto(saved);
     }
 
@@ -141,6 +147,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         Schedule schedule = loadSchedule(entity.getSchedule().getId(), restaurantId);
+        scheduleAccessService.assertCanManageSchedule(userId, schedule);
         ScheduleRow fromRow = requireRow(schedule, entity.getFromRow().getId());
         ScheduleRow toRow = requireRow(schedule, entity.getToRow().getId());
 
@@ -174,6 +181,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public List<ShiftRequestDto> listForSchedule(Long restaurantId, Long scheduleId, Long userId) {
         RestaurantMember member = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        scheduleAccessService.assertCanViewSchedule(userId, schedule);
         List<ShiftRequestDto> all = requests.findByScheduleIdOrderByCreatedAtDesc(schedule.getId())
                 .stream()
                 .map(this::toDto)
@@ -200,6 +208,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         if (!Objects.equals(request.getSchedule().getId(), scheduleId)) {
             throw new BadRequestException("Заявка не относится к этому графику");
         }
+        scheduleAccessService.assertCanViewSchedule(userId, request.getSchedule());
 
         if (!Objects.equals(request.getInitiatorMemberId(), member.getId())) {
             throw new ForbiddenException("Можно отменять только свои заявки");
@@ -296,6 +305,24 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 new ArrayList<>(Set.of(fromMember, toMember)),
                 Optional.ofNullable(request.getSchedule().getEndDate())
                         .orElse(request.getSchedule().getStartDate())
+        );
+    }
+
+    private void notifyOwnerOnCreate(ScheduleShiftRequest request, User initiatorUser) {
+        RestaurantMember owner = request.getSchedule().getOwnerMember();
+        if (owner == null || owner.getUser() == null) {
+            return;
+        }
+        String content = String.format("Новая заявка на смену в графике «%s» от %s", request.getSchedule().getTitle(),
+                initiatorUser != null ? initiatorUser.getFullName() : "сотрудника");
+        inboxMessages.createEvent(
+                request.getSchedule().getRestaurant(),
+                initiatorUser != null ? initiatorUser : owner.getUser(),
+                content,
+                InboxEventSubtype.SCHEDULE_DECISION,
+                "scheduleRequest:" + request.getId(),
+                List.of(owner),
+                Optional.ofNullable(request.getSchedule().getEndDate()).orElse(request.getSchedule().getStartDate())
         );
     }
 
