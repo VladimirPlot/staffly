@@ -60,9 +60,24 @@ public class ScheduleShiftRequest {
     @Column(columnDefinition = "text")
     private String reason;
 
+    @Column(name = "from_shift_value_snapshot", length = 255)
+    private String fromShiftValueSnapshot;
+
+    @Column(name = "to_shift_value_snapshot", length = 255)
+    private String toShiftValueSnapshot;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private ScheduleShiftRequestStatus status;
+
+    @Column(name = "decided_by_user_id")
+    private Long decidedByUserId;
+
+    @Column(name = "decided_at")
+    private Instant decidedAt;
+
+    @Column(name = "decision_comment", columnDefinition = "text")
+    private String decisionComment;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
