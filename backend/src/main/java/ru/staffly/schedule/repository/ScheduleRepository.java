@@ -11,9 +11,10 @@ import java.util.Optional;
 
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
+    @EntityGraph(attributePaths = {"ownerMember", "ownerMember.user", "ownerMember.position"})
     List<Schedule> findByRestaurantIdOrderByCreatedAtDesc(Long restaurantId);
 
-    @EntityGraph(attributePaths = {"rows"})
+    @EntityGraph(attributePaths = {"rows", "rows.cells", "ownerMember", "ownerMember.user", "ownerMember.position", "createdByUser"})
     Optional<Schedule> findByIdAndRestaurantId(Long id, Long restaurantId);
 
     @Query("select s.title from Schedule s where s.restaurant.id = :restaurantId")
