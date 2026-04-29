@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.inbox.model.InboxEventSubtype;
@@ -39,6 +40,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Transactional
 public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestService {
+    private static final String OUTDATED_COMMENT = "График был изменён, заявка потеряла актуальность";
 
     private static final List<ScheduleShiftRequestStatus> ACTIVE_STATUSES = List.of(
             ScheduleShiftRequestStatus.PENDING_MANAGER
@@ -63,10 +65,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.toMemberId()))
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
-        String value = findCellValue(fromRow, day)
-                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день"));
+        String value = normalizeValue(findCellValue(fromRow, day)
+                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день")));
 
-        if (findCellValue(toRow, day).isPresent()) {
+        if (findNormalizedCellValue(toRow, day).isPresent()) {
             throw new BadRequestException("У выбранного сотрудника уже есть смена в этот день");
         }
 
@@ -82,6 +84,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .fromMemberId(fromRow.getMemberId())
                 .toMemberId(toRow.getMemberId())
                 .reason(request.reason())
+                .fromShiftValueSnapshot(value)
+                .toShiftValueSnapshot(null)
                 .status(ScheduleShiftRequestStatus.PENDING_MANAGER)
                 .build();
 
@@ -104,15 +108,15 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.targetMemberId()))
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
-        String fromValue = findCellValue(fromRow, myDay)
-                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день"));
-        String targetValue = findCellValue(toRow, targetDay)
-                .orElseThrow(() -> new BadRequestException("У выбранного сотрудника нет смены в эту дату"));
+        String fromValue = normalizeValue(findCellValue(fromRow, myDay)
+                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день")));
+        String targetValue = normalizeValue(findCellValue(toRow, targetDay)
+                .orElseThrow(() -> new BadRequestException("У выбранного сотрудника нет смены в эту дату")));
 
-        if (findCellValue(fromRow, targetDay).isPresent()) {
+        if (findNormalizedCellValue(fromRow, targetDay).isPresent()) {
             throw new BadRequestException("У вас уже есть смена в день коллеги");
         }
-        if (findCellValue(toRow, myDay).isPresent()) {
+        if (findNormalizedCellValue(toRow, myDay).isPresent()) {
             throw new BadRequestException("У коллеги уже есть смена в ваш день");
         }
 
@@ -129,6 +133,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .fromMemberId(fromRow.getMemberId())
                 .toMemberId(toRow.getMemberId())
                 .reason(request.reason())
+                .fromShiftValueSnapshot(fromValue)
+                .toShiftValueSnapshot(targetValue)
                 .status(ScheduleShiftRequestStatus.PENDING_MANAGER)
                 .build();
 
@@ -156,8 +162,22 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         String fromShiftValue = findCellValue(fromRow, dayFrom).orElse(null);
         String toShiftValue = dayTo != null ? findCellValue(toRow, dayTo).orElse(null) : null;
 
+        var now = TimeProvider.now();
         if (!accepted) {
             entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_MANAGER);
+            entity.setDecidedByUserId(userId);
+            entity.setDecidedAt(now);
+            entity.setDecisionComment(null);
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            return toDto(entity);
+        }
+
+        String staleReason = getStaleReason(entity, fromRow, toRow);
+        if (staleReason != null) {
+            entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_MANAGER);
+            entity.setDecidedByUserId(userId);
+            entity.setDecidedAt(now);
+            entity.setDecisionComment(staleReason);
             notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
             return toDto(entity);
         }
@@ -172,6 +192,9 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
+        entity.setDecidedByUserId(userId);
+        entity.setDecidedAt(now);
+        entity.setDecisionComment(null);
         notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true);
         return toDto(entity);
     }
@@ -353,6 +376,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .findFirst();
     }
 
+    private Optional<String> findNormalizedCellValue(ScheduleRow row, LocalDate day) {
+        return findCellValue(row, day).map(this::normalizeValue);
+    }
+
     private void transferShift(ScheduleRow fromRow, ScheduleRow toRow, LocalDate day) {
         String value = removeCell(fromRow, day)
                 .orElseThrow(() -> new BadRequestException("Смена отсутствует"));
@@ -429,7 +456,43 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                         request.getToRow().getMemberId(),
                         request.getToRow().getDisplayName(),
                         request.getToRow().getPositionName()
-                )
+                ),
+                request.getDecidedAt(),
+                request.getDecisionComment()
         );
+    }
+
+    private String getStaleReason(ScheduleShiftRequest request, ScheduleRow fromRow, ScheduleRow toRow) {
+        if (request.getFromShiftValueSnapshot() == null) {
+            return "Заявка создана до включения snapshot-проверки и потеряла актуальность";
+        }
+        if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
+            String currentFrom = normalizeValue(findCellValue(fromRow, request.getDayFrom()).orElse(null));
+            String currentTo = normalizeValue(findCellValue(toRow, request.getDayFrom()).orElse(null));
+            return Objects.equals(normalizeValue(request.getFromShiftValueSnapshot()), currentFrom) && currentTo == null
+                    ? null
+                    : OUTDATED_COMMENT;
+        }
+        if (request.getDayTo() == null || request.getToShiftValueSnapshot() == null) {
+            return OUTDATED_COMMENT;
+        }
+        String fromDayFrom = normalizeValue(findCellValue(fromRow, request.getDayFrom()).orElse(null));
+        String toDayTo = normalizeValue(findCellValue(toRow, request.getDayTo()).orElse(null));
+        String fromDayTo = normalizeValue(findCellValue(fromRow, request.getDayTo()).orElse(null));
+        String toDayFrom = normalizeValue(findCellValue(toRow, request.getDayFrom()).orElse(null));
+        return Objects.equals(normalizeValue(request.getFromShiftValueSnapshot()), fromDayFrom)
+                && Objects.equals(normalizeValue(request.getToShiftValueSnapshot()), toDayTo)
+                && fromDayTo == null
+                && toDayFrom == null
+                ? null
+                : OUTDATED_COMMENT;
+    }
+
+    private String normalizeValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
