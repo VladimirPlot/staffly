@@ -14,6 +14,8 @@ public record ShiftRequestDto(
         String reason,
         Instant createdAt,
         ShiftRequestMemberDto fromMember,
-        ShiftRequestMemberDto toMember
+        ShiftRequestMemberDto toMember,
+        Instant decidedAt,
+        String decisionComment
 ) {
 }
