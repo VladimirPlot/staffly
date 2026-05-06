@@ -443,6 +443,346 @@ function TrashModal({
   );
 }
 
+function DishwareBreadcrumbs({
+  currentFolderId,
+  folderChain,
+  onBackToInventories,
+  onOpenRoot,
+  onOpenFolder,
+}: {
+  currentFolderId: number | null;
+  folderChain: DishwareInventoryFolderDto[];
+  onBackToInventories: () => void;
+  onOpenRoot: () => void;
+  onOpenFolder: (folderId: number) => void;
+}) {
+  return (
+    <nav
+      aria-label="Путь к папке"
+      className="text-muted -mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 py-1 text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <Link
+        to="/app"
+        className="text-default inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset"
+      >
+        <Icon icon={ArrowLeft} size="xs" decorative className="text-icon" />
+        Главная
+      </Link>
+      <Icon icon={ChevronRight} size="xs" decorative className="text-icon shrink-0 opacity-55" />
+      <button
+        type="button"
+        className="text-default h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset"
+        onClick={onBackToInventories}
+      >
+        Инвентаризации
+      </button>
+      <Icon icon={ChevronRight} size="xs" decorative className="text-icon shrink-0 opacity-55" />
+      <button
+        type="button"
+        className={
+          "h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset " +
+          (currentFolderId == null ? "text-strong" : "text-default")
+        }
+        onClick={onOpenRoot}
+      >
+        Посуда
+      </button>
+      {folderChain.map((folder, index) => (
+        <span key={folder.id} className="inline-flex min-w-0 shrink-0 items-center gap-1">
+          <Icon icon={ChevronRight} size="xs" decorative className="text-icon opacity-55" />
+          <button
+            type="button"
+            className={
+              "h-8 max-w-[12rem] truncate rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem] " +
+              (index === folderChain.length - 1 ? "text-strong" : "text-default")
+            }
+            onClick={() => onOpenFolder(folder.id)}
+            title={folder.name}
+          >
+            {folder.name}
+          </button>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+function DishwarePageHeader({
+  folder,
+  onOpenTrash,
+  onCreateFolder,
+  onCreateInventory,
+}: {
+  folder: DishwareInventoryFolderDto | null;
+  onOpenTrash: () => void;
+  onCreateFolder: () => void;
+  onCreateInventory: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <h2 className="text-2xl font-semibold [overflow-wrap:anywhere]">{folder?.name ?? "Инвентаризации посуды"}</h2>
+        <div className="text-muted text-sm">{folder?.description || "Папки и документы по посуде."}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+        <Button
+          size="sm"
+          variant="outline"
+          leftIcon={<Icon icon={Archive} size="sm" decorative />}
+          onClick={onOpenTrash}
+        >
+          Корзина
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          leftIcon={<Icon icon={FolderPlus} size="sm" decorative />}
+          onClick={onCreateFolder}
+        >
+          Папка
+        </Button>
+        <Button
+          size="sm"
+          className="col-span-2 sm:col-span-1"
+          leftIcon={<Icon icon={Plus} size="sm" decorative />}
+          onClick={onCreateInventory}
+        >
+          Инвентаризация
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FolderCard({
+  folder,
+  actionLoading,
+  onOpen,
+  onEdit,
+  onMove,
+  onTrash,
+}: {
+  folder: DishwareInventoryFolderDto;
+  actionLoading: string | null;
+  onOpen: (folderId: number) => void;
+  onEdit: (folder: DishwareInventoryFolderDto) => void;
+  onMove: (folder: DishwareInventoryFolderDto) => void;
+  onTrash: (folder: DishwareInventoryFolderDto) => void;
+}) {
+  const trashActionKey = `trash-folder-${folder.id}`;
+
+  return (
+    <Card className="group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3">
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
+          onClick={() => onOpen(folder.id)}
+        >
+          <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] transition group-hover:bg-[color:var(--staffly-control-hover)]">
+            <Icon icon={Folder} size="sm" decorative />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-base font-semibold [overflow-wrap:anywhere]">{folder.name}</span>
+            {folder.description ? (
+              <span className="text-muted mt-1 block text-sm [overflow-wrap:anywhere]">{folder.description}</span>
+            ) : (
+              <span className="text-muted mt-1 block text-sm">Папка</span>
+            )}
+          </span>
+        </button>
+        <InventoryObjectActionsMenu
+          title={folder.name}
+          description={folder.description || "Папка инвентаризаций"}
+          actions={[
+            {
+              label: "Открыть",
+              icon: ExternalLink,
+              onSelect: () => onOpen(folder.id),
+            },
+            {
+              label: "Изменить",
+              icon: Edit3,
+              onSelect: () => onEdit(folder),
+            },
+            {
+              label: "Переместить",
+              icon: MoveRight,
+              onSelect: () => onMove(folder),
+            },
+            {
+              label: actionLoading === trashActionKey ? "Перемещаем в корзину..." : "В корзину",
+              icon: Trash2,
+              tone: "danger",
+              disabled: actionLoading === trashActionKey,
+              onSelect: () => onTrash(folder),
+            },
+          ]}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function FolderGrid({
+  folders,
+  actionLoading,
+  onOpen,
+  onEdit,
+  onMove,
+  onTrash,
+}: {
+  folders: DishwareInventoryFolderDto[];
+  actionLoading: string | null;
+  onOpen: (folderId: number) => void;
+  onEdit: (folder: DishwareInventoryFolderDto) => void;
+  onMove: (folder: DishwareInventoryFolderDto) => void;
+  onTrash: (folder: DishwareInventoryFolderDto) => void;
+}) {
+  if (folders.length === 0) return null;
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {folders.map((folder) => (
+        <FolderCard
+          key={folder.id}
+          folder={folder}
+          actionLoading={actionLoading}
+          onOpen={onOpen}
+          onEdit={onEdit}
+          onMove={onMove}
+          onTrash={onTrash}
+        />
+      ))}
+    </div>
+  );
+}
+
+function InventoryMetric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
+      <div className="text-muted text-[11px] font-medium">{label}</div>
+      <div className="mt-1 font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function InventoryCard({
+  inventory,
+  actionLoading,
+  onOpen,
+  onMove,
+  onTrash,
+}: {
+  inventory: DishwareInventorySummaryDto;
+  actionLoading: string | null;
+  onOpen: (inventoryId: number) => void;
+  onMove: (inventory: DishwareInventorySummaryDto) => void;
+  onTrash: (inventory: DishwareInventorySummaryDto) => void;
+}) {
+  const trashActionKey = `trash-inventory-${inventory.id}`;
+
+  return (
+    <Card className="group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3">
+      <div className="flex items-start gap-2">
+        <Link
+          to={`/inventories/dishware/${inventory.id}`}
+          className="min-w-0 flex-1 rounded-2xl px-2 py-2 transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-lg font-semibold [overflow-wrap:anywhere] group-hover:underline">
+                  {inventory.title}
+                </span>
+                <span className={getInventoryStatusBadgeClass(inventory.status)}>
+                  {inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
+                </span>
+              </div>
+              <div className="text-muted mt-1 text-sm">
+                Дата: {formatDate(inventory.inventoryDate)}
+                {inventory.sourceInventoryTitle ? ` • На основе: ${inventory.sourceInventoryTitle}` : ""}
+              </div>
+              {inventory.comment ? (
+                <div className="text-default mt-2 text-sm [overflow-wrap:anywhere]">{inventory.comment}</div>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 lg:min-w-[300px]">
+              <InventoryMetric label="Позиции" value={inventory.itemsCount} />
+              <InventoryMetric label="Потери" value={formatInventoryLossCount(inventory.totalLossQty)} />
+              <InventoryMetric label="Сумма" value={formatInventoryLossAmount(inventory.totalLossAmount)} />
+            </div>
+          </div>
+        </Link>
+        <InventoryObjectActionsMenu
+          title={inventory.title}
+          description={`Документ от ${formatDate(inventory.inventoryDate)}`}
+          actions={[
+            {
+              label: "Открыть",
+              icon: ExternalLink,
+              onSelect: () => onOpen(inventory.id),
+            },
+            {
+              label: "Переместить",
+              icon: MoveRight,
+              onSelect: () => onMove(inventory),
+            },
+            {
+              label: actionLoading === trashActionKey ? "Перемещаем в корзину..." : "В корзину",
+              icon: Trash2,
+              tone: "danger",
+              disabled: actionLoading === trashActionKey,
+              onSelect: () => onTrash(inventory),
+            },
+          ]}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function InventoryList({
+  inventories,
+  actionLoading,
+  onOpen,
+  onMove,
+  onTrash,
+}: {
+  inventories: DishwareInventorySummaryDto[];
+  actionLoading: string | null;
+  onOpen: (inventoryId: number) => void;
+  onMove: (inventory: DishwareInventorySummaryDto) => void;
+  onTrash: (inventory: DishwareInventorySummaryDto) => void;
+}) {
+  if (inventories.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      {inventories.map((inventory) => (
+        <InventoryCard
+          key={inventory.id}
+          inventory={inventory}
+          actionLoading={actionLoading}
+          onOpen={onOpen}
+          onMove={onMove}
+          onTrash={onTrash}
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmptyFolderState() {
+  return (
+    <Card className="space-y-3">
+      <div className="font-medium">Здесь пока пусто</div>
+      <div className="text-muted text-sm">Создайте папку или новый документ инвентаризации.</div>
+    </Card>
+  );
+}
+
 function AuthorizedDishwareInventoriesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -694,247 +1034,57 @@ function AuthorizedDishwareInventoriesPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <div className="space-y-2">
-        <nav
-          aria-label="Путь к папке"
-          className="text-muted -mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 py-1 text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <Link
-            to="/app"
-            className="text-default inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset"
-          >
-            <Icon icon={ArrowLeft} size="xs" decorative className="text-icon" />
-            Главная
-          </Link>
-          <Icon icon={ChevronRight} size="xs" decorative className="text-icon shrink-0 opacity-55" />
-          <button
-            type="button"
-            className="text-default h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset"
-            onClick={() => navigate("/inventories")}
-          >
-            Инвентаризации
-          </button>
-          <Icon icon={ChevronRight} size="xs" decorative className="text-icon shrink-0 opacity-55" />
-          <button
-            type="button"
-            className={
-              "h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset " +
-              (currentFolderId == null ? "text-strong" : "text-default")
-            }
-            onClick={() => setCurrentFolderId(null)}
-          >
-            Посуда
-          </button>
-          {folderChain.map((folder, index) => (
-            <span key={folder.id} className="inline-flex min-w-0 shrink-0 items-center gap-1">
-              <Icon icon={ChevronRight} size="xs" decorative className="text-icon opacity-55" />
-              <button
-                type="button"
-                className={
-                  "h-8 max-w-[12rem] truncate rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem] " +
-                  (index === folderChain.length - 1 ? "text-strong" : "text-default")
-                }
-                onClick={() => setCurrentFolderId(folder.id)}
-                title={folder.name}
-              >
-                {folder.name}
-              </button>
-            </span>
-          ))}
-        </nav>
-      </div>
+      <DishwareBreadcrumbs
+        currentFolderId={currentFolderId}
+        folderChain={folderChain}
+        onBackToInventories={() => navigate("/inventories")}
+        onOpenRoot={() => setCurrentFolderId(null)}
+        onOpenFolder={setCurrentFolderId}
+      />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-2xl font-semibold [overflow-wrap:anywhere]">
-            {currentFolder?.name ?? "Инвентаризации посуды"}
-          </h2>
-          <div className="text-muted text-sm">{currentFolder?.description || "Папки и документы по посуде."}</div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-          <Button
-            size="sm"
-            variant="outline"
-            leftIcon={<Icon icon={Archive} size="sm" decorative />}
-            onClick={() => setTrashOpen(true)}
-          >
-            Корзина
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            leftIcon={<Icon icon={FolderPlus} size="sm" decorative />}
-            onClick={() => {
-              setFolderError(null);
-              setFolderModal({ mode: "create", parentId: currentFolderId });
-            }}
-          >
-            Папка
-          </Button>
-          <Button
-            size="sm"
-            className="col-span-2 sm:col-span-1"
-            leftIcon={<Icon icon={Plus} size="sm" decorative />}
-            onClick={() => setCreateOpen(true)}
-          >
-            Инвентаризация
-          </Button>
-        </div>
-      </div>
+      <DishwarePageHeader
+        folder={currentFolder}
+        onOpenTrash={() => setTrashOpen(true)}
+        onCreateFolder={() => {
+          setFolderError(null);
+          setFolderModal({ mode: "create", parentId: currentFolderId });
+        }}
+        onCreateInventory={() => setCreateOpen(true)}
+      />
 
       {loading ? <Card className="text-muted text-sm">Загружаем инвентаризации...</Card> : null}
       {!loading && error ? <Card className="text-sm text-red-600">{error}</Card> : null}
 
-      {!loading && !error && childFolders.length === 0 && currentInventories.length === 0 ? (
-        <Card className="space-y-3">
-          <div className="font-medium">Здесь пока пусто</div>
-          <div className="text-muted text-sm">Создайте папку или новый документ инвентаризации.</div>
-        </Card>
-      ) : null}
+      {!loading && !error && childFolders.length === 0 && currentInventories.length === 0 ? <EmptyFolderState /> : null}
 
       {!loading && !error && childFolders.length > 0 ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {childFolders.map((folder) => (
-            <Card key={folder.id} className="group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3">
-              <div className="flex items-start gap-2">
-                <button
-                  type="button"
-                  className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
-                  onClick={() => setCurrentFolderId(folder.id)}
-                >
-                  <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] transition group-hover:bg-[color:var(--staffly-control-hover)]">
-                    <Icon icon={Folder} size="sm" decorative />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-base font-semibold [overflow-wrap:anywhere]">{folder.name}</span>
-                    {folder.description ? (
-                      <span className="text-muted mt-1 block text-sm [overflow-wrap:anywhere]">
-                        {folder.description}
-                      </span>
-                    ) : (
-                      <span className="text-muted mt-1 block text-sm">Папка</span>
-                    )}
-                  </span>
-                </button>
-                <InventoryObjectActionsMenu
-                  title={folder.name}
-                  description={folder.description || "Папка инвентаризаций"}
-                  actions={[
-                    {
-                      label: "Открыть",
-                      icon: ExternalLink,
-                      onSelect: () => setCurrentFolderId(folder.id),
-                    },
-                    {
-                      label: "Изменить",
-                      icon: Edit3,
-                      onSelect: () => {
-                        setFolderError(null);
-                        setFolderModal({ mode: "edit", parentId: folder.parentId, folder });
-                      },
-                    },
-                    {
-                      label: "Переместить",
-                      icon: MoveRight,
-                      onSelect: () => {
-                        setMoveError(null);
-                        setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-                      },
-                    },
-                    {
-                      label: actionLoading === `trash-folder-${folder.id}` ? "Перемещаем в корзину..." : "В корзину",
-                      icon: Trash2,
-                      tone: "danger",
-                      disabled: actionLoading === `trash-folder-${folder.id}`,
-                      onSelect: () => void runTrashFolder(folder),
-                    },
-                  ]}
-                />
-              </div>
-            </Card>
-          ))}
-        </div>
+        <FolderGrid
+          folders={childFolders}
+          actionLoading={actionLoading}
+          onOpen={setCurrentFolderId}
+          onEdit={(folder) => {
+            setFolderError(null);
+            setFolderModal({ mode: "edit", parentId: folder.parentId, folder });
+          }}
+          onMove={(folder) => {
+            setMoveError(null);
+            setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+          }}
+          onTrash={(folder) => void runTrashFolder(folder)}
+        />
       ) : null}
 
       {!loading && !error && currentInventories.length > 0 ? (
-        <div className="space-y-3">
-          {currentInventories.map((inventory) => (
-            <Card key={inventory.id} className="group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3">
-              <div className="flex items-start gap-2">
-                <Link
-                  to={`/inventories/dishware/${inventory.id}`}
-                  className="min-w-0 flex-1 rounded-2xl px-2 py-2 transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-lg font-semibold [overflow-wrap:anywhere] group-hover:underline">
-                          {inventory.title}
-                        </span>
-                        <span className={getInventoryStatusBadgeClass(inventory.status)}>
-                          {inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
-                        </span>
-                      </div>
-                      <div className="text-muted mt-1 text-sm">
-                        Дата: {formatDate(inventory.inventoryDate)}
-                        {inventory.sourceInventoryTitle ? ` • На основе: ${inventory.sourceInventoryTitle}` : ""}
-                      </div>
-                      {inventory.comment ? (
-                        <div className="text-default mt-2 text-sm [overflow-wrap:anywhere]">{inventory.comment}</div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 lg:min-w-[300px]">
-                      <div className="border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
-                        <div className="text-muted text-[11px] font-medium">Позиции</div>
-                        <div className="mt-1 font-semibold tabular-nums">{inventory.itemsCount}</div>
-                      </div>
-                      <div className="border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
-                        <div className="text-muted text-[11px] font-medium">Потери</div>
-                        <div className="mt-1 font-semibold tabular-nums">
-                          {formatInventoryLossCount(inventory.totalLossQty)}
-                        </div>
-                      </div>
-                      <div className="border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
-                        <div className="text-muted text-[11px] font-medium">Сумма</div>
-                        <div className="mt-1 font-semibold tabular-nums">
-                          {formatInventoryLossAmount(inventory.totalLossAmount)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-                <InventoryObjectActionsMenu
-                  title={inventory.title}
-                  description={`Документ от ${formatDate(inventory.inventoryDate)}`}
-                  actions={[
-                    {
-                      label: "Открыть",
-                      icon: ExternalLink,
-                      onSelect: () => navigate(`/inventories/dishware/${inventory.id}`),
-                    },
-                    {
-                      label: "Переместить",
-                      icon: MoveRight,
-                      onSelect: () => {
-                        setMoveError(null);
-                        setMoveTarget({ kind: "inventory", id: inventory.id, title: inventory.title });
-                      },
-                    },
-                    {
-                      label:
-                        actionLoading === `trash-inventory-${inventory.id}` ? "Перемещаем в корзину..." : "В корзину",
-                      icon: Trash2,
-                      tone: "danger",
-                      disabled: actionLoading === `trash-inventory-${inventory.id}`,
-                      onSelect: () => void runTrashInventory(inventory),
-                    },
-                  ]}
-                />
-              </div>
-            </Card>
-          ))}
-        </div>
+        <InventoryList
+          inventories={currentInventories}
+          actionLoading={actionLoading}
+          onOpen={(inventoryId) => navigate(`/inventories/dishware/${inventoryId}`)}
+          onMove={(inventory) => {
+            setMoveError(null);
+            setMoveTarget({ kind: "inventory", id: inventory.id, title: inventory.title });
+          }}
+          onTrash={(inventory) => void runTrashInventory(inventory)}
+        />
       ) : null}
 
       <CreateDishwareInventoryModal
