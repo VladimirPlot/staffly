@@ -17,6 +17,7 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftMode;
@@ -26,6 +27,7 @@ import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
+import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.repository.UserRepository;
@@ -41,6 +43,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private static final String[] WEEKDAY_LABELS = {"", "пн", "вт", "ср", "чт", "пт", "сб", "вс"};
     private static final String AUTO_REJECT_COMMENT = "Заявка отклонена автоматически: график был изменён.";
+    private static final int HISTORY_LIMIT = 20;
 
     private final ScheduleRepository schedules;
     private final RestaurantRepository restaurants;
@@ -49,6 +52,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
+    private final ScheduleAuditService scheduleAuditService;
     private final UserRepository users;
     private final InboxMessageService inboxMessages;
 
@@ -102,6 +106,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setRows(rowEntities);
 
         Schedule saved = schedules.save(schedule);
+        scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, "График создан");
         return toDto(saved, days);
     }
 
@@ -204,6 +209,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         applyRowsDiff(schedule, safeRows, newValues, days, memberMap);
 
         Schedule saved = schedules.save(schedule);
+        scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "График изменён");
         saved.getRows().forEach(row -> row.getCells().size());
         return toDto(saved, days);
     }
@@ -216,6 +222,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
 
+        scheduleAuditService.record(schedule, userId, ScheduleAuditAction.DELETED, "График удалён");
         schedules.delete(schedule);
     }
 
@@ -341,6 +348,12 @@ public class ScheduleServiceImpl implements ScheduleService {
             request.setDecidedByUserId(userId);
             request.setDecidedAt(TimeProvider.now());
             request.setDecisionComment(AUTO_REJECT_COMMENT);
+            scheduleAuditService.record(
+                    schedule,
+                    userId,
+                    ScheduleAuditAction.SHIFT_REQUEST_AUTO_REJECTED,
+                    "Заявка отклонена автоматически: график был изменён"
+            );
             notifyAutoRejectedRequest(request, userId);
         }
     }
@@ -496,7 +509,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 rowDtos,
                 cellValues,
                 buildOwnerDto(schedule),
-                buildCreatedByDto(schedule)
+                buildCreatedByDto(schedule),
+                scheduleAuditService.getRecentHistory(schedule, HISTORY_LIMIT)
         );
     }
 

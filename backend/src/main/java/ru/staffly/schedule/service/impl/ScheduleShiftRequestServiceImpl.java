@@ -16,6 +16,7 @@ import ru.staffly.schedule.dto.CreateSwapShiftRequest;
 import ru.staffly.schedule.dto.ShiftRequestDto;
 import ru.staffly.schedule.dto.ShiftRequestMemberDto;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftRequest;
@@ -24,6 +25,7 @@ import ru.staffly.schedule.model.ScheduleShiftRequestType;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
+import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleShiftRequestService;
 import ru.staffly.security.SecurityService;
 import ru.staffly.restaurant.model.RestaurantRole;
@@ -52,6 +54,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private final InboxMessageService inboxMessages;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
+    private final ScheduleAuditService scheduleAuditService;
 
     @Override
     public ShiftRequestDto createReplacement(Long restaurantId, Long scheduleId, Long userId, CreateReplacementShiftRequest request) {
@@ -90,6 +93,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        scheduleAuditService.record(
+                schedule,
+                userId,
+                ScheduleAuditAction.SHIFT_REQUEST_CREATED,
+                "Создана заявка на замену смены"
+        );
         notifyOwnerOnCreate(saved, initiator.getUser());
         return toDto(saved);
     }
@@ -139,6 +148,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        scheduleAuditService.record(
+                schedule,
+                userId,
+                ScheduleAuditAction.SHIFT_REQUEST_CREATED,
+                "Создана заявка на обмен сменами"
+        );
         notifyOwnerOnCreate(saved, initiator.getUser());
         return toDto(saved);
     }
@@ -168,6 +183,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             entity.setDecidedByUserId(userId);
             entity.setDecidedAt(now);
             entity.setDecisionComment(null);
+            scheduleAuditService.record(
+                    schedule,
+                    userId,
+                    ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
+                    "Заявка на смену отклонена"
+            );
             notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
             return toDto(entity);
         }
@@ -178,6 +199,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             entity.setDecidedByUserId(userId);
             entity.setDecidedAt(now);
             entity.setDecisionComment(staleReason);
+            scheduleAuditService.record(
+                    schedule,
+                    userId,
+                    ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
+                    "Заявка на смену отклонена"
+            );
             notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
             return toDto(entity);
         }
@@ -195,6 +222,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         entity.setDecidedByUserId(userId);
         entity.setDecidedAt(now);
         entity.setDecisionComment(null);
+        scheduleAuditService.record(
+                schedule,
+                userId,
+                ScheduleAuditAction.SHIFT_REQUEST_APPROVED,
+                "Заявка на смену одобрена"
+        );
         notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true);
         return toDto(entity);
     }

@@ -11,5 +11,6 @@ public record ScheduleDto(
         List<ScheduleRowDto> rows,
         Map<String, String> cellValues,
         ScheduleOwnerDto owner,
-        ScheduleCreatedByDto createdBy
+        ScheduleCreatedByDto createdBy,
+        List<ScheduleAuditLogDto> history
 ) {}
