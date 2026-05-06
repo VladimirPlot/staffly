@@ -53,6 +53,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         Set<Long> effectivelyTrashedFolderIds = effectivelyTrashedFolderIds(restaurantId);
         return inventories.findByRestaurantIdAndTrashedAtIsNullOrderByInventoryDateDescUpdatedAtDesc(restaurantId).stream()
                 .filter(inventory -> !isInTrashedFolder(inventory, effectivelyTrashedFolderIds))
+                .sorted(inventoryComparator())
                 .map(mapper::toSummaryDto)
                 .toList();
     }
@@ -64,6 +65,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         Set<Long> effectivelyTrashedFolderIds = effectivelyTrashedFolderIds(restaurantId);
         return inventories.findByRestaurantIdOrderByInventoryDateDescUpdatedAtDesc(restaurantId).stream()
                 .filter(inventory -> inventory.getTrashedAt() != null || isInTrashedFolder(inventory, effectivelyTrashedFolderIds))
+                .sorted(inventoryComparator())
                 .map(mapper::toSummaryDto)
                 .toList();
     }
@@ -75,6 +77,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         Set<Long> effectivelyTrashedFolderIds = effectivelyTrashedFolderIds(restaurantId);
         return folders.findByRestaurantIdOrderBySortOrderAscNameAsc(restaurantId).stream()
                 .filter(folder -> includeTrashed || !effectivelyTrashedFolderIds.contains(folder.getId()))
+                .sorted(folderComparator())
                 .map(this::toFolderDto)
                 .toList();
     }
@@ -91,7 +94,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .parent(parent)
                 .name(normalizeFolderName(request.name()))
                 .description(normalizeText(request.description(), false))
-                .sortOrder(request.sortOrder() == null ? 0 : request.sortOrder())
+                .sortOrder(request.sortOrder() == null ? nextSortOrder(restaurantId, request.parentId()) : request.sortOrder())
                 .build();
         return toFolderDto(folders.save(entity));
     }
@@ -117,9 +120,11 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             ensureNotMovingIntoSelfOrDescendant(restaurantId, entity.getId(), parent.getId());
         }
         entity.setParent(parent);
-        if (request.sortOrder() != null) {
-            entity.setSortOrder(request.sortOrder());
-        }
+        entity.setSortOrder(
+                request.sortOrder() == null
+                        ? nextSortOrder(restaurantId, request.parentId())
+                        : normalizeSortOrder(request.sortOrder())
+        );
         return toFolderDto(folders.save(entity));
     }
 
@@ -187,6 +192,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .folder(folder)
                 .sourceInventory(sourceInventory)
                 .sourceInventoryTitle(sourceInventory != null ? sourceInventory.getTitle() : null)
+                .sortOrder(nextSortOrder(restaurantId, request.folderId()))
                 .title(resolveTitle(request.title(), inventoryDate))
                 .inventoryDate(inventoryDate)
                 .status(DishwareInventoryStatus.DRAFT)
@@ -284,7 +290,38 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         DishwareInventory entity = requireInventory(restaurantId, inventoryId);
         requireNotTrashed(entity);
         entity.setFolder(resolveActiveFolder(restaurantId, request.folderId()));
+        entity.setSortOrder(
+                request.sortOrder() == null
+                        ? nextSortOrder(restaurantId, request.folderId())
+                        : normalizeSortOrder(request.sortOrder())
+        );
         return mapper.toDto(inventories.save(entity));
+    }
+
+    @Override
+    @Transactional
+    public void reorder(Long restaurantId, Long currentUserId, ReorderDishwareInventoryObjectsRequest request) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        resolveActiveFolder(restaurantId, request.folderId());
+
+        for (ReorderDishwareInventoryObjectsRequest.ObjectOrder object : request.objects()) {
+            if ("folder".equals(object.kind())) {
+                DishwareInventoryFolder folder = requireFolder(restaurantId, object.id());
+                if (!Objects.equals(folder.getParent() == null ? null : folder.getParent().getId(), request.folderId())) {
+                    throw new BadRequestException("Папка не находится в выбранной папке");
+                }
+                folder.setSortOrder(normalizeSortOrder(object.sortOrder()));
+            } else if ("inventory".equals(object.kind())) {
+                DishwareInventory inventory = requireInventory(restaurantId, object.id());
+                requireNotTrashed(inventory);
+                if (!Objects.equals(inventory.getFolder() == null ? null : inventory.getFolder().getId(), request.folderId())) {
+                    throw new BadRequestException("Документ не находится в выбранной папке");
+                }
+                inventory.setSortOrder(normalizeSortOrder(object.sortOrder()));
+            } else {
+                throw new BadRequestException("Неизвестный тип объекта: " + object.kind());
+            }
+        }
     }
 
     @Override
@@ -375,6 +412,32 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             storage.deleteItemFolder(item.getId());
         });
         return mapper.toDto(item.getInventory());
+    }
+
+    private Comparator<DishwareInventory> inventoryComparator() {
+        return Comparator.comparingInt(DishwareInventory::getSortOrder)
+                .thenComparing(DishwareInventory::getId, Comparator.nullsLast(Long::compareTo));
+    }
+
+    private Comparator<DishwareInventoryFolder> folderComparator() {
+        return Comparator.comparingInt(DishwareInventoryFolder::getSortOrder)
+                .thenComparing(DishwareInventoryFolder::getId, Comparator.nullsLast(Long::compareTo));
+    }
+
+    private int nextSortOrder(Long restaurantId, Long folderId) {
+        int folderMax = Optional.ofNullable(folders.maxSortOrderInParent(restaurantId, folderId)).orElse(-1);
+        int inventoryMax = Optional.ofNullable(inventories.maxSortOrderInFolder(restaurantId, folderId)).orElse(-1);
+        return Math.max(folderMax, inventoryMax) + 1;
+    }
+
+    private int normalizeSortOrder(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value < 0) {
+            throw new BadRequestException("Порядок не может быть отрицательным");
+        }
+        return value;
     }
 
     private DishwareInventory requireInventory(Long restaurantId, Long inventoryId) {

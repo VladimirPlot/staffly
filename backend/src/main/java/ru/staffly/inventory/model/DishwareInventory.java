@@ -43,6 +43,10 @@ public class DishwareInventory {
     @JoinColumn(name = "folder_id")
     private DishwareInventoryFolder folder;
 
+    @Column(name = "sort_order", nullable = false)
+    @Builder.Default
+    private int sortOrder = 0;
+
     @Column(name = "source_inventory_title", length = 255)
     private String sourceInventoryTitle;
 

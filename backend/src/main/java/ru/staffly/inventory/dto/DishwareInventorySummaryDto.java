@@ -11,6 +11,7 @@ public record DishwareInventorySummaryDto(
         LocalDate inventoryDate,
         String status,
         Long folderId,
+        Integer sortOrder,
         Long sourceInventoryId,
         String sourceInventoryTitle,
         String comment,

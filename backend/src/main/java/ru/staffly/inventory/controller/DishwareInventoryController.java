@@ -14,6 +14,7 @@ import ru.staffly.inventory.dto.DishwareInventoryFolderDto;
 import ru.staffly.inventory.dto.DishwareInventorySummaryDto;
 import ru.staffly.inventory.dto.MoveDishwareInventoryFolderRequest;
 import ru.staffly.inventory.dto.MoveDishwareInventoryRequest;
+import ru.staffly.inventory.dto.ReorderDishwareInventoryObjectsRequest;
 import ru.staffly.inventory.dto.UpdateDishwareInventoryFolderRequest;
 import ru.staffly.inventory.dto.UpdateDishwareInventoryRequest;
 import ru.staffly.inventory.service.DishwareInventoryService;
@@ -149,6 +150,14 @@ public class DishwareInventoryController {
                                      @AuthenticationPrincipal UserPrincipal principal,
                                      @RequestBody MoveDishwareInventoryRequest request) {
         return service.move(restaurantId, principal.userId(), inventoryId, request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PutMapping("/order")
+    public void reorder(@PathVariable Long restaurantId,
+                        @AuthenticationPrincipal UserPrincipal principal,
+                        @Valid @RequestBody ReorderDishwareInventoryObjectsRequest request) {
+        service.reorder(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

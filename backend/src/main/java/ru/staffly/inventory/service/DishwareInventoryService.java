@@ -8,6 +8,7 @@ import ru.staffly.inventory.dto.DishwareInventoryFolderDto;
 import ru.staffly.inventory.dto.DishwareInventorySummaryDto;
 import ru.staffly.inventory.dto.MoveDishwareInventoryFolderRequest;
 import ru.staffly.inventory.dto.MoveDishwareInventoryRequest;
+import ru.staffly.inventory.dto.ReorderDishwareInventoryObjectsRequest;
 import ru.staffly.inventory.dto.UpdateDishwareInventoryFolderRequest;
 import ru.staffly.inventory.dto.UpdateDishwareInventoryRequest;
 
@@ -47,6 +48,8 @@ public interface DishwareInventoryService {
     void delete(Long restaurantId, Long currentUserId, Long inventoryId);
 
     DishwareInventoryDto move(Long restaurantId, Long currentUserId, Long inventoryId, MoveDishwareInventoryRequest request);
+
+    void reorder(Long restaurantId, Long currentUserId, ReorderDishwareInventoryObjectsRequest request);
 
     DishwareInventoryDto trash(Long restaurantId, Long currentUserId, Long inventoryId);
 

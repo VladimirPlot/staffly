@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { DndContext, useDroppable, type DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Archive,
@@ -8,6 +11,7 @@ import {
   ExternalLink,
   Folder,
   FolderPlus,
+  GripVertical,
   MoreVertical,
   MoveRight,
   Plus,
@@ -16,6 +20,8 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import { cn } from "../../../shared/lib/cn";
+import { useSortableDnd } from "../../../shared/hooks/useSortableDnd";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
@@ -37,6 +43,7 @@ import {
   listDishwareInventoryTrash,
   moveDishwareInventory,
   moveDishwareInventoryFolder,
+  reorderDishwareInventoryObjects,
   restoreDishwareInventory,
   restoreDishwareInventoryFolder,
   trashDishwareInventory,
@@ -56,6 +63,10 @@ type FolderModalState =
 
 type MoveTarget = { kind: "folder"; id: number; title: string } | { kind: "inventory"; id: number; title: string };
 
+type DishwareObject =
+  | { kind: "folder"; id: number; sortOrder: number; folder: DishwareInventoryFolderDto }
+  | { kind: "inventory"; id: number; sortOrder: number; inventory: DishwareInventorySummaryDto };
+
 type PermanentDeleteTarget =
   | { kind: "folder"; id: number; title: string }
   | { kind: "inventory"; id: number; title: string }
@@ -71,6 +82,35 @@ type InventoryAction = {
 
 function formatDate(value: string): string {
   return formatDateFromIso(value);
+}
+
+function objectId(kind: DishwareObject["kind"], id: number) {
+  return `${kind}:${id}`;
+}
+
+function parseObjectId(value: string) {
+  const [kind, rawId] = value.split(":");
+  const id = Number(rawId);
+  if ((kind !== "folder" && kind !== "inventory") || !Number.isFinite(id)) {
+    return null;
+  }
+  return { kind, id } as { kind: DishwareObject["kind"]; id: number };
+}
+
+function folderDropId(folderId: number | null) {
+  return folderId == null ? "folder-drop:root" : `folder-drop:${folderId}`;
+}
+
+function parseFolderDropId(value: string) {
+  if (!value.startsWith("folder-drop:")) return null;
+  const rawId = value.slice("folder-drop:".length);
+  if (rawId === "root") return null;
+  const id = Number(rawId);
+  return Number.isFinite(id) ? id : undefined;
+}
+
+function sortDishwareObjects(a: DishwareObject, b: DishwareObject) {
+  return a.sortOrder - b.sortOrder || a.id - b.id;
 }
 
 function ActionMenuItem({
@@ -446,16 +486,21 @@ function TrashModal({
 function DishwareBreadcrumbs({
   currentFolderId,
   folderChain,
+  activeObjectId,
+  blockedFolderIds,
   onBackToInventories,
   onOpenRoot,
   onOpenFolder,
 }: {
   currentFolderId: number | null;
   folderChain: DishwareInventoryFolderDto[];
+  activeObjectId: string | null;
+  blockedFolderIds: Set<number>;
   onBackToInventories: () => void;
   onOpenRoot: () => void;
   onOpenFolder: (folderId: number) => void;
 }) {
+  const rootDrop = useDroppable({ id: folderDropId(null), disabled: !activeObjectId });
   return (
     <nav
       aria-label="Путь к папке"
@@ -478,32 +523,61 @@ function DishwareBreadcrumbs({
       </button>
       <Icon icon={ChevronRight} size="xs" decorative className="text-icon shrink-0 opacity-55" />
       <button
+        ref={rootDrop.setNodeRef}
         type="button"
-        className={
-          "h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset " +
-          (currentFolderId == null ? "text-strong" : "text-default")
-        }
+        className={cn(
+          "h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset",
+          currentFolderId == null ? "text-strong" : "text-default",
+          rootDrop.isOver && "bg-[var(--staffly-control-hover)] ring-2 ring-[var(--staffly-ring)] ring-inset",
+        )}
         onClick={onOpenRoot}
       >
         Посуда
       </button>
       {folderChain.map((folder, index) => (
-        <span key={folder.id} className="inline-flex min-w-0 shrink-0 items-center gap-1">
-          <Icon icon={ChevronRight} size="xs" decorative className="text-icon opacity-55" />
-          <button
-            type="button"
-            className={
-              "h-8 max-w-[12rem] truncate rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem] " +
-              (index === folderChain.length - 1 ? "text-strong" : "text-default")
-            }
-            onClick={() => onOpenFolder(folder.id)}
-            title={folder.name}
-          >
-            {folder.name}
-          </button>
-        </span>
+        <DishwareBreadcrumbFolder
+          key={folder.id}
+          folder={folder}
+          isCurrent={index === folderChain.length - 1}
+          disabledDrop={!activeObjectId || blockedFolderIds.has(folder.id)}
+          onOpenFolder={onOpenFolder}
+        />
       ))}
     </nav>
+  );
+}
+
+function DishwareBreadcrumbFolder({
+  folder,
+  isCurrent,
+  disabledDrop,
+  onOpenFolder,
+}: {
+  folder: DishwareInventoryFolderDto;
+  isCurrent: boolean;
+  disabledDrop: boolean;
+  onOpenFolder: (folderId: number) => void;
+}) {
+  const drop = useDroppable({ id: folderDropId(folder.id), disabled: disabledDrop });
+
+  return (
+    <span className="inline-flex min-w-0 shrink-0 items-center gap-1">
+      <Icon icon={ChevronRight} size="xs" decorative className="text-icon opacity-55" />
+      <button
+        ref={drop.setNodeRef}
+        type="button"
+        className={cn(
+          "h-8 max-w-[12rem] truncate rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem]",
+          isCurrent ? "text-strong" : "text-default",
+          drop.isOver && "bg-[var(--staffly-control-hover)] ring-2 ring-[var(--staffly-ring)] ring-inset",
+          disabledDrop && "opacity-70",
+        )}
+        onClick={() => onOpenFolder(folder.id)}
+        title={folder.name}
+      >
+        {folder.name}
+      </button>
+    </span>
   );
 }
 
@@ -557,6 +631,9 @@ function DishwarePageHeader({
 function FolderCard({
   folder,
   actionLoading,
+  dragEnabled = false,
+  canDropInto = false,
+  showDropTarget = false,
   onOpen,
   onEdit,
   onMove,
@@ -564,16 +641,50 @@ function FolderCard({
 }: {
   folder: DishwareInventoryFolderDto;
   actionLoading: string | null;
+  dragEnabled?: boolean;
+  canDropInto?: boolean;
+  showDropTarget?: boolean;
   onOpen: (folderId: number) => void;
   onEdit: (folder: DishwareInventoryFolderDto) => void;
   onMove: (folder: DishwareInventoryFolderDto) => void;
   onTrash: (folder: DishwareInventoryFolderDto) => void;
 }) {
   const trashActionKey = `trash-folder-${folder.id}`;
+  const sortableId = objectId("folder", folder.id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: sortableId,
+    disabled: !dragEnabled,
+  });
+  const { isOver, setNodeRef: setDropRef } = useDroppable({
+    id: folderDropId(folder.id),
+    disabled: !dragEnabled || !canDropInto,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
-    <Card className="group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3">
+    <div ref={setNodeRef} style={style}>
+      <Card
+        className={cn(
+          "group hover:bg-app relative rounded-[1.25rem] p-2.5 transition sm:p-3",
+          isDragging && "z-20 opacity-80 shadow-xl",
+          isOver && "ring-2 ring-[var(--staffly-ring)]",
+        )}
+      >
       <div className="flex items-start gap-2">
+        {dragEnabled ? (
+          <button
+            type="button"
+            className="border-subtle text-muted hover:text-default hover:bg-app active:bg-app mt-1 inline-flex h-10 w-10 shrink-0 touch-none items-center justify-center rounded-2xl border bg-[color:var(--staffly-surface)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]"
+            aria-label={`Перетащить папку ${folder.name}`}
+            {...attributes}
+            {...listeners}
+          >
+            <Icon icon={GripVertical} size="sm" decorative />
+          </button>
+        ) : null}
         <button
           type="button"
           className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
@@ -620,40 +731,19 @@ function FolderCard({
           ]}
         />
       </div>
-    </Card>
-  );
-}
-
-function FolderGrid({
-  folders,
-  actionLoading,
-  onOpen,
-  onEdit,
-  onMove,
-  onTrash,
-}: {
-  folders: DishwareInventoryFolderDto[];
-  actionLoading: string | null;
-  onOpen: (folderId: number) => void;
-  onEdit: (folder: DishwareInventoryFolderDto) => void;
-  onMove: (folder: DishwareInventoryFolderDto) => void;
-  onTrash: (folder: DishwareInventoryFolderDto) => void;
-}) {
-  if (folders.length === 0) return null;
-
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {folders.map((folder) => (
-        <FolderCard
-          key={folder.id}
-          folder={folder}
-          actionLoading={actionLoading}
-          onOpen={onOpen}
-          onEdit={onEdit}
-          onMove={onMove}
-          onTrash={onTrash}
-        />
-      ))}
+      {dragEnabled && showDropTarget ? (
+        <div
+          ref={setDropRef}
+          className={cn(
+            "border-subtle text-muted mt-2 flex h-9 items-center justify-center rounded-2xl border border-dashed bg-[color:var(--staffly-control)]/50 text-xs font-medium transition",
+            canDropInto ? "opacity-100" : "opacity-45",
+            isOver && "border-[var(--staffly-ring)] bg-[color:var(--staffly-control-hover)] text-default",
+          )}
+        >
+          {canDropInto ? "В папку" : "Нельзя переместить сюда"}
+        </div>
+      ) : null}
+      </Card>
     </div>
   );
 }
@@ -670,21 +760,49 @@ function InventoryMetric({ label, value }: { label: string; value: ReactNode }) 
 function InventoryCard({
   inventory,
   actionLoading,
+  dragEnabled = false,
   onOpen,
   onMove,
   onTrash,
 }: {
   inventory: DishwareInventorySummaryDto;
   actionLoading: string | null;
+  dragEnabled?: boolean;
   onOpen: (inventoryId: number) => void;
   onMove: (inventory: DishwareInventorySummaryDto) => void;
   onTrash: (inventory: DishwareInventorySummaryDto) => void;
 }) {
   const trashActionKey = `trash-inventory-${inventory.id}`;
+  const sortableId = objectId("inventory", inventory.id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: sortableId,
+    disabled: !dragEnabled,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
-    <Card className="group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3">
+    <div ref={setNodeRef} style={style}>
+      <Card
+        className={cn(
+          "group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3",
+          isDragging && "relative z-20 opacity-80 shadow-xl",
+        )}
+      >
       <div className="flex items-start gap-2">
+        {dragEnabled ? (
+          <button
+            type="button"
+            className="border-subtle text-muted hover:text-default hover:bg-app active:bg-app mt-1 inline-flex h-10 w-10 shrink-0 touch-none items-center justify-center rounded-2xl border bg-[color:var(--staffly-surface)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]"
+            aria-label={`Перетащить документ ${inventory.title}`}
+            {...attributes}
+            {...listeners}
+          >
+            <Icon icon={GripVertical} size="sm" decorative />
+          </button>
+        ) : null}
         <Link
           to={`/inventories/dishware/${inventory.id}`}
           className="min-w-0 flex-1 rounded-2xl px-2 py-2 transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
@@ -739,37 +857,67 @@ function InventoryCard({
           ]}
         />
       </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
 
-function InventoryList({
-  inventories,
+function DishwareObjectList({
+  objects,
+  activeObjectId,
+  blockedFolderIds,
   actionLoading,
-  onOpen,
-  onMove,
-  onTrash,
+  onOpenFolder,
+  onOpenInventory,
+  onEditFolder,
+  onMoveFolder,
+  onMoveInventory,
+  onTrashFolder,
+  onTrashInventory,
 }: {
-  inventories: DishwareInventorySummaryDto[];
+  objects: DishwareObject[];
+  activeObjectId: string | null;
+  blockedFolderIds: Set<number>;
   actionLoading: string | null;
-  onOpen: (inventoryId: number) => void;
-  onMove: (inventory: DishwareInventorySummaryDto) => void;
-  onTrash: (inventory: DishwareInventorySummaryDto) => void;
+  onOpenFolder: (folderId: number) => void;
+  onOpenInventory: (inventoryId: number) => void;
+  onEditFolder: (folder: DishwareInventoryFolderDto) => void;
+  onMoveFolder: (folder: DishwareInventoryFolderDto) => void;
+  onMoveInventory: (inventory: DishwareInventorySummaryDto) => void;
+  onTrashFolder: (folder: DishwareInventoryFolderDto) => void;
+  onTrashInventory: (inventory: DishwareInventorySummaryDto) => void;
 }) {
-  if (inventories.length === 0) return null;
+  if (objects.length === 0) return null;
 
   return (
-    <div className="space-y-3">
-      {inventories.map((inventory) => (
-        <InventoryCard
-          key={inventory.id}
-          inventory={inventory}
-          actionLoading={actionLoading}
-          onOpen={onOpen}
-          onMove={onMove}
-          onTrash={onTrash}
-        />
-      ))}
+    <div className="grid gap-3 md:grid-cols-2">
+      {objects.map((object) =>
+        object.kind === "folder" ? (
+          <FolderCard
+            key={objectId("folder", object.id)}
+            folder={object.folder}
+            actionLoading={actionLoading}
+            dragEnabled
+            canDropInto={Boolean(activeObjectId) && !blockedFolderIds.has(object.id)}
+            showDropTarget={Boolean(activeObjectId)}
+            onOpen={onOpenFolder}
+            onEdit={onEditFolder}
+            onMove={onMoveFolder}
+            onTrash={onTrashFolder}
+          />
+        ) : (
+          <div key={objectId("inventory", object.id)} className="md:col-span-2">
+            <InventoryCard
+              inventory={object.inventory}
+              actionLoading={actionLoading}
+              dragEnabled
+              onOpen={onOpenInventory}
+              onMove={onMoveInventory}
+              onTrash={onTrashInventory}
+            />
+          </div>
+        ),
+      )}
     </div>
   );
 }
@@ -808,6 +956,9 @@ function AuthorizedDishwareInventoriesPage() {
   const [trashOpen, setTrashOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<PermanentDeleteTarget | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const sortableDnd = useSortableDnd({ scrollContainerRef });
+  const [dndError, setDndError] = useState<string | null>(null);
 
   const folderMap = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const currentFolder = currentFolderId == null ? null : (folderMap.get(currentFolderId) ?? null);
@@ -863,17 +1014,44 @@ function AuthorizedDishwareInventoriesPage() {
   }, [loadTrash, trashOpen]);
 
   const childFolders = useMemo(
-    () => folders.filter((folder) => folder.parentId === currentFolderId).sort(sortFolders),
+    () => folders.filter((folder) => folder.parentId === currentFolderId),
     [currentFolderId, folders],
   );
   const currentInventories = useMemo(
     () => inventories.filter((inventory) => (inventory.folderId ?? null) === currentFolderId),
     [currentFolderId, inventories],
   );
+  const currentObjects = useMemo<DishwareObject[]>(
+    () =>
+      [
+        ...childFolders.map((folder) => ({
+          kind: "folder" as const,
+          id: folder.id,
+          sortOrder: folder.sortOrder ?? 0,
+          folder,
+        })),
+        ...currentInventories.map((inventory) => ({
+          kind: "inventory" as const,
+          id: inventory.id,
+          sortOrder: inventory.sortOrder ?? 0,
+          inventory,
+        })),
+      ].sort(sortDishwareObjects),
+    [childFolders, currentInventories],
+  );
+  const currentObjectIds = useMemo(
+    () => currentObjects.map((object) => objectId(object.kind, object.id)),
+    [currentObjects],
+  );
   const sourceOptions = useMemo(
     () => inventories.filter((inventory) => inventory.status === "COMPLETED"),
     [inventories],
   );
+  const blockedDropFolderIds = useMemo(() => {
+    const parsed = sortableDnd.activeId ? parseObjectId(sortableDnd.activeId) : null;
+    if (!parsed || parsed.kind !== "folder") return new Set<number>();
+    return descendantIds(parsed.id, folders);
+  }, [folders, sortableDnd.activeId]);
 
   const handleCreate = useCallback(
     async (payload: CreateDishwareInventoryRequest) => {
@@ -942,6 +1120,93 @@ function AuthorizedDishwareInventoriesPage() {
     },
     [loadActive, moveTarget, restaurantId],
   );
+
+  const applyObjectSortOrders = useCallback((orderedObjects: DishwareObject[]) => {
+    const orderMap = new Map(orderedObjects.map((object, index) => [objectId(object.kind, object.id), index]));
+    setFolders((prev) =>
+      prev.map((folder) => {
+        const nextSortOrder = orderMap.get(objectId("folder", folder.id));
+        return nextSortOrder == null ? folder : { ...folder, sortOrder: nextSortOrder };
+      }),
+    );
+    setInventories((prev) =>
+      prev.map((inventory) => {
+        const nextSortOrder = orderMap.get(objectId("inventory", inventory.id));
+        return nextSortOrder == null ? inventory : { ...inventory, sortOrder: nextSortOrder };
+      }),
+    );
+  }, []);
+
+  const handleDishwareDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const active = parseObjectId(String(event.active.id));
+      const overId = event.over ? String(event.over.id) : null;
+      sortableDnd.finishDrag();
+      if (!restaurantId || !active || !overId) return;
+
+      setDndError(null);
+      const dropFolderId = parseFolderDropId(overId);
+      if (overId.startsWith("folder-drop:")) {
+        if (dropFolderId === undefined) return;
+        if (active.kind === "folder" && dropFolderId != null && blockedDropFolderIds.has(dropFolderId)) return;
+        if (dropFolderId === currentFolderId) return;
+
+        try {
+          if (active.kind === "folder") {
+            await moveDishwareInventoryFolder(restaurantId, active.id, dropFolderId);
+          } else {
+            await moveDishwareInventory(restaurantId, active.id, dropFolderId);
+          }
+          await loadActive();
+        } catch (e: any) {
+          console.error("Failed to move dishware object with drag and drop", e);
+          setDndError(e?.friendlyMessage || "Не удалось переместить объект");
+          await loadActive();
+        }
+        return;
+      }
+
+      const oldIndex = currentObjectIds.indexOf(objectId(active.kind, active.id));
+      const newIndex = currentObjectIds.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+      const nextObjects = arrayMove(currentObjects, oldIndex, newIndex).map((object, index) => ({
+        ...object,
+        sortOrder: index,
+      }));
+      applyObjectSortOrders(nextObjects);
+
+      try {
+        await reorderDishwareInventoryObjects(restaurantId, {
+          folderId: currentFolderId,
+          objects: nextObjects.map((object, index) => ({
+            kind: object.kind,
+            id: object.id,
+            sortOrder: index,
+          })),
+        });
+        await loadActive();
+      } catch (e: any) {
+        console.error("Failed to reorder dishware objects", e);
+        setDndError(e?.friendlyMessage || "Не удалось сохранить порядок");
+        await loadActive();
+      }
+    },
+    [
+      applyObjectSortOrders,
+      blockedDropFolderIds,
+      currentFolderId,
+      currentObjectIds,
+      currentObjects,
+      loadActive,
+      restaurantId,
+      sortableDnd,
+    ],
+  );
+
+  const handleDishwareDragCancel = useCallback(() => {
+    sortableDnd.finishDrag();
+  }, [sortableDnd]);
 
   const runTrashFolder = useCallback(
     async (folder: DishwareInventoryFolderDto) => {
@@ -1037,6 +1302,8 @@ function AuthorizedDishwareInventoriesPage() {
       <DishwareBreadcrumbs
         currentFolderId={currentFolderId}
         folderChain={folderChain}
+        activeObjectId={sortableDnd.activeId}
+        blockedFolderIds={blockedDropFolderIds}
         onBackToInventories={() => navigate("/inventories")}
         onOpenRoot={() => setCurrentFolderId(null)}
         onOpenFolder={setCurrentFolderId}
@@ -1054,37 +1321,45 @@ function AuthorizedDishwareInventoriesPage() {
 
       {loading ? <Card className="text-muted text-sm">Загружаем инвентаризации...</Card> : null}
       {!loading && error ? <Card className="text-sm text-red-600">{error}</Card> : null}
+      {dndError ? <Card className="text-sm text-red-600">{dndError}</Card> : null}
 
-      {!loading && !error && childFolders.length === 0 && currentInventories.length === 0 ? <EmptyFolderState /> : null}
+      {!loading && !error && currentObjects.length === 0 ? <EmptyFolderState /> : null}
 
-      {!loading && !error && childFolders.length > 0 ? (
-        <FolderGrid
-          folders={childFolders}
-          actionLoading={actionLoading}
-          onOpen={setCurrentFolderId}
-          onEdit={(folder) => {
-            setFolderError(null);
-            setFolderModal({ mode: "edit", parentId: folder.parentId, folder });
-          }}
-          onMove={(folder) => {
-            setMoveError(null);
-            setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-          }}
-          onTrash={(folder) => void runTrashFolder(folder)}
-        />
-      ) : null}
-
-      {!loading && !error && currentInventories.length > 0 ? (
-        <InventoryList
-          inventories={currentInventories}
-          actionLoading={actionLoading}
-          onOpen={(inventoryId) => navigate(`/inventories/dishware/${inventoryId}`)}
-          onMove={(inventory) => {
-            setMoveError(null);
-            setMoveTarget({ kind: "inventory", id: inventory.id, title: inventory.title });
-          }}
-          onTrash={(inventory) => void runTrashInventory(inventory)}
-        />
+      {!loading && !error && currentObjects.length > 0 ? (
+        <div ref={scrollContainerRef}>
+          <DndContext
+            sensors={sortableDnd.sensors}
+            onDragStart={sortableDnd.handleDragStart}
+            onDragMove={sortableDnd.handleDragMove}
+            onDragEnd={(event) => void handleDishwareDragEnd(event)}
+            onDragCancel={handleDishwareDragCancel}
+          >
+            <SortableContext items={currentObjectIds} strategy={verticalListSortingStrategy}>
+              <DishwareObjectList
+                objects={currentObjects}
+                activeObjectId={sortableDnd.activeId}
+                blockedFolderIds={blockedDropFolderIds}
+                actionLoading={actionLoading}
+                onOpenFolder={setCurrentFolderId}
+                onOpenInventory={(inventoryId) => navigate(`/inventories/dishware/${inventoryId}`)}
+                onEditFolder={(folder) => {
+                  setFolderError(null);
+                  setFolderModal({ mode: "edit", parentId: folder.parentId, folder });
+                }}
+                onMoveFolder={(folder) => {
+                  setMoveError(null);
+                  setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                }}
+                onMoveInventory={(inventory) => {
+                  setMoveError(null);
+                  setMoveTarget({ kind: "inventory", id: inventory.id, title: inventory.title });
+                }}
+                onTrashFolder={(folder) => void runTrashFolder(folder)}
+                onTrashInventory={(inventory) => void runTrashInventory(inventory)}
+              />
+            </SortableContext>
+          </DndContext>
+        </div>
       ) : null}
 
       <CreateDishwareInventoryModal

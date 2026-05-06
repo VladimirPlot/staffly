@@ -25,6 +25,7 @@ export type DishwareInventorySummaryDto = {
   inventoryDate: string;
   status: DishwareInventoryStatus;
   folderId?: number | null;
+  sortOrder: number;
   sourceInventoryId?: number | null;
   sourceInventoryTitle?: string | null;
   comment?: string | null;
@@ -93,6 +94,36 @@ export type UpdateDishwareInventoryFolderRequest = {
   sortOrder?: number;
 };
 
+export type InventorySectionId = "dishware" | "bar" | "kitchen";
+
+export type InventoryLayoutResponse = {
+  layout: InventorySectionId[];
+};
+
+export type DishwareInventoryObjectOrder = {
+  kind: "folder" | "inventory";
+  id: number;
+  sortOrder: number;
+};
+
+export type ReorderDishwareInventoryObjectsRequest = {
+  folderId?: number | null;
+  objects: DishwareInventoryObjectOrder[];
+};
+
+export async function fetchInventoryLayout(restaurantId: number): Promise<InventoryLayoutResponse> {
+  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/layout`);
+  return data as InventoryLayoutResponse;
+}
+
+export async function saveInventoryLayout(
+  restaurantId: number,
+  layout: InventorySectionId[],
+): Promise<InventoryLayoutResponse> {
+  const { data } = await api.put(`/api/restaurants/${restaurantId}/inventories/layout`, { layout });
+  return data as InventoryLayoutResponse;
+}
+
 export async function listDishwareInventories(restaurantId: number): Promise<DishwareInventorySummaryDto[]> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware`);
   return data as DishwareInventorySummaryDto[];
@@ -134,9 +165,11 @@ export async function moveDishwareInventoryFolder(
   restaurantId: number,
   folderId: number,
   parentId: number | null,
+  sortOrder?: number | null,
 ): Promise<DishwareInventoryFolderDto> {
   const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/folders/${folderId}/move`, {
     parentId,
+    sortOrder,
   });
   return data as DishwareInventoryFolderDto;
 }
@@ -203,11 +236,20 @@ export async function moveDishwareInventory(
   restaurantId: number,
   inventoryId: number,
   folderId: number | null,
+  sortOrder?: number | null,
 ): Promise<DishwareInventoryDto> {
   const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/move`, {
     folderId,
+    sortOrder,
   });
   return data as DishwareInventoryDto;
+}
+
+export async function reorderDishwareInventoryObjects(
+  restaurantId: number,
+  payload: ReorderDishwareInventoryObjectsRequest,
+): Promise<void> {
+  await api.put(`/api/restaurants/${restaurantId}/inventories/dishware/order`, payload);
 }
 
 export async function trashDishwareInventory(restaurantId: number, inventoryId: number): Promise<DishwareInventoryDto> {
