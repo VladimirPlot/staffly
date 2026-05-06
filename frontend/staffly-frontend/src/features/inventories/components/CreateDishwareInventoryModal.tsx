@@ -5,12 +5,11 @@ import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Textarea from "../../../shared/ui/Textarea";
-import type { CreateDishwareInventoryRequest, DishwareInventoryFolderDto, DishwareInventorySummaryDto } from "../api";
+import type { CreateDishwareInventoryRequest, DishwareInventorySummaryDto } from "../api";
 
 type Props = {
   open: boolean;
   sourceOptions: DishwareInventorySummaryDto[];
-  folderOptions: DishwareInventoryFolderDto[];
   initialFolderId?: number | null;
   submitting: boolean;
   error?: string | null;
@@ -28,22 +27,9 @@ function getTodayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
-function getFolderLabel(folder: DishwareInventoryFolderDto, folderMap: Map<number, DishwareInventoryFolderDto>): string {
-  const names = [folder.name];
-  const seen = new Set<number>([folder.id]);
-  let parent = folder.parentId == null ? null : (folderMap.get(folder.parentId) ?? null);
-  while (parent && !seen.has(parent.id)) {
-    names.unshift(parent.name);
-    seen.add(parent.id);
-    parent = parent.parentId == null ? null : (folderMap.get(parent.parentId) ?? null);
-  }
-  return names.join(" / ");
-}
-
 export default function CreateDishwareInventoryModal({
   open,
   sourceOptions,
-  folderOptions,
   initialFolderId = null,
   submitting,
   error,
@@ -53,20 +39,17 @@ export default function CreateDishwareInventoryModal({
   const [title, setTitle] = useState("");
   const [inventoryDate, setInventoryDate] = useState(getTodayIsoDate());
   const [comment, setComment] = useState("");
-  const [folderId, setFolderId] = useState("");
   const [mode, setMode] = useState<Mode>("empty");
   const [sourceInventoryId, setSourceInventoryId] = useState("");
-  const folderMap = useMemo(() => new Map(folderOptions.map((folder) => [folder.id, folder])), [folderOptions]);
 
   useEffect(() => {
     if (!open) return;
     setTitle("");
     setInventoryDate(getTodayIsoDate());
     setComment("");
-    setFolderId(initialFolderId == null ? "" : String(initialFolderId));
     setMode("empty");
     setSourceInventoryId("");
-  }, [initialFolderId, open]);
+  }, [open]);
 
   const hasSourceOptions = sourceOptions.length > 0;
   const canSubmit = inventoryDate && (mode === "empty" || sourceInventoryId);
@@ -82,7 +65,7 @@ export default function CreateDishwareInventoryModal({
             void onSubmit({
               title: title.trim() || null,
               inventoryDate,
-              folderId: folderId ? Number(folderId) : null,
+              folderId: initialFolderId,
               sourceInventoryId: mode === "copy" && sourceInventoryId ? Number(sourceInventoryId) : null,
               comment: comment.trim() || null,
             });
@@ -94,7 +77,7 @@ export default function CreateDishwareInventoryModal({
         </Button>
       </>
     ),
-    [canSubmit, comment, folderId, inventoryDate, mode, onClose, onSubmit, sourceInventoryId, submitting, title],
+    [canSubmit, comment, initialFolderId, inventoryDate, mode, onClose, onSubmit, sourceInventoryId, submitting, title],
   );
 
   return (
@@ -147,20 +130,6 @@ export default function CreateDishwareInventoryModal({
           value={inventoryDate}
           onChange={(event) => setInventoryDate(event.target.value)}
         />
-
-        <DropdownSelect
-          label="Папка"
-          value={folderId}
-          onChange={(event) => setFolderId(event.target.value)}
-          placeholder="Корень"
-        >
-          <option value="">Корень</option>
-          {folderOptions.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {getFolderLabel(folder, folderMap)}
-            </option>
-          ))}
-        </DropdownSelect>
 
         <Input
           label="Название"

@@ -512,7 +512,6 @@ function AuthorizedDishwareInventoriesPage() {
       <CreateDishwareInventoryModal
         open={createOpen}
         sourceOptions={sourceOptions}
-        folderOptions={folders}
         initialFolderId={currentFolderId}
         submitting={creating}
         error={createError}
