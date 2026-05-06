@@ -20,6 +20,7 @@ import {
   Edit3,
   ExternalLink,
   Folder,
+  FolderOpen,
   FolderPlus,
   GripVertical,
   MoreVertical,
@@ -564,23 +565,31 @@ function DishwareBreadcrumbs({
         Инвентаризации
       </button>
       <Icon icon={ChevronRight} size="xs" decorative className="text-icon shrink-0 opacity-55" />
-      <button
+      <span
         ref={rootDrop.setNodeRef}
-        type="button"
         className={cn(
-          "inline-flex shrink-0 items-center border border-transparent font-medium transition focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset",
-          isDragActive ? "min-h-11 rounded-full border-dashed px-4" : "h-8 rounded-lg px-1.5",
-          currentFolderId == null ? "text-strong" : "text-default",
-          isDragActive && !rootDropDisabled && "border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/35",
+          "inline-flex shrink-0 items-center rounded-full border border-transparent transition",
+          isDragActive ? "-my-1 min-h-12 px-1.5" : "",
+          isDragActive && !rootDropDisabled && "border-dashed border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/25",
           isDragActive && rootDropDisabled && "opacity-60",
-          !isDragActive && "hover:bg-[var(--staffly-control-hover)]",
           rootDrop.isOver &&
-            "border-[var(--staffly-ring)] bg-[var(--staffly-control-hover)] text-strong ring-2 ring-[var(--staffly-ring)] ring-inset",
+            "border-[var(--staffly-ring)] bg-[var(--staffly-control-hover)] ring-2 ring-[var(--staffly-ring)]/70 ring-inset",
         )}
-        onClick={onOpenRoot}
       >
-        Посуда
-      </button>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex shrink-0 items-center border border-transparent font-medium transition focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset",
+            isDragActive ? "min-h-10 rounded-full px-3" : "h-8 rounded-lg px-1.5",
+            currentFolderId == null ? "text-strong" : "text-default",
+            !isDragActive && "hover:bg-[var(--staffly-control-hover)]",
+            rootDrop.isOver && "text-strong",
+          )}
+          onClick={onOpenRoot}
+        >
+          Посуда
+        </button>
+      </span>
       {folderChain.map((folder, index) => (
         <DishwareBreadcrumbFolder
           key={folder.id}
@@ -614,20 +623,26 @@ function DishwareBreadcrumbFolder({
   const drop = useDroppable({ id: folderDropId(folder.id), disabled: disabledDrop });
 
   return (
-    <span className="inline-flex min-w-0 shrink-0 items-center gap-1">
+    <span
+      ref={drop.setNodeRef}
+      className={cn(
+        "inline-flex min-w-0 shrink-0 items-center gap-1 rounded-full border border-transparent transition",
+        isDragActive ? "-my-1 min-h-12 px-1.5" : "",
+        isDragActive && !disabledDrop && "border-dashed border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/25",
+        isDragActive && (disabledDrop || isDropCurrentFolder) && "opacity-60",
+        drop.isOver &&
+          "border-[var(--staffly-ring)] bg-[var(--staffly-control-hover)] ring-2 ring-[var(--staffly-ring)]/70 ring-inset",
+      )}
+    >
       <Icon icon={ChevronRight} size="xs" decorative className="text-icon opacity-55" />
       <button
-        ref={drop.setNodeRef}
         type="button"
         className={cn(
           "inline-flex max-w-[12rem] shrink-0 items-center border border-transparent font-medium transition focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem]",
-          isDragActive ? "min-h-11 rounded-full border-dashed px-4" : "h-8 rounded-lg px-1.5",
+          isDragActive ? "min-h-10 rounded-full px-3" : "h-8 rounded-lg px-1.5",
           isCurrent ? "text-strong" : "text-default",
-          isDragActive && !disabledDrop && "border-[var(--staffly-border)] bg-[color:var(--staffly-control)]/35",
-          isDragActive && (disabledDrop || isDropCurrentFolder) && "opacity-60",
           !isDragActive && "hover:bg-[var(--staffly-control-hover)]",
-          drop.isOver &&
-            "border-[var(--staffly-ring)] bg-[var(--staffly-control-hover)] text-strong ring-2 ring-[var(--staffly-ring)] ring-inset",
+          drop.isOver && "text-strong",
         )}
         onClick={() => onOpenFolder(folder.id)}
         title={folder.name}
@@ -729,8 +744,12 @@ function FolderCard({
         className={cn(
           "group hover:bg-app relative rounded-[1.25rem] p-2.5 transition sm:p-3",
           isDragging && "opacity-0",
-          isDragActive && canDropInto && "ring-1 ring-transparent",
-          isOver && "bg-[color:var(--staffly-control)]/60 ring-2 ring-[var(--staffly-ring)]",
+          isDragActive &&
+            canDropInto &&
+            !isOver &&
+            "ring-1 ring-[var(--staffly-border)]/70 ring-dashed ring-inset",
+          isOver &&
+            "translate-y-[-1px] scale-[1.006] bg-[color:var(--staffly-control)]/45 shadow-[0_18px_42px_rgba(15,23,42,0.13)] ring-1 ring-[var(--staffly-ring)] ring-inset",
           showUnavailableDrop && "opacity-60",
         )}
       >
@@ -751,8 +770,14 @@ function FolderCard({
           className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]"
           onClick={() => onOpen(folder.id)}
         >
-          <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] transition group-hover:bg-[color:var(--staffly-control-hover)]">
-            <Icon icon={Folder} size="sm" decorative />
+          <span
+            className={cn(
+              "mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] transition group-hover:bg-[color:var(--staffly-control-hover)]",
+              isOver &&
+                "bg-[color:var(--staffly-control-hover)] text-strong shadow-sm ring-1 ring-[var(--staffly-ring)]/60 ring-inset",
+            )}
+          >
+            <Icon icon={isOver ? FolderOpen : Folder} size="sm" decorative />
           </span>
           <span className="min-w-0">
             <span className="block text-base font-semibold [overflow-wrap:anywhere]">{folder.name}</span>
@@ -792,13 +817,6 @@ function FolderCard({
           ]}
         />
       </div>
-      {isOver ? (
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-end">
-          <span className="rounded-full bg-[color:var(--staffly-surface)] px-3 py-1 text-xs font-semibold text-default shadow-sm ring-1 ring-[var(--staffly-border)]">
-            Отпустить в папку
-          </span>
-        </div>
-      ) : null}
       </Card>
     </div>
   );
