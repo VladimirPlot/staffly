@@ -1,6 +1,16 @@
-import { DndContext, useDroppable, type DragEndEvent } from "@dnd-kit/core";
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  pointerWithin,
+  useDroppable,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { CSS, useCombinedRefs } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -112,6 +122,27 @@ function parseFolderDropId(value: string) {
 function sortDishwareObjects(a: DishwareObject, b: DishwareObject) {
   return a.sortOrder - b.sortOrder || a.id - b.id;
 }
+
+function isDishwareObjectId(value: string) {
+  return parseObjectId(value) !== null;
+}
+
+const dishwareCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  const folderDropCollision = pointerCollisions.find((collision) =>
+    String(collision.id).startsWith("folder-drop:"),
+  );
+
+  if (folderDropCollision) return [folderDropCollision];
+
+  const sortablePointerCollisions = pointerCollisions.filter((collision) => isDishwareObjectId(String(collision.id)));
+  if (sortablePointerCollisions.length > 0) return sortablePointerCollisions;
+
+  return closestCenter({
+    ...args,
+    droppableContainers: args.droppableContainers.filter((container) => isDishwareObjectId(String(container.id))),
+  });
+};
 
 function ActionMenuItem({
   action,
@@ -633,7 +664,7 @@ function FolderCard({
   actionLoading,
   dragEnabled = false,
   canDropInto = false,
-  showDropTarget = false,
+  isDragActive = false,
   onOpen,
   onEdit,
   onMove,
@@ -643,7 +674,7 @@ function FolderCard({
   actionLoading: string | null;
   dragEnabled?: boolean;
   canDropInto?: boolean;
-  showDropTarget?: boolean;
+  isDragActive?: boolean;
   onOpen: (folderId: number) => void;
   onEdit: (folder: DishwareInventoryFolderDto) => void;
   onMove: (folder: DishwareInventoryFolderDto) => void;
@@ -655,22 +686,26 @@ function FolderCard({
     id: sortableId,
     disabled: !dragEnabled,
   });
-  const { isOver, setNodeRef: setDropRef } = useDroppable({
+  const { isOver, setNodeRef: setDropNodeRef } = useDroppable({
     id: folderDropId(folder.id),
     disabled: !dragEnabled || !canDropInto,
   });
+  const setCombinedNodeRef = useCombinedRefs(setNodeRef, setDropNodeRef);
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   };
+  const showUnavailableDrop = isDragActive && !canDropInto && !isDragging;
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setCombinedNodeRef} style={style}>
       <Card
         className={cn(
           "group hover:bg-app relative rounded-[1.25rem] p-2.5 transition sm:p-3",
-          isDragging && "z-20 opacity-80 shadow-xl",
-          isOver && "ring-2 ring-[var(--staffly-ring)]",
+          isDragging && "opacity-30",
+          isDragActive && canDropInto && "ring-1 ring-transparent",
+          isOver && "bg-[color:var(--staffly-control)]/60 ring-2 ring-[var(--staffly-ring)]",
+          showUnavailableDrop && "opacity-60",
         )}
       >
       <div className="flex items-start gap-2">
@@ -731,16 +766,11 @@ function FolderCard({
           ]}
         />
       </div>
-      {dragEnabled && showDropTarget ? (
-        <div
-          ref={setDropRef}
-          className={cn(
-            "border-subtle text-muted mt-2 flex h-9 items-center justify-center rounded-2xl border border-dashed bg-[color:var(--staffly-control)]/50 text-xs font-medium transition",
-            canDropInto ? "opacity-100" : "opacity-45",
-            isOver && "border-[var(--staffly-ring)] bg-[color:var(--staffly-control-hover)] text-default",
-          )}
-        >
-          {canDropInto ? "В папку" : "Нельзя переместить сюда"}
+      {isOver ? (
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-end">
+          <span className="rounded-full bg-[color:var(--staffly-surface)] px-3 py-1 text-xs font-semibold text-default shadow-sm ring-1 ring-[var(--staffly-border)]">
+            Отпустить в папку
+          </span>
         </div>
       ) : null}
       </Card>
@@ -779,7 +809,7 @@ function InventoryCard({
     disabled: !dragEnabled,
   });
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),
     transition,
   };
 
@@ -788,7 +818,7 @@ function InventoryCard({
       <Card
         className={cn(
           "group hover:bg-app rounded-[1.25rem] p-2.5 transition sm:p-3",
-          isDragging && "relative z-20 opacity-80 shadow-xl",
+          isDragging && "opacity-30",
         )}
       >
       <div className="flex items-start gap-2">
@@ -890,7 +920,7 @@ function DishwareObjectList({
   if (objects.length === 0) return null;
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
+    <div className="space-y-3">
       {objects.map((object) =>
         object.kind === "folder" ? (
           <FolderCard
@@ -899,25 +929,65 @@ function DishwareObjectList({
             actionLoading={actionLoading}
             dragEnabled
             canDropInto={Boolean(activeObjectId) && !blockedFolderIds.has(object.id)}
-            showDropTarget={Boolean(activeObjectId)}
+            isDragActive={Boolean(activeObjectId)}
             onOpen={onOpenFolder}
             onEdit={onEditFolder}
             onMove={onMoveFolder}
             onTrash={onTrashFolder}
           />
         ) : (
-          <div key={objectId("inventory", object.id)} className="md:col-span-2">
-            <InventoryCard
-              inventory={object.inventory}
-              actionLoading={actionLoading}
-              dragEnabled
-              onOpen={onOpenInventory}
-              onMove={onMoveInventory}
-              onTrash={onTrashInventory}
-            />
-          </div>
+          <InventoryCard
+            key={objectId("inventory", object.id)}
+            inventory={object.inventory}
+            actionLoading={actionLoading}
+            dragEnabled
+            onOpen={onOpenInventory}
+            onMove={onMoveInventory}
+            onTrash={onTrashInventory}
+          />
         ),
       )}
+    </div>
+  );
+}
+
+function DishwareDragOverlayCard({ object, width }: { object: DishwareObject | null; width: number | null }) {
+  if (!object) return null;
+
+  return (
+    <div className="pointer-events-none" style={{ width: width ?? undefined }}>
+      <Card className="bg-surface/95 rounded-[1.25rem] p-3 shadow-2xl ring-1 ring-[var(--staffly-border)] backdrop-blur">
+        {object.kind === "folder" ? (
+          <div className="flex min-h-14 items-start gap-3">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control-hover)]">
+              <Icon icon={Folder} size="sm" decorative />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-base font-semibold [overflow-wrap:anywhere]">{object.folder.name}</span>
+              <span className="text-muted mt-1 block text-sm [overflow-wrap:anywhere]">
+                {object.folder.description || "Папка"}
+              </span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-lg font-semibold [overflow-wrap:anywhere]">{object.inventory.title}</span>
+                <span className={getInventoryStatusBadgeClass(object.inventory.status)}>
+                  {object.inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
+                </span>
+              </div>
+              <div className="text-muted mt-1 text-sm">Дата: {formatDate(object.inventory.inventoryDate)}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 lg:min-w-[300px]">
+              <InventoryMetric label="Позиции" value={object.inventory.itemsCount} />
+              <InventoryMetric label="Потери" value={formatInventoryLossCount(object.inventory.totalLossQty)} />
+              <InventoryMetric label="Сумма" value={formatInventoryLossAmount(object.inventory.totalLossAmount)} />
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -959,6 +1029,8 @@ function AuthorizedDishwareInventoriesPage() {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sortableDnd = useSortableDnd({ scrollContainerRef });
   const [dndError, setDndError] = useState<string | null>(null);
+  const [activeDishwareObject, setActiveDishwareObject] = useState<DishwareObject | null>(null);
+  const [dragOverlayWidth, setDragOverlayWidth] = useState<number | null>(null);
 
   const folderMap = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const currentFolder = currentFolderId == null ? null : (folderMap.get(currentFolderId) ?? null);
@@ -1137,11 +1209,27 @@ function AuthorizedDishwareInventoriesPage() {
     );
   }, []);
 
+  const finishDishwareDrag = useCallback(() => {
+    sortableDnd.finishDrag();
+    setActiveDishwareObject(null);
+    setDragOverlayWidth(null);
+  }, [sortableDnd]);
+
+  const handleDishwareDragStart = useCallback(
+    (event: DragStartEvent) => {
+      sortableDnd.handleDragStart(event);
+      const activeId = String(event.active.id);
+      setActiveDishwareObject(currentObjects.find((object) => objectId(object.kind, object.id) === activeId) ?? null);
+      setDragOverlayWidth(event.active.rect.current.initial?.width ?? null);
+    },
+    [currentObjects, sortableDnd],
+  );
+
   const handleDishwareDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const active = parseObjectId(String(event.active.id));
       const overId = event.over ? String(event.over.id) : null;
-      sortableDnd.finishDrag();
+      finishDishwareDrag();
       if (!restaurantId || !active || !overId) return;
 
       setDndError(null);
@@ -1198,15 +1286,15 @@ function AuthorizedDishwareInventoriesPage() {
       currentFolderId,
       currentObjectIds,
       currentObjects,
+      finishDishwareDrag,
       loadActive,
       restaurantId,
-      sortableDnd,
     ],
   );
 
   const handleDishwareDragCancel = useCallback(() => {
-    sortableDnd.finishDrag();
-  }, [sortableDnd]);
+    finishDishwareDrag();
+  }, [finishDishwareDrag]);
 
   const runTrashFolder = useCallback(
     async (folder: DishwareInventoryFolderDto) => {
@@ -1329,7 +1417,9 @@ function AuthorizedDishwareInventoriesPage() {
         <div ref={scrollContainerRef}>
           <DndContext
             sensors={sortableDnd.sensors}
-            onDragStart={sortableDnd.handleDragStart}
+            collisionDetection={dishwareCollisionDetection}
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+            onDragStart={handleDishwareDragStart}
             onDragMove={sortableDnd.handleDragMove}
             onDragEnd={(event) => void handleDishwareDragEnd(event)}
             onDragCancel={handleDishwareDragCancel}
@@ -1358,6 +1448,9 @@ function AuthorizedDishwareInventoriesPage() {
                 onTrashInventory={(inventory) => void runTrashInventory(inventory)}
               />
             </SortableContext>
+            <DragOverlay dropAnimation={null}>
+              <DishwareDragOverlayCard object={activeDishwareObject} width={dragOverlayWidth} />
+            </DragOverlay>
           </DndContext>
         </div>
       ) : null}
