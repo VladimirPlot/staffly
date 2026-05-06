@@ -123,6 +123,11 @@ function sortDishwareObjects(a: DishwareObject, b: DishwareObject) {
   return a.sortOrder - b.sortOrder || a.id - b.id;
 }
 
+function getDragOverlayWidth(width: number | null) {
+  if (width == null) return undefined;
+  return Math.min(Math.max(Math.round(width * 0.42), 240), 360);
+}
+
 function isDishwareObjectId(value: string) {
   return parseObjectId(value) !== null;
 }
@@ -531,11 +536,17 @@ function DishwareBreadcrumbs({
   onOpenRoot: () => void;
   onOpenFolder: (folderId: number) => void;
 }) {
-  const rootDrop = useDroppable({ id: folderDropId(null), disabled: !activeObjectId });
+  const isDragActive = Boolean(activeObjectId);
+  const rootDropDisabled = !isDragActive || currentFolderId == null;
+  const rootDrop = useDroppable({ id: folderDropId(null), disabled: rootDropDisabled });
+
   return (
     <nav
       aria-label="Путь к папке"
-      className="text-muted -mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 py-1 text-sm [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className={cn(
+        "text-muted -mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 text-sm transition [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        isDragActive ? "py-1.5" : "py-1",
+      )}
     >
       <Link
         to="/app"
@@ -557,9 +568,13 @@ function DishwareBreadcrumbs({
         ref={rootDrop.setNodeRef}
         type="button"
         className={cn(
-          "h-8 shrink-0 rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset",
+          "inline-flex h-8 shrink-0 items-center rounded-lg border-b border-transparent px-1.5 font-medium transition focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset",
           currentFolderId == null ? "text-strong" : "text-default",
-          rootDrop.isOver && "bg-[var(--staffly-control-hover)] ring-2 ring-[var(--staffly-ring)] ring-inset",
+          isDragActive && !rootDropDisabled && "border-b-[var(--staffly-border)] border-dashed",
+          isDragActive && rootDropDisabled && "opacity-60",
+          !isDragActive && "hover:bg-[var(--staffly-control-hover)]",
+          rootDrop.isOver &&
+            "border-b-[var(--staffly-ring)] bg-[var(--staffly-control-hover)] text-strong ring-1 ring-[var(--staffly-ring)] ring-inset",
         )}
         onClick={onOpenRoot}
       >
@@ -570,7 +585,9 @@ function DishwareBreadcrumbs({
           key={folder.id}
           folder={folder}
           isCurrent={index === folderChain.length - 1}
-          disabledDrop={!activeObjectId || blockedFolderIds.has(folder.id)}
+          isDragActive={isDragActive}
+          disabledDrop={!isDragActive || blockedFolderIds.has(folder.id) || folder.id === currentFolderId}
+          isDropCurrentFolder={isDragActive && folder.id === currentFolderId}
           onOpenFolder={onOpenFolder}
         />
       ))}
@@ -581,12 +598,16 @@ function DishwareBreadcrumbs({
 function DishwareBreadcrumbFolder({
   folder,
   isCurrent,
+  isDragActive,
   disabledDrop,
+  isDropCurrentFolder,
   onOpenFolder,
 }: {
   folder: DishwareInventoryFolderDto;
   isCurrent: boolean;
+  isDragActive: boolean;
   disabledDrop: boolean;
+  isDropCurrentFolder: boolean;
   onOpenFolder: (folderId: number) => void;
 }) {
   const drop = useDroppable({ id: folderDropId(folder.id), disabled: disabledDrop });
@@ -598,15 +619,18 @@ function DishwareBreadcrumbFolder({
         ref={drop.setNodeRef}
         type="button"
         className={cn(
-          "h-8 max-w-[12rem] truncate rounded-lg px-1.5 font-medium transition hover:bg-[var(--staffly-control-hover)] focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem]",
+          "inline-flex h-8 max-w-[12rem] shrink-0 items-center rounded-lg border-b border-transparent px-1.5 font-medium transition focus:ring-2 focus:ring-[var(--staffly-ring)] focus:outline-none focus:ring-inset sm:max-w-[18rem]",
           isCurrent ? "text-strong" : "text-default",
-          drop.isOver && "bg-[var(--staffly-control-hover)] ring-2 ring-[var(--staffly-ring)] ring-inset",
-          disabledDrop && "opacity-70",
+          isDragActive && !disabledDrop && "border-b-[var(--staffly-border)] border-dashed",
+          isDragActive && (disabledDrop || isDropCurrentFolder) && "opacity-60",
+          !isDragActive && "hover:bg-[var(--staffly-control-hover)]",
+          drop.isOver &&
+            "border-b-[var(--staffly-ring)] bg-[var(--staffly-control-hover)] text-strong ring-1 ring-[var(--staffly-ring)] ring-inset",
         )}
         onClick={() => onOpenFolder(folder.id)}
         title={folder.name}
       >
-        {folder.name}
+        <span className="truncate">{folder.name}</span>
       </button>
     </span>
   );
@@ -955,35 +979,31 @@ function DishwareDragOverlayCard({ object, width }: { object: DishwareObject | n
   if (!object) return null;
 
   return (
-    <div className="pointer-events-none" style={{ width: width ?? undefined }}>
-      <Card className="bg-surface/95 rounded-[1.25rem] p-3 shadow-2xl ring-1 ring-[var(--staffly-border)] backdrop-blur">
+    <div className="pointer-events-none" style={{ width: getDragOverlayWidth(width) }}>
+      <Card className="bg-surface/95 rounded-2xl p-2.5 shadow-lg ring-1 ring-[var(--staffly-border)] backdrop-blur">
         {object.kind === "folder" ? (
-          <div className="flex min-h-14 items-start gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control-hover)]">
+          <div className="flex min-h-12 items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[color:var(--staffly-control-hover)]">
               <Icon icon={Folder} size="sm" decorative />
             </span>
             <span className="min-w-0">
-              <span className="block text-base font-semibold [overflow-wrap:anywhere]">{object.folder.name}</span>
-              <span className="text-muted mt-1 block text-sm [overflow-wrap:anywhere]">
+              <span className="block truncate text-sm font-semibold">{object.folder.name}</span>
+              <span className="text-muted mt-0.5 block truncate text-xs">
                 {object.folder.description || "Папка"}
               </span>
             </span>
           </div>
         ) : (
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-lg font-semibold [overflow-wrap:anywhere]">{object.inventory.title}</span>
-                <span className={getInventoryStatusBadgeClass(object.inventory.status)}>
-                  {object.inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
-                </span>
+          <div className="flex min-h-12 items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[color:var(--staffly-control-hover)]">
+              <Icon icon={Archive} size="sm" decorative />
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{object.inventory.title}</span>
+              <div className="text-muted mt-0.5 flex min-w-0 items-center gap-2 text-xs">
+                <span>{formatDate(object.inventory.inventoryDate)}</span>
+                <span className="truncate">{object.inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
               </div>
-              <div className="text-muted mt-1 text-sm">Дата: {formatDate(object.inventory.inventoryDate)}</div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 lg:min-w-[300px]">
-              <InventoryMetric label="Позиции" value={object.inventory.itemsCount} />
-              <InventoryMetric label="Потери" value={formatInventoryLossCount(object.inventory.totalLossQty)} />
-              <InventoryMetric label="Сумма" value={formatInventoryLossAmount(object.inventory.totalLossAmount)} />
             </div>
           </div>
         )}
