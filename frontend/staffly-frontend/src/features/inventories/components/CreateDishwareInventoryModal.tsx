@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import Button from "../../../shared/ui/Button";
+import DateFieldInput from "../../../shared/ui/DateFieldInput";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Textarea from "../../../shared/ui/Textarea";
+import { formatDateFromIso, formatDateInput, isValidIsoDate, toIsoDate } from "../../../shared/utils/date";
 import type { CreateDishwareInventoryRequest, DishwareInventorySummaryDto } from "../api";
 
 type Props = {
@@ -52,7 +54,8 @@ export default function CreateDishwareInventoryModal({
   }, [open]);
 
   const hasSourceOptions = sourceOptions.length > 0;
-  const canSubmit = inventoryDate && (mode === "empty" || sourceInventoryId);
+  const normalizedInventoryDate = isValidIsoDate(inventoryDate) ? inventoryDate : (toIsoDate(inventoryDate) ?? "");
+  const canSubmit = Boolean(normalizedInventoryDate && (mode === "empty" || sourceInventoryId));
   const footer = useMemo(
     () => (
       <>
@@ -64,7 +67,7 @@ export default function CreateDishwareInventoryModal({
             if (!canSubmit) return;
             void onSubmit({
               title: title.trim() || null,
-              inventoryDate,
+              inventoryDate: normalizedInventoryDate,
               folderId: initialFolderId,
               sourceInventoryId: mode === "copy" && sourceInventoryId ? Number(sourceInventoryId) : null,
               comment: comment.trim() || null,
@@ -77,7 +80,18 @@ export default function CreateDishwareInventoryModal({
         </Button>
       </>
     ),
-    [canSubmit, comment, initialFolderId, inventoryDate, mode, onClose, onSubmit, sourceInventoryId, submitting, title],
+    [
+      canSubmit,
+      comment,
+      initialFolderId,
+      mode,
+      normalizedInventoryDate,
+      onClose,
+      onSubmit,
+      sourceInventoryId,
+      submitting,
+      title,
+    ],
   );
 
   return (
@@ -122,13 +136,16 @@ export default function CreateDishwareInventoryModal({
           </DropdownSelect>
         )}
 
-        <Input
+        <DateFieldInput
           label="Дата"
           labelClassName="mb-0.5 text-xs font-medium"
-          className="h-9 rounded-xl px-3"
-          type="date"
-          value={inventoryDate}
-          onChange={(event) => setInventoryDate(event.target.value)}
+          inputClassName="h-9 rounded-xl px-3 py-0 pr-10 text-sm"
+          buttonClassName="right-1.5 !h-7 !w-7 rounded-lg border-0 bg-transparent shadow-none hover:bg-[color:var(--staffly-control-hover)] [&_svg]:size-4"
+          value={formatDateFromIso(inventoryDate)}
+          onChange={(event) => setInventoryDate(formatDateInput(event.target.value))}
+          inputProps={{ maxLength: 10 }}
+          nativeValue={normalizedInventoryDate}
+          onNativeChange={(event) => setInventoryDate(event.target.value)}
         />
 
         <Input
