@@ -19,6 +19,7 @@ import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
 import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
+import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
@@ -35,7 +36,6 @@ import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } 
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { hasStartWithoutEndValue } from "../utils/timeValues";
-import { exportScheduleToJpeg, exportScheduleToXlsx } from "../utils/exporters";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
@@ -91,9 +91,6 @@ const SchedulePage: React.FC = () => {
   const [saving, setSaving] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
-  const [downloading, setDownloading] = React.useState<{ id: number; type: "xlsx" | "jpg" } | null>(
-    null
-  );
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
@@ -404,6 +401,21 @@ const SchedulePage: React.FC = () => {
     onRefreshShiftRequests: refreshShiftRequests,
   });
 
+  const handleScheduleExportError = React.useCallback(
+    (message: string) => {
+      clearScheduleNotices();
+      setScheduleError(message);
+    },
+    [clearScheduleNotices]
+  );
+
+  const exportActions = useScheduleExportActions({
+    restaurantId,
+    currentSchedule: schedule,
+    onMessage: setScheduleMessage,
+    onError: handleScheduleExportError,
+  });
+
   const handleCellChange = React.useCallback(
     (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => {
       setSchedule((prev) => {
@@ -540,61 +552,6 @@ const SchedulePage: React.FC = () => {
     setScheduleLoading(false);
     autoTabDoneRef.current = false;
   }, [clearScheduleNotices]);
-
-  const fetchScheduleForActions = React.useCallback(
-    async (id: number) => {
-      if (!restaurantId) {
-        throw new Error("Не выбран ресторан");
-      }
-      if (schedule && schedule.id === id) {
-        return schedule;
-      }
-      return await fetchSchedule(restaurantId, id);
-    },
-    [restaurantId, schedule]
-  );
-
-  const handleDownloadXlsx = React.useCallback(
-    async (id: number) => {
-      if (!restaurantId) {
-        return;
-      }
-      setDownloading({ id, type: "xlsx" });
-      try {
-        const data = await fetchScheduleForActions(id);
-        exportScheduleToXlsx(data);
-      } catch (e: any) {
-        console.error(e);
-        const message = e?.friendlyMessage || "Не удалось скачать график";
-        clearScheduleNotices();
-        setScheduleError(message);
-      } finally {
-        setDownloading((prev) => (prev && prev.id === id ? null : prev));
-      }
-    },
-    [clearScheduleNotices, fetchScheduleForActions, restaurantId]
-  );
-
-  const handleDownloadJpg = React.useCallback(
-    async (id: number) => {
-      if (!restaurantId) {
-        return;
-      }
-      setDownloading({ id, type: "jpg" });
-      try {
-        const data = await fetchScheduleForActions(id);
-        await exportScheduleToJpeg(data);
-      } catch (e: any) {
-        console.error(e);
-        const message = e?.friendlyMessage || "Не удалось скачать график";
-        clearScheduleNotices();
-        setScheduleError(message);
-      } finally {
-        setDownloading((prev) => (prev && prev.id === id ? null : prev));
-      }
-    },
-    [clearScheduleNotices, fetchScheduleForActions, restaurantId]
-  );
 
   const handleEnterEditMode = React.useCallback(() => {
     if (!canManage) return;
@@ -806,11 +763,11 @@ const SchedulePage: React.FC = () => {
           onOpenSavedSchedule={handleOpenSavedSchedule}
           onEditSavedSchedule={handleEditSavedSchedule}
           onDeleteSavedSchedule={handleDeleteSavedSchedule}
-          onDownloadXlsx={handleDownloadXlsx}
-          onDownloadJpg={handleDownloadJpg}
+          onDownloadXlsx={exportActions.downloadXlsx}
+          onDownloadJpg={exportActions.downloadJpg}
           downloadMenuFor={downloadMenuFor}
           onToggleDownloadMenu={setDownloadMenuFor}
-          downloading={downloading}
+          downloading={exportActions.downloading}
           selectedSavedId={selectedSavedId}
           scheduleLoading={scheduleLoading}
           hasPendingSavedSchedules={hasPendingSavedSchedules}
@@ -848,9 +805,9 @@ const SchedulePage: React.FC = () => {
             onOpenOwnerDialog={ownerDialog.openDialog}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
-            downloading={downloading}
-            onDownloadXlsx={handleDownloadXlsx}
-            onDownloadJpg={handleDownloadJpg}
+            downloading={exportActions.downloading}
+            onDownloadXlsx={exportActions.downloadXlsx}
+            onDownloadJpg={exportActions.downloadJpg}
             canCreateShiftRequest={canCreateShiftRequest}
             onOpenReplacement={shiftRequestDialogs.openReplacement}
             onOpenSwap={shiftRequestDialogs.openSwap}
