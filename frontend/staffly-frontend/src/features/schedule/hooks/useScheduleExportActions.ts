@@ -3,13 +3,13 @@ import React from "react";
 import { fetchSchedule } from "../api";
 import type { ScheduleData } from "../types";
 import { exportScheduleToJpeg, exportScheduleToXlsx } from "../utils/exporters";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type DownloadingSchedule = { id: number; type: "xlsx" | "jpg" } | null;
 
 type UseScheduleExportActionsParams = {
   restaurantId: number | null;
   currentSchedule: ScheduleData | null;
-  onMessage: (message: string) => void;
   onError: (message: string) => void;
 };
 
@@ -42,9 +42,9 @@ export default function useScheduleExportActions({
       try {
         const data = await fetchScheduleForActions(id);
         exportScheduleToXlsx(data);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error(e);
-        onError(e?.friendlyMessage || "Не удалось скачать график");
+        onError(getFriendlyScheduleErrorMessage(e, "Не удалось скачать график"));
       } finally {
         setDownloading((prev) => (prev && prev.id === id ? null : prev));
       }
@@ -61,9 +61,9 @@ export default function useScheduleExportActions({
       try {
         const data = await fetchScheduleForActions(id);
         await exportScheduleToJpeg(data);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error(e);
-        onError(e?.friendlyMessage || "Не удалось скачать график");
+        onError(getFriendlyScheduleErrorMessage(e, "Не удалось скачать график"));
       } finally {
         setDownloading((prev) => (prev && prev.id === id ? null : prev));
       }

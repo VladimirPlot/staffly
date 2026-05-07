@@ -1,6 +1,7 @@
 import React from "react";
 
 import { createReplacement, createSwap } from "../api";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type ReplacementPayload = {
   day: string;
@@ -60,8 +61,8 @@ export default function useScheduleShiftRequestDialogs({
         onSuccessMessage("Заявка на замену отправлена");
         setReplacementOpen(false);
         await onRefreshShiftRequests();
-      } catch (e: any) {
-        onErrorMessage(e?.friendlyMessage || "Не удалось создать заявку на замену");
+      } catch (e: unknown) {
+        onErrorMessage(getFriendlyScheduleErrorMessage(e, "Не удалось создать заявку на замену"));
       }
     },
     [onClearScheduleNotices, onErrorMessage, onRefreshShiftRequests, onSuccessMessage, restaurantId, scheduleId],
@@ -76,8 +77,8 @@ export default function useScheduleShiftRequestDialogs({
         onSuccessMessage("Заявка на обмен отправлена");
         setSwapOpen(false);
         await onRefreshShiftRequests();
-      } catch (e: any) {
-        onErrorMessage(e?.friendlyMessage || "Не удалось создать заявку на обмен");
+      } catch (e: unknown) {
+        onErrorMessage(getFriendlyScheduleErrorMessage(e, "Не удалось создать заявку на обмен"));
       }
     },
     [onClearScheduleNotices, onErrorMessage, onRefreshShiftRequests, onSuccessMessage, restaurantId, scheduleId],

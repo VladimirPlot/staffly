@@ -245,7 +245,6 @@ const SchedulePage: React.FC = () => {
   const exportActions = useScheduleExportActions({
     restaurantId,
     currentSchedule: schedule,
-    onMessage: setScheduleMessage,
     onError: handleScheduleExportError,
   });
 
