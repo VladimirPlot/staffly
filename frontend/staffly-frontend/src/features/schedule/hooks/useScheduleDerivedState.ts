@@ -35,18 +35,20 @@ export default function useScheduleDerivedState({
     return members.find((item) => item.userId === userId) ?? null;
   }, [members, userId]);
 
+  const currentMemberId = currentMember?.id ?? null;
+
   const currentMemberInSchedule = React.useMemo(() => {
-    if (!schedule || !currentMember) return false;
-    return schedule.rows.some((row) => row.memberId === currentMember.id);
-  }, [currentMember, schedule]);
+    if (!schedule || currentMemberId == null) return false;
+    return schedule.rows.some((row) => row.memberId === currentMemberId);
+  }, [currentMemberId, schedule]);
 
   const hasMyShift = React.useMemo(() => {
-    if (!schedule || !currentMember || !currentMemberInSchedule) return false;
+    if (!schedule || currentMemberId == null || !currentMemberInSchedule) return false;
     return schedule.days.some((day) => {
-      const value = schedule.cellValues[`${currentMember.id}:${day.date}`];
+      const value = schedule.cellValues[`${currentMemberId}:${day.date}`];
       return Boolean(value && value.trim());
     });
-  }, [currentMember, currentMemberInSchedule, schedule]);
+  }, [currentMemberId, currentMemberInSchedule, schedule]);
 
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;
@@ -56,8 +58,8 @@ export default function useScheduleDerivedState({
   }, [schedule]);
 
   const canCreateShiftRequest = React.useMemo(
-    () => Boolean(schedule && scheduleId && currentMember && currentMemberInSchedule && hasMyShift),
-    [currentMember, currentMemberInSchedule, hasMyShift, schedule, scheduleId],
+    () => Boolean(schedule && scheduleId && currentMemberId != null && currentMemberInSchedule && hasMyShift),
+    [currentMemberId, currentMemberInSchedule, hasMyShift, schedule, scheduleId],
   );
 
   const hasPendingSavedSchedules = React.useMemo(

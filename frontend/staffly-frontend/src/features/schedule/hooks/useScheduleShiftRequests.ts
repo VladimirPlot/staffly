@@ -39,6 +39,8 @@ export default function useScheduleShiftRequests({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const currentMemberId = currentMember?.id ?? null;
+
   const load = React.useCallback(
     async (targetScheduleId?: number | null) => {
       const scheduleForLoad = targetScheduleId ?? scheduleId;
@@ -91,11 +93,11 @@ export default function useScheduleShiftRequests({
 
   const canCancelOwnRequest = React.useCallback(
     (request: ShiftRequestDto) => {
-      if (!currentMember) return false;
+      if (currentMemberId == null) return false;
       if (request.status !== "PENDING_MANAGER") return false;
-      return request.fromMember.id === currentMember.id;
+      return request.fromMember.id === currentMemberId;
     },
-    [currentMember],
+    [currentMemberId],
   );
 
   const decide = React.useCallback(
@@ -142,13 +144,13 @@ export default function useScheduleShiftRequests({
 
   const sortedRequests = React.useMemo(() => {
     let nextRequests = [...requests];
-    if (!canManage && currentMember) {
+    if (!canManage && currentMemberId != null) {
       nextRequests = nextRequests.filter(
-        (request) => request.fromMember.id === currentMember.id || request.toMember.id === currentMember.id,
+        (request) => request.fromMember.id === currentMemberId || request.toMember.id === currentMemberId,
       );
     }
     return nextRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [canManage, currentMember, requests]);
+  }, [canManage, currentMemberId, requests]);
 
   return {
     requests,
