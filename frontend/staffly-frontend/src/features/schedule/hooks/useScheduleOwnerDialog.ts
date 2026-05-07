@@ -2,6 +2,7 @@ import React from "react";
 
 import { changeScheduleOwner, getScheduleOwnerCandidates } from "../api";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseScheduleOwnerDialogParams = {
   restaurantId: number | null;
@@ -72,8 +73,8 @@ export default function useScheduleOwnerDialog({
         (candidate) => candidate.userId != null && candidate.userId !== currentOwnerUserId
       );
       setSelectedOwnerUserId(firstAvailable?.userId ?? null);
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось загрузить кандидатов для смены ответственного");
+    } catch (e: unknown) {
+      setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить кандидатов для смены ответственного"));
     } finally {
       setLoading(false);
     }
@@ -95,8 +96,8 @@ export default function useScheduleOwnerDialog({
       setOpen(false);
       setCandidates([]);
       setSelectedOwnerUserId(null);
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось сменить ответственного");
+    } catch (e: unknown) {
+      setError(getFriendlyScheduleErrorMessage(e, "Не удалось сменить ответственного"));
     } finally {
       setSaving(false);
     }

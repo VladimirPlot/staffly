@@ -8,6 +8,7 @@ import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 import { hasStartWithoutEndValue } from "../utils/timeValues";
 import type { MemberDto } from "../../employees/api";
 import type { PositionDto } from "../../dictionaries/api";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type ScheduleRange = { start: string; end: string } | null;
 
@@ -210,8 +211,8 @@ export default function useScheduleDraftActions({
       onSavedSchedulesChanged(savedList);
       await loadShiftRequests(saved.id ?? undefined);
       onScheduleMessage(schedule.id ? "График обновлён" : "График сохранён");
-    } catch (e: any) {
-      onScheduleError(e?.friendlyMessage || "Не удалось сохранить график");
+    } catch (e: unknown) {
+      onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось сохранить график"));
     } finally {
       setSaving(false);
     }

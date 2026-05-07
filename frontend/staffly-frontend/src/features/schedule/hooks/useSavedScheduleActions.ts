@@ -2,6 +2,7 @@ import React from "react";
 
 import { deleteSchedule, fetchSchedule, listSavedSchedules, type ScheduleSummary } from "../api";
 import type { ScheduleData } from "../types";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type ScheduleRange = { start: string; end: string } | null;
 
@@ -68,8 +69,8 @@ export default function useSavedScheduleActions({
         onScheduleChanged(prepared);
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
-      } catch (e: any) {
-        onScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
+      } catch (e: unknown) {
+        onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить график"));
       } finally {
         setScheduleLoading(false);
       }
@@ -119,8 +120,8 @@ export default function useSavedScheduleActions({
         onScheduleChanged(prepared);
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
-      } catch (e: any) {
-        onScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
+      } catch (e: unknown) {
+        onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить график"));
       } finally {
         setScheduleLoading(false);
       }
@@ -158,8 +159,8 @@ export default function useSavedScheduleActions({
           onScheduleReadOnlyChanged(false);
         }
         onScheduleMessage("График удалён");
-      } catch (e: any) {
-        onScheduleError(e?.friendlyMessage || "Не удалось удалить график");
+      } catch (e: unknown) {
+        onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось удалить график"));
       } finally {
         setDeletingId(null);
       }

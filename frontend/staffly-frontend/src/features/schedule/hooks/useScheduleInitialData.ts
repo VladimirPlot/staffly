@@ -4,6 +4,7 @@ import { listSavedSchedules, type ScheduleSummary } from "../api";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseScheduleInitialDataParams = {
   restaurantId: number | null;
@@ -65,9 +66,9 @@ export default function useScheduleInitialData({
         setPositions(posList);
         setMembers(memList);
         setSavedSchedules(savedList);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive) return;
-        setError(e?.friendlyMessage || "Не удалось загрузить данные");
+        setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить данные"));
         setMyRole(null);
         setPositions([]);
         setMembers([]);

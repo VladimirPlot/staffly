@@ -7,18 +7,43 @@ import {
 import type { MemberDto } from "../api";
 import { displayNameOf } from "../utils/memberUtils";
 
-function getFriendlyMessage(error: any, fallback: string): string {
-  return (
-    error?.friendlyMessage ||
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
-  );
+type FriendlyError = {
+  friendlyMessage?: unknown;
+  message?: unknown;
+  response?: {
+    status?: unknown;
+    data?: {
+      message?: unknown;
+      error?: unknown;
+    };
+  };
+};
+
+function asFriendlyError(error: unknown): FriendlyError {
+  return typeof error === "object" && error != null ? (error as FriendlyError) : {};
 }
 
-export function isScheduleOwnershipConflict(error: any): boolean {
-  const status = error?.response?.status;
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function getFriendlyMessage(error: unknown, fallback: string): string {
+  const maybeError = asFriendlyError(error);
+  return firstString(
+    maybeError.friendlyMessage,
+    maybeError.response?.data?.message,
+    maybeError.response?.data?.error,
+    maybeError.message,
+  ) ?? fallback;
+}
+
+export function isScheduleOwnershipConflict(error: unknown): boolean {
+  const status = asFriendlyError(error).response?.status;
   const message = getFriendlyMessage(error, "").toLocaleLowerCase("ru-RU");
 
   return status === 409 && message.includes("ответственным за активные или будущие графики");
@@ -122,7 +147,7 @@ export function useMemberRemoval({
           return acc;
         }, {}),
       );
-    } catch (e: any) {
+    } catch (e: unknown) {
       setReassignmentError(getFriendlyMessage(e, "Не удалось загрузить графики для переназначения"));
     } finally {
       setReassignmentLoading(false);
@@ -142,7 +167,7 @@ export function useMemberRemoval({
       setReassignmentOptions([]);
       setReassignmentSelections({});
       setReassignmentError(null);
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (handleScheduleConflict && isScheduleOwnershipConflict(e)) {
         await openScheduleReassignment(member);
       } else if (handleScheduleConflict) {
@@ -187,7 +212,7 @@ export function useMemberRemoval({
     try {
       await reassignScheduleOwners(restaurantId, pendingReassignmentMember.userId, payload);
       await runRemove(pendingReassignmentMember, false);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setReassignmentError(getFriendlyMessage(e, "Не удалось переназначить ответственных"));
     } finally {
       setReassignmentSaving(false);

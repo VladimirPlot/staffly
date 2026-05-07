@@ -11,6 +11,7 @@ import {
 } from "../api";
 import type { MemberDto } from "../../employees/api";
 import type { ScheduleData } from "../types";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseScheduleShiftRequestsParams = {
   restaurantId: number | null;
@@ -56,8 +57,8 @@ export default function useScheduleShiftRequests({
       try {
         const data = await listShiftRequests(restaurantId, scheduleForLoad);
         setRequests(data);
-      } catch (e: any) {
-        setError(e?.friendlyMessage || "Не удалось загрузить заявки");
+      } catch (e: unknown) {
+        setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить заявки"));
         setRequests([]);
       } finally {
         setLoading(false);
@@ -110,8 +111,8 @@ export default function useScheduleShiftRequests({
         onScheduleUpdated(updatedSchedule);
         await load(scheduleId);
         onSuccessMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
-      } catch (e: any) {
-        onErrorMessage(e?.friendlyMessage || "Не удалось обработать заявку");
+      } catch (e: unknown) {
+        onErrorMessage(getFriendlyScheduleErrorMessage(e, "Не удалось обработать заявку"));
       }
     },
     [load, onClearScheduleNotices, onErrorMessage, onScheduleUpdated, onSuccessMessage, restaurantId, scheduleId],
@@ -127,8 +128,8 @@ export default function useScheduleShiftRequests({
         const savedList = await listSavedSchedules(restaurantId);
         onSavedSchedulesUpdated(savedList);
         onSuccessMessage("Заявка отменена");
-      } catch (e: any) {
-        onErrorMessage(e?.friendlyMessage || "Не удалось отменить заявку");
+      } catch (e: unknown) {
+        onErrorMessage(getFriendlyScheduleErrorMessage(e, "Не удалось отменить заявку"));
       }
     },
     [
@@ -145,9 +146,7 @@ export default function useScheduleShiftRequests({
   const sortedRequests = React.useMemo(() => {
     let nextRequests = [...requests];
     if (!canManage && currentMemberId != null) {
-      nextRequests = nextRequests.filter(
-        (request) => request.fromMember.id === currentMemberId || request.toMember.id === currentMemberId,
-      );
+      nextRequests = nextRequests.filter((request) => request.fromMember.id === currentMemberId);
     }
     return nextRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [canManage, currentMemberId, requests]);
