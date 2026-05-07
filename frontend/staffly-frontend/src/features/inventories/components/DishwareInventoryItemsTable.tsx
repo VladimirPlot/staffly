@@ -1,5 +1,6 @@
 import { ImagePlus, MoreVertical, Pencil, StickyNote, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 
 import { cn } from "../../../shared/lib/cn";
 import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavigation";
@@ -124,12 +125,73 @@ function PhotoAction({
   );
 }
 
+function NumericCell<TValue extends number | null>({
+  value,
+  disabled,
+  inputMode,
+  placeholder,
+  cellId,
+  rowIndex,
+  colIndex,
+  registerCellRef,
+  onCellKeyDown,
+  formatValue,
+  parseValue,
+  onCommit,
+}: {
+  value: TValue;
+  disabled: boolean;
+  inputMode: "numeric" | "decimal";
+  placeholder?: string;
+  cellId: string;
+  rowIndex: number;
+  colIndex: number;
+  registerCellRef: (cellId: string) => (el: HTMLElement | null) => void;
+  onCellKeyDown: (event: KeyboardEvent<HTMLElement>, cell: { rowIndex: number; colIndex: number; cellId: string }) => void;
+  formatValue: (value: TValue) => string;
+  parseValue: (value: string) => TValue;
+  onCommit: (value: TValue) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [localValue, setLocalValue] = useState(() => formatValue(value));
+
+  useEffect(() => {
+    if (!focused) {
+      setLocalValue(formatValue(value));
+    }
+  }, [focused, formatValue, value]);
+
+  const commitValue = () => {
+    const parsed = parseValue(localValue);
+    setFocused(false);
+    setLocalValue(formatValue(parsed));
+    onCommit(parsed);
+  };
+
+  return (
+    <input
+      className={numericCellInputClassName}
+      type="text"
+      inputMode={inputMode}
+      value={localValue}
+      disabled={disabled}
+      placeholder={placeholder}
+      ref={registerCellRef(cellId)}
+      onFocus={() => setFocused(true)}
+      onBlur={commitValue}
+      onKeyDown={(event) => onCellKeyDown(event, { rowIndex, colIndex, cellId })}
+      onChange={(event) => setLocalValue(event.target.value)}
+    />
+  );
+}
+
 function PhotoCell({
   item,
   index,
   uploading,
   readOnly,
-  scrollVersion,
+  photoMenuOpen,
+  onPhotoMenuOpenChange,
   onUploadImage,
   onDeleteImage,
 }: {
@@ -137,22 +199,15 @@ function PhotoCell({
   index: number;
   uploading: boolean;
   readOnly: boolean;
-  scrollVersion: number;
+  photoMenuOpen: boolean;
+  onPhotoMenuOpenChange: (open: boolean) => void;
   onUploadImage: (itemId: number, file: File) => void;
   onDeleteImage: (itemId: number) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const photoMenuAnchorRef = useRef<HTMLSpanElement | null>(null);
-  const lastScrollVersionRef = useRef(scrollVersion);
-  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const hasPhoto = Boolean(item.photoUrl);
   const canChangePhoto = Boolean(item.id) && !readOnly && !uploading;
-
-  useEffect(() => {
-    if (lastScrollVersionRef.current === scrollVersion) return;
-    lastScrollVersionRef.current = scrollVersion;
-    setPhotoMenuOpen(false);
-  }, [scrollVersion]);
 
   const openFilePicker = () => {
     if (!canChangePhoto) return;
@@ -201,7 +256,7 @@ function PhotoCell({
       {canChangePhoto && hasPhoto ? (
         <DropdownMenu
           open={photoMenuOpen}
-          onOpenChange={setPhotoMenuOpen}
+          onOpenChange={onPhotoMenuOpenChange}
           positionAnchorRef={photoMenuAnchorRef}
           menuClassName="w-52"
           mobileSheetTitle={item.name.trim() || `Позиция ${index + 1}`}
@@ -349,7 +404,7 @@ export default function DishwareInventoryItemsTable({
   onDeleteImage,
 }: DishwareInventoryItemsTableProps) {
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
-  const [tableScrollVersion, setTableScrollVersion] = useState(0);
+  const [openPhotoMenuItemId, setOpenPhotoMenuItemId] = useState<string | null>(null);
   const noteItem = useMemo(() => items.find((item) => item.clientId === noteItemId) ?? null, [items, noteItemId]);
   const navigation = useGridNavigation({
     rows: items,
@@ -376,7 +431,11 @@ export default function DishwareInventoryItemsTable({
       <div className="border-subtle bg-surface overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
         <div
           className="max-h-[calc(100vh-320px)] overflow-auto"
-          onScroll={() => setTableScrollVersion((value) => value + 1)}
+          onScroll={() => {
+            if (openPhotoMenuItemId) {
+              setOpenPhotoMenuItemId(null);
+            }
+          }}
         >
           <table className="w-full min-w-[1260px] table-fixed border-separate border-spacing-0 text-sm">
             <thead>
@@ -428,7 +487,8 @@ export default function DishwareInventoryItemsTable({
                         index={rowIndex}
                         uploading={uploadingItemId === item.id}
                         readOnly={readOnly}
-                        scrollVersion={tableScrollVersion}
+                        photoMenuOpen={openPhotoMenuItemId === item.clientId}
+                        onPhotoMenuOpenChange={(open) => setOpenPhotoMenuItemId(open ? item.clientId : null)}
                         onUploadImage={onUploadImage}
                         onDeleteImage={onDeleteImage}
                       />
@@ -453,86 +513,64 @@ export default function DishwareInventoryItemsTable({
                       </div>
                     </td>
                     <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <input
-                        className={numericCellInputClassName}
-                        type="text"
+                      <NumericCell
                         inputMode="numeric"
-                        value={formatDishwareCountInputValue(item.previousQty)}
                         disabled={readOnly}
-                        ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[1]))}
-                        onKeyDown={(event) =>
-                          navigation.onCellKeyDown(event, {
-                            rowIndex,
-                            colIndex: 1,
-                            cellId: getCellId(item, EDITABLE_COLUMNS[1]),
-                          })
-                        }
-                        onChange={(event) =>
-                          onChange(item.clientId, { previousQty: parseDishwareCountInput(event.target.value) })
-                        }
+                        value={item.previousQty}
+                        cellId={getCellId(item, EDITABLE_COLUMNS[1])}
+                        rowIndex={rowIndex}
+                        colIndex={1}
+                        registerCellRef={navigation.registerCellRef}
+                        onCellKeyDown={navigation.onCellKeyDown}
+                        formatValue={formatDishwareCountInputValue}
+                        parseValue={parseDishwareCountInput}
+                        onCommit={(previousQty) => onChange(item.clientId, { previousQty })}
                       />
                     </td>
                     <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <input
-                        className={numericCellInputClassName}
-                        type="text"
+                      <NumericCell
                         inputMode="numeric"
-                        value={formatDishwareCountInputValue(item.incomingQty)}
                         disabled={readOnly}
-                        ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[2]))}
-                        onKeyDown={(event) =>
-                          navigation.onCellKeyDown(event, {
-                            rowIndex,
-                            colIndex: 2,
-                            cellId: getCellId(item, EDITABLE_COLUMNS[2]),
-                          })
-                        }
-                        onChange={(event) =>
-                          onChange(item.clientId, { incomingQty: parseDishwareCountInput(event.target.value) })
-                        }
+                        value={item.incomingQty}
+                        cellId={getCellId(item, EDITABLE_COLUMNS[2])}
+                        rowIndex={rowIndex}
+                        colIndex={2}
+                        registerCellRef={navigation.registerCellRef}
+                        onCellKeyDown={navigation.onCellKeyDown}
+                        formatValue={formatDishwareCountInputValue}
+                        parseValue={parseDishwareCountInput}
+                        onCommit={(incomingQty) => onChange(item.clientId, { incomingQty })}
                       />
                     </td>
                     <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <input
-                        className={numericCellInputClassName}
-                        type="text"
+                      <NumericCell
                         inputMode="numeric"
-                        value={formatDishwareCountInputValue(item.currentQty)}
                         disabled={readOnly}
-                        ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[3]))}
-                        onKeyDown={(event) =>
-                          navigation.onCellKeyDown(event, {
-                            rowIndex,
-                            colIndex: 3,
-                            cellId: getCellId(item, EDITABLE_COLUMNS[3]),
-                          })
-                        }
-                        onChange={(event) =>
-                          onChange(item.clientId, { currentQty: parseDishwareCountInput(event.target.value) })
-                        }
+                        value={item.currentQty}
+                        cellId={getCellId(item, EDITABLE_COLUMNS[3])}
+                        rowIndex={rowIndex}
+                        colIndex={3}
+                        registerCellRef={navigation.registerCellRef}
+                        onCellKeyDown={navigation.onCellKeyDown}
+                        formatValue={formatDishwareCountInputValue}
+                        parseValue={parseDishwareCountInput}
+                        onCommit={(currentQty) => onChange(item.clientId, { currentQty })}
                       />
                     </td>
                     <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <input
-                        className={numericCellInputClassName}
-                        type="text"
+                      <NumericCell
                         inputMode="decimal"
-                        value={formatDishwareMoneyInputValue(item.unitPrice)}
                         disabled={readOnly}
                         placeholder="0,00"
-                        ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[4]))}
-                        onKeyDown={(event) =>
-                          navigation.onCellKeyDown(event, {
-                            rowIndex,
-                            colIndex: 4,
-                            cellId: getCellId(item, EDITABLE_COLUMNS[4]),
-                          })
-                        }
-                        onChange={(event) =>
-                          onChange(item.clientId, {
-                            unitPrice: parseDishwareMoneyInput(event.target.value),
-                          })
-                        }
+                        value={item.unitPrice ?? null}
+                        cellId={getCellId(item, EDITABLE_COLUMNS[4])}
+                        rowIndex={rowIndex}
+                        colIndex={4}
+                        registerCellRef={navigation.registerCellRef}
+                        onCellKeyDown={navigation.onCellKeyDown}
+                        formatValue={formatDishwareMoneyInputValue}
+                        parseValue={parseDishwareMoneyInput}
+                        onCommit={(unitPrice) => onChange(item.clientId, { unitPrice })}
                       />
                     </td>
                     <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">

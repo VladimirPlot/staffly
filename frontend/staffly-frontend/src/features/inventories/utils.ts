@@ -135,11 +135,25 @@ export function clampDishwareCount(value: number | null | undefined): number {
   return Math.min(Math.max(Math.trunc(value), 0), DISHWARE_COUNT_MAX);
 }
 
+export function normalizeDishwareCount(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(Math.trunc(value), 0);
+}
+
 export function clampDishwareMoney(value: number | null | undefined): number | null {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return null;
   }
   return Math.min(Math.max(Math.round(value * 100) / 100, 0), DISHWARE_MONEY_MAX);
+}
+
+export function normalizeDishwareMoney(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(Math.round(value * 100) / 100, 0);
 }
 
 export function parseDishwareCountInput(value: string): number {
@@ -157,13 +171,13 @@ export function parseDishwareMoneyInput(value: string): number | null {
 }
 
 export function formatDishwareCountInputValue(value: number | null | undefined) {
-  return String(clampDishwareCount(value));
+  return String(normalizeDishwareCount(value));
 }
 
 export function formatDishwareMoneyInputValue(value: number | null | undefined) {
-  const clamped = clampDishwareMoney(value);
-  if (clamped === null) return "";
-  return String(clamped);
+  const normalized = normalizeDishwareMoney(value);
+  if (normalized === null) return "";
+  return String(normalized);
 }
 
 export function computeDishwareItemMetrics(item: {
@@ -173,18 +187,20 @@ export function computeDishwareItemMetrics(item: {
   unitPrice?: string | number | null;
 }) {
   const previousQty =
-    typeof item.previousQty === "number" ? clampDishwareCount(item.previousQty) : parseDishwareCountInput(item.previousQty);
+    typeof item.previousQty === "number"
+      ? normalizeDishwareCount(item.previousQty)
+      : parseDishwareCountInput(item.previousQty);
   const incomingQty =
     typeof item.incomingQty === "number"
-      ? clampDishwareCount(item.incomingQty)
+      ? normalizeDishwareCount(item.incomingQty)
       : item.incomingQty === null || item.incomingQty === undefined
         ? 0
         : parseDishwareCountInput(item.incomingQty);
   const currentQty =
-    typeof item.currentQty === "number" ? clampDishwareCount(item.currentQty) : parseDishwareCountInput(item.currentQty);
+    typeof item.currentQty === "number" ? normalizeDishwareCount(item.currentQty) : parseDishwareCountInput(item.currentQty);
   const unitPrice =
     typeof item.unitPrice === "number"
-      ? clampDishwareMoney(item.unitPrice)
+      ? normalizeDishwareMoney(item.unitPrice)
       : item.unitPrice === null || item.unitPrice === undefined
         ? null
         : parseDishwareMoneyInput(item.unitPrice);
