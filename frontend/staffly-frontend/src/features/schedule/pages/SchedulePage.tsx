@@ -20,16 +20,16 @@ import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import useSavedScheduleActions from "../hooks/useSavedScheduleActions";
+import useScheduleCellEditing from "../hooks/useScheduleCellEditing";
 import useScheduleDraftActions from "../hooks/useScheduleDraftActions";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import { listSavedSchedules, type ScheduleSummary } from "../api";
-import type { ScheduleData, ScheduleCellKey, ScheduleOwnerDto } from "../types";
+import type { ScheduleData, ScheduleOwnerDto } from "../types";
 import { monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap } from "../utils/names";
-import { normalizeCellValue } from "../utils/cellFormatting";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
@@ -294,23 +294,9 @@ const SchedulePage: React.FC = () => {
     onError: handleScheduleExportError,
   });
 
-  const handleCellChange = React.useCallback((key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => {
-    setSchedule((prev) => {
-      if (!prev) return prev;
-      const nextValues = { ...prev.cellValues };
-      if (options?.commit) {
-        const normalized = normalizeCellValue(value, prev.config.shiftMode);
-        if (!normalized) {
-          delete nextValues[key];
-        } else {
-          nextValues[key] = normalized;
-        }
-      } else {
-        nextValues[key] = value;
-      }
-      return { ...prev, cellValues: nextValues };
-    });
-  }, []);
+  const cellEditing = useScheduleCellEditing({
+    onScheduleChanged: setSchedule,
+  });
 
   const resetAutoTab = React.useCallback(() => {
     autoTabDoneRef.current = false;
@@ -591,7 +577,7 @@ const SchedulePage: React.FC = () => {
               scheduleLoading={savedScheduleActions.scheduleLoading}
               onCancelEdit={handleCancelEdit}
               onSave={draftActions.saveSchedule}
-              onCellChange={handleCellChange}
+              onCellChange={cellEditing.changeCell}
             />
           )}
 
