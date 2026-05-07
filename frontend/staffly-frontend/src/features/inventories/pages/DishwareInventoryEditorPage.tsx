@@ -25,7 +25,7 @@ import {
   uploadDishwareItemImage,
   type DishwareInventoryDto,
 } from "../api";
-import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
+import { clampDishwareCount, clampDishwareMoney, computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
 
 type EditableDishwareItem = DishwareInventoryTableItem & { sortOrder?: number };
 
@@ -39,10 +39,10 @@ function toEditableItems(inventory: DishwareInventoryDto): EditableDishwareItem[
     id: item.id,
     name: item.name,
     photoUrl: item.photoUrl ?? null,
-    previousQty: item.previousQty,
-    incomingQty: item.incomingQty ?? 0,
-    currentQty: item.currentQty,
-    unitPrice: item.unitPrice ?? null,
+    previousQty: clampDishwareCount(item.previousQty),
+    incomingQty: clampDishwareCount(item.incomingQty ?? 0),
+    currentQty: clampDishwareCount(item.currentQty),
+    unitPrice: clampDishwareMoney(item.unitPrice ?? null),
     sortOrder: item.sortOrder ?? index,
     note: item.note ?? null,
   }));
@@ -167,10 +167,10 @@ function AuthorizedDishwareInventoryEditorPage() {
       items: items.map((item, index) => ({
         id: item.id,
         name: item.name,
-        previousQty: Number(item.previousQty) || 0,
-        incomingQty: Number(item.incomingQty) || 0,
-        currentQty: Number(item.currentQty) || 0,
-        unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
+        previousQty: clampDishwareCount(item.previousQty),
+        incomingQty: clampDishwareCount(item.incomingQty),
+        currentQty: clampDishwareCount(item.currentQty),
+        unitPrice: clampDishwareMoney(item.unitPrice ?? null),
         sortOrder: index,
         note: item.note ?? null,
       })),

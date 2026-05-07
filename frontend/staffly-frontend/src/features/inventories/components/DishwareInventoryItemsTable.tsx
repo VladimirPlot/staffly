@@ -1,5 +1,5 @@
 import { ImagePlus, MoreVertical, Pencil, StickyNote, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "../../../shared/lib/cn";
 import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavigation";
@@ -11,9 +11,15 @@ import Modal from "../../../shared/ui/Modal";
 import Textarea from "../../../shared/ui/Textarea";
 import {
   computeDishwareItemMetrics,
+  formatCompactInventoryMoney,
+  formatCompactInventoryNumber,
+  formatDishwareCountInputValue,
+  formatDishwareMoneyInputValue,
   formatInventoryCount,
   formatInventoryLossAmount,
   formatInventoryLossCount,
+  parseDishwareCountInput,
+  parseDishwareMoneyInput,
 } from "../utils";
 
 export type DishwareInventoryTableItem = {
@@ -55,12 +61,9 @@ const EDITABLE_COLUMNS: EditableColumn[] = [
 ];
 
 const cellInputClassName =
-  "h-10 w-full min-w-0 rounded-none border-0 bg-transparent px-2.5 text-[16px] outline-none transition focus:bg-[color:var(--staffly-surface)] focus:ring-2 focus:ring-[var(--staffly-ring)] disabled:cursor-default disabled:opacity-100";
+  "h-10 w-full min-w-0 rounded-lg border border-transparent bg-transparent px-2.5 text-[16px] outline-none transition focus:border-[color:var(--staffly-border)] focus:bg-[color:var(--staffly-surface)] focus:ring-2 focus:ring-inset focus:ring-[var(--staffly-ring)] disabled:cursor-default disabled:opacity-100";
 
-function parseNonNegativeNumber(value: string): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
+const numericCellInputClassName = cn(cellInputClassName, "overflow-hidden text-right tabular-nums whitespace-nowrap");
 
 function getCellId(item: DishwareInventoryTableItem, column: EditableColumn) {
   return `${item.clientId}:${column.id}`;
@@ -70,23 +73,26 @@ function InfoPill({
   label,
   value,
   tone = "default",
+  title,
 }: {
   label: string;
   value: string;
   tone?: "default" | "loss" | "gain";
+  title?: string;
 }) {
   return (
     <span
+      title={title ?? `${label} ${value}`}
       className={cn(
-        "inline-flex min-h-6 items-center gap-1 rounded-lg border px-1.5 text-[11px] font-medium tabular-nums",
+        "inline-flex min-h-6 max-w-full min-w-0 items-center gap-1 rounded-lg border px-1.5 text-[11px] font-medium tabular-nums",
         tone === "default" && "border-subtle text-default bg-[color:var(--staffly-control)]",
         tone === "loss" && "border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/20",
         tone === "gain" &&
           "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20",
       )}
     >
-      <span className="text-muted font-normal">{label}</span>
-      <span>{value}</span>
+      <span className="text-muted shrink-0 font-normal">{label}</span>
+      <span className="min-w-0 truncate">{value}</span>
     </span>
   );
 }
@@ -123,6 +129,7 @@ function PhotoCell({
   index,
   uploading,
   readOnly,
+  scrollVersion,
   onUploadImage,
   onDeleteImage,
 }: {
@@ -130,12 +137,22 @@ function PhotoCell({
   index: number;
   uploading: boolean;
   readOnly: boolean;
+  scrollVersion: number;
   onUploadImage: (itemId: number, file: File) => void;
   onDeleteImage: (itemId: number) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const photoMenuAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const lastScrollVersionRef = useRef(scrollVersion);
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const hasPhoto = Boolean(item.photoUrl);
   const canChangePhoto = Boolean(item.id) && !readOnly && !uploading;
+
+  useEffect(() => {
+    if (lastScrollVersionRef.current === scrollVersion) return;
+    lastScrollVersionRef.current = scrollVersion;
+    setPhotoMenuOpen(false);
+  }, [scrollVersion]);
 
   const openFilePicker = () => {
     if (!canChangePhoto) return;
@@ -143,7 +160,7 @@ function PhotoCell({
   };
 
   return (
-    <div className="relative flex min-h-14 items-center justify-center px-1 py-1 sm:px-2">
+    <div className="relative flex min-h-[80px] items-center justify-center px-1.5 py-1.5 sm:min-h-[82px] sm:px-2">
       <input
         ref={fileInputRef}
         type="file"
@@ -158,7 +175,7 @@ function PhotoCell({
       />
 
       {hasPhoto ? (
-        <div className="border-subtle bg-app relative h-11 w-11 overflow-hidden rounded-xl border">
+        <div className="border-subtle bg-app relative h-14 w-14 overflow-hidden rounded-xl border sm:h-16 sm:w-16">
           <img
             src={item.photoUrl!}
             alt={item.name.trim() || `Фото позиции ${index + 1}`}
@@ -169,7 +186,7 @@ function PhotoCell({
         <button
           type="button"
           className={cn(
-            "border-subtle bg-app text-muted flex h-11 w-11 items-center justify-center rounded-xl border transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]",
+            "border-subtle bg-app text-muted flex h-14 w-14 items-center justify-center rounded-xl border transition outline-none focus:ring-2 focus:ring-[var(--staffly-ring)]",
             canChangePhoto ? "hover:bg-[color:var(--staffly-control-hover)]" : "cursor-default opacity-75",
           )}
           disabled={!canChangePhoto}
@@ -183,20 +200,25 @@ function PhotoCell({
 
       {canChangePhoto && hasPhoto ? (
         <DropdownMenu
+          open={photoMenuOpen}
+          onOpenChange={setPhotoMenuOpen}
+          positionAnchorRef={photoMenuAnchorRef}
           menuClassName="w-52"
           mobileSheetTitle={item.name.trim() || `Позиция ${index + 1}`}
           mobileSheetSubtitle="Фото позиции"
           triggerWrapperClassName="absolute top-1 right-1 inline-flex"
           trigger={(triggerProps) => (
-            <IconButton
-              variant="unstyled"
-              className="border-subtle bg-surface/95 text-default hover:bg-app h-11 w-11 border shadow-sm backdrop-blur sm:h-9 sm:w-9"
-              title="Действия с фото"
-              aria-label={`Действия с фото позиции ${index + 1}`}
-              {...triggerProps}
-            >
-              <Icon icon={MoreVertical} size="xs" decorative />
-            </IconButton>
+            <span ref={photoMenuAnchorRef} className="inline-flex">
+              <IconButton
+                variant="unstyled"
+                className="border-subtle bg-surface/95 text-default hover:bg-app h-10 w-10 border shadow-sm backdrop-blur"
+                title="Действия с фото"
+                aria-label={`Действия с фото позиции ${index + 1}`}
+                {...triggerProps}
+              >
+                <Icon icon={MoreVertical} size="xs" decorative />
+              </IconButton>
+            </span>
           )}
         >
           {({ close, isMobile }) => (
@@ -250,24 +272,37 @@ function InfoCell({
   const metrics = computeDishwareItemMetrics(item);
   const hasNote = Boolean(item.note?.trim());
   const diffTone = metrics.diff < 0 ? "loss" : metrics.diff > 0 ? "gain" : "default";
-  const diffValue =
+  const diffTitle =
     metrics.diff < 0
       ? formatInventoryLossCount(metrics.diff)
       : metrics.diff > 0
         ? `+${formatInventoryCount(metrics.diff)}`
         : "0";
+  const diffValue =
+    metrics.diff < 0
+      ? formatCompactInventoryNumber(metrics.diff)
+      : metrics.diff > 0
+        ? `+${formatCompactInventoryNumber(metrics.diff)}`
+        : "0";
   const diffLabel = metrics.diff < 0 ? "недостача" : metrics.diff > 0 ? "излишек" : "ровно";
+  const lossAmountTitle = formatInventoryLossAmount(metrics.lossAmount);
+  const expectedTitle = formatInventoryCount(metrics.expectedQty);
 
   return (
     <div className="flex min-h-14 min-w-0 flex-col justify-center gap-1 px-2 py-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <InfoPill label={diffLabel} value={diffValue} tone={diffTone} />
+        <InfoPill label={diffLabel} value={diffValue} tone={diffTone} title={`${diffLabel} ${diffTitle}`} />
         <InfoPill
           label="потери"
-          value={formatInventoryLossAmount(metrics.lossAmount)}
+          value={formatCompactInventoryMoney(metrics.lossAmount)}
           tone={metrics.lossAmount > 0 ? "loss" : "default"}
+          title={`потери ${lossAmountTitle}`}
         />
-        <InfoPill label="ожид." value={formatInventoryCount(metrics.expectedQty)} />
+        <InfoPill
+          label="ожид."
+          value={formatCompactInventoryNumber(metrics.expectedQty)}
+          title={`ожид. ${expectedTitle}`}
+        />
       </div>
       <div className="flex items-center justify-between gap-2">
         <button
@@ -314,6 +349,7 @@ export default function DishwareInventoryItemsTable({
   onDeleteImage,
 }: DishwareInventoryItemsTableProps) {
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
+  const [tableScrollVersion, setTableScrollVersion] = useState(0);
   const noteItem = useMemo(() => items.find((item) => item.clientId === noteItemId) ?? null, [items, noteItemId]);
   const navigation = useGridNavigation({
     rows: items,
@@ -338,32 +374,35 @@ export default function DishwareInventoryItemsTable({
       </div>
 
       <div className="border-subtle bg-surface overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-        <div className="max-h-[calc(100vh-320px)] overflow-auto">
-          <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-sm">
+        <div
+          className="max-h-[calc(100vh-320px)] overflow-auto"
+          onScroll={() => setTableScrollVersion((value) => value + 1)}
+        >
+          <table className="w-full min-w-[1260px] table-fixed border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-left">
-                <th className="border-subtle bg-surface text-muted sticky top-0 left-0 z-40 w-14 border-r border-b px-2 py-2 text-xs font-semibold sm:w-[82px] sm:px-3">
+                <th className="border-subtle bg-surface text-muted sticky top-0 left-0 z-40 w-[88px] border-r border-b px-2 py-2 text-xs font-semibold sm:w-[96px] sm:px-3">
                   Фото
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 left-14 z-40 w-[152px] border-r border-b px-3 py-2 text-xs font-semibold sm:left-[82px] sm:w-[280px]">
+                <th className="border-subtle bg-surface text-muted sticky top-0 left-[88px] z-40 w-[168px] border-r border-b px-3 py-2 text-xs font-semibold sm:left-[96px] sm:w-[300px]">
                   Название
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[116px] border-r border-b px-3 py-2 text-xs font-semibold">
+                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[128px] border-r border-b px-3 py-2 text-xs font-semibold">
                   Было
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[116px] border-r border-b px-3 py-2 text-xs font-semibold">
+                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[128px] border-r border-b px-3 py-2 text-xs font-semibold">
                   Приход
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[116px] border-r border-b px-3 py-2 text-xs font-semibold">
+                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[128px] border-r border-b px-3 py-2 text-xs font-semibold">
                   Стало
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[124px] border-r border-b px-3 py-2 text-xs font-semibold">
+                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[136px] border-r border-b px-3 py-2 text-xs font-semibold">
                   Цена
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[136px] border-r border-b px-3 py-2 text-xs font-semibold">
+                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[180px] border-r border-b px-3 py-2 text-xs font-semibold">
                   Итог
                 </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[250px] border-b px-3 py-2 text-xs font-semibold">
+                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[322px] border-b px-3 py-2 text-xs font-semibold">
                   Краткая инфа
                 </th>
               </tr>
@@ -383,18 +422,19 @@ export default function DishwareInventoryItemsTable({
 
                 return (
                   <tr key={item.clientId} className="group">
-                    <td className="border-subtle bg-surface group-hover:bg-app sticky left-0 z-20 w-14 border-r border-b align-middle sm:w-[82px]">
+                    <td className="border-subtle bg-surface group-hover:bg-app sticky left-0 z-20 w-[88px] border-r border-b align-middle sm:w-[96px]">
                       <PhotoCell
                         item={item}
                         index={rowIndex}
                         uploading={uploadingItemId === item.id}
                         readOnly={readOnly}
+                        scrollVersion={tableScrollVersion}
                         onUploadImage={onUploadImage}
                         onDeleteImage={onDeleteImage}
                       />
                     </td>
-                    <td className="border-subtle bg-surface group-hover:bg-app sticky left-14 z-20 w-[152px] border-r border-b align-middle sm:left-[82px] sm:w-[280px]">
-                      <div className="flex min-h-14 items-center">
+                    <td className="border-subtle bg-surface group-hover:bg-app sticky left-[88px] z-20 w-[168px] border-r border-b align-middle sm:left-[96px] sm:w-[300px]">
+                      <div className="flex min-h-[80px] min-w-0 items-center sm:min-h-[82px]">
                         <input
                           className={cn(cellInputClassName, "text-default font-medium")}
                           value={item.name}
@@ -412,13 +452,12 @@ export default function DishwareInventoryItemsTable({
                         />
                       </div>
                     </td>
-                    <td className="border-subtle group-hover:bg-app border-r border-b align-middle">
+                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
                       <input
-                        className={`${cellInputClassName} text-right tabular-nums`}
-                        type="number"
-                        min={0}
+                        className={numericCellInputClassName}
+                        type="text"
                         inputMode="numeric"
-                        value={String(item.previousQty ?? 0)}
+                        value={formatDishwareCountInputValue(item.previousQty)}
                         disabled={readOnly}
                         ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[1]))}
                         onKeyDown={(event) =>
@@ -429,17 +468,16 @@ export default function DishwareInventoryItemsTable({
                           })
                         }
                         onChange={(event) =>
-                          onChange(item.clientId, { previousQty: parseNonNegativeNumber(event.target.value) })
+                          onChange(item.clientId, { previousQty: parseDishwareCountInput(event.target.value) })
                         }
                       />
                     </td>
-                    <td className="border-subtle group-hover:bg-app border-r border-b align-middle">
+                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
                       <input
-                        className={`${cellInputClassName} text-right tabular-nums`}
-                        type="number"
-                        min={0}
+                        className={numericCellInputClassName}
+                        type="text"
                         inputMode="numeric"
-                        value={String(item.incomingQty ?? 0)}
+                        value={formatDishwareCountInputValue(item.incomingQty)}
                         disabled={readOnly}
                         ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[2]))}
                         onKeyDown={(event) =>
@@ -450,17 +488,16 @@ export default function DishwareInventoryItemsTable({
                           })
                         }
                         onChange={(event) =>
-                          onChange(item.clientId, { incomingQty: parseNonNegativeNumber(event.target.value) })
+                          onChange(item.clientId, { incomingQty: parseDishwareCountInput(event.target.value) })
                         }
                       />
                     </td>
-                    <td className="border-subtle group-hover:bg-app border-r border-b align-middle">
+                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
                       <input
-                        className={`${cellInputClassName} text-right tabular-nums`}
-                        type="number"
-                        min={0}
+                        className={numericCellInputClassName}
+                        type="text"
                         inputMode="numeric"
-                        value={String(item.currentQty ?? 0)}
+                        value={formatDishwareCountInputValue(item.currentQty)}
                         disabled={readOnly}
                         ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[3]))}
                         onKeyDown={(event) =>
@@ -471,18 +508,16 @@ export default function DishwareInventoryItemsTable({
                           })
                         }
                         onChange={(event) =>
-                          onChange(item.clientId, { currentQty: parseNonNegativeNumber(event.target.value) })
+                          onChange(item.clientId, { currentQty: parseDishwareCountInput(event.target.value) })
                         }
                       />
                     </td>
-                    <td className="border-subtle group-hover:bg-app border-r border-b align-middle">
+                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
                       <input
-                        className={`${cellInputClassName} text-right tabular-nums`}
-                        type="number"
-                        min={0}
-                        step="0.01"
+                        className={numericCellInputClassName}
+                        type="text"
                         inputMode="decimal"
-                        value={item.unitPrice ?? ""}
+                        value={formatDishwareMoneyInputValue(item.unitPrice)}
                         disabled={readOnly}
                         placeholder="0,00"
                         ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[4]))}
@@ -495,20 +530,21 @@ export default function DishwareInventoryItemsTable({
                         }
                         onChange={(event) =>
                           onChange(item.clientId, {
-                            unitPrice: event.target.value === "" ? null : parseNonNegativeNumber(event.target.value),
+                            unitPrice: parseDishwareMoneyInput(event.target.value),
                           })
                         }
                       />
                     </td>
-                    <td className="border-subtle group-hover:bg-app border-r border-b align-middle">
+                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
                       <div
+                        title={formatInventoryLossAmount(metrics.lossAmount)}
                         className={cn(
-                          "mx-2 flex min-h-10 items-center justify-end rounded-xl px-3 text-sm font-semibold tabular-nums",
+                          "mx-2 flex min-h-10 min-w-0 items-center justify-end overflow-hidden rounded-xl px-3 text-sm font-semibold tabular-nums whitespace-nowrap",
                           lossAmountTone,
                           metrics.lossAmount > 0 && "bg-red-50 dark:bg-red-950/20",
                         )}
                       >
-                        {formatInventoryLossAmount(metrics.lossAmount)}
+                        <span className="min-w-0 truncate">{formatCompactInventoryMoney(metrics.lossAmount)}</span>
                       </div>
                     </td>
                     <td className="border-subtle group-hover:bg-app border-b align-middle">

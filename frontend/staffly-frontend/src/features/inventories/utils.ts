@@ -44,6 +44,9 @@ export type DishwareInventorySummary = {
   positionsWithLoss: number;
 };
 
+export const DISHWARE_COUNT_MAX = 99_999;
+export const DISHWARE_MONEY_MAX = 999_999.99;
+
 let localItemCounter = 1;
 
 function nextLocalItemId() {
@@ -125,6 +128,44 @@ export function parseMoney(value: string): number | null {
   return parsed;
 }
 
+export function clampDishwareCount(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(Math.max(Math.trunc(value), 0), DISHWARE_COUNT_MAX);
+}
+
+export function clampDishwareMoney(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.min(Math.max(Math.round(value * 100) / 100, 0), DISHWARE_MONEY_MAX);
+}
+
+export function parseDishwareCountInput(value: string): number {
+  const normalized = value.replace(/\s+/g, "").replace(",", ".").trim();
+  if (!normalized) return 0;
+  const parsed = Number(normalized);
+  return clampDishwareCount(parsed);
+}
+
+export function parseDishwareMoneyInput(value: string): number | null {
+  const normalized = value.replace(/\s+/g, "").replace(",", ".").trim();
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return clampDishwareMoney(parsed);
+}
+
+export function formatDishwareCountInputValue(value: number | null | undefined) {
+  return String(clampDishwareCount(value));
+}
+
+export function formatDishwareMoneyInputValue(value: number | null | undefined) {
+  const clamped = clampDishwareMoney(value);
+  if (clamped === null) return "";
+  return String(clamped);
+}
+
 export function computeDishwareItemMetrics(item: {
   previousQty: string | number;
   incomingQty?: string | number | null;
@@ -132,21 +173,21 @@ export function computeDishwareItemMetrics(item: {
   unitPrice?: string | number | null;
 }) {
   const previousQty =
-    typeof item.previousQty === "number" ? Math.max(item.previousQty, 0) : parseCount(item.previousQty);
+    typeof item.previousQty === "number" ? clampDishwareCount(item.previousQty) : parseDishwareCountInput(item.previousQty);
   const incomingQty =
     typeof item.incomingQty === "number"
-      ? Math.max(item.incomingQty, 0)
+      ? clampDishwareCount(item.incomingQty)
       : item.incomingQty === null || item.incomingQty === undefined
         ? 0
-        : parseCount(item.incomingQty);
+        : parseDishwareCountInput(item.incomingQty);
   const currentQty =
-    typeof item.currentQty === "number" ? Math.max(item.currentQty, 0) : parseCount(item.currentQty);
+    typeof item.currentQty === "number" ? clampDishwareCount(item.currentQty) : parseDishwareCountInput(item.currentQty);
   const unitPrice =
     typeof item.unitPrice === "number"
-      ? item.unitPrice
+      ? clampDishwareMoney(item.unitPrice)
       : item.unitPrice === null || item.unitPrice === undefined
         ? null
-        : parseMoney(item.unitPrice);
+        : parseDishwareMoneyInput(item.unitPrice);
 
   const expectedQty = previousQty + incomingQty;
   const diff = currentQty - expectedQty;
@@ -254,6 +295,28 @@ export function formatInventoryCount(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+export function formatCompactInventoryNumber(value: number) {
+  const normalized = Number.isFinite(value) ? value : 0;
+  if (Math.abs(normalized) < 1_000_000) {
+    return formatInventoryCount(normalized);
+  }
+  return new Intl.NumberFormat("ru-RU", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(normalized);
+}
+
+export function formatCompactInventoryMoney(value: number) {
+  const normalized = value === 0 ? 0 : -Math.abs(Number.isFinite(value) ? value : 0);
+  if (Math.abs(normalized) < 1_000_000) {
+    return formatInventoryLossAmount(normalized);
+  }
+  return `${new Intl.NumberFormat("ru-RU", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(normalized)} ₽`;
 }
 
 export function formatInventoryLossCount(value: number) {
