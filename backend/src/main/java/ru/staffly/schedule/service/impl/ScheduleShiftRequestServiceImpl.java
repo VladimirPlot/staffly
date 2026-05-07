@@ -203,7 +203,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                     schedule,
                     userId,
                     ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
-                    "Заявка на смену отклонена"
+                    staleReason
             );
             notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
             return toDto(entity);

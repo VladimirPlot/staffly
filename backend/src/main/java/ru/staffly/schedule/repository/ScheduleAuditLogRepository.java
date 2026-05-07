@@ -7,7 +7,5 @@ import ru.staffly.schedule.model.ScheduleAuditLog;
 import java.util.List;
 
 public interface ScheduleAuditLogRepository extends JpaRepository<ScheduleAuditLog, Long> {
-    List<ScheduleAuditLog> findByScheduleIdOrderByCreatedAtDesc(Long scheduleId);
-
     List<ScheduleAuditLog> findByScheduleIdOrderByCreatedAtDesc(Long scheduleId, Pageable pageable);
 }
