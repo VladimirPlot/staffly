@@ -21,10 +21,9 @@ import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
+import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import {
   createSchedule,
-  createReplacement,
-  createSwap,
   deleteSchedule,
   fetchSchedule,
   listSavedSchedules,
@@ -95,8 +94,6 @@ const SchedulePage: React.FC = () => {
   const [downloading, setDownloading] = React.useState<{ id: number; type: "xlsx" | "jpg" } | null>(
     null
   );
-  const [replacementOpen, setReplacementOpen] = React.useState(false);
-  const [swapOpen, setSwapOpen] = React.useState(false);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
@@ -398,6 +395,15 @@ const SchedulePage: React.FC = () => {
   });
   const { load: loadShiftRequests, refresh: refreshShiftRequests } = shiftRequests;
 
+  const shiftRequestDialogs = useScheduleShiftRequestDialogs({
+    restaurantId,
+    scheduleId,
+    onClearScheduleNotices: clearScheduleNotices,
+    onSuccessMessage: setScheduleMessage,
+    onErrorMessage: setScheduleError,
+    onRefreshShiftRequests: refreshShiftRequests,
+  });
+
   const handleCellChange = React.useCallback(
     (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => {
       setSchedule((prev) => {
@@ -658,54 +664,6 @@ const SchedulePage: React.FC = () => {
     setDialogOpen(false);
   }, []);
 
-  const handleOpenReplacement = React.useCallback(() => {
-    setReplacementOpen(true);
-  }, []);
-
-  const handleCloseReplacement = React.useCallback(() => {
-    setReplacementOpen(false);
-  }, []);
-
-  const handleOpenSwap = React.useCallback(() => {
-    setSwapOpen(true);
-  }, []);
-
-  const handleCloseSwap = React.useCallback(() => {
-    setSwapOpen(false);
-  }, []);
-
-  const handleSubmitReplacement = React.useCallback(
-    async (payload: { day: string; toMemberId: number; reason?: string }) => {
-      if (!restaurantId || !scheduleId) return;
-      clearScheduleNotices();
-      try {
-        await createReplacement(restaurantId, scheduleId, payload);
-        setScheduleMessage("Заявка на замену отправлена");
-        setReplacementOpen(false);
-        await refreshShiftRequests();
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на замену");
-      }
-    },
-    [clearScheduleNotices, refreshShiftRequests, restaurantId, scheduleId]
-  );
-
-  const handleSubmitSwap = React.useCallback(
-    async (payload: { myDay: string; targetMemberId: number; targetDay: string; reason?: string }) => {
-      if (!restaurantId || !scheduleId) return;
-      clearScheduleNotices();
-      try {
-        await createSwap(restaurantId, scheduleId, payload);
-        setScheduleMessage("Заявка на обмен отправлена");
-        setSwapOpen(false);
-        await refreshShiftRequests();
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на обмен");
-      }
-    },
-    [clearScheduleNotices, refreshShiftRequests, restaurantId, scheduleId]
-  );
-
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;
     const months = monthLabelsBetween(schedule.days.map((day) => day.date));
@@ -894,8 +852,8 @@ const SchedulePage: React.FC = () => {
             onDownloadXlsx={handleDownloadXlsx}
             onDownloadJpg={handleDownloadJpg}
             canCreateShiftRequest={canCreateShiftRequest}
-            onOpenReplacement={handleOpenReplacement}
-            onOpenSwap={handleOpenSwap}
+            onOpenReplacement={shiftRequestDialogs.openReplacement}
+            onOpenSwap={shiftRequestDialogs.openSwap}
           />
 
           <ScheduleTabsNav
@@ -948,20 +906,20 @@ const SchedulePage: React.FC = () => {
       {schedule && currentMember && (
         <>
           <ShiftReplacementDialog
-            open={replacementOpen}
-            onClose={handleCloseReplacement}
+            open={shiftRequestDialogs.replacementOpen}
+            onClose={shiftRequestDialogs.closeReplacement}
             schedule={schedule}
             currentMember={currentMember}
             members={members}
-            onSubmit={handleSubmitReplacement}
+            onSubmit={shiftRequestDialogs.submitReplacement}
           />
           <ShiftSwapDialog
-            open={swapOpen}
-            onClose={handleCloseSwap}
+            open={shiftRequestDialogs.swapOpen}
+            onClose={shiftRequestDialogs.closeSwap}
             schedule={schedule}
             currentMember={currentMember}
             members={members}
-            onSubmit={handleSubmitSwap}
+            onSubmit={shiftRequestDialogs.submitSwap}
           />
         </>
       )}
