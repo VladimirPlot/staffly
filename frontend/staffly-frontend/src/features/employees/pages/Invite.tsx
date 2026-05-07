@@ -14,6 +14,7 @@ import MembersFilterByPosition from "../components/MembersFilterByPosition";
 import MembersHeader from "../components/MembersHeader";
 import MembersList from "../components/MembersList";
 import RemoveMemberDialog from "../components/RemoveMemberDialog";
+import ScheduleOwnerReassignmentDialog from "../../schedule/components/ScheduleOwnerReassignmentDialog";
 import { useInviteForm } from "../hooks/useInviteForm";
 import { useMemberEditPosition } from "../hooks/useMemberEditPosition";
 import { useMemberFilteringSorting } from "../hooks/useMemberFilteringSorting";
@@ -187,6 +188,18 @@ export default function InvitePage() {
         confirming={removalState.removing}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
+      />
+
+      <ScheduleOwnerReassignmentDialog
+        open={Boolean(removalState.pendingReassignmentMember)}
+        loading={removalState.reassignmentLoading}
+        saving={removalState.reassignmentSaving || removalState.removing}
+        error={removalState.reassignmentError}
+        options={removalState.reassignmentOptions}
+        selectedOwnerUserIdsByScheduleId={removalState.reassignmentSelections}
+        onSelect={removalState.selectReassignmentOwner}
+        onClose={removalState.closeReassignment}
+        onSubmit={removalState.confirmReassignment}
       />
 
       <EmployeeAvatarPreviewModal

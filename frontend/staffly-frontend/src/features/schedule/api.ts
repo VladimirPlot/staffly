@@ -1,6 +1,15 @@
 import api from "../../shared/api/apiClient";
 import type { ScheduleConfig, ScheduleData, ScheduleOwnerDto, ScheduleCreatedByDto, ScheduleAuditLogDto } from "./types";
 
+export type ScheduleOwnerReassignmentOptionDto = {
+  scheduleId: number;
+  scheduleTitle: string;
+  startDate: string;
+  endDate: string;
+  currentOwner: ScheduleOwnerDto | null;
+  candidates: ScheduleOwnerDto[];
+};
+
 export type ShiftRequestType = "REPLACEMENT" | "SWAP";
 export type ShiftRequestStatus =
   | "PENDING_MANAGER"
@@ -122,6 +131,52 @@ export async function listSavedSchedules(restaurantId: number): Promise<Schedule
 export async function fetchSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
   const { data } = await api.get<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`);
   return mapSchedule(data);
+}
+
+export async function getScheduleOwnerCandidates(
+  restaurantId: number,
+  scheduleId: number
+): Promise<ScheduleOwnerDto[]> {
+  const { data } = await api.get<ScheduleOwnerDto[]>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner-candidates`
+  );
+  return data;
+}
+
+export async function changeScheduleOwner(
+  restaurantId: number,
+  scheduleId: number,
+  ownerUserId: number
+): Promise<ScheduleData> {
+  const { data } = await api.patch<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner`,
+    { ownerUserId }
+  );
+  return mapSchedule(data);
+}
+
+export async function getScheduleOwnerReassignmentOptions(
+  restaurantId: number,
+  ownerUserId: number
+): Promise<ScheduleOwnerReassignmentOptionDto[]> {
+  const { data } = await api.get<ScheduleOwnerReassignmentOptionDto[]>(
+    `/api/restaurants/${restaurantId}/schedules/owners/${ownerUserId}/reassignment-options`
+  );
+  return data.map((option) => ({
+    ...option,
+    currentOwner: option.currentOwner ?? null,
+    candidates: option.candidates ?? [],
+  }));
+}
+
+export async function reassignScheduleOwners(
+  restaurantId: number,
+  ownerUserId: number,
+  ownerUserIdsByScheduleId: Record<number, number>
+): Promise<void> {
+  await api.post(`/api/restaurants/${restaurantId}/schedules/owners/${ownerUserId}/reassign`, {
+    ownerUserIdsByScheduleId,
+  });
 }
 
 export async function createReplacement(

@@ -8,6 +8,7 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 import { ArrowLeft } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 
+import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
@@ -19,12 +20,14 @@ import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import {
+  changeScheduleOwner,
   createSchedule,
   createReplacement,
   createSwap,
   decideAsManager,
   deleteSchedule,
   fetchSchedule,
+  getScheduleOwnerCandidates,
   listSavedSchedules,
   listShiftRequests,
   cancelShiftRequest,
@@ -32,7 +35,7 @@ import {
   type ScheduleSummary,
   type ShiftRequestDto,
 } from "../api";
-import type { ScheduleConfig, ScheduleData, ScheduleCellKey } from "../types";
+import type { ScheduleConfig, ScheduleData, ScheduleCellKey, ScheduleOwnerDto } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
@@ -104,6 +107,12 @@ const SchedulePage: React.FC = () => {
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
+  const [ownerDialogOpen, setOwnerDialogOpen] = React.useState(false);
+  const [ownerCandidates, setOwnerCandidates] = React.useState<ScheduleOwnerDto[]>([]);
+  const [ownerCandidatesLoading, setOwnerCandidatesLoading] = React.useState(false);
+  const [ownerSaving, setOwnerSaving] = React.useState(false);
+  const [ownerError, setOwnerError] = React.useState<string | null>(null);
+  const [selectedOwnerUserId, setSelectedOwnerUserId] = React.useState<number | null>(null);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -131,6 +140,12 @@ const SchedulePage: React.FC = () => {
       setShiftRequests([]);
       setShiftRequestsError(null);
       setShiftRequestsLoading(false);
+      setOwnerDialogOpen(false);
+      setOwnerCandidates([]);
+      setOwnerCandidatesLoading(false);
+      setOwnerSaving(false);
+      setOwnerError(null);
+      setSelectedOwnerUserId(null);
       return;
     }
 
@@ -147,6 +162,12 @@ const SchedulePage: React.FC = () => {
     setShiftRequests([]);
     setShiftRequestsError(null);
     setShiftRequestsLoading(false);
+    setOwnerDialogOpen(false);
+    setOwnerCandidates([]);
+    setOwnerCandidatesLoading(false);
+    setOwnerSaving(false);
+    setOwnerError(null);
+    setSelectedOwnerUserId(null);
 
     (async () => {
       try {
@@ -516,6 +537,63 @@ const SchedulePage: React.FC = () => {
 
     autoTabDoneRef.current = false;
   }, [clearScheduleNotices]);
+
+  const handleCloseOwnerDialog = React.useCallback(() => {
+    if (ownerSaving) return;
+    setOwnerDialogOpen(false);
+    setOwnerCandidates([]);
+    setOwnerCandidatesLoading(false);
+    setOwnerError(null);
+    setSelectedOwnerUserId(null);
+  }, [ownerSaving]);
+
+  const handleOpenOwnerDialog = React.useCallback(async () => {
+    if (!canManage || !restaurantId || !scheduleId) return;
+
+    setOwnerDialogOpen(true);
+    setOwnerCandidates([]);
+    setOwnerError(null);
+    setSelectedOwnerUserId(null);
+    setOwnerCandidatesLoading(true);
+    try {
+      const candidates = await getScheduleOwnerCandidates(restaurantId, scheduleId);
+      const currentOwnerUserId = schedule?.owner?.userId ?? null;
+      setOwnerCandidates(candidates);
+      const firstAvailable = candidates.find(
+        (candidate) => candidate.userId != null && candidate.userId !== currentOwnerUserId
+      );
+      setSelectedOwnerUserId(firstAvailable?.userId ?? null);
+    } catch (e: any) {
+      setOwnerError(e?.friendlyMessage || "Не удалось загрузить кандидатов для смены ответственного");
+    } finally {
+      setOwnerCandidatesLoading(false);
+    }
+  }, [canManage, restaurantId, schedule?.owner?.userId, scheduleId]);
+
+  const handleChangeOwner = React.useCallback(async () => {
+    if (!canManage || !restaurantId || !scheduleId || selectedOwnerUserId == null) return;
+    if (selectedOwnerUserId === (schedule?.owner?.userId ?? null)) return;
+
+    setOwnerSaving(true);
+    setOwnerError(null);
+    try {
+      const updated = await changeScheduleOwner(restaurantId, scheduleId, selectedOwnerUserId);
+      const prepared = prepareSchedule(updated);
+      setSchedule(prepared);
+      setSavedSchedules((prev) =>
+        prev.map((item) => (item.id === prepared.id ? { ...item, owner: prepared.owner ?? null } : item))
+      );
+      setScheduleMessage("Ответственный изменён");
+      setScheduleError(null);
+      setOwnerDialogOpen(false);
+      setOwnerCandidates([]);
+      setSelectedOwnerUserId(null);
+    } catch (e: any) {
+      setOwnerError(e?.friendlyMessage || "Не удалось сменить ответственного");
+    } finally {
+      setOwnerSaving(false);
+    }
+  }, [canManage, prepareSchedule, restaurantId, schedule?.owner?.userId, scheduleId, selectedOwnerUserId]);
 
   const fetchScheduleForActions = React.useCallback(
     async (id: number) => {
@@ -942,6 +1020,7 @@ const SchedulePage: React.FC = () => {
             deleting={deletingId === scheduleId}
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
+            onOpenOwnerDialog={handleOpenOwnerDialog}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
             downloading={downloading}
@@ -1019,6 +1098,19 @@ const SchedulePage: React.FC = () => {
           />
         </>
       )}
+
+      <ChangeScheduleOwnerDialog
+        open={ownerDialogOpen}
+        loading={ownerCandidatesLoading}
+        saving={ownerSaving}
+        error={ownerError}
+        candidates={ownerCandidates}
+        currentOwnerUserId={schedule?.owner?.userId ?? null}
+        selectedOwnerUserId={selectedOwnerUserId}
+        onSelect={setSelectedOwnerUserId}
+        onClose={handleCloseOwnerDialog}
+        onSubmit={() => void handleChangeOwner()}
+      />
 
       <CreateScheduleDialog
         open={dialogOpen}
