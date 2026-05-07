@@ -11,6 +11,7 @@ type ScheduleDetailHeaderProps = {
   deleting: boolean;
   onEnterEditMode: () => void;
   onDelete: () => void;
+  onOpenOwnerDialog: () => void;
   downloadMenuFor: number | null;
   onToggleDownloadMenu: (id: number | null) => void;
   downloading: { id: number; type: "xlsx" | "jpg" } | null;
@@ -29,6 +30,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   deleting,
   onEnterEditMode,
   onDelete,
+  onOpenOwnerDialog,
   downloadMenuFor,
   onToggleDownloadMenu,
   downloading,
@@ -63,6 +65,9 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
       <div className="flex flex-wrap items-center gap-2">
         {canManage && scheduleReadOnly && scheduleId && (
           <>
+            <Button variant="outline" onClick={onOpenOwnerDialog} disabled={deleting}>
+              Сменить ответственного
+            </Button>
             <Button variant="outline" onClick={onEnterEditMode} disabled={deleting}>
               Редактировать
             </Button>

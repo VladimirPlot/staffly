@@ -1,6 +1,28 @@
 import { useMemo, useState } from "react";
+import {
+  getScheduleOwnerReassignmentOptions,
+  reassignScheduleOwners,
+  type ScheduleOwnerReassignmentOptionDto,
+} from "../../schedule/api";
 import type { MemberDto } from "../api";
 import { displayNameOf } from "../utils/memberUtils";
+
+function getFriendlyMessage(error: any, fallback: string): string {
+  return (
+    error?.friendlyMessage ||
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+}
+
+export function isScheduleOwnershipConflict(error: any): boolean {
+  const status = error?.response?.status;
+  const message = getFriendlyMessage(error, "").toLocaleLowerCase("ru-RU");
+
+  return status === 409 && message.includes("ответственным за активные или будущие графики");
+}
 
 type AccessFlags = {
   isAdminLike: boolean;
@@ -30,11 +52,14 @@ export function useMemberRemoval({
   const [memberToRemove, setMemberToRemove] = useState<MemberDto | null>(null);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingReassignmentMember, setPendingReassignmentMember] = useState<MemberDto | null>(null);
+  const [reassignmentOptions, setReassignmentOptions] = useState<ScheduleOwnerReassignmentOptionDto[]>([]);
+  const [reassignmentSelections, setReassignmentSelections] = useState<Record<number, number | null>>({});
+  const [reassignmentLoading, setReassignmentLoading] = useState(false);
+  const [reassignmentSaving, setReassignmentSaving] = useState(false);
+  const [reassignmentError, setReassignmentError] = useState<string | null>(null);
 
-  const adminsCount = useMemo(
-    () => members.filter((member) => member.role === "ADMIN").length,
-    [members]
-  );
+  const adminsCount = useMemo(() => members.filter((member) => member.role === "ADMIN").length, [members]);
 
   const isStaffInCurrentRestaurant = myRole === "STAFF";
 
@@ -68,20 +93,104 @@ export function useMemberRemoval({
     setError(null);
   };
 
-  const confirmRemove = async () => {
-    if (!restaurantId || !memberToRemove) return;
+  const closeReassignment = () => {
+    if (reassignmentLoading || reassignmentSaving) return;
+    setPendingReassignmentMember(null);
+    setReassignmentOptions([]);
+    setReassignmentSelections({});
+    setReassignmentError(null);
+  };
+
+  const openScheduleReassignment = async (member: MemberDto) => {
+    if (!restaurantId || member.userId == null) {
+      setError("Не удалось открыть переназначение: у участника нет userId");
+      return;
+    }
+
+    setMemberToRemove(null);
+    setPendingReassignmentMember(member);
+    setReassignmentOptions([]);
+    setReassignmentSelections({});
+    setReassignmentError(null);
+    setReassignmentLoading(true);
+    try {
+      const options = await getScheduleOwnerReassignmentOptions(restaurantId, member.userId);
+      setReassignmentOptions(options);
+      setReassignmentSelections(
+        options.reduce<Record<number, number | null>>((acc, option) => {
+          acc[option.scheduleId] = option.candidates[0]?.userId ?? null;
+          return acc;
+        }, {}),
+      );
+    } catch (e: any) {
+      setReassignmentError(getFriendlyMessage(e, "Не удалось загрузить графики для переназначения"));
+    } finally {
+      setReassignmentLoading(false);
+    }
+  };
+
+  const runRemove = async (member: MemberDto, handleScheduleConflict: boolean) => {
     setRemoving(true);
     setError(null);
     try {
-      await removeMember(memberToRemove.id);
-      if (memberToRemove.userId === currentUserId) {
+      await removeMember(member.id);
+      if (member.userId === currentUserId) {
         onSelfRemoved();
       }
       setMemberToRemove(null);
+      setPendingReassignmentMember(null);
+      setReassignmentOptions([]);
+      setReassignmentSelections({});
+      setReassignmentError(null);
     } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось исключить участника");
+      if (handleScheduleConflict && isScheduleOwnershipConflict(e)) {
+        await openScheduleReassignment(member);
+      } else if (handleScheduleConflict) {
+        setError(getFriendlyMessage(e, "Не удалось исключить участника"));
+      } else {
+        setReassignmentError(
+          getFriendlyMessage(
+            e,
+            "Ответственные переназначены, но удалить участника автоматически не удалось. Повторите удаление вручную.",
+          ),
+        );
+      }
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const confirmRemove = async () => {
+    if (!restaurantId || !memberToRemove) return;
+    await runRemove(memberToRemove, true);
+  };
+
+  const selectReassignmentOwner = (scheduleId: number, ownerUserId: number | null) => {
+    setReassignmentSelections((prev) => ({ ...prev, [scheduleId]: ownerUserId }));
+  };
+
+  const confirmReassignment = async () => {
+    if (!restaurantId || !pendingReassignmentMember || pendingReassignmentMember.userId == null) return;
+
+    const payload: Record<number, number> = {};
+    for (const option of reassignmentOptions) {
+      const selectedOwnerUserId = reassignmentSelections[option.scheduleId];
+      if (selectedOwnerUserId == null) {
+        setReassignmentError("Выберите нового ответственного для каждого графика");
+        return;
+      }
+      payload[option.scheduleId] = selectedOwnerUserId;
+    }
+
+    setReassignmentSaving(true);
+    setReassignmentError(null);
+    try {
+      await reassignScheduleOwners(restaurantId, pendingReassignmentMember.userId, payload);
+      await runRemove(pendingReassignmentMember, false);
+    } catch (e: any) {
+      setReassignmentError(getFriendlyMessage(e, "Не удалось переназначить ответственных"));
+    } finally {
+      setReassignmentSaving(false);
     }
   };
 
@@ -119,5 +228,14 @@ export function useMemberRemoval({
     title,
     confirmText,
     description,
+    pendingReassignmentMember,
+    reassignmentOptions,
+    reassignmentSelections,
+    reassignmentLoading,
+    reassignmentSaving,
+    reassignmentError,
+    closeReassignment,
+    selectReassignmentOwner,
+    confirmReassignment,
   };
 }
