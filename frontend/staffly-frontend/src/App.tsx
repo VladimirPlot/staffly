@@ -536,7 +536,6 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route element={<AppShell />}>
-          {/* WIDE: графики */}
           <Route element={<WideLayout />}>
             <Route
               path="/schedule"
@@ -564,6 +563,16 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <MasterScheduleEditorPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inventories/dishware/:inventoryId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <DishwareInventoryEditorPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -775,17 +784,6 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <DishwareInventoriesPage />
-                  </RequireRestaurant>
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="/inventories/dishware/:inventoryId"
-              element={
-                <ProtectedRoute>
-                  <RequireRestaurant>
-                    <DishwareInventoryEditorPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

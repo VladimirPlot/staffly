@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, Pencil, Save, SquareActivity, Trash2, Undo2 } from "lucide-react";
+import { Check, MessageSquareText, Pencil, Save, SquareActivity, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
-import DishwareInventoryItemCard from "../components/DishwareInventoryItemCard";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
 import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
+import DishwareInventoryItemsTable, {
+  type DishwareInventoryTableItem,
+} from "../components/DishwareInventoryItemsTable";
 import {
   completeDishwareInventory,
   deleteDishwareItemImage,
@@ -22,16 +24,10 @@ import {
   updateDishwareInventory,
   uploadDishwareItemImage,
   type DishwareInventoryDto,
-  type UpdateDishwareInventoryItemRequest,
 } from "../api";
 import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
 
-type EditableDishwareItem = Omit<UpdateDishwareInventoryItemRequest, "id" | "incomingQty"> & {
-  clientId: string;
-  id?: number;
-  photoUrl?: string | null;
-  incomingQty: number;
-};
+type EditableDishwareItem = DishwareInventoryTableItem & { sortOrder?: number };
 
 function createClientId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -294,7 +290,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="mx-auto w-full max-w-[1500px] space-y-3">
       <div className="flex items-center justify-between gap-3">
         <BackToHome />
         <Button variant="outline" onClick={() => navigate("/inventories/dishware")}>
@@ -302,8 +298,8 @@ function AuthorizedDishwareInventoryEditorPage() {
         </Button>
       </div>
 
-      <Card className="space-y-3 rounded-[1.75rem] p-3 sm:p-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_168px] lg:items-end">
+      <Card className="space-y-3 rounded-[1.5rem] p-3 sm:p-4">
+        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_170px_156px_auto] xl:items-end">
           <Input
             label="Название"
             labelClassName="mb-0.5 text-xs font-medium"
@@ -337,69 +333,84 @@ function AuthorizedDishwareInventoryEditorPage() {
               <span>{inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
             </div>
           </div>
-          <div className="lg:col-span-3">
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
+            {!isCompleted ? (
+              <>
+                <Button
+                  size="sm"
+                  className="min-h-11"
+                  leftIcon={<Icon icon={Save} size="sm" decorative />}
+                  isLoading={saving}
+                  onClick={() => void handleSave()}
+                >
+                  Сохранить
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11"
+                  isLoading={saving}
+                  leftIcon={<Icon icon={Check} size="sm" decorative />}
+                  onClick={() => void handleComplete()}
+                >
+                  Завершить
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11 text-red-600"
+                  leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                  disabled={saving}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  В корзину
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-11"
+                isLoading={saving}
+                leftIcon={<Icon icon={Undo2} size="sm" decorative />}
+                onClick={() => void handleReopen()}
+              >
+                Вернуть в черновик
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <details className="group border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/30">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 transition outline-none hover:bg-[color:var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] [&::-webkit-details-marker]:hidden">
+            <span className="text-default flex min-w-0 items-center gap-2 text-sm font-medium">
+              <Icon icon={MessageSquareText} size="sm" decorative className="text-icon shrink-0" />
+              <span className="truncate">{comment.trim() ? "Комментарий к документу" : "Комментарий не добавлен"}</span>
+            </span>
+            <span className="text-muted text-xs">{comment.length}/5000</span>
+          </summary>
+          <div className="border-subtle border-t px-3 pt-2 pb-3">
             <Textarea
               label="Комментарий"
-              labelClassName="mb-0.5 text-xs font-medium"
-              className="min-h-16 rounded-xl px-3 py-2"
+              labelClassName="sr-only"
+              className="min-h-20 rounded-xl px-3 py-2"
               value={comment}
               maxLength={5000}
               disabled={isEditingLocked}
               onChange={(event) => setComment(event.target.value)}
-              rows={2}
+              rows={3}
+              placeholder="Например: сверка по смене, залу или ответственному."
             />
           </div>
-          {inventory.sourceInventoryTitle ? (
-            <div className="text-muted text-xs lg:col-span-3">Источник: {inventory.sourceInventoryTitle}</div>
-          ) : null}
-        </div>
+        </details>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          {!isCompleted ? (
-            <>
-              <Button
-                size="sm"
-                leftIcon={<Icon icon={Save} size="sm" decorative />}
-                isLoading={saving}
-                onClick={() => void handleSave()}
-              >
-                Сохранить
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                isLoading={saving}
-                leftIcon={<Icon icon={Check} size="sm" decorative />}
-                onClick={() => void handleComplete()}
-              >
-                Завершить инвентаризацию
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-red-600"
-                leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-                disabled={saving}
-                onClick={() => setDeleteOpen(true)}
-              >
-                В корзину
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              isLoading={saving}
-              leftIcon={<Icon icon={Undo2} size="sm" decorative />}
-              onClick={() => void handleReopen()}
-            >
-              Вернуть в черновик
-            </Button>
-          )}
-        </div>
+        {inventory.sourceInventoryTitle ? (
+          <div className="text-muted text-xs">Источник: {inventory.sourceInventoryTitle}</div>
+        ) : null}
 
         {isCompleted ? (
-          <div className="text-muted text-sm">
+          <div className="text-muted rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2 text-sm">
             Документ зафиксирован. Чтобы внести изменения, сначала верни его в черновик.
           </div>
         ) : null}
@@ -408,33 +419,17 @@ function AuthorizedDishwareInventoryEditorPage() {
 
       <DishwareInventorySummary summary={summary} />
 
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-xl font-semibold">Позиции</h3>
-          <div className="text-muted text-sm">Было / Приход / Стало</div>
-        </div>
-        {!isCompleted ? (
-          <Button size="sm" disabled={saving} onClick={addItem}>
-            Добавить позицию
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="space-y-3">
-        {items.map((item, index) => (
-          <DishwareInventoryItemCard
-            key={item.clientId}
-            item={item}
-            index={index}
-            uploading={uploadingItemId === item.id}
-            readOnly={isEditingLocked}
-            onChange={updateItem}
-            onRemove={removeItem}
-            onUploadImage={(itemId, file) => void handleUploadImage(itemId, file)}
-            onDeleteImage={(itemId) => void handleDeleteImage(itemId)}
-          />
-        ))}
-      </div>
+      <DishwareInventoryItemsTable
+        items={items}
+        uploadingItemId={uploadingItemId}
+        readOnly={isEditingLocked}
+        saving={saving}
+        onAddItem={addItem}
+        onChange={updateItem}
+        onRemove={removeItem}
+        onUploadImage={(itemId, file) => void handleUploadImage(itemId, file)}
+        onDeleteImage={(itemId) => void handleDeleteImage(itemId)}
+      />
 
       <ConfirmDialog
         open={deleteOpen}
