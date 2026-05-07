@@ -20,53 +20,26 @@ import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import useSavedScheduleActions from "../hooks/useSavedScheduleActions";
+import useScheduleDraftActions from "../hooks/useScheduleDraftActions";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
-import {
-  createSchedule,
-  listSavedSchedules,
-  updateSchedule,
-  type ScheduleSummary,
-} from "../api";
-import type { ScheduleConfig, ScheduleData, ScheduleCellKey, ScheduleOwnerDto } from "../types";
-import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
-import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
+import { listSavedSchedules, type ScheduleSummary } from "../api";
+import type { ScheduleData, ScheduleCellKey, ScheduleOwnerDto } from "../types";
+import { monthLabelsBetween } from "../utils/date";
+import { buildMemberDisplayNameMap } from "../utils/names";
 import { normalizeCellValue } from "../utils/cellFormatting";
-import { hasStartWithoutEndValue } from "../utils/timeValues";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
 function normalizeRole(role: string | null | undefined): string | null {
   if (!role) return null;
-  return role.toString().toUpperCase().replace(/^ROLE_/, "");
-}
-
-function buildTitle(positionNames: string[], monthNames: string[]): string {
-  const positionsPart = positionNames.join(" - ");
-  const monthsPart = monthNames.join("/");
-  if (positionsPart && monthsPart) return `${positionsPart} - ${monthsPart}`;
-  return positionsPart || monthsPart || "График";
-}
-
-function sortMembers(
-  members: MemberDto[],
-  positionOrder: Map<number, number>,
-  displayNames: Record<number, string>
-): MemberDto[] {
-  return [...members].sort((a, b) => {
-    const orderA = positionOrder.get(a.positionId ?? -1) ?? Number.MAX_SAFE_INTEGER;
-    const orderB = positionOrder.get(b.positionId ?? -1) ?? Number.MAX_SAFE_INTEGER;
-    if (orderA !== orderB) return orderA - orderB;
-
-    const nameA = memberDisplayName(a, displayNames).toLocaleLowerCase("ru-RU");
-    const nameB = memberDisplayName(b, displayNames).toLocaleLowerCase("ru-RU");
-    if (nameA < nameB) return -1;
-    if (nameA > nameB) return 1;
-    return 0;
-  });
+  return role
+    .toString()
+    .toUpperCase()
+    .replace(/^ROLE_/, "");
 }
 
 const SchedulePage: React.FC = () => {
@@ -79,13 +52,11 @@ const SchedulePage: React.FC = () => {
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
   const [members, setMembers] = React.useState<MemberDto[]>([]);
 
-  const [dialogOpen, setDialogOpen] = React.useState(false);
   const [schedule, setSchedule] = React.useState<ScheduleData | null>(null);
   const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
   const [scheduleReadOnly, setScheduleReadOnly] = React.useState(false);
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
-  const [saving, setSaving] = React.useState(false);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
@@ -110,7 +81,6 @@ const SchedulePage: React.FC = () => {
       setSavedSchedules([]);
       setScheduleReadOnly(false);
       clearScheduleNotices();
-      setSaving(false);
       return;
     }
 
@@ -121,7 +91,6 @@ const SchedulePage: React.FC = () => {
     setSavedSchedules([]);
     setScheduleReadOnly(false);
     clearScheduleNotices();
-    setSaving(false);
 
     (async () => {
       try {
@@ -154,10 +123,7 @@ const SchedulePage: React.FC = () => {
     };
   }, [clearScheduleNotices, restaurantId, user?.roles]);
 
-  const access = React.useMemo(
-    () => resolveRestaurantAccess(user?.roles, myRole),
-    [user?.roles, myRole]
-  );
+  const access = React.useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
   const normalizedUserRoles = React.useMemo(() => {
     const result = new Set<string>();
@@ -218,84 +184,9 @@ const SchedulePage: React.FC = () => {
     }
 
     return (
-      access.normalizedRestaurantRole != null &&
-      allowedRoles.some((role) => role === access.normalizedRestaurantRole)
+      access.normalizedRestaurantRole != null && allowedRoles.some((role) => role === access.normalizedRestaurantRole)
     );
-  }, [
-    access.isCreator,
-    access.normalizedRestaurantRole,
-    normalizedMembershipRole,
-    normalizedUserRoles,
-  ]);
-
-  React.useEffect(() => {
-    if (!canManage) {
-      setDialogOpen(false);
-      setScheduleReadOnly(true);
-    }
-  }, [canManage]);
-
-  const handleCreateSchedule = React.useCallback(
-    (config: ScheduleConfig) => {
-      if (!canManage) return;
-
-      autoTabDoneRef.current = false;
-
-      const normalizedConfig: ScheduleConfig = {
-        ...config,
-        showFullName: false,
-        shiftMode: "FULL",
-      };
-      const dateList = daysBetween(config.startDate, config.endDate);
-      const months = monthLabelsBetween(dateList);
-      const selectedPositions = positions.filter((position) =>
-        normalizedConfig.positionIds.includes(position.id)
-      );
-      const positionOrder = new Map<number, number>();
-      normalizedConfig.positionIds.forEach((id, index) => {
-        positionOrder.set(id, index);
-      });
-
-      const filteredMembers = members.filter(
-        (member) => member.positionId != null && positionOrder.has(member.positionId)
-      );
-      const displayNames = buildMemberDisplayNameMap(filteredMembers);
-      const sortedMembers = sortMembers(filteredMembers, positionOrder, displayNames);
-
-      const days = dateList.map((iso) => ({
-        date: iso,
-        weekdayLabel: formatWeekdayShort(iso),
-        dayNumber: formatDayNumber(iso),
-      }));
-
-      const rows = sortedMembers.map((member) => ({
-        id: undefined,
-        memberId: member.id,
-        member,
-        displayName: memberDisplayName(member, displayNames),
-        positionId: member.positionId,
-        positionName: selectedPositions.find((p) => p.id === member.positionId)?.name ?? null,
-      }));
-
-      const title = buildTitle(
-        selectedPositions.map((p) => p.name),
-        months
-      );
-
-      setSchedule({
-        id: undefined,
-        title,
-        config: normalizedConfig,
-        days,
-        rows,
-        cellValues: {},
-      });
-      setScheduleReadOnly(false);
-      clearScheduleNotices();
-      setLastRange({ start: config.startDate, end: config.endDate });
-    },
-    [canManage, clearScheduleNotices, members, positions]
-  );
+  }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
 
   const prepareSchedule = React.useCallback(
     (data: ScheduleData): ScheduleData => {
@@ -326,7 +217,7 @@ const SchedulePage: React.FC = () => {
         rows,
       };
     },
-    [members]
+    [members],
   );
 
   const handleScheduleOwnerUpdated = React.useCallback((updatedSchedule: ScheduleData) => {
@@ -335,11 +226,9 @@ const SchedulePage: React.FC = () => {
 
   const handleSavedScheduleOwnerUpdated = React.useCallback(
     (updatedScheduleId: number, owner: ScheduleOwnerDto | null) => {
-      setSavedSchedules((prev) =>
-        prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner } : item))
-      );
+      setSavedSchedules((prev) => prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner } : item)));
     },
-    []
+    [],
   );
 
   const handleClearScheduleError = React.useCallback(() => {
@@ -365,7 +254,7 @@ const SchedulePage: React.FC = () => {
       setScheduleReadOnly(true);
       setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
     },
-    [prepareSchedule]
+    [prepareSchedule],
   );
 
   const shiftRequests = useScheduleShiftRequests({
@@ -395,7 +284,7 @@ const SchedulePage: React.FC = () => {
       clearScheduleNotices();
       setScheduleError(message);
     },
-    [clearScheduleNotices]
+    [clearScheduleNotices],
   );
 
   const exportActions = useScheduleExportActions({
@@ -405,84 +294,45 @@ const SchedulePage: React.FC = () => {
     onError: handleScheduleExportError,
   });
 
-  const handleCellChange = React.useCallback(
-    (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => {
-      setSchedule((prev) => {
-        if (!prev) return prev;
-        const nextValues = { ...prev.cellValues };
-        if (options?.commit) {
-          const normalized = normalizeCellValue(value, prev.config.shiftMode);
-          if (!normalized) {
-            delete nextValues[key];
-          } else {
-            nextValues[key] = normalized;
-          }
+  const handleCellChange = React.useCallback((key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => {
+    setSchedule((prev) => {
+      if (!prev) return prev;
+      const nextValues = { ...prev.cellValues };
+      if (options?.commit) {
+        const normalized = normalizeCellValue(value, prev.config.shiftMode);
+        if (!normalized) {
+          delete nextValues[key];
         } else {
-          nextValues[key] = value;
+          nextValues[key] = normalized;
         }
-        return { ...prev, cellValues: nextValues };
-      });
-    },
-    []
-  );
-
-  const handleSaveSchedule = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule) return;
-    setSaving(true);
-    clearScheduleNotices();
-    try {
-      if (schedule.config.shiftMode === "FULL") {
-        const hasIncompleteShifts = Object.values(schedule.cellValues).some((value) =>
-          hasStartWithoutEndValue(value)
-        );
-
-        if (hasIncompleteShifts) {
-          setScheduleError("Нельзя создать график без времени окончания смены сотрудника");
-          setSaving(false);
-          return;
-        }
+      } else {
+        nextValues[key] = value;
       }
-
-      const normalizedCells: Record<string, string> = {};
-      Object.entries(schedule.cellValues).forEach(([key, rawValue]) => {
-        const normalized = normalizeCellValue(rawValue, schedule.config.shiftMode);
-        if (normalized) {
-          normalizedCells[key] = normalized;
-        }
-      });
-
-      const payload = {
-        title: schedule.title,
-        config: schedule.config,
-        rows: schedule.rows.map((row) => ({
-          memberId: row.memberId,
-          displayName: row.displayName,
-          positionId: row.positionId ?? null,
-          positionName: row.positionName ?? null,
-        })),
-        cellValues: normalizedCells,
-      };
-
-      const saved = schedule.id
-        ? await updateSchedule(restaurantId, schedule.id, payload)
-        : await createSchedule(restaurantId, payload);
-      setSchedule(prepareSchedule(saved));
-      setScheduleReadOnly(true);
-      setLastRange({ start: saved.config.startDate, end: saved.config.endDate });
-      const savedList = await listSavedSchedules(restaurantId);
-      setSavedSchedules(savedList);
-      await loadShiftRequests(saved.id ?? undefined);
-      setScheduleMessage(schedule.id ? "График обновлён" : "График сохранён");
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось сохранить график");
-    } finally {
-      setSaving(false);
-    }
-  }, [canManage, clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId, schedule]);
+      return { ...prev, cellValues: nextValues };
+    });
+  }, []);
 
   const resetAutoTab = React.useCallback(() => {
     autoTabDoneRef.current = false;
   }, []);
+
+  const draftActions = useScheduleDraftActions({
+    restaurantId,
+    canManage,
+    schedule,
+    members,
+    positions,
+    prepareSchedule,
+    loadShiftRequests,
+    onScheduleChanged: setSchedule,
+    onScheduleReadOnlyChanged: setScheduleReadOnly,
+    onSavedSchedulesChanged: setSavedSchedules,
+    onLastRangeChanged: setLastRange,
+    onClearScheduleNotices: clearScheduleNotices,
+    onScheduleMessage: setScheduleMessage,
+    onScheduleError: setScheduleError,
+    onAutoTabReset: resetAutoTab,
+  });
 
   const savedScheduleActions = useSavedScheduleActions({
     restaurantId,
@@ -520,14 +370,6 @@ const SchedulePage: React.FC = () => {
     void savedScheduleActions.deleteSavedSchedule(scheduleId);
   }, [savedScheduleActions, scheduleId]);
 
-  const openDialog = React.useCallback(() => {
-    setDialogOpen(true);
-  }, []);
-
-  const closeDialog = React.useCallback(() => {
-    setDialogOpen(false);
-  }, []);
-
   const monthFallback = React.useMemo(() => {
     if (!schedule) return null;
     const months = monthLabelsBetween(schedule.days.map((day) => day.date));
@@ -537,12 +379,12 @@ const SchedulePage: React.FC = () => {
 
   const canCreateShiftRequest = React.useMemo(
     () => Boolean(schedule && scheduleId && currentMember && currentMemberInSchedule && hasMyShift),
-    [currentMember, currentMemberInSchedule, hasMyShift, schedule, scheduleId]
+    [currentMember, currentMemberInSchedule, hasMyShift, schedule, scheduleId],
   );
 
   const hasPendingSavedSchedules = React.useMemo(
     () => savedSchedules.some((item) => item.hasPendingShiftRequests),
-    [savedSchedules]
+    [savedSchedules],
   );
 
   const shiftDisplay = React.useCallback(
@@ -554,7 +396,7 @@ const SchedulePage: React.FC = () => {
       }
       return day;
     },
-    [schedule]
+    [schedule],
   );
 
   const sortedSavedSchedules = React.useMemo(() => {
@@ -617,7 +459,7 @@ const SchedulePage: React.FC = () => {
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6">
-      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-default">
+      <div className="text-default mb-3 flex flex-wrap items-center gap-3 text-sm">
         <BackToHome className="text-sm" />
 
         {schedule && (
@@ -625,9 +467,9 @@ const SchedulePage: React.FC = () => {
             type="button"
             onClick={savedScheduleActions.closeSavedSchedule}
             className={
-              "inline-flex items-center gap-0 rounded-2xl border border-subtle " +
-              "bg-surface px-2 py-1 text-sm font-medium text-default shadow-[var(--staffly-shadow)] " +
-              "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
+              "border-subtle inline-flex items-center gap-0 rounded-2xl border " +
+              "bg-surface text-default px-2 py-1 text-sm font-medium shadow-[var(--staffly-shadow)] " +
+              "hover:bg-app ring-default transition focus:ring-2 focus:outline-none"
             }
             title="Ко всем графикам"
             aria-label="Ко всем графикам"
@@ -640,10 +482,10 @@ const SchedulePage: React.FC = () => {
       {showLandingHeader && (
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold text-strong">Графики</h1>
+            <h1 className="text-strong text-2xl font-semibold">Графики</h1>
           </div>
           {showCreateScheduleButton && (
-            <Button onClick={openDialog} disabled={loading} className="shrink-0">
+            <Button onClick={draftActions.openDialog} disabled={loading} className="shrink-0">
               Создать график
             </Button>
           )}
@@ -682,22 +524,32 @@ const SchedulePage: React.FC = () => {
         />
       )}
 
-      {!loading && !error && !canManage && filteredSavedSchedules.length === 0 && !schedule && !savedScheduleActions.scheduleLoading && (
-        <Card>
-          <div className="text-sm text-muted">
-            Раздел доступен для просмотра. Как только менеджер сохранит график, он появится в списке выше.
-          </div>
-        </Card>
-      )}
+      {!loading &&
+        !error &&
+        !canManage &&
+        filteredSavedSchedules.length === 0 &&
+        !schedule &&
+        !savedScheduleActions.scheduleLoading && (
+          <Card>
+            <div className="text-muted text-sm">
+              Раздел доступен для просмотра. Как только менеджер сохранит график, он появится в списке выше.
+            </div>
+          </Card>
+        )}
 
-      {!loading && !error && canManage && filteredSavedSchedules.length === 0 && !schedule && !savedScheduleActions.scheduleLoading && (
-        <Card>
-          <div className="space-y-2 text-sm text-muted">
-            <p>Пока график не создан. Нажмите «Создать график», чтобы настроить таблицу.</p>
-            <p>Диапазон может включать не более 32 дней.</p>
-          </div>
-        </Card>
-      )}
+      {!loading &&
+        !error &&
+        canManage &&
+        filteredSavedSchedules.length === 0 &&
+        !schedule &&
+        !savedScheduleActions.scheduleLoading && (
+          <Card>
+            <div className="text-muted space-y-2 text-sm">
+              <p>Пока график не создан. Нажмите «Создать график», чтобы настроить таблицу.</p>
+              <p>Диапазон может включать не более 32 дней.</p>
+            </div>
+          </Card>
+        )}
 
       {!loading && !error && schedule && !savedScheduleActions.scheduleLoading && (
         <div className="space-y-4">
@@ -720,11 +572,7 @@ const SchedulePage: React.FC = () => {
             onOpenSwap={shiftRequestDialogs.openSwap}
           />
 
-          <ScheduleTabsNav
-            activeTab={activeTab}
-            hasTodayShifts={hasTodayShifts}
-            onChange={setActiveTab}
-          />
+          <ScheduleTabsNav activeTab={activeTab} hasTodayShifts={hasTodayShifts} onChange={setActiveTab} />
 
           {activeTab === "today" && hasTodayShifts && (
             <TodayShiftsCard todaysShifts={todaysShifts} currentMemberId={currentMember?.id ?? null} />
@@ -735,21 +583,19 @@ const SchedulePage: React.FC = () => {
               schedule={schedule}
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}
-              saving={saving}
+              saving={draftActions.saving}
               monthFallback={monthFallback}
               canManage={canManage}
               loading={loading}
               error={error}
               scheduleLoading={savedScheduleActions.scheduleLoading}
               onCancelEdit={handleCancelEdit}
-              onSave={handleSaveSchedule}
+              onSave={draftActions.saveSchedule}
               onCellChange={handleCellChange}
             />
           )}
 
-          {activeTab === "table" && scheduleReadOnly && (
-            <ScheduleHistoryBlock history={schedule.history} />
-          )}
+          {activeTab === "table" && scheduleReadOnly && <ScheduleHistoryBlock history={schedule.history} />}
 
           {activeTab === "requests" && (
             <ShiftRequestsSection
@@ -802,12 +648,12 @@ const SchedulePage: React.FC = () => {
       />
 
       <CreateScheduleDialog
-        open={dialogOpen}
-        onClose={closeDialog}
+        open={draftActions.dialogOpen}
+        onClose={draftActions.closeDialog}
         positions={positions}
         defaultStart={lastRange?.start}
         defaultEnd={lastRange?.end}
-        onSubmit={handleCreateSchedule}
+        onSubmit={draftActions.createDraft}
       />
     </div>
   );
