@@ -70,6 +70,9 @@ export default function useSavedScheduleActions({
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
       } catch (e: unknown) {
+        setSelectedSavedId(null);
+        onScheduleChanged(null);
+        onScheduleReadOnlyChanged(false);
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить график"));
       } finally {
         setScheduleLoading(false);
@@ -121,6 +124,9 @@ export default function useSavedScheduleActions({
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
       } catch (e: unknown) {
+        setSelectedSavedId(null);
+        onScheduleChanged(null);
+        onScheduleReadOnlyChanged(false);
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить график"));
       } finally {
         setScheduleLoading(false);
