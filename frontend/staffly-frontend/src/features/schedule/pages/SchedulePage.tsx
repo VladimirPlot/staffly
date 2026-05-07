@@ -22,13 +22,13 @@ import TodayShiftsCard from "../components/TodayShiftsCard";
 import useSavedScheduleActions from "../hooks/useSavedScheduleActions";
 import useScheduleCellEditing from "../hooks/useScheduleCellEditing";
 import useScheduleDraftActions from "../hooks/useScheduleDraftActions";
+import useScheduleDerivedState from "../hooks/useScheduleDerivedState";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import { listSavedSchedules, type ScheduleSummary } from "../api";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
-import { monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api";
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
@@ -142,24 +142,6 @@ const SchedulePage: React.FC = () => {
     return normalizeRole(member?.role ?? myRole);
   }, [members, myRole, user?.id]);
 
-  const currentMember = React.useMemo(() => {
-    if (!user?.id) return null;
-    return members.find((item) => item.userId === user.id) ?? null;
-  }, [members, user?.id]);
-
-  const currentMemberInSchedule = React.useMemo(() => {
-    if (!schedule || !currentMember) return false;
-    return schedule.rows.some((row) => row.memberId === currentMember.id);
-  }, [currentMember, schedule]);
-
-  const hasMyShift = React.useMemo(() => {
-    if (!schedule || !currentMember || !currentMemberInSchedule) return false;
-    return schedule.days.some((day) => {
-      const value = schedule.cellValues[`${currentMember.id}:${day.date}`];
-      return Boolean(value && value.trim());
-    });
-  }, [currentMember, currentMemberInSchedule, schedule]);
-
   const canManage = React.useMemo(() => {
     if (normalizedMembershipRole === "STAFF") {
       return false;
@@ -187,6 +169,16 @@ const SchedulePage: React.FC = () => {
       access.normalizedRestaurantRole != null && allowedRoles.some((role) => role === access.normalizedRestaurantRole)
     );
   }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
+
+  const derived = useScheduleDerivedState({
+    userId: user?.id,
+    schedule,
+    scheduleId,
+    savedSchedules,
+    members,
+    canManage,
+    positionFilter,
+  });
 
   const prepareSchedule = React.useCallback(
     (data: ScheduleData): ScheduleData => {
@@ -260,7 +252,7 @@ const SchedulePage: React.FC = () => {
   const shiftRequests = useScheduleShiftRequests({
     restaurantId,
     scheduleId,
-    currentMember,
+    currentMember: derived.currentMember,
     canManage,
     onClearScheduleNotices: clearScheduleNotices,
     onScheduleUpdated: handleShiftRequestScheduleUpdated,
@@ -356,78 +348,8 @@ const SchedulePage: React.FC = () => {
     void savedScheduleActions.deleteSavedSchedule(scheduleId);
   }, [savedScheduleActions, scheduleId]);
 
-  const monthFallback = React.useMemo(() => {
-    if (!schedule) return null;
-    const months = monthLabelsBetween(schedule.days.map((day) => day.date));
-    if (months.length > 0) return months.join("/");
-    return null;
-  }, [schedule]);
-
-  const canCreateShiftRequest = React.useMemo(
-    () => Boolean(schedule && scheduleId && currentMember && currentMemberInSchedule && hasMyShift),
-    [currentMember, currentMemberInSchedule, hasMyShift, schedule, scheduleId],
-  );
-
-  const hasPendingSavedSchedules = React.useMemo(
-    () => savedSchedules.some((item) => item.hasPendingShiftRequests),
-    [savedSchedules],
-  );
-
-  const shiftDisplay = React.useCallback(
-    (memberId: number, day: string | null) => {
-      if (!schedule || !day) return day ?? "";
-      const value = schedule.cellValues[`${memberId}:${day}`];
-      if (value) {
-        return `${day} (${value})`;
-      }
-      return day;
-    },
-    [schedule],
-  );
-
-  const sortedSavedSchedules = React.useMemo(() => {
-    return [...savedSchedules].sort((a, b) => {
-      const endA = new Date(a.endDate).getTime();
-      const endB = new Date(b.endDate).getTime();
-      return endB - endA;
-    });
-  }, [savedSchedules]);
-
-  const filteredSavedSchedules = React.useMemo(() => {
-    if (!canManage || positionFilter === "all") {
-      return sortedSavedSchedules;
-    }
-    return sortedSavedSchedules.filter((item) => item.positionIds?.includes(positionFilter));
-  }, [canManage, positionFilter, sortedSavedSchedules]);
-
-  const todayIso = React.useMemo(() => new Date().toISOString().split("T")[0], []);
-
-  const todaysShifts = React.useMemo(() => {
-    if (!schedule) return [] as { memberId: number; displayName: string; shift: string }[];
-    const hasToday = schedule.days.some((day) => day.date === todayIso);
-    if (!hasToday) return [] as { memberId: number; displayName: string; shift: string }[];
-
-    return schedule.rows
-      .map((row) => {
-        const value = schedule.cellValues[`${row.memberId}:${todayIso}`];
-        return {
-          memberId: row.memberId,
-          displayName: row.displayName,
-          shift: value?.trim() ?? "",
-        };
-      })
-      .filter((item) => Boolean(item.shift)) as {
-      memberId: number;
-      displayName: string;
-      shift: string;
-    }[];
-  }, [schedule, todayIso]);
-
-  const hasTodayShifts = todaysShifts.length > 0;
-  const hasSchedule = schedule != null;
-
   React.useEffect(() => {
-    if (!hasSchedule) {
+    if (!derived.hasSchedule) {
       setActiveTab("table");
       autoTabDoneRef.current = false;
       return;
@@ -436,12 +358,9 @@ const SchedulePage: React.FC = () => {
     if (!scheduleReadOnly) return;
     if (autoTabDoneRef.current) return;
 
-    setActiveTab(hasTodayShifts ? "today" : "table");
+    setActiveTab(derived.hasTodayShifts ? "today" : "table");
     autoTabDoneRef.current = true;
-  }, [hasSchedule, scheduleReadOnly, hasTodayShifts]);
-
-  const showLandingHeader = !schedule;
-  const showCreateScheduleButton = canManage && showLandingHeader;
+  }, [derived.hasSchedule, derived.hasTodayShifts, scheduleReadOnly]);
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-6">
@@ -465,12 +384,12 @@ const SchedulePage: React.FC = () => {
           </button>
         )}
       </div>
-      {showLandingHeader && (
+      {derived.showLandingHeader && (
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-strong text-2xl font-semibold">Графики</h1>
           </div>
-          {showCreateScheduleButton && (
+          {derived.showCreateScheduleButton && (
             <Button onClick={draftActions.openDialog} disabled={loading} className="shrink-0">
               Создать график
             </Button>
@@ -491,7 +410,7 @@ const SchedulePage: React.FC = () => {
       {!loading && !error && !schedule && (
         <SavedSchedulesSection
           canManage={canManage}
-          savedSchedules={filteredSavedSchedules}
+          savedSchedules={derived.filteredSavedSchedules}
           positions={positions}
           positionFilter={positionFilter}
           onPositionFilterChange={setPositionFilter}
@@ -505,7 +424,7 @@ const SchedulePage: React.FC = () => {
           downloading={exportActions.downloading}
           selectedSavedId={savedScheduleActions.selectedSavedId}
           scheduleLoading={savedScheduleActions.scheduleLoading}
-          hasPendingSavedSchedules={hasPendingSavedSchedules}
+          hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
           deletingId={savedScheduleActions.deletingId}
         />
       )}
@@ -513,7 +432,7 @@ const SchedulePage: React.FC = () => {
       {!loading &&
         !error &&
         !canManage &&
-        filteredSavedSchedules.length === 0 &&
+        derived.filteredSavedSchedules.length === 0 &&
         !schedule &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
@@ -526,7 +445,7 @@ const SchedulePage: React.FC = () => {
       {!loading &&
         !error &&
         canManage &&
-        filteredSavedSchedules.length === 0 &&
+        derived.filteredSavedSchedules.length === 0 &&
         !schedule &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
@@ -553,15 +472,15 @@ const SchedulePage: React.FC = () => {
             downloading={exportActions.downloading}
             onDownloadXlsx={exportActions.downloadXlsx}
             onDownloadJpg={exportActions.downloadJpg}
-            canCreateShiftRequest={canCreateShiftRequest}
+            canCreateShiftRequest={derived.canCreateShiftRequest}
             onOpenReplacement={shiftRequestDialogs.openReplacement}
             onOpenSwap={shiftRequestDialogs.openSwap}
           />
 
-          <ScheduleTabsNav activeTab={activeTab} hasTodayShifts={hasTodayShifts} onChange={setActiveTab} />
+          <ScheduleTabsNav activeTab={activeTab} hasTodayShifts={derived.hasTodayShifts} onChange={setActiveTab} />
 
-          {activeTab === "today" && hasTodayShifts && (
-            <TodayShiftsCard todaysShifts={todaysShifts} currentMemberId={currentMember?.id ?? null} />
+          {activeTab === "today" && derived.hasTodayShifts && (
+            <TodayShiftsCard todaysShifts={derived.todaysShifts} currentMemberId={derived.currentMember?.id ?? null} />
           )}
 
           {activeTab === "table" && (
@@ -570,7 +489,7 @@ const SchedulePage: React.FC = () => {
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}
               saving={draftActions.saving}
-              monthFallback={monthFallback}
+              monthFallback={derived.monthFallback}
               canManage={canManage}
               loading={loading}
               error={error}
@@ -590,7 +509,7 @@ const SchedulePage: React.FC = () => {
               error={shiftRequests.error}
               requests={shiftRequests.sortedRequests}
               humanStatus={shiftRequests.humanStatus}
-              shiftDisplay={shiftDisplay}
+              shiftDisplay={derived.shiftDisplay}
               canCancelOwnRequest={shiftRequests.canCancelOwnRequest}
               onManagerDecision={shiftRequests.decide}
               onCancel={shiftRequests.cancel}
@@ -599,13 +518,13 @@ const SchedulePage: React.FC = () => {
         </div>
       )}
 
-      {schedule && currentMember && (
+      {schedule && derived.currentMember && (
         <>
           <ShiftReplacementDialog
             open={shiftRequestDialogs.replacementOpen}
             onClose={shiftRequestDialogs.closeReplacement}
             schedule={schedule}
-            currentMember={currentMember}
+            currentMember={derived.currentMember}
             members={members}
             onSubmit={shiftRequestDialogs.submitReplacement}
           />
@@ -613,7 +532,7 @@ const SchedulePage: React.FC = () => {
             open={shiftRequestDialogs.swapOpen}
             onClose={shiftRequestDialogs.closeSwap}
             schedule={schedule}
-            currentMember={currentMember}
+            currentMember={derived.currentMember}
             members={members}
             onSubmit={shiftRequestDialogs.submitSwap}
           />
