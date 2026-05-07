@@ -19,14 +19,13 @@ import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
 import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
+import useSavedScheduleActions from "../hooks/useSavedScheduleActions";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import {
   createSchedule,
-  deleteSchedule,
-  fetchSchedule,
   listSavedSchedules,
   updateSchedule,
   type ScheduleSummary,
@@ -83,13 +82,10 @@ const SchedulePage: React.FC = () => {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [schedule, setSchedule] = React.useState<ScheduleData | null>(null);
   const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
-  const [selectedSavedId, setSelectedSavedId] = React.useState<number | null>(null);
   const [scheduleReadOnly, setScheduleReadOnly] = React.useState(false);
-  const [scheduleLoading, setScheduleLoading] = React.useState(false);
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
@@ -112,12 +108,9 @@ const SchedulePage: React.FC = () => {
       setMembers([]);
       setSchedule(null);
       setSavedSchedules([]);
-      setSelectedSavedId(null);
       setScheduleReadOnly(false);
-      setScheduleLoading(false);
       clearScheduleNotices();
       setSaving(false);
-      setDeletingId(null);
       return;
     }
 
@@ -126,10 +119,8 @@ const SchedulePage: React.FC = () => {
     setError(null);
     setSchedule(null);
     setSavedSchedules([]);
-    setSelectedSavedId(null);
     setScheduleReadOnly(false);
     clearScheduleNotices();
-    setScheduleLoading(false);
     setSaving(false);
 
     (async () => {
@@ -300,9 +291,7 @@ const SchedulePage: React.FC = () => {
         cellValues: {},
       });
       setScheduleReadOnly(false);
-      setSelectedSavedId(null);
       clearScheduleNotices();
-      setScheduleLoading(false);
       setLastRange({ start: config.startDate, end: config.endDate });
     },
     [canManage, clearScheduleNotices, members, positions]
@@ -479,7 +468,6 @@ const SchedulePage: React.FC = () => {
         : await createSchedule(restaurantId, payload);
       setSchedule(prepareSchedule(saved));
       setScheduleReadOnly(true);
-      setSelectedSavedId(saved.id ?? null);
       setLastRange({ start: saved.config.startDate, end: saved.config.endDate });
       const savedList = await listSavedSchedules(restaurantId);
       setSavedSchedules(savedList);
@@ -492,66 +480,25 @@ const SchedulePage: React.FC = () => {
     }
   }, [canManage, clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId, schedule]);
 
-  const handleOpenSavedSchedule = React.useCallback(
-    async (id: number) => {
-      if (!restaurantId) return;
-
-      autoTabDoneRef.current = false;
-
-      setSelectedSavedId(id);
-      setScheduleReadOnly(true);
-      setScheduleLoading(true);
-      setSchedule(null);
-      clearScheduleNotices();
-      try {
-        const data = await fetchSchedule(restaurantId, id);
-        const prepared = prepareSchedule(data);
-        setSchedule(prepared);
-        setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
-        await loadShiftRequests(id);
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
-      } finally {
-        setScheduleLoading(false);
-      }
-    },
-    [clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId]
-  );
-
-  const handleEditSavedSchedule = React.useCallback(
-    async (id: number) => {
-      if (!restaurantId || !canManage) return;
-
-      autoTabDoneRef.current = false;
-
-      setSelectedSavedId(id);
-      setScheduleReadOnly(false);
-      setScheduleLoading(true);
-      setSchedule(null);
-      clearScheduleNotices();
-      try {
-        const data = await fetchSchedule(restaurantId, id);
-        const prepared = prepareSchedule(data);
-        setSchedule(prepared);
-        setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
-        await loadShiftRequests(id);
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
-      } finally {
-        setScheduleLoading(false);
-      }
-    },
-    [clearScheduleNotices, canManage, loadShiftRequests, prepareSchedule, restaurantId]
-  );
-
-  const handleCloseSavedSchedule = React.useCallback(() => {
-    setSchedule(null);
-    setSelectedSavedId(null);
-    setScheduleReadOnly(false);
-    clearScheduleNotices();
-    setScheduleLoading(false);
+  const resetAutoTab = React.useCallback(() => {
     autoTabDoneRef.current = false;
-  }, [clearScheduleNotices]);
+  }, []);
+
+  const savedScheduleActions = useSavedScheduleActions({
+    restaurantId,
+    canManage,
+    scheduleId,
+    prepareSchedule,
+    loadShiftRequests,
+    onScheduleChanged: setSchedule,
+    onSavedSchedulesChanged: setSavedSchedules,
+    onScheduleReadOnlyChanged: setScheduleReadOnly,
+    onLastRangeChanged: setLastRange,
+    onClearScheduleNotices: clearScheduleNotices,
+    onScheduleMessage: setScheduleMessage,
+    onScheduleError: setScheduleError,
+    onAutoTabReset: resetAutoTab,
+  });
 
   const handleEnterEditMode = React.useCallback(() => {
     if (!canManage) return;
@@ -560,58 +507,18 @@ const SchedulePage: React.FC = () => {
   }, [canManage, clearScheduleNotices]);
 
   const handleCancelEdit = React.useCallback(async () => {
-    if (!restaurantId) return;
     if (!scheduleId) {
-      handleCloseSavedSchedule();
+      savedScheduleActions.closeSavedSchedule();
       return;
     }
-    setScheduleLoading(true);
-    clearScheduleNotices();
-    try {
-      const data = await fetchSchedule(restaurantId, scheduleId);
-      const prepared = prepareSchedule(data);
-      setSchedule(prepared);
-      setScheduleReadOnly(true);
-      setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
-      await loadShiftRequests(scheduleId);
-    } catch (e: any) {
-      setScheduleError(e?.friendlyMessage || "Не удалось загрузить график");
-    } finally {
-      setScheduleLoading(false);
-    }
-  }, [clearScheduleNotices, handleCloseSavedSchedule, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]);
 
-  const handleDeleteSavedSchedule = React.useCallback(
-    async (id: number) => {
-      if (!canManage || !restaurantId) return;
-      if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
-        return;
-      }
-      setDeletingId(id);
-      clearScheduleNotices();
-      try {
-        await deleteSchedule(restaurantId, id);
-        const savedList = await listSavedSchedules(restaurantId);
-        setSavedSchedules(savedList);
-        if (scheduleId === id) {
-          setSchedule(null);
-          setSelectedSavedId(null);
-          setScheduleReadOnly(false);
-        }
-        setScheduleMessage("График удалён");
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось удалить график");
-      } finally {
-        setDeletingId(null);
-      }
-    },
-    [clearScheduleNotices, canManage, restaurantId, scheduleId]
-  );
+    await savedScheduleActions.openSavedSchedule(scheduleId);
+  }, [savedScheduleActions, scheduleId]);
 
   const handleDeleteSchedule = React.useCallback(() => {
     if (!scheduleId) return;
-    void handleDeleteSavedSchedule(scheduleId);
-  }, [handleDeleteSavedSchedule, scheduleId]);
+    void savedScheduleActions.deleteSavedSchedule(scheduleId);
+  }, [savedScheduleActions, scheduleId]);
 
   const openDialog = React.useCallback(() => {
     setDialogOpen(true);
@@ -716,7 +623,7 @@ const SchedulePage: React.FC = () => {
         {schedule && (
           <button
             type="button"
-            onClick={handleCloseSavedSchedule}
+            onClick={savedScheduleActions.closeSavedSchedule}
             className={
               "inline-flex items-center gap-0 rounded-2xl border border-subtle " +
               "bg-surface px-2 py-1 text-sm font-medium text-default shadow-[var(--staffly-shadow)] " +
@@ -745,7 +652,7 @@ const SchedulePage: React.FC = () => {
 
       {loading && <Card>Загрузка…</Card>}
       {!loading && error && <Card className="text-red-600">{error}</Card>}
-      {!loading && !error && scheduleLoading && <Card>Загрузка сохранённого графика…</Card>}
+      {!loading && !error && savedScheduleActions.scheduleLoading && <Card>Загрузка сохранённого графика…</Card>}
       {!loading && !error && scheduleError && (
         <Card className="border-red-200 bg-red-50 text-red-700">{scheduleError}</Card>
       )}
@@ -760,22 +667,22 @@ const SchedulePage: React.FC = () => {
           positions={positions}
           positionFilter={positionFilter}
           onPositionFilterChange={setPositionFilter}
-          onOpenSavedSchedule={handleOpenSavedSchedule}
-          onEditSavedSchedule={handleEditSavedSchedule}
-          onDeleteSavedSchedule={handleDeleteSavedSchedule}
+          onOpenSavedSchedule={savedScheduleActions.openSavedSchedule}
+          onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
+          onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
           onDownloadXlsx={exportActions.downloadXlsx}
           onDownloadJpg={exportActions.downloadJpg}
           downloadMenuFor={downloadMenuFor}
           onToggleDownloadMenu={setDownloadMenuFor}
           downloading={exportActions.downloading}
-          selectedSavedId={selectedSavedId}
-          scheduleLoading={scheduleLoading}
+          selectedSavedId={savedScheduleActions.selectedSavedId}
+          scheduleLoading={savedScheduleActions.scheduleLoading}
           hasPendingSavedSchedules={hasPendingSavedSchedules}
-          deletingId={deletingId}
+          deletingId={savedScheduleActions.deletingId}
         />
       )}
 
-      {!loading && !error && !canManage && filteredSavedSchedules.length === 0 && !schedule && !scheduleLoading && (
+      {!loading && !error && !canManage && filteredSavedSchedules.length === 0 && !schedule && !savedScheduleActions.scheduleLoading && (
         <Card>
           <div className="text-sm text-muted">
             Раздел доступен для просмотра. Как только менеджер сохранит график, он появится в списке выше.
@@ -783,7 +690,7 @@ const SchedulePage: React.FC = () => {
         </Card>
       )}
 
-      {!loading && !error && canManage && filteredSavedSchedules.length === 0 && !schedule && !scheduleLoading && (
+      {!loading && !error && canManage && filteredSavedSchedules.length === 0 && !schedule && !savedScheduleActions.scheduleLoading && (
         <Card>
           <div className="space-y-2 text-sm text-muted">
             <p>Пока график не создан. Нажмите «Создать график», чтобы настроить таблицу.</p>
@@ -792,14 +699,14 @@ const SchedulePage: React.FC = () => {
         </Card>
       )}
 
-      {!loading && !error && schedule && !scheduleLoading && (
+      {!loading && !error && schedule && !savedScheduleActions.scheduleLoading && (
         <div className="space-y-4">
           <ScheduleDetailHeader
             schedule={schedule}
             canManage={canManage}
             scheduleReadOnly={scheduleReadOnly}
             scheduleId={scheduleId}
-            deleting={deletingId === scheduleId}
+            deleting={savedScheduleActions.deletingId === scheduleId}
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
             onOpenOwnerDialog={ownerDialog.openDialog}
@@ -833,7 +740,7 @@ const SchedulePage: React.FC = () => {
               canManage={canManage}
               loading={loading}
               error={error}
-              scheduleLoading={scheduleLoading}
+              scheduleLoading={savedScheduleActions.scheduleLoading}
               onCancelEdit={handleCancelEdit}
               onSave={handleSaveSchedule}
               onCellChange={handleCellChange}
