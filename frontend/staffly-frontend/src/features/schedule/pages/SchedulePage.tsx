@@ -20,19 +20,16 @@ import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
+import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import {
   createSchedule,
   createReplacement,
   createSwap,
-  decideAsManager,
   deleteSchedule,
   fetchSchedule,
   listSavedSchedules,
-  listShiftRequests,
-  cancelShiftRequest,
   updateSchedule,
   type ScheduleSummary,
-  type ShiftRequestDto,
 } from "../api";
 import type { ScheduleConfig, ScheduleData, ScheduleCellKey, ScheduleOwnerDto } from "../types";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
@@ -100,9 +97,6 @@ const SchedulePage: React.FC = () => {
   );
   const [replacementOpen, setReplacementOpen] = React.useState(false);
   const [swapOpen, setSwapOpen] = React.useState(false);
-  const [shiftRequests, setShiftRequests] = React.useState<ShiftRequestDto[]>([]);
-  const [shiftRequestsLoading, setShiftRequestsLoading] = React.useState(false);
-  const [shiftRequestsError, setShiftRequestsError] = React.useState<string | null>(null);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
@@ -130,9 +124,6 @@ const SchedulePage: React.FC = () => {
       clearScheduleNotices();
       setSaving(false);
       setDeletingId(null);
-      setShiftRequests([]);
-      setShiftRequestsError(null);
-      setShiftRequestsLoading(false);
       return;
     }
 
@@ -146,9 +137,6 @@ const SchedulePage: React.FC = () => {
     clearScheduleNotices();
     setScheduleLoading(false);
     setSaving(false);
-    setShiftRequests([]);
-    setShiftRequestsError(null);
-    setShiftRequestsLoading(false);
 
     (async () => {
       try {
@@ -387,6 +375,29 @@ const SchedulePage: React.FC = () => {
     onClearScheduleError: handleClearScheduleError,
   });
 
+  const handleShiftRequestScheduleUpdated = React.useCallback(
+    (updatedSchedule: ScheduleData) => {
+      const prepared = prepareSchedule(updatedSchedule);
+      setSchedule(prepared);
+      setScheduleReadOnly(true);
+      setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
+    },
+    [prepareSchedule]
+  );
+
+  const shiftRequests = useScheduleShiftRequests({
+    restaurantId,
+    scheduleId,
+    currentMember,
+    canManage,
+    onClearScheduleNotices: clearScheduleNotices,
+    onScheduleUpdated: handleShiftRequestScheduleUpdated,
+    onSavedSchedulesUpdated: setSavedSchedules,
+    onSuccessMessage: setScheduleMessage,
+    onErrorMessage: setScheduleError,
+  });
+  const { load: loadShiftRequests, refresh: refreshShiftRequests } = shiftRequests;
+
   const handleCellChange = React.useCallback(
     (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => {
       setSchedule((prev) => {
@@ -406,28 +417,6 @@ const SchedulePage: React.FC = () => {
       });
     },
     []
-  );
-
-  const loadShiftRequests = React.useCallback(
-    async (targetScheduleId?: number) => {
-      if (!restaurantId || !(targetScheduleId ?? scheduleId)) {
-        setShiftRequests([]);
-        return;
-      }
-      const scheduleForLoad = targetScheduleId ?? scheduleId;
-      setShiftRequestsLoading(true);
-      setShiftRequestsError(null);
-      try {
-        const data = await listShiftRequests(restaurantId, scheduleForLoad as number);
-        setShiftRequests(data);
-      } catch (e: any) {
-        setShiftRequestsError(e?.friendlyMessage || "Не удалось загрузить заявки");
-        setShiftRequests([]);
-      } finally {
-        setShiftRequestsLoading(false);
-      }
-    },
-    [restaurantId, scheduleId]
   );
 
   const handleSaveSchedule = React.useCallback(async () => {
@@ -543,8 +532,6 @@ const SchedulePage: React.FC = () => {
     setScheduleReadOnly(false);
     clearScheduleNotices();
     setScheduleLoading(false);
-    setShiftRequests([]);
-
     autoTabDoneRef.current = false;
   }, [clearScheduleNotices]);
 
@@ -647,7 +634,6 @@ const SchedulePage: React.FC = () => {
           setSchedule(null);
           setSelectedSavedId(null);
           setScheduleReadOnly(false);
-          setShiftRequests([]);
         }
         setScheduleMessage("График удалён");
       } catch (e: any) {
@@ -696,12 +682,12 @@ const SchedulePage: React.FC = () => {
         await createReplacement(restaurantId, scheduleId, payload);
         setScheduleMessage("Заявка на замену отправлена");
         setReplacementOpen(false);
-        await loadShiftRequests();
+        await refreshShiftRequests();
       } catch (e: any) {
         setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на замену");
       }
     },
-    [clearScheduleNotices, loadShiftRequests, restaurantId, scheduleId]
+    [clearScheduleNotices, refreshShiftRequests, restaurantId, scheduleId]
   );
 
   const handleSubmitSwap = React.useCallback(
@@ -712,49 +698,12 @@ const SchedulePage: React.FC = () => {
         await createSwap(restaurantId, scheduleId, payload);
         setScheduleMessage("Заявка на обмен отправлена");
         setSwapOpen(false);
-        await loadShiftRequests();
+        await refreshShiftRequests();
       } catch (e: any) {
         setScheduleError(e?.friendlyMessage || "Не удалось создать заявку на обмен");
       }
     },
-    [clearScheduleNotices, loadShiftRequests, restaurantId, scheduleId]
-  );
-
-  const handleManagerDecision = React.useCallback(
-    async (requestId: number, accepted: boolean) => {
-      if (!restaurantId || !scheduleId) return;
-      clearScheduleNotices();
-      try {
-        await decideAsManager(restaurantId, scheduleId, requestId, accepted);
-        const data = await fetchSchedule(restaurantId, scheduleId);
-        const prepared = prepareSchedule(data);
-        setSchedule(prepared);
-        setScheduleReadOnly(true);
-        setLastRange({ start: prepared.config.startDate, end: prepared.config.endDate });
-        await loadShiftRequests(scheduleId);
-        setScheduleMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось обработать заявку");
-      }
-    },
-    [clearScheduleNotices, loadShiftRequests, prepareSchedule, restaurantId, scheduleId]
-  );
-
-  const handleCancelMyShiftRequest = React.useCallback(
-    async (requestId: number) => {
-      if (!restaurantId || !scheduleId) return;
-      clearScheduleNotices();
-      try {
-        await cancelShiftRequest(restaurantId, scheduleId, requestId);
-        await loadShiftRequests();
-        const savedList = await listSavedSchedules(restaurantId);
-        setSavedSchedules(savedList);
-        setScheduleMessage("Заявка отменена");
-      } catch (e: any) {
-        setScheduleError(e?.friendlyMessage || "Не удалось отменить заявку");
-      }
-    },
-    [clearScheduleNotices, restaurantId, scheduleId, loadShiftRequests]
+    [clearScheduleNotices, refreshShiftRequests, restaurantId, scheduleId]
   );
 
   const monthFallback = React.useMemo(() => {
@@ -784,28 +733,6 @@ const SchedulePage: React.FC = () => {
       return day;
     },
     [schedule]
-  );
-
-  const humanStatus = React.useCallback((status: ShiftRequestDto["status"]) => {
-    switch (status) {
-      case "PENDING_MANAGER":
-        return "Ожидает решения менеджера";
-      case "APPROVED":
-        return "Одобрено";
-      case "REJECTED_BY_MANAGER":
-        return "Отклонено";
-      default:
-        return status;
-    }
-  }, []);
-
-  const canCancelOwnRequest = React.useCallback(
-    (request: ShiftRequestDto) => {
-      if (!currentMember) return false;
-      if (request.status !== "PENDING_MANAGER") return false;
-      return request.fromMember.id === currentMember.id;
-    },
-    [currentMember]
   );
 
   const sortedSavedSchedules = React.useMemo(() => {
@@ -862,19 +789,6 @@ const SchedulePage: React.FC = () => {
     setActiveTab(hasTodayShifts ? "today" : "table");
     autoTabDoneRef.current = true;
   }, [hasSchedule, scheduleReadOnly, hasTodayShifts]);
-
-  const sortedShiftRequests = React.useMemo(() => {
-    let requests = [...shiftRequests];
-    if (!canManage && currentMember) {
-      requests = requests.filter(
-        (request) =>
-          request.fromMember.id === currentMember.id || request.toMember.id === currentMember.id
-      );
-    }
-    return requests.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, [canManage, currentMember, shiftRequests]);
 
   const showLandingHeader = !schedule;
   const showCreateScheduleButton = canManage && showLandingHeader;
@@ -1018,14 +932,14 @@ const SchedulePage: React.FC = () => {
           {activeTab === "requests" && (
             <ShiftRequestsSection
               canManage={canManage}
-              loading={shiftRequestsLoading}
-              error={shiftRequestsError}
-              requests={sortedShiftRequests}
-              humanStatus={humanStatus}
+              loading={shiftRequests.loading}
+              error={shiftRequests.error}
+              requests={shiftRequests.sortedRequests}
+              humanStatus={shiftRequests.humanStatus}
               shiftDisplay={shiftDisplay}
-              canCancelOwnRequest={canCancelOwnRequest}
-              onManagerDecision={handleManagerDecision}
-              onCancel={handleCancelMyShiftRequest}
+              canCancelOwnRequest={shiftRequests.canCancelOwnRequest}
+              onManagerDecision={shiftRequests.decide}
+              onCancel={shiftRequests.cancel}
             />
           )}
         </div>
