@@ -38,12 +38,25 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onOpenReplacement,
   onOpenSwap,
 }) => {
+  const ownerName = schedule.owner?.displayName?.trim();
+  const ownerMeta = [schedule.owner?.role, schedule.owner?.positionName]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const createdByName = schedule.createdBy?.displayName?.trim();
+
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 space-y-1">
         <div className="text-xl font-semibold text-strong">{schedule.title}</div>
         <div className="text-sm text-muted">
           {schedule.config.startDate} — {schedule.config.endDate}
+        </div>
+        <div className="flex flex-col gap-1 text-xs text-muted sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+          <span>
+            Ответственный: {ownerName || "не назначен"}
+            {ownerMeta.length > 0 && <> · {ownerMeta.join(" · ")}</>}
+          </span>
+          {createdByName && <span>Создал: {createdByName}</span>}
         </div>
       </div>
 

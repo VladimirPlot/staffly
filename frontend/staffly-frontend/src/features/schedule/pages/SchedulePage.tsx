@@ -11,6 +11,7 @@ import Icon from "../../../shared/ui/Icon";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
+import ScheduleHistoryBlock from "../components/ScheduleHistoryBlock";
 import ScheduleTableSection from "../components/ScheduleTableSection";
 import ScheduleTabsNav from "../components/ScheduleTabsNav";
 import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
@@ -976,6 +977,10 @@ const SchedulePage: React.FC = () => {
               onSave={handleSaveSchedule}
               onCellChange={handleCellChange}
             />
+          )}
+
+          {activeTab === "table" && scheduleReadOnly && (
+            <ScheduleHistoryBlock history={schedule.history} />
           )}
 
           {activeTab === "requests" && (

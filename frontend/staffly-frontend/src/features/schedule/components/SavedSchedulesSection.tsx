@@ -121,6 +121,9 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                     <div className="mt-1 text-xs text-muted">
                       {item.startDate} — {item.endDate}
                     </div>
+                    <div className="mt-1 text-xs text-muted">
+                      Ответственный: {item.owner?.displayName?.trim() || "не назначен"}
+                    </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button

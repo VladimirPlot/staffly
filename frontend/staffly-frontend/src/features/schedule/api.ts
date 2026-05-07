@@ -1,5 +1,5 @@
 import api from "../../shared/api/apiClient";
-import type { ScheduleConfig, ScheduleData } from "./types";
+import type { ScheduleConfig, ScheduleData, ScheduleOwnerDto, ScheduleCreatedByDto, ScheduleAuditLogDto } from "./types";
 
 export type ShiftRequestType = "REPLACEMENT" | "SWAP";
 export type ShiftRequestStatus =
@@ -21,6 +21,8 @@ export type ShiftRequestDto = {
   status: ShiftRequestStatus;
   reason: string | null;
   createdAt: string;
+  decidedAt?: string | null;
+  decisionComment?: string | null;
   fromMember: ShiftRequestMemberDto;
   toMember: ShiftRequestMemberDto;
 };
@@ -33,6 +35,7 @@ export type ScheduleSummary = {
   createdAt: string;
   hasPendingShiftRequests: boolean;
   positionIds: number[];
+  owner?: ScheduleOwnerDto | null;
 };
 
 type ScheduleRowResponse = {
@@ -50,6 +53,9 @@ type ScheduleResponse = {
   days: ScheduleData["days"];
   rows: ScheduleRowResponse[];
   cellValues: Record<string, string>;
+  owner?: ScheduleOwnerDto | null;
+  createdBy?: ScheduleCreatedByDto | null;
+  history?: ScheduleAuditLogDto[];
 };
 
 export type SaveSchedulePayload = {
@@ -78,6 +84,9 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
       positionName: row.positionName,
     })),
     cellValues: data.cellValues,
+    owner: data.owner ?? null,
+    createdBy: data.createdBy ?? null,
+    history: data.history ?? [],
   };
 }
 
