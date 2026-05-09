@@ -9,6 +9,10 @@ infra/.env
 **/dist/
 **/dist-ssr/
 
+# playwright cli artifacts
+.playwright-cli/
+output/playwright/
+
 # misc
 .DS_Store
 .codex
