@@ -297,6 +297,31 @@ export default function DropdownMenu({
     </div>
   );
 
+  const desktopMenu = !open || isMobile ? null : (
+    <div
+      id={desktopMenuId}
+      ref={desktopMenuRef}
+      role="menu"
+      className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto overscroll-contain ${menuClassName}`}
+      style={
+        desktopPos
+          ? {
+              top: desktopPos.top,
+              left: desktopPos.left,
+              width: matchTriggerWidth && triggerWidth ? triggerWidth : undefined,
+              maxHeight: DESKTOP_MENU_MAX_HEIGHT,
+            }
+          : { top: -9999, left: -9999, maxHeight: DESKTOP_MENU_MAX_HEIGHT }
+      }
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="border-subtle bg-surface w-full rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
+        {children({ close, open, isMobile })}
+      </div>
+    </div>
+  );
+
   return (
     <span ref={triggerWrapRef} className={triggerWrapperClassName}>
       {trigger({
@@ -312,33 +337,7 @@ export default function DropdownMenu({
 
       {open && (
         <>
-          {/* ✅ Desktop fixed popover */}
-          {!isMobile && (
-            <div
-              id={desktopMenuId}
-              ref={desktopMenuRef}
-              role="menu"
-              className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto overscroll-contain ${menuClassName}`}
-              style={
-                desktopPos
-                  ? {
-                      top: desktopPos.top,
-                      left: desktopPos.left,
-                      width: matchTriggerWidth && triggerWidth ? triggerWidth : undefined,
-                      maxHeight: DESKTOP_MENU_MAX_HEIGHT,
-                    }
-                  : { top: -9999, left: -9999, maxHeight: DESKTOP_MENU_MAX_HEIGHT } // пока не посчитали — вне экрана
-              }
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="border-subtle bg-surface w-full rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-                {children({ close, open, isMobile })}
-              </div>
-            </div>
-          )}
-
-          {/* ✅ Mobile overlay in portal (because #root is locked) */}
+          {desktopMenu ? (portalTarget ? createPortal(desktopMenu, portalTarget) : desktopMenu) : null}
           {overlay ? (portalTarget ? createPortal(overlay, portalTarget) : overlay) : null}
         </>
       )}

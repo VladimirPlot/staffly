@@ -7,7 +7,6 @@ import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavi
 import Button from "../../../shared/ui/Button";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Icon from "../../../shared/ui/Icon";
-import IconButton from "../../../shared/ui/IconButton";
 import Modal from "../../../shared/ui/Modal";
 import Textarea from "../../../shared/ui/Textarea";
 import {
@@ -262,18 +261,18 @@ function PhotoCell({
           menuClassName="w-52"
           mobileSheetTitle={item.name.trim() || `Позиция ${index + 1}`}
           mobileSheetSubtitle="Фото позиции"
-          triggerWrapperClassName="absolute top-1 right-1 inline-flex"
+          triggerWrapperClassName="absolute top-2 right-2 inline-flex"
           trigger={(triggerProps) => (
             <span ref={photoMenuAnchorRef} className="inline-flex">
-              <IconButton
-                variant="unstyled"
-                className="border-subtle bg-surface/95 text-default hover:bg-app h-10 w-10 border shadow-sm backdrop-blur"
+              <button
+                type="button"
+                className="relative inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/30 bg-black/45 text-white shadow-[0_2px_8px_rgba(0,0,0,0.22)] backdrop-blur-[2px] transition-[background-color,box-shadow,transform] after:absolute after:-inset-2 after:content-[''] hover:bg-black/65 focus:outline-none focus:ring-2 focus:ring-white/80 focus:ring-offset-1 focus:ring-offset-black/20 active:scale-95 sm:h-7 sm:w-7"
                 title="Действия с фото"
                 aria-label={`Действия с фото позиции ${index + 1}`}
                 {...triggerProps}
               >
                 <Icon icon={MoreVertical} size="xs" decorative />
-              </IconButton>
+              </button>
             </span>
           )}
         >
