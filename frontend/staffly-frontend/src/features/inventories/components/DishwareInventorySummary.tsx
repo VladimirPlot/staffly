@@ -26,19 +26,19 @@ export default function DishwareInventorySummary({ summary }: DishwareInventoryS
       label: "Недостача",
       value: hasLoss ? formatCompactInventoryNumber(-summary.lossQty) : "0",
       fullValue: formatInventoryLossCount(summary.lossQty),
-      className: hasLoss ? "text-rose-600" : "text-default",
+      className: hasLoss ? "text-[color:var(--staffly-loss-text)]" : "text-default",
     },
     {
       label: "Излишек",
       value: hasGain ? `+${formatCompactInventoryNumber(summary.gainQty)}` : "0",
       fullValue: hasGain ? `+${formatInventoryCount(summary.gainQty)}` : "0",
-      className: hasGain ? "text-emerald-700" : "text-default",
+      className: hasGain ? "text-[color:var(--staffly-gain-text)]" : "text-default",
     },
     {
       label: "Потери",
       value: formatCompactInventoryMoney(summary.totalLossAmount),
       fullValue: formatInventoryLossAmount(summary.totalLossAmount),
-      className: summary.totalLossAmount > 0 ? "text-rose-600" : "text-default",
+      className: summary.totalLossAmount > 0 ? "text-[color:var(--staffly-loss-text)]" : "text-default",
     },
   ];
   const detailMetrics = [

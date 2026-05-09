@@ -87,9 +87,10 @@ function InfoPill({
       className={cn(
         "inline-flex min-h-6 max-w-full min-w-0 items-center gap-1 rounded-lg border px-1.5 text-[11px] font-medium tabular-nums",
         tone === "default" && "border-subtle text-default bg-[color:var(--staffly-control)]",
-        tone === "loss" && "border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/20",
+        tone === "loss" &&
+          "border-[color:var(--staffly-loss-border)] bg-[color:var(--staffly-loss-bg)] text-[color:var(--staffly-loss-text)]",
         tone === "gain" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20",
+          "border-[color:var(--staffly-gain-border)] bg-[color:var(--staffly-gain-bg)] text-[color:var(--staffly-gain-text)]",
       )}
     >
       <span className="text-muted shrink-0 font-normal">{label}</span>
@@ -379,7 +380,7 @@ function InfoCell({
         {!readOnly ? (
           <button
             type="button"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-red-600 transition outline-none hover:bg-red-50 focus:ring-2 focus:ring-red-200 sm:h-8 sm:w-8 dark:hover:bg-red-950/20"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[color:var(--staffly-loss-text)] transition outline-none hover:bg-[color:var(--staffly-loss-bg)] focus:ring-2 focus:ring-[var(--staffly-loss-border)] sm:h-8 sm:w-8"
             aria-label={`Удалить позицию ${index + 1}`}
             title="Удалить позицию"
             onClick={() => onRemove(item.clientId)}
@@ -477,8 +478,6 @@ export default function DishwareInventoryItemsTable({
 
               {items.map((item, rowIndex) => {
                 const metrics = computeDishwareItemMetrics(item);
-                const lossAmountTone = metrics.lossAmount > 0 ? "text-red-700" : "text-default";
-
                 return (
                   <tr key={item.clientId} className="group">
                     <td className="border-subtle bg-surface group-hover:bg-app sticky left-0 z-20 w-[88px] border-r border-b align-middle sm:w-[96px]">
@@ -578,8 +577,9 @@ export default function DishwareInventoryItemsTable({
                         title={formatInventoryLossAmount(metrics.lossAmount)}
                         className={cn(
                           "mx-2 flex min-h-10 min-w-0 items-center justify-end overflow-hidden rounded-xl px-3 text-sm font-semibold tabular-nums whitespace-nowrap",
-                          lossAmountTone,
-                          metrics.lossAmount > 0 && "bg-red-50 dark:bg-red-950/20",
+                          metrics.lossAmount > 0
+                            ? "bg-[color:var(--staffly-loss-bg)] text-[color:var(--staffly-loss-text)]"
+                            : "text-default",
                         )}
                       >
                         <span className="min-w-0 truncate">{formatCompactInventoryMoney(metrics.lossAmount)}</span>

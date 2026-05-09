@@ -114,23 +114,23 @@ export default function DishwareInventoryItemCard({
   const statusTone: MetricTone = metrics.diff < 0 ? "loss" : metrics.diff > 0 ? "gain" : "default";
 
   function getToneClass(tone: MetricTone) {
-    if (tone === "gain") return "text-emerald-700 dark:text-emerald-200";
+    if (tone === "gain") return "text-[color:var(--staffly-gain-text)]";
     return "text-default";
   }
 
   function getToneStyle(tone: MetricTone): CSSProperties | undefined {
     if (tone === "loss") {
       return {
-        color: "#dc2626",
-        WebkitTextFillColor: "#dc2626",
+        color: "var(--staffly-loss-text)",
+        WebkitTextFillColor: "var(--staffly-loss-text)",
         opacity: 1,
       };
     }
 
     if (tone === "gain") {
       return {
-        color: "#047857",
-        WebkitTextFillColor: "#047857",
+        color: "var(--staffly-gain-text)",
+        WebkitTextFillColor: "var(--staffly-gain-text)",
         opacity: 1,
       };
     }
@@ -141,8 +141,8 @@ export default function DishwareInventoryItemCard({
   function getMetricCardClass(tone: MetricTone) {
     return cn(
       "border-subtle bg-[color:var(--staffly-surface)]",
-      tone === "loss" && "border-[#fecaca] bg-[#fff7f7] dark:border-red-900/40 dark:bg-red-950/10",
-      tone === "gain" && "border-[#a7f3d0] bg-[#f0fdf4] dark:border-emerald-900/40 dark:bg-emerald-950/10",
+      tone === "loss" && "border-[color:var(--staffly-loss-border)] bg-[color:var(--staffly-loss-bg)]",
+      tone === "gain" && "border-[color:var(--staffly-gain-border)] bg-[color:var(--staffly-gain-bg)]",
     );
   }
 
@@ -150,9 +150,9 @@ export default function DishwareInventoryItemCard({
     return cn(
       "border-subtle bg-[color:var(--staffly-surface)] text-default",
       tone === "loss" &&
-        "border-red-200 bg-red-50/25 text-red-700 dark:border-red-900/40 dark:bg-red-950/10 dark:text-red-300",
+        "border-[color:var(--staffly-loss-border)] bg-[color:var(--staffly-loss-bg)] text-[color:var(--staffly-loss-text)]",
       tone === "gain" &&
-        "border-emerald-200 bg-emerald-50/25 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/10 dark:text-emerald-300",
+        "border-[color:var(--staffly-gain-border)] bg-[color:var(--staffly-gain-bg)] text-[color:var(--staffly-gain-text)]",
     );
   }
 
