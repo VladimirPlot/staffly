@@ -82,6 +82,13 @@ const AnonymousLettersPage = React.lazy(
 );
 const PushRedirectPage = React.lazy(() => import("./features/push/pages/PushRedirectPage"));
 const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksPage"));
+const InventoriesPage = React.lazy(() => import("./features/inventories/pages/InventoriesPage"));
+const DishwareInventoriesPage = React.lazy(
+  () => import("./features/inventories/pages/DishwareInventoriesPage"),
+);
+const DishwareInventoryEditorPage = React.lazy(
+  () => import("./features/inventories/pages/DishwareInventoryEditorPage"),
+);
 
 /* ===== TopBar ===== */
 function TopBar() {
@@ -531,7 +538,6 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route element={<AppShell />}>
-          {/* WIDE: графики */}
           <Route element={<WideLayout />}>
             <Route
               path="/schedule"
@@ -559,6 +565,16 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <MasterScheduleEditorPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inventories/dishware/:inventoryId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <DishwareInventoryEditorPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -768,6 +784,28 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TasksPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/inventories"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <InventoriesPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/inventories/dishware"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <DishwareInventoriesPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
