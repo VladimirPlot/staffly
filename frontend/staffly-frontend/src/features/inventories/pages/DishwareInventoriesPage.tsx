@@ -35,7 +35,7 @@ import DishwareMoveModal from "../components/DishwareMoveModal";
 import DishwareObjectList, { DishwareDragOverlayCard } from "../components/DishwareObjectList";
 import DishwareTrashModal from "../components/DishwareTrashModal";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
-import { buildFolderChain, descendantIds, rootTrashedFolders } from "../dishwareInventoryFolders";
+import { buildFolderChain, descendantIds } from "../dishwareInventoryFolders";
 import {
   dishwareCollisionDetection,
   objectId,
@@ -43,7 +43,9 @@ import {
   parseObjectId,
   sortDishwareObjects,
 } from "../dishwareInventoriesDnd";
+import { buildDishwareTrashDeleteAllPlan } from "../dishwareInventoryTrash";
 import type { DishwareObject, FolderModalState, MoveTarget, PermanentDeleteTarget } from "../dishwareInventoriesTypes";
+import { getFriendlyInventoryError } from "../inventoryErrors";
 
 function EmptyFolderState() {
   return (
@@ -188,9 +190,9 @@ function AuthorizedDishwareInventoriesPage() {
         setCreateOpen(false);
         await loadActive();
         navigate(`/inventories/dishware/${created.id}`);
-      } catch (e: any) {
+      } catch (e) {
         console.error("Failed to create dishware inventory", e);
-        setCreateError(e?.friendlyMessage || "Не удалось создать инвентаризацию");
+        setCreateError(getFriendlyInventoryError(e, "Не удалось создать инвентаризацию"));
       } finally {
         setCreating(false);
       }
@@ -215,8 +217,8 @@ function AuthorizedDishwareInventoriesPage() {
         }
         setFolderModal(null);
         await loadActive();
-      } catch (e: any) {
-        setFolderError(e?.friendlyMessage || "Не удалось сохранить папку");
+      } catch (e) {
+        setFolderError(getFriendlyInventoryError(e, "Не удалось сохранить папку"));
       } finally {
         setFolderSubmitting(false);
       }
@@ -237,8 +239,8 @@ function AuthorizedDishwareInventoriesPage() {
         }
         setMoveTarget(null);
         await loadActive();
-      } catch (e: any) {
-        setMoveError(e?.friendlyMessage || "Не удалось переместить");
+      } catch (e) {
+        setMoveError(getFriendlyInventoryError(e, "Не удалось переместить"));
       } finally {
         setMoveSubmitting(false);
       }
@@ -299,9 +301,9 @@ function AuthorizedDishwareInventoriesPage() {
             await moveDishwareInventory(restaurantId, active.id, dropFolderId);
           }
           await loadActive();
-        } catch (e: any) {
+        } catch (e) {
           console.error("Failed to move dishware object with drag and drop", e);
-          setDndError(e?.friendlyMessage || "Не удалось переместить объект");
+          setDndError(getFriendlyInventoryError(e, "Не удалось переместить объект"));
           await loadActive();
         }
         return;
@@ -327,9 +329,9 @@ function AuthorizedDishwareInventoriesPage() {
           })),
         });
         await loadActive();
-      } catch (e: any) {
+      } catch (e) {
         console.error("Failed to reorder dishware objects", e);
-        setDndError(e?.friendlyMessage || "Не удалось сохранить порядок");
+        setDndError(getFriendlyInventoryError(e, "Не удалось сохранить порядок"));
         await loadActive();
       }
     },
@@ -415,16 +417,13 @@ function AuthorizedDishwareInventoriesPage() {
     );
     try {
       if (permanentDeleteTarget.kind === "all") {
-        const folderRoots = rootTrashedFolders(trashFolders);
-        const deletedFolderIds = new Set<number>();
-        folderRoots.forEach((folder) => {
-          descendantIds(folder.id, trashFolders).forEach((id) => deletedFolderIds.add(id));
-        });
+        const { folderRoots, inventoriesOutsideDeletedFolders } = buildDishwareTrashDeleteAllPlan(
+          trashFolders,
+          trashInventories,
+        );
         await Promise.all(folderRoots.map((folder) => deleteDishwareInventoryFolder(restaurantId, folder.id)));
         await Promise.all(
-          trashInventories
-            .filter((inventory) => inventory.folderId == null || !deletedFolderIds.has(inventory.folderId))
-            .map((inventory) => deleteDishwareInventory(restaurantId, inventory.id)),
+          inventoriesOutsideDeletedFolders.map((inventory) => deleteDishwareInventory(restaurantId, inventory.id)),
         );
       } else if (permanentDeleteTarget.kind === "folder") {
         await deleteDishwareInventoryFolder(restaurantId, permanentDeleteTarget.id);

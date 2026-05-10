@@ -12,9 +12,7 @@ import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
-import DishwareInventoryItemsTable, {
-  type DishwareInventoryTableItem,
-} from "../components/DishwareInventoryItemsTable";
+import DishwareInventoryItemsTable from "../components/DishwareInventoryItemsTable";
 import {
   completeDishwareInventory,
   deleteDishwareItemImage,
@@ -26,36 +24,14 @@ import {
   type DishwareInventoryDto,
 } from "../api";
 import {
-  computeDishwareSummary,
-  getInventoryStatusBadgeClass,
-  normalizeDishwareCount,
-  normalizeDishwareMoney,
-} from "../utils";
-
-type EditableDishwareItem = DishwareInventoryTableItem & { sortOrder?: number };
-
-function createClientId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function toEditableItems(inventory: DishwareInventoryDto): EditableDishwareItem[] {
-  return inventory.items.map((item, index) => ({
-    clientId: String(item.id ?? createClientId()),
-    id: item.id,
-    name: item.name,
-    photoUrl: item.photoUrl ?? null,
-    previousQty: normalizeDishwareCount(item.previousQty),
-    incomingQty: normalizeDishwareCount(item.incomingQty ?? 0),
-    currentQty: normalizeDishwareCount(item.currentQty),
-    unitPrice: normalizeDishwareMoney(item.unitPrice ?? null),
-    sortOrder: item.sortOrder ?? index,
-    note: item.note ?? null,
-  }));
-}
-
-function findServerItemById(inventory: DishwareInventoryDto, itemId: number) {
-  return inventory.items.find((item) => item.id === itemId) ?? null;
-}
+  buildDishwareInventoryItemsPayload,
+  createEmptyDishwareInventoryItem,
+  findDishwareServerItemById,
+  toEditableDishwareInventoryItems,
+  type DishwareInventoryEditableItem,
+} from "../dishwareInventoryItems";
+import { getFriendlyInventoryError } from "../inventoryErrors";
+import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
 
 function AuthorizedDishwareInventoryEditorPage() {
   const { inventoryId } = useParams();
@@ -67,7 +43,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [title, setTitle] = useState("");
   const [inventoryDate, setInventoryDate] = useState("");
   const [comment, setComment] = useState("");
-  const [items, setItems] = useState<EditableDishwareItem[]>([]);
+  const [items, setItems] = useState<DishwareInventoryEditableItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -86,7 +62,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       setTitle(data.title);
       setInventoryDate(data.inventoryDate);
       setComment(data.comment ?? "");
-      setItems(toEditableItems(data));
+      setItems(toEditableDishwareInventoryItems(data));
     } catch (e) {
       console.error("Failed to load inventory", e);
       setError("Не удалось загрузить инвентаризацию");
@@ -105,27 +81,14 @@ function AuthorizedDishwareInventoryEditorPage() {
   const isCompleted = inventory?.status === "COMPLETED";
   const isEditingLocked = isCompleted || saving;
 
-  const updateItem = useCallback((clientId: string, patch: Partial<EditableDishwareItem>) => {
+  const updateItem = useCallback((clientId: string, patch: Partial<DishwareInventoryEditableItem>) => {
     setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)));
   }, []);
 
   const addItem = useCallback(() => {
-    const clientId = createClientId();
-    setItems((prev) => [
-      ...prev,
-      {
-        clientId,
-        name: "",
-        photoUrl: null,
-        previousQty: 0,
-        incomingQty: 0,
-        currentQty: 0,
-        unitPrice: null,
-        sortOrder: prev.length,
-        note: null,
-      },
-    ]);
-    return clientId;
+    const item = createEmptyDishwareInventoryItem(0);
+    setItems((prev) => [...prev, { ...item, sortOrder: prev.length }]);
+    return item.clientId;
   }, []);
 
   const removeItem = useCallback((clientId: string) => {
@@ -135,7 +98,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, []);
 
   const mergeItemPhotoFromServer = useCallback((updatedInventory: DishwareInventoryDto, itemId: number) => {
-    const serverItem = findServerItemById(updatedInventory, itemId);
+    const serverItem = findDishwareServerItemById(updatedInventory, itemId);
     setInventory(updatedInventory);
     if (!serverItem) {
       return;
@@ -158,7 +121,7 @@ function AuthorizedDishwareInventoryEditorPage() {
     setTitle(data.title);
     setInventoryDate(data.inventoryDate);
     setComment(data.comment ?? "");
-    setItems(toEditableItems(data));
+    setItems(toEditableDishwareInventoryItems(data));
   }, []);
 
   const saveDraft = useCallback(async () => {
@@ -171,16 +134,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       inventoryDate,
       folderId: inventory?.folderId ?? null,
       comment,
-      items: items.map((item, index) => ({
-        id: item.id,
-        name: item.name,
-        previousQty: normalizeDishwareCount(item.previousQty),
-        incomingQty: normalizeDishwareCount(item.incomingQty),
-        currentQty: normalizeDishwareCount(item.currentQty),
-        unitPrice: normalizeDishwareMoney(item.unitPrice ?? null),
-        sortOrder: index,
-        note: item.note ?? null,
-      })),
+      items: buildDishwareInventoryItemsPayload(items),
     });
     applyLoadedInventory(saved);
     return saved;
@@ -192,9 +146,9 @@ function AuthorizedDishwareInventoryEditorPage() {
     setSaveError(null);
     try {
       await saveDraft();
-    } catch (e: any) {
+    } catch (e) {
       console.error("Failed to save inventory", e);
-      setSaveError(e?.friendlyMessage || "Не удалось сохранить инвентаризацию");
+      setSaveError(getFriendlyInventoryError(e, "Не удалось сохранить инвентаризацию"));
     } finally {
       setSaving(false);
     }
@@ -208,9 +162,9 @@ function AuthorizedDishwareInventoryEditorPage() {
       await saveDraft();
       const completed = await completeDishwareInventory(restaurantId, Number(inventoryId));
       applyLoadedInventory(completed);
-    } catch (e: any) {
+    } catch (e) {
       console.error("Failed to complete inventory", e);
-      setSaveError(e?.friendlyMessage || "Не удалось завершить инвентаризацию");
+      setSaveError(getFriendlyInventoryError(e, "Не удалось завершить инвентаризацию"));
     } finally {
       setSaving(false);
     }
@@ -223,9 +177,9 @@ function AuthorizedDishwareInventoryEditorPage() {
     try {
       const reopened = await reopenDishwareInventory(restaurantId, Number(inventoryId));
       applyLoadedInventory(reopened);
-    } catch (e: any) {
+    } catch (e) {
       console.error("Failed to reopen inventory", e);
-      setSaveError(e?.friendlyMessage || "Не удалось вернуть документ в черновик");
+      setSaveError(getFriendlyInventoryError(e, "Не удалось вернуть документ в черновик"));
     } finally {
       setSaving(false);
     }
@@ -252,9 +206,9 @@ function AuthorizedDishwareInventoryEditorPage() {
       try {
         const updated = await uploadDishwareItemImage(restaurantId, Number(inventoryId), itemId, file);
         mergeItemPhotoFromServer(updated, itemId);
-      } catch (e: any) {
+      } catch (e) {
         console.error("Failed to upload item image", e);
-        setSaveError(e?.friendlyMessage || "Не удалось загрузить фото");
+        setSaveError(getFriendlyInventoryError(e, "Не удалось загрузить фото"));
       } finally {
         setUploadingItemId(null);
       }
@@ -270,9 +224,9 @@ function AuthorizedDishwareInventoryEditorPage() {
       try {
         const updated = await deleteDishwareItemImage(restaurantId, Number(inventoryId), itemId);
         mergeItemPhotoFromServer(updated, itemId);
-      } catch (e: any) {
+      } catch (e) {
         console.error("Failed to delete item image", e);
-        setSaveError(e?.friendlyMessage || "Не удалось удалить фото");
+        setSaveError(getFriendlyInventoryError(e, "Не удалось удалить фото"));
       } finally {
         setUploadingItemId(null);
       }
