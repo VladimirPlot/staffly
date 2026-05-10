@@ -1,6 +1,7 @@
 package ru.staffly.training.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
     private final TrainingExamSourceFolderRepository sourceFolders;
@@ -42,12 +44,15 @@ public class ExamServiceImpl implements ExamService {
     private final ExamQuestionPoolResolver questionPoolResolver;
     private final ExamSnapshotService snapshotService;
     private final CertificationAssignmentService certificationAssignmentService;
+    private final CertificationAudienceSyncService certificationAudienceSyncService;
     private final CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
     private final CertificationAttemptFinalizationService certificationAttemptFinalizationService;
     private final CertificationManagerActionService certificationManagerActionService;
     private final CertificationAnalyticsService certificationAnalyticsService;
     private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
+    private final TrainingExamOwnershipService trainingExamOwnershipService;
+    private final TrainingCertificationNotificationService trainingCertificationNotificationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -56,9 +61,16 @@ public class ExamServiceImpl implements ExamService {
                 ? null
                 : (certificationOnly ? TrainingExamMode.CERTIFICATION : TrainingExamMode.PRACTICE);
 
-        return examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter)
+        var visibleExams = examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter);
+        var certificationExamIds = visibleExams.stream()
+                .filter(exam -> exam.getMode() == TrainingExamMode.CERTIFICATION)
+                .map(TrainingExam::getId)
+                .toList();
+        var summaryPreviewByExamId = certificationAnalyticsService.getExamSummaryPreviewBatch(restaurantId, certificationExamIds);
+
+        return visibleExams
                 .stream()
-                .map(this::toDtoWithSourcesAndVisibility)
+                .map(exam -> toDtoWithSourcesAndVisibility(exam, summaryPreviewByExamId.get(exam.getId())))
                 .toList();
     }
 
@@ -105,7 +117,7 @@ public class ExamServiceImpl implements ExamService {
 
         return examAccessService.listVisiblePracticeExamsByKnowledgeFolder(restaurantId, userId, isManager, folderId, includeInactive)
                 .stream()
-                .map(this::toDtoWithSourcesAndVisibility)
+                .map(exam -> toDtoWithSourcesAndVisibility(exam, null))
                 .toList();
     }
 
@@ -114,7 +126,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
-        var exam = exams.save(TrainingExam.builder()
+        var examEntity = TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .title(request.title())
                 .description(request.description())
@@ -126,12 +138,15 @@ public class ExamServiceImpl implements ExamService {
                 .attemptLimit(request.attemptLimit())
                 .active(true)
                 .version(1)
-                .build());
+                .build();
+        trainingExamOwnershipService.assignInitialOwner(examEntity, userId);
+        var exam = exams.save(examEntity);
+        trainingCertificationNotificationService.ensureStateExistsForExam(exam);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        certificationAssignmentService.syncAudienceAssignments(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -178,8 +193,8 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        certificationAssignmentService.syncAudienceAssignments(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -187,7 +202,8 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
-        return toDtoWithSourcesAndVisibility(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -195,8 +211,8 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(true);
-        certificationAssignmentService.syncAudienceAssignments(exam);
-        return toDtoWithSourcesAndVisibility(exam);
+        certificationAudienceSyncService.syncExamAudience(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
     }
 
     @Override
@@ -214,8 +230,10 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableCertificationExam(restaurantId, userId, examId);
+        certificationAudienceSyncService.syncExamAudience(exam);
         startNewCertificationCycle(exam);
         certificationAssignmentService.resetAssignmentsForNewCycle(exam);
+        trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
     }
 
     @Override
@@ -307,7 +325,7 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getId(),
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam),
+                toDtoWithSourcesAndVisibility(exam, null),
                 snapshots
         );
     }
@@ -331,6 +349,13 @@ public class ExamServiceImpl implements ExamService {
                 answersByQuestionId,
                 TimeProvider.now()
         );
+        try {
+            trainingCertificationNotificationService.notifyUserResultOnSubmit(finalizedAttempt.attempt());
+            trainingCertificationNotificationService.notifyOwnerMilestoneOnSubmit(finalizedAttempt.attempt());
+        } catch (Exception ex) {
+            log.warn("Failed to process certification notifications after submit (restaurantId={}, attemptId={})",
+                    restaurantId, attemptId, ex);
+        }
         return toAttemptResultDto(finalizedAttempt);
     }
 
@@ -361,13 +386,50 @@ public class ExamServiceImpl implements ExamService {
     @Override
     public List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long actorUserId, Long examId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getEmployeeRows(restaurantId, examId);
+        return certificationAnalyticsService.getEmployeeRows(restaurantId, actorUserId, examId);
     }
 
     @Override
     public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, examId, userId);
+        return certificationAnalyticsService.getEmployeeAttemptHistory(restaurantId, actorUserId, examId, userId);
+    }
+
+    @Override
+    public CertificationAttemptDetailsDto getCertificationAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId) {
+        requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        return certificationAnalyticsService.getAttemptDetails(restaurantId, actorUserId, examId, attemptId);
+    }
+
+    @Override
+    @Transactional
+    public TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId) {
+        var exam = trainingExamOwnershipService.changeOwner(restaurantId, actorUserId, examId, ownerUserId);
+        return toDtoWithSourcesAndVisibility(exam, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(Long restaurantId, Long actorUserId, Long examId) {
+        return trainingExamOwnershipService.getOwnerCandidates(restaurantId, actorUserId, examId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId) {
+        return trainingExamOwnershipService.buildReassignmentOptions(restaurantId, actorUserId, userId);
+    }
+
+    @Override
+    @Transactional
+    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
+                                                                                    Long actorUserId,
+                                                                                    Long userId,
+                                                                                    CertificationOwnerBatchReassignmentRequest request) {
+        var entries = request.items().stream()
+                .map(item -> Map.entry(item.examId(), item.newOwnerUserId()))
+                .toList();
+        return trainingExamOwnershipService.batchReassign(restaurantId, actorUserId, userId, entries);
     }
 
     private void startNewCertificationCycle(TrainingExam exam) {
@@ -385,7 +447,7 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getId(),
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam),
+                toDtoWithSourcesAndVisibility(exam, null),
                 snapshots
         );
     }
@@ -641,7 +703,7 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private TrainingExamDto toDtoWithSourcesAndVisibility(TrainingExam exam) {
+    private TrainingExamDto toDtoWithSourcesAndVisibility(TrainingExam exam, CertificationExamSummaryPreviewDto summaryPreview) {
         var folders = sourceFolders.findByExamId(exam.getId()).stream()
                 .map(source -> new ExamSourceFolderDto(source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
                 .toList();
@@ -665,7 +727,12 @@ public class ExamServiceImpl implements ExamService {
                 exam.isActive(),
                 folders,
                 questionIds,
-                visibilityIds
+                visibilityIds,
+                exam.getCreatedBy() == null ? null : exam.getCreatedBy().getId(),
+                exam.getCreatedBy() == null ? null : exam.getCreatedBy().getFullName(),
+                exam.getOwner() == null ? null : exam.getOwner().getId(),
+                exam.getOwner() == null ? null : exam.getOwner().getFullName(),
+                summaryPreview
         );
     }
 

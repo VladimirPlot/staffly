@@ -148,6 +148,57 @@ export type TrainingExamDto = {
   sourcesFolders: ExamSourceFolderDto[];
   sourceQuestionIds: number[];
   visibilityPositionIds: number[];
+  createdByUserId?: number | null;
+  createdByFullName?: string | null;
+  ownerUserId?: number | null;
+  ownerFullName?: string | null;
+  certificationSummaryPreview?: CertificationExamSummaryPreviewDto | null;
+};
+
+export type CertificationOwnerCandidateDto = {
+  userId: number;
+  fullName: string;
+  role: string;
+  positionId?: number | null;
+  positionName?: string | null;
+};
+
+export type OwnedCertificationExamDto = {
+  examId: number;
+  title: string;
+  visibilityPositionIds: number[];
+  visibilityPositionNames: string[];
+  candidates: CertificationOwnerCandidateDto[];
+};
+
+export type CertificationOwnerReassignmentOptionsDto = {
+  userId: number;
+  fullName?: string | null;
+  ownedExams: OwnedCertificationExamDto[];
+};
+
+export type CertificationOwnerCandidatesDto = {
+  examId: number;
+  title: string;
+  currentOwnerUserId?: number | null;
+  currentOwnerFullName?: string | null;
+  candidates: CertificationOwnerCandidateDto[];
+};
+
+export type CertificationOwnerBatchReassignmentRequest = {
+  items: Array<{
+    examId: number;
+    newOwnerUserId: number;
+  }>;
+};
+
+export type CertificationExamSummaryPreviewDto = {
+  totalAssigned: number;
+  passedCount: number;
+  failedCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  completedCount: number;
 };
 
 export type CurrentUserCertificationExamDto = {
@@ -227,6 +278,7 @@ export type CertificationExamSummaryDto = {
   failedCount: number;
   inProgressCount: number;
   notStartedCount: number;
+  completedCount: number;
   averageScore?: number | null;
   passRate?: number | null;
 };
@@ -280,6 +332,55 @@ export type CertificationExamAttemptHistoryDto = {
   scorePercent?: number | null;
   passed?: boolean | null;
   examVersion?: number | null;
+};
+
+export type CertificationEmployeeSummaryDto = {
+  userId: number;
+  fullName: string;
+  positionId?: number | null;
+  positionName?: string | null;
+  assignedCount: number;
+  completedCount: number;
+  passedCount: number;
+  failedCount: number;
+};
+
+export type CertificationEmployeeExamDto = {
+  examId: number;
+  examTitle: string;
+  analyticsStatus: CertificationAnalyticsStatus;
+  bestScore?: number | null;
+  lastAttemptAt?: string | null;
+  attemptsUsed: number;
+  attemptsAllowed?: number | null;
+};
+
+export type CertificationAttemptDetailsQuestionDto = {
+  questionId: number;
+  questionType: TrainingQuestionType;
+  prompt: string;
+  chosenAnswerJson?: string | null;
+  correct: boolean;
+  correctAnswerJson?: string | null;
+  explanation?: string | null;
+};
+
+export type CertificationAttemptDetailsDto = {
+  attemptId: number;
+  examId: number;
+  examTitle: string;
+  userId: number;
+  userFullName: string;
+  assignmentId?: number | null;
+  examVersion?: number | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  scorePercent?: number | null;
+  passPercent: number;
+  passed: boolean;
+  questionCount?: number | null;
+  durationSec?: number | null;
+  questions: CertificationAttemptDetailsQuestionDto[];
 };
 
 export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };

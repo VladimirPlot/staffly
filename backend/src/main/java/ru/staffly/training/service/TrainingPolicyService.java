@@ -48,6 +48,18 @@ public class TrainingPolicyService {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET);
     }
 
+    public boolean canAccessCertificationEmployeeAnalyticsTargetRole(Long userId, Long restaurantId, RestaurantRole targetRole) {
+        var context = resolveContext(userId, restaurantId);
+        if (context.isCreator()) {
+            return true;
+        }
+        return switch (context.baseRole()) {
+            case MANAGER -> targetRole == RestaurantRole.STAFF;
+            case ADMIN -> targetRole == RestaurantRole.STAFF || targetRole == RestaurantRole.MANAGER;
+            case STAFF -> false;
+        };
+    }
+
     public void assertCanAccessKnowledgeByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.KNOWLEDGE,
                 "Training knowledge policy does not allow access to this visibility scope.");

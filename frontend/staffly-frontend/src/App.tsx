@@ -55,8 +55,10 @@ const TrainingQuestionBankFolderPage = React.lazy(
 );
 const TrainingExamsPage = React.lazy(() => import("./features/training/pages/ExamsPage"));
 const TrainingCertificationAnalyticsPage = React.lazy(() => import("./features/training/pages/CertificationAnalyticsPage"));
+const TrainingCertificationAttemptDetailsPage = React.lazy(() => import("./features/training/pages/CertificationAttemptDetailsPage"));
 const TrainingExamRunPage = React.lazy(() => import("./features/training/pages/ExamRunPage"));
 const TrainingCertificationMyResultPage = React.lazy(() => import("./features/training/pages/CertificationMyResultPage"));
+const TrainingCertificationEmployeeAnalyticsPage = React.lazy(() => import("./features/training/pages/CertificationEmployeeAnalyticsPage"));
 
 const RestaurantHome = React.lazy(() => import("./features/home/pages/RestaurantHome"));
 
@@ -192,7 +194,7 @@ function TopBar() {
           <span className="staffly-brand-mark">
             <span className="staffly-brand-text">Staffly</span>
           </span>
-          <span className="staffly-release-badge">alpha 3.1.4</span>
+          <span className="staffly-release-badge">alpha 3.2.3</span>
         </Link>
 
         {token ? (
@@ -678,6 +680,26 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TrainingCertificationAnalyticsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/exams/:examId/analytics/attempts/:attemptId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCertificationAttemptDetailsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/exams/employees/:userId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCertificationEmployeeAnalyticsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

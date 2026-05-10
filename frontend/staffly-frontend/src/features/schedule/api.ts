@@ -1,11 +1,14 @@
 import api from "../../shared/api/apiClient";
-import type { ScheduleConfig, ScheduleData } from "./types";
+import type {
+  ScheduleConfig,
+  ScheduleData,
+  ScheduleOwnerDto,
+  ScheduleCreatedByDto,
+  ScheduleAuditLogDto,
+} from "./types";
 
 export type ShiftRequestType = "REPLACEMENT" | "SWAP";
-export type ShiftRequestStatus =
-  | "PENDING_MANAGER"
-  | "APPROVED"
-  | "REJECTED_BY_MANAGER";
+export type ShiftRequestStatus = "PENDING_MANAGER" | "APPROVED" | "REJECTED_BY_MANAGER";
 
 export type ShiftRequestMemberDto = {
   id: number;
@@ -21,6 +24,8 @@ export type ShiftRequestDto = {
   status: ShiftRequestStatus;
   reason: string | null;
   createdAt: string;
+  decidedAt?: string | null;
+  decisionComment?: string | null;
   fromMember: ShiftRequestMemberDto;
   toMember: ShiftRequestMemberDto;
 };
@@ -33,6 +38,7 @@ export type ScheduleSummary = {
   createdAt: string;
   hasPendingShiftRequests: boolean;
   positionIds: number[];
+  owner?: ScheduleOwnerDto | null;
 };
 
 type ScheduleRowResponse = {
@@ -50,6 +56,9 @@ type ScheduleResponse = {
   days: ScheduleData["days"];
   rows: ScheduleRowResponse[];
   cellValues: Record<string, string>;
+  owner?: ScheduleOwnerDto | null;
+  createdBy?: ScheduleCreatedByDto | null;
+  history?: ScheduleAuditLogDto[];
 };
 
 export type SaveSchedulePayload = {
@@ -78,13 +87,13 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
       positionName: row.positionName,
     })),
     cellValues: data.cellValues,
+    owner: data.owner ?? null,
+    createdBy: data.createdBy ?? null,
+    history: data.history ?? [],
   };
 }
 
-export async function createSchedule(
-  restaurantId: number,
-  payload: SaveSchedulePayload
-): Promise<ScheduleData> {
+export async function createSchedule(restaurantId: number, payload: SaveSchedulePayload): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules`, payload);
   return mapSchedule(data);
 }
@@ -92,12 +101,9 @@ export async function createSchedule(
 export async function updateSchedule(
   restaurantId: number,
   scheduleId: number,
-  payload: SaveSchedulePayload
+  payload: SaveSchedulePayload,
 ): Promise<ScheduleData> {
-  const { data } = await api.put<ScheduleResponse>(
-    `/api/restaurants/${restaurantId}/schedules/${scheduleId}`,
-    payload
-  );
+  const { data } = await api.put<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, payload);
   return mapSchedule(data);
 }
 
@@ -115,14 +121,35 @@ export async function fetchSchedule(restaurantId: number, scheduleId: number): P
   return mapSchedule(data);
 }
 
+export async function getScheduleOwnerCandidates(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<ScheduleOwnerDto[]> {
+  const { data } = await api.get<ScheduleOwnerDto[]>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner-candidates`,
+  );
+  return data;
+}
+
+export async function changeScheduleOwner(
+  restaurantId: number,
+  scheduleId: number,
+  ownerUserId: number,
+): Promise<ScheduleData> {
+  const { data } = await api.patch<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner`, {
+    ownerUserId,
+  });
+  return mapSchedule(data);
+}
+
 export async function createReplacement(
   restaurantId: number,
   scheduleId: number,
-  payload: { day: string; toMemberId: number; reason?: string }
+  payload: { day: string; toMemberId: number; reason?: string },
 ): Promise<ShiftRequestDto> {
   const { data } = await api.post<ShiftRequestDto>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/replacement`,
-    payload
+    payload,
   );
   return data;
 }
@@ -130,21 +157,18 @@ export async function createReplacement(
 export async function createSwap(
   restaurantId: number,
   scheduleId: number,
-  payload: { myDay: string; targetMemberId: number; targetDay: string; reason?: string }
+  payload: { myDay: string; targetMemberId: number; targetDay: string; reason?: string },
 ): Promise<ShiftRequestDto> {
   const { data } = await api.post<ShiftRequestDto>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/swap`,
-    payload
+    payload,
   );
   return data;
 }
 
-export async function listShiftRequests(
-  restaurantId: number,
-  scheduleId: number
-): Promise<ShiftRequestDto[]> {
+export async function listShiftRequests(restaurantId: number, scheduleId: number): Promise<ShiftRequestDto[]> {
   const { data } = await api.get<ShiftRequestDto[]>(
-    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests`
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests`,
   );
   return data;
 }
@@ -153,21 +177,15 @@ export async function decideAsManager(
   restaurantId: number,
   scheduleId: number,
   requestId: number,
-  accepted: boolean
+  accepted: boolean,
 ): Promise<ShiftRequestDto> {
   const { data } = await api.post<ShiftRequestDto>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/${requestId}/manager-decision`,
-    { accepted }
+    { accepted },
   );
   return data;
 }
 
-export async function cancelShiftRequest(
-  restaurantId: number,
-  scheduleId: number,
-  requestId: number
-): Promise<void> {
-  await api.delete(
-    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/${requestId}`
-  );
+export async function cancelShiftRequest(restaurantId: number, scheduleId: number, requestId: number): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/${requestId}`);
 }

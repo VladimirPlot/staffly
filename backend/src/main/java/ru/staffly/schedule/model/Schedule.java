@@ -4,7 +4,9 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.user.model.User;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -60,6 +62,18 @@ public class Schedule {
     @BatchSize(size = 64)
     @Builder.Default
     private List<ScheduleRow> rows = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_user_id")
+    private User createdByUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_user_id")
+    private User ownerUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_member_id")
+    private RestaurantMember ownerMember;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = TimeProvider.now();

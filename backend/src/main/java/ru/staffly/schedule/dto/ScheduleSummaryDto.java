@@ -10,5 +10,6 @@ public record ScheduleSummaryDto(
         String endDate,
         Instant createdAt,
         boolean hasPendingShiftRequests,
-        List<Long> positionIds
+        List<Long> positionIds,
+        ScheduleOwnerDto owner
 ) {}

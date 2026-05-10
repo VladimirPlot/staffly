@@ -14,6 +14,8 @@ import ExamEditorModal from "../components/ExamEditorModal";
 import LoadingState from "../components/LoadingState";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
+import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
+import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
 import {
   deleteExam,
   hideExam,
@@ -23,7 +25,9 @@ import {
 } from "../api/trainingApi";
 import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
+import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
 import {
   examTargetsAllowedAudience,
@@ -53,6 +57,10 @@ export default function ExamsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [loadingExamActionId, setLoadingExamActionId] = useState<number | null>(null);
+  const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
+  const [employeePositionFilter, setEmployeePositionFilter] = useState<number | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState("");
 
   const includeInactive = searchParams.get("includeInactive") === "1";
   const positionFilter = Number(searchParams.get("position") ?? "0") || null;
@@ -66,6 +74,15 @@ export default function ExamsPage() {
 
   const showMySection = !restaurantAccess.isCreator && !isTrainingExaminer;
   const showManageSection = canManage;
+  const showEmployeeStatsSection = canManage;
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedEmployeeSearch(employeeSearch);
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [employeeSearch]);
 
   const loadManageExams = useCallback(async () => {
     if (!restaurantId || !showManageSection) {
@@ -140,6 +157,12 @@ export default function ExamsPage() {
     [positions, allowedAudienceRoles],
   );
 
+  const employeeSearchState = useCertificationEmployeeSearch(
+    showEmployeeStatsSection ? restaurantId : null,
+    employeePositionFilter,
+    debouncedEmployeeSearch,
+  );
+
   const manageableExams = useMemo(() => {
     if (!showManageSection) return [];
 
@@ -181,7 +204,7 @@ export default function ExamsPage() {
     }
   };
 
-  const analyticsReturnTo = encodeURIComponent(`${trainingRoutes.exams}${location.search}`);
+  const examsReturnTo = buildTrainingExamsReturnTo(trainingRoutes.exams, location.search);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -259,12 +282,15 @@ export default function ExamsPage() {
                 <CertificationManageExamCard
                   key={exam.id}
                   exam={exam}
-                  analyticsHref={`${trainingRoutes.examAnalytics(exam.id)}?returnTo=${analyticsReturnTo}`}
+                  analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
                   loading={loadingExamActionId === exam.id}
                   positionsById={positionById}
                   onEdit={(value) => {
                     setEditingExam(value);
                     setModalOpen(true);
+                  }}
+                  onChangeOwner={(value) => {
+                    setChangeOwnerExam(value);
                   }}
                   onAction={runExamAction}
                 />
@@ -272,6 +298,26 @@ export default function ExamsPage() {
             </div>
           ))}
         </section>
+      )}
+
+      {showEmployeeStatsSection && (
+        <CertificationEmployeeStatisticsSection
+          positions={positions}
+          employees={employeeSearchState.employees}
+          loading={employeeSearchState.loading}
+          error={employeeSearchState.error}
+          positionsLoading={loadingPositions}
+          positionsError={positionsError}
+          allowedRoles={allowedAudienceRoles}
+          positionFilter={employeePositionFilter}
+          search={employeeSearch}
+          hasFilters={employeeSearchState.hasFilters}
+          returnTo={examsReturnTo}
+          onPositionFilterChange={setEmployeePositionFilter}
+          onSearchChange={setEmployeeSearch}
+          onRetry={() => void employeeSearchState.reload()}
+          onRetryPositions={loadPositions}
+        />
       )}
 
       {restaurantId && (
@@ -289,6 +335,16 @@ export default function ExamsPage() {
             setEditingExam(null);
             await loadManageExams();
           }}
+        />
+      )}
+
+      {restaurantId && (
+        <ChangeCertificationOwnerModal
+          open={Boolean(changeOwnerExam)}
+          exam={changeOwnerExam}
+          restaurantId={restaurantId}
+          onClose={() => setChangeOwnerExam(null)}
+          onSaved={loadManageExams}
         />
       )}
     </div>

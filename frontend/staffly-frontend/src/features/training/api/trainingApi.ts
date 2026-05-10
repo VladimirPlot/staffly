@@ -1,9 +1,15 @@
 import apiClient from "../../../shared/api/apiClient";
 import { mapExamsForUi } from "./mappers";
 import type {
+  CertificationOwnerBatchReassignmentRequest,
+  CertificationOwnerCandidatesDto,
+  CertificationOwnerReassignmentOptionsDto,
   CertificationExamAttemptHistoryDto,
+  CertificationEmployeeExamDto,
+  CertificationEmployeeSummaryDto,
   CertificationExamEmployeeRowDto,
   CertificationExamPositionBreakdownDto,
+  CertificationAttemptDetailsDto,
   CertificationMyResultDto,
   CertificationExamSummaryDto,
   CurrentUserCertificationExamDto,
@@ -107,6 +113,36 @@ export async function deleteExam(restaurantId: number, examId: number): Promise<
 export async function resetCertificationExamCycle(restaurantId: number, examId: number): Promise<void> {
   await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/reset-cycle`);
 }
+export async function changeCertificationExamOwner(
+  restaurantId: number,
+  examId: number,
+  ownerUserId: number,
+): Promise<TrainingExamDto> {
+  const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/owner`, { ownerUserId });
+  return data as TrainingExamDto;
+}
+export async function getCertificationExamOwnerCandidates(
+  restaurantId: number,
+  examId: number,
+): Promise<CertificationOwnerCandidatesDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/owner-candidates`);
+  return data as CertificationOwnerCandidatesDto;
+}
+export async function getCertificationOwnerReassignmentOptions(
+  restaurantId: number,
+  userId: number,
+): Promise<CertificationOwnerReassignmentOptionsDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/owners/${userId}/reassignment-options`);
+  return data as CertificationOwnerReassignmentOptionsDto;
+}
+export async function reassignCertificationOwnerBatch(
+  restaurantId: number,
+  userId: number,
+  payload: CertificationOwnerBatchReassignmentRequest,
+): Promise<CertificationOwnerReassignmentOptionsDto> {
+  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/certification/owners/${userId}/reassign`, payload);
+  return data as CertificationOwnerReassignmentOptionsDto;
+}
 export async function resetCertificationEmployeeAttempts(restaurantId: number, examId: number, userId: number): Promise<void> {
   await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/assignments/${userId}/reset-attempts`);
 }
@@ -139,6 +175,55 @@ export async function getCertificationEmployeeAttempts(
 ): Promise<CertificationExamAttemptHistoryDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/employees/${userId}/attempts`);
   return data as CertificationExamAttemptHistoryDto[];
+}
+
+export async function findCertificationEmployees(
+  restaurantId: number,
+  params: { positionId?: number | null; q?: string | null },
+): Promise<CertificationEmployeeSummaryDto[]> {
+  const normalizedQuery = params.q?.trim() ?? "";
+  const normalizedPositionId = params.positionId ?? "all";
+
+  return runSingleFlight(`training/certification-employees/${restaurantId}/${normalizedPositionId}/${normalizedQuery}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/employees`, {
+      params: {
+        positionId: params.positionId ?? undefined,
+        q: normalizedQuery.length > 0 ? normalizedQuery : undefined,
+      },
+    });
+    return data as CertificationEmployeeSummaryDto[];
+  });
+}
+
+export async function getCertificationEmployeeExams(
+  restaurantId: number,
+  userId: number,
+): Promise<CertificationEmployeeExamDto[]> {
+  return runSingleFlight(`training/certification-employee-exams/${restaurantId}/${userId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/employees/${userId}/exams`);
+    return data as CertificationEmployeeExamDto[];
+  });
+}
+
+export async function getCertificationEmployeeSummary(
+  restaurantId: number,
+  userId: number,
+): Promise<CertificationEmployeeSummaryDto> {
+  return runSingleFlight(`training/certification-employee-summary/${restaurantId}/${userId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/employees/${userId}/summary`);
+    return data as CertificationEmployeeSummaryDto;
+  });
+}
+
+export async function getCertificationAttemptDetails(
+  restaurantId: number,
+  examId: number,
+  attemptId: number,
+): Promise<CertificationAttemptDetailsDto> {
+  return runSingleFlight(`training/certification-attempt-details/${restaurantId}/${examId}/${attemptId}`, async () => {
+    const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/certification/attempts/${attemptId}`);
+    return data as CertificationAttemptDetailsDto;
+  });
 }
 
 export async function getPracticeExamProgress(restaurantId: number): Promise<ExamProgressDto[]> { const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/practice-progress`); return data as ExamProgressDto[]; }

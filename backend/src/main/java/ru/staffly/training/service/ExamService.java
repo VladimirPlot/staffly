@@ -27,4 +27,13 @@ public interface ExamService {
     List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long actorUserId, Long examId);
     List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long actorUserId, Long examId);
     List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId);
+    CertificationAttemptDetailsDto getCertificationAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId);
+
+    TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId);
+    CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(Long restaurantId, Long actorUserId, Long examId);
+    CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId);
+    CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
+                                                                             Long actorUserId,
+                                                                             Long userId,
+                                                                             CertificationOwnerBatchReassignmentRequest request);
 }

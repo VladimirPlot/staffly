@@ -14,6 +14,7 @@ import MembersFilterByPosition from "../components/MembersFilterByPosition";
 import MembersHeader from "../components/MembersHeader";
 import MembersList from "../components/MembersList";
 import RemoveMemberDialog from "../components/RemoveMemberDialog";
+import MemberResponsibilityHandoffDialog from "../components/MemberResponsibilityHandoffDialog";
 import { useInviteForm } from "../hooks/useInviteForm";
 import { useMemberEditPosition } from "../hooks/useMemberEditPosition";
 import { useMemberFilteringSorting } from "../hooks/useMemberFilteringSorting";
@@ -48,14 +49,11 @@ export default function InvitePage() {
     [access.isAdminLike, positionsState.activePositions],
   );
 
-  const inviteForm = useInviteForm(
-    restaurantId,
-    { isManagerLike: canInvite },
-    invitablePositions,
-  );
+  const inviteForm = useInviteForm(restaurantId, { isManagerLike: canInvite }, invitablePositions);
 
-  const { positionOptions, sortedMembers, positionFilter, setPositionFilter } =
-    useMemberFilteringSorting(membersState.members);
+  const { positionOptions, sortedMembers, positionFilter, setPositionFilter } = useMemberFilteringSorting(
+    membersState.members,
+  );
 
   const editPositionState = useMemberEditPosition({
     restaurantId,
@@ -149,14 +147,10 @@ export default function InvitePage() {
           error={membersState.error}
           canEditMembers={canEditMembers}
           isSavingEditMemberId={
-            editPositionState.saving && editPositionState.memberToEdit
-              ? editPositionState.memberToEdit.id
-              : null
+            editPositionState.saving && editPositionState.memberToEdit ? editPositionState.memberToEdit.id : null
           }
           isRemovingMemberId={
-            removalState.removing && removalState.memberToRemove
-              ? removalState.memberToRemove.id
-              : null
+            removalState.removing && removalState.memberToRemove ? removalState.memberToRemove.id : null
           }
           canRemoveMember={removalState.canRemoveMember}
           onAvatarClick={handleOpenAvatarPreview}
@@ -187,6 +181,18 @@ export default function InvitePage() {
         confirming={removalState.removing}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
+      />
+
+      <MemberResponsibilityHandoffDialog
+        open={Boolean(removalState.pendingHandoffMember)}
+        loading={removalState.handoffLoading}
+        saving={removalState.handoffSaving || removalState.removing}
+        error={removalState.handoffError}
+        options={removalState.handoffOptions}
+        selectedOwnerUserIdsByKey={removalState.handoffSelections}
+        onSelect={removalState.selectHandoffOwner}
+        onClose={removalState.closeHandoff}
+        onSubmit={removalState.confirmHandoff}
       />
 
       <EmployeeAvatarPreviewModal

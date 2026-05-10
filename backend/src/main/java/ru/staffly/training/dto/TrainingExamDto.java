@@ -19,5 +19,10 @@ public record TrainingExamDto(
         Boolean active,
         List<ExamSourceFolderDto> sourcesFolders,
         List<Long> sourceQuestionIds,
-        List<Long> visibilityPositionIds
+        List<Long> visibilityPositionIds,
+        Long createdByUserId,
+        String createdByFullName,
+        Long ownerUserId,
+        String ownerFullName,
+        CertificationExamSummaryPreviewDto certificationSummaryPreview
 ) {}

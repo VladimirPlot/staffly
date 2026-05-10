@@ -5,6 +5,7 @@ import lombok.*;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.user.model.User;
 
 import java.time.Instant;
 import java.util.HashSet;
@@ -68,6 +69,14 @@ public class TrainingExam {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = TimeProvider.now();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_user_id")
+    private User createdBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_user_id")
+    private User owner;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

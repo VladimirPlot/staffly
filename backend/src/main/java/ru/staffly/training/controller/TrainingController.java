@@ -15,6 +15,7 @@ import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingFolderType;
 import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.service.ExamService;
+import ru.staffly.training.service.CertificationEmployeeAnalyticsService;
 import ru.staffly.training.service.KnowledgeService;
 import ru.staffly.training.service.QuestionService;
 import ru.staffly.training.service.TrainingPolicyService;
@@ -29,6 +30,7 @@ public class TrainingController {
     private final KnowledgeService knowledgeService;
     private final QuestionService questionService;
     private final ExamService examService;
+    private final CertificationEmployeeAnalyticsService certificationEmployeeAnalyticsService;
     private final SecurityService securityService;
     private final TrainingPolicyService trainingPolicyService;
 
@@ -267,6 +269,40 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/owner")
+    public TrainingExamDto changeCertificationExamOwner(@PathVariable Long restaurantId,
+                                                        @PathVariable Long examId,
+                                                        @AuthenticationPrincipal UserPrincipal principal,
+                                                        @Valid @RequestBody ReassignTrainingExamOwnerRequest request) {
+        return examService.changeCertificationExamOwner(restaurantId, principal.userId(), examId, request.ownerUserId());
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/owner-candidates")
+    public CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(@PathVariable Long restaurantId,
+                                                                               @PathVariable Long examId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamOwnerCandidates(restaurantId, principal.userId(), examId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/owners/{userId}/reassignment-options")
+    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(@PathVariable Long restaurantId,
+                                                                                             @PathVariable Long userId,
+                                                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationOwnerReassignmentOptions(restaurantId, principal.userId(), userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/certification/owners/{userId}/reassign")
+    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(@PathVariable Long restaurantId,
+                                                                                    @PathVariable Long userId,
+                                                                                    @AuthenticationPrincipal UserPrincipal principal,
+                                                                                    @Valid @RequestBody CertificationOwnerBatchReassignmentRequest request) {
+        return examService.reassignCertificationOwnerBatch(restaurantId, principal.userId(), userId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/hide")
     public TrainingExamDto hideExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
         return examService.hideExam(restaurantId, principal.userId(), examId);
@@ -346,6 +382,40 @@ public class TrainingController {
                                                                                            @PathVariable Long userId,
                                                                                            @AuthenticationPrincipal UserPrincipal principal) {
         return examService.getCertificationEmployeeAttemptHistory(restaurantId, principal.userId(), examId, userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/attempts/{attemptId}")
+    public CertificationAttemptDetailsDto getCertificationAttemptDetails(@PathVariable Long restaurantId,
+                                                                         @PathVariable Long examId,
+                                                                         @PathVariable Long attemptId,
+                                                                         @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationAttemptDetails(restaurantId, principal.userId(), examId, attemptId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees")
+    public List<CertificationEmployeeSummaryDto> findCertificationEmployees(@PathVariable Long restaurantId,
+                                                                            @AuthenticationPrincipal UserPrincipal principal,
+                                                                            @RequestParam(required = false) Long positionId,
+                                                                            @RequestParam(required = false, name = "q") String query) {
+        return certificationEmployeeAnalyticsService.findCertificationEmployees(restaurantId, principal.userId(), positionId, query);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees/{userId}/exams")
+    public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(@PathVariable Long restaurantId,
+                                                                             @PathVariable Long userId,
+                                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return certificationEmployeeAnalyticsService.getCertificationEmployeeExams(restaurantId, principal.userId(), userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees/{userId}/summary")
+    public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(@PathVariable Long restaurantId,
+                                                                           @PathVariable Long userId,
+                                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        return certificationEmployeeAnalyticsService.getCertificationEmployeeSummary(restaurantId, principal.userId(), userId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
