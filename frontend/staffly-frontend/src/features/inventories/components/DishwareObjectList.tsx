@@ -17,9 +17,11 @@ import DishwareInventoryObjectActionsMenu from "./DishwareInventoryObjectActions
 
 function InventoryMetric({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
+    <div className="border-subtle min-w-0 rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
       <div className="text-muted text-[11px] font-medium">{label}</div>
-      <div className="mt-1 font-semibold tabular-nums">{value}</div>
+      <div className="mt-1 min-w-0 truncate pr-1 font-semibold tabular-nums" title={String(value)}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -207,7 +209,7 @@ function InventoryCard({
                 ) : null}
               </div>
 
-              <div className="grid grid-cols-3 gap-2 lg:min-w-[300px]">
+              <div className="grid grid-cols-[minmax(74px,0.85fr)_minmax(74px,0.85fr)_minmax(116px,1.3fr)] gap-2 lg:min-w-[336px]">
                 <InventoryMetric label="Позиции" value={inventory.itemsCount} />
                 <InventoryMetric label="Потери" value={formatInventoryLossCount(inventory.totalLossQty)} />
                 <InventoryMetric label="Сумма" value={formatInventoryLossAmount(inventory.totalLossAmount)} />
