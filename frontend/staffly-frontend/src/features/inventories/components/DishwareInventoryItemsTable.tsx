@@ -72,9 +72,19 @@ export default function DishwareInventoryItemsTable({
     const updateDockProgress = () => {
       frameId = null;
       const rect = addButton.getBoundingClientRect();
-      const nextProgress = reducedMotionQuery?.matches
-        ? Number(rect.bottom < 0)
-        : clampProgress((ADD_DOCK_REVEAL_START_PX - rect.bottom) / ADD_DOCK_REVEAL_DISTANCE_PX);
+      const isWithinViewport = rect.bottom > 0 && rect.top < window.innerHeight;
+      const hitX = rect.left + rect.width / 2;
+      const hitY = rect.top + rect.height / 2;
+      const hitTarget =
+        isWithinViewport && hitX >= 0 && hitX <= window.innerWidth && hitY >= 0 && hitY <= window.innerHeight
+          ? document.elementFromPoint(hitX, hitY)
+          : null;
+      const isCovered = Boolean(hitTarget && !addButton.contains(hitTarget));
+      const nextProgress = isCovered
+        ? 1
+        : reducedMotionQuery?.matches
+          ? Number(rect.bottom < 0)
+          : clampProgress((ADD_DOCK_REVEAL_START_PX - rect.bottom) / ADD_DOCK_REVEAL_DISTANCE_PX);
       const roundedProgress = Math.round(nextProgress * 100) / 100;
 
       setAddDockProgress((currentProgress) =>
