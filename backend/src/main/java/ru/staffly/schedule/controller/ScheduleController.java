@@ -4,14 +4,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.schedule.dto.ChangeScheduleOwnerRequest;
-import ru.staffly.schedule.dto.ReassignScheduleOwnersRequest;
 import ru.staffly.schedule.dto.SaveScheduleRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
-import ru.staffly.schedule.dto.ScheduleOwnerReassignmentOptionDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
 import ru.staffly.schedule.service.ScheduleOwnershipService;
 import ru.staffly.schedule.service.ScheduleService;
@@ -77,28 +74,6 @@ public class ScheduleController {
         return schedules.get(restaurantId, scheduleId, principal.userId());
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @GetMapping("/schedules/owners/{ownerUserId}/reassignment-options")
-    public List<ScheduleOwnerReassignmentOptionDto> getReassignmentOptions(@PathVariable Long restaurantId,
-                                                                           @PathVariable Long ownerUserId,
-                                                                           @AuthenticationPrincipal UserPrincipal principal) {
-        return scheduleOwnershipService.getReassignmentOptions(restaurantId, principal.userId(), ownerUserId);
-    }
-
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PostMapping("/schedules/owners/{ownerUserId}/reassign")
-    public ResponseEntity<Void> reassignOwners(@PathVariable Long restaurantId,
-                                               @PathVariable Long ownerUserId,
-                                               @AuthenticationPrincipal UserPrincipal principal,
-                                               @Valid @RequestBody ReassignScheduleOwnersRequest request) {
-        scheduleOwnershipService.reassignOwnedSchedules(
-                restaurantId,
-                principal.userId(),
-                ownerUserId,
-                request.ownerUserIdsByScheduleId()
-        );
-        return ResponseEntity.noContent().build();
-    }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @DeleteMapping("/schedules/{scheduleId}")
