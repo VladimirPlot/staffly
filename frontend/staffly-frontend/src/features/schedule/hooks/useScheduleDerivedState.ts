@@ -37,29 +37,35 @@ export default function useScheduleDerivedState({
 
   const currentMemberId = currentMember?.id ?? null;
 
+  const scheduleRows = schedule?.rows;
+  const scheduleDays = schedule?.days;
+  const scheduleCellValues = schedule?.cellValues;
+
   const currentMemberInSchedule = React.useMemo(() => {
-    if (!schedule || currentMemberId == null) return false;
-    return schedule.rows.some((row) => row.memberId === currentMemberId);
-  }, [currentMemberId, schedule]);
+    if (!scheduleRows || currentMemberId == null) return false;
+    return scheduleRows.some((row) => row.memberId === currentMemberId);
+  }, [currentMemberId, scheduleRows]);
 
   const hasMyShift = React.useMemo(() => {
-    if (!schedule || currentMemberId == null || !currentMemberInSchedule) return false;
-    return schedule.days.some((day) => {
-      const value = schedule.cellValues[`${currentMemberId}:${day.date}`];
+    if (!scheduleDays || !scheduleCellValues || currentMemberId == null || !currentMemberInSchedule) return false;
+    return scheduleDays.some((day) => {
+      const value = scheduleCellValues[`${currentMemberId}:${day.date}`];
       return Boolean(value && value.trim());
     });
-  }, [currentMemberId, currentMemberInSchedule, schedule]);
+  }, [currentMemberId, currentMemberInSchedule, scheduleCellValues, scheduleDays]);
 
   const monthFallback = React.useMemo(() => {
-    if (!schedule) return null;
-    const months = monthLabelsBetween(schedule.days.map((day) => day.date));
+    if (!scheduleDays) return null;
+    const months = monthLabelsBetween(scheduleDays.map((day) => day.date));
     if (months.length > 0) return months.join("/");
     return null;
-  }, [schedule]);
+  }, [scheduleDays]);
+
+  const hasSchedule = schedule != null;
 
   const canCreateShiftRequest = React.useMemo(
-    () => Boolean(schedule && scheduleId && currentMemberId != null && currentMemberInSchedule && hasMyShift),
-    [currentMemberId, currentMemberInSchedule, hasMyShift, schedule, scheduleId],
+    () => Boolean(hasSchedule && scheduleId && currentMemberId != null && currentMemberInSchedule && hasMyShift),
+    [currentMemberId, currentMemberInSchedule, hasMyShift, hasSchedule, scheduleId],
   );
 
   const hasPendingSavedSchedules = React.useMemo(
@@ -69,14 +75,14 @@ export default function useScheduleDerivedState({
 
   const shiftDisplay = React.useCallback(
     (memberId: number, day: string | null) => {
-      if (!schedule || !day) return day ?? "";
-      const value = schedule.cellValues[`${memberId}:${day}`];
+      if (!scheduleCellValues || !day) return day ?? "";
+      const value = scheduleCellValues[`${memberId}:${day}`];
       if (value) {
         return `${day} (${value})`;
       }
       return day;
     },
-    [schedule],
+    [scheduleCellValues],
   );
 
   const sortedSavedSchedules = React.useMemo(() => {
@@ -97,13 +103,13 @@ export default function useScheduleDerivedState({
   const todayIso = React.useMemo(() => new Date().toISOString().split("T")[0], []);
 
   const todaysShifts = React.useMemo(() => {
-    if (!schedule) return [] as TodayShift[];
-    const hasToday = schedule.days.some((day) => day.date === todayIso);
+    if (!scheduleDays || !scheduleRows || !scheduleCellValues) return [] as TodayShift[];
+    const hasToday = scheduleDays.some((day) => day.date === todayIso);
     if (!hasToday) return [] as TodayShift[];
 
-    return schedule.rows
+    return scheduleRows
       .map((row) => {
-        const value = schedule.cellValues[`${row.memberId}:${todayIso}`];
+        const value = scheduleCellValues[`${row.memberId}:${todayIso}`];
         return {
           memberId: row.memberId,
           displayName: row.displayName,
@@ -111,10 +117,9 @@ export default function useScheduleDerivedState({
         };
       })
       .filter((item) => Boolean(item.shift)) as TodayShift[];
-  }, [schedule, todayIso]);
+  }, [scheduleCellValues, scheduleDays, scheduleRows, todayIso]);
 
   const hasTodayShifts = todaysShifts.length > 0;
-  const hasSchedule = schedule != null;
   const showLandingHeader = !schedule;
   const showCreateScheduleButton = canManage && showLandingHeader;
 
