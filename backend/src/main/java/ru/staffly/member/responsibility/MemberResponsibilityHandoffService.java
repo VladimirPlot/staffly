@@ -64,20 +64,20 @@ public class MemberResponsibilityHandoffService {
 
         var ownedSchedules = scheduleOwnershipService.findActiveOrFutureOwnedSchedules(restaurantId, targetUserId);
         if (!ownedSchedules.isEmpty()) {
-            var scheduleOptions = scheduleOwnershipService.getReassignmentOptions(restaurantId, actorUserId, targetUserId);
+            var scheduleCandidates = scheduleOwnershipService.getHandoffOwnerCandidates(restaurantId, actorUserId, targetUserId);
             groups.add(new MemberResponsibilityGroupDto(
                     MemberResponsibilityType.SCHEDULE,
                     "Графики",
-                    scheduleOptions.stream()
-                            .map(option -> new MemberResponsibilityItemDto(
-                                    option.scheduleId(),
-                                    option.scheduleTitle(),
+                    ownedSchedules.stream()
+                            .map(schedule -> new MemberResponsibilityItemDto(
+                                    schedule.getId(),
+                                    schedule.getTitle(),
                                     null,
                                     new MemberResponsibilityPeriodDto(
-                                            java.time.LocalDate.parse(option.startDate()),
-                                            java.time.LocalDate.parse(option.endDate())
+                                            schedule.getStartDate(),
+                                            schedule.getEndDate()
                                     ),
-                                    option.candidates().stream()
+                                    scheduleCandidates.stream()
                                             .map(candidate -> toScheduleCandidate(candidate, membersByUserId.get(candidate.userId())))
                                             .toList()
                             ))
