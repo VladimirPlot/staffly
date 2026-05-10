@@ -70,12 +70,6 @@ public class TrainingExamOwnershipService {
         return exams.findActiveCertificationByRestaurantIdAndOwnerUserIdWithVisibility(restaurantId, ownerUserId);
     }
 
-    public void assertNoActiveOwnedCertificationExams(Long restaurantId, Long ownerUserId) {
-        if (!findActiveOwnedCertificationExams(restaurantId, ownerUserId).isEmpty()) {
-            throw new ConflictException("Сотрудник является ответственным за активные аттестации. Перед удалением/увольнением переназначьте ответственного.");
-        }
-    }
-
     public CertificationOwnerReassignmentOptionsDto buildReassignmentOptions(Long restaurantId, Long actorUserId, Long ownerUserId) {
         if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
             throw new ForbiddenException("Only managers can manage exam ownership");
