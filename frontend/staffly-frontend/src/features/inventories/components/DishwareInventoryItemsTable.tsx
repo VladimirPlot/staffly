@@ -4,27 +4,17 @@ import { cn } from "../../../shared/lib/cn";
 import Button from "../../../shared/ui/Button";
 import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavigation";
 import type { DishwareInventoryEditableItem } from "../dishwareInventoryItems";
-import {
-  computeDishwareItemMetrics,
-  formatCompactInventoryMoney,
-  formatDishwareCountInputValue,
-  formatDishwareMoneyInputValue,
-  formatInventoryLossAmount,
-  parseDishwareCountInput,
-  parseDishwareMoneyInput,
-} from "../utils";
+import DishwareInventoryItemRow from "./dishwareInventoryItemsTable/DishwareInventoryItemRow";
 import FloatingAddButton from "./dishwareInventoryItemsTable/FloatingAddButton";
-import InfoCell from "./dishwareInventoryItemsTable/InfoCell";
 import NoteModal from "./dishwareInventoryItemsTable/NoteModal";
-import NumericCell from "./dishwareInventoryItemsTable/NumericCell";
-import PhotoCell from "./dishwareInventoryItemsTable/PhotoCell";
 import {
   ADD_DOCK_REVEAL_DISTANCE_PX,
   ADD_DOCK_REVEAL_START_PX,
-  cellInputClassName,
   clampProgress,
   EDITABLE_COLUMNS,
   getCellId,
+  INVENTORY_TABLE_COLUMN_COUNT,
+  INVENTORY_TABLE_HEADERS,
 } from "./dishwareInventoryItemsTable/tableConstants";
 
 export type DishwareInventoryTableItem = DishwareInventoryEditableItem;
@@ -170,169 +160,39 @@ export default function DishwareInventoryItemsTable({
           <table className="w-full min-w-[1308px] table-fixed border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-left">
-                <th className="border-subtle bg-surface text-muted sticky top-0 left-0 z-40 w-11 border-r border-b px-2 py-2 text-center text-xs font-semibold sm:w-12">
-                  №
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 left-11 z-40 w-[88px] border-r border-b px-2 py-2 text-xs font-semibold sm:left-12 sm:w-[96px] sm:px-3">
-                  Фото
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 left-[132px] z-40 w-[168px] border-r border-b px-3 py-2 text-xs font-semibold sm:left-[144px] sm:w-[300px]">
-                  Название
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[128px] border-r border-b px-3 py-2 text-xs font-semibold">
-                  Было
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[128px] border-r border-b px-3 py-2 text-xs font-semibold">
-                  Приход
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[128px] border-r border-b px-3 py-2 text-xs font-semibold">
-                  Стало
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[136px] border-r border-b px-3 py-2 text-xs font-semibold">
-                  Цена
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[180px] border-r border-b px-3 py-2 text-xs font-semibold">
-                  Итог
-                </th>
-                <th className="border-subtle bg-surface text-muted sticky top-0 z-30 w-[322px] border-b px-3 py-2 text-xs font-semibold">
-                  Краткая инфа
-                </th>
+                {INVENTORY_TABLE_HEADERS.map((header) => (
+                  <th key={header.label} className={header.className}>
+                    {header.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-muted px-4 py-8 text-center text-sm">
+                  <td colSpan={INVENTORY_TABLE_COLUMN_COUNT} className="text-muted px-4 py-8 text-center text-sm">
                     Позиции пока не добавлены.
                   </td>
                 </tr>
               ) : null}
 
-              {items.map((item, rowIndex) => {
-                const metrics = computeDishwareItemMetrics(item);
-
-                return (
-                  <tr key={item.clientId} className="group">
-                    <td className="border-subtle bg-surface text-muted group-hover:bg-app sticky left-0 z-20 w-11 border-r border-b text-center align-middle text-xs font-semibold tabular-nums sm:w-12">
-                      {rowIndex + 1}
-                    </td>
-                    <td className="border-subtle bg-surface group-hover:bg-app sticky left-11 z-20 w-[88px] border-r border-b align-middle sm:left-12 sm:w-[96px]">
-                      <PhotoCell
-                        item={item}
-                        index={rowIndex}
-                        uploading={uploadingItemId === item.id}
-                        readOnly={readOnly}
-                        photoMenuOpen={openPhotoMenuItemId === item.clientId}
-                        onPhotoMenuOpenChange={(open) => setOpenPhotoMenuItemId(open ? item.clientId : null)}
-                        onUploadImage={onUploadImage}
-                        onDeleteImage={onDeleteImage}
-                      />
-                    </td>
-                    <td className="border-subtle bg-surface group-hover:bg-app sticky left-[132px] z-20 w-[168px] border-r border-b align-middle sm:left-[144px] sm:w-[300px]">
-                      <div className="flex min-h-[80px] min-w-0 items-center sm:min-h-[82px]">
-                        <input
-                          className={cn(cellInputClassName, "text-default font-medium")}
-                          value={item.name}
-                          disabled={readOnly}
-                          placeholder="Название позиции"
-                          ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[0]))}
-                          onKeyDown={(event) =>
-                            navigation.onCellKeyDown(event, {
-                              rowIndex,
-                              colIndex: 0,
-                              cellId: getCellId(item, EDITABLE_COLUMNS[0]),
-                            })
-                          }
-                          onChange={(event) => onChange(item.clientId, { name: event.target.value })}
-                        />
-                      </div>
-                    </td>
-                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <NumericCell
-                        inputMode="numeric"
-                        disabled={readOnly}
-                        value={item.previousQty}
-                        cellId={getCellId(item, EDITABLE_COLUMNS[1])}
-                        rowIndex={rowIndex}
-                        colIndex={1}
-                        registerCellRef={navigation.registerCellRef}
-                        onCellKeyDown={navigation.onCellKeyDown}
-                        formatValue={formatDishwareCountInputValue}
-                        parseValue={parseDishwareCountInput}
-                        onCommit={(previousQty) => onChange(item.clientId, { previousQty })}
-                      />
-                    </td>
-                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <NumericCell
-                        inputMode="numeric"
-                        disabled={readOnly}
-                        value={item.incomingQty}
-                        cellId={getCellId(item, EDITABLE_COLUMNS[2])}
-                        rowIndex={rowIndex}
-                        colIndex={2}
-                        registerCellRef={navigation.registerCellRef}
-                        onCellKeyDown={navigation.onCellKeyDown}
-                        formatValue={formatDishwareCountInputValue}
-                        parseValue={parseDishwareCountInput}
-                        onCommit={(incomingQty) => onChange(item.clientId, { incomingQty })}
-                      />
-                    </td>
-                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <NumericCell
-                        inputMode="numeric"
-                        disabled={readOnly}
-                        value={item.currentQty}
-                        cellId={getCellId(item, EDITABLE_COLUMNS[3])}
-                        rowIndex={rowIndex}
-                        colIndex={3}
-                        registerCellRef={navigation.registerCellRef}
-                        onCellKeyDown={navigation.onCellKeyDown}
-                        formatValue={formatDishwareCountInputValue}
-                        parseValue={parseDishwareCountInput}
-                        onCommit={(currentQty) => onChange(item.clientId, { currentQty })}
-                      />
-                    </td>
-                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <NumericCell
-                        inputMode="decimal"
-                        disabled={readOnly}
-                        placeholder="0,00"
-                        value={item.unitPrice ?? null}
-                        cellId={getCellId(item, EDITABLE_COLUMNS[4])}
-                        rowIndex={rowIndex}
-                        colIndex={4}
-                        registerCellRef={navigation.registerCellRef}
-                        onCellKeyDown={navigation.onCellKeyDown}
-                        formatValue={formatDishwareMoneyInputValue}
-                        parseValue={parseDishwareMoneyInput}
-                        onCommit={(unitPrice) => onChange(item.clientId, { unitPrice })}
-                      />
-                    </td>
-                    <td className="border-subtle group-hover:bg-app min-w-0 border-r border-b align-middle">
-                      <div
-                        title={formatInventoryLossAmount(metrics.lossAmount)}
-                        className={cn(
-                          "mx-2 flex min-h-10 min-w-0 items-center justify-end overflow-hidden rounded-xl px-3 text-sm font-semibold whitespace-nowrap tabular-nums",
-                          metrics.lossAmount > 0
-                            ? "bg-[color:var(--staffly-loss-bg)] text-[color:var(--staffly-loss-text)]"
-                            : "text-default",
-                        )}
-                      >
-                        <span className="min-w-0 truncate">{formatCompactInventoryMoney(metrics.lossAmount)}</span>
-                      </div>
-                    </td>
-                    <td className="border-subtle group-hover:bg-app border-b align-middle">
-                      <InfoCell
-                        item={item}
-                        index={rowIndex}
-                        readOnly={readOnly}
-                        onOpenNote={setNoteItemId}
-                        onRemove={onRemove}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
+              {items.map((item, rowIndex) => (
+                <DishwareInventoryItemRow
+                  key={item.clientId}
+                  item={item}
+                  rowIndex={rowIndex}
+                  uploading={uploadingItemId === item.id}
+                  readOnly={readOnly}
+                  photoMenuOpen={openPhotoMenuItemId === item.clientId}
+                  navigation={navigation}
+                  onChange={onChange}
+                  onRemove={onRemove}
+                  onPhotoMenuOpenChange={(open) => setOpenPhotoMenuItemId(open ? item.clientId : null)}
+                  onUploadImage={onUploadImage}
+                  onDeleteImage={onDeleteImage}
+                  onOpenNote={setNoteItemId}
+                />
+              ))}
             </tbody>
           </table>
         </div>

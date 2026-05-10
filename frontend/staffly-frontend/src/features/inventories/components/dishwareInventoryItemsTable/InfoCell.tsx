@@ -21,28 +21,47 @@ type InfoCellProps = {
   onRemove: (clientId: string) => void;
 };
 
+function getDiffDisplay(diff: number) {
+  if (diff < 0) {
+    return {
+      label: "недостача",
+      tone: "loss" as const,
+      title: formatInventoryLossCount(diff),
+      value: formatCompactInventoryNumber(diff),
+    };
+  }
+
+  if (diff > 0) {
+    return {
+      label: "излишек",
+      tone: "gain" as const,
+      title: `+${formatInventoryCount(diff)}`,
+      value: `+${formatCompactInventoryNumber(diff)}`,
+    };
+  }
+
+  return {
+    label: "ровно",
+    tone: "default" as const,
+    title: "0",
+    value: "0",
+  };
+}
+
 export default function InfoCell({ item, index, readOnly, onOpenNote, onRemove }: InfoCellProps) {
   const metrics = computeDishwareItemMetrics(item);
   const hasNote = Boolean(item.note?.trim());
-  const diffTone = metrics.diff < 0 ? "loss" : metrics.diff > 0 ? "gain" : "default";
-  const diffTitle =
-    metrics.diff < 0
-      ? formatInventoryLossCount(metrics.diff)
-      : metrics.diff > 0
-        ? `+${formatInventoryCount(metrics.diff)}`
-        : "0";
-  const diffValue =
-    metrics.diff < 0
-      ? formatCompactInventoryNumber(metrics.diff)
-      : metrics.diff > 0
-        ? `+${formatCompactInventoryNumber(metrics.diff)}`
-        : "0";
-  const diffLabel = metrics.diff < 0 ? "недостача" : metrics.diff > 0 ? "излишек" : "ровно";
+  const diffDisplay = getDiffDisplay(metrics.diff);
 
   return (
     <div className="flex min-h-14 min-w-0 flex-col justify-center gap-1 px-2 py-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <InfoPill label={diffLabel} value={diffValue} tone={diffTone} title={`${diffLabel} ${diffTitle}`} />
+        <InfoPill
+          label={diffDisplay.label}
+          value={diffDisplay.value}
+          tone={diffDisplay.tone}
+          title={`${diffDisplay.label} ${diffDisplay.title}`}
+        />
         <InfoPill
           label="потери"
           value={formatCompactInventoryMoney(metrics.lossAmount)}
