@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
+import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 
 export function usePositions(restaurantId: number | null) {
   const [allPositions, setAllPositions] = useState<PositionDto[]>([]);
@@ -13,8 +14,8 @@ export function usePositions(restaurantId: number | null) {
     try {
       const positions = await listPositions(restaurantId, { includeInactive: false });
       setAllPositions(positions);
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось загрузить должности");
+    } catch (error: unknown) {
+      setError(getFriendlyEmployeeErrorMessage(error, "Не удалось загрузить должности"));
       setAllPositions([]);
     } finally {
       setLoading(false);

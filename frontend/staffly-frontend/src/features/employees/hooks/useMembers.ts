@@ -8,6 +8,7 @@ import {
   type MemberDto,
 } from "../api";
 import type { RestaurantRole } from "../../dictionaries/api";
+import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 
 export function useMembers(restaurantId: number | null) {
   const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
@@ -26,9 +27,9 @@ export function useMembers(restaurantId: number | null) {
       ]);
       setMyRole(role);
       setMembers(data);
-    } catch (e: any) {
+    } catch (error: unknown) {
       setMembers([]);
-      setError(e?.friendlyMessage || "Не удалось загрузить участников");
+      setError(getFriendlyEmployeeErrorMessage(error, "Не удалось загрузить участников"));
     } finally {
       setLoading(false);
     }

@@ -6,6 +6,7 @@ import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Textarea from "../../../shared/ui/Textarea";
 import type { MemberDto } from "../../employees/api";
 import type { ScheduleData } from "../types";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 
 type Props = {
@@ -79,8 +80,8 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
     try {
       await onSubmit({ day: selectedDay, toMemberId: Number(selectedMember), reason: reason || undefined });
       onClose();
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось отправить запрос");
+    } catch (error: unknown) {
+      setError(getFriendlyScheduleErrorMessage(error, "Не удалось отправить запрос"));
     } finally {
       setSubmitting(false);
     }

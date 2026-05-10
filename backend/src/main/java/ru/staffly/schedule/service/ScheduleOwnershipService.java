@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
-import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.model.RestaurantMember;
@@ -72,13 +71,6 @@ public class ScheduleOwnershipService {
                 ownerUserId,
                 today
         );
-    }
-
-    @Transactional(readOnly = true)
-    public void assertNoActiveOwnedSchedules(Long restaurantId, Long ownerUserId) {
-        if (!findActiveOrFutureOwnedSchedules(restaurantId, ownerUserId).isEmpty()) {
-            throw new ConflictException("Сотрудник является ответственным за активные или будущие графики");
-        }
     }
 
     @Transactional(readOnly = true)

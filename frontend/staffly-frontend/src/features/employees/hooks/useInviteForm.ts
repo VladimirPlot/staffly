@@ -3,6 +3,7 @@ import type { CountryCode } from "libphonenumber-js";
 import { inviteEmployee } from "../../invitations/api";
 import type { PositionDto } from "../../dictionaries/api";
 import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
+import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 
 type AccessFlags = {
   isManagerLike: boolean;
@@ -65,8 +66,8 @@ export function useInviteForm(
         positionId,
       });
       setInviteDone(true);
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалсь отправить приглашение");
+    } catch (error: unknown) {
+      setError(getFriendlyEmployeeErrorMessage(error, "Не удалось отправить приглашение"));
     } finally {
       setSubmitting(false);
     }
