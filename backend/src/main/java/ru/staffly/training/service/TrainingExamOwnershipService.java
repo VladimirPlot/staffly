@@ -143,6 +143,9 @@ public class TrainingExamOwnershipService {
             if (!canActorManageExam(actorUserId, restaurantId, exam)) {
                 throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
             }
+            if (Objects.equals(item.getValue(), ownerUserId)) {
+                throw new BadRequestException("Новый ответственный должен отличаться от увольняемого сотрудника");
+            }
             validateOwnerCandidate(exam, item.getValue());
         }
 
