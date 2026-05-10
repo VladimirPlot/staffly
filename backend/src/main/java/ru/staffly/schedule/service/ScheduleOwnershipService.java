@@ -10,7 +10,6 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
-import ru.staffly.schedule.dto.ScheduleOwnerReassignmentOptionDto;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.repository.ScheduleRepository;
@@ -74,22 +73,14 @@ public class ScheduleOwnershipService {
     }
 
     @Transactional(readOnly = true)
-    public List<ScheduleOwnerReassignmentOptionDto> getReassignmentOptions(Long restaurantId,
-                                                                           Long actorUserId,
-                                                                           Long ownerUserId) {
+    public List<ScheduleOwnerDto> getHandoffOwnerCandidates(Long restaurantId,
+                                                            Long actorUserId,
+                                                            Long ownerUserId) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         RestaurantRole oldOwnerRole = resolveOwnerRole(restaurantId, ownerUserId);
-        List<RestaurantMember> candidates = findOwnerCandidateMembers(restaurantId, ownerUserId, oldOwnerRole);
-        return findActiveOrFutureOwnedSchedules(restaurantId, ownerUserId).stream()
-                .map(schedule -> new ScheduleOwnerReassignmentOptionDto(
-                        schedule.getId(),
-                        schedule.getTitle(),
-                        schedule.getStartDate().toString(),
-                        schedule.getEndDate().toString(),
-                        buildOwnerDto(schedule),
-                        candidates.stream().map(this::toOwnerDto).toList()
-                ))
+        return findOwnerCandidateMembers(restaurantId, ownerUserId, oldOwnerRole).stream()
+                .map(this::toOwnerDto)
                 .toList();
     }
 
@@ -200,11 +191,6 @@ public class ScheduleOwnershipService {
         if (role == RestaurantRole.ADMIN) return 2;
         if (role == RestaurantRole.MANAGER) return 1;
         return 0;
-    }
-
-    private ScheduleOwnerDto buildOwnerDto(Schedule schedule) {
-        RestaurantMember owner = schedule.getOwnerMember();
-        return owner == null ? null : toOwnerDto(owner);
     }
 
     private ScheduleOwnerDto toOwnerDto(RestaurantMember member) {
