@@ -50,7 +50,7 @@ export default function DishwareInventorySummary({ summary }: DishwareInventoryS
   ];
 
   return (
-    <Card className="sticky top-2 z-10 border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/95 px-3 py-2 backdrop-blur">
+    <Card className="sticky top-2 z-50 border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/95 px-3 py-2 backdrop-blur">
       <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {metrics.map((metric) => (
           <div

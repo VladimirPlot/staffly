@@ -110,10 +110,11 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, []);
 
   const addItem = useCallback(() => {
+    const clientId = createClientId();
     setItems((prev) => [
       ...prev,
       {
-        clientId: createClientId(),
+        clientId,
         name: "",
         photoUrl: null,
         previousQty: 0,
@@ -124,6 +125,7 @@ function AuthorizedDishwareInventoryEditorPage() {
         note: null,
       },
     ]);
+    return clientId;
   }, []);
 
   const removeItem = useCallback((clientId: string) => {
