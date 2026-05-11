@@ -3,6 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import { type ScheduleData } from "../types";
 import {
+  canApplySchedulePreferences,
   canEditScheduleContent,
   canPublishSchedule,
   getScheduleStatusLabel,
@@ -21,9 +22,10 @@ type ScheduleDetailHeaderProps = {
   onOpenOwnerDialog: () => void;
   onOpenPreferences: () => void;
   canViewPreferences: boolean;
-  lifecycleAction: "startPreferences" | "closePreferences" | "publish" | null;
+  lifecycleAction: "startPreferences" | "closePreferences" | "applyPreferences" | "publish" | null;
   onStartPreferenceCollection: () => void;
   onClosePreferenceCollection: () => void;
+  onApplyPreferences: () => void;
   onPublishSchedule: () => void;
   downloadMenuFor: number | null;
   onToggleDownloadMenu: (id: number | null) => void;
@@ -49,6 +51,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   lifecycleAction,
   onStartPreferenceCollection,
   onClosePreferenceCollection,
+  onApplyPreferences,
   onPublishSchedule,
   downloadMenuFor,
   onToggleDownloadMenu,
@@ -107,6 +110,11 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             {isCollectingPreferences(schedule.status) && (
               <Button variant="outline" onClick={onClosePreferenceCollection} disabled={lifecycleDisabled}>
                 {lifecycleAction === "closePreferences" ? "Закрытие…" : "Закрыть сбор"}
+              </Button>
+            )}
+            {canApplySchedulePreferences(schedule.status) && (
+              <Button variant="outline" onClick={onApplyPreferences} disabled={lifecycleDisabled}>
+                {lifecycleAction === "applyPreferences" ? "Внесение…" : "Внести в черновик"}
               </Button>
             )}
             {canPublishSchedule(schedule.status) && (

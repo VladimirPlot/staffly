@@ -1,6 +1,7 @@
 import React from "react";
 
 import {
+  applySchedulePreferencesSimple,
   closePreferenceCollection,
   listSavedSchedules,
   publishSchedule,
@@ -11,7 +12,7 @@ import type { ScheduleData } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type ScheduleRange = { start: string; end: string } | null;
-type LifecycleAction = "startPreferences" | "closePreferences" | "publish";
+type LifecycleAction = "startPreferences" | "closePreferences" | "applyPreferences" | "publish";
 
 type UseScheduleLifecycleActionsParams = {
   restaurantId: number | null;
@@ -159,6 +160,29 @@ export default function useScheduleLifecycleActions({
     schedule?.id,
   ]);
 
+  const applyPreferencesSimpleAction = React.useCallback(async () => {
+    if (!canManage || !restaurantId || !schedule?.id) return;
+    setPendingAction("applyPreferences");
+    onClearScheduleNotices();
+    try {
+      const updatedSchedule = await applySchedulePreferencesSimple(restaurantId, schedule.id);
+      await applyUpdatedSchedule(updatedSchedule);
+      onScheduleMessage("Пожелания внесены в черновик");
+    } catch (e: unknown) {
+      onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось внести пожелания"));
+    } finally {
+      setPendingAction(null);
+    }
+  }, [
+    applyUpdatedSchedule,
+    canManage,
+    onClearScheduleNotices,
+    onScheduleError,
+    onScheduleMessage,
+    restaurantId,
+    schedule?.id,
+  ]);
+
   const publishScheduleAction = React.useCallback(async () => {
     if (!canManage || !restaurantId || !schedule?.id) return;
     setPendingAction("publish");
@@ -193,9 +217,11 @@ export default function useScheduleLifecycleActions({
       closePreferenceDialog,
       submitPreferenceCollection,
       closePreferenceCollection: closePreferenceCollectionAction,
+      applyPreferencesSimple: applyPreferencesSimpleAction,
       publishSchedule: publishScheduleAction,
     }),
     [
+      applyPreferencesSimpleAction,
       closePreferenceCollectionAction,
       closePreferenceDialog,
       openPreferenceDialog,
