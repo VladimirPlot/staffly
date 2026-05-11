@@ -22,6 +22,7 @@ import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftRequest;
 import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.model.ScheduleShiftRequestType;
+import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -61,6 +62,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         RestaurantMember initiator = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
 
         LocalDate day = parseDate(request.day(), "day");
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
@@ -108,6 +110,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         RestaurantMember initiator = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
 
         LocalDate myDay = parseDate(request.myDay(), "myDay");
         LocalDate targetDay = parseDate(request.targetDay(), "targetDay");
@@ -169,6 +172,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
         Schedule schedule = loadSchedule(entity.getSchedule().getId(), restaurantId);
         scheduleAccessService.assertCanManageSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
         ScheduleRow fromRow = requireRow(schedule, entity.getFromRow().getId());
         ScheduleRow toRow = requireRow(schedule, entity.getToRow().getId());
 
@@ -238,6 +242,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         RestaurantMember member = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
         List<ShiftRequestDto> all = requests.findByScheduleIdOrderByCreatedAtDesc(schedule.getId())
                 .stream()
                 .map(this::toDto)
@@ -265,6 +270,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             throw new BadRequestException("Заявка не относится к этому графику");
         }
         scheduleAccessService.assertCanViewSchedule(userId, request.getSchedule());
+        assertPublishedSchedule(request.getSchedule());
 
         if (!Objects.equals(request.getInitiatorMemberId(), member.getId())) {
             throw new ForbiddenException("Можно отменять только свои заявки");
@@ -293,6 +299,13 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         return members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
     }
+
+    private void assertPublishedSchedule(Schedule schedule) {
+        if (schedule.getStatus() != ScheduleStatus.PUBLISHED) {
+            throw new BadRequestException("Заявки на смены доступны только для опубликованного графика");
+        }
+    }
+
 
     private void ensureNoActiveRequest(Long scheduleId, Long memberId, LocalDate day) {
         requests.findActiveByScheduleAndFromMemberAndDay(scheduleId, memberId, day, ACTIVE_STATUSES)
