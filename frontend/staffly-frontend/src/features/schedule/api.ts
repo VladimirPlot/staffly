@@ -2,9 +2,12 @@ import api from "../../shared/api/apiClient";
 import type {
   ScheduleConfig,
   ScheduleData,
+  ScheduleDay,
   ScheduleOwnerDto,
   ScheduleCreatedByDto,
   ScheduleAuditLogDto,
+  ScheduleLifecycleFields,
+  ScheduleStatus,
 } from "./types";
 
 export type ShiftRequestType = "REPLACEMENT" | "SWAP";
@@ -30,7 +33,9 @@ export type ShiftRequestDto = {
   toMember: ShiftRequestMemberDto;
 };
 
-export type ScheduleSummary = {
+export type ScheduleLifecycleDto = ScheduleLifecycleFields;
+
+export type ScheduleSummary = ScheduleLifecycleDto & {
   id: number;
   title: string;
   startDate: string;
@@ -41,6 +46,8 @@ export type ScheduleSummary = {
   owner?: ScheduleOwnerDto | null;
 };
 
+export type ScheduleSummaryDto = ScheduleSummary;
+
 type ScheduleRowResponse = {
   id: number;
   memberId: number;
@@ -49,7 +56,7 @@ type ScheduleRowResponse = {
   positionName: string | null;
 };
 
-type ScheduleResponse = {
+type ScheduleResponse = ScheduleLifecycleDto & {
   id: number;
   title: string;
   config: ScheduleConfig;
@@ -60,6 +67,11 @@ type ScheduleResponse = {
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];
 };
+
+export type ScheduleDto = Omit<ScheduleData, "id" | "status"> &
+  ScheduleLifecycleDto & {
+    id: number;
+  };
 
 export type SaveSchedulePayload = {
   title: string;
@@ -73,23 +85,189 @@ export type SaveSchedulePayload = {
   cellValues: Record<string, string>;
 };
 
+export type CreateDraftScheduleRequest = SaveSchedulePayload;
+
+export type StartPreferenceCollectionRequest = {
+  preferenceDeadline: string;
+};
+
+export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF" | "PREFER_WORK";
+
+export type SchedulePreferenceCellDto = {
+  id: number | null;
+  day: string;
+  type: SchedulePreferenceType;
+  fullDay: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+  note?: string | null;
+  sortOrder: number;
+};
+
+export type SchedulePreferenceCellRequest = {
+  day: string;
+  type: SchedulePreferenceType;
+  fullDay: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+  note?: string | null;
+};
+
+export type SchedulePreferenceMemberDto = {
+  memberId: number;
+  userId?: number | null;
+  displayName?: string | null;
+  positionId?: number | null;
+  positionName?: string | null;
+};
+
+export type SchedulePreferenceMyResponse = {
+  scheduleId: number;
+  title: string;
+  startDate: string;
+  endDate: string;
+  days: ScheduleDay[];
+  status: ScheduleStatus;
+  preferenceDeadline?: string | null;
+  canSubmit: boolean;
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+  revision: number;
+  member: SchedulePreferenceMemberDto;
+  cells: SchedulePreferenceCellDto[];
+  comment?: string | null;
+};
+
+export type SchedulePreferenceParticipantDto = {
+  memberId: number;
+  userId?: number | null;
+  displayName?: string | null;
+  positionId?: number | null;
+  positionName?: string | null;
+  submitted: boolean;
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+  revision: number;
+  cellsCount: number;
+};
+
+export type SchedulePreferenceProgressResponse = {
+  scheduleId: number;
+  title: string;
+  status: ScheduleStatus;
+  preferenceDeadline?: string | null;
+  totalParticipants: number;
+  submittedCount: number;
+  notSubmittedCount: number;
+  participants: SchedulePreferenceParticipantDto[];
+};
+
+export type SchedulePreferenceSubmissionDto = {
+  submissionId: number;
+  member: SchedulePreferenceMemberDto;
+  positionId?: number | null;
+  positionName?: string | null;
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+  revision: number;
+  comment?: string | null;
+  cells: SchedulePreferenceCellDto[];
+};
+
+export type SchedulePreferenceSubmissionsResponse = {
+  scheduleId: number;
+  title: string;
+  status: ScheduleStatus;
+  preferenceDeadline?: string | null;
+  submissions: SchedulePreferenceSubmissionDto[];
+};
+
+export type UpsertMySchedulePreferenceRequest = {
+  cells: SchedulePreferenceCellRequest[];
+  comment?: string | null;
+};
+
+function nullableTimestamp(value: string | null | undefined): string | null {
+  return value ?? null;
+}
+
+function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
+  return {
+    status: data.status,
+    preferenceCollectionStartedAt: nullableTimestamp(data.preferenceCollectionStartedAt),
+    preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
+    preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
+    preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+  };
+}
+
 function mapSchedule(data: ScheduleResponse): ScheduleData {
   return {
     id: data.id,
+    ...mapLifecycle(data),
     title: data.title,
     config: data.config,
-    days: data.days,
-    rows: data.rows.map((row) => ({
+    days: data.days ?? [],
+    rows: (data.rows ?? []).map((row) => ({
       id: row.id,
       memberId: row.memberId,
       displayName: row.displayName,
       positionId: row.positionId,
       positionName: row.positionName,
     })),
-    cellValues: data.cellValues,
+    cellValues: data.cellValues ?? {},
     owner: data.owner ?? null,
     createdBy: data.createdBy ?? null,
     history: data.history ?? [],
+  };
+}
+
+function mapScheduleSummary(data: ScheduleSummary): ScheduleSummary {
+  return {
+    ...data,
+    ...mapLifecycle(data),
+    positionIds: data.positionIds ?? [],
+    owner: data.owner ?? null,
+  };
+}
+
+function mapPreferenceMyResponse(data: SchedulePreferenceMyResponse): SchedulePreferenceMyResponse {
+  return {
+    ...data,
+    preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
+    submittedAt: nullableTimestamp(data.submittedAt),
+    updatedAt: nullableTimestamp(data.updatedAt),
+    days: data.days ?? [],
+    cells: data.cells ?? [],
+    comment: data.comment ?? null,
+  };
+}
+
+function mapPreferenceProgressResponse(data: SchedulePreferenceProgressResponse): SchedulePreferenceProgressResponse {
+  return {
+    ...data,
+    preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
+    participants: (data.participants ?? []).map((participant) => ({
+      ...participant,
+      submittedAt: nullableTimestamp(participant.submittedAt),
+      updatedAt: nullableTimestamp(participant.updatedAt),
+    })),
+  };
+}
+
+function mapPreferenceSubmissionsResponse(
+  data: SchedulePreferenceSubmissionsResponse,
+): SchedulePreferenceSubmissionsResponse {
+  return {
+    ...data,
+    preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
+    submissions: (data.submissions ?? []).map((submission) => ({
+      ...submission,
+      submittedAt: nullableTimestamp(submission.submittedAt),
+      updatedAt: nullableTimestamp(submission.updatedAt),
+      comment: submission.comment ?? null,
+      cells: submission.cells ?? [],
+    })),
   };
 }
 
@@ -113,7 +291,39 @@ export async function deleteSchedule(restaurantId: number, scheduleId: number): 
 
 export async function listSavedSchedules(restaurantId: number): Promise<ScheduleSummary[]> {
   const { data } = await api.get<ScheduleSummary[]>(`/api/restaurants/${restaurantId}/schedules`);
-  return data;
+  return (data ?? []).map(mapScheduleSummary);
+}
+
+export async function createDraftSchedule(
+  restaurantId: number,
+  request: CreateDraftScheduleRequest,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/drafts`, request);
+  return mapSchedule(data);
+}
+
+export async function startPreferenceCollection(
+  restaurantId: number,
+  scheduleId: number,
+  request: StartPreferenceCollectionRequest,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/start`,
+    request,
+  );
+  return mapSchedule(data);
+}
+
+export async function closePreferenceCollection(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/close`,
+  );
+  return mapSchedule(data);
+}
+
+export async function publishSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`);
+  return mapSchedule(data);
 }
 
 export async function fetchSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
@@ -128,7 +338,7 @@ export async function getScheduleOwnerCandidates(
   const { data } = await api.get<ScheduleOwnerDto[]>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner-candidates`,
   );
-  return data;
+  return data ?? [];
 }
 
 export async function changeScheduleOwner(
@@ -170,7 +380,7 @@ export async function listShiftRequests(restaurantId: number, scheduleId: number
   const { data } = await api.get<ShiftRequestDto[]>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests`,
   );
-  return data;
+  return data ?? [];
 }
 
 export async function decideAsManager(
@@ -188,4 +398,46 @@ export async function decideAsManager(
 
 export async function cancelShiftRequest(restaurantId: number, scheduleId: number, requestId: number): Promise<void> {
   await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/shift-requests/${requestId}`);
+}
+
+export async function getMySchedulePreference(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<SchedulePreferenceMyResponse> {
+  const { data } = await api.get<SchedulePreferenceMyResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/me`,
+  );
+  return mapPreferenceMyResponse(data);
+}
+
+export async function upsertMySchedulePreference(
+  restaurantId: number,
+  scheduleId: number,
+  request: UpsertMySchedulePreferenceRequest,
+): Promise<SchedulePreferenceMyResponse> {
+  const { data } = await api.put<SchedulePreferenceMyResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/me`,
+    request,
+  );
+  return mapPreferenceMyResponse(data);
+}
+
+export async function getSchedulePreferenceProgress(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<SchedulePreferenceProgressResponse> {
+  const { data } = await api.get<SchedulePreferenceProgressResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/progress`,
+  );
+  return mapPreferenceProgressResponse(data);
+}
+
+export async function getSchedulePreferenceSubmissions(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<SchedulePreferenceSubmissionsResponse> {
+  const { data } = await api.get<SchedulePreferenceSubmissionsResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/submissions`,
+  );
+  return mapPreferenceSubmissionsResponse(data);
 }

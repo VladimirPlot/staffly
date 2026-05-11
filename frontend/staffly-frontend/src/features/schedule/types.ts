@@ -3,6 +3,21 @@ import type { RestaurantRole } from "../../shared/types/restaurant";
 
 export type ShiftMode = "ARRIVAL_ONLY" | "FULL" | "NONE";
 
+export type ScheduleStatus =
+  | "DRAFT"
+  | "COLLECTING_PREFERENCES"
+  | "PREFERENCES_CLOSED"
+  | "DRAFT_FROM_PREFERENCES"
+  | "PUBLISHED";
+
+export type ScheduleLifecycleFields = {
+  status: ScheduleStatus;
+  preferenceCollectionStartedAt?: string | null;
+  preferenceDeadline?: string | null;
+  preferenceClosedAt?: string | null;
+  preferenceAppliedAt?: string | null;
+};
+
 export type ScheduleConfig = {
   startDate: string; // ISO yyyy-mm-dd
   endDate: string; // ISO yyyy-mm-dd
@@ -50,6 +65,11 @@ export type ScheduleRow = {
 
 export type ScheduleData = {
   id?: number;
+  status?: ScheduleStatus;
+  preferenceCollectionStartedAt?: string | null;
+  preferenceDeadline?: string | null;
+  preferenceClosedAt?: string | null;
+  preferenceAppliedAt?: string | null;
   title: string;
   config: ScheduleConfig;
   days: ScheduleDay[];
