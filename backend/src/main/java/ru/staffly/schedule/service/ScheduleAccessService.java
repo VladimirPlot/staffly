@@ -7,6 +7,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.security.SecurityService;
 
 @Service
@@ -38,6 +39,7 @@ public class ScheduleAccessService {
         }
         return members.findByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
                 .map(member -> member.getRole() == RestaurantRole.STAFF
+                        && schedule.getStatus() == ScheduleStatus.PUBLISHED
                         && member.getPosition() != null
                         && schedule.getPositionIds().contains(member.getPosition().getId()))
                 .orElse(false);

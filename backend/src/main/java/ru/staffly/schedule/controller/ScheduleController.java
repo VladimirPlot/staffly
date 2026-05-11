@@ -10,6 +10,7 @@ import ru.staffly.schedule.dto.SaveScheduleRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
+import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
 import ru.staffly.schedule.service.ScheduleOwnershipService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.security.UserPrincipal;
@@ -54,6 +55,31 @@ public class ScheduleController {
                               @AuthenticationPrincipal UserPrincipal principal,
                               @Valid @RequestBody SaveScheduleRequest request) {
         return schedules.update(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/schedules/{scheduleId}/preferences/start")
+    public ScheduleDto startPreferenceCollection(@PathVariable Long restaurantId,
+                                                 @PathVariable Long scheduleId,
+                                                 @AuthenticationPrincipal UserPrincipal principal,
+                                                 @Valid @RequestBody StartPreferenceCollectionRequest request) {
+        return schedules.startPreferenceCollection(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/schedules/{scheduleId}/preferences/close")
+    public ScheduleDto closePreferenceCollection(@PathVariable Long restaurantId,
+                                                 @PathVariable Long scheduleId,
+                                                 @AuthenticationPrincipal UserPrincipal principal) {
+        return schedules.closePreferenceCollection(restaurantId, scheduleId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/schedules/{scheduleId}/publish")
+    public ScheduleDto publish(@PathVariable Long restaurantId,
+                               @PathVariable Long scheduleId,
+                               @AuthenticationPrincipal UserPrincipal principal) {
+        return schedules.publish(restaurantId, scheduleId, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
