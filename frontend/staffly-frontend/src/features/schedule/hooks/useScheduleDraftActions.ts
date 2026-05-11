@@ -1,6 +1,13 @@
 import React from "react";
 
-import { createSchedule, listSavedSchedules, updateSchedule, type ScheduleSummary } from "../api";
+import {
+  createDraftSchedule,
+  createSchedule,
+  listSavedSchedules,
+  updateSchedule,
+  type SaveSchedulePayload,
+  type ScheduleSummary,
+} from "../api";
 import type { ScheduleConfig, ScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
@@ -74,6 +81,7 @@ export default function useScheduleDraftActions({
 }: UseScheduleDraftActionsParams) {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [savingDraft, setSavingDraft] = React.useState(false);
 
   React.useEffect(() => {
     if (!canManage) {
@@ -85,6 +93,7 @@ export default function useScheduleDraftActions({
   React.useEffect(() => {
     setDialogOpen(false);
     setSaving(false);
+    setSavingDraft(false);
   }, [restaurantId]);
 
   const openDialog = React.useCallback(() => {
@@ -165,40 +174,54 @@ export default function useScheduleDraftActions({
     ],
   );
 
+  const buildPayload = React.useCallback((): SaveSchedulePayload | null => {
+    if (!schedule) return null;
+
+    const normalizedCells: Record<string, string> = {};
+    Object.entries(schedule.cellValues).forEach(([key, rawValue]) => {
+      const normalized = normalizeCellValue(rawValue, schedule.config.shiftMode);
+      if (normalized) {
+        normalizedCells[key] = normalized;
+      }
+    });
+
+    return {
+      title: schedule.title,
+      config: schedule.config,
+      rows: schedule.rows.map((row) => ({
+        memberId: row.memberId,
+        displayName: row.displayName,
+        positionId: row.positionId ?? null,
+        positionName: row.positionName ?? null,
+      })),
+      cellValues: normalizedCells,
+    };
+  }, [schedule]);
+
+  const validateScheduleBeforeSave = React.useCallback((): boolean => {
+    if (!schedule || schedule.config.shiftMode !== "FULL") return true;
+
+    const hasIncompleteShifts = Object.values(schedule.cellValues).some((value) => hasStartWithoutEndValue(value));
+    if (hasIncompleteShifts) {
+      onScheduleError("Нельзя создать график без времени окончания смены сотрудника");
+      return false;
+    }
+
+    return true;
+  }, [onScheduleError, schedule]);
+
   const saveSchedule = React.useCallback(async () => {
     if (!canManage || !restaurantId || !schedule) return;
     setSaving(true);
     onClearScheduleNotices();
     try {
-      if (schedule.config.shiftMode === "FULL") {
-        const hasIncompleteShifts = Object.values(schedule.cellValues).some((value) => hasStartWithoutEndValue(value));
-
-        if (hasIncompleteShifts) {
-          onScheduleError("Нельзя создать график без времени окончания смены сотрудника");
-          setSaving(false);
-          return;
-        }
+      if (!validateScheduleBeforeSave()) {
+        setSaving(false);
+        return;
       }
 
-      const normalizedCells: Record<string, string> = {};
-      Object.entries(schedule.cellValues).forEach(([key, rawValue]) => {
-        const normalized = normalizeCellValue(rawValue, schedule.config.shiftMode);
-        if (normalized) {
-          normalizedCells[key] = normalized;
-        }
-      });
-
-      const payload = {
-        title: schedule.title,
-        config: schedule.config,
-        rows: schedule.rows.map((row) => ({
-          memberId: row.memberId,
-          displayName: row.displayName,
-          positionId: row.positionId ?? null,
-          positionName: row.positionName ?? null,
-        })),
-        cellValues: normalizedCells,
-      };
+      const payload = buildPayload();
+      if (!payload) return;
 
       const saved = schedule.id
         ? await updateSchedule(restaurantId, schedule.id, payload)
@@ -217,6 +240,7 @@ export default function useScheduleDraftActions({
       setSaving(false);
     }
   }, [
+    buildPayload,
     canManage,
     loadShiftRequests,
     onClearScheduleNotices,
@@ -229,17 +253,64 @@ export default function useScheduleDraftActions({
     prepareSchedule,
     restaurantId,
     schedule,
+    validateScheduleBeforeSave,
+  ]);
+
+  const saveDraftSchedule = React.useCallback(async () => {
+    if (!canManage || !restaurantId || !schedule || schedule.id) return;
+    setSavingDraft(true);
+    onClearScheduleNotices();
+    try {
+      if (!validateScheduleBeforeSave()) {
+        setSavingDraft(false);
+        return;
+      }
+
+      const payload = buildPayload();
+      if (!payload) return;
+
+      const saved = await createDraftSchedule(restaurantId, payload);
+      const prepared = prepareSchedule(saved);
+      onScheduleChanged(prepared);
+      onScheduleReadOnlyChanged(true);
+      onLastRangeChanged({ start: saved.config.startDate, end: saved.config.endDate });
+      const savedList = await listSavedSchedules(restaurantId);
+      onSavedSchedulesChanged(savedList);
+      await loadShiftRequests(saved.id ?? undefined);
+      onScheduleMessage("Черновик графика сохранён");
+    } catch (e: unknown) {
+      onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось сохранить черновик графика"));
+    } finally {
+      setSavingDraft(false);
+    }
+  }, [
+    buildPayload,
+    canManage,
+    loadShiftRequests,
+    onClearScheduleNotices,
+    onLastRangeChanged,
+    onSavedSchedulesChanged,
+    onScheduleChanged,
+    onScheduleError,
+    onScheduleMessage,
+    onScheduleReadOnlyChanged,
+    prepareSchedule,
+    restaurantId,
+    schedule,
+    validateScheduleBeforeSave,
   ]);
 
   return React.useMemo(
     () => ({
       dialogOpen,
       saving,
+      savingDraft,
       openDialog,
       closeDialog,
       createDraft,
       saveSchedule,
+      saveDraftSchedule,
     }),
-    [closeDialog, createDraft, dialogOpen, openDialog, saveSchedule, saving],
+    [closeDialog, createDraft, dialogOpen, openDialog, saveDraftSchedule, saveSchedule, saving, savingDraft],
   );
 }

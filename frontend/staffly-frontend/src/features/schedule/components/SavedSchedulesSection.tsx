@@ -7,6 +7,7 @@ import { type PositionDto } from "../../dictionaries/api";
 import { type ScheduleSummary } from "../api";
 import Icon from "../../../shared/ui/Icon";
 import { Download, Pencil, Trash2 } from "lucide-react";
+import { getScheduleStatusLabel } from "../utils/status";
 
 type SavedSchedulesSectionProps = {
   canManage: boolean;
@@ -53,7 +54,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-default">
+          <div className="text-default flex items-center gap-2 text-sm font-medium">
             <span>Сохранённые графики</span>
             {hasPendingSavedSchedules && (
               <span
@@ -62,24 +63,22 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               />
             )}
           </div>
-          <div className={`text-xs text-muted ${hasSchedules ? "hidden sm:block" : ""}`}>
+          <div className={`text-muted text-xs ${hasSchedules ? "hidden sm:block" : ""}`}>
             {hasSchedules
               ? "Нажмите «Открыть», чтобы посмотреть график или скачайте файл."
               : canManage
-              ? "Пока список пуст. Сохраните график, чтобы увидеть его здесь."
-              : "Пока нет сохранённых графиков. Дождитесь, когда менеджер добавит новый график."}
+                ? "Пока список пуст. Сохраните график, чтобы увидеть его здесь."
+                : "Пока нет сохранённых графиков. Дождитесь, когда менеджер добавит новый график."}
           </div>
         </div>
         {canManage && (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-default">
-            <span className="shrink-0 whitespace-nowrap text-muted">Должность:</span>
+          <div className="text-default flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted shrink-0 whitespace-nowrap">Должность:</span>
             <DropdownSelect
               aria-label="Должность"
               className="!w-auto min-w-[5.75rem] shrink-0 rounded-2xl px-3 py-2 text-base shadow-[var(--staffly-shadow)] sm:!w-[9.5rem]"
               value={positionFilter}
-              onChange={(e) =>
-                onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))
-              }
+              onChange={(e) => onPositionFilterChange(e.target.value === "all" ? "all" : Number(e.target.value))}
             >
               <option value="all">Все</option>
               {positions.map((position) => (
@@ -105,23 +104,26 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                 <div
                   key={item.id}
                   className={`relative flex h-full flex-col justify-between rounded-2xl border px-4 py-3 text-sm transition ${
-                    isActive
-                      ? "border-subtle bg-app"
-                      : "border-subtle hover:bg-app"
+                    isActive ? "border-subtle bg-app" : "border-subtle hover:bg-app"
                   }`}
                 >
                   {item.hasPendingShiftRequests && (
                     <span
-                      className="absolute right-2 top-2 inline-block h-2 w-2 rounded-full bg-emerald-500"
+                      className="absolute top-2 right-2 inline-block h-2 w-2 rounded-full bg-emerald-500"
                       aria-label="Есть необработанные заявки"
                     />
                   )}
                   <div>
-                    <div className="font-medium text-strong">{item.title}</div>
-                    <div className="mt-1 text-xs text-muted">
+                    <div className="flex flex-wrap items-center gap-2 pr-3">
+                      <div className="text-strong font-medium">{item.title}</div>
+                      <span className="border-subtle bg-surface text-muted rounded-full border px-2 py-0.5 text-[11px] font-medium">
+                        {getScheduleStatusLabel(item.status)}
+                      </span>
+                    </div>
+                    <div className="text-muted mt-1 text-xs">
                       {item.startDate} — {item.endDate}
                     </div>
-                    <div className="mt-1 text-xs text-muted">
+                    <div className="text-muted mt-1 text-xs">
                       Ответственный: {item.owner?.displayName?.trim() || "не назначен"}
                     </div>
                   </div>
@@ -150,9 +152,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                           onClick={() => onDeleteSavedSchedule(item.id)}
                           aria-label="Удалить график"
                           disabled={isDeleting}
-                          className={`text-default ${
-                            isDeleting ? "cursor-wait opacity-60" : ""
-                          }`}
+                          className={`text-default ${isDeleting ? "cursor-wait opacity-60" : ""}`}
                         >
                           <Icon icon={Trash2} />
                         </Button>
@@ -169,9 +169,9 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                         <Icon icon={Download} />
                       </Button>
                       {menuOpen && (
-                        <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-subtle bg-surface shadow-[var(--staffly-shadow)]">
+                        <div className="border-subtle bg-surface absolute right-0 z-10 mt-2 w-36 rounded-xl border shadow-[var(--staffly-shadow)]">
                           <button
-                            className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
+                            className="text-default hover:bg-app block w-full px-3 py-2 text-left text-sm"
                             onClick={() => {
                               onDownloadXlsx(item.id);
                               onToggleDownloadMenu(null);
@@ -180,7 +180,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                             Скачать .xlsx
                           </button>
                           <button
-                            className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
+                            className="text-default hover:bg-app block w-full px-3 py-2 text-left text-sm"
                             onClick={() => {
                               onDownloadJpg(item.id);
                               onToggleDownloadMenu(null);
