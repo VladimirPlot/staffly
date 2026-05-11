@@ -2,6 +2,7 @@ package ru.staffly.member.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.RestaurantRole;
 
@@ -47,6 +48,15 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findWithUserByRestaurantId(Long restaurantId);
 
     List<RestaurantMember> findByRestaurantIdAndPositionIdIn(Long restaurantId, List<Long> positionIds);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and p.id in :positionIds
+           """)
+    List<RestaurantMember> findWithUserAndPositionByRestaurantIdAndPositionIdIn(@Param("restaurantId") Long restaurantId, @Param("positionIds") List<Long> positionIds);
 
     @Query("""
            select distinct m from RestaurantMember m
