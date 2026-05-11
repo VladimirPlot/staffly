@@ -15,6 +15,7 @@ import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
 import ScheduleHistoryBlock from "../components/ScheduleHistoryBlock";
 import ScheduleTableSection from "../components/ScheduleTableSection";
 import ScheduleTabsNav from "../components/ScheduleTabsNav";
+import StartPreferenceCollectionDialog from "../components/StartPreferenceCollectionDialog";
 import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
 import ShiftRequestsSection from "../components/ShiftRequestsSection";
 import ShiftSwapDialog from "../components/ShiftSwapDialog";
@@ -25,6 +26,7 @@ import useScheduleDraftActions from "../hooks/useScheduleDraftActions";
 import useScheduleDerivedState from "../hooks/useScheduleDerivedState";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleInitialData from "../hooks/useScheduleInitialData";
+import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
@@ -81,10 +83,7 @@ const SchedulePage: React.FC = () => {
     onBeforeLoad: handleBeforeInitialLoad,
   });
 
-  const access = React.useMemo(
-    () => resolveRestaurantAccess(user?.roles, myRole),
-    [user?.roles, myRole],
-  );
+  const access = React.useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
   const normalizedUserRoles = React.useMemo(() => {
     const result = new Set<string>();
@@ -179,9 +178,7 @@ const SchedulePage: React.FC = () => {
 
   const handleSavedScheduleOwnerUpdated = React.useCallback(
     (updatedScheduleId: number, owner: ScheduleOwnerDto | null) => {
-      setSavedSchedules((prev) =>
-        prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner } : item)),
-      );
+      setSavedSchedules((prev) => prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner } : item)));
     },
     [setSavedSchedules],
   );
@@ -291,6 +288,20 @@ const SchedulePage: React.FC = () => {
   });
   const { closeSavedSchedule, deleteSavedSchedule, openSavedSchedule } = savedScheduleActions;
 
+  const lifecycleActions = useScheduleLifecycleActions({
+    restaurantId,
+    canManage,
+    schedule,
+    prepareSchedule,
+    onScheduleChanged: setSchedule,
+    onSavedSchedulesChanged: setSavedSchedules,
+    onScheduleReadOnlyChanged: setScheduleReadOnly,
+    onLastRangeChanged: setLastRange,
+    onClearScheduleNotices: clearScheduleNotices,
+    onScheduleMessage: setScheduleMessage,
+    onScheduleError: setScheduleError,
+  });
+
   const handleEnterEditMode = React.useCallback(() => {
     if (!canManage) return;
     setScheduleReadOnly(false);
@@ -362,9 +373,7 @@ const SchedulePage: React.FC = () => {
 
       {loading && <Card>Загрузка…</Card>}
       {!loading && error && <Card className="text-red-600">{error}</Card>}
-      {!loading && !error && savedScheduleActions.scheduleLoading && (
-        <Card>Загрузка сохранённого графика…</Card>
-      )}
+      {!loading && !error && savedScheduleActions.scheduleLoading && <Card>Загрузка сохранённого графика…</Card>}
       {!loading && !error && scheduleError && (
         <Card className="border-red-200 bg-red-50 text-red-700">{scheduleError}</Card>
       )}
@@ -432,6 +441,10 @@ const SchedulePage: React.FC = () => {
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
             onOpenOwnerDialog={ownerDialog.openDialog}
+            lifecycleAction={lifecycleActions.pendingAction}
+            onStartPreferenceCollection={lifecycleActions.openPreferenceDialog}
+            onClosePreferenceCollection={lifecycleActions.closePreferenceCollection}
+            onPublishSchedule={lifecycleActions.publishSchedule}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
             downloading={exportActions.downloading}
@@ -454,6 +467,7 @@ const SchedulePage: React.FC = () => {
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}
               saving={draftActions.saving}
+              savingDraft={draftActions.savingDraft}
               monthFallback={derived.monthFallback}
               canManage={canManage}
               loading={loading}
@@ -461,6 +475,7 @@ const SchedulePage: React.FC = () => {
               scheduleLoading={savedScheduleActions.scheduleLoading}
               onCancelEdit={handleCancelEdit}
               onSave={draftActions.saveSchedule}
+              onSaveDraft={draftActions.saveDraftSchedule}
               onCellChange={cellEditing.changeCell}
             />
           )}
@@ -515,6 +530,16 @@ const SchedulePage: React.FC = () => {
         onSelect={ownerDialog.setSelectedOwnerUserId}
         onClose={ownerDialog.closeDialog}
         onSubmit={() => void ownerDialog.submit()}
+      />
+
+      <StartPreferenceCollectionDialog
+        open={lifecycleActions.preferenceDialogOpen}
+        deadline={lifecycleActions.preferenceDeadline}
+        error={lifecycleActions.preferenceDeadlineError}
+        saving={lifecycleActions.pendingAction === "startPreferences"}
+        onDeadlineChange={lifecycleActions.setPreferenceDeadline}
+        onClose={lifecycleActions.closePreferenceDialog}
+        onSubmit={() => void lifecycleActions.submitPreferenceCollection()}
       />
 
       <CreateScheduleDialog
