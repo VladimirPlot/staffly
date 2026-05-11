@@ -503,6 +503,7 @@ const SchedulePage: React.FC = () => {
             lifecycleAction={lifecycleActions.pendingAction}
             onStartPreferenceCollection={lifecycleActions.openPreferenceDialog}
             onClosePreferenceCollection={lifecycleActions.closePreferenceCollection}
+            onApplyPreferences={lifecycleActions.applyPreferencesSimple}
             onPublishSchedule={lifecycleActions.publishSchedule}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}

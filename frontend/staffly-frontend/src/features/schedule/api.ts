@@ -321,6 +321,13 @@ export async function closePreferenceCollection(restaurantId: number, scheduleId
   return mapSchedule(data);
 }
 
+export async function applySchedulePreferencesSimple(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/apply-simple`,
+  );
+  return mapSchedule(data);
+}
+
 export async function publishSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`);
   return mapSchedule(data);
