@@ -49,6 +49,11 @@ public class Schedule {
     @Column(name = "shift_mode", nullable = false, length = 32)
     private ScheduleShiftMode shiftMode;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 32)
+    @Builder.Default
+    private ScheduleStatus status = ScheduleStatus.PUBLISHED;
+
     @Column(name = "show_full_name", nullable = false)
     private boolean showFullName;
 
@@ -81,6 +86,18 @@ public class Schedule {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = TimeProvider.now();
 
+    @Column(name = "preference_collection_started_at")
+    private Instant preferenceCollectionStartedAt;
+
+    @Column(name = "preference_deadline")
+    private Instant preferenceDeadline;
+
+    @Column(name = "preference_closed_at")
+    private Instant preferenceClosedAt;
+
+    @Column(name = "preference_applied_at")
+    private Instant preferenceAppliedAt;
+
     @PrePersist
     void prePersist() {
         Instant now = TimeProvider.now();
@@ -89,6 +106,9 @@ public class Schedule {
         }
         if (updatedAt == null) {
             updatedAt = now;
+        }
+        if (status == null) {
+            status = ScheduleStatus.PUBLISHED;
         }
     }
 
