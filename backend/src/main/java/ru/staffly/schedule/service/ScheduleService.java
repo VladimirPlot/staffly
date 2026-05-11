@@ -23,6 +23,8 @@ public interface ScheduleService {
 
     ScheduleDto closePreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId);
 
+    ScheduleDto applyPreferencesSimple(Long restaurantId, Long scheduleId, Long actorUserId);
+
     ScheduleDto publish(Long restaurantId, Long scheduleId, Long actorUserId);
 
     void delete(Long restaurantId, Long scheduleId, Long userId);

@@ -12,6 +12,7 @@ import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
 import SchedulePreferenceMeView from "../components/SchedulePreferenceMeView";
+import SchedulePreferenceManagerDialog from "../components/SchedulePreferenceManagerDialog";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
 import ScheduleHistoryBlock from "../components/ScheduleHistoryBlock";
 import ScheduleTableSection from "../components/ScheduleTableSection";
@@ -30,10 +31,12 @@ import useScheduleInitialData from "../hooks/useScheduleInitialData";
 import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useSchedulePreferenceMeActions from "../hooks/useSchedulePreferenceMeActions";
+import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceManagerActions";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
 import { buildMemberDisplayNameMap } from "../utils/names";
+import { canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
@@ -296,6 +299,8 @@ const SchedulePage: React.FC = () => {
     onClearScheduleNotices: clearScheduleNotices,
   });
 
+  const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
+
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
     canManage,
@@ -493,9 +498,12 @@ const SchedulePage: React.FC = () => {
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
             onOpenOwnerDialog={ownerDialog.openDialog}
+            canViewPreferences={canManage && canViewSchedulePreferences(schedule.status)}
+            onOpenPreferences={() => scheduleId && void preferenceManagerActions.openDialog(scheduleId)}
             lifecycleAction={lifecycleActions.pendingAction}
             onStartPreferenceCollection={lifecycleActions.openPreferenceDialog}
             onClosePreferenceCollection={lifecycleActions.closePreferenceCollection}
+            onApplyPreferences={lifecycleActions.applyPreferencesSimple}
             onPublishSchedule={lifecycleActions.publishSchedule}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
@@ -582,6 +590,16 @@ const SchedulePage: React.FC = () => {
         onSelect={ownerDialog.setSelectedOwnerUserId}
         onClose={ownerDialog.closeDialog}
         onSubmit={() => void ownerDialog.submit()}
+      />
+
+      <SchedulePreferenceManagerDialog
+        open={preferenceManagerActions.open}
+        loading={preferenceManagerActions.loading}
+        error={preferenceManagerActions.error}
+        progress={preferenceManagerActions.progress}
+        submissions={preferenceManagerActions.submissions}
+        onClose={preferenceManagerActions.closeDialog}
+        onReload={() => void preferenceManagerActions.reload()}
       />
 
       <StartPreferenceCollectionDialog

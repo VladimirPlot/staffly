@@ -83,6 +83,14 @@ public class ScheduleController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/schedules/{scheduleId}/preferences/apply-simple")
+    public ScheduleDto applyPreferencesSimple(@PathVariable Long restaurantId,
+                                              @PathVariable Long scheduleId,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return schedules.applyPreferencesSimple(restaurantId, scheduleId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/schedules/{scheduleId}/publish")
     public ScheduleDto publish(@PathVariable Long restaurantId,
                                @PathVariable Long scheduleId,
