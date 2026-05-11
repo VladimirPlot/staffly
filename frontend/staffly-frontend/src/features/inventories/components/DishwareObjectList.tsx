@@ -259,7 +259,7 @@ export function DishwareDragOverlayCard({ object, width }: { object: DishwareObj
 
   return (
     <div className="pointer-events-none" style={{ width: getDragOverlayWidth(width) }}>
-      <Card className="bg-surface/95 rounded-2xl p-2 shadow-xl ring-1 ring-[var(--staffly-ring)] backdrop-blur">
+      <Card className="bg-surface/95 rounded-2xl p-2 opacity-50 shadow-xl ring-1 ring-[var(--staffly-ring)] backdrop-blur">
         <div className="flex min-h-11 items-center gap-2.5">
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--staffly-control-hover)]">
             <Icon icon={IconComponent} size="sm" decorative />
