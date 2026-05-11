@@ -33,6 +33,14 @@ public class ScheduleController {
         return schedules.create(restaurantId, principal.userId(), request);
     }
 
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/schedules/drafts")
+    public ScheduleDto createDraft(@PathVariable Long restaurantId,
+                                   @AuthenticationPrincipal UserPrincipal principal,
+                                   @Valid @RequestBody SaveScheduleRequest request) {
+        return schedules.createDraft(restaurantId, principal.userId(), request);
+    }
+
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @GetMapping("/schedules")
     public List<ScheduleSummaryDto> list(@PathVariable Long restaurantId,
