@@ -139,7 +139,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         final Long memberId = membership.map(RestaurantMember::getId).orElse(null);
 
         return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
-                .filter(schedule -> scheduleAccessService.canViewSchedule(userId, schedule))
+                .filter(schedule -> scheduleAccessService.canViewScheduleSummary(userId, schedule))
                 .map(s -> new ScheduleSummaryDto(
                         s.getId(),
                         s.getTitle(),

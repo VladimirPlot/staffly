@@ -39,35 +39,83 @@ class ScheduleAccessServiceTest {
     private ScheduleAccessService service;
 
     @Test
-    void managerCanViewAllScheduleStatuses() {
+    void managerCanViewSummaryAndFullScheduleForAllStatuses() {
         when(securityService.hasAtLeastManager(USER_ID, RESTAURANT_ID)).thenReturn(true);
 
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.DRAFT))).isTrue();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.COLLECTING_PREFERENCES))).isTrue();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PREFERENCES_CLOSED))).isTrue();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.DRAFT_FROM_PREFERENCES))).isTrue();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PUBLISHED))).isTrue();
+        for (ScheduleStatus status : ScheduleStatus.values()) {
+            Schedule schedule = schedule(status);
+            assertThat(service.canViewScheduleSummary(USER_ID, schedule)).isTrue();
+            assertThat(service.canViewSchedule(USER_ID, schedule)).isTrue();
+        }
     }
 
     @Test
-    void staffCanViewOnlyPublishedScheduleWithMatchingPosition() {
+    void staffWithMatchingPositionCanViewSummaryForPublishedAndCollectingPreferences() {
+        mockMatchingStaff();
+
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.PUBLISHED))).isTrue();
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.COLLECTING_PREFERENCES))).isTrue();
+    }
+
+    @Test
+    void staffWithMatchingPositionCannotViewSummaryForNonVisibleStatuses() {
+        mockMatchingStaff();
+
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.DRAFT))).isFalse();
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.PREFERENCES_CLOSED))).isFalse();
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.DRAFT_FROM_PREFERENCES))).isFalse();
+    }
+
+    @Test
+    void staffWithMatchingPositionCanViewFullOnlyForPublished() {
+        mockMatchingStaff();
+
+        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PUBLISHED))).isTrue();
+        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.DRAFT))).isFalse();
+        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PREFERENCES_CLOSED))).isFalse();
+        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.DRAFT_FROM_PREFERENCES))).isFalse();
+    }
+
+    @Test
+    void staffCannotViewFullCollectingPreferences() {
+        mockMatchingStaff();
+
+        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.COLLECTING_PREFERENCES))).isFalse();
+    }
+
+    @Test
+    void staffWithoutPositionCannotViewSummaryOrFullSchedule() {
+        Restaurant restaurant = Restaurant.builder().id(RESTAURANT_ID).build();
+        RestaurantMember staff = RestaurantMember.builder()
+                .id(4L)
+                .restaurant(restaurant)
+                .user(User.builder().id(USER_ID).build())
+                .role(RestaurantRole.STAFF)
+                .position(null)
+                .build();
+        when(securityService.hasAtLeastManager(USER_ID, RESTAURANT_ID)).thenReturn(false);
+        when(members.findByUserIdAndRestaurantId(USER_ID, RESTAURANT_ID)).thenReturn(Optional.of(staff));
+
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.PUBLISHED))).isFalse();
+        assertThat(service.canViewScheduleSummary(USER_ID, schedule(ScheduleStatus.COLLECTING_PREFERENCES))).isFalse();
+        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PUBLISHED))).isFalse();
+    }
+
+    private void mockMatchingStaff() {
+        when(securityService.hasAtLeastManager(USER_ID, RESTAURANT_ID)).thenReturn(false);
+        when(members.findByUserIdAndRestaurantId(USER_ID, RESTAURANT_ID)).thenReturn(Optional.of(matchingStaff()));
+    }
+
+    private RestaurantMember matchingStaff() {
         Restaurant restaurant = Restaurant.builder().id(RESTAURANT_ID).build();
         Position position = Position.builder().id(POSITION_ID).restaurant(restaurant).name("Cook").build();
-        RestaurantMember staff = RestaurantMember.builder()
+        return RestaurantMember.builder()
                 .id(4L)
                 .restaurant(restaurant)
                 .user(User.builder().id(USER_ID).build())
                 .role(RestaurantRole.STAFF)
                 .position(position)
                 .build();
-        when(securityService.hasAtLeastManager(USER_ID, RESTAURANT_ID)).thenReturn(false);
-        when(members.findByUserIdAndRestaurantId(USER_ID, RESTAURANT_ID)).thenReturn(Optional.of(staff));
-
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PUBLISHED))).isTrue();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.DRAFT))).isFalse();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.COLLECTING_PREFERENCES))).isFalse();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.PREFERENCES_CLOSED))).isFalse();
-        assertThat(service.canViewSchedule(USER_ID, schedule(ScheduleStatus.DRAFT_FROM_PREFERENCES))).isFalse();
     }
 
     private Schedule schedule(ScheduleStatus status) {
