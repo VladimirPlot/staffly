@@ -27,3 +27,7 @@ export function canPublishSchedule(status?: ScheduleStatus): boolean {
 export function canEditScheduleContent(status?: ScheduleStatus): boolean {
   return status !== "COLLECTING_PREFERENCES" && status !== "PREFERENCES_CLOSED";
 }
+
+export function canViewSchedulePreferences(status?: ScheduleStatus): boolean {
+  return status === "COLLECTING_PREFERENCES" || status === "PREFERENCES_CLOSED" || status === "DRAFT_FROM_PREFERENCES";
+}

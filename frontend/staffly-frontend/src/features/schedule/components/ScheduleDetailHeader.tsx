@@ -19,6 +19,8 @@ type ScheduleDetailHeaderProps = {
   onEnterEditMode: () => void;
   onDelete: () => void;
   onOpenOwnerDialog: () => void;
+  onOpenPreferences: () => void;
+  canViewPreferences: boolean;
   lifecycleAction: "startPreferences" | "closePreferences" | "publish" | null;
   onStartPreferenceCollection: () => void;
   onClosePreferenceCollection: () => void;
@@ -42,6 +44,8 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onEnterEditMode,
   onDelete,
   onOpenOwnerDialog,
+  onOpenPreferences,
+  canViewPreferences,
   lifecycleAction,
   onStartPreferenceCollection,
   onClosePreferenceCollection,
@@ -90,6 +94,11 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             <Button variant="outline" onClick={onOpenOwnerDialog} disabled={deleting}>
               Сменить ответственного
             </Button>
+            {canViewPreferences && (
+              <Button variant="outline" onClick={onOpenPreferences} disabled={deleting}>
+                Пожелания
+              </Button>
+            )}
             {isDraftSchedule(schedule.status) && (
               <Button variant="outline" onClick={onStartPreferenceCollection} disabled={lifecycleDisabled}>
                 {lifecycleAction === "startPreferences" ? "Запуск…" : "Собрать пожелания"}
