@@ -230,14 +230,11 @@ function AuthorizedDishwareInventoriesPage() {
     let frameId: number | null = null;
 
     if (selectedObjectId) {
-      setToolbarVisible(false);
-      timeoutId = window.setTimeout(() => {
-        setToolbarObjectId(selectedObjectId);
-        frameId = window.requestAnimationFrame(() => setToolbarVisible(true));
-      }, 240);
+      setToolbarObjectId(selectedObjectId);
+      frameId = window.requestAnimationFrame(() => setToolbarVisible(true));
     } else {
       setToolbarVisible(false);
-      timeoutId = window.setTimeout(() => setToolbarObjectId(null), 220);
+      timeoutId = window.setTimeout(() => setToolbarObjectId(null), 160);
     }
 
     return () => {

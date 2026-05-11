@@ -7,7 +7,7 @@ import type { DishwareInventoryFolderDto } from "../api";
 import type { DishwareObject } from "../dishwareInventoriesTypes";
 
 const toolbarButtonClassName =
-  "h-8 rounded-full border border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/70 px-2.5 text-xs shadow-none backdrop-blur hover:bg-[color:var(--staffly-control-hover)]";
+  "h-8 rounded-full border border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/70 px-2.5 text-xs shadow-none backdrop-blur transition-colors hover:bg-[color:var(--staffly-control-hover)] active:scale-[0.98]";
 
 type DishwareSelectionToolbarProps = {
   object: DishwareObject | null;
@@ -41,14 +41,14 @@ export default function DishwareSelectionToolbar({
   return (
     <div
       className={cn(
-        "pointer-events-none fixed inset-x-3 bottom-5 z-[60] flex justify-center pb-[env(safe-area-inset-bottom)] transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
-        visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-[0.985] opacity-0",
+        "pointer-events-none fixed inset-x-3 bottom-5 z-[60] flex justify-center pb-[env(safe-area-inset-bottom)] transition-opacity duration-150 ease-out motion-reduce:transition-none",
+        visible ? "opacity-100" : "opacity-0",
       )}
       aria-hidden={!visible}
     >
       <section
         data-dishware-selection-toolbar="true"
-        className="pointer-events-auto w-auto max-w-full overflow-hidden rounded-[1.5rem] border border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/90 px-2.5 py-2 shadow-[0_18px_48px_rgba(15,23,42,0.16),0_1px_0_rgba(255,255,255,0.75)_inset] backdrop-blur-xl sm:rounded-full"
+        className="pointer-events-auto w-auto max-w-full overflow-hidden rounded-[1.5rem] border border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/92 px-2.5 py-2 shadow-[0_12px_34px_rgba(15,23,42,0.12),0_1px_0_rgba(255,255,255,0.75)_inset] backdrop-blur-xl sm:rounded-full"
         aria-label="Действия с выбранным объектом"
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
