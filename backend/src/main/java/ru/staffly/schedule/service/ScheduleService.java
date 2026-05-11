@@ -11,6 +11,8 @@ public interface ScheduleService {
 
     ScheduleDto create(Long restaurantId, Long userId, SaveScheduleRequest request);
 
+    ScheduleDto createDraft(Long restaurantId, Long userId, SaveScheduleRequest request);
+
     List<ScheduleSummaryDto> list(Long restaurantId, Long userId);
 
     ScheduleDto get(Long restaurantId, Long scheduleId, Long userId);

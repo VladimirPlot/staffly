@@ -60,6 +60,19 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleDto create(Long restaurantId, Long userId, SaveScheduleRequest request) {
+        return createWithStatus(restaurantId, userId, request, ScheduleStatus.PUBLISHED, "График создан");
+    }
+
+    @Override
+    public ScheduleDto createDraft(Long restaurantId, Long userId, SaveScheduleRequest request) {
+        return createWithStatus(restaurantId, userId, request, ScheduleStatus.DRAFT, "Черновик графика создан");
+    }
+
+    private ScheduleDto createWithStatus(Long restaurantId,
+                                         Long userId,
+                                         SaveScheduleRequest request,
+                                         ScheduleStatus status,
+                                         String auditDetails) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -99,7 +112,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .startDate(startDate)
                 .endDate(endDate)
                 .shiftMode(shiftMode)
-                .status(ScheduleStatus.PUBLISHED)
+                .status(status)
                 .showFullName(config.showFullName())
                 .positionIds(new ArrayList<>(positionIds))
                 .build();
@@ -109,7 +122,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setRows(rowEntities);
 
         Schedule saved = schedules.save(schedule);
-        scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, "График создан");
+        scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, auditDetails);
         return toDto(saved, days);
     }
 

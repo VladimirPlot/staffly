@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -112,7 +113,64 @@ class ScheduleServiceImplTest {
         var result = service.create(RESTAURANT_ID, ACTOR_USER_ID, request);
 
         assertThat(result.status()).isEqualTo(ScheduleStatus.PUBLISHED);
-        verify(scheduleAuditService).record(any(Schedule.class), any(), any(ScheduleAuditAction.class), any());
+        verify(scheduleAuditService).record(
+                any(Schedule.class),
+                eq(ACTOR_USER_ID),
+                eq(ScheduleAuditAction.CREATED),
+                eq("График создан")
+        );
+    }
+
+    @Test
+    void createDraftCreatesDraftStatusAndCreatedAudit() {
+        User actor = User.builder().id(ACTOR_USER_ID).firstName("A").lastName("M").fullName("A M").build();
+        RestaurantMember owner = RestaurantMember.builder()
+                .id(50L)
+                .user(actor)
+                .restaurant(restaurant)
+                .role(RestaurantRole.MANAGER)
+                .build();
+        Position position = Position.builder().id(POSITION_ID).restaurant(restaurant).name("Cook").build();
+        SaveScheduleRequest request = new SaveScheduleRequest(
+                "May draft",
+                new ScheduleConfigDto("2026-05-12", "2026-05-13", List.of(POSITION_ID), true, ScheduleShiftMode.FULL),
+                List.of(),
+                Map.of(),
+                null
+        );
+
+        when(restaurants.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+        when(positions.findByRestaurantId(RESTAURANT_ID)).thenReturn(List.of(position));
+        when(schedules.findTitlesByRestaurantId(RESTAURANT_ID)).thenReturn(List.of());
+        when(members.findByUserIdAndRestaurantId(ACTOR_USER_ID, RESTAURANT_ID)).thenReturn(Optional.of(owner));
+        when(users.findById(ACTOR_USER_ID)).thenReturn(Optional.of(actor));
+
+        var result = service.createDraft(RESTAURANT_ID, ACTOR_USER_ID, request);
+
+        assertThat(result.status()).isEqualTo(ScheduleStatus.DRAFT);
+        verify(scheduleAuditService).record(
+                any(Schedule.class),
+                eq(ACTOR_USER_ID),
+                eq(ScheduleAuditAction.CREATED),
+                eq("Черновик графика создан")
+        );
+    }
+
+    @Test
+    void createDraftUsesCreateValidationPath() {
+        SaveScheduleRequest request = new SaveScheduleRequest(
+                "Invalid draft",
+                new ScheduleConfigDto("2026-05-13", "2026-05-12", List.of(POSITION_ID), true, ScheduleShiftMode.FULL),
+                List.of(),
+                Map.of(),
+                null
+        );
+
+        when(restaurants.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        assertThatThrownBy(() -> service.createDraft(RESTAURANT_ID, ACTOR_USER_ID, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("endDate must not be before startDate");
     }
 
     @Test
