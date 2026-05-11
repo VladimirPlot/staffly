@@ -33,16 +33,41 @@ public class ScheduleAccessService {
         }
     }
 
+    public boolean canViewScheduleSummary(Long userId, Schedule schedule) {
+        if (canManageSchedules(userId, schedule.getRestaurant().getId())) {
+            return true;
+        }
+        return staffCanViewScheduleWithStatuses(
+                userId,
+                schedule,
+                ScheduleStatus.PUBLISHED,
+                ScheduleStatus.COLLECTING_PREFERENCES
+        );
+    }
+
     public boolean canViewSchedule(Long userId, Schedule schedule) {
         if (canManageSchedules(userId, schedule.getRestaurant().getId())) {
             return true;
         }
+        return staffCanViewScheduleWithStatuses(userId, schedule, ScheduleStatus.PUBLISHED);
+    }
+
+    private boolean staffCanViewScheduleWithStatuses(Long userId, Schedule schedule, ScheduleStatus... allowedStatuses) {
         return members.findByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
                 .map(member -> member.getRole() == RestaurantRole.STAFF
-                        && schedule.getStatus() == ScheduleStatus.PUBLISHED
+                        && matchesAnyStatus(schedule.getStatus(), allowedStatuses)
                         && member.getPosition() != null
                         && schedule.getPositionIds().contains(member.getPosition().getId()))
                 .orElse(false);
+    }
+
+    private boolean matchesAnyStatus(ScheduleStatus status, ScheduleStatus... allowedStatuses) {
+        for (ScheduleStatus allowedStatus : allowedStatuses) {
+            if (status == allowedStatus) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public void assertCanViewSchedule(Long userId, Schedule schedule) {
