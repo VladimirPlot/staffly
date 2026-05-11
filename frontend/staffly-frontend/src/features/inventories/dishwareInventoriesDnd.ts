@@ -1,4 +1,5 @@
-import { closestCenter, pointerWithin, type CollisionDetection } from "@dnd-kit/core";
+import { closestCenter, pointerWithin, type CollisionDetection, type Modifier } from "@dnd-kit/core";
+import { getEventCoordinates } from "@dnd-kit/utilities";
 
 import type { DishwareObject } from "./dishwareInventoriesTypes";
 
@@ -35,6 +36,24 @@ export function getDragOverlayWidth(width: number | null) {
   if (width == null) return 240;
   return Math.min(Math.max(Math.round(width * 0.28), 180), 320);
 }
+
+export const centerDishwareDragOverlayOnCursor: Modifier = ({
+  activatorEvent,
+  activeNodeRect,
+  overlayNodeRect,
+  transform,
+}) => {
+  if (!activatorEvent || !activeNodeRect || !overlayNodeRect) return transform;
+
+  const activatorCoordinates = getEventCoordinates(activatorEvent);
+  if (!activatorCoordinates) return transform;
+
+  return {
+    ...transform,
+    x: transform.x + activatorCoordinates.x - activeNodeRect.left - overlayNodeRect.width / 2,
+    y: transform.y + activatorCoordinates.y - activeNodeRect.top - overlayNodeRect.height / 2,
+  };
+};
 
 function isDishwareObjectId(value: string) {
   return parseObjectId(value) !== null;

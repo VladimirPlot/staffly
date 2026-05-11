@@ -1,5 +1,12 @@
 import React from "react";
-import { PointerSensor, useSensor, useSensors, type DragMoveEvent, type DragStartEvent } from "@dnd-kit/core";
+import {
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 
 type SortableDndActivation = "handle" | "long-press";
 
@@ -21,11 +28,14 @@ export function useSortableDnd({ activation = "handle", scrollContainerRef }: Us
   });
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: DRAG_DISTANCE_PX },
+    }),
+    useSensor(TouchSensor, {
       activationConstraint:
         activation === "long-press"
           ? { delay: LONG_PRESS_DELAY_MS, tolerance: LONG_PRESS_TOLERANCE_PX }
-          : { distance: DRAG_DISTANCE_PX },
+          : { delay: LONG_PRESS_DELAY_MS, tolerance: LONG_PRESS_TOLERANCE_PX },
     }),
   );
 

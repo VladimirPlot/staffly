@@ -60,6 +60,8 @@ export default function DishwareInventoryObjectActionsMenu({
           variant="unstyled"
           className="border-subtle bg-surface/95 text-default hover:bg-app active:bg-app h-11 w-11 border px-0 py-0 shadow-sm backdrop-blur-sm transition active:scale-[0.98]"
           onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onTouchStart={(event) => event.stopPropagation()}
           {...triggerProps}
         >
           <Icon icon={MoreVertical} size="sm" decorative />

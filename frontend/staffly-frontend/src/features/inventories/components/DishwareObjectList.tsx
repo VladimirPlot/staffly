@@ -1,7 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS, useCombinedRefs } from "@dnd-kit/utilities";
-import { Archive, Edit3, ExternalLink, Folder, FolderOpen, GripVertical, MoveRight, Trash2 } from "lucide-react";
+import { Archive, Edit3, ExternalLink, Folder, FolderOpen, MoveRight, Trash2 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { cn } from "../../../shared/lib/cn";
@@ -15,7 +15,7 @@ import { formatInventoryLossAmount, formatInventoryLossCount, getInventoryStatus
 import DishwareInventoryObjectActionsMenu from "./DishwareInventoryObjectActionsMenu";
 
 const objectCardClassName =
-  "group hover:bg-app relative cursor-default touch-manipulation overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
+  "group hover:bg-app relative touch-manipulation select-none overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
 const selectedCardClassName =
   "border-[color:var(--staffly-divider)] bg-[color:var(--staffly-surface)] shadow-[0_18px_44px_rgba(15,23,42,0.08),0_0_0_1px_var(--staffly-ring)_inset]";
 
@@ -40,33 +40,6 @@ function InventoryMetric({ label, value }: { label: string; value: ReactNode }) 
         {value}
       </div>
     </div>
-  );
-}
-
-function SortableDragHandle({
-  attributes,
-  listeners,
-  disabled,
-  label,
-}: {
-  attributes: ReturnType<typeof useSortable>["attributes"];
-  listeners: ReturnType<typeof useSortable>["listeners"];
-  disabled?: boolean;
-  label: string;
-}) {
-  return (
-    <button
-      {...attributes}
-      {...listeners}
-      type="button"
-      disabled={disabled}
-      aria-label={label}
-      className="text-muted hover:text-strong hover:bg-[color:var(--staffly-control-hover)] focus-visible:ring-[var(--staffly-ring)] mt-2 inline-flex h-9 w-9 shrink-0 cursor-grab touch-none items-center justify-center rounded-xl transition outline-none active:cursor-grabbing disabled:pointer-events-none disabled:opacity-40"
-      onClick={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-    >
-      <Icon icon={GripVertical} size="sm" decorative />
-    </button>
   );
 }
 
@@ -117,12 +90,15 @@ function FolderCard({
   return (
     <div ref={setCombinedNodeRef} style={style}>
       <Card
+        {...attributes}
+        {...listeners}
         data-dishware-object-card="true"
         role="option"
         tabIndex={0}
         aria-selected={selected}
         className={cn(
           objectCardClassName,
+          dragEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
           selected && selectedCardClassName,
           isDragging && "opacity-0",
           isDragActive && canDropInto && !isOver && "ring-dashed ring-1 ring-[var(--staffly-border)]/70 ring-inset",
@@ -135,12 +111,6 @@ function FolderCard({
         onKeyDown={(event) => handleObjectCardKeyDown(event, () => onOpen(folder.id), onClearSelection)}
       >
         <div className="flex items-start gap-2">
-          <SortableDragHandle
-            attributes={attributes}
-            listeners={listeners}
-            disabled={!dragEnabled}
-            label={`Перетащить папку ${folder.name}`}
-          />
           <div className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left">
             <span
               className={cn(
@@ -160,7 +130,13 @@ function FolderCard({
               )}
             </span>
           </div>
-          <div onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+          <div
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
             <DishwareInventoryObjectActionsMenu
               title={folder.name}
               description={folder.description || "Папка инвентаризаций"}
@@ -231,22 +207,23 @@ function InventoryCard({
   return (
     <div ref={setNodeRef} style={style}>
       <Card
+        {...attributes}
+        {...listeners}
         data-dishware-object-card="true"
         role="option"
         tabIndex={0}
         aria-selected={selected}
-        className={cn(objectCardClassName, selected && selectedCardClassName, isDragging && "opacity-0")}
+        className={cn(
+          objectCardClassName,
+          dragEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
+          selected && selectedCardClassName,
+          isDragging && "opacity-0",
+        )}
         onClick={onSelect}
         onDoubleClick={() => onOpen(inventory.id)}
         onKeyDown={(event) => handleObjectCardKeyDown(event, () => onOpen(inventory.id), onClearSelection)}
       >
         <div className="flex items-start gap-2">
-          <SortableDragHandle
-            attributes={attributes}
-            listeners={listeners}
-            disabled={!dragEnabled}
-            label={`Перетащить инвентаризацию ${inventory.title}`}
-          />
           <div className="min-w-0 flex-1 rounded-2xl px-2 py-2">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
@@ -272,7 +249,13 @@ function InventoryCard({
               </div>
             </div>
           </div>
-          <div onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+          <div
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
             <DishwareInventoryObjectActionsMenu
               title={inventory.title}
               description={`Документ от ${formatDateFromIso(inventory.inventoryDate)}`}

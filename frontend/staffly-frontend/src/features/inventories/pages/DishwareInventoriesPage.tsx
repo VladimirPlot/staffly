@@ -38,6 +38,7 @@ import DishwareTrashModal from "../components/DishwareTrashModal";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
 import { buildFolderChain, descendantIds } from "../dishwareInventoryFolders";
 import {
+  centerDishwareDragOverlayOnCursor,
   dishwareCollisionDetection,
   objectId,
   parseFolderDropId,
@@ -707,7 +708,7 @@ function AuthorizedDishwareInventoriesPage() {
           </div>
         ) : null}
 
-        <DragOverlay dropAnimation={null}>
+        <DragOverlay dropAnimation={null} modifiers={[centerDishwareDragOverlayOnCursor]}>
           <DishwareDragOverlayCard object={activeDishwareObject} width={dragOverlayWidth} />
         </DragOverlay>
       </DndContext>
