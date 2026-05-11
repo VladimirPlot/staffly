@@ -11,6 +11,7 @@ import Icon from "../../../shared/ui/Icon";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
+import SchedulePreferenceMeView from "../components/SchedulePreferenceMeView";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
 import ScheduleHistoryBlock from "../components/ScheduleHistoryBlock";
 import ScheduleTableSection from "../components/ScheduleTableSection";
@@ -28,6 +29,7 @@ import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleInitialData from "../hooks/useScheduleInitialData";
 import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
+import useSchedulePreferenceMeActions from "../hooks/useSchedulePreferenceMeActions";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
@@ -288,6 +290,12 @@ const SchedulePage: React.FC = () => {
   });
   const { closeSavedSchedule, deleteSavedSchedule, openSavedSchedule } = savedScheduleActions;
 
+  const preferenceActions = useSchedulePreferenceMeActions({
+    restaurantId,
+    onScheduleChanged: setSchedule,
+    onClearScheduleNotices: clearScheduleNotices,
+  });
+
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
     canManage,
@@ -322,6 +330,36 @@ const SchedulePage: React.FC = () => {
     void deleteSavedSchedule(scheduleId);
   }, [deleteSavedSchedule, scheduleId]);
 
+  const handleClosePreferenceView = React.useCallback(() => {
+    preferenceActions.closePreferenceView();
+    clearScheduleNotices();
+  }, [clearScheduleNotices, preferenceActions]);
+
+  const handleBackToSchedules = React.useCallback(() => {
+    if (preferenceActions.preferenceViewScheduleId) {
+      handleClosePreferenceView();
+      return;
+    }
+
+    savedScheduleActions.closeSavedSchedule();
+  }, [handleClosePreferenceView, preferenceActions.preferenceViewScheduleId, savedScheduleActions]);
+
+  const handleOpenSavedSchedule = React.useCallback(
+    (id: number) => {
+      const item = savedSchedules.find((candidate) => candidate.id === id);
+
+      if (!canManage && item?.status === "COLLECTING_PREFERENCES") {
+        savedScheduleActions.closeSavedSchedule();
+        void preferenceActions.openPreferenceView(id);
+        return;
+      }
+
+      preferenceActions.closePreferenceView();
+      void savedScheduleActions.openSavedSchedule(id);
+    },
+    [canManage, preferenceActions, savedScheduleActions, savedSchedules],
+  );
+
   React.useEffect(() => {
     if (!derived.hasSchedule) {
       setActiveTab("table");
@@ -341,10 +379,10 @@ const SchedulePage: React.FC = () => {
       <div className="text-default mb-3 flex flex-wrap items-center gap-3 text-sm">
         <BackToHome className="text-sm" />
 
-        {schedule && (
+        {(schedule || preferenceActions.preferenceViewScheduleId) && (
           <button
             type="button"
-            onClick={savedScheduleActions.closeSavedSchedule}
+            onClick={handleBackToSchedules}
             className={
               "border-subtle inline-flex items-center gap-0 rounded-2xl border " +
               "bg-surface text-default px-2 py-1 text-sm font-medium shadow-[var(--staffly-shadow)] " +
@@ -381,14 +419,14 @@ const SchedulePage: React.FC = () => {
         <Card className="border-emerald-200 bg-emerald-50 text-emerald-700">{scheduleMessage}</Card>
       )}
 
-      {!loading && !error && !schedule && (
+      {!loading && !error && !schedule && !preferenceActions.preferenceViewScheduleId && (
         <SavedSchedulesSection
           canManage={canManage}
           savedSchedules={derived.filteredSavedSchedules}
           positions={positions}
           positionFilter={positionFilter}
           onPositionFilterChange={setPositionFilter}
-          onOpenSavedSchedule={savedScheduleActions.openSavedSchedule}
+          onOpenSavedSchedule={handleOpenSavedSchedule}
           onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
           onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
           onDownloadXlsx={exportActions.downloadXlsx}
@@ -408,6 +446,7 @@ const SchedulePage: React.FC = () => {
         !canManage &&
         derived.filteredSavedSchedules.length === 0 &&
         !schedule &&
+        !preferenceActions.preferenceViewScheduleId &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
             <div className="text-muted text-sm">
@@ -421,6 +460,7 @@ const SchedulePage: React.FC = () => {
         canManage &&
         derived.filteredSavedSchedules.length === 0 &&
         !schedule &&
+        !preferenceActions.preferenceViewScheduleId &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
             <div className="text-muted space-y-2 text-sm">
@@ -429,6 +469,18 @@ const SchedulePage: React.FC = () => {
             </div>
           </Card>
         )}
+
+      {!loading && !error && preferenceActions.preferenceViewScheduleId && (
+        <SchedulePreferenceMeView
+          data={preferenceActions.preferenceData}
+          loading={preferenceActions.loading}
+          saving={preferenceActions.saving}
+          error={preferenceActions.error}
+          message={preferenceActions.message}
+          onBack={handleClosePreferenceView}
+          onSubmit={preferenceActions.submitPreference}
+        />
+      )}
 
       {!loading && !error && schedule && !savedScheduleActions.scheduleLoading && (
         <div className="space-y-4">
