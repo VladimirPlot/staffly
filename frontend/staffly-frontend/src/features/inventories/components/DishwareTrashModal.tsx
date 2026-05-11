@@ -12,6 +12,7 @@ export default function DishwareTrashModal({
   folders,
   inventories,
   loading,
+  error,
   actionLoading,
   onClose,
   onRestoreFolder,
@@ -24,6 +25,7 @@ export default function DishwareTrashModal({
   folders: DishwareInventoryFolderDto[];
   inventories: DishwareInventorySummaryDto[];
   loading: boolean;
+  error: string | null;
   actionLoading: string | null;
   onClose: () => void;
   onRestoreFolder: (folder: DishwareInventoryFolderDto) => void;
@@ -53,6 +55,7 @@ export default function DishwareTrashModal({
           </div>
         ) : null}
         {loading ? <div className="text-muted text-sm">Загружаем корзину...</div> : null}
+        {error ? <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         {!loading && trashedFolders.length === 0 && inventories.length === 0 ? (
           <div className="text-muted text-sm">Корзина пуста.</div>
         ) : null}

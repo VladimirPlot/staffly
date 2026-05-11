@@ -33,6 +33,7 @@ import DishwareFolderEditorModal from "../components/DishwareFolderEditorModal";
 import DishwareInventoriesHeader from "../components/DishwareInventoriesHeader";
 import DishwareMoveModal from "../components/DishwareMoveModal";
 import DishwareObjectList, { DishwareDragOverlayCard } from "../components/DishwareObjectList";
+import DishwareSelectionToolbar from "../components/DishwareSelectionToolbar";
 import DishwareTrashModal from "../components/DishwareTrashModal";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
 import { buildFolderChain, descendantIds } from "../dishwareInventoryFolders";
@@ -87,23 +88,25 @@ function AuthorizedDishwareInventoriesPage() {
   const [moveError, setMoveError] = useState<string | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<PermanentDeleteTarget | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sortableDnd = useSortableDnd({ scrollContainerRef });
   const [dndError, setDndError] = useState<string | null>(null);
   const [activeDishwareObject, setActiveDishwareObject] = useState<DishwareObject | null>(null);
   const [dragOverlayWidth, setDragOverlayWidth] = useState<number | null>(null);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [toolbarObjectId, setToolbarObjectId] = useState<string | null>(null);
+  const [toolbarVisible, setToolbarVisible] = useState(false);
 
-  const requestedFolderId = useMemo(
-    () => parseDishwareFolderIdParam(searchParams.get("folderId")),
-    [searchParams],
-  );
+  const requestedFolderId = useMemo(() => parseDishwareFolderIdParam(searchParams.get("folderId")), [searchParams]);
   const folderMap = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const currentFolder = currentFolderId == null ? null : (folderMap.get(currentFolderId) ?? null);
   const folderChain = useMemo(() => buildFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
 
   const openDishwareFolder = useCallback(
     (folderId: number | null, options?: { replace?: boolean }) => {
+      setSelectedObjectId(null);
       setCurrentFolderId(folderId);
       setSearchParams(folderId == null ? {} : { folderId: String(folderId) }, {
         replace: options?.replace ?? false,
@@ -112,37 +115,40 @@ function AuthorizedDishwareInventoriesPage() {
     [setSearchParams],
   );
 
-  const loadActive = useCallback(async (folderRequest = requestedFolderId) => {
-    if (!restaurantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [nextFolders, nextInventories] = await Promise.all([
-        listDishwareInventoryFolders(restaurantId),
-        listDishwareInventories(restaurantId),
-      ]);
-      setFolders(nextFolders);
-      setInventories(nextInventories);
-      if (folderRequest === undefined) {
-        setSearchParams({}, { replace: true });
-        setCurrentFolderId(null);
-      } else if (folderRequest != null && nextFolders.some((folder) => folder.id === folderRequest)) {
-        setCurrentFolderId(folderRequest);
-      } else if (folderRequest != null) {
-        setSearchParams({}, { replace: true });
-        setCurrentFolderId(null);
-      } else {
-        setCurrentFolderId(null);
+  const loadActive = useCallback(
+    async (folderRequest = requestedFolderId) => {
+      if (!restaurantId) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const [nextFolders, nextInventories] = await Promise.all([
+          listDishwareInventoryFolders(restaurantId),
+          listDishwareInventories(restaurantId),
+        ]);
+        setFolders(nextFolders);
+        setInventories(nextInventories);
+        if (folderRequest === undefined) {
+          setSearchParams({}, { replace: true });
+          setCurrentFolderId(null);
+        } else if (folderRequest != null && nextFolders.some((folder) => folder.id === folderRequest)) {
+          setCurrentFolderId(folderRequest);
+        } else if (folderRequest != null) {
+          setSearchParams({}, { replace: true });
+          setCurrentFolderId(null);
+        } else {
+          setCurrentFolderId(null);
+        }
+      } catch (e) {
+        console.error("Failed to load dishware inventories", e);
+        setError("Не удалось загрузить инвентаризации");
+        setFolders([]);
+        setInventories([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error("Failed to load dishware inventories", e);
-      setError("Не удалось загрузить инвентаризации");
-      setFolders([]);
-      setInventories([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [requestedFolderId, restaurantId, setSearchParams]);
+    },
+    [requestedFolderId, restaurantId, setSearchParams],
+  );
 
   const loadTrash = useCallback(async () => {
     if (!restaurantId) return;
@@ -199,6 +205,10 @@ function AuthorizedDishwareInventoriesPage() {
     () => currentObjects.map((object) => objectId(object.kind, object.id)),
     [currentObjects],
   );
+  const toolbarObject = useMemo(
+    () => currentObjects.find((object) => objectId(object.kind, object.id) === toolbarObjectId) ?? null,
+    [currentObjects, toolbarObjectId],
+  );
   const sourceOptions = useMemo(
     () => inventories.filter((inventory) => inventory.status === "COMPLETED"),
     [inventories],
@@ -209,6 +219,116 @@ function AuthorizedDishwareInventoriesPage() {
     return descendantIds(parsed.id, folders);
   }, [folders, sortableDnd.activeId]);
 
+  useEffect(() => {
+    if (selectedObjectId && !currentObjectIds.includes(selectedObjectId)) {
+      setSelectedObjectId(null);
+    }
+  }, [currentObjectIds, selectedObjectId]);
+
+  useEffect(() => {
+    let timeoutId: number | null = null;
+    let frameId: number | null = null;
+
+    if (selectedObjectId) {
+      setToolbarObjectId(selectedObjectId);
+      frameId = window.requestAnimationFrame(() => setToolbarVisible(true));
+    } else {
+      setToolbarVisible(false);
+      timeoutId = window.setTimeout(() => setToolbarObjectId(null), 160);
+    }
+
+    return () => {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [selectedObjectId]);
+
+  const handleSelectObject = useCallback((object: DishwareObject) => {
+    setSelectedObjectId(objectId(object.kind, object.id));
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedObjectId(null);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedObjectId) return;
+
+    const handleDocumentPointerDown = (event: PointerEvent) => {
+      if (!selectedObjectId) return;
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (
+        target.closest(
+          [
+            "[data-dishware-object-card]",
+            "[data-dishware-selection-toolbar]",
+            "[data-overlay-root]",
+            "[role='menu']",
+            "[role='dialog']",
+          ].join(","),
+        )
+      ) {
+        return;
+      }
+
+      setSelectedObjectId(null);
+    };
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  }, [selectedObjectId]);
+
+  const handleEditFolder = useCallback((folder: DishwareInventoryFolderDto) => {
+    setFolderError(null);
+    setFolderModal({ mode: "edit", parentId: folder.parentId, folder });
+  }, []);
+
+  const startMove = useCallback((target: MoveTarget) => {
+    setMoveError(null);
+    setMoveTarget(target);
+  }, []);
+
+  const handleMoveObject = useCallback(
+    (object: DishwareObject) => {
+      const title = object.kind === "folder" ? object.folder.name : object.inventory.title;
+      startMove({ kind: object.kind, id: object.id, title });
+    },
+    [startMove],
+  );
+
+  const handleOpenFolder = useCallback(
+    (folderId: number) => {
+      openDishwareFolder(folderId);
+    },
+    [openDishwareFolder],
+  );
+
+  const handleOpenInventory = useCallback(
+    (inventoryId: number) => {
+      setSelectedObjectId(null);
+      navigate(`/inventories/dishware/${inventoryId}`);
+    },
+    [navigate],
+  );
+
+  const handleOpenObject = useCallback(
+    (object: DishwareObject) => {
+      if (object.kind === "folder") {
+        handleOpenFolder(object.id);
+        return;
+      }
+
+      handleOpenInventory(object.id);
+    },
+    [handleOpenFolder, handleOpenInventory],
+  );
+
   const handleCreate = useCallback(
     async (payload: CreateDishwareInventoryRequest) => {
       if (!restaurantId) return;
@@ -217,6 +337,7 @@ function AuthorizedDishwareInventoriesPage() {
       try {
         const created = await createDishwareInventory(restaurantId, payload);
         setCreateOpen(false);
+        setSelectedObjectId(null);
         await loadActive();
         navigate(`/inventories/dishware/${created.id}`);
       } catch (e) {
@@ -244,6 +365,7 @@ function AuthorizedDishwareInventoriesPage() {
         } else {
           await updateDishwareInventoryFolder(restaurantId, folderModal.folder.id, payload);
         }
+        setSelectedObjectId(null);
         setFolderModal(null);
         await loadActive();
       } catch (e) {
@@ -266,6 +388,7 @@ function AuthorizedDishwareInventoriesPage() {
         } else {
           await moveDishwareInventory(restaurantId, moveTarget.id, folderId);
         }
+        setSelectedObjectId(null);
         setMoveTarget(null);
         await loadActive();
       } catch (e) {
@@ -329,6 +452,7 @@ function AuthorizedDishwareInventoriesPage() {
           } else {
             await moveDishwareInventory(restaurantId, active.id, dropFolderId);
           }
+          setSelectedObjectId(null);
           await loadActive();
         } catch (e) {
           console.error("Failed to move dishware object with drag and drop", e);
@@ -384,8 +508,10 @@ function AuthorizedDishwareInventoriesPage() {
     async (folder: DishwareInventoryFolderDto) => {
       if (!restaurantId) return;
       setActionLoading(`trash-folder-${folder.id}`);
+      setActionError(null);
       try {
         await trashDishwareInventoryFolder(restaurantId, folder.id);
+        setSelectedObjectId(null);
         if (currentFolderId === folder.id) {
           const nextFolderId = folder.parentId ?? null;
           openDishwareFolder(nextFolderId, { replace: true });
@@ -393,6 +519,9 @@ function AuthorizedDishwareInventoriesPage() {
         } else {
           await loadActive(requestedFolderId);
         }
+      } catch (e) {
+        console.error("Failed to trash dishware folder", e);
+        setActionError(getFriendlyInventoryError(e, "Не удалось переместить папку в корзину"));
       } finally {
         setActionLoading(null);
       }
@@ -404,9 +533,14 @@ function AuthorizedDishwareInventoriesPage() {
     async (inventory: DishwareInventorySummaryDto) => {
       if (!restaurantId) return;
       setActionLoading(`trash-inventory-${inventory.id}`);
+      setActionError(null);
       try {
         await trashDishwareInventory(restaurantId, inventory.id);
+        setSelectedObjectId(null);
         await loadActive();
+      } catch (e) {
+        console.error("Failed to trash dishware inventory", e);
+        setActionError(getFriendlyInventoryError(e, "Не удалось переместить документ в корзину"));
       } finally {
         setActionLoading(null);
       }
@@ -418,9 +552,14 @@ function AuthorizedDishwareInventoriesPage() {
     async (folder: DishwareInventoryFolderDto) => {
       if (!restaurantId) return;
       setActionLoading(`restore-folder-${folder.id}`);
+      setActionError(null);
       try {
         await restoreDishwareInventoryFolder(restaurantId, folder.id);
+        setSelectedObjectId(null);
         await Promise.all([loadActive(), loadTrash()]);
+      } catch (e) {
+        console.error("Failed to restore dishware folder", e);
+        setActionError(getFriendlyInventoryError(e, "Не удалось восстановить папку"));
       } finally {
         setActionLoading(null);
       }
@@ -432,9 +571,14 @@ function AuthorizedDishwareInventoriesPage() {
     async (inventory: DishwareInventorySummaryDto) => {
       if (!restaurantId) return;
       setActionLoading(`restore-inventory-${inventory.id}`);
+      setActionError(null);
       try {
         await restoreDishwareInventory(restaurantId, inventory.id);
+        setSelectedObjectId(null);
         await Promise.all([loadActive(), loadTrash()]);
+      } catch (e) {
+        console.error("Failed to restore dishware inventory", e);
+        setActionError(getFriendlyInventoryError(e, "Не удалось восстановить документ"));
       } finally {
         setActionLoading(null);
       }
@@ -449,6 +593,7 @@ function AuthorizedDishwareInventoriesPage() {
         ? "delete-all"
         : `delete-${permanentDeleteTarget.kind}-${permanentDeleteTarget.id}`,
     );
+    setActionError(null);
     try {
       if (permanentDeleteTarget.kind === "all") {
         const { folderRoots, inventoriesOutsideDeletedFolders } = buildDishwareTrashDeleteAllPlan(
@@ -464,12 +609,28 @@ function AuthorizedDishwareInventoriesPage() {
       } else {
         await deleteDishwareInventory(restaurantId, permanentDeleteTarget.id);
       }
+      setSelectedObjectId(null);
       setPermanentDeleteTarget(null);
       await Promise.all([loadActive(), loadTrash()]);
+    } catch (e) {
+      console.error("Failed to permanently delete dishware object", e);
+      setActionError(getFriendlyInventoryError(e, "Не удалось удалить навсегда"));
     } finally {
       setActionLoading(null);
     }
   }, [loadActive, loadTrash, permanentDeleteTarget, restaurantId, trashFolders, trashInventories]);
+
+  const handleTrashObject = useCallback(
+    (object: DishwareObject) => {
+      if (object.kind === "folder") {
+        void runTrashFolder(object.folder);
+        return;
+      }
+
+      void runTrashInventory(object.inventory);
+    },
+    [runTrashFolder, runTrashInventory],
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -489,22 +650,39 @@ function AuthorizedDishwareInventoriesPage() {
           blockedFolderIds={blockedDropFolderIds}
           onBackToInventories={() => navigate("/inventories")}
           onOpenRoot={() => openDishwareFolder(null)}
-          onOpenFolder={openDishwareFolder}
+          onOpenFolder={handleOpenFolder}
         />
 
-        <DishwareInventoriesHeader
-          folder={currentFolder}
-          onOpenTrash={() => setTrashOpen(true)}
-          onCreateFolder={() => {
-            setFolderError(null);
-            setFolderModal({ mode: "create", parentId: currentFolderId });
-          }}
-          onCreateInventory={() => setCreateOpen(true)}
-        />
+        <div className="relative">
+          <DishwareInventoriesHeader
+            folder={currentFolder}
+            onOpenTrash={() => {
+              setActionError(null);
+              setTrashOpen(true);
+            }}
+            onCreateFolder={() => {
+              setFolderError(null);
+              setFolderModal({ mode: "create", parentId: currentFolderId });
+            }}
+            onCreateInventory={() => setCreateOpen(true)}
+          />
+
+          <DishwareSelectionToolbar
+            object={toolbarObject}
+            visible={toolbarVisible}
+            actionLoading={actionLoading}
+            onOpen={handleOpenObject}
+            onEditFolder={handleEditFolder}
+            onMove={handleMoveObject}
+            onTrash={handleTrashObject}
+            onClear={handleClearSelection}
+          />
+        </div>
 
         {loading ? <Card className="text-muted text-sm">Загружаем инвентаризации...</Card> : null}
         {!loading && error ? <Card className="text-sm text-red-600">{error}</Card> : null}
         {dndError ? <Card className="text-sm text-red-600">{dndError}</Card> : null}
+        {actionError ? <Card className="text-sm text-red-600">{actionError}</Card> : null}
 
         {!loading && !error && currentObjects.length === 0 ? <EmptyFolderState /> : null}
 
@@ -514,24 +692,16 @@ function AuthorizedDishwareInventoriesPage() {
               <DishwareObjectList
                 objects={currentObjects}
                 activeObjectId={sortableDnd.activeId}
+                selectedObjectId={selectedObjectId}
                 blockedFolderIds={blockedDropFolderIds}
                 actionLoading={actionLoading}
-                onOpenFolder={openDishwareFolder}
-                onOpenInventory={(inventoryId) => navigate(`/inventories/dishware/${inventoryId}`)}
-                onEditFolder={(folder) => {
-                  setFolderError(null);
-                  setFolderModal({ mode: "edit", parentId: folder.parentId, folder });
-                }}
-                onMoveFolder={(folder) => {
-                  setMoveError(null);
-                  setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-                }}
-                onMoveInventory={(inventory) => {
-                  setMoveError(null);
-                  setMoveTarget({ kind: "inventory", id: inventory.id, title: inventory.title });
-                }}
-                onTrashFolder={(folder) => void runTrashFolder(folder)}
-                onTrashInventory={(inventory) => void runTrashInventory(inventory)}
+                onSelectObject={handleSelectObject}
+                onClearSelection={handleClearSelection}
+                onOpenFolder={handleOpenFolder}
+                onOpenInventory={handleOpenInventory}
+                onEditFolder={handleEditFolder}
+                onMoveObject={handleMoveObject}
+                onTrashObject={handleTrashObject}
               />
             </SortableContext>
           </div>
@@ -587,32 +757,49 @@ function AuthorizedDishwareInventoriesPage() {
         folders={trashFolders}
         inventories={trashInventories}
         loading={trashLoading}
+        error={trashOpen ? actionError : null}
         actionLoading={actionLoading}
-        onClose={() => setTrashOpen(false)}
+        onClose={() => {
+          setTrashOpen(false);
+          setActionError(null);
+        }}
         onRestoreFolder={(folder) => void runRestoreFolder(folder)}
         onRestoreInventory={(inventory) => void runRestoreInventory(inventory)}
-        onDeleteFolder={(folder) => setPermanentDeleteTarget({ kind: "folder", id: folder.id, title: folder.name })}
-        onDeleteInventory={(inventory) =>
-          setPermanentDeleteTarget({ kind: "inventory", id: inventory.id, title: inventory.title })
-        }
-        onDeleteAll={() => setPermanentDeleteTarget({ kind: "all", title: "все элементы корзины" })}
+        onDeleteFolder={(folder) => {
+          setActionError(null);
+          setPermanentDeleteTarget({ kind: "folder", id: folder.id, title: folder.name });
+        }}
+        onDeleteInventory={(inventory) => {
+          setActionError(null);
+          setPermanentDeleteTarget({ kind: "inventory", id: inventory.id, title: inventory.title });
+        }}
+        onDeleteAll={() => {
+          setActionError(null);
+          setPermanentDeleteTarget({ kind: "all", title: "все элементы корзины" });
+        }}
       />
 
       <ConfirmDialog
         open={Boolean(permanentDeleteTarget)}
         title="Удалить навсегда"
         description={
-          permanentDeleteTarget?.kind === "all"
-            ? "Все папки, документы и фото в корзине будут удалены безвозвратно."
-            : permanentDeleteTarget?.kind === "folder"
-              ? "Папка, все вложенные папки, документы и фото внутри будут удалены безвозвратно."
-              : "Документ, все строки и фото будут удалены безвозвратно."
+          <div className="space-y-2">
+            <div>
+              {permanentDeleteTarget?.kind === "all"
+                ? "Все папки, документы и фото в корзине будут удалены безвозвратно."
+                : permanentDeleteTarget?.kind === "folder"
+                  ? "Папка, все вложенные папки, документы и фото внутри будут удалены безвозвратно."
+                  : "Документ, все строки и фото будут удалены безвозвратно."}
+            </div>
+            {permanentDeleteTarget && actionError ? <div className="text-sm text-red-600">{actionError}</div> : null}
+          </div>
         }
         confirming={Boolean(actionLoading?.startsWith("delete-"))}
         confirmText="Удалить навсегда"
         onCancel={() => {
           if (actionLoading?.startsWith("delete-")) return;
           setPermanentDeleteTarget(null);
+          setActionError(null);
         }}
         onConfirm={() => void runPermanentDelete()}
       />
