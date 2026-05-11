@@ -33,6 +33,10 @@ import {
 import { getFriendlyInventoryError } from "../inventoryErrors";
 import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
 
+function getDishwareListPath(folderId: number | null | undefined): string {
+  return folderId == null ? "/inventories/dishware" : `/inventories/dishware?folderId=${folderId}`;
+}
+
 function AuthorizedDishwareInventoryEditorPage() {
   const { inventoryId } = useParams();
   const navigate = useNavigate();
@@ -80,6 +84,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, [items]);
   const isCompleted = inventory?.status === "COMPLETED";
   const isEditingLocked = isCompleted || saving;
+  const dishwareListPath = useMemo(() => getDishwareListPath(inventory?.folderId), [inventory?.folderId]);
 
   const updateItem = useCallback((clientId: string, patch: Partial<DishwareInventoryEditableItem>) => {
     setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)));
@@ -190,13 +195,13 @@ function AuthorizedDishwareInventoryEditorPage() {
     setDeleting(true);
     try {
       await trashDishwareInventory(restaurantId, Number(inventoryId));
-      navigate("/inventories/dishware");
+      navigate(dishwareListPath);
     } catch (e) {
       console.error("Failed to delete inventory", e);
     } finally {
       setDeleting(false);
     }
-  }, [inventoryId, navigate, restaurantId]);
+  }, [dishwareListPath, inventoryId, navigate, restaurantId]);
 
   const handleUploadImage = useCallback(
     async (itemId: number, file: File) => {
@@ -254,7 +259,7 @@ function AuthorizedDishwareInventoryEditorPage() {
     <div className="mx-auto w-full max-w-[1500px] space-y-3">
       <div className="flex items-center justify-between gap-3">
         <BackToHome />
-        <Button variant="outline" onClick={() => navigate("/inventories/dishware")}>
+        <Button variant="outline" onClick={() => navigate(dishwareListPath)}>
           Назад к списку
         </Button>
       </div>

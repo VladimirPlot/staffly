@@ -1,7 +1,7 @@
 import { DndContext, DragOverlay, MeasuringStrategy, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useSortableDnd } from "../../../shared/hooks/useSortableDnd";
 import { useAuth } from "../../../shared/providers/AuthProvider";
@@ -56,9 +56,16 @@ function EmptyFolderState() {
   );
 }
 
+function parseDishwareFolderIdParam(value: string | null): number | null | undefined {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function AuthorizedDishwareInventoriesPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const restaurantId = user?.restaurantId ?? null;
 
   const [inventories, setInventories] = useState<DishwareInventorySummaryDto[]>([]);
@@ -87,11 +94,25 @@ function AuthorizedDishwareInventoriesPage() {
   const [activeDishwareObject, setActiveDishwareObject] = useState<DishwareObject | null>(null);
   const [dragOverlayWidth, setDragOverlayWidth] = useState<number | null>(null);
 
+  const requestedFolderId = useMemo(
+    () => parseDishwareFolderIdParam(searchParams.get("folderId")),
+    [searchParams],
+  );
   const folderMap = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const currentFolder = currentFolderId == null ? null : (folderMap.get(currentFolderId) ?? null);
   const folderChain = useMemo(() => buildFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
 
-  const loadActive = useCallback(async () => {
+  const openDishwareFolder = useCallback(
+    (folderId: number | null, options?: { replace?: boolean }) => {
+      setCurrentFolderId(folderId);
+      setSearchParams(folderId == null ? {} : { folderId: String(folderId) }, {
+        replace: options?.replace ?? false,
+      });
+    },
+    [setSearchParams],
+  );
+
+  const loadActive = useCallback(async (folderRequest = requestedFolderId) => {
     if (!restaurantId) return;
     setLoading(true);
     setError(null);
@@ -102,7 +123,15 @@ function AuthorizedDishwareInventoriesPage() {
       ]);
       setFolders(nextFolders);
       setInventories(nextInventories);
-      if (currentFolderId != null && !nextFolders.some((folder) => folder.id === currentFolderId)) {
+      if (folderRequest === undefined) {
+        setSearchParams({}, { replace: true });
+        setCurrentFolderId(null);
+      } else if (folderRequest != null && nextFolders.some((folder) => folder.id === folderRequest)) {
+        setCurrentFolderId(folderRequest);
+      } else if (folderRequest != null) {
+        setSearchParams({}, { replace: true });
+        setCurrentFolderId(null);
+      } else {
         setCurrentFolderId(null);
       }
     } catch (e) {
@@ -113,7 +142,7 @@ function AuthorizedDishwareInventoriesPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentFolderId, restaurantId]);
+  }, [requestedFolderId, restaurantId, setSearchParams]);
 
   const loadTrash = useCallback(async () => {
     if (!restaurantId) return;
@@ -357,13 +386,18 @@ function AuthorizedDishwareInventoriesPage() {
       setActionLoading(`trash-folder-${folder.id}`);
       try {
         await trashDishwareInventoryFolder(restaurantId, folder.id);
-        if (currentFolderId === folder.id) setCurrentFolderId(folder.parentId ?? null);
-        await loadActive();
+        if (currentFolderId === folder.id) {
+          const nextFolderId = folder.parentId ?? null;
+          openDishwareFolder(nextFolderId, { replace: true });
+          await loadActive(nextFolderId);
+        } else {
+          await loadActive(requestedFolderId);
+        }
       } finally {
         setActionLoading(null);
       }
     },
-    [currentFolderId, loadActive, restaurantId],
+    [currentFolderId, loadActive, openDishwareFolder, requestedFolderId, restaurantId],
   );
 
   const runTrashInventory = useCallback(
@@ -454,8 +488,8 @@ function AuthorizedDishwareInventoriesPage() {
           activeObjectId={sortableDnd.activeId}
           blockedFolderIds={blockedDropFolderIds}
           onBackToInventories={() => navigate("/inventories")}
-          onOpenRoot={() => setCurrentFolderId(null)}
-          onOpenFolder={setCurrentFolderId}
+          onOpenRoot={() => openDishwareFolder(null)}
+          onOpenFolder={openDishwareFolder}
         />
 
         <DishwareInventoriesHeader
@@ -482,7 +516,7 @@ function AuthorizedDishwareInventoriesPage() {
                 activeObjectId={sortableDnd.activeId}
                 blockedFolderIds={blockedDropFolderIds}
                 actionLoading={actionLoading}
-                onOpenFolder={setCurrentFolderId}
+                onOpenFolder={openDishwareFolder}
                 onOpenInventory={(inventoryId) => navigate(`/inventories/dishware/${inventoryId}`)}
                 onEditFolder={(folder) => {
                   setFolderError(null);
