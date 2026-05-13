@@ -17,7 +17,9 @@ import DishwareInventoryObjectActionsMenu from "./DishwareInventoryObjectActions
 const objectCardClassName =
   "group hover:bg-app relative touch-manipulation select-none overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
 const selectedCardClassName =
-  "border-[color:var(--staffly-divider)] bg-[color:var(--staffly-surface)] shadow-[0_18px_44px_rgba(15,23,42,0.08),0_0_0_1px_var(--staffly-ring)_inset]";
+  "bg-[color:var(--staffly-control)]/25 shadow-[0_14px_34px_rgba(15,23,42,0.08)]";
+const selectedCardOverlayClassName =
+  "pointer-events-none absolute inset-0 rounded-[1.25rem] border border-[color:var(--staffly-divider)] opacity-0 shadow-[0_0_0_2px_rgba(24,24,27,0.035)_inset] transition-opacity duration-200 ease-out motion-reduce:transition-none";
 
 function handleObjectCardKeyDown(event: KeyboardEvent<HTMLElement>, onOpen: () => void, onClearSelection: () => void) {
   if (event.key === "Enter") {
@@ -110,11 +112,14 @@ function FolderCard({
         onDoubleClick={() => onOpen(folder.id)}
         onKeyDown={(event) => handleObjectCardKeyDown(event, () => onOpen(folder.id), onClearSelection)}
       >
+        <span aria-hidden="true" className={cn(selectedCardOverlayClassName, selected && "opacity-100")} />
         <div className="flex items-start gap-2">
           <div className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left">
             <span
               className={cn(
                 "mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] transition group-hover:bg-[color:var(--staffly-control-hover)]",
+                selected &&
+                  "text-strong bg-[color:var(--staffly-control-hover)] shadow-sm ring-1 ring-[var(--staffly-ring)]/70 ring-inset",
                 isOver &&
                   "text-strong bg-[color:var(--staffly-control-hover)] shadow-sm ring-1 ring-[var(--staffly-ring)]/60 ring-inset",
               )}
@@ -223,6 +228,7 @@ function InventoryCard({
         onDoubleClick={() => onOpen(inventory.id)}
         onKeyDown={(event) => handleObjectCardKeyDown(event, () => onOpen(inventory.id), onClearSelection)}
       >
+        <span aria-hidden="true" className={cn(selectedCardOverlayClassName, selected && "opacity-100")} />
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1 rounded-2xl px-2 py-2">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
