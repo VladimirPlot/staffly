@@ -37,6 +37,12 @@ public interface DishwareInventoryService {
 
     DishwareInventoryDto get(Long restaurantId, Long currentUserId, Long inventoryId);
 
+    DishwareInventoryPrintForm exportPrintForm(Long restaurantId, Long currentUserId, Long inventoryId) throws IOException;
+
+    byte[] renderPrintForm(DishwareInventoryPrintForm printForm) throws IOException;
+
+    byte[] renderPrintFormHtml(DishwareInventoryPrintForm printForm) throws IOException;
+
     DishwareInventoryDto create(Long restaurantId, Long currentUserId, CreateDishwareInventoryRequest request);
 
     DishwareInventoryDto update(Long restaurantId, Long currentUserId, Long inventoryId, UpdateDishwareInventoryRequest request);

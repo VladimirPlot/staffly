@@ -111,6 +111,33 @@ export type ReorderDishwareInventoryObjectsRequest = {
   objects: DishwareInventoryObjectOrder[];
 };
 
+export type DishwareInventoryPrintFormDownload = {
+  blob: Blob;
+  fileName: string;
+};
+
+function parseContentDispositionFileName(value: string | undefined): string | null {
+  if (!value) return null;
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const quotedMatch = value.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+
+  const plainMatch = value.match(/filename=([^;]+)/i);
+  return plainMatch?.[1]?.trim() ?? null;
+}
+
+function sanitizeDishwareInventoryFileName(value: string): string {
+  return (value.trim() || "Бланк инвентаризации посуды").replace(/[\\/:*?"<>|]+/g, "_");
+}
+
 export async function fetchInventoryLayout(restaurantId: number): Promise<InventoryLayoutResponse> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/layout`);
   return data as InventoryLayoutResponse;
@@ -197,6 +224,30 @@ export async function deleteDishwareInventoryFolder(restaurantId: number, folder
 export async function getDishwareInventory(restaurantId: number, inventoryId: number): Promise<DishwareInventoryDto> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}`);
   return data as DishwareInventoryDto;
+}
+
+export async function downloadDishwareInventoryPrintForm(
+  restaurantId: number,
+  inventoryId: number,
+  title?: string | null,
+): Promise<DishwareInventoryPrintFormDownload> {
+  const response = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/print-form.xlsx`, {
+    responseType: "blob",
+  });
+  const fileName =
+    parseContentDispositionFileName(response.headers["content-disposition"]) ??
+    `${sanitizeDishwareInventoryFileName(title ?? "")}.xlsx`;
+  return { blob: response.data as Blob, fileName };
+}
+
+export async function getDishwareInventoryPrintFormHtml(
+  restaurantId: number,
+  inventoryId: number,
+): Promise<string> {
+  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/print-form.html`, {
+    responseType: "text",
+  });
+  return data as string;
 }
 
 export async function createDishwareInventory(

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, MessageSquareText, Pencil, Save, SquareActivity, Trash2, Undo2 } from "lucide-react";
+import { Check, Download, MessageSquareText, Pencil, Printer, Save, SquareActivity, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import BackToHome from "../../../shared/ui/BackToHome";
@@ -16,7 +16,9 @@ import DishwareInventoryItemsTable from "../components/DishwareInventoryItemsTab
 import {
   completeDishwareInventory,
   deleteDishwareItemImage,
+  downloadDishwareInventoryPrintForm,
   getDishwareInventory,
+  getDishwareInventoryPrintFormHtml,
   reopenDishwareInventory,
   trashDishwareInventory,
   updateDishwareInventory,
@@ -30,7 +32,9 @@ import {
   toEditableDishwareInventoryItems,
   type DishwareInventoryEditableItem,
 } from "../dishwareInventoryItems";
+import { downloadDishwareFile } from "../downloadDishwareFile";
 import { getFriendlyInventoryError } from "../inventoryErrors";
+import { openDishwareInventoryPrintWindow, printDishwareInventoryBlank } from "../printDishwareInventoryBlank";
 import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
 
 function getDishwareListPath(folderId: number | null | undefined): string {
@@ -55,6 +59,8 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingItemId, setUploadingItemId] = useState<number | null>(null);
+  const [downloadingPrintForm, setDownloadingPrintForm] = useState(false);
+  const [printingPrintForm, setPrintingPrintForm] = useState(false);
 
   const loadInventory = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -190,6 +196,58 @@ function AuthorizedDishwareInventoryEditorPage() {
     }
   }, [applyLoadedInventory, inventoryId, restaurantId]);
 
+  const handleDownloadPrintForm = useCallback(async () => {
+    if (!restaurantId || !inventoryId || saving || downloadingPrintForm) return;
+    setDownloadingPrintForm(true);
+    setSaveError(null);
+    try {
+      let downloadTitle = title;
+      if (!isCompleted) {
+        setSaving(true);
+        const saved = await saveDraft();
+        downloadTitle = saved?.title ?? downloadTitle;
+      }
+      const file = await downloadDishwareInventoryPrintForm(restaurantId, Number(inventoryId), downloadTitle);
+      downloadDishwareFile(file.blob, file.fileName);
+    } catch (e) {
+      console.error("Failed to download inventory print form", e);
+      setSaveError(getFriendlyInventoryError(e, "Не удалось скачать бланк"));
+    } finally {
+      setSaving(false);
+      setDownloadingPrintForm(false);
+    }
+  }, [downloadingPrintForm, inventoryId, isCompleted, restaurantId, saveDraft, saving, title]);
+
+  const handlePrintForm = useCallback(async () => {
+    if (!restaurantId || !inventoryId || saving || printingPrintForm) return;
+
+    let printWindow: Window;
+    try {
+      printWindow = openDishwareInventoryPrintWindow();
+    } catch (e) {
+      setSaveError(getFriendlyInventoryError(e, "Не удалось открыть окно печати"));
+      return;
+    }
+
+    setPrintingPrintForm(true);
+    setSaveError(null);
+    try {
+      if (!isCompleted) {
+        setSaving(true);
+        await saveDraft();
+      }
+      const printHtml = await getDishwareInventoryPrintFormHtml(restaurantId, Number(inventoryId));
+      printDishwareInventoryBlank(printWindow, printHtml);
+    } catch (e) {
+      printWindow.close();
+      console.error("Failed to print inventory form", e);
+      setSaveError(getFriendlyInventoryError(e, "Не удалось подготовить бланк к печати"));
+    } finally {
+      setSaving(false);
+      setPrintingPrintForm(false);
+    }
+  }, [inventoryId, isCompleted, printingPrintForm, restaurantId, saveDraft, saving]);
+
   const handleDelete = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
     setDeleting(true);
@@ -316,6 +374,26 @@ function AuthorizedDishwareInventoryEditorPage() {
                   size="sm"
                   variant="outline"
                   className="min-h-11"
+                  isLoading={downloadingPrintForm}
+                  leftIcon={<Icon icon={Download} size="sm" decorative />}
+                  onClick={() => void handleDownloadPrintForm()}
+                >
+                  Скачать бланк
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11"
+                  isLoading={printingPrintForm}
+                  leftIcon={<Icon icon={Printer} size="sm" decorative />}
+                  onClick={() => void handlePrintForm()}
+                >
+                  Распечатать
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11"
                   isLoading={saving}
                   leftIcon={<Icon icon={Check} size="sm" decorative />}
                   onClick={() => void handleComplete()}
@@ -334,16 +412,38 @@ function AuthorizedDishwareInventoryEditorPage() {
                 </Button>
               </>
             ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-h-11"
-                isLoading={saving}
-                leftIcon={<Icon icon={Undo2} size="sm" decorative />}
-                onClick={() => void handleReopen()}
-              >
-                Вернуть в черновик
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11"
+                  isLoading={downloadingPrintForm}
+                  leftIcon={<Icon icon={Download} size="sm" decorative />}
+                  onClick={() => void handleDownloadPrintForm()}
+                >
+                  Скачать бланк
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11"
+                  isLoading={printingPrintForm}
+                  leftIcon={<Icon icon={Printer} size="sm" decorative />}
+                  onClick={() => void handlePrintForm()}
+                >
+                  Распечатать
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-11"
+                  isLoading={saving}
+                  leftIcon={<Icon icon={Undo2} size="sm" decorative />}
+                  onClick={() => void handleReopen()}
+                >
+                  Вернуть в черновик
+                </Button>
+              </>
             )}
           </div>
         </div>

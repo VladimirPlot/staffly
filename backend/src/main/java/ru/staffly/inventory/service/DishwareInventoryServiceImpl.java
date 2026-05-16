@@ -8,6 +8,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.inventory.DishwareInventoryLimits;
 import ru.staffly.inventory.dto.*;
 import ru.staffly.inventory.mapper.DishwareInventoryMapper;
 import ru.staffly.inventory.model.DishwareInventory;
@@ -45,6 +46,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     private final DishwareInventoryMapper mapper;
     private final SecurityService security;
     private final DishwareInventoryImageStorage storage;
+    private final DishwareInventoryPrintFormExporter printFormExporter;
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
@@ -169,6 +171,42 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         DishwareInventory inventory = requireInventory(restaurantId, inventoryId);
         requireNotTrashed(inventory);
         return mapper.toDto(inventory);
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public DishwareInventoryPrintForm exportPrintForm(Long restaurantId, Long currentUserId, Long inventoryId) throws IOException {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory inventory = requireInventory(restaurantId, inventoryId);
+        requireNotTrashed(inventory);
+        validateInventoryItemCount(inventory.getItems().size());
+        return new DishwareInventoryPrintForm(
+                sanitizeFileName(inventory.getTitle()) + ".xlsx",
+                inventory.getTitle(),
+                inventory.getInventoryDate(),
+                inventory.getStatus(),
+                inventory.getItems().stream()
+                        .sorted(Comparator.comparingInt(DishwareInventoryItem::getSortOrder)
+                                .thenComparing(DishwareInventoryItem::getId, Comparator.nullsLast(Long::compareTo)))
+                        .map(item -> new DishwareInventoryPrintForm.Item(
+                                item.getId(),
+                                item.getName(),
+                                item.getPreviousQty(),
+                                item.getIncomingQty(),
+                                item.getPhotoUrl()
+                        ))
+                        .toList()
+        );
+    }
+
+    @Override
+    public byte[] renderPrintForm(DishwareInventoryPrintForm printForm) throws IOException {
+        return printFormExporter.export(printForm);
+    }
+
+    @Override
+    public byte[] renderPrintFormHtml(DishwareInventoryPrintForm printForm) throws IOException {
+        return printFormExporter.exportHtml(printForm);
     }
 
     @Override
@@ -614,6 +652,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
 
     private void syncItems(DishwareInventory entity, List<UpsertDishwareInventoryItemRequest> requests) {
         List<UpsertDishwareInventoryItemRequest> safeRequests = requests;
+        validateInventoryItemCount(safeRequests.size());
         Map<Long, DishwareInventoryItem> existingById = entity.getItems().stream()
                 .filter(item -> item.getId() != null)
                 .collect(Collectors.toMap(DishwareInventoryItem::getId, item -> item));
@@ -685,7 +724,18 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         if (value < 0) {
             throw new BadRequestException("Количество не может быть отрицательным");
         }
+        if (value > DishwareInventoryLimits.MAX_ITEM_QUANTITY) {
+            throw new BadRequestException("Количество не может быть больше " + DishwareInventoryLimits.MAX_ITEM_QUANTITY);
+        }
         return value;
+    }
+
+    private void validateInventoryItemCount(int itemCount) {
+        if (itemCount > DishwareInventoryLimits.MAX_ITEMS_PER_INVENTORY) {
+            throw new BadRequestException(
+                    "Инвентаризация не может содержать больше " + DishwareInventoryLimits.MAX_ITEMS_PER_INVENTORY + " позиций"
+            );
+        }
     }
 
     private BigDecimal normalizeUnitPrice(BigDecimal value) {
@@ -703,6 +753,11 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         return title == null || title.isBlank()
                 ? "Инвентаризация посуды от " + TITLE_DATE_FORMATTER.format(inventoryDate)
                 : title;
+    }
+
+    private String sanitizeFileName(String value) {
+        String fileName = value == null || value.isBlank() ? "Бланк инвентаризации посуды" : value.trim();
+        return fileName.replaceAll("[\\\\/:*?\"<>|]+", "_");
     }
 
     private String normalizeComment(String value) {

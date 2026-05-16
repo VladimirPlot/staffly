@@ -31,7 +31,7 @@ public class CorsConfig {
 
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
-        cfg.setExposedHeaders(List.of("Authorization"));
+        cfg.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
         cfg.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

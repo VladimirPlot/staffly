@@ -1,7 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS, useCombinedRefs } from "@dnd-kit/utilities";
-import { Archive, Edit3, ExternalLink, Folder, FolderOpen, MoveRight, Trash2 } from "lucide-react";
+import { Archive, Download, Edit3, ExternalLink, Folder, FolderOpen, MoveRight, Printer, Trash2 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { cn } from "../../../shared/lib/cn";
@@ -187,6 +187,8 @@ function InventoryCard({
   onClearSelection,
   onMove,
   onTrash,
+  onDownloadPrintForm,
+  onPrintForm,
 }: {
   inventory: DishwareInventorySummaryDto;
   actionLoading: string | null;
@@ -197,8 +199,12 @@ function InventoryCard({
   onClearSelection: () => void;
   onMove: () => void;
   onTrash: () => void;
+  onDownloadPrintForm: () => void;
+  onPrintForm: () => void;
 }) {
   const trashActionKey = `trash-inventory-${inventory.id}`;
+  const downloadActionKey = `download-print-form-${inventory.id}`;
+  const printActionKey = `print-form-${inventory.id}`;
   const sortableId = objectId("inventory", inventory.id);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: sortableId,
@@ -272,6 +278,18 @@ function InventoryCard({
                   onSelect: () => onOpen(inventory.id),
                 },
                 {
+                  label: actionLoading === downloadActionKey ? "Скачиваем бланк..." : "Скачать бланк",
+                  icon: Download,
+                  disabled: actionLoading === downloadActionKey,
+                  onSelect: onDownloadPrintForm,
+                },
+                {
+                  label: actionLoading === printActionKey ? "Готовим печать..." : "Распечатать",
+                  icon: Printer,
+                  disabled: actionLoading === printActionKey,
+                  onSelect: onPrintForm,
+                },
+                {
                   label: "Переместить",
                   icon: MoveRight,
                   onSelect: onMove,
@@ -334,6 +352,8 @@ export default function DishwareObjectList({
   onEditFolder,
   onMoveObject,
   onTrashObject,
+  onDownloadPrintForm,
+  onPrintForm,
 }: {
   objects: DishwareObject[];
   activeObjectId: string | null;
@@ -347,6 +367,8 @@ export default function DishwareObjectList({
   onEditFolder: (folder: DishwareInventoryFolderDto) => void;
   onMoveObject: (object: DishwareObject) => void;
   onTrashObject: (object: DishwareObject) => void;
+  onDownloadPrintForm: (inventory: DishwareInventorySummaryDto) => void;
+  onPrintForm: (inventory: DishwareInventorySummaryDto) => void;
 }) {
   if (objects.length === 0) return null;
 
@@ -381,6 +403,8 @@ export default function DishwareObjectList({
             onClearSelection={onClearSelection}
             onMove={() => onMoveObject(object)}
             onTrash={() => onTrashObject(object)}
+            onDownloadPrintForm={() => onDownloadPrintForm(object.inventory)}
+            onPrintForm={() => onPrintForm(object.inventory)}
           />
         ),
       )}

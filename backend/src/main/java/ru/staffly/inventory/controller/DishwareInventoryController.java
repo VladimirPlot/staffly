@@ -2,7 +2,10 @@ package ru.staffly.inventory.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -17,10 +20,12 @@ import ru.staffly.inventory.dto.MoveDishwareInventoryRequest;
 import ru.staffly.inventory.dto.ReorderDishwareInventoryObjectsRequest;
 import ru.staffly.inventory.dto.UpdateDishwareInventoryFolderRequest;
 import ru.staffly.inventory.dto.UpdateDishwareInventoryRequest;
+import ru.staffly.inventory.service.DishwareInventoryPrintForm;
 import ru.staffly.inventory.service.DishwareInventoryService;
 import ru.staffly.security.UserPrincipal;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -100,6 +105,39 @@ public class DishwareInventoryController {
                                         @PathVariable Long folderId,
                                         @AuthenticationPrincipal UserPrincipal principal) {
         service.deleteFolderPermanently(restaurantId, principal.userId(), folderId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/{inventoryId}/print-form.xlsx")
+    public ResponseEntity<byte[]> exportPrintForm(@PathVariable Long restaurantId,
+                                                  @PathVariable Long inventoryId,
+                                                  @AuthenticationPrincipal UserPrincipal principal) throws IOException {
+        DishwareInventoryPrintForm file = service.exportPrintForm(restaurantId, principal.userId(), inventoryId);
+        byte[] body = service.renderPrintForm(file);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .contentLength(body.length)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(file.fileName(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString()
+                )
+                .body(body);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping(value = "/{inventoryId}/print-form.html", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<byte[]> exportPrintFormHtml(@PathVariable Long restaurantId,
+                                                      @PathVariable Long inventoryId,
+                                                      @AuthenticationPrincipal UserPrincipal principal) throws IOException {
+        DishwareInventoryPrintForm file = service.exportPrintForm(restaurantId, principal.userId(), inventoryId);
+        byte[] body = service.renderPrintFormHtml(file);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/html;charset=UTF-8"))
+                .contentLength(body.length)
+                .body(body);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

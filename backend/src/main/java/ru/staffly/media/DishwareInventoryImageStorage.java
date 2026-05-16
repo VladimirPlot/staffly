@@ -4,13 +4,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.config.S3Config;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -23,6 +26,7 @@ public class DishwareInventoryImageStorage {
 
     private static final Set<String> ALLOWED = Set.of("image/jpeg", "image/png", "image/webp");
     private static final String CACHE_CONTROL_1Y = "public, max-age=31536000, immutable";
+    private static final String DISHWARE_ITEM_IMAGE_PREFIX = "inventories/dishware/items/";
 
     public String saveForItem(Long itemId, MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
@@ -41,7 +45,7 @@ public class DishwareInventoryImageStorage {
             default -> "bin";
         };
 
-        String prefix = "inventories/dishware/items/" + itemId + "/";
+        String prefix = DISHWARE_ITEM_IMAGE_PREFIX + itemId + "/";
         String key = prefix + UUID.randomUUID() + "." + ext;
 
         PutObjectRequest req = PutObjectRequest.builder()
@@ -80,11 +84,52 @@ public class DishwareInventoryImageStorage {
         }
     }
 
+    public Optional<StoredImage> readByPublicUrl(String publicUrl) {
+        return readByPublicUrl(publicUrl, Long.MAX_VALUE);
+    }
+
+    public Optional<StoredImage> readByPublicUrl(String publicUrl, long maxBytes) {
+        if (publicUrl == null || publicUrl.isBlank()) {
+            return Optional.empty();
+        }
+
+        BucketKey bk = extractBucketKeyFromUrl(publicUrl);
+        if (bk == null || !s3cfg.getPublicBucket().equals(bk.bucket()) || !bk.key().startsWith(DISHWARE_ITEM_IMAGE_PREFIX)) {
+            return Optional.empty();
+        }
+
+        try {
+            HeadObjectResponse head = s3.headObject(HeadObjectRequest.builder()
+                    .bucket(bk.bucket())
+                    .key(bk.key())
+                    .build());
+            if (head.contentLength() != null && head.contentLength() > maxBytes) {
+                return Optional.empty();
+            }
+            String contentType = normalizeContentType(head.contentType());
+            if (contentType != null && !ALLOWED.contains(contentType)) {
+                return Optional.empty();
+            }
+
+            ResponseBytes<GetObjectResponse> response = s3.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(bk.bucket())
+                    .key(bk.key())
+                    .build());
+            byte[] bytes = response.asByteArray();
+            if (bytes.length > maxBytes) {
+                return Optional.empty();
+            }
+            return Optional.of(new StoredImage(bytes, response.response().contentType()));
+        } catch (SdkException ignored) {
+            return Optional.empty();
+        }
+    }
+
     public void deleteItemFolder(Long itemId) {
         if (itemId == null) {
             return;
         }
-        String prefix = "inventories/dishware/items/" + itemId + "/";
+        String prefix = DISHWARE_ITEM_IMAGE_PREFIX + itemId + "/";
         deleteByPrefix(s3cfg.getPublicBucket(), prefix);
     }
 
@@ -95,7 +140,7 @@ public class DishwareInventoryImageStorage {
 
         if (activePublicUrl != null && !activePublicUrl.isBlank()) {
             BucketKey active = extractBucketKeyFromUrl(activePublicUrl);
-            String expectedPrefix = "inventories/dishware/items/" + itemId + "/";
+            String expectedPrefix = DISHWARE_ITEM_IMAGE_PREFIX + itemId + "/";
             if (active != null && s3cfg.getPublicBucket().equals(active.bucket()) && active.key().startsWith(expectedPrefix)) {
                 return;
             }
@@ -110,12 +155,12 @@ public class DishwareInventoryImageStorage {
         }
 
         BucketKey source = extractBucketKeyFromUrl(publicUrl);
-        if (source == null || !s3cfg.getPublicBucket().equals(source.bucket())) {
+        if (source == null || !s3cfg.getPublicBucket().equals(source.bucket()) || !source.key().startsWith(DISHWARE_ITEM_IMAGE_PREFIX)) {
             return null;
         }
 
         String ext = extensionFromKey(source.key());
-        String prefix = "inventories/dishware/items/" + itemId + "/";
+        String prefix = DISHWARE_ITEM_IMAGE_PREFIX + itemId + "/";
         String targetKey = prefix + UUID.randomUUID() + ext;
 
         try {
@@ -157,7 +202,7 @@ public class DishwareInventoryImageStorage {
             return;
         }
 
-        String expectedPrefix = "inventories/dishware/items/" + itemId + "/";
+        String expectedPrefix = DISHWARE_ITEM_IMAGE_PREFIX + itemId + "/";
         if (!bucketKey.key().startsWith(expectedPrefix)) {
             return;
         }
@@ -206,16 +251,16 @@ public class DishwareInventoryImageStorage {
 
     private BucketKey extractBucketKeyFromUrl(String url) {
         String base = trimTrailingSlash(s3cfg.getPublicBaseUrl());
-        int i = url.indexOf(base);
-        if (i == -1) {
+        if (base.isBlank()) {
+            return null;
+        }
+        String normalizedUrl = url.trim();
+        String expectedPrefix = base + "/";
+        if (!normalizedUrl.startsWith(expectedPrefix)) {
             return null;
         }
 
-        String tail = url.substring(i + base.length());
-        if (!tail.startsWith("/")) {
-            return null;
-        }
-        tail = tail.substring(1);
+        String tail = normalizedUrl.substring(expectedPrefix.length());
 
         int slash = tail.indexOf('/');
         if (slash <= 0) {
@@ -258,5 +303,8 @@ public class DishwareInventoryImageStorage {
     }
 
     private record BucketKey(String bucket, String key) {
+    }
+
+    public record StoredImage(byte[] bytes, String contentType) {
     }
 }

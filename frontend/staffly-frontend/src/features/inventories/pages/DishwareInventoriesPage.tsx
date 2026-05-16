@@ -12,6 +12,8 @@ import {
   createDishwareInventoryFolder,
   deleteDishwareInventory,
   deleteDishwareInventoryFolder,
+  downloadDishwareInventoryPrintForm,
+  getDishwareInventoryPrintFormHtml,
   listDishwareInventories,
   listDishwareInventoryFolders,
   listDishwareInventoryTrash,
@@ -47,7 +49,9 @@ import {
 } from "../dishwareInventoriesDnd";
 import { buildDishwareTrashDeleteAllPlan } from "../dishwareInventoryTrash";
 import type { DishwareObject, FolderModalState, MoveTarget, PermanentDeleteTarget } from "../dishwareInventoriesTypes";
+import { downloadDishwareFile } from "../downloadDishwareFile";
 import { getFriendlyInventoryError } from "../inventoryErrors";
+import { openDishwareInventoryPrintWindow, printDishwareInventoryBlank } from "../printDishwareInventoryBlank";
 
 function EmptyFolderState() {
   return (
@@ -587,6 +591,52 @@ function AuthorizedDishwareInventoriesPage() {
     [loadActive, loadTrash, restaurantId],
   );
 
+  const runDownloadPrintForm = useCallback(
+    async (inventory: DishwareInventorySummaryDto) => {
+      if (!restaurantId) return;
+      setActionLoading(`download-print-form-${inventory.id}`);
+      setActionError(null);
+      try {
+        const file = await downloadDishwareInventoryPrintForm(restaurantId, inventory.id, inventory.title);
+        downloadDishwareFile(file.blob, file.fileName);
+      } catch (e) {
+        console.error("Failed to download dishware inventory print form", e);
+        setActionError(getFriendlyInventoryError(e, "Не удалось скачать бланк"));
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [restaurantId],
+  );
+
+  const runPrintForm = useCallback(
+    async (inventory: DishwareInventorySummaryDto) => {
+      if (!restaurantId) return;
+
+      let printWindow: Window;
+      try {
+        printWindow = openDishwareInventoryPrintWindow();
+      } catch (e) {
+        setActionError(getFriendlyInventoryError(e, "Не удалось открыть окно печати"));
+        return;
+      }
+
+      setActionLoading(`print-form-${inventory.id}`);
+      setActionError(null);
+      try {
+        const printHtml = await getDishwareInventoryPrintFormHtml(restaurantId, inventory.id);
+        printDishwareInventoryBlank(printWindow, printHtml);
+      } catch (e) {
+        printWindow.close();
+        console.error("Failed to print dishware inventory form", e);
+        setActionError(getFriendlyInventoryError(e, "Не удалось подготовить бланк к печати"));
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [restaurantId],
+  );
+
   const runPermanentDelete = useCallback(async () => {
     if (!restaurantId || !permanentDeleteTarget) return;
     setActionLoading(
@@ -703,6 +753,8 @@ function AuthorizedDishwareInventoriesPage() {
                 onEditFolder={handleEditFolder}
                 onMoveObject={handleMoveObject}
                 onTrashObject={handleTrashObject}
+                onDownloadPrintForm={(inventory) => void runDownloadPrintForm(inventory)}
+                onPrintForm={(inventory) => void runPrintForm(inventory)}
               />
             </SortableContext>
           </div>
