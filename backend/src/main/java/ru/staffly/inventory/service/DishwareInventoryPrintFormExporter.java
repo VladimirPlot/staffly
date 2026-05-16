@@ -110,11 +110,7 @@ public class DishwareInventoryPrintFormExporter {
 
     public void writeHtml(DishwareInventoryPrintForm printForm, OutputStream outputStream) throws IOException {
         Writer writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8);
-        ImageBudget imageBudget = new ImageBudget(
-                MAX_TOTAL_IMAGE_BYTES,
-                MAX_TOTAL_SOURCE_IMAGE_BYTES,
-                MAX_PRINT_IMAGE_ATTEMPTS
-        );
+        ImageBudget imageBudget = newImageBudget();
 
         writer.write("""
                 <!doctype html>
@@ -272,16 +268,12 @@ public class DishwareInventoryPrintFormExporter {
                       <table>
                         <thead>
                           <tr>
-                            <th>Фото</th>
-                            <th>Название</th>
-                            <th>Было</th>
-                            <th>Приход</th>
-                            <th>Ожидалось</th>
-                            <th>Факт</th>
-                            <th>Заметка</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                """);
+        writeHtmlHeaders(writer);
+        writer.write("""
+                            </tr>
+                          </thead>
+                          <tbody>
                 """);
 
         for (DishwareInventoryPrintForm.Item item : printForm.items()) {
@@ -357,11 +349,7 @@ public class DishwareInventoryPrintFormExporter {
     private void createItemRows(SXSSFWorkbook workbook, Sheet sheet, DishwareInventoryPrintForm printForm, Styles styles) {
         Drawing<?> drawing = sheet.createDrawingPatriarch();
         CreationHelper helper = workbook.getCreationHelper();
-        ImageBudget imageBudget = new ImageBudget(
-                MAX_TOTAL_IMAGE_BYTES,
-                MAX_TOTAL_SOURCE_IMAGE_BYTES,
-                MAX_PRINT_IMAGE_ATTEMPTS
-        );
+        ImageBudget imageBudget = newImageBudget();
 
         for (int index = 0; index < printForm.items().size(); index++) {
             DishwareInventoryPrintForm.Item item = printForm.items().get(index);
@@ -377,9 +365,7 @@ public class DishwareInventoryPrintFormExporter {
             createTextCell(row, 5, "", styles.fact());
             createTextCell(row, 6, "", styles.note());
 
-            if (imageBudget.hasRemainingOutputCapacity()) {
-                addImage(workbook, sheet, drawing, helper, item, rowIndex, imageBudget);
-            }
+            addImage(workbook, sheet, drawing, helper, item, rowIndex, imageBudget);
         }
     }
 
@@ -404,12 +390,8 @@ public class DishwareInventoryPrintFormExporter {
             int rowIndex,
             ImageBudget imageBudget
     ) {
-        if (item.photoUrl() == null || item.photoUrl().isBlank()) {
-            return;
-        }
-
-        Optional<PreparedImage> preparedImage = prepareImage(item.photoUrl(), imageBudget);
-        if (preparedImage.isEmpty() || !imageBudget.reserveOutputBytes(preparedImage.get().bytes().length)) {
+        Optional<PreparedImage> preparedImage = tryPrepareImage(item, imageBudget);
+        if (preparedImage.isEmpty()) {
             return;
         }
 
@@ -423,36 +405,34 @@ public class DishwareInventoryPrintFormExporter {
         sheet.getRow(rowIndex).getCell(0).setCellValue("");
     }
 
+    private void writeHtmlHeaders(Writer writer) throws IOException {
+        for (String header : HEADERS) {
+            writer.write("            <th>%s</th>\n".formatted(escapeHtml(header)));
+        }
+    }
+
     private void writeHtmlRow(Writer writer, DishwareInventoryPrintForm.Item item, ImageBudget imageBudget) throws IOException {
-        long expectedQty = (long) item.previousQty() + item.incomingQty();
         writer.write("          <tr>\n            <td class=\"photo\">");
         writeHtmlPhoto(writer, item, imageBudget);
-        writer.write("</td>\n            <td class=\"name\">");
-        writer.write(escapeHtml(item.name()));
-        writer.write("</td>\n            <td class=\"number\">");
-        writer.write(String.valueOf(item.previousQty()));
-        writer.write("</td>\n            <td class=\"number\">");
-        writer.write(String.valueOf(item.incomingQty()));
-        writer.write("</td>\n            <td class=\"number\">");
-        writer.write(String.valueOf(expectedQty));
+        writer.write("</td>\n");
+        writeHtmlCell(writer, "name", item.name());
+        writeHtmlCell(writer, "number", String.valueOf(item.previousQty()));
+        writeHtmlCell(writer, "number", String.valueOf(item.incomingQty()));
+        writeHtmlCell(writer, "number", String.valueOf((long) item.previousQty() + item.incomingQty()));
         writer.write("""
-                </td>
                             <td class="manual"></td>
                             <td class="manual note"></td>
                           </tr>
                 """);
     }
 
-    private void writeHtmlPhoto(Writer writer, DishwareInventoryPrintForm.Item item, ImageBudget imageBudget) throws IOException {
-        if (item.photoUrl() == null || item.photoUrl().isBlank()) {
-            return;
-        }
-        if (!imageBudget.hasRemainingOutputCapacity()) {
-            return;
-        }
+    private void writeHtmlCell(Writer writer, String className, String value) throws IOException {
+        writer.write("            <td class=\"%s\">%s</td>\n".formatted(className, escapeHtml(value)));
+    }
 
-        Optional<PreparedImage> preparedImage = prepareImage(item.photoUrl(), imageBudget);
-        if (preparedImage.isEmpty() || !imageBudget.reserveOutputBytes(preparedImage.get().bytes().length)) {
+    private void writeHtmlPhoto(Writer writer, DishwareInventoryPrintForm.Item item, ImageBudget imageBudget) throws IOException {
+        Optional<PreparedImage> preparedImage = tryPrepareImage(item, imageBudget);
+        if (preparedImage.isEmpty()) {
             return;
         }
 
@@ -461,6 +441,19 @@ public class DishwareInventoryPrintFormExporter {
         writer.write("\" alt=\"");
         writer.write(escapeHtml(item.name()));
         writer.write("\" />");
+    }
+
+    private Optional<PreparedImage> tryPrepareImage(DishwareInventoryPrintForm.Item item, ImageBudget imageBudget) {
+        if (item.photoUrl() == null || item.photoUrl().isBlank() || !imageBudget.hasRemainingOutputCapacity()) {
+            return Optional.empty();
+        }
+
+        return prepareImage(item.photoUrl(), imageBudget)
+                .filter(image -> imageBudget.reserveOutputBytes(image.bytes().length));
+    }
+
+    private ImageBudget newImageBudget() {
+        return new ImageBudget(MAX_TOTAL_IMAGE_BYTES, MAX_TOTAL_SOURCE_IMAGE_BYTES, MAX_PRINT_IMAGE_ATTEMPTS);
     }
 
     private Optional<PreparedImage> prepareImage(String photoUrl, ImageBudget imageBudget) {

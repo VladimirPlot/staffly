@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, Download, MessageSquareText, Pencil, Printer, Save, SquareActivity, Trash2, Undo2 } from "lucide-react";
+import {
+  Check,
+  Download,
+  MessageSquareText,
+  Pencil,
+  Printer,
+  Save,
+  SquareActivity,
+  Trash2,
+  Undo2,
+  type LucideIcon,
+} from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import BackToHome from "../../../shared/ui/BackToHome";
@@ -36,6 +47,22 @@ import { downloadDishwareFile } from "../downloadDishwareFile";
 import { getFriendlyInventoryError } from "../inventoryErrors";
 import { openDishwareInventoryPrintWindow, printDishwareInventoryBlank } from "../printDishwareInventoryBlank";
 import { computeDishwareSummary, getInventoryStatusBadgeClass } from "../utils";
+
+type EditorActionButton = {
+  label: string;
+  icon: LucideIcon;
+  onClick: () => void;
+  isLoading?: boolean;
+  disabled?: boolean;
+  className?: string;
+};
+
+const actionButton = (
+  label: string,
+  icon: LucideIcon,
+  onClick: () => void,
+  options: Omit<EditorActionButton, "label" | "icon" | "onClick"> = {},
+): EditorActionButton => ({ label, icon, onClick, ...options });
 
 function getDishwareListPath(folderId: number | null | undefined): string {
   return folderId == null ? "/inventories/dishware" : `/inventories/dishware?folderId=${folderId}`;
@@ -151,50 +178,54 @@ function AuthorizedDishwareInventoryEditorPage() {
     return saved;
   }, [applyLoadedInventory, comment, inventory?.folderId, inventoryId, inventoryDate, items, restaurantId, title]);
 
+  const runSaveAction = useCallback(
+    async (
+      action: (restaurantId: number, inventoryId: number) => Promise<unknown>,
+      logMessage: string,
+      fallbackMessage: string,
+    ) => {
+      if (!restaurantId || !inventoryId) return;
+      const numericInventoryId = Number(inventoryId);
+      setSaving(true);
+      setSaveError(null);
+      try {
+        await action(restaurantId, numericInventoryId);
+      } catch (e) {
+        console.error(logMessage, e);
+        setSaveError(getFriendlyInventoryError(e, fallbackMessage));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [inventoryId, restaurantId],
+  );
+
   const handleSave = useCallback(async () => {
-    if (!restaurantId || !inventoryId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await saveDraft();
-    } catch (e) {
-      console.error("Failed to save inventory", e);
-      setSaveError(getFriendlyInventoryError(e, "Не удалось сохранить инвентаризацию"));
-    } finally {
-      setSaving(false);
-    }
-  }, [inventoryId, restaurantId, saveDraft]);
+    await runSaveAction(() => saveDraft(), "Failed to save inventory", "Не удалось сохранить инвентаризацию");
+  }, [runSaveAction, saveDraft]);
 
   const handleComplete = useCallback(async () => {
-    if (!restaurantId || !inventoryId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await saveDraft();
-      const completed = await completeDishwareInventory(restaurantId, Number(inventoryId));
-      applyLoadedInventory(completed);
-    } catch (e) {
-      console.error("Failed to complete inventory", e);
-      setSaveError(getFriendlyInventoryError(e, "Не удалось завершить инвентаризацию"));
-    } finally {
-      setSaving(false);
-    }
-  }, [applyLoadedInventory, inventoryId, restaurantId, saveDraft]);
+    await runSaveAction(
+      async (restaurantId, inventoryId) => {
+        await saveDraft();
+        const completed = await completeDishwareInventory(restaurantId, inventoryId);
+        applyLoadedInventory(completed);
+      },
+      "Failed to complete inventory",
+      "Не удалось завершить инвентаризацию",
+    );
+  }, [applyLoadedInventory, runSaveAction, saveDraft]);
 
   const handleReopen = useCallback(async () => {
-    if (!restaurantId || !inventoryId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const reopened = await reopenDishwareInventory(restaurantId, Number(inventoryId));
-      applyLoadedInventory(reopened);
-    } catch (e) {
-      console.error("Failed to reopen inventory", e);
-      setSaveError(getFriendlyInventoryError(e, "Не удалось вернуть документ в черновик"));
-    } finally {
-      setSaving(false);
-    }
-  }, [applyLoadedInventory, inventoryId, restaurantId]);
+    await runSaveAction(
+      async (restaurantId, inventoryId) => {
+        const reopened = await reopenDishwareInventory(restaurantId, inventoryId);
+        applyLoadedInventory(reopened);
+      },
+      "Failed to reopen inventory",
+      "Не удалось вернуть документ в черновик",
+    );
+  }, [applyLoadedInventory, runSaveAction]);
 
   const handleDownloadPrintForm = useCallback(async () => {
     if (!restaurantId || !inventoryId || saving || downloadingPrintForm) return;
@@ -297,6 +328,19 @@ function AuthorizedDishwareInventoryEditorPage() {
     [inventoryId, mergeItemPhotoFromServer, restaurantId],
   );
 
+  const printFormButtons: EditorActionButton[] = [
+    actionButton("Скачать бланк", Download, () => void handleDownloadPrintForm(), { isLoading: downloadingPrintForm }),
+    actionButton("Распечатать", Printer, () => void handlePrintForm(), { isLoading: printingPrintForm }),
+  ];
+  const actionButtons: EditorActionButton[] = isCompleted
+    ? [...printFormButtons, actionButton("Вернуть в черновик", Undo2, () => void handleReopen(), { isLoading: saving })]
+    : [
+        actionButton("Сохранить", Save, () => void handleSave(), { isLoading: saving }),
+        ...printFormButtons,
+        actionButton("Завершить", Check, () => void handleComplete(), { isLoading: saving }),
+        actionButton("В корзину", Trash2, () => setDeleteOpen(true), { disabled: saving, className: "text-red-600" }),
+      ];
+
   if (loading) {
     return (
       <div className="mx-auto max-w-4xl">
@@ -359,92 +403,20 @@ function AuthorizedDishwareInventoryEditorPage() {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
-            {!isCompleted ? (
-              <>
-                <Button
-                  size="sm"
-                  className="min-h-11"
-                  leftIcon={<Icon icon={Save} size="sm" decorative />}
-                  isLoading={saving}
-                  onClick={() => void handleSave()}
-                >
-                  Сохранить
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  isLoading={downloadingPrintForm}
-                  leftIcon={<Icon icon={Download} size="sm" decorative />}
-                  onClick={() => void handleDownloadPrintForm()}
-                >
-                  Скачать бланк
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  isLoading={printingPrintForm}
-                  leftIcon={<Icon icon={Printer} size="sm" decorative />}
-                  onClick={() => void handlePrintForm()}
-                >
-                  Распечатать
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  isLoading={saving}
-                  leftIcon={<Icon icon={Check} size="sm" decorative />}
-                  onClick={() => void handleComplete()}
-                >
-                  Завершить
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11 text-red-600"
-                  leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-                  disabled={saving}
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  В корзину
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  isLoading={downloadingPrintForm}
-                  leftIcon={<Icon icon={Download} size="sm" decorative />}
-                  onClick={() => void handleDownloadPrintForm()}
-                >
-                  Скачать бланк
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  isLoading={printingPrintForm}
-                  leftIcon={<Icon icon={Printer} size="sm" decorative />}
-                  onClick={() => void handlePrintForm()}
-                >
-                  Распечатать
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="min-h-11"
-                  isLoading={saving}
-                  leftIcon={<Icon icon={Undo2} size="sm" decorative />}
-                  onClick={() => void handleReopen()}
-                >
-                  Вернуть в черновик
-                </Button>
-              </>
-            )}
+            {actionButtons.map(({ label, icon, onClick, isLoading, disabled, className }) => (
+              <Button
+                key={label}
+                size="sm"
+                variant={label === "Сохранить" ? "primary" : "outline"}
+                className={["min-h-11", className].filter(Boolean).join(" ")}
+                isLoading={isLoading}
+                leftIcon={<Icon icon={icon} size="sm" decorative />}
+                disabled={disabled}
+                onClick={onClick}
+              >
+                {label}
+              </Button>
+            ))}
           </div>
         </div>
 

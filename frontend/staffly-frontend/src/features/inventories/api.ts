@@ -116,6 +116,17 @@ export type DishwareInventoryPrintFormDownload = {
   fileName: string;
 };
 
+const inventoriesPath = (restaurantId: number, ...segments: Array<string | number>) =>
+  `/api/restaurants/${restaurantId}/inventories${segments.length ? `/${segments.join("/")}` : ""}`;
+
+const dishwarePath = (restaurantId: number, ...segments: Array<string | number>) =>
+  inventoriesPath(restaurantId, "dishware", ...segments);
+
+const dishwareFolderPath = (restaurantId: number, ...segments: Array<string | number>) =>
+  dishwarePath(restaurantId, "folders", ...segments);
+
+const responseData = async <T>(request: Promise<{ data: T }>): Promise<T> => (await request).data;
+
 function parseContentDispositionFileName(value: string | undefined): string | null {
   if (!value) return null;
   const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
@@ -139,44 +150,40 @@ function sanitizeDishwareInventoryFileName(value: string): string {
 }
 
 export async function fetchInventoryLayout(restaurantId: number): Promise<InventoryLayoutResponse> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/layout`);
-  return data as InventoryLayoutResponse;
+  return responseData(api.get<InventoryLayoutResponse>(inventoriesPath(restaurantId, "layout")));
 }
 
 export async function saveInventoryLayout(
   restaurantId: number,
   layout: InventorySectionId[],
 ): Promise<InventoryLayoutResponse> {
-  const { data } = await api.put(`/api/restaurants/${restaurantId}/inventories/layout`, { layout });
-  return data as InventoryLayoutResponse;
+  return responseData(api.put<InventoryLayoutResponse>(inventoriesPath(restaurantId, "layout"), { layout }));
 }
 
 export async function listDishwareInventories(restaurantId: number): Promise<DishwareInventorySummaryDto[]> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware`);
-  return data as DishwareInventorySummaryDto[];
+  return responseData(api.get<DishwareInventorySummaryDto[]>(dishwarePath(restaurantId)));
 }
 
 export async function listDishwareInventoryTrash(restaurantId: number): Promise<DishwareInventorySummaryDto[]> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/trash`);
-  return data as DishwareInventorySummaryDto[];
+  return responseData(api.get<DishwareInventorySummaryDto[]>(dishwarePath(restaurantId, "trash")));
 }
 
 export async function listDishwareInventoryFolders(
   restaurantId: number,
   includeTrashed = false,
 ): Promise<DishwareInventoryFolderDto[]> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/folders`, {
-    params: { includeTrashed },
-  });
-  return data as DishwareInventoryFolderDto[];
+  return responseData(
+    api.get<DishwareInventoryFolderDto[]>(dishwareFolderPath(restaurantId), {
+      params: { includeTrashed },
+    }),
+  );
 }
 
 export async function createDishwareInventoryFolder(
   restaurantId: number,
   payload: CreateDishwareInventoryFolderRequest,
 ): Promise<DishwareInventoryFolderDto> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/inventories/dishware/folders`, payload);
-  return data as DishwareInventoryFolderDto;
+  return responseData(api.post<DishwareInventoryFolderDto>(dishwareFolderPath(restaurantId), payload));
 }
 
 export async function updateDishwareInventoryFolder(
@@ -184,8 +191,7 @@ export async function updateDishwareInventoryFolder(
   folderId: number,
   payload: UpdateDishwareInventoryFolderRequest,
 ): Promise<DishwareInventoryFolderDto> {
-  const { data } = await api.put(`/api/restaurants/${restaurantId}/inventories/dishware/folders/${folderId}`, payload);
-  return data as DishwareInventoryFolderDto;
+  return responseData(api.put<DishwareInventoryFolderDto>(dishwareFolderPath(restaurantId, folderId), payload));
 }
 
 export async function moveDishwareInventoryFolder(
@@ -194,36 +200,34 @@ export async function moveDishwareInventoryFolder(
   parentId: number | null,
   sortOrder?: number | null,
 ): Promise<DishwareInventoryFolderDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/folders/${folderId}/move`, {
-    parentId,
-    sortOrder,
-  });
-  return data as DishwareInventoryFolderDto;
+  return responseData(
+    api.patch<DishwareInventoryFolderDto>(dishwareFolderPath(restaurantId, folderId, "move"), {
+      parentId,
+      sortOrder,
+    }),
+  );
 }
 
 export async function trashDishwareInventoryFolder(
   restaurantId: number,
   folderId: number,
 ): Promise<DishwareInventoryFolderDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/folders/${folderId}/trash`);
-  return data as DishwareInventoryFolderDto;
+  return responseData(api.patch<DishwareInventoryFolderDto>(dishwareFolderPath(restaurantId, folderId, "trash")));
 }
 
 export async function restoreDishwareInventoryFolder(
   restaurantId: number,
   folderId: number,
 ): Promise<DishwareInventoryFolderDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/folders/${folderId}/restore`);
-  return data as DishwareInventoryFolderDto;
+  return responseData(api.patch<DishwareInventoryFolderDto>(dishwareFolderPath(restaurantId, folderId, "restore")));
 }
 
 export async function deleteDishwareInventoryFolder(restaurantId: number, folderId: number): Promise<void> {
-  await api.delete(`/api/restaurants/${restaurantId}/inventories/dishware/folders/${folderId}`);
+  await api.delete(dishwareFolderPath(restaurantId, folderId));
 }
 
 export async function getDishwareInventory(restaurantId: number, inventoryId: number): Promise<DishwareInventoryDto> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}`);
-  return data as DishwareInventoryDto;
+  return responseData(api.get<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId)));
 }
 
 export async function downloadDishwareInventoryPrintForm(
@@ -231,31 +235,28 @@ export async function downloadDishwareInventoryPrintForm(
   inventoryId: number,
   title?: string | null,
 ): Promise<DishwareInventoryPrintFormDownload> {
-  const response = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/print-form.xlsx`, {
+  const response = await api.get<Blob>(dishwarePath(restaurantId, inventoryId, "print-form.xlsx"), {
     responseType: "blob",
   });
   const fileName =
     parseContentDispositionFileName(response.headers["content-disposition"]) ??
     `${sanitizeDishwareInventoryFileName(title ?? "")}.xlsx`;
-  return { blob: response.data as Blob, fileName };
+  return { blob: response.data, fileName };
 }
 
-export async function getDishwareInventoryPrintFormHtml(
-  restaurantId: number,
-  inventoryId: number,
-): Promise<string> {
-  const { data } = await api.get(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/print-form.html`, {
-    responseType: "text",
-  });
-  return data as string;
+export async function getDishwareInventoryPrintFormHtml(restaurantId: number, inventoryId: number): Promise<string> {
+  return responseData(
+    api.get<string>(dishwarePath(restaurantId, inventoryId, "print-form.html"), {
+      responseType: "text",
+    }),
+  );
 }
 
 export async function createDishwareInventory(
   restaurantId: number,
   payload: CreateDishwareInventoryRequest,
 ): Promise<DishwareInventoryDto> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/inventories/dishware`, payload);
-  return data as DishwareInventoryDto;
+  return responseData(api.post<DishwareInventoryDto>(dishwarePath(restaurantId), payload));
 }
 
 export async function updateDishwareInventory(
@@ -263,24 +264,21 @@ export async function updateDishwareInventory(
   inventoryId: number,
   payload: UpdateDishwareInventoryRequest,
 ): Promise<DishwareInventoryDto> {
-  const { data } = await api.put(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}`, payload);
-  return data as DishwareInventoryDto;
+  return responseData(api.put<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId), payload));
 }
 
 export async function completeDishwareInventory(
   restaurantId: number,
   inventoryId: number,
 ): Promise<DishwareInventoryDto> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/complete`);
-  return data as DishwareInventoryDto;
+  return responseData(api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "complete")));
 }
 
 export async function reopenDishwareInventory(
   restaurantId: number,
   inventoryId: number,
 ): Promise<DishwareInventoryDto> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/reopen`);
-  return data as DishwareInventoryDto;
+  return responseData(api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "reopen")));
 }
 
 export async function moveDishwareInventory(
@@ -289,32 +287,34 @@ export async function moveDishwareInventory(
   folderId: number | null,
   sortOrder?: number | null,
 ): Promise<DishwareInventoryDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/move`, {
-    folderId,
-    sortOrder,
-  });
-  return data as DishwareInventoryDto;
+  return responseData(
+    api.patch<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "move"), {
+      folderId,
+      sortOrder,
+    }),
+  );
 }
 
 export async function reorderDishwareInventoryObjects(
   restaurantId: number,
   payload: ReorderDishwareInventoryObjectsRequest,
 ): Promise<void> {
-  await api.put(`/api/restaurants/${restaurantId}/inventories/dishware/order`, payload);
+  await api.put(dishwarePath(restaurantId, "order"), payload);
 }
 
 export async function trashDishwareInventory(restaurantId: number, inventoryId: number): Promise<DishwareInventoryDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/trash`);
-  return data as DishwareInventoryDto;
+  return responseData(api.patch<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "trash")));
 }
 
-export async function restoreDishwareInventory(restaurantId: number, inventoryId: number): Promise<DishwareInventoryDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/restore`);
-  return data as DishwareInventoryDto;
+export async function restoreDishwareInventory(
+  restaurantId: number,
+  inventoryId: number,
+): Promise<DishwareInventoryDto> {
+  return responseData(api.patch<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "restore")));
 }
 
 export async function deleteDishwareInventory(restaurantId: number, inventoryId: number): Promise<void> {
-  await api.delete(`/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}`);
+  await api.delete(dishwarePath(restaurantId, inventoryId));
 }
 
 export async function uploadDishwareItemImage(
@@ -325,11 +325,9 @@ export async function uploadDishwareItemImage(
 ): Promise<DishwareInventoryDto> {
   const formData = new FormData();
   formData.append("file", file);
-  const { data } = await api.post(
-    `/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/items/${itemId}/image`,
-    formData,
+  return responseData(
+    api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image"), formData),
   );
-  return data as DishwareInventoryDto;
 }
 
 export async function deleteDishwareItemImage(
@@ -337,8 +335,7 @@ export async function deleteDishwareItemImage(
   inventoryId: number,
   itemId: number,
 ): Promise<DishwareInventoryDto> {
-  const { data } = await api.delete(
-    `/api/restaurants/${restaurantId}/inventories/dishware/${inventoryId}/items/${itemId}/image`,
+  return responseData(
+    api.delete<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image")),
   );
-  return data as DishwareInventoryDto;
 }

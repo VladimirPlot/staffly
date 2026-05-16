@@ -1,9 +1,9 @@
 export function downloadDishwareFile(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.style.display = "none";
+  Object.assign(link, { href: url, download: fileName });
+  link.hidden = true;
+
   try {
     document.body.appendChild(link);
     link.click();
