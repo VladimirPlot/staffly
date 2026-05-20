@@ -454,8 +454,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
 
       <KnowledgeHeader
         canManage={canManage}
-        includeInactive={false}
-        onToggleIncludeInactive={() => setArchiveOpen(true)}
+        onOpenArchive={() => setArchiveOpen(true)}
         positions={state.visiblePositions}
         positionFilter={state.positionFilter}
         onChangePositionFilter={state.setPositionFilter}

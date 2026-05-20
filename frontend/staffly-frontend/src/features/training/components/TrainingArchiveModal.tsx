@@ -116,7 +116,7 @@ export default function TrainingArchiveModal({
         {error ? <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
         {!loading && !hasItems ? <div className="text-muted text-sm">Архив пуст.</div> : null}
 
-        {archivedObjects.map((object) => {
+        {!loading && archivedObjects.map((object) => {
           const IconComponent = iconForKind(object.kind);
           return (
             <div key={`${object.kind}-${object.id}`} className="border-subtle bg-app rounded-2xl border p-3">

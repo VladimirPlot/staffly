@@ -2,12 +2,10 @@ import type { PositionDto } from "../../dictionaries/api";
 import Button from "../../../shared/ui/Button";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
-import Switch from "../../../shared/ui/Switch";
 
 type Props = {
   canManage: boolean;
-  includeInactive: boolean;
-  onToggleIncludeInactive: (v: boolean) => void;
+  onOpenArchive: () => void;
   positions: PositionDto[];
   positionFilter: number | null;
   onChangePositionFilter: (id: number | null) => void;
@@ -18,8 +16,7 @@ type Props = {
 
 export default function KnowledgeHeader({
   canManage,
-  includeInactive,
-  onToggleIncludeInactive,
+  onOpenArchive,
   positions,
   positionFilter,
   onChangePositionFilter,
@@ -37,18 +34,11 @@ export default function KnowledgeHeader({
 
   return (
     <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
-      {/* === TOP ROW ===
-          Mobile: Switch (left) + Create (right)
-          Desktop: Switch + Select + Create buttons in one line
-      */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Mobile top line: switch + create */}
         <div className="flex items-center justify-between gap-3 sm:hidden">
-          <Switch
-            label="Скрытые элементы"
-            checked={includeInactive}
-            onChange={(e) => onToggleIncludeInactive(e.target.checked)}
-          />
+          <Button variant="outline" onClick={onOpenArchive}>
+            Архив
+          </Button>
 
           <DropdownMenu
             trigger={(triggerProps) => (
@@ -96,16 +86,12 @@ export default function KnowledgeHeader({
           </DropdownMenu>
         </div>
 
-        {/* Desktop: switch lives in the main row */}
         <div className="hidden sm:block">
-          <Switch
-            label="Скрытые элементы"
-            checked={includeInactive}
-            onChange={(e) => onToggleIncludeInactive(e.target.checked)}
-          />
+          <Button variant="outline" onClick={onOpenArchive}>
+            Архив
+          </Button>
         </div>
 
-        {/* Desktop: compact select in row */}
         <div className="hidden sm:block">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted">Должность</span>
@@ -128,7 +114,6 @@ export default function KnowledgeHeader({
           </div>
         </div>
 
-        {/* Desktop: create buttons */}
         <div className="hidden flex-wrap gap-2 sm:flex">
           <Button variant="outline" onClick={onCreateFolder}>
             Создать папку
@@ -142,7 +127,6 @@ export default function KnowledgeHeader({
         </div>
       </div>
 
-      {/* Mobile: select goes under the top line */}
       <div className="sm:hidden">
         <div className="block">
           <div className="mb-1 text-sm text-muted">Должность</div>
