@@ -12,6 +12,7 @@ public interface ExamService {
     TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request);
+    TrainingExamDto movePracticeExam(Long restaurantId, Long userId, Long examId, MoveTrainingPracticeExamRequest request);
     TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId);
     TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId);
     void deleteExam(Long restaurantId, Long userId, Long examId);

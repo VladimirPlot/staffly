@@ -89,6 +89,26 @@ public class QuestionServiceImpl implements QuestionService {
 
     @Override
     @Transactional
+    public TrainingQuestionDto moveQuestion(Long restaurantId, Long userId, Long questionId, MoveTrainingQuestionRequest request) {
+        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        if (!entity.isActive()) {
+            throw new BadRequestException("Скрытый вопрос нельзя перемещать.");
+        }
+        assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
+
+        var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
+        if (!folder.isActive()) {
+            throw new BadRequestException("Нельзя выбрать скрытую папку.");
+        }
+        entity.setFolder(folder);
+        entity.setSortOrder(request.sortOrder() == null
+                ? nextSortOrder(restaurantId, folder.getId())
+                : normalizeSortOrder(request.sortOrder()));
+        return toDtos(List.of(entity)).get(0);
+    }
+
+    @Override
+    @Transactional
     public TrainingQuestionDto hideQuestion(Long restaurantId, Long userId, Long questionId) {
         var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
         entity.setActive(false);
@@ -135,6 +155,20 @@ public class QuestionServiceImpl implements QuestionService {
                 folder.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
         );
         return folder;
+    }
+
+    private int nextSortOrder(Long restaurantId, Long folderId) {
+        return java.util.Optional.ofNullable(questions.maxSortOrderInFolder(restaurantId, folderId)).orElse(-1) + 1;
+    }
+
+    private int normalizeSortOrder(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value < 0) {
+            throw new BadRequestException("Порядок не может быть отрицательным");
+        }
+        return value;
     }
 
     private TrainingQuestion requireAccessibleQuestion(Long restaurantId, Long userId, Long questionId) {

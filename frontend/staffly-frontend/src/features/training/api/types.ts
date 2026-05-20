@@ -144,6 +144,7 @@ export type TrainingExamDto = {
   knowledgeFolderId: number | null;
   attemptLimit?: number | null;
   version: number;
+  sortOrder: number;
   active: boolean;
   sourcesFolders: ExamSourceFolderDto[];
   sourceQuestionIds: number[];
@@ -432,4 +433,36 @@ export type QuestionBankTreeNodeDto = {
   sortOrder: number;
   questionCount: number;
   children: QuestionBankTreeNodeDto[];
+};
+
+export type MoveTrainingFolderPayload = {
+  parentId?: number | null;
+  sortOrder?: number | null;
+};
+
+export type MoveTrainingKnowledgeItemPayload = {
+  folderId?: number | null;
+  sortOrder?: number | null;
+};
+
+export type MoveTrainingQuestionPayload = {
+  folderId: number;
+  sortOrder?: number | null;
+};
+
+export type MoveTrainingPracticeExamPayload = {
+  knowledgeFolderId: number;
+  sortOrder?: number | null;
+};
+
+export type ReorderTrainingObjectKind = "folder" | "knowledgeItem" | "question" | "practiceExam";
+
+export type ReorderTrainingObjectsPayload = {
+  type: TrainingFolderType;
+  folderId?: number | null;
+  objects: Array<{
+    kind: ReorderTrainingObjectKind;
+    id: number;
+    sortOrder: number;
+  }>;
 };

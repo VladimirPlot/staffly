@@ -73,6 +73,23 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/folders/{folderId}/move")
+    public TrainingFolderDto moveFolder(@PathVariable Long restaurantId,
+                                        @PathVariable Long folderId,
+                                        @AuthenticationPrincipal UserPrincipal principal,
+                                        @RequestBody MoveTrainingFolderRequest request) {
+        return knowledgeService.moveFolder(restaurantId, principal.userId(), folderId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PutMapping("/order")
+    public void reorderObjects(@PathVariable Long restaurantId,
+                               @AuthenticationPrincipal UserPrincipal principal,
+                               @Valid @RequestBody ReorderTrainingObjectsRequest request) {
+        knowledgeService.reorderObjects(restaurantId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/folders/{folderId}/hide")
     public TrainingFolderDto hideFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
         return knowledgeService.hideFolder(restaurantId, principal.userId(), folderId);
@@ -114,6 +131,15 @@ public class TrainingController {
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @Valid @RequestBody UpdateTrainingKnowledgeItemRequest request) {
         return knowledgeService.updateKnowledgeItem(restaurantId, principal.userId(), itemId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/knowledge-items/{itemId}/move")
+    public TrainingKnowledgeItemDto moveKnowledgeItem(@PathVariable Long restaurantId,
+                                                      @PathVariable Long itemId,
+                                                      @AuthenticationPrincipal UserPrincipal principal,
+                                                      @RequestBody MoveTrainingKnowledgeItemRequest request) {
+        return knowledgeService.moveKnowledgeItem(restaurantId, principal.userId(), itemId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -175,6 +201,15 @@ public class TrainingController {
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody UpdateTrainingQuestionRequest request) {
         return questionService.updateQuestion(restaurantId, principal.userId(), questionId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/questions/{questionId}/move")
+    public TrainingQuestionDto moveQuestion(@PathVariable Long restaurantId,
+                                            @PathVariable Long questionId,
+                                            @AuthenticationPrincipal UserPrincipal principal,
+                                            @RequestBody MoveTrainingQuestionRequest request) {
+        return questionService.moveQuestion(restaurantId, principal.userId(), questionId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -266,6 +301,15 @@ public class TrainingController {
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody UpdateTrainingExamRequest request) {
         return examService.updateExam(restaurantId, principal.userId(), examId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/move-knowledge-folder")
+    public TrainingExamDto movePracticeExam(@PathVariable Long restaurantId,
+                                            @PathVariable Long examId,
+                                            @AuthenticationPrincipal UserPrincipal principal,
+                                            @RequestBody MoveTrainingPracticeExamRequest request) {
+        return examService.movePracticeExam(restaurantId, principal.userId(), examId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")

@@ -20,7 +20,12 @@ import type {
   ExamProgressDto,
   ExamSubmitPayload,
   ExamSubmitResultDto,
+  MoveTrainingFolderPayload,
+  MoveTrainingKnowledgeItemPayload,
+  MoveTrainingPracticeExamPayload,
+  MoveTrainingQuestionPayload,
   QuestionBankTreeNodeDto,
+  ReorderTrainingObjectsPayload,
   TrainingExamDto,
   TrainingFolderDto,
   TrainingFolderType,
@@ -50,10 +55,12 @@ export async function listFolders(restaurantId: number, type: TrainingFolderType
   return data as TrainingFolderDto[];
 }
 export async function createFolder(restaurantId: number, payload: CreateTrainingFolderPayload): Promise<TrainingFolderDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/folders`, payload); return data as TrainingFolderDto; }
+export async function moveFolder(restaurantId: number, folderId: number, payload: MoveTrainingFolderPayload): Promise<TrainingFolderDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/folders/${folderId}/move`, payload); return data as TrainingFolderDto; }
 export async function hideFolder(restaurantId: number, folderId: number): Promise<TrainingFolderDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/folders/${folderId}/hide`); return data as TrainingFolderDto; }
 export async function restoreFolder(restaurantId: number, folderId: number): Promise<TrainingFolderDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/folders/${folderId}/restore`); return data as TrainingFolderDto; }
 export async function updateFolder(restaurantId: number, folderId: number, payload: UpdateTrainingFolderPayload): Promise<TrainingFolderDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/folders/${folderId}`, payload); return data as TrainingFolderDto; }
 export async function deleteFolder(restaurantId: number, folderId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/folders/${folderId}`); }
+export async function reorderTrainingObjects(restaurantId: number, payload: ReorderTrainingObjectsPayload): Promise<void> { await apiClient.put(`/api/restaurants/${restaurantId}/training/order`, payload); }
 
 export async function listKnowledgeItems(restaurantId: number, folderId?: number, includeInactive = false): Promise<TrainingKnowledgeItemDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-items`, { params: { folderId, includeInactive } });
@@ -61,6 +68,7 @@ export async function listKnowledgeItems(restaurantId: number, folderId?: number
 }
 export async function hideKnowledgeItem(restaurantId: number, itemId: number): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/hide`); return data as TrainingKnowledgeItemDto; }
 export async function createKnowledgeItem(restaurantId: number, payload: CreateKnowledgeItemPayload): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-items`, payload); return data as TrainingKnowledgeItemDto; }
+export async function moveKnowledgeItem(restaurantId: number, itemId: number, payload: MoveTrainingKnowledgeItemPayload): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/move`, payload); return data as TrainingKnowledgeItemDto; }
 export async function updateKnowledgeItem(restaurantId: number, itemId: number, payload: UpdateKnowledgeItemPayload): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}`, payload); return data as TrainingKnowledgeItemDto; }
 export async function uploadKnowledgeImage(restaurantId: number, itemId: number, file: File): Promise<TrainingKnowledgeItemDto> {
   const formData = new FormData(); formData.append("file", file);
@@ -76,6 +84,7 @@ export async function listQuestions(restaurantId: number, folderId: number, incl
   return data as TrainingQuestionDto[];
 }
 export async function createQuestion(restaurantId: number, payload: CreateQuestionPayload): Promise<TrainingQuestionDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/questions`, payload); return data as TrainingQuestionDto; }
+export async function moveQuestion(restaurantId: number, questionId: number, payload: MoveTrainingQuestionPayload): Promise<TrainingQuestionDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/questions/${questionId}/move`, payload); return data as TrainingQuestionDto; }
 export async function updateQuestion(restaurantId: number, questionId: number, payload: UpdateQuestionPayload): Promise<TrainingQuestionDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/questions/${questionId}`, payload); return data as TrainingQuestionDto; }
 export async function hideQuestion(restaurantId: number, questionId: number): Promise<TrainingQuestionDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/questions/${questionId}/hide`); return data as TrainingQuestionDto; }
 export async function restoreQuestion(restaurantId: number, questionId: number): Promise<TrainingQuestionDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/questions/${questionId}/restore`); return data as TrainingQuestionDto; }
@@ -107,6 +116,7 @@ export async function createKnowledgeExam(restaurantId: number, payload: UpsertE
   return data as TrainingExamDto;
 }
 export async function updateExam(restaurantId: number, examId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/exams/${examId}`, payload); return data as TrainingExamDto; }
+export async function movePracticeExam(restaurantId: number, examId: number, payload: MoveTrainingPracticeExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/move-knowledge-folder`, payload); return data as TrainingExamDto; }
 export async function hideExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/hide`); return data as TrainingExamDto; }
 export async function restoreExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/restore`); return data as TrainingExamDto; }
 export async function deleteExam(restaurantId: number, examId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/exams/${examId}`); }

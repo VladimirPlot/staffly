@@ -13,13 +13,16 @@ public interface KnowledgeService {
     List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, Long userId, TrainingExamMode mode, boolean includeInactive);
     TrainingFolderDto createFolder(Long restaurantId, Long userId, CreateTrainingFolderRequest request);
     TrainingFolderDto updateFolder(Long restaurantId, Long userId, Long folderId, UpdateTrainingFolderRequest request);
+    TrainingFolderDto moveFolder(Long restaurantId, Long userId, Long folderId, MoveTrainingFolderRequest request);
     TrainingFolderDto hideFolder(Long restaurantId, Long userId, Long folderId);
     TrainingFolderDto restoreFolder(Long restaurantId, Long userId, Long folderId);
     void deleteFolder(Long restaurantId, Long userId, Long folderId);
+    void reorderObjects(Long restaurantId, Long userId, ReorderTrainingObjectsRequest request);
 
     List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long userId, Long folderId, boolean includeInactive);
     TrainingKnowledgeItemDto createKnowledgeItem(Long restaurantId, Long userId, CreateTrainingKnowledgeItemRequest request);
     TrainingKnowledgeItemDto updateKnowledgeItem(Long restaurantId, Long userId, Long itemId, UpdateTrainingKnowledgeItemRequest request);
+    TrainingKnowledgeItemDto moveKnowledgeItem(Long restaurantId, Long userId, Long itemId, MoveTrainingKnowledgeItemRequest request);
     TrainingKnowledgeItemDto hideKnowledgeItem(Long restaurantId, Long userId, Long itemId);
     TrainingKnowledgeItemDto restoreKnowledgeItem(Long restaurantId, Long userId, Long itemId);
     void deleteKnowledgeItem(Long restaurantId, Long userId, Long itemId);
