@@ -136,6 +136,7 @@ public class ExamServiceImpl implements ExamService {
                 .mode(request.mode())
                 .knowledgeFolder(knowledgeFolder)
                 .attemptLimit(request.attemptLimit())
+                .sortOrder(knowledgeFolder == null ? 0 : nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId()))
                 .active(true)
                 .version(1)
                 .build();
@@ -146,6 +147,27 @@ public class ExamServiceImpl implements ExamService {
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         certificationAudienceSyncService.syncExamAudience(exam);
+        return toDtoWithSourcesAndVisibility(exam, null);
+    }
+
+    @Override
+    @Transactional
+    public TrainingExamDto movePracticeExam(Long restaurantId, Long userId, Long examId, MoveTrainingPracticeExamRequest request) {
+        var exam = requireManageableExam(restaurantId, userId, examId);
+        if (exam.getMode() != TrainingExamMode.PRACTICE) {
+            throw new BadRequestException("Операция доступна только для учебного теста.");
+        }
+        if (!exam.isActive()) {
+            throw new BadRequestException("Скрытый тест нельзя перемещать.");
+        }
+        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, TrainingExamMode.PRACTICE, request.knowledgeFolderId());
+        if (!knowledgeFolder.isActive()) {
+            throw new BadRequestException("Нельзя выбрать скрытую папку.");
+        }
+        exam.setKnowledgeFolder(knowledgeFolder);
+        exam.setSortOrder(request.sortOrder() == null
+                ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
+                : normalizeSortOrder(request.sortOrder()));
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -724,6 +746,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId(),
                 exam.getAttemptLimit(),
                 exam.getVersion(),
+                exam.getSortOrder(),
                 exam.isActive(),
                 folders,
                 questionIds,
@@ -795,6 +818,20 @@ public class ExamServiceImpl implements ExamService {
         return mode == TrainingExamMode.PRACTICE
                 ? TrainingQuestionGroup.PRACTICE
                 : TrainingQuestionGroup.CERTIFICATION;
+    }
+
+    private int nextPracticeExamSortOrder(Long restaurantId, Long knowledgeFolderId) {
+        return Optional.ofNullable(exams.maxPracticeSortOrderInKnowledgeFolder(restaurantId, knowledgeFolderId)).orElse(-1) + 1;
+    }
+
+    private int normalizeSortOrder(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value < 0) {
+            throw new BadRequestException("Порядок не может быть отрицательным");
+        }
+        return value;
     }
 
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {

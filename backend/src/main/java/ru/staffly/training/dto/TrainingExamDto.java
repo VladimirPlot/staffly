@@ -16,6 +16,7 @@ public record TrainingExamDto(
         Long knowledgeFolderId,
         Integer attemptLimit,
         Integer version,
+        Integer sortOrder,
         Boolean active,
         List<ExamSourceFolderDto> sourcesFolders,
         List<Long> sourceQuestionIds,

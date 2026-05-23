@@ -1,6 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
+import CloseButton from "./CloseButton";
 import { getFocusableElements } from "./dialogUtils";
 
 type ModalProps = {
@@ -11,10 +12,77 @@ type ModalProps = {
   onClose: () => void;
   footer?: React.ReactNode;
   className?: string;
+  headerCloseButton?: boolean;
+  headerCloseLabel?: string;
   overlayCloseButton?: boolean;
   overlayCloseLabel?: string;
   children?: React.ReactNode;
 };
+
+type BodyScrollLockSnapshot = {
+  scrollY: number;
+  position: string;
+  top: string;
+  left: string;
+  right: string;
+  width: string;
+  paddingRight: string;
+  boxSizing: string;
+};
+
+let bodyScrollLockCount = 0;
+let bodyScrollLockSnapshot: BodyScrollLockSnapshot | null = null;
+
+function lockBodyScroll() {
+  const body = document.body;
+  const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+
+  if (bodyScrollLockCount === 0) {
+    const computedBodyStyle = window.getComputedStyle(body);
+    const currentPaddingRight = parseFloat(computedBodyStyle.paddingRight) || 0;
+    const scrollY = window.scrollY || 0;
+
+    bodyScrollLockSnapshot = {
+      scrollY,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      paddingRight: body.style.paddingRight,
+      boxSizing: body.style.boxSizing,
+    };
+
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    body.style.boxSizing = "border-box";
+    body.style.paddingRight = scrollbarWidth > 0 ? `${currentPaddingRight + scrollbarWidth}px` : body.style.paddingRight;
+  }
+
+  bodyScrollLockCount += 1;
+}
+
+function unlockBodyScroll() {
+  bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+  if (bodyScrollLockCount > 0 || !bodyScrollLockSnapshot) return;
+
+  const body = document.body;
+  const snapshot = bodyScrollLockSnapshot;
+  bodyScrollLockSnapshot = null;
+
+  body.style.position = snapshot.position;
+  body.style.top = snapshot.top;
+  body.style.left = snapshot.left;
+  body.style.right = snapshot.right;
+  body.style.width = snapshot.width;
+  body.style.paddingRight = snapshot.paddingRight;
+  body.style.boxSizing = snapshot.boxSizing;
+
+  window.scrollTo(0, snapshot.scrollY);
+}
 
 const Modal: React.FC<ModalProps> = ({
   open,
@@ -24,6 +92,8 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   footer,
   className = "",
+  headerCloseButton = false,
+  headerCloseLabel = "Закрыть",
   overlayCloseButton = false,
   overlayCloseLabel = "Закрыть",
   children,
@@ -46,31 +116,12 @@ const Modal: React.FC<ModalProps> = ({
       ? { "aria-label": ariaLabel }
       : {};
 
-  // ✅ lock body scroll while modal is open (mobile-friendly)
   React.useEffect(() => {
     if (!open || typeof window === "undefined") return;
 
-    const body = document.body;
-    const scrollY = window.scrollY || 0;
+    lockBodyScroll();
 
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-    body.style.width = "100%";
-
-    return () => {
-      const top = body.style.top;
-
-      body.style.position = "";
-      body.style.top = "";
-      body.style.left = "";
-      body.style.right = "";
-      body.style.width = "";
-
-      const restoredY = top ? Math.abs(parseInt(top, 10)) : scrollY;
-      window.scrollTo(0, restoredY);
-    };
+    return unlockBodyScroll;
   }, [open]);
 
   React.useEffect(() => {
@@ -185,6 +236,9 @@ const Modal: React.FC<ModalProps> = ({
                     </div>
                   )}
                 </div>
+                {headerCloseButton && (
+                  <CloseButton label={headerCloseLabel} onClick={onClose} />
+                )}
               </div>
             )}
 

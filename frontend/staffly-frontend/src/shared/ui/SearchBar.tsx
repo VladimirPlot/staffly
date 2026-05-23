@@ -20,6 +20,11 @@ type SearchBarProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChang
   onClear?: () => void;
   totalCount?: number;
   resultCount?: number;
+  countNouns?: {
+    one: string;
+    few: string;
+    many: string;
+  };
   clearLabel?: string;
   containerClassName?: string;
   inputClassName?: string;
@@ -33,6 +38,7 @@ export default function SearchBar({
   onClear,
   totalCount,
   resultCount,
+  countNouns = { one: "контакт", few: "контакта", many: "контактов" },
   clearLabel = "Сбросить поиск",
   className = "",
   containerClassName = "",
@@ -52,7 +58,7 @@ export default function SearchBar({
     typeof totalCount === "number"
       ? hasValue
         ? `Найдено ${resultCount ?? 0} из ${totalCount}`
-        : `${totalCount} ${formatPlural(totalCount, "контакт", "контакта", "контактов")}`
+        : `${totalCount} ${formatPlural(totalCount, countNouns.one, countNouns.few, countNouns.many)}`
       : null;
   const compactCountText =
     typeof totalCount === "number"

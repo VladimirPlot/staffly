@@ -10,6 +10,7 @@ public interface QuestionService {
     List<TrainingQuestionDto> listQuestions(Long restaurantId, Long userId, Long folderId, TrainingQuestionGroup questionGroup, boolean includeInactive, String query);
     TrainingQuestionDto createQuestion(Long restaurantId, Long userId, CreateTrainingQuestionRequest request);
     TrainingQuestionDto updateQuestion(Long restaurantId, Long userId, Long questionId, UpdateTrainingQuestionRequest request);
+    TrainingQuestionDto moveQuestion(Long restaurantId, Long userId, Long questionId, MoveTrainingQuestionRequest request);
     TrainingQuestionDto hideQuestion(Long restaurantId, Long userId, Long questionId);
     TrainingQuestionDto restoreQuestion(Long restaurantId, Long userId, Long questionId);
     void deleteQuestion(Long restaurantId, Long userId, Long questionId);
