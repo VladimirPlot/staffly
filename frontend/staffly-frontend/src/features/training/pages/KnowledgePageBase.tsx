@@ -172,7 +172,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
       setArchiveItems([...uniqueItems.values()]);
       setArchiveExams([...uniqueExams.values()]);
     } catch (error) {
-      setArchiveError(getTrainingErrorMessage(error, "Не удалось загрузить архив."));
+      setArchiveError(getTrainingErrorMessage(error, "Не удалось загрузить корзину."));
     } finally {
       setArchiveLoading(false);
     }
@@ -405,7 +405,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         setSelectedObjectId(null);
         await reloadVisible();
       } catch (error) {
-        setActionError(getTrainingErrorMessage(error, "Не удалось переместить в архив."));
+        setActionError(getTrainingErrorMessage(error, "Не удалось переместить в корзину."));
       } finally {
         setActionLoading(null);
       }

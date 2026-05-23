@@ -145,7 +145,7 @@ function TrainingObjectCard({
     ...(canManage
       ? [
           {
-            label: actionLoading === archiveActionKey ? "Перемещаем в архив..." : "В архив",
+            label: actionLoading === archiveActionKey ? "Перемещаем в корзину..." : "В корзину",
             icon: Trash2,
             tone: "danger",
             disabled: actionLoading === archiveActionKey,

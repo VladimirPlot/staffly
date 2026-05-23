@@ -1,11 +1,13 @@
 import { DndContext, DragOverlay, MeasuringStrategy, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
+import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -154,7 +156,7 @@ export default function QuestionBankFolderPage() {
       setArchiveFolders(allFolders);
       setArchiveQuestions([...uniqueQuestions.values()]);
     } catch (loadError) {
-      setArchiveError(getTrainingErrorMessage(loadError, "Не удалось загрузить архив."));
+      setArchiveError(getTrainingErrorMessage(loadError, "Не удалось загрузить корзину."));
     } finally {
       setArchiveLoading(false);
     }
@@ -327,7 +329,7 @@ export default function QuestionBankFolderPage() {
       setSelectedObjectId(null);
       await reloadVisible();
     } catch (archiveErrorValue) {
-      setError(getTrainingErrorMessage(archiveErrorValue, "Не удалось переместить в архив."));
+      setError(getTrainingErrorMessage(archiveErrorValue, "Не удалось переместить в корзину."));
     } finally {
       setActionLoading(null);
     }
@@ -384,10 +386,7 @@ export default function QuestionBankFolderPage() {
 
       {canManage ? (
         <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <Button variant="outline" onClick={() => setArchiveOpen(true)}>
-              Архив
-            </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -407,6 +406,15 @@ export default function QuestionBankFolderPage() {
               >
                 Создать вопрос
               </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="text-muted hover:text-red-600"
+                title="Корзина"
+                aria-label="Открыть корзину банка вопросов"
+                leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                onClick={() => setArchiveOpen(true)}
+              />
             </div>
           </div>
           <Input label="Поиск по вопросам" placeholder="Поиск по вопросам" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -543,6 +551,9 @@ export default function QuestionBankFolderPage() {
 
       <TrainingArchiveModal
         open={archiveOpen}
+        title="Корзина"
+        loadingText="Загружаем корзину..."
+        emptyText="Корзина пуста."
         folders={archiveFolders}
         questions={archiveQuestions}
         loading={archiveLoading}
@@ -551,10 +562,10 @@ export default function QuestionBankFolderPage() {
         onClose={() => setArchiveOpen(false)}
         onRestore={(object) => void restoreArchived(object)}
         onDelete={(object) => setDeleteTarget({ kind: object.kind, id: object.id, title: object.title })}
-        onDeleteAll={() => setDeleteTarget({ kind: "all", title: "все элементы архива" })}
+        onDeleteAll={() => setDeleteTarget({ kind: "all", title: "все элементы корзины" })}
       />
 
-      <ConfirmDialog open={Boolean(deleteTarget)} title="Удалить навсегда" description="Элементы архива будут удалены безвозвратно." confirmText="Удалить навсегда" confirming={Boolean(actionLoading?.startsWith("delete-"))} onCancel={() => setDeleteTarget(null)} onConfirm={() => void runPermanentDelete()} />
+      <ConfirmDialog open={Boolean(deleteTarget)} title="Удалить навсегда" description="Элементы корзины будут удалены безвозвратно." confirmText="Удалить навсегда" confirming={Boolean(actionLoading?.startsWith("delete-"))} onCancel={() => setDeleteTarget(null)} onConfirm={() => void runPermanentDelete()} />
 
       <QuestionDeleteGuardModal
         open={Boolean(deleteDialogModel)}

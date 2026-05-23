@@ -117,8 +117,8 @@ export default function TrainingSelectionToolbar({
                 <Button size="sm" variant="ghost" className={toolbarButtonClassName} title="Переместить" leftIcon={<Icon icon={MoveRight} size="sm" decorative />} onClick={() => onMove(object)}>
                   Переместить
                 </Button>
-                <Button size="sm" variant="ghost" className={cn(toolbarButtonClassName, "text-red-600")} title="В архив" isLoading={isArchiving} leftIcon={<Icon icon={Trash2} size="sm" decorative />} onClick={() => onArchive(object)}>
-                  В архив
+                <Button size="sm" variant="ghost" className={cn(toolbarButtonClassName, "text-red-600")} title="В корзину" isLoading={isArchiving} leftIcon={<Icon icon={Trash2} size="sm" decorative />} onClick={() => onArchive(object)}>
+                  В корзину
                 </Button>
               </>
             ) : null}
