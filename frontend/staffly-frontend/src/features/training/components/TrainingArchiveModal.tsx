@@ -1,8 +1,6 @@
-import { BookOpen, ClipboardCheck, Folder, HelpCircle, RotateCcw, Trash2 } from "lucide-react";
+import { BookOpen, ClipboardCheck, Folder, HelpCircle } from "lucide-react";
 
-import Button from "../../../shared/ui/Button";
-import Icon from "../../../shared/ui/Icon";
-import Modal from "../../../shared/ui/Modal";
+import TrashModal, { type TrashModalItem } from "../../../shared/ui/TrashModal";
 import type {
   TrainingExamDto,
   TrainingFolderDto,
@@ -32,6 +30,9 @@ function iconForKind(kind: ArchivedTrainingObject["kind"]) {
 
 export default function TrainingArchiveModal({
   open,
+  title = "Архив",
+  loadingText = "Загружаем архив...",
+  emptyText = "Архив пуст.",
   folders,
   knowledgeItems = [],
   questions = [],
@@ -45,6 +46,9 @@ export default function TrainingArchiveModal({
   onDeleteAll,
 }: {
   open: boolean;
+  title?: string;
+  loadingText?: string;
+  emptyText?: string;
   folders: TrainingFolderDto[];
   knowledgeItems?: TrainingKnowledgeItemDto[];
   questions?: TrainingQuestionDto[];
@@ -57,7 +61,7 @@ export default function TrainingArchiveModal({
   onDelete: (object: ArchivedTrainingObject) => void;
   onDeleteAll: () => void;
 }) {
-  const archivedObjects: ArchivedTrainingObject[] = [
+  const archivedObjects = [
     ...folders
       .filter((folder) => !folder.active)
       .sort(bySortOrderAndName)
@@ -99,44 +103,63 @@ export default function TrainingArchiveModal({
         value: exam,
       })),
   ];
-  const hasItems = archivedObjects.length > 0;
+
+  const items: Array<TrashModalItem<ArchivedTrainingObject["kind"], ArchivedTrainingObject>> = archivedObjects.map(
+    (object) => ({
+      key: `${object.kind}-${object.id}`,
+      kind: object.kind,
+      value: object,
+      typeLabel: typeLabelForKind(object.kind),
+      typePluralLabel: typePluralLabelForKind(object.kind),
+      title: object.title,
+      description: object.description,
+      icon: iconForKind(object.kind),
+      restoreActionKey: `restore-${object.kind}-${object.id}`,
+      deleteActionKey: `delete-${object.kind}-${object.id}`,
+    }),
+  );
 
   return (
-    <Modal open={open} title="Архив" onClose={onClose} className="max-w-3xl">
-      <div className="space-y-3">
-        {hasItems ? (
-          <div className="border-subtle flex items-center justify-between gap-3 border-b pb-3">
-            <div className="text-muted text-sm">{archivedObjects.length} элементов в архиве</div>
-            <Button size="sm" variant="outline" className="text-red-600" leftIcon={<Icon icon={Trash2} size="sm" decorative />} onClick={onDeleteAll}>
-              Удалить все
-            </Button>
-          </div>
-        ) : null}
-        {loading ? <div className="text-muted text-sm">Загружаем архив...</div> : null}
-        {error ? <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-        {!loading && !hasItems ? <div className="text-muted text-sm">Архив пуст.</div> : null}
-
-        {!loading && archivedObjects.map((object) => {
-          const IconComponent = iconForKind(object.kind);
-          return (
-            <div key={`${object.kind}-${object.id}`} className="border-subtle bg-app rounded-2xl border p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 font-medium">
-                    <Icon icon={IconComponent} size="sm" decorative />
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{object.title}</span>
-                  </div>
-                  {object.description ? <div className="text-muted mt-1 line-clamp-2 text-sm">{object.description}</div> : null}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button size="icon" variant="outline" className="h-9 w-9" title="Восстановить" aria-label={`Восстановить ${object.title}`} isLoading={actionLoading === `restore-${object.kind}-${object.id}`} leftIcon={<Icon icon={RotateCcw} size="sm" decorative />} onClick={() => onRestore(object)} />
-                  <Button size="icon" variant="outline" className="h-9 w-9 text-red-600" title="Удалить навсегда" aria-label={`Удалить ${object.title} навсегда`} leftIcon={<Icon icon={Trash2} size="sm" decorative />} onClick={() => onDelete(object)} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Modal>
+    <TrashModal
+      open={open}
+      title={title}
+      items={items}
+      loading={loading}
+      loadingText={loadingText}
+      emptyText={emptyText}
+      error={error}
+      actionLoading={actionLoading}
+      searchPlaceholder="Поиск по архиву"
+      onClose={onClose}
+      onRestore={(item) => onRestore(item.value)}
+      onDelete={(item) => onDelete(item.value)}
+      onDeleteAll={onDeleteAll}
+    />
   );
+}
+
+function typeLabelForKind(kind: ArchivedTrainingObject["kind"]) {
+  switch (kind) {
+    case "folder":
+      return "Папка";
+    case "knowledgeItem":
+      return "Карточка";
+    case "question":
+      return "Вопрос";
+    case "practiceExam":
+      return "Тест";
+  }
+}
+
+function typePluralLabelForKind(kind: ArchivedTrainingObject["kind"]) {
+  switch (kind) {
+    case "folder":
+      return "Папки";
+    case "knowledgeItem":
+      return "Карточки";
+    case "question":
+      return "Вопросы";
+    case "practiceExam":
+      return "Тесты";
+  }
 }

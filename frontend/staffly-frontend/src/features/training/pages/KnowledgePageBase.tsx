@@ -612,6 +612,9 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
 
       <TrainingArchiveModal
         open={archiveOpen}
+        title="Корзина"
+        loadingText="Загружаем корзину..."
+        emptyText="Корзина пуста."
         folders={archiveFolders}
         knowledgeItems={archiveItems}
         practiceExams={archiveExams}
@@ -624,7 +627,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         }}
         onRestore={(object) => void restoreArchived(object)}
         onDelete={(object) => setDeleteTarget({ kind: object.kind, id: object.id, title: object.title })}
-        onDeleteAll={() => setDeleteTarget({ kind: "all", title: "все элементы архива" })}
+        onDeleteAll={() => setDeleteTarget({ kind: "all", title: "все элементы корзины" })}
       />
 
       <ConfirmDialog
@@ -632,7 +635,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         title="Удалить навсегда"
         description={
           deleteTarget?.kind === "all"
-            ? "Все элементы архива будут удалены безвозвратно."
+            ? "Все элементы корзины будут удалены безвозвратно."
             : "Элемент будет удалён безвозвратно."
         }
         confirming={Boolean(actionLoading?.startsWith("delete-"))}

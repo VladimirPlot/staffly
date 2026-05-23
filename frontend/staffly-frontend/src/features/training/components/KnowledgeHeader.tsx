@@ -1,7 +1,10 @@
+import { Trash2 } from "lucide-react";
+
 import type { PositionDto } from "../../dictionaries/api";
 import Button from "../../../shared/ui/Button";
 import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
+import Icon from "../../../shared/ui/Icon";
 
 type Props = {
   canManage: boolean;
@@ -36,10 +39,6 @@ export default function KnowledgeHeader({
     <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between gap-3 sm:hidden">
-          <Button variant="outline" onClick={onOpenArchive}>
-            Архив
-          </Button>
-
           <DropdownMenu
             trigger={(triggerProps) => (
               <Button variant="outline" {...triggerProps}>
@@ -84,12 +83,16 @@ export default function KnowledgeHeader({
               </div>
             )}
           </DropdownMenu>
-        </div>
 
-        <div className="hidden sm:block">
-          <Button variant="outline" onClick={onOpenArchive}>
-            Архив
-          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="text-muted hover:text-red-600"
+            title="Корзина"
+            aria-label="Открыть корзину базы знаний"
+            leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+            onClick={onOpenArchive}
+          />
         </div>
 
         <div className="hidden sm:block">
@@ -124,6 +127,15 @@ export default function KnowledgeHeader({
           <Button variant="outline" onClick={onCreateTest}>
             Создать тест
           </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="ml-1 text-muted hover:text-red-600"
+            title="Корзина"
+            aria-label="Открыть корзину базы знаний"
+            leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+            onClick={onOpenArchive}
+          />
         </div>
       </div>
 
