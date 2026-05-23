@@ -36,7 +36,7 @@ export default function KnowledgeHeader({
   };
 
   return (
-    <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
+    <div className="border-subtle bg-surface rounded-2xl border p-2 sm:p-2.5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center justify-between gap-3 sm:hidden">
           <DropdownMenu
@@ -103,7 +103,7 @@ export default function KnowledgeHeader({
               value={selectValue}
               onChange={(e) => handleSelectChange(e.target.value)}
               className={
-                "h-10 rounded-2xl px-3 text-sm shadow-[var(--staffly-shadow)] " +
+                "h-9 rounded-2xl px-3 text-sm shadow-[var(--staffly-shadow)] " +
                 "transition hover:bg-app focus:outline-none focus:ring-2 ring-default"
               }
             >
@@ -117,20 +117,20 @@ export default function KnowledgeHeader({
           </div>
         </div>
 
-        <div className="hidden flex-wrap gap-2 sm:flex">
-          <Button variant="outline" onClick={onCreateFolder}>
+        <div className="hidden flex-wrap items-center gap-2 sm:flex">
+          <Button variant="outline" className="h-9" onClick={onCreateFolder}>
             Создать папку
           </Button>
-          <Button variant="outline" onClick={onCreateCard}>
+          <Button variant="outline" className="h-9" onClick={onCreateCard}>
             Создать карточку
           </Button>
-          <Button variant="outline" onClick={onCreateTest}>
+          <Button variant="outline" className="h-9" onClick={onCreateTest}>
             Создать тест
           </Button>
           <Button
             variant="outline"
             size="icon"
-            className="ml-1 text-muted hover:text-red-600"
+            className="ml-1 h-9 w-9 text-muted hover:text-red-600"
             title="Корзина"
             aria-label="Открыть корзину базы знаний"
             leftIcon={<Icon icon={Trash2} size="sm" decorative />}

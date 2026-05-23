@@ -1,9 +1,8 @@
 import { DndContext, DragOverlay, MeasuringStrategy, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Trash2 } from "lucide-react";
+import { FolderTree, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
@@ -11,6 +10,7 @@ import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
+import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingFolderModal from "../components/TrainingFolderModal";
 import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingObjectList, { TrainingDragOverlayCard } from "../components/TrainingObjectList";
@@ -36,10 +36,22 @@ import {
   trainingDescendantIds,
   trainingObjectId,
 } from "../trainingFolderDnd";
-import type { TrainingFolderListObject, TrainingMoveTarget, TrainingPermanentDeleteTarget } from "../trainingFolderObjects";
+import type {
+  TrainingFolderListObject,
+  TrainingMoveTarget,
+  TrainingPermanentDeleteTarget,
+} from "../trainingFolderObjects";
 import { trainingObjectTitle } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
+
+function formatFolderCount(count: number) {
+  const remainder10 = count % 10;
+  const remainder100 = count % 100;
+  if (remainder10 === 1 && remainder100 !== 11) return `${count} папка`;
+  if (remainder10 >= 2 && remainder10 <= 4 && (remainder100 < 12 || remainder100 > 14)) return `${count} папки`;
+  return `${count} папок`;
+}
 
 export default function QuestionBankRootPage() {
   const navigate = useNavigate();
@@ -81,6 +93,19 @@ export default function QuestionBankRootPage() {
     if (!parsed || parsed.kind !== "folder") return new Set<number>();
     return trainingDescendantIds(parsed.id, foldersState.folders);
   }, [foldersState.folders, sortableDnd.activeId]);
+
+  const openQuestionBankRoot = useCallback(() => {
+    setSelectedObjectId(null);
+    navigate(trainingRoutes.questionBank);
+  }, [navigate]);
+
+  const openQuestionBankFolder = useCallback(
+    (folderId: number) => {
+      setSelectedObjectId(null);
+      navigate(trainingRoutes.questionBankFolder(folderId));
+    },
+    [navigate],
+  );
 
   const reload = useCallback(async () => {
     await foldersState.reload();
@@ -194,7 +219,9 @@ export default function QuestionBankRootPage() {
     setActionLoading(deleteTarget.kind === "all" ? "delete-all" : `delete-${deleteTarget.kind}-${deleteTarget.id}`);
     try {
       if (deleteTarget.kind === "all") {
-        await Promise.all(archiveFolders.filter((folder) => !folder.active).map((folder) => deleteFolder(restaurantId, folder.id)));
+        await Promise.all(
+          archiveFolders.filter((folder) => !folder.active).map((folder) => deleteFolder(restaurantId, folder.id)),
+        );
       } else if (deleteTarget.kind === "folder") {
         await deleteFolder(restaurantId, deleteTarget.id);
       }
@@ -209,36 +236,82 @@ export default function QuestionBankRootPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Breadcrumbs items={[{ label: "Тренинг", to: trainingRoutes.landing }, { label: "Банк вопросов" }]} />
-      <h2 className="text-2xl font-semibold">Банк вопросов</h2>
-      {canManage ? (
-        <div className="border-subtle bg-surface flex flex-col gap-2 rounded-2xl border p-3 sm:flex-row sm:items-center sm:justify-end">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setEditingFolder(null);
-              setModalOpen(true);
-            }}
-          >
-            Создать папку
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="text-muted hover:text-red-600"
-            title="Корзина"
-            aria-label="Открыть корзину банка вопросов"
-            leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-            onClick={() => setArchiveOpen(true)}
-          />
-        </div>
-      ) : null}
-      {foldersState.loading && <LoadingState label="Загрузка папок банка вопросов…" />}
-      {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
-      {error && <ErrorState message={error} onRetry={foldersState.reload} />}
-      {!foldersState.loading && rootObjects.length === 0 && <EmptyState title="Папок пока нет" description="Создайте первую папку для вопросов." />}
-      {rootObjects.length > 0 ? (
-        <DndContext sensors={sortableDnd.sensors} collisionDetection={trainingCollisionDetection} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} onDragStart={handleDragStart} onDragMove={sortableDnd.handleDragMove} onDragEnd={(event) => void handleDragEnd(event)} onDragCancel={finishDrag}>
+      <DndContext
+        sensors={sortableDnd.sensors}
+        collisionDetection={trainingCollisionDetection}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        onDragStart={handleDragStart}
+        onDragMove={sortableDnd.handleDragMove}
+        onDragEnd={(event) => void handleDragEnd(event)}
+        onDragCancel={finishDrag}
+      >
+        <TrainingBreadcrumbs
+          ariaLabel="Путь к банку вопросов"
+          rootLabel="Банк вопросов"
+          currentFolderId={null}
+          folderChain={[]}
+          activeObjectId={sortableDnd.activeId}
+          blockedFolderIds={blockedDropFolderIds}
+          rootDropDisabledObjectKinds={["practiceExam", "question"]}
+          onOpenRoot={openQuestionBankRoot}
+          onOpenFolder={openQuestionBankFolder}
+        />
+        <h2 className="text-2xl font-semibold">Банк вопросов</h2>
+        {canManage ? (
+          <div className="border-subtle bg-surface grid gap-3 overflow-hidden rounded-2xl border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="text-strong inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] ring-1 ring-[color:var(--staffly-divider)]/70 ring-inset">
+                <Icon icon={FolderTree} size="sm" decorative />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-strong text-sm font-semibold">Корень банка вопросов</span>
+                  <span className="border-subtle bg-app text-muted inline-flex rounded-full border px-2 py-0.5 text-xs">
+                    {formatFolderCount(rootObjects.length)}
+                  </span>
+                </div>
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-muted text-xs">Структура папок для вопросов</span>
+                  <span className="flex items-center" aria-hidden="true">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--staffly-text-strong)]/45" />
+                    <span className="h-px w-4 bg-[color:var(--staffly-divider)]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--staffly-text-strong)]/30" />
+                    <span className="h-px w-4 bg-[color:var(--staffly-divider)]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--staffly-text-strong)]/20" />
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 sm:justify-end">
+              <Button
+                variant="outline"
+                className="shrink-0"
+                onClick={() => {
+                  setEditingFolder(null);
+                  setModalOpen(true);
+                }}
+              >
+                Создать папку
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="text-muted shrink-0 hover:text-red-600"
+                title="Корзина"
+                aria-label="Открыть корзину банка вопросов"
+                leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                onClick={() => setArchiveOpen(true)}
+              />
+            </div>
+          </div>
+        ) : null}
+        {foldersState.loading && <LoadingState label="Загрузка папок банка вопросов…" />}
+        {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
+        {error && <ErrorState message={error} onRetry={foldersState.reload} />}
+        {!foldersState.loading && rootObjects.length === 0 && (
+          <EmptyState title="Папок пока нет" description="Создайте первую папку для вопросов." />
+        )}
+        {rootObjects.length > 0 ? (
           <div ref={scrollContainerRef}>
             <SortableContext items={objectIds} strategy={verticalListSortingStrategy}>
               <TrainingObjectList
@@ -257,16 +330,18 @@ export default function QuestionBankRootPage() {
                     setModalOpen(true);
                   }
                 }}
-                onMoveObject={(object) => setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) })}
+                onMoveObject={(object) =>
+                  setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) })
+                }
                 onArchiveObject={(object) => void archiveObject(object)}
               />
             </SortableContext>
           </div>
-          <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
-            <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
-          </DragOverlay>
-        </DndContext>
-      ) : null}
+        ) : null}
+        <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
+          <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
+        </DragOverlay>
+      </DndContext>
 
       <TrainingSelectionToolbar
         object={selectedObject}
@@ -330,10 +405,26 @@ export default function QuestionBankRootPage() {
         onDeleteAll={() => setDeleteTarget({ kind: "all", title: "все элементы корзины" })}
       />
 
-      <ConfirmDialog open={Boolean(deleteTarget)} title="Удалить навсегда" description="Элементы корзины будут удалены безвозвратно." confirmText="Удалить навсегда" confirming={Boolean(actionLoading?.startsWith("delete-"))} onCancel={() => setDeleteTarget(null)} onConfirm={() => void runPermanentDelete()} />
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Удалить навсегда"
+        description="Элементы корзины будут удалены безвозвратно."
+        confirmText="Удалить навсегда"
+        confirming={Boolean(actionLoading?.startsWith("delete-"))}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void runPermanentDelete()}
+      />
 
       {restaurantId ? (
-        <TrainingFolderModal open={modalOpen} mode={editingFolder ? "edit" : "create"} restaurantId={restaurantId} type="QUESTION_BANK" initialFolder={editingFolder} onClose={() => setModalOpen(false)} onSaved={foldersState.reload} />
+        <TrainingFolderModal
+          open={modalOpen}
+          mode={editingFolder ? "edit" : "create"}
+          restaurantId={restaurantId}
+          type="QUESTION_BANK"
+          initialFolder={editingFolder}
+          onClose={() => setModalOpen(false)}
+          onSaved={foldersState.reload}
+        />
       ) : null}
     </div>
   );

@@ -482,6 +482,8 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         onDragCancel={finishDrag}
       >
         <TrainingBreadcrumbs
+          ariaLabel="Путь к базе знаний"
+          rootLabel="База знаний"
           currentFolderId={currentFolderId}
           folderChain={folderChain}
           activeObjectId={sortableDnd.activeId}

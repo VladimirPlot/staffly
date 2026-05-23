@@ -59,28 +59,37 @@ function TrainingBreadcrumbFolder({
 }
 
 export default function TrainingBreadcrumbs({
+  ariaLabel = "Путь раздела тренинга",
+  rootLabel,
   currentFolderId,
   folderChain,
   activeObjectId,
   blockedFolderIds,
+  rootDropDisabledObjectKinds = ["practiceExam"],
   onOpenRoot,
   onOpenFolder,
 }: {
+  ariaLabel?: string;
+  rootLabel: string;
   currentFolderId: number | null;
   folderChain: TrainingFolderDto[];
   activeObjectId: string | null;
   blockedFolderIds: Set<number>;
+  rootDropDisabledObjectKinds?: Array<NonNullable<ReturnType<typeof parseTrainingObjectId>>["kind"]>;
   onOpenRoot: () => void;
   onOpenFolder: (folderId: number) => void;
 }) {
   const activeObject = activeObjectId ? parseTrainingObjectId(activeObjectId) : null;
   const isDragActive = Boolean(activeObject);
-  const rootDropDisabled = !isDragActive || currentFolderId == null || activeObject?.kind === "practiceExam";
+  const rootDropDisabled =
+    !isDragActive ||
+    currentFolderId == null ||
+    (activeObject ? rootDropDisabledObjectKinds.includes(activeObject.kind) : false);
   const rootDrop = useDroppable({ id: trainingFolderDropId(null), disabled: rootDropDisabled });
 
   return (
     <nav
-      aria-label="Путь к базе знаний"
+      aria-label={ariaLabel}
       className={cn(
         "text-muted -mx-1 flex min-w-0 items-center gap-1 overflow-x-auto px-1 text-sm transition [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         isDragActive ? "py-2" : "py-1",
@@ -125,7 +134,7 @@ export default function TrainingBreadcrumbs({
           )}
           onClick={onOpenRoot}
         >
-          База знаний
+          {rootLabel}
         </button>
       </span>
       {folderChain.map((folder, index) => (

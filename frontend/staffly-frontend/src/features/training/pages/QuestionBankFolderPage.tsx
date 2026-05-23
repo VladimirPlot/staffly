@@ -4,7 +4,6 @@ import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
@@ -15,6 +14,7 @@ import LoadingState from "../components/LoadingState";
 import QuestionDeleteGuardModal from "../components/QuestionDeleteGuardModal";
 import QuestionEditorModal from "../components/QuestionEditorModal";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
+import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingFolderModal from "../components/TrainingFolderModal";
 import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingObjectList, { TrainingDragOverlayCard } from "../components/TrainingObjectList";
@@ -39,6 +39,7 @@ import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import {
   centerTrainingDragOverlayOnCursor,
+  buildTrainingFolderChain,
   parseTrainingFolderDropId,
   parseTrainingObjectId,
   sortTrainingObjects,
@@ -46,7 +47,11 @@ import {
   trainingDescendantIds,
   trainingObjectId,
 } from "../trainingFolderDnd";
-import type { TrainingFolderListObject, TrainingMoveTarget, TrainingPermanentDeleteTarget } from "../trainingFolderObjects";
+import type {
+  TrainingFolderListObject,
+  TrainingMoveTarget,
+  TrainingPermanentDeleteTarget,
+} from "../trainingFolderObjects";
 import { trainingObjectTitle } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { buildQuestionDeleteDialogModel, type QuestionDeleteDialogModel } from "../utils/questionDeleteUx";
@@ -94,8 +99,12 @@ export default function QuestionBankFolderPage() {
     return () => clearTimeout(timeoutId);
   }, [search]);
 
-  const folderMap = useMemo(() => new Map(foldersState.folders.map((folder) => [folder.id, folder])), [foldersState.folders]);
+  const folderMap = useMemo(
+    () => new Map(foldersState.folders.map((folder) => [folder.id, folder])),
+    [foldersState.folders],
+  );
   const currentFolder = folderMap.get(currentFolderId) ?? null;
+  const folderChain = useMemo(() => buildTrainingFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
   const childFolders = useMemo(
     () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId),
     [currentFolderId, foldersState.folders],
@@ -103,8 +112,18 @@ export default function QuestionBankFolderPage() {
   const currentObjects = useMemo<TrainingFolderListObject[]>(
     () =>
       [
-        ...childFolders.map((folder) => ({ kind: "folder" as const, id: folder.id, sortOrder: folder.sortOrder ?? 0, folder })),
-        ...questions.map((question) => ({ kind: "question" as const, id: question.id, sortOrder: question.sortOrder ?? 0, question })),
+        ...childFolders.map((folder) => ({
+          kind: "folder" as const,
+          id: folder.id,
+          sortOrder: folder.sortOrder ?? 0,
+          folder,
+        })),
+        ...questions.map((question) => ({
+          kind: "question" as const,
+          id: question.id,
+          sortOrder: question.sortOrder ?? 0,
+          question,
+        })),
       ].sort(sortTrainingObjects),
     [childFolders, questions],
   );
@@ -112,6 +131,7 @@ export default function QuestionBankFolderPage() {
     () => currentObjects.map((object) => trainingObjectId(object.kind, object.id)),
     [currentObjects],
   );
+  const hasLoadedEmptyFolder = !foldersState.loading && !loading && currentObjects.length === 0;
   const selectedObject = useMemo(
     () => currentObjects.find((object) => trainingObjectId(object.kind, object.id) === selectedObjectId) ?? null,
     [currentObjects, selectedObjectId],
@@ -150,7 +170,9 @@ export default function QuestionBankFolderPage() {
     try {
       const allFolders = await listFolders(restaurantId, "QUESTION_BANK", true);
       const questionsByFolder = await Promise.all(
-        allFolders.map((folder) => listQuestions(restaurantId, folder.id, true).catch(() => [] as TrainingQuestionDto[])),
+        allFolders.map((folder) =>
+          listQuestions(restaurantId, folder.id, true).catch(() => [] as TrainingQuestionDto[]),
+        ),
       );
       const uniqueQuestions = new Map(questionsByFolder.flat().map((question) => [question.id, question]));
       setArchiveFolders(allFolders);
@@ -217,28 +239,18 @@ export default function QuestionBankFolderPage() {
     }
   }, [deleteDialogModel]);
 
-  const breadcrumbItems = useMemo(() => {
-    const items: { label: string; to?: string }[] = [
-      { label: "Тренинг", to: trainingRoutes.landing },
-      { label: "Банк вопросов", to: trainingRoutes.questionBank },
-    ];
-    if (!currentFolder) return items;
-    const chain: TrainingFolderDto[] = [];
-    let cursor: TrainingFolderDto | null = currentFolder;
-    const seen = new Set<number>();
-    while (cursor && !seen.has(cursor.id)) {
-      chain.unshift(cursor);
-      seen.add(cursor.id);
-      cursor = cursor.parentId ? (folderMap.get(cursor.parentId) ?? null) : null;
-    }
-    chain.forEach((folder, index) =>
-      items.push({
-        label: folder.name,
-        to: index === chain.length - 1 ? undefined : trainingRoutes.questionBankFolder(folder.id),
-      }),
-    );
-    return items;
-  }, [currentFolder, folderMap]);
+  const openQuestionBankRoot = useCallback(() => {
+    setSelectedObjectId(null);
+    navigate(trainingRoutes.questionBank);
+  }, [navigate]);
+
+  const openQuestionBankFolder = useCallback(
+    (nextFolderId: number) => {
+      setSelectedObjectId(null);
+      navigate(trainingRoutes.questionBankFolder(nextFolderId));
+    },
+    [navigate],
+  );
 
   const finishDrag = useCallback(() => {
     sortableDnd.finishDrag();
@@ -260,7 +272,8 @@ export default function QuestionBankFolderPage() {
     async (object: TrainingFolderListObject, targetFolderId: number | null) => {
       if (!restaurantId) return;
       if (object.kind === "folder") await moveFolder(restaurantId, object.id, { parentId: targetFolderId });
-      else if (object.kind === "question" && targetFolderId != null) await moveQuestion(restaurantId, object.id, { folderId: targetFolderId });
+      else if (object.kind === "question" && targetFolderId != null)
+        await moveQuestion(restaurantId, object.id, { folderId: targetFolderId });
     },
     [restaurantId],
   );
@@ -269,7 +282,9 @@ export default function QuestionBankFolderPage() {
     async (event: DragEndEvent) => {
       const active = parseTrainingObjectId(String(event.active.id));
       const overId = event.over ? String(event.over.id) : null;
-      const draggedObject = active ? currentObjects.find((object) => object.kind === active.kind && object.id === active.id) : null;
+      const draggedObject = active
+        ? currentObjects.find((object) => object.kind === active.kind && object.id === active.id)
+        : null;
       finishDrag();
       if (!restaurantId || !active || !overId || !draggedObject) return;
 
@@ -354,8 +369,14 @@ export default function QuestionBankFolderPage() {
     setActionLoading(deleteTarget.kind === "all" ? "delete-all" : `delete-${deleteTarget.kind}-${deleteTarget.id}`);
     try {
       if (deleteTarget.kind === "all") {
-        await Promise.all(archiveFolders.filter((folder) => !folder.active).map((folder) => deleteFolder(restaurantId, folder.id)));
-        await Promise.all(archiveQuestions.filter((question) => !question.active).map((question) => deleteQuestion(restaurantId, question.id)));
+        await Promise.all(
+          archiveFolders.filter((folder) => !folder.active).map((folder) => deleteFolder(restaurantId, folder.id)),
+        );
+        await Promise.all(
+          archiveQuestions
+            .filter((question) => !question.active)
+            .map((question) => deleteQuestion(restaurantId, question.id)),
+        );
       } else if (deleteTarget.kind === "folder") await deleteFolder(restaurantId, deleteTarget.id);
       else if (deleteTarget.kind === "question") await deleteQuestion(restaurantId, deleteTarget.id);
       setDeleteTarget(null);
@@ -376,60 +397,94 @@ export default function QuestionBankFolderPage() {
   };
 
   if (Number.isNaN(currentFolderId)) {
-    return <ErrorState message="Папка не найдена" actionLabel="К списку" onRetry={() => navigate(trainingRoutes.questionBank)} />;
+    return (
+      <ErrorState
+        message="Папка не найдена"
+        actionLabel="К списку"
+        onRetry={() => navigate(trainingRoutes.questionBank)}
+      />
+    );
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Breadcrumbs items={breadcrumbItems} />
-      <h2 className="text-2xl font-semibold">{currentFolder?.name ?? "Папка"}</h2>
+      <DndContext
+        sensors={sortableDnd.sensors}
+        collisionDetection={trainingCollisionDetection}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        onDragStart={handleDragStart}
+        onDragMove={sortableDnd.handleDragMove}
+        onDragEnd={(event) => void handleDragEnd(event)}
+        onDragCancel={finishDrag}
+      >
+        <TrainingBreadcrumbs
+          ariaLabel="Путь к банку вопросов"
+          rootLabel="Банк вопросов"
+          currentFolderId={currentFolderId}
+          folderChain={folderChain}
+          activeObjectId={sortableDnd.activeId}
+          blockedFolderIds={blockedDropFolderIds}
+          rootDropDisabledObjectKinds={["practiceExam", "question"]}
+          onOpenRoot={openQuestionBankRoot}
+          onOpenFolder={openQuestionBankFolder}
+        />
+        <h2 className="text-2xl font-semibold">{currentFolder?.name ?? "Папка"}</h2>
 
-      {canManage ? (
-        <div className="border-subtle bg-surface space-y-3 rounded-2xl border p-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingFolder(null);
-                  setFolderModalOpen(true);
-                }}
-              >
-                Создать папку
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingQuestion(null);
-                  setQuestionModalOpen(true);
-                }}
-              >
-                Создать вопрос
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="text-muted hover:text-red-600"
-                title="Корзина"
-                aria-label="Открыть корзину банка вопросов"
-                leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-                onClick={() => setArchiveOpen(true)}
+        {canManage ? (
+          <div className="border-subtle bg-surface rounded-2xl border p-3">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <Input
+                label="Поиск по вопросам"
+                placeholder="Поиск по вопросам"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
               />
+              <div className="flex gap-2 sm:pb-px">
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => {
+                    setEditingFolder(null);
+                    setFolderModalOpen(true);
+                  }}
+                >
+                  Создать папку
+                </Button>
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => {
+                    setEditingQuestion(null);
+                    setQuestionModalOpen(true);
+                  }}
+                >
+                  Создать вопрос
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="text-muted shrink-0 hover:text-red-600"
+                  title="Корзина"
+                  aria-label="Открыть корзину банка вопросов"
+                  leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                  onClick={() => setArchiveOpen(true)}
+                />
+              </div>
             </div>
           </div>
-          <Input label="Поиск по вопросам" placeholder="Поиск по вопросам" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </div>
-      ) : null}
+        ) : null}
 
-      {foldersState.loading && <LoadingState label="Загрузка папок банка вопросов…" />}
-      {loading && <LoadingState label="Загрузка вопросов…" />}
-      {error && <ErrorState message={error} onRetry={loadQuestions} />}
-      {!foldersState.loading && !loading && currentObjects.length === 0 ? (
-        <EmptyState title="Здесь пока пусто" description="Создайте папку или вопрос." />
-      ) : null}
+        {foldersState.loading && <LoadingState label="Загрузка папок банка вопросов…" />}
+        {loading && <LoadingState label="Загрузка вопросов…" />}
+        {error && <ErrorState message={error} onRetry={loadQuestions} />}
+        {hasLoadedEmptyFolder ? (
+          <EmptyState
+            title="Здесь пока пусто"
+            description={canManage ? "Создайте папку или вопрос." : "В этой папке пока нет вопросов."}
+          />
+        ) : null}
 
-      {currentObjects.length > 0 ? (
-        <DndContext sensors={sortableDnd.sensors} collisionDetection={trainingCollisionDetection} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} onDragStart={handleDragStart} onDragMove={sortableDnd.handleDragMove} onDragEnd={(event) => void handleDragEnd(event)} onDragCancel={finishDrag}>
+        {currentObjects.length > 0 ? (
           <div ref={scrollContainerRef}>
             <SortableContext items={currentObjectIds} strategy={verticalListSortingStrategy}>
               <TrainingObjectList
@@ -457,16 +512,18 @@ export default function QuestionBankFolderPage() {
                     setQuestionModalOpen(true);
                   }
                 }}
-                onMoveObject={(object) => setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) })}
+                onMoveObject={(object) =>
+                  setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) })
+                }
                 onArchiveObject={(object) => void archiveObject(object)}
               />
             </SortableContext>
           </div>
-          <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
-            <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
-          </DragOverlay>
-        </DndContext>
-      ) : null}
+        ) : null}
+        <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
+          <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
+        </DragOverlay>
+      </DndContext>
 
       <TrainingSelectionToolbar
         object={selectedObject}
@@ -532,7 +589,13 @@ export default function QuestionBankFolderPage() {
           mode={editingFolder ? "edit" : "create"}
           restaurantId={restaurantId}
           type="QUESTION_BANK"
-          parentFolder={editingFolder ? (editingFolder.parentId ? (folderMap.get(editingFolder.parentId) ?? null) : null) : currentFolder}
+          parentFolder={
+            editingFolder
+              ? editingFolder.parentId
+                ? (folderMap.get(editingFolder.parentId) ?? null)
+                : null
+              : currentFolder
+          }
           initialFolder={editingFolder}
           onClose={() => setFolderModalOpen(false)}
           onSaved={foldersState.reload}
@@ -565,7 +628,15 @@ export default function QuestionBankFolderPage() {
         onDeleteAll={() => setDeleteTarget({ kind: "all", title: "все элементы корзины" })}
       />
 
-      <ConfirmDialog open={Boolean(deleteTarget)} title="Удалить навсегда" description="Элементы корзины будут удалены безвозвратно." confirmText="Удалить навсегда" confirming={Boolean(actionLoading?.startsWith("delete-"))} onCancel={() => setDeleteTarget(null)} onConfirm={() => void runPermanentDelete()} />
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Удалить навсегда"
+        description="Элементы корзины будут удалены безвозвратно."
+        confirmText="Удалить навсегда"
+        confirming={Boolean(actionLoading?.startsWith("delete-"))}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void runPermanentDelete()}
+      />
 
       <QuestionDeleteGuardModal
         open={Boolean(deleteDialogModel)}
@@ -578,7 +649,8 @@ export default function QuestionBankFolderPage() {
         onHideOnly={() => void handleHideOnly()}
         onOpenExams={() => navigate(trainingRoutes.exams)}
         onOpenExam={(exam) => {
-          if (exam.mode === "PRACTICE" && exam.knowledgeFolderId != null) navigate(trainingRoutes.knowledgeExamRun(exam.knowledgeFolderId, exam.id));
+          if (exam.mode === "PRACTICE" && exam.knowledgeFolderId != null)
+            navigate(trainingRoutes.knowledgeExamRun(exam.knowledgeFolderId, exam.id));
           else navigate(trainingRoutes.examRun(exam.id));
         }}
         onCopyExamList={() => void handleCopyExams()}
