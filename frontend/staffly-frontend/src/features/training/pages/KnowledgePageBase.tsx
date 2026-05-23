@@ -9,6 +9,7 @@ import ErrorState from "../components/ErrorState";
 import KnowledgeHeader from "../components/KnowledgeHeader";
 import LoadingState from "../components/LoadingState";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
+import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingObjectList, { TrainingDragOverlayCard } from "../components/TrainingObjectList";
 import TrainingSelectionToolbar from "../components/TrainingSelectionToolbar";
@@ -35,6 +36,7 @@ import {
 import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto } from "../api/types";
 import {
   centerTrainingDragOverlayOnCursor,
+  buildTrainingFolderChain,
   parseTrainingFolderDropId,
   parseTrainingObjectId,
   sortTrainingObjects,
@@ -63,6 +65,10 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const { restaurantId, canManage } = useTrainingAccess();
   const state = useKnowledgePageState({ currentFolderId, restaurantId: restaurantId ?? undefined, canManage });
   const breadcrumbItems = useKnowledgeBreadcrumbs(state.currentFolder, state.folderMap);
+  const folderChain = useMemo(
+    () => buildTrainingFolderChain(state.currentFolder, state.folderMap),
+    [state.currentFolder, state.folderMap],
+  );
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const sortableDnd = useSortableDnd({ scrollContainerRef });
   const [activeObject, setActiveObject] = useState<TrainingFolderListObject | null>(null);
@@ -353,6 +359,19 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) });
   }, []);
 
+  const openKnowledgeRoot = useCallback(() => {
+    setSelectedObjectId(null);
+    state.navigate(trainingRoutes.knowledge);
+  }, [state]);
+
+  const openKnowledgeFolder = useCallback(
+    (folderId: number) => {
+      setSelectedObjectId(null);
+      state.navigate(trainingRoutes.knowledgeFolder(folderId));
+    },
+    [state],
+  );
+
   const submitMove = useCallback(
     async (folderId: number | null) => {
       if (!moveTarget) return;
@@ -419,8 +438,12 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     setArchiveError(null);
     try {
       if (deleteTarget.kind === "all") {
-        await Promise.all(archiveFolders.filter((folder) => !folder.active).map((folder) => deleteFolder(restaurantId, folder.id)));
-        await Promise.all(archiveItems.filter((item) => !item.active).map((item) => deleteKnowledgeItem(restaurantId, item.id)));
+        await Promise.all(
+          archiveFolders.filter((folder) => !folder.active).map((folder) => deleteFolder(restaurantId, folder.id)),
+        );
+        await Promise.all(
+          archiveItems.filter((item) => !item.active).map((item) => deleteKnowledgeItem(restaurantId, item.id)),
+        );
         await Promise.all(archiveExams.filter((exam) => !exam.active).map((exam) => deleteExam(restaurantId, exam.id)));
       } else if (deleteTarget.kind === "folder") await deleteFolder(restaurantId, deleteTarget.id);
       else if (deleteTarget.kind === "knowledgeItem") await deleteKnowledgeItem(restaurantId, deleteTarget.id);
@@ -449,39 +472,48 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Breadcrumbs items={breadcrumbItems} />
-      <h2 className="text-2xl font-semibold">{state.currentFolder?.name ?? "База знаний"}</h2>
+      <DndContext
+        sensors={sortableDnd.sensors}
+        collisionDetection={trainingCollisionDetection}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        onDragStart={handleDragStart}
+        onDragMove={sortableDnd.handleDragMove}
+        onDragEnd={(event) => void handleDragEnd(event)}
+        onDragCancel={finishDrag}
+      >
+        <TrainingBreadcrumbs
+          currentFolderId={currentFolderId}
+          folderChain={folderChain}
+          activeObjectId={sortableDnd.activeId}
+          blockedFolderIds={blockedDropFolderIds}
+          onOpenRoot={openKnowledgeRoot}
+          onOpenFolder={openKnowledgeFolder}
+        />
+        <h2 className="text-2xl font-semibold">{state.currentFolder?.name ?? "База знаний"}</h2>
 
-      <KnowledgeHeader
-        canManage={canManage}
-        onOpenArchive={() => setArchiveOpen(true)}
-        positions={state.visiblePositions}
-        positionFilter={state.positionFilter}
-        onChangePositionFilter={state.setPositionFilter}
-        onCreateFolder={state.openCreateFolderModal}
-        onCreateCard={state.openCreateItemModal}
-        onCreateTest={state.openCreateExamModal}
-      />
+        <KnowledgeHeader
+          canManage={canManage}
+          onOpenArchive={() => setArchiveOpen(true)}
+          positions={state.visiblePositions}
+          positionFilter={state.positionFilter}
+          onChangePositionFilter={state.setPositionFilter}
+          onCreateFolder={state.openCreateFolderModal}
+          onCreateCard={state.openCreateItemModal}
+          onCreateTest={state.openCreateExamModal}
+        />
 
-      {state.foldersState.loading && <LoadingState label="Загрузка папок базы знаний…" />}
-      {state.foldersState.error && <ErrorState message={state.foldersState.error} onRetry={state.foldersState.reload} />}
-      {state.folderError && <ErrorState message={state.folderError} onRetry={state.foldersState.reload} />}
-      {state.itemsError && <ErrorState message={state.itemsError} onRetry={state.loadItems} />}
-      {state.examsError && <ErrorState message={state.examsError} onRetry={state.loadPracticeExams} />}
-      {actionError && <ErrorState message={actionError} onRetry={reloadVisible} />}
+        {state.foldersState.loading && <LoadingState label="Загрузка папок базы знаний…" />}
+        {state.foldersState.error && (
+          <ErrorState message={state.foldersState.error} onRetry={state.foldersState.reload} />
+        )}
+        {state.folderError && <ErrorState message={state.folderError} onRetry={state.foldersState.reload} />}
+        {state.itemsError && <ErrorState message={state.itemsError} onRetry={state.loadItems} />}
+        {state.examsError && <ErrorState message={state.examsError} onRetry={state.loadPracticeExams} />}
+        {actionError && <ErrorState message={actionError} onRetry={reloadVisible} />}
 
-      {(state.itemsLoading || state.examsLoading) && <LoadingState label="Загрузка материалов…" />}
+        {(state.itemsLoading || state.examsLoading) && <LoadingState label="Загрузка материалов…" />}
 
-      {!state.foldersState.loading && !state.itemsLoading && !state.examsLoading && currentObjects.length > 0 ? (
-        <DndContext
-          sensors={sortableDnd.sensors}
-          collisionDetection={trainingCollisionDetection}
-          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-          onDragStart={handleDragStart}
-          onDragMove={sortableDnd.handleDragMove}
-          onDragEnd={(event) => void handleDragEnd(event)}
-          onDragCancel={finishDrag}
-        >
+        {!state.foldersState.loading && !state.itemsLoading && !state.examsLoading && currentObjects.length > 0 ? (
           <div ref={scrollContainerRef}>
             <SortableContext items={currentObjectIds} strategy={verticalListSortingStrategy}>
               <TrainingObjectList
@@ -501,20 +533,20 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
                 onMoveObject={startMove}
                 onArchiveObject={(object) => void archiveObject(object)}
                 onRunPracticeExam={(exam) => {
-                  if (currentFolderId != null) state.navigate(trainingRoutes.knowledgeExamRun(currentFolderId, exam.id));
+                  if (currentFolderId != null)
+                    state.navigate(trainingRoutes.knowledgeExamRun(currentFolderId, exam.id));
                 }}
               />
             </SortableContext>
           </div>
-          <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
-            <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
-          </DragOverlay>
-        </DndContext>
-      ) : null}
+        ) : null}
 
-      {state.isCompletelyEmpty && (
-        <EmptyState title="Пока пусто" description="Создайте папку или карточку." />
-      )}
+        {state.isCompletelyEmpty && <EmptyState title="Пока пусто" description="Создайте папку или карточку." />}
+
+        <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
+          <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
+        </DragOverlay>
+      </DndContext>
 
       <KnowledgeModals
         restaurantId={state.restaurantId}
