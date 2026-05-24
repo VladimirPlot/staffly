@@ -81,3 +81,5 @@ export type ScheduleData = {
 };
 
 export type ScheduleCellKey = `${number}:${string}`;
+
+export type SchedulePreferenceHintsByCellKey = Record<string, import("./api").SchedulePreferenceCellDto[]>;

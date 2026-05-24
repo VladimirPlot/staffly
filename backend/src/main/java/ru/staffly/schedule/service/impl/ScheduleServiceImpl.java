@@ -18,17 +18,12 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
-import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleRow;
-import ru.staffly.schedule.model.SchedulePreferenceCell;
-import ru.staffly.schedule.model.SchedulePreferenceSubmission;
-import ru.staffly.schedule.model.SchedulePreferenceType;
 import ru.staffly.schedule.model.ScheduleShiftMode;
 import ru.staffly.schedule.model.ScheduleShiftRequest;
 import ru.staffly.schedule.model.ScheduleShiftRequestType;
 import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.model.ScheduleStatus;
-import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -55,7 +50,6 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleShiftRequestRepository shiftRequests;
-    private final SchedulePreferenceSubmissionRepository preferenceSubmissions;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -322,39 +316,6 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("Внести пожелания можно только после закрытия сбора пожеланий");
         }
 
-        schedule.getRows().forEach(row -> row.getCells().size());
-        List<LocalDate> days = collectDays(schedule.getStartDate(), schedule.getEndDate());
-        Set<LocalDate> validDays = new HashSet<>(days);
-        Map<Long, ScheduleRow> rowsByMemberId = schedule.getRows().stream()
-                .collect(Collectors.toMap(ScheduleRow::getMemberId, row -> row, (left, right) -> left));
-
-        List<SchedulePreferenceSubmission> submissions = preferenceSubmissions.findWithCellsByScheduleId(scheduleId);
-        for (SchedulePreferenceSubmission submission : submissions) {
-            if (submission.getMember() == null) {
-                continue;
-            }
-            ScheduleRow row = rowsByMemberId.get(submission.getMember().getId());
-            if (row == null) {
-                continue;
-            }
-            Map<LocalDate, SchedulePreferenceCell> lastFullDayByDay = submission.getCells().stream()
-                    .filter(SchedulePreferenceCell::isFullDay)
-                    .filter(cell -> cell.getDay() != null && validDays.contains(cell.getDay()))
-                    .sorted(Comparator
-                            .comparing(SchedulePreferenceCell::getDay)
-                            .thenComparingInt(SchedulePreferenceCell::getSortOrder)
-                            .thenComparing(cell -> Optional.ofNullable(cell.getId()).orElse(Long.MAX_VALUE)))
-                    .collect(Collectors.toMap(
-                            SchedulePreferenceCell::getDay,
-                            cell -> cell,
-                            (previous, current) -> current,
-                            LinkedHashMap::new
-                    ));
-            for (SchedulePreferenceCell preferenceCell : lastFullDayByDay.values()) {
-                applyPreferenceCellValue(row, preferenceCell.getDay(), preferenceCell.getType());
-            }
-        }
-
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
 
@@ -363,32 +324,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                 saved,
                 actorUserId,
                 ScheduleAuditAction.PREFERENCES_APPLIED,
-                "Пожелания сотрудников внесены в черновик графика"
+                "Пожелания сотрудников подготовлены для ручной сборки графика"
         );
-        saved.getRows().forEach(row -> row.getCells().size());
-        return toDto(saved, days);
-    }
-
-    private void applyPreferenceCellValue(ScheduleRow row, LocalDate day, SchedulePreferenceType type) {
-        String value = mapPreferenceTypeToScheduleCellValue(type);
-        Map<LocalDate, ScheduleCell> cellsByDay = row.getCells().stream()
-                .collect(Collectors.toMap(ScheduleCell::getDay, cell -> cell, (left, right) -> left));
-        ScheduleCell existing = cellsByDay.get(day);
-        if (existing == null || !row.getCells().contains(existing)) {
-            row.getCells().add(ScheduleCell.builder().row(row).day(day).value(value).build());
-        } else {
-            existing.setValue(value);
-        }
-    }
-
-    private String mapPreferenceTypeToScheduleCellValue(SchedulePreferenceType type) {
-        if (type == null) {
-            throw new BadRequestException("Preference cell type is required");
-        }
-        return switch (type) {
-            case AVAILABLE, PREFER_WORK -> "+";
-            case UNAVAILABLE, PREFER_DAY_OFF -> "-";
-        };
+        return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
     @Override

@@ -114,7 +114,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             )}
             {canApplySchedulePreferences(schedule.status) && (
               <Button variant="outline" onClick={onApplyPreferences} disabled={lifecycleDisabled}>
-                {lifecycleAction === "applyPreferences" ? "Внесение…" : "Внести в черновик"}
+                {lifecycleAction === "applyPreferences" ? "Подготовка…" : "Перейти к сборке"}
               </Button>
             )}
             {canPublishSchedule(schedule.status) && (
