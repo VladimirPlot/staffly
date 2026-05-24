@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
-import type { InviteRole } from "../../invitations/api";
-import { allowedLevelsFor } from "../utils/memberUtils";
+import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 
 export function usePositions(restaurantId: number | null) {
   const [allPositions, setAllPositions] = useState<PositionDto[]>([]);
@@ -15,8 +14,8 @@ export function usePositions(restaurantId: number | null) {
     try {
       const positions = await listPositions(restaurantId, { includeInactive: false });
       setAllPositions(positions);
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось загрузить должности");
+    } catch (error: unknown) {
+      setError(getFriendlyEmployeeErrorMessage(error, "Не удалось загрузить должности"));
       setAllPositions([]);
     } finally {
       setLoading(false);
@@ -26,14 +25,6 @@ export function usePositions(restaurantId: number | null) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  const getInvitePositions = useCallback(
-    (role: InviteRole) => {
-      const allowedLevels = allowedLevelsFor(role);
-      return allPositions.filter((position) => position.active && allowedLevels.includes(position.level));
-    },
-    [allPositions]
-  );
 
   const activePositions = useMemo(
     () => allPositions.filter((position) => position.active),
@@ -45,7 +36,6 @@ export function usePositions(restaurantId: number | null) {
     error,
     allPositions,
     activePositions,
-    getInvitePositions,
     refresh,
   };
 }

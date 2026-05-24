@@ -1,6 +1,7 @@
 import React from "react";
 
-import type { ScheduleData, ScheduleCellKey, ShiftMode } from "../types";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
+import type { ScheduleCellKey, ScheduleData, ScheduleDay, ScheduleRow, ShiftMode } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import {
   MINUTE_STEPS,
@@ -22,10 +23,45 @@ const PLACEHOLDERS: Record<ShiftMode, string> = {
   NONE: "Свободный ввод",
 };
 
+const STICKY_COL_SHADOW = "shadow-[8px_0_10px_-10px_rgba(0,0,0,0.45)]"; // справа тень у липкого столбца
+const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // снизу тень у липких строк
+
 type Props = {
   data: ScheduleData | null | undefined;
   onChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
   readOnly?: boolean;
+};
+
+type CellValues = ScheduleData["cellValues"];
+
+const EMPTY_DAYS: ScheduleDay[] = [];
+const EMPTY_ROWS: ScheduleRow[] = [];
+const EMPTY_CELL_VALUES: CellValues = {};
+
+type ScheduleTableHeaderProps = {
+  title: string;
+  days: ScheduleDay[];
+};
+
+type ScheduleTableRowProps = {
+  row: ScheduleRow;
+  days: ScheduleDay[];
+  cellValues: CellValues;
+  memberShiftCount: number;
+  readOnly: boolean;
+  shiftMode: ShiftMode;
+  placeholder: string;
+  onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+};
+
+type ScheduleCellEditorProps = {
+  memberId: number;
+  day: string;
+  value: string;
+  shiftMode: ShiftMode;
+  placeholder: string;
+  readOnly: boolean;
+  onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
 };
 
 type EditableCellProps = {
@@ -56,65 +92,40 @@ type ArrivalSelectorProps = {
   onCommit: (value: string) => void;
 };
 
-const STICKY_COL_SHADOW = "shadow-[8px_0_10px_-10px_rgba(0,0,0,0.45)]"; // справа тень у липкого столбца
-const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // снизу тень у липких строк
-
 const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) => {
-  const safeData: ScheduleData = data ?? {
-    title: "",
-    config: {
-      startDate: "",
-      endDate: "",
-      positionIds: [],
-      showFullName: false,
-      shiftMode: "FULL",
-    },
-    days: [],
-    rows: [],
-    cellValues: {},
-  };
+  const shiftMode = data?.config.shiftMode ?? "FULL";
+  const days = data?.days ?? EMPTY_DAYS;
+  const rows = data?.rows ?? EMPTY_ROWS;
+  const cellValues = data?.cellValues ?? EMPTY_CELL_VALUES;
 
-  const { days, rows, title, config } = safeData;
+  const { memberShiftCounts, dayShiftCounts, totalShifts } = React.useMemo(() => {
+    const nextMemberShiftCounts = rows.map(() => 0);
+    const nextDayShiftCounts = days.map(() => 0);
+    let nextTotalShifts = 0;
 
-  const memberShiftCounts = React.useMemo(() => {
-    return rows.map((row) =>
-      days.reduce((acc, day) => {
-        const value = safeData.cellValues[`${row.memberId}:${day.date}`] ?? "";
-        return acc + (hasCompleteRangeValue(value) ? 1 : 0);
-      }, 0)
-    );
-  }, [days, rows, safeData.cellValues]);
+    rows.forEach((row, rowIndex) => {
+      days.forEach((day, dayIndex) => {
+        const value = cellValues[`${row.memberId}:${day.date}`] ?? "";
+        if (!hasCompleteRangeValue(value)) return;
+        nextMemberShiftCounts[rowIndex] += 1;
+        nextDayShiftCounts[dayIndex] += 1;
+        nextTotalShifts += 1;
+      });
+    });
 
-  const dayShiftCounts = React.useMemo(() => {
-    return days.map((day) =>
-      rows.reduce((acc, row) => {
-        const value = safeData.cellValues[`${row.memberId}:${day.date}`] ?? "";
-        return acc + (hasCompleteRangeValue(value) ? 1 : 0);
-      }, 0)
-    );
-  }, [days, rows, safeData.cellValues]);
+    return {
+      memberShiftCounts: nextMemberShiftCounts,
+      dayShiftCounts: nextDayShiftCounts,
+      totalShifts: nextTotalShifts,
+    };
+  }, [cellValues, days, rows]);
 
-  const totalShifts = React.useMemo(
-    () => dayShiftCounts.reduce((acc, value) => acc + value, 0),
-    [dayShiftCounts]
-  );
-
-  const handleBlur = React.useCallback(
-    (key: ScheduleCellKey, value: string) => {
+  const handleCellValueChange = React.useCallback(
+    (memberId: number, day: string, value: string, options?: { commit?: boolean }) => {
       if (readOnly) return;
-      const normalized = normalizeCellValue(value, config.shiftMode);
-      onChange(key, normalized, { commit: true });
+      onChange(`${memberId}:${day}`, value, options);
     },
-    [config.shiftMode, onChange, readOnly]
-  );
-
-  const commitValue = React.useCallback(
-    (key: ScheduleCellKey, value: string) => {
-      if (readOnly) return;
-      const normalized = normalizeCellValue(value, config.shiftMode);
-      onChange(key, normalized, { commit: true });
-    },
-    [config.shiftMode, onChange, readOnly]
+    [onChange, readOnly],
   );
 
   const gridTemplateColumns = React.useMemo(() => {
@@ -147,181 +158,276 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
         className="grid border border-subtle bg-surface"
         style={{ gridTemplateColumns, width: "max-content", minWidth: "100%" }}
       >
-        {/* Заголовок таблицы (НЕ sticky) */}
-        <div
-          className="flex items-center justify-center border-b border-subtle px-3 py-3 text-center font-semibold"
-          style={{ gridColumn: `1 / span ${days.length + 2}` }}
-        >
-          {title}
-        </div>
+        <ScheduleTableHeader title={data.title} days={days} />
 
-        {/* ====== Линия 1: День недели (sticky top-0) ====== */}
-        <div
-          className={[
-            "sticky left-0 top-0 z-50 flex h-10 items-center justify-start",
-            "border-b border-r border-subtle bg-surface px-3",
-            "text-xs font-semibold text-default",
-            STICKY_COL_SHADOW,
-            STICKY_ROW_SHADOW,
-          ].join(" ")}
-        >
-          День недели
-        </div>
-
-        {days.map((day) => (
-          <div
-            key={`weekday-${day.date}`}
-            className={[
-              "sticky top-0 z-40 flex h-10 items-center justify-center",
-              "border-b border-l border-subtle bg-surface px-2",
-              "text-xs font-medium text-muted",
-              STICKY_ROW_SHADOW,
-            ].join(" ")}
-          >
-            {day.weekdayLabel}
-          </div>
+        {rows.map((row, rowIndex) => (
+          <ScheduleTableRow
+            key={row.id ?? row.memberId ?? rowIndex}
+            row={row}
+            days={days}
+            cellValues={cellValues}
+            memberShiftCount={memberShiftCounts[rowIndex] ?? 0}
+            readOnly={readOnly}
+            shiftMode={shiftMode}
+            placeholder={PLACEHOLDERS[shiftMode]}
+            onCellValueChange={handleCellValueChange}
+          />
         ))}
 
-        <div
-          className={[
-            "sticky top-0 z-40 flex h-10 items-center justify-center",
-            "border-b border-l border-subtle bg-surface px-2 text-center",
-            "text-xs font-semibold text-default",
-            STICKY_ROW_SHADOW,
-          ].join(" ")}
-        >
-          Кол-во смен
-        </div>
-
-        {/* ====== Линия 2: День месяца (sticky top-10) ====== */}
-        <div
-          className={[
-            "sticky left-0 top-10 z-50 flex h-10 items-center justify-start",
-            "border-b border-r border-subtle bg-surface px-3",
-            "text-xs font-semibold text-default",
-            STICKY_COL_SHADOW,
-            STICKY_ROW_SHADOW,
-          ].join(" ")}
-        >
-          День месяца
-        </div>
-
-        {days.map((day) => (
-          <div
-            key={`day-${day.date}`}
-            className={[
-              "sticky top-10 z-40 flex h-10 items-center justify-center",
-              "border-b border-l border-subtle bg-surface px-2",
-              "text-xs text-default",
-              STICKY_ROW_SHADOW,
-            ].join(" ")}
-          >
-            {day.dayNumber}
-          </div>
-        ))}
-
-        <div
-          className={[
-            "sticky top-10 z-40 flex h-10 items-center justify-center",
-            "border-b border-l border-subtle bg-surface px-2 text-center",
-            "text-xs font-medium text-default",
-            STICKY_ROW_SHADOW,
-          ].join(" ")}
-        >
-          Итого
-        </div>
-
-        {/* ====== Данные ====== */}
-        {rows.map((row, rowIndex) => {
-          const rowKey = row.id ?? row.memberId ?? rowIndex;
-
-          return (
-            <React.Fragment key={rowKey}>
-              {/* Липкий столбец с именем */}
-              <div
-                className={[
-                  "sticky left-0 z-30 flex flex-col justify-center",
-                  "border-b border-r border-subtle bg-surface px-3 py-3",
-                  "text-sm font-medium text-strong",
-                  STICKY_COL_SHADOW,
-                ].join(" ")}
-              >
-                <span className="truncate">{row.displayName}</span>
-                {row.positionName && (
-                  <span className="truncate text-xs font-normal text-muted">
-                    {row.positionName}
-                  </span>
-                )}
-              </div>
-
-              {days.map((day) => {
-                const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
-                const value = data.cellValues[key] ?? "";
-                const missingEnd = hasStartWithoutEndValue(value);
-
-                return (
-                  <div
-                    key={key}
-                    className="border-b border-l border-subtle px-1.5 py-1 text-sm"
-                  >
-                    {readOnly ? (
-                      <ReadonlyCell value={value} shiftMode={config.shiftMode} />
-                    ) : (
-                      <EditableCell
-                        value={value}
-                        shiftMode={config.shiftMode}
-                        placeholder={PLACEHOLDERS[config.shiftMode]}
-                        onInputChange={(newValue) => onChange(key, newValue)}
-                        onCommit={(newValue) => commitValue(key, newValue)}
-                        onBlur={(rawValue) => handleBlur(key, rawValue)}
-                        highlightEnd={!readOnly && missingEnd}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-
-              <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
-                <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
-                  {memberShiftCounts[rowIndex] ?? 0}
-                </div>
-              </div>
-            </React.Fragment>
-          );
-        })}
-
-        {/* Строка с количеством сотрудников в смене */}
-        <div
-          className={[
-            "sticky left-0 z-20 flex flex-col justify-center",
-            "border-b border-r border-subtle bg-surface px-3 py-3",
-            "text-sm font-semibold text-strong",
-            STICKY_COL_SHADOW,
-          ].join(" ")}
-        >
-          Кол-во сотрудников
-        </div>
-
-        {days.map((day, index) => (
-          <div
-            key={`day-count-${day.date}`}
-            className="border-b border-l border-subtle px-1.5 py-1 text-sm"
-          >
-            <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
-              {dayShiftCounts[index] ?? 0}
-            </div>
-          </div>
-        ))}
-
-        <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
-          <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
-            {totalShifts}
-          </div>
-        </div>
+        <ScheduleTableFooter days={days} dayShiftCounts={dayShiftCounts} totalShifts={totalShifts} />
       </div>
     </div>
   );
 };
+
+const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, days }: ScheduleTableHeaderProps) {
+  return (
+    <>
+      {/* Заголовок таблицы (НЕ sticky) */}
+      <div
+        className="flex items-center justify-center border-b border-subtle px-3 py-3 text-center font-semibold"
+        style={{ gridColumn: `1 / span ${days.length + 2}` }}
+      >
+        {title}
+      </div>
+
+      {/* ====== Линия 1: День недели (sticky top-0) ====== */}
+      <div
+        className={[
+          "sticky left-0 top-0 z-50 flex h-10 items-center justify-start",
+          "border-b border-r border-subtle bg-surface px-3",
+          "text-xs font-semibold text-default",
+          STICKY_COL_SHADOW,
+          STICKY_ROW_SHADOW,
+        ].join(" ")}
+      >
+        День недели
+      </div>
+
+      {days.map((day) => (
+        <div
+          key={`weekday-${day.date}`}
+          className={[
+            "sticky top-0 z-40 flex h-10 items-center justify-center",
+            "border-b border-l border-subtle bg-surface px-2",
+            "text-xs font-medium text-muted",
+            STICKY_ROW_SHADOW,
+          ].join(" ")}
+        >
+          {day.weekdayLabel}
+        </div>
+      ))}
+
+      <div
+        className={[
+          "sticky top-0 z-40 flex h-10 items-center justify-center",
+          "border-b border-l border-subtle bg-surface px-2 text-center",
+          "text-xs font-semibold text-default",
+          STICKY_ROW_SHADOW,
+        ].join(" ")}
+      >
+        Кол-во смен
+      </div>
+
+      {/* ====== Линия 2: День месяца (sticky top-10) ====== */}
+      <div
+        className={[
+          "sticky left-0 top-10 z-50 flex h-10 items-center justify-start",
+          "border-b border-r border-subtle bg-surface px-3",
+          "text-xs font-semibold text-default",
+          STICKY_COL_SHADOW,
+          STICKY_ROW_SHADOW,
+        ].join(" ")}
+      >
+        День месяца
+      </div>
+
+      {days.map((day) => (
+        <div
+          key={`day-${day.date}`}
+          className={[
+            "sticky top-10 z-40 flex h-10 items-center justify-center",
+            "border-b border-l border-subtle bg-surface px-2",
+            "text-xs text-default",
+            STICKY_ROW_SHADOW,
+          ].join(" ")}
+        >
+          {day.dayNumber}
+        </div>
+      ))}
+
+      <div
+        className={[
+          "sticky top-10 z-40 flex h-10 items-center justify-center",
+          "border-b border-l border-subtle bg-surface px-2 text-center",
+          "text-xs font-medium text-default",
+          STICKY_ROW_SHADOW,
+        ].join(" ")}
+      >
+        Итого
+      </div>
+    </>
+  );
+});
+
+const ScheduleTableRow = React.memo(
+  function ScheduleTableRow({
+    row,
+    days,
+    cellValues,
+    memberShiftCount,
+    readOnly,
+    shiftMode,
+    placeholder,
+    onCellValueChange,
+  }: ScheduleTableRowProps) {
+    return (
+      <>
+        {/* Липкий столбец с именем */}
+        <div
+          className={[
+            "sticky left-0 z-30 flex flex-col justify-center",
+            "border-b border-r border-subtle bg-surface px-3 py-3",
+            "text-sm font-medium text-strong",
+            STICKY_COL_SHADOW,
+          ].join(" ")}
+        >
+          <span className="truncate">{row.displayName}</span>
+          {row.positionName && <span className="truncate text-xs font-normal text-muted">{row.positionName}</span>}
+        </div>
+
+        {days.map((day) => {
+          const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
+          return (
+            <ScheduleCellEditor
+              key={key}
+              memberId={row.memberId}
+              day={day.date}
+              value={cellValues[key] ?? ""}
+              shiftMode={shiftMode}
+              placeholder={placeholder}
+              readOnly={readOnly}
+              onCellValueChange={onCellValueChange}
+            />
+          );
+        })}
+
+        <ShiftCountCell value={memberShiftCount} />
+      </>
+    );
+  },
+  (prev, next) => {
+    if (
+      prev.row !== next.row ||
+      prev.days !== next.days ||
+      prev.memberShiftCount !== next.memberShiftCount ||
+      prev.readOnly !== next.readOnly ||
+      prev.shiftMode !== next.shiftMode ||
+      prev.placeholder !== next.placeholder ||
+      prev.onCellValueChange !== next.onCellValueChange
+    ) {
+      return false;
+    }
+
+    return prev.days.every((day) => {
+      const key: ScheduleCellKey = `${prev.row.memberId}:${day.date}`;
+      return (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "");
+    });
+  },
+);
+
+const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
+  memberId,
+  day,
+  value,
+  shiftMode,
+  placeholder,
+  readOnly,
+  onCellValueChange,
+}: ScheduleCellEditorProps) {
+  const handleInputChange = React.useCallback(
+    (newValue: string) => onCellValueChange(memberId, day, newValue),
+    [day, memberId, onCellValueChange],
+  );
+
+  const handleCommit = React.useCallback(
+    (newValue: string) => {
+      const normalized = normalizeCellValue(newValue, shiftMode);
+      onCellValueChange(memberId, day, normalized, { commit: true });
+    },
+    [day, memberId, onCellValueChange, shiftMode],
+  );
+
+  const handleBlur = React.useCallback(
+    (rawValue: string) => {
+      const normalized = normalizeCellValue(rawValue, shiftMode);
+      onCellValueChange(memberId, day, normalized, { commit: true });
+    },
+    [day, memberId, onCellValueChange, shiftMode],
+  );
+
+  const missingEnd = shiftMode === "FULL" && hasStartWithoutEndValue(value);
+
+  return (
+    <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
+      {readOnly ? (
+        <ReadonlyCell value={value} shiftMode={shiftMode} />
+      ) : (
+        <EditableCell
+          value={value}
+          shiftMode={shiftMode}
+          placeholder={placeholder}
+          onInputChange={handleInputChange}
+          onCommit={handleCommit}
+          onBlur={handleBlur}
+          highlightEnd={missingEnd}
+        />
+      )}
+    </div>
+  );
+});
+
+const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
+  days,
+  dayShiftCounts,
+  totalShifts,
+}: {
+  days: ScheduleDay[];
+  dayShiftCounts: number[];
+  totalShifts: number;
+}) {
+  return (
+    <>
+      {/* Строка с количеством сотрудников в смене */}
+      <div
+        className={[
+          "sticky left-0 z-20 flex flex-col justify-center",
+          "border-b border-r border-subtle bg-surface px-3 py-3",
+          "text-sm font-semibold text-strong",
+          STICKY_COL_SHADOW,
+        ].join(" ")}
+      >
+        Кол-во сотрудников
+      </div>
+
+      {days.map((day, index) => (
+        <ShiftCountCell key={`day-count-${day.date}`} value={dayShiftCounts[index] ?? 0} />
+      ))}
+
+      <ShiftCountCell value={totalShifts} />
+    </>
+  );
+});
+
+const ShiftCountCell = React.memo(function ShiftCountCell({ value }: { value: number }) {
+  return (
+    <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
+      <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
+        {value}
+      </div>
+    </div>
+  );
+});
 
 function EditableCell({
   value,
@@ -429,27 +535,23 @@ function IntervalSelector({ value, onCommit, highlightEnd }: IntervalSelectorPro
         onHourChange={(hour) => updateRange("to", hour, hour === null ? null : to.minute ?? 0)}
         onMinuteChange={(minute) => updateRange("to", to.hour, minute)}
       />
-      {showHighlight && (
-        <span className="text-[10px] font-medium text-amber-600">Укажите время ухода</span>
-      )}
+      {showHighlight && <span className="text-[10px] font-medium text-amber-600">Укажите время ухода</span>}
     </div>
   );
 }
 
 function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSelectorProps) {
   const selectedHour = value.hour ?? "";
-  const selectedMinute =
-    value.hour === null ? "" : normalizeMinuteValue(value.hour, value.minute ?? 0);
+  const selectedMinute = value.hour === null ? "" : normalizeMinuteValue(value.hour, value.minute ?? 0);
 
   const baseClasses =
     "h-8 w-full min-w-[3.25rem] rounded-lg border border-subtle bg-surface px-1 text-center text-base focus:outline-none focus:ring-2 ring-default";
-  const highlightClasses = highlight
-    ? "border-amber-400 bg-amber-50 ring-1 ring-amber-200"
-    : "";
+  const highlightClasses = highlight ? "border-amber-400 bg-amber-50 ring-1 ring-amber-200" : "";
 
   return (
     <div className="flex w-full items-center justify-center gap-1">
-      <select
+      <DropdownSelect
+        aria-label="Часы"
         value={selectedHour}
         onChange={(event) => {
           const rawValue = event.target.value;
@@ -463,9 +565,10 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
             {String(hour).padStart(2, "0")}
           </option>
         ))}
-      </select>
+      </DropdownSelect>
 
-      <select
+      <DropdownSelect
+        aria-label="Минуты"
         value={selectedMinute}
         onChange={(event) => {
           const rawValue = event.target.value;
@@ -481,7 +584,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
             {String(minute).padStart(2, "0")}
           </option>
         ))}
-      </select>
+      </DropdownSelect>
     </div>
   );
 }

@@ -15,6 +15,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
@@ -70,7 +71,18 @@ public class MeController {
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/memberships")
     public List<MyMembershipDto> memberships(@AuthenticationPrincipal UserPrincipal principal) {
-        return members.findMembershipsDtoByUserId(principal.userId());
+        return members.findMembershipsByUserIdWithRestaurantAndPosition(principal.userId())
+                .stream()
+                .map(member -> new MyMembershipDto(
+                        member.getRestaurant().getId(),
+                        member.getRestaurant().getName(),
+                        member.getRestaurant().getDescription(),
+                        member.getRestaurant().getTimezone(),
+                        member.getRestaurant().isLocked(),
+                        member.getRole(),
+                        member.getPosition() == null ? java.util.Set.of() : PositionSpecializations.sortedCopy(member.getPosition().getSpecializations())
+                ))
+                .toList();
     }
 
     private static String withBust(String url, LocalDateTime updatedAt) {

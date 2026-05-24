@@ -1,4 +1,4 @@
-import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto, TrainingQuestionDto } from "./types";
+import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto } from "./types";
 import { bySortOrderAndName } from "../utils/sort";
 
 export function mapFoldersForUi(folders: TrainingFolderDto[]): TrainingFolderDto[] {
@@ -6,10 +6,6 @@ export function mapFoldersForUi(folders: TrainingFolderDto[]): TrainingFolderDto
 }
 
 export function mapKnowledgeItemsForUi(items: TrainingKnowledgeItemDto[]): TrainingKnowledgeItemDto[] {
-  return [...items].sort(bySortOrderAndName);
-}
-
-export function mapQuestionsForUi(items: TrainingQuestionDto[]): TrainingQuestionDto[] {
   return [...items].sort(bySortOrderAndName);
 }
 

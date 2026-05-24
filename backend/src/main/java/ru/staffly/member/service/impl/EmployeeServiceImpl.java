@@ -22,11 +22,14 @@ import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.responsibility.MemberResponsibilityHandoffService;
 import ru.staffly.member.service.EmployeeService;
+import ru.staffly.member.service.policy.MemberRemovalPolicyService;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
+import ru.staffly.training.service.CertificationAudienceSyncService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
@@ -52,6 +55,9 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final InvitationMapper invitationMapper;
     private final MemberMapper memberMapper;
     private final SecurityService security;
+    private final CertificationAudienceSyncService certificationAudienceSyncService;
+    private final MemberRemovalPolicyService memberRemovalPolicyService;
+    private final MemberResponsibilityHandoffService memberResponsibilityHandoffService;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -79,14 +85,12 @@ public class EmployeeServiceImpl implements EmployeeService {
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        if (req == null || !isValidContact(req.phoneOrEmail())) {
-            throw new BadRequestException("Invalid phoneOrEmail");
+        if (req == null || !isPhone(req.phone())) {
+            throw new BadRequestException("Invalid phone");
         }
 
         // нормализуем для консистентности
-        String contact = isEmail(req.phoneOrEmail())
-                ? normalizeEmail(req.phoneOrEmail())
-                : normalizePhone(req.phoneOrEmail());
+        String contact = normalizePhone(req.phone());
 
         // уже есть активный инвайт?
         if (invitations.existsInviteForContact(restaurantId, contact, InvitationStatus.PENDING)) {
@@ -94,34 +98,24 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
 
         // если контакт уже член ресторана — конфликт
-        users.findByPhoneOrEmail(contact).ifPresent(u -> {
+        users.findByPhone(contact).ifPresent(u -> {
             if (members.existsByRestaurantIdAndUserId(restaurantId, u.getId())) {
                 throw new ConflictException("User already a member");
             }
         });
 
-        if (req.role() == null) throw new BadRequestException("Role is required");
-        RestaurantRole desiredRole = req.role();
+        Position desiredPosition = positions.findById(req.positionId())
+                .orElseThrow(() -> new NotFoundException("Position not found: " + req.positionId()));
+        if (!desiredPosition.getRestaurant().getId().equals(restaurantId) || !desiredPosition.isActive()) {
+            throw new BadRequestException("Position is not in this restaurant or inactive");
+        }
+
+        RestaurantRole desiredRole = desiredPosition.getLevel();
 
         // права приглашающего: MANAGER может приглашать только STAFF
         boolean inviterIsAdmin = security.isAdmin(currentUserId, restaurantId);
         if (!inviterIsAdmin && desiredRole != RestaurantRole.STAFF) {
-            throw new ForbiddenException("Managers can invite only STAFF role");
-        }
-
-        Position desiredPosition = null;
-        if (req.positionId() != null) {
-            desiredPosition = positions.findById(req.positionId())
-                    .orElseThrow(() -> new NotFoundException("Position not found: " + req.positionId()));
-            if (!desiredPosition.getRestaurant().getId().equals(restaurantId) || !desiredPosition.isActive()) {
-                throw new BadRequestException("Position is not in this restaurant or inactive");
-            }
-
-            // согласованность уровней: позиция не должна быть «выше» роли
-            // ADMIN >= MANAGER >= STAFF
-            if (!isPositionCompatibleWithRole(desiredPosition.getLevel(), desiredRole)) {
-                throw new ConflictException("Position level is not compatible with invited role");
-            }
+            throw new ForbiddenException("Managers can invite only STAFF positions");
         }
 
         String token = genToken(); // дефолт 24 байта
@@ -218,6 +212,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         inv.setStatus(InvitationStatus.ACCEPTED);
         invitations.save(inv);
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
 
         return memberMapper.toDto(m);
     }
@@ -308,46 +303,24 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         member.setPosition(position);
         member = members.save(member);
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
         return memberMapper.toDto(member);
     }
 
     @Override
     @Transactional
     public void removeMember(Long restaurantId, Long memberId, Long currentUserId) {
-        security.assertMember(currentUserId, restaurantId);
-
         RestaurantMember targetMember = members.findById(memberId)
                 .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-        if (!targetMember.getRestaurant().getId().equals(restaurantId)) {
-            throw new BadRequestException("Member belongs to another restaurant");
+
+        memberRemovalPolicyService.assertCanCompleteRemoval(restaurantId, currentUserId, targetMember);
+
+        if (targetMember.getUser() != null) {
+            memberResponsibilityHandoffService.assertNoBlockingResponsibilities(restaurantId, targetMember.getUser().getId());
         }
 
-        RestaurantMember actor = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
-                .orElseThrow(() -> new ForbiddenException("Not a member"));
-
-        boolean selfRemoval = actor.getId().equals(targetMember.getId());
-
-        if (!selfRemoval) {
-            switch (actor.getRole()) {
-                case ADMIN -> {
-                }
-                case MANAGER -> {
-                    if (targetMember.getRole() != RestaurantRole.STAFF) {
-                        throw new ForbiddenException("Managers can remove only STAFF members");
-                    }
-                }
-                case STAFF -> throw new ForbiddenException("Staff can remove only themselves");
-            }
-        }
-
-        // Нельзя удалить последнего ADMIN
-        if (targetMember.getRole() == RestaurantRole.ADMIN) {
-            long admins = members.countByRestaurantIdAndRole(restaurantId, RestaurantRole.ADMIN);
-            if (admins <= 1) {
-                throw new ConflictException("Cannot remove the last ADMIN");
-            }
-        }
         members.deleteById(memberId);
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
     }
 
     private boolean isPositionCompatibleWithRole(RestaurantRole positionLevel, RestaurantRole role) {

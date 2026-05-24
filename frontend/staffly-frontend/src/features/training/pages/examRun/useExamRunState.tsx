@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { listFolders, startExam, submitExamAttempt } from "../../api/trainingApi";
 import type {
@@ -51,6 +51,9 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   const [remainingSec, setRemainingSec] = useState<number | null>(null);
   const [timeExpired, setTimeExpired] = useState(false);
   const [knowledgeFolders, setKnowledgeFolders] = useState<TrainingFolderDto[]>([]);
+  const loadRequestSeqRef = useRef(0);
+  const submitRequestRef = useRef<Promise<void> | null>(null);
+  const finishedAttemptRef = useRef<number | null>(null);
 
   const backRoute =
     origin === "knowledge" && folderId != null
@@ -71,10 +74,14 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
 
   const loadAttempt = useCallback(async () => {
     if (!restaurantId || Number.isNaN(examId)) return;
+    const requestSeq = ++loadRequestSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const response = await startExam(restaurantId, examId);
+      if (requestSeq !== loadRequestSeqRef.current) {
+        return;
+      }
       const persisted = readPersistedExamRunState(examId);
 
       if (persisted && persisted.attemptId === response.attemptId) {
@@ -88,6 +95,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
         setAnswers({});
         setConfirmedQuestionIds([]);
         setCurrentIndex(0);
+        setRemainingSec(null);
       }
 
       setAttempt(response);
@@ -95,9 +103,14 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
       setResult(null);
       setTimeExpired(false);
     } catch (loadError) {
+      if (requestSeq !== loadRequestSeqRef.current) {
+        return;
+      }
       setError(getTrainingErrorMessage(loadError, "Не удалось запустить аттестацию."));
     } finally {
-      setLoading(false);
+      if (requestSeq === loadRequestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [examId, restaurantId]);
 
@@ -118,6 +131,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   useEffect(() => {
     if (!attempt || attempt.exam.timeLimitSec == null || result) {
       setRemainingSec(null);
+      setTimeExpired(false);
       return;
     }
 
@@ -130,6 +144,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
         return;
       }
       setRemainingSec(secondsLeft);
+      setTimeExpired(false);
     };
 
     tick();
@@ -146,6 +161,8 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     ? confirmedQuestionIds.includes(currentQuestion.questionId)
     : false;
   const hasUnsavedAnswers = !result && Object.keys(answers).length > 0;
+  const isCertificationExam = attempt?.exam.mode === "CERTIFICATION";
+  const resultRoute = isCertificationExam && attempt ? trainingRoutes.examResult(attempt.exam.id) : null;
 
   const setSingleAnswer = (question: AttemptQuestionSnapshotDto, value: string) => {
     if (confirmedQuestionIds.includes(question.questionId)) return;
@@ -193,36 +210,50 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     [answers],
   );
 
-  const submit = useCallback(async () => {
-    if (!restaurantId || !attempt || submitting) return;
-    const validationError = validateAllAnswered(attempt);
-    if (validationError) {
-      setError(validationError);
-      return;
+  const submit = useCallback(async (options?: { force?: boolean }) => {
+    if (!restaurantId || !attempt || finishedAttemptRef.current === attempt.attemptId) return;
+    if (submitRequestRef.current) return submitRequestRef.current;
+    if (!options?.force) {
+      const validationError = validateAllAnswered(attempt);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
-    setSubmitting(true);
-    setError(null);
-    try {
-      const response = await submitExamAttempt(restaurantId, attempt.attemptId, {
-        answers: attempt.questions.map((question) => ({
-          questionId: question.questionId,
-          answerJson: answers[question.questionId],
-        })),
-      });
-      setResult(response);
-      if (!Number.isNaN(examId)) removePersistedExamRunState(examId);
-    } catch (submitError) {
-      setError(getTrainingErrorMessage(submitError, "Не удалось отправить ответы."));
-    } finally {
-      setSubmitting(false);
-    }
-  }, [answers, attempt, examId, restaurantId, submitting, validateAllAnswered]);
+    const submitPromise = (async () => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const response = await submitExamAttempt(restaurantId, attempt.attemptId, {
+          answers: attempt.questions.map((question) => ({
+            questionId: question.questionId,
+            answerJson: answers[question.questionId] ?? null,
+          })),
+        });
+        finishedAttemptRef.current = attempt.attemptId;
+        setResult(response);
+        if (!Number.isNaN(examId)) removePersistedExamRunState(examId);
+      } catch (submitError) {
+        setError(getTrainingErrorMessage(submitError, "Не удалось отправить ответы."));
+      } finally {
+        setSubmitting(false);
+        submitRequestRef.current = null;
+      }
+    })();
+    submitRequestRef.current = submitPromise;
+    return submitPromise;
+  }, [answers, attempt, examId, restaurantId, validateAllAnswered]);
 
   useEffect(() => {
-    if (!timeExpired || !attempt || result || submitting) return;
-    void submit();
-  }, [attempt, result, submit, submitting, timeExpired]);
+    if (!timeExpired || remainingSec !== 0 || !attempt || result || submitting) return;
+    void submit({ force: true });
+  }, [attempt, remainingSec, result, submit, submitting, timeExpired]);
+
+  useEffect(() => {
+    if (!result || !isCertificationExam || !resultRoute) return;
+    navigate(resultRoute, { replace: true });
+  }, [isCertificationExam, navigate, result, resultRoute]);
 
   const confirmCurrentAnswer = () => {
     if (!currentQuestion) return;
@@ -286,6 +317,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     remainingSec,
     renderQuestionExplanation,
     result,
+    resultRoute,
     setFillSelectAnswer,
     setMatchRight,
     setMultiAnswer,
@@ -295,5 +327,6 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     timeExpired,
     confirmCurrentAnswer,
     goToNext,
+    isCertificationExam,
   };
 }

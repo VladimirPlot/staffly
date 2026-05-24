@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listPositions, type PositionDto } from "../../../dictionaries/api";
-import { mapExamsForUi, mapKnowledgeItemsForUi } from "../../api/mappers";
+import { mapKnowledgeItemsForUi } from "../../api/mappers";
 import {
   deleteExam,
   deleteFolder,
   deleteKnowledgeItem,
-  getExamProgress,
+  getPracticeExamProgress,
   hideExam,
   hideKnowledgeItem,
   listKnowledgeExams,
@@ -131,7 +131,7 @@ export function useKnowledgePageState({ currentFolderId, restaurantId, canManage
         currentFolderId,
         canManage ? foldersState.includeInactive : false,
       );
-      setPracticeExams(mapExamsForUi(response));
+      setPracticeExams(response);
     } catch (loadError) {
       setExamsError(getTrainingErrorMessage(loadError, "Не удалось загрузить тесты."));
     } finally {
@@ -146,7 +146,7 @@ export function useKnowledgePageState({ currentFolderId, restaurantId, canManage
     }
 
     try {
-      setExamProgress(await getExamProgress(restaurantId));
+      setExamProgress(await getPracticeExamProgress(restaurantId));
     } catch {
       setExamProgress([]);
     }

@@ -1,4 +1,5 @@
 import Button from "../../../shared/ui/Button";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 
 type Option = { key: string; label: string };
 
@@ -14,10 +15,11 @@ export default function MembersFilterByPosition({ options, value, onChange, onRe
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-      <label className="flex items-center gap-2 text-default">
+      <div className="flex items-center gap-2 text-default">
         <span>Фильтр по должности:</span>
-        <select
-          className="rounded-2xl border border-subtle bg-surface px-3 py-2 text-base text-default outline-none transition focus:ring-2 ring-default"
+        <DropdownSelect
+          aria-label="Фильтр по должности"
+          className="rounded-2xl px-3 py-2 text-base"
           value={value ?? ""}
           onChange={(event) => onChange(event.target.value || null)}
         >
@@ -27,8 +29,8 @@ export default function MembersFilterByPosition({ options, value, onChange, onRe
               {option.label}
             </option>
           ))}
-        </select>
-      </label>
+        </DropdownSelect>
+      </div>
       {value && (
         <Button variant="ghost" className="text-sm" onClick={onReset}>
           Сбросить фильтр

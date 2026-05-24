@@ -15,8 +15,10 @@ import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingFolderType;
 import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.service.ExamService;
+import ru.staffly.training.service.CertificationEmployeeAnalyticsService;
 import ru.staffly.training.service.KnowledgeService;
 import ru.staffly.training.service.QuestionService;
+import ru.staffly.training.service.TrainingPolicyService;
 
 import java.io.IOException;
 import java.util.List;
@@ -28,7 +30,9 @@ public class TrainingController {
     private final KnowledgeService knowledgeService;
     private final QuestionService questionService;
     private final ExamService examService;
+    private final CertificationEmployeeAnalyticsService certificationEmployeeAnalyticsService;
     private final SecurityService securityService;
+    private final TrainingPolicyService trainingPolicyService;
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @GetMapping("/folders")
@@ -36,54 +40,71 @@ public class TrainingController {
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @RequestParam TrainingFolderType type,
                                                @RequestParam(defaultValue = "false") boolean includeInactive) {
-        if (type == TrainingFolderType.QUESTION_BANK && !securityService.hasAtLeastManager(principal.userId(), restaurantId)) {
+        if (type == TrainingFolderType.QUESTION_BANK && !trainingPolicyService.canManageTraining(principal.userId(), restaurantId)) {
             throw new ForbiddenException("Only managers can access question bank");
         }
         return knowledgeService.listFolders(restaurantId, principal.userId(), type, includeInactive);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @GetMapping("/question-bank/tree")
     public List<QuestionBankTreeNodeDto> getQuestionBankTree(@PathVariable Long restaurantId,
                                                              @AuthenticationPrincipal UserPrincipal principal,
                                                              @RequestParam TrainingExamMode mode,
                                                              @RequestParam(defaultValue = "false") boolean includeInactive) {
-        return knowledgeService.getQuestionBankTree(restaurantId, mode, includeInactive);
+        return knowledgeService.getQuestionBankTree(restaurantId, principal.userId(), mode, includeInactive);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/folders")
     public TrainingFolderDto createFolder(@PathVariable Long restaurantId,
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @Valid @RequestBody CreateTrainingFolderRequest request) {
-        return knowledgeService.createFolder(restaurantId, request);
+        return knowledgeService.createFolder(restaurantId, principal.userId(), request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PutMapping("/folders/{folderId}")
     public TrainingFolderDto updateFolder(@PathVariable Long restaurantId,
                                           @PathVariable Long folderId,
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @Valid @RequestBody UpdateTrainingFolderRequest request) {
-        return knowledgeService.updateFolder(restaurantId, folderId, request);
+        return knowledgeService.updateFolder(restaurantId, principal.userId(), folderId, request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/folders/{folderId}/move")
+    public TrainingFolderDto moveFolder(@PathVariable Long restaurantId,
+                                        @PathVariable Long folderId,
+                                        @AuthenticationPrincipal UserPrincipal principal,
+                                        @RequestBody MoveTrainingFolderRequest request) {
+        return knowledgeService.moveFolder(restaurantId, principal.userId(), folderId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PutMapping("/order")
+    public void reorderObjects(@PathVariable Long restaurantId,
+                               @AuthenticationPrincipal UserPrincipal principal,
+                               @Valid @RequestBody ReorderTrainingObjectsRequest request) {
+        knowledgeService.reorderObjects(restaurantId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/folders/{folderId}/hide")
     public TrainingFolderDto hideFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.hideFolder(restaurantId, folderId);
+        return knowledgeService.hideFolder(restaurantId, principal.userId(), folderId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/folders/{folderId}/restore")
     public TrainingFolderDto restoreFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.restoreFolder(restaurantId, folderId);
+        return knowledgeService.restoreFolder(restaurantId, principal.userId(), folderId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/folders/{folderId}")
     public void deleteFolder(@PathVariable Long restaurantId, @PathVariable Long folderId, @AuthenticationPrincipal UserPrincipal principal) {
-        knowledgeService.deleteFolder(restaurantId, folderId);
+        knowledgeService.deleteFolder(restaurantId, principal.userId(), folderId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -95,57 +116,66 @@ public class TrainingController {
         return knowledgeService.listKnowledgeItems(restaurantId, principal.userId(), folderId, includeInactive);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/knowledge-items")
     public TrainingKnowledgeItemDto createKnowledgeItem(@PathVariable Long restaurantId,
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @Valid @RequestBody CreateTrainingKnowledgeItemRequest request) {
-        return knowledgeService.createKnowledgeItem(restaurantId, request);
+        return knowledgeService.createKnowledgeItem(restaurantId, principal.userId(), request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PutMapping("/knowledge-items/{itemId}")
     public TrainingKnowledgeItemDto updateKnowledgeItem(@PathVariable Long restaurantId,
                                                          @PathVariable Long itemId,
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @Valid @RequestBody UpdateTrainingKnowledgeItemRequest request) {
-        return knowledgeService.updateKnowledgeItem(restaurantId, itemId, request);
+        return knowledgeService.updateKnowledgeItem(restaurantId, principal.userId(), itemId, request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/knowledge-items/{itemId}/move")
+    public TrainingKnowledgeItemDto moveKnowledgeItem(@PathVariable Long restaurantId,
+                                                      @PathVariable Long itemId,
+                                                      @AuthenticationPrincipal UserPrincipal principal,
+                                                      @RequestBody MoveTrainingKnowledgeItemRequest request) {
+        return knowledgeService.moveKnowledgeItem(restaurantId, principal.userId(), itemId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/knowledge-items/{itemId}/hide")
     public TrainingKnowledgeItemDto hideKnowledgeItem(@PathVariable Long restaurantId, @PathVariable Long itemId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.hideKnowledgeItem(restaurantId, itemId);
+        return knowledgeService.hideKnowledgeItem(restaurantId, principal.userId(), itemId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/knowledge-items/{itemId}/restore")
     public TrainingKnowledgeItemDto restoreKnowledgeItem(@PathVariable Long restaurantId, @PathVariable Long itemId, @AuthenticationPrincipal UserPrincipal principal) {
-        return knowledgeService.restoreKnowledgeItem(restaurantId, itemId);
+        return knowledgeService.restoreKnowledgeItem(restaurantId, principal.userId(), itemId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/knowledge-items/{itemId}")
     public void deleteKnowledgeItem(@PathVariable Long restaurantId, @PathVariable Long itemId, @AuthenticationPrincipal UserPrincipal principal) {
-        knowledgeService.deleteKnowledgeItem(restaurantId, itemId);
+        knowledgeService.deleteKnowledgeItem(restaurantId, principal.userId(), itemId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping(value = "/knowledge-items/{itemId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public TrainingKnowledgeItemDto uploadKnowledgeImage(@PathVariable Long restaurantId, @PathVariable Long itemId,
                                                          @AuthenticationPrincipal UserPrincipal principal,
                                                          @RequestParam("file") MultipartFile file) throws IOException {
-        return knowledgeService.uploadKnowledgeImage(restaurantId, itemId, file);
+        return knowledgeService.uploadKnowledgeImage(restaurantId, principal.userId(), itemId, file);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/knowledge-items/{itemId}/image")
     public TrainingKnowledgeItemDto deleteKnowledgeImage(@PathVariable Long restaurantId, @PathVariable Long itemId,
                                                          @AuthenticationPrincipal UserPrincipal principal) throws IOException {
-        return knowledgeService.deleteKnowledgeImage(restaurantId, itemId);
+        return knowledgeService.deleteKnowledgeImage(restaurantId, principal.userId(), itemId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @GetMapping("/questions")
     public List<TrainingQuestionDto> listQuestions(@PathVariable Long restaurantId,
                                                    @AuthenticationPrincipal UserPrincipal principal,
@@ -153,44 +183,53 @@ public class TrainingController {
                                                    @RequestParam(required = false) TrainingQuestionGroup questionGroup,
                                                    @RequestParam(defaultValue = "false") boolean includeInactive,
                                                    @RequestParam(required = false, name = "q") String query) {
-        return questionService.listQuestions(restaurantId, folderId, questionGroup, includeInactive, query);
+        return questionService.listQuestions(restaurantId, principal.userId(), folderId, questionGroup, includeInactive, query);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/questions")
     public TrainingQuestionDto createQuestion(@PathVariable Long restaurantId,
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody CreateTrainingQuestionRequest request) {
-        return questionService.createQuestion(restaurantId, request);
+        return questionService.createQuestion(restaurantId, principal.userId(), request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PutMapping("/questions/{questionId}")
     public TrainingQuestionDto updateQuestion(@PathVariable Long restaurantId,
                                               @PathVariable Long questionId,
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody UpdateTrainingQuestionRequest request) {
-        return questionService.updateQuestion(restaurantId, questionId, request);
+        return questionService.updateQuestion(restaurantId, principal.userId(), questionId, request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/questions/{questionId}/move")
+    public TrainingQuestionDto moveQuestion(@PathVariable Long restaurantId,
+                                            @PathVariable Long questionId,
+                                            @AuthenticationPrincipal UserPrincipal principal,
+                                            @RequestBody MoveTrainingQuestionRequest request) {
+        return questionService.moveQuestion(restaurantId, principal.userId(), questionId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/questions/{questionId}/hide")
     public TrainingQuestionDto hideQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId,
                                             @AuthenticationPrincipal UserPrincipal principal) {
-        return questionService.hideQuestion(restaurantId, questionId);
+        return questionService.hideQuestion(restaurantId, principal.userId(), questionId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/questions/{questionId}/restore")
     public TrainingQuestionDto restoreQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId,
                                                @AuthenticationPrincipal UserPrincipal principal) {
-        return questionService.restoreQuestion(restaurantId, questionId);
+        return questionService.restoreQuestion(restaurantId, principal.userId(), questionId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/questions/{questionId}")
     public void deleteQuestion(@PathVariable Long restaurantId, @PathVariable Long questionId, @AuthenticationPrincipal UserPrincipal principal) {
-        questionService.deleteQuestion(restaurantId, questionId);
+        questionService.deleteQuestion(restaurantId, principal.userId(), questionId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -199,11 +238,31 @@ public class TrainingController {
                                            @AuthenticationPrincipal UserPrincipal principal,
                                            @RequestParam(defaultValue = "false") boolean includeInactive,
                                            @RequestParam(required = false) Boolean certificationOnly) {
-        boolean isManager = securityService.hasAtLeastManager(principal.userId(), restaurantId);
+        boolean isManager = trainingPolicyService.canManageTraining(principal.userId(), restaurantId);
         if (includeInactive && !isManager) {
             throw new ForbiddenException("Only managers can include inactive exams");
         }
         return examService.listExams(restaurantId, principal.userId(), isManager, includeInactive, certificationOnly);
+    }
+
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/my-certifications")
+    public List<CurrentUserCertificationExamDto> listCurrentUserCertifications(@PathVariable Long restaurantId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.listCurrentUserCertificationExams(restaurantId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/my-result")
+    public CertificationMyResultDto getCurrentUserCertificationResult(@PathVariable Long restaurantId,
+                                                                      @PathVariable Long examId,
+                                                                      @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCurrentUserCertificationResult(
+                restaurantId,
+                examId,
+                principal.userId(),
+                trainingPolicyService.canManageTraining(principal.userId(), restaurantId)
+        );
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -212,83 +271,201 @@ public class TrainingController {
                                                     @AuthenticationPrincipal UserPrincipal principal,
                                                     @RequestParam Long folderId,
                                                     @RequestParam(defaultValue = "false") boolean includeInactive) {
-        boolean isManager = securityService.hasAtLeastManager(principal.userId(), restaurantId);
+        boolean isManager = trainingPolicyService.canManageTraining(principal.userId(), restaurantId);
         if (includeInactive && !isManager) {
             throw new ForbiddenException("Only managers can include inactive exams");
         }
         return examService.listPracticeExamsByKnowledgeFolder(restaurantId, principal.userId(), isManager, folderId, includeInactive);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/exams")
     public TrainingExamDto createExam(@PathVariable Long restaurantId,
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody CreateTrainingExamRequest request) {
-        return examService.createExam(restaurantId, request);
+        return examService.createExam(restaurantId, principal.userId(), request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/knowledge-exams")
     public TrainingExamDto createKnowledgeExam(@PathVariable Long restaurantId,
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @Valid @RequestBody CreateTrainingExamRequest request) {
-        return examService.createKnowledgeExam(restaurantId, request);
+        return examService.createKnowledgeExam(restaurantId, principal.userId(), request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PutMapping("/exams/{examId}")
     public TrainingExamDto updateExam(@PathVariable Long restaurantId,
                                       @PathVariable Long examId,
                                       @AuthenticationPrincipal UserPrincipal principal,
                                       @Valid @RequestBody UpdateTrainingExamRequest request) {
-        return examService.updateExam(restaurantId, examId, request);
+        return examService.updateExam(restaurantId, principal.userId(), examId, request);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/move-knowledge-folder")
+    public TrainingExamDto movePracticeExam(@PathVariable Long restaurantId,
+                                            @PathVariable Long examId,
+                                            @AuthenticationPrincipal UserPrincipal principal,
+                                            @RequestBody MoveTrainingPracticeExamRequest request) {
+        return examService.movePracticeExam(restaurantId, principal.userId(), examId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/owner")
+    public TrainingExamDto changeCertificationExamOwner(@PathVariable Long restaurantId,
+                                                        @PathVariable Long examId,
+                                                        @AuthenticationPrincipal UserPrincipal principal,
+                                                        @Valid @RequestBody ReassignTrainingExamOwnerRequest request) {
+        return examService.changeCertificationExamOwner(restaurantId, principal.userId(), examId, request.ownerUserId());
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/owner-candidates")
+    public CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(@PathVariable Long restaurantId,
+                                                                               @PathVariable Long examId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamOwnerCandidates(restaurantId, principal.userId(), examId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/owners/{userId}/reassignment-options")
+    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(@PathVariable Long restaurantId,
+                                                                                             @PathVariable Long userId,
+                                                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationOwnerReassignmentOptions(restaurantId, principal.userId(), userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/certification/owners/{userId}/reassign")
+    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(@PathVariable Long restaurantId,
+                                                                                    @PathVariable Long userId,
+                                                                                    @AuthenticationPrincipal UserPrincipal principal,
+                                                                                    @Valid @RequestBody CertificationOwnerBatchReassignmentRequest request) {
+        return examService.reassignCertificationOwnerBatch(restaurantId, principal.userId(), userId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/hide")
     public TrainingExamDto hideExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.hideExam(restaurantId, examId);
+        return examService.hideExam(restaurantId, principal.userId(), examId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/restore")
     public TrainingExamDto restoreExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.restoreExam(restaurantId, examId);
+        return examService.restoreExam(restaurantId, principal.userId(), examId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @DeleteMapping("/exams/{examId}")
     public void deleteExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        examService.deleteExam(restaurantId, examId);
+        examService.deleteExam(restaurantId, principal.userId(), examId);
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
-    @PostMapping("/exams/{examId}/reset-results")
-    public void resetExamResults(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        examService.resetExamResults(restaurantId, examId);
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/{examId}/certification/reset-cycle")
+    public void resetCertificationExamCycle(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
+        examService.resetCertificationExamCycle(restaurantId, principal.userId(), examId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
-    @GetMapping("/exams/progress")
-    public List<TrainingExamProgressDto> listExamProgress(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.listCurrentUserExamProgress(restaurantId, principal.userId());
+    @GetMapping("/exams/practice-progress")
+    public List<TrainingExamProgressDto> listPracticeExamProgress(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.listCurrentUserPracticeExamProgress(restaurantId, principal.userId());
     }
 
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/{examId}/assignments/{userId}/reset-attempts")
+    public void resetEmployeeCertificationAttempts(@PathVariable Long restaurantId,
+                                                   @PathVariable Long examId,
+                                                   @PathVariable Long userId,
+                                                   @AuthenticationPrincipal UserPrincipal principal) {
+        examService.resetEmployeeCertificationAttempts(restaurantId, principal.userId(), examId, userId);
+    }
 
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/{examId}/assignments/{userId}/grant-extra-attempt")
+    public void grantEmployeeCertificationExtraAttempt(@PathVariable Long restaurantId,
+                                                       @PathVariable Long examId,
+                                                       @PathVariable Long userId,
+                                                       @AuthenticationPrincipal UserPrincipal principal,
+                                                       @RequestParam(required = false) Integer amount) {
+        examService.grantEmployeeCertificationExtraAttempts(restaurantId, principal.userId(), examId, userId, amount);
+    }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(#principal.userId, #restaurantId)")
-    @GetMapping("/exams/{examId}/results")
-    public List<TrainingExamResultDto> listExamResults(@PathVariable Long restaurantId,
-                                                        @PathVariable Long examId,
-                                                        @AuthenticationPrincipal UserPrincipal principal,
-                                                        @RequestParam(required = false) Long positionId) {
-        return examService.listExamResults(restaurantId, examId, positionId);
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/summary")
+    public CertificationExamSummaryDto getCertificationSummary(@PathVariable Long restaurantId,
+                                                               @PathVariable Long examId,
+                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamSummary(restaurantId, principal.userId(), examId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/positions")
+    public List<CertificationExamPositionBreakdownDto> getCertificationPositionBreakdown(@PathVariable Long restaurantId,
+                                                                                         @PathVariable Long examId,
+                                                                                         @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamPositionBreakdown(restaurantId, principal.userId(), examId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/employees")
+    public List<CertificationExamEmployeeRowDto> getCertificationEmployeeTable(@PathVariable Long restaurantId,
+                                                                               @PathVariable Long examId,
+                                                                               @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationExamEmployeeTable(restaurantId, principal.userId(), examId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/employees/{userId}/attempts")
+    public List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(@PathVariable Long restaurantId,
+                                                                                           @PathVariable Long examId,
+                                                                                           @PathVariable Long userId,
+                                                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationEmployeeAttemptHistory(restaurantId, principal.userId(), examId, userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/exams/{examId}/certification/attempts/{attemptId}")
+    public CertificationAttemptDetailsDto getCertificationAttemptDetails(@PathVariable Long restaurantId,
+                                                                         @PathVariable Long examId,
+                                                                         @PathVariable Long attemptId,
+                                                                         @AuthenticationPrincipal UserPrincipal principal) {
+        return examService.getCertificationAttemptDetails(restaurantId, principal.userId(), examId, attemptId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees")
+    public List<CertificationEmployeeSummaryDto> findCertificationEmployees(@PathVariable Long restaurantId,
+                                                                            @AuthenticationPrincipal UserPrincipal principal,
+                                                                            @RequestParam(required = false) Long positionId,
+                                                                            @RequestParam(required = false, name = "q") String query) {
+        return certificationEmployeeAnalyticsService.findCertificationEmployees(restaurantId, principal.userId(), positionId, query);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees/{userId}/exams")
+    public List<CertificationEmployeeExamDto> getCertificationEmployeeExams(@PathVariable Long restaurantId,
+                                                                             @PathVariable Long userId,
+                                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return certificationEmployeeAnalyticsService.getCertificationEmployeeExams(restaurantId, principal.userId(), userId);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/employees/{userId}/summary")
+    public CertificationEmployeeSummaryDto getCertificationEmployeeSummary(@PathVariable Long restaurantId,
+                                                                           @PathVariable Long userId,
+                                                                           @AuthenticationPrincipal UserPrincipal principal) {
+        return certificationEmployeeAnalyticsService.getCertificationEmployeeSummary(restaurantId, principal.userId(), userId);
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/start")
     public StartExamResponseDto startExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.startExam(restaurantId, examId, principal.userId(), securityService.hasAtLeastManager(principal.userId(), restaurantId));
+        return examService.startExam(restaurantId, examId, principal.userId(), trainingPolicyService.canManageTraining(principal.userId(), restaurantId));
     }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
@@ -298,4 +475,5 @@ public class TrainingController {
                                           @Valid @RequestBody SubmitAttemptRequestDto request) {
         return examService.submitAttempt(restaurantId, attemptId, principal.userId(), request);
     }
+
 }

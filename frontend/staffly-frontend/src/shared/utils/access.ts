@@ -67,10 +67,20 @@ function hasManagementAccess(
   return resolveRestaurantAccessInternal(roles, restaurantRole).isManagerLike;
 }
 
+function hasTrainingExaminerSpecialization(
+  specializations?: string[] | null | undefined
+): boolean {
+  return (specializations ?? []).some((item) => item?.toUpperCase() === "EXAMINER");
+}
+
 export function hasTrainingManagementAccess(
   roles?: Array<string | null | undefined>,
-  restaurantRole?: string | null | undefined
+  restaurantRole?: string | null | undefined,
+  specializations?: string[] | null | undefined
 ): boolean {
+  if (hasTrainingExaminerSpecialization(specializations)) {
+    return true;
+  }
   return hasManagementAccess(roles, restaurantRole);
 }
 

@@ -1,6 +1,22 @@
 import type { MemberDto } from "../employees/api";
+import type { RestaurantRole } from "../../shared/types/restaurant";
 
 export type ShiftMode = "ARRIVAL_ONLY" | "FULL" | "NONE";
+
+export type ScheduleStatus =
+  | "DRAFT"
+  | "COLLECTING_PREFERENCES"
+  | "PREFERENCES_CLOSED"
+  | "DRAFT_FROM_PREFERENCES"
+  | "PUBLISHED";
+
+export type ScheduleLifecycleFields = {
+  status: ScheduleStatus;
+  preferenceCollectionStartedAt?: string | null;
+  preferenceDeadline?: string | null;
+  preferenceClosedAt?: string | null;
+  preferenceAppliedAt?: string | null;
+};
 
 export type ScheduleConfig = {
   startDate: string; // ISO yyyy-mm-dd
@@ -8,6 +24,28 @@ export type ScheduleConfig = {
   positionIds: number[];
   showFullName: boolean;
   shiftMode: ShiftMode;
+};
+
+export type ScheduleOwnerDto = {
+  userId: number | null;
+  memberId: number | null;
+  displayName: string | null;
+  role: RestaurantRole | string;
+  positionName: string | null;
+};
+
+export type ScheduleCreatedByDto = {
+  userId: number | null;
+  displayName: string | null;
+};
+
+export type ScheduleAuditLogDto = {
+  id: number;
+  action: string;
+  actorUserId: number | null;
+  actorDisplayName: string | null;
+  details: string | null;
+  createdAt: string;
 };
 
 export type ScheduleDay = {
@@ -27,11 +65,19 @@ export type ScheduleRow = {
 
 export type ScheduleData = {
   id?: number;
+  status?: ScheduleStatus;
+  preferenceCollectionStartedAt?: string | null;
+  preferenceDeadline?: string | null;
+  preferenceClosedAt?: string | null;
+  preferenceAppliedAt?: string | null;
   title: string;
   config: ScheduleConfig;
   days: ScheduleDay[];
   rows: ScheduleRow[];
   cellValues: Record<string, string>;
+  owner?: ScheduleOwnerDto | null;
+  createdBy?: ScheduleCreatedByDto | null;
+  history?: ScheduleAuditLogDto[];
 };
 
 export type ScheduleCellKey = `${number}:${string}`;

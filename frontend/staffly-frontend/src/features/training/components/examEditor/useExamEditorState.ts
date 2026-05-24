@@ -15,6 +15,8 @@ import {
   calculateTotalQuestions,
   createTreeHelpers,
   flattenTree,
+  normalizeVisibilityForSubmit,
+  resolveInitialVisibilityPositionIds,
 } from "./utils";
 
 const initialFormState: ExamEditorFormState = {
@@ -67,6 +69,15 @@ export function useExamEditorState({
     setError(null);
     setPositionMenuOpen(false);
   }, [open, exam]);
+
+  useEffect(() => {
+    if (!open || positions.length === 0) return;
+    const allPositionIds = positions.map((position) => position.id);
+    setForm((current) => ({
+      ...current,
+      visibilityPositionIds: resolveInitialVisibilityPositionIds(mode, current.visibilityPositionIds, allPositionIds),
+    }));
+  }, [mode, open, positions]);
 
   useEffect(() => {
     if (!open) return;
@@ -130,8 +141,8 @@ export function useExamEditorState({
   );
 
   const availabilityLabel = useMemo(
-    () => buildAvailabilityLabel(form.visibilityPositionIds, positions, isDesktop),
-    [form.visibilityPositionIds, positions, isDesktop],
+    () => buildAvailabilityLabel(mode, form.visibilityPositionIds, positions, isDesktop),
+    [mode, form.visibilityPositionIds, positions, isDesktop],
   );
 
   const togglePosition = (positionId: number) => {
@@ -144,7 +155,11 @@ export function useExamEditorState({
   };
 
   const handleSelectAllPositions = () => {
-    setForm((current) => ({ ...current, visibilityPositionIds: [] }));
+    setForm((current) => ({
+      ...current,
+      visibilityPositionIds:
+        mode === "CERTIFICATION" ? positions.map((position) => position.id) : [],
+    }));
   };
 
   const toggleFolder = (folderId: number) => {
@@ -239,6 +254,11 @@ export function useExamEditorState({
       return;
     }
 
+    if (mode === "CERTIFICATION" && form.visibilityPositionIds.length === 0) {
+      setError("Для аттестации нужно выбрать хотя бы одну должность в блоке видимости.");
+      return;
+    }
+
     if (form.sourcesFolders.length === 0 && form.sourceQuestionIds.length === 0) {
       setError("Добавьте хотя бы один источник вопросов.");
       return;
@@ -263,7 +283,7 @@ export function useExamEditorState({
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
         attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
-        visibilityPositionIds: form.visibilityPositionIds,
+        visibilityPositionIds: normalizeVisibilityForSubmit(mode, form.visibilityPositionIds),
         sourcesFolders: form.sourcesFolders,
         sourceQuestionIds: form.sourceQuestionIds,
       };

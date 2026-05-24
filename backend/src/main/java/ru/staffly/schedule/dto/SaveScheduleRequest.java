@@ -7,5 +7,6 @@ public record SaveScheduleRequest(
         String title,
         ScheduleConfigDto config,
         List<ScheduleRowPayload> rows,
-        Map<String, String> cellValues
+        Map<String, String> cellValues,
+        Long ownerUserId
 ) {}

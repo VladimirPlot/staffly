@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.inbox.model.InboxEventSubtype;
@@ -15,13 +16,17 @@ import ru.staffly.schedule.dto.CreateSwapShiftRequest;
 import ru.staffly.schedule.dto.ShiftRequestDto;
 import ru.staffly.schedule.dto.ShiftRequestMemberDto;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftRequest;
 import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.model.ScheduleShiftRequestType;
+import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
+import ru.staffly.schedule.service.ScheduleAccessService;
+import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleShiftRequestService;
 import ru.staffly.security.SecurityService;
 import ru.staffly.restaurant.model.RestaurantRole;
@@ -38,6 +43,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 @Transactional
 public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestService {
+    private static final String OUTDATED_COMMENT = "График был изменён, заявка потеряла актуальность";
 
     private static final List<ScheduleShiftRequestStatus> ACTIVE_STATUSES = List.of(
             ScheduleShiftRequestStatus.PENDING_MANAGER
@@ -48,11 +54,15 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private final RestaurantMemberRepository members;
     private final InboxMessageService inboxMessages;
     private final SecurityService securityService;
+    private final ScheduleAccessService scheduleAccessService;
+    private final ScheduleAuditService scheduleAuditService;
 
     @Override
     public ShiftRequestDto createReplacement(Long restaurantId, Long scheduleId, Long userId, CreateReplacementShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        scheduleAccessService.assertCanViewSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
 
         LocalDate day = parseDate(request.day(), "day");
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
@@ -60,10 +70,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.toMemberId()))
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
-        String value = findCellValue(fromRow, day)
-                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день"));
+        String value = normalizeValue(findCellValue(fromRow, day)
+                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день")));
 
-        if (findCellValue(toRow, day).isPresent()) {
+        if (findNormalizedCellValue(toRow, day).isPresent()) {
             throw new BadRequestException("У выбранного сотрудника уже есть смена в этот день");
         }
 
@@ -79,10 +89,19 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .fromMemberId(fromRow.getMemberId())
                 .toMemberId(toRow.getMemberId())
                 .reason(request.reason())
+                .fromShiftValueSnapshot(value)
+                .toShiftValueSnapshot(null)
                 .status(ScheduleShiftRequestStatus.PENDING_MANAGER)
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        scheduleAuditService.record(
+                schedule,
+                userId,
+                ScheduleAuditAction.SHIFT_REQUEST_CREATED,
+                "Создана заявка на замену смены"
+        );
+        notifyOwnerOnCreate(saved, initiator.getUser());
         return toDto(saved);
     }
 
@@ -90,6 +109,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public ShiftRequestDto createSwap(Long restaurantId, Long scheduleId, Long userId, CreateSwapShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        scheduleAccessService.assertCanViewSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
 
         LocalDate myDay = parseDate(request.myDay(), "myDay");
         LocalDate targetDay = parseDate(request.targetDay(), "targetDay");
@@ -99,15 +120,15 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.targetMemberId()))
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
-        String fromValue = findCellValue(fromRow, myDay)
-                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день"));
-        String targetValue = findCellValue(toRow, targetDay)
-                .orElseThrow(() -> new BadRequestException("У выбранного сотрудника нет смены в эту дату"));
+        String fromValue = normalizeValue(findCellValue(fromRow, myDay)
+                .orElseThrow(() -> new BadRequestException("У вас нет смены в выбранный день")));
+        String targetValue = normalizeValue(findCellValue(toRow, targetDay)
+                .orElseThrow(() -> new BadRequestException("У выбранного сотрудника нет смены в эту дату")));
 
-        if (findCellValue(fromRow, targetDay).isPresent()) {
+        if (findNormalizedCellValue(fromRow, targetDay).isPresent()) {
             throw new BadRequestException("У вас уже есть смена в день коллеги");
         }
-        if (findCellValue(toRow, myDay).isPresent()) {
+        if (findNormalizedCellValue(toRow, myDay).isPresent()) {
             throw new BadRequestException("У коллеги уже есть смена в ваш день");
         }
 
@@ -124,10 +145,19 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .fromMemberId(fromRow.getMemberId())
                 .toMemberId(toRow.getMemberId())
                 .reason(request.reason())
+                .fromShiftValueSnapshot(fromValue)
+                .toShiftValueSnapshot(targetValue)
                 .status(ScheduleShiftRequestStatus.PENDING_MANAGER)
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        scheduleAuditService.record(
+                schedule,
+                userId,
+                ScheduleAuditAction.SHIFT_REQUEST_CREATED,
+                "Создана заявка на обмен сменами"
+        );
+        notifyOwnerOnCreate(saved, initiator.getUser());
         return toDto(saved);
     }
 
@@ -141,6 +171,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         Schedule schedule = loadSchedule(entity.getSchedule().getId(), restaurantId);
+        scheduleAccessService.assertCanManageSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
         ScheduleRow fromRow = requireRow(schedule, entity.getFromRow().getId());
         ScheduleRow toRow = requireRow(schedule, entity.getToRow().getId());
 
@@ -149,8 +181,34 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         String fromShiftValue = findCellValue(fromRow, dayFrom).orElse(null);
         String toShiftValue = dayTo != null ? findCellValue(toRow, dayTo).orElse(null) : null;
 
+        var now = TimeProvider.now();
         if (!accepted) {
             entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_MANAGER);
+            entity.setDecidedByUserId(userId);
+            entity.setDecidedAt(now);
+            entity.setDecisionComment(null);
+            scheduleAuditService.record(
+                    schedule,
+                    userId,
+                    ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
+                    "Заявка на смену отклонена"
+            );
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            return toDto(entity);
+        }
+
+        String staleReason = getStaleReason(entity, fromRow, toRow);
+        if (staleReason != null) {
+            entity.setStatus(ScheduleShiftRequestStatus.REJECTED_BY_MANAGER);
+            entity.setDecidedByUserId(userId);
+            entity.setDecidedAt(now);
+            entity.setDecisionComment(staleReason);
+            scheduleAuditService.record(
+                    schedule,
+                    userId,
+                    ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
+                    staleReason
+            );
             notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
             return toDto(entity);
         }
@@ -165,6 +223,15 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
+        entity.setDecidedByUserId(userId);
+        entity.setDecidedAt(now);
+        entity.setDecisionComment(null);
+        scheduleAuditService.record(
+                schedule,
+                userId,
+                ScheduleAuditAction.SHIFT_REQUEST_APPROVED,
+                "Заявка на смену одобрена"
+        );
         notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true);
         return toDto(entity);
     }
@@ -174,6 +241,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public List<ShiftRequestDto> listForSchedule(Long restaurantId, Long scheduleId, Long userId) {
         RestaurantMember member = requireMember(userId, restaurantId);
         Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        scheduleAccessService.assertCanViewSchedule(userId, schedule);
+        assertPublishedSchedule(schedule);
         List<ShiftRequestDto> all = requests.findByScheduleIdOrderByCreatedAtDesc(schedule.getId())
                 .stream()
                 .map(this::toDto)
@@ -200,6 +269,8 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         if (!Objects.equals(request.getSchedule().getId(), scheduleId)) {
             throw new BadRequestException("Заявка не относится к этому графику");
         }
+        scheduleAccessService.assertCanViewSchedule(userId, request.getSchedule());
+        assertPublishedSchedule(request.getSchedule());
 
         if (!Objects.equals(request.getInitiatorMemberId(), member.getId())) {
             throw new ForbiddenException("Можно отменять только свои заявки");
@@ -228,6 +299,13 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         return members.findByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
     }
+
+    private void assertPublishedSchedule(Schedule schedule) {
+        if (schedule.getStatus() != ScheduleStatus.PUBLISHED) {
+            throw new BadRequestException("Заявки на смены доступны только для опубликованного графика");
+        }
+    }
+
 
     private void ensureNoActiveRequest(Long scheduleId, Long memberId, LocalDate day) {
         requests.findActiveByScheduleAndFromMemberAndDay(scheduleId, memberId, day, ACTIVE_STATUSES)
@@ -299,6 +377,24 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         );
     }
 
+    private void notifyOwnerOnCreate(ScheduleShiftRequest request, User initiatorUser) {
+        RestaurantMember owner = request.getSchedule().getOwnerMember();
+        if (owner == null || owner.getUser() == null) {
+            return;
+        }
+        String content = String.format("Новая заявка на смену в графике «%s» от %s", request.getSchedule().getTitle(),
+                initiatorUser != null ? initiatorUser.getFullName() : "сотрудника");
+        inboxMessages.createEvent(
+                request.getSchedule().getRestaurant(),
+                initiatorUser != null ? initiatorUser : owner.getUser(),
+                content,
+                InboxEventSubtype.SCHEDULE_DECISION,
+                "scheduleRequest:" + request.getId(),
+                List.of(owner),
+                Optional.ofNullable(request.getSchedule().getEndDate()).orElse(request.getSchedule().getStartDate())
+        );
+    }
+
     private String formatShiftValue(String value) {
         if (value == null || value.isBlank()) {
             return "";
@@ -324,6 +420,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .filter(cell -> day.equals(cell.getDay()))
                 .map(ScheduleCell::getValue)
                 .findFirst();
+    }
+
+    private Optional<String> findNormalizedCellValue(ScheduleRow row, LocalDate day) {
+        return findCellValue(row, day).map(this::normalizeValue);
     }
 
     private void transferShift(ScheduleRow fromRow, ScheduleRow toRow, LocalDate day) {
@@ -402,7 +502,43 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                         request.getToRow().getMemberId(),
                         request.getToRow().getDisplayName(),
                         request.getToRow().getPositionName()
-                )
+                ),
+                request.getDecidedAt(),
+                request.getDecisionComment()
         );
+    }
+
+    private String getStaleReason(ScheduleShiftRequest request, ScheduleRow fromRow, ScheduleRow toRow) {
+        if (request.getFromShiftValueSnapshot() == null) {
+            return "Заявка создана до включения snapshot-проверки и потеряла актуальность";
+        }
+        if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
+            String currentFrom = normalizeValue(findCellValue(fromRow, request.getDayFrom()).orElse(null));
+            String currentTo = normalizeValue(findCellValue(toRow, request.getDayFrom()).orElse(null));
+            return Objects.equals(normalizeValue(request.getFromShiftValueSnapshot()), currentFrom) && currentTo == null
+                    ? null
+                    : OUTDATED_COMMENT;
+        }
+        if (request.getDayTo() == null || request.getToShiftValueSnapshot() == null) {
+            return OUTDATED_COMMENT;
+        }
+        String fromDayFrom = normalizeValue(findCellValue(fromRow, request.getDayFrom()).orElse(null));
+        String toDayTo = normalizeValue(findCellValue(toRow, request.getDayTo()).orElse(null));
+        String fromDayTo = normalizeValue(findCellValue(fromRow, request.getDayTo()).orElse(null));
+        String toDayFrom = normalizeValue(findCellValue(toRow, request.getDayFrom()).orElse(null));
+        return Objects.equals(normalizeValue(request.getFromShiftValueSnapshot()), fromDayFrom)
+                && Objects.equals(normalizeValue(request.getToShiftValueSnapshot()), toDayTo)
+                && fromDayTo == null
+                && toDayFrom == null
+                ? null
+                : OUTDATED_COMMENT;
+    }
+
+    private String normalizeValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -1,7 +1,5 @@
 package ru.staffly.training.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.model.TrainingQuestionType;
 
@@ -9,12 +7,12 @@ import java.util.List;
 
 public record TrainingQuestionDto(
         Long id,
-        @NotNull Long restaurantId,
-        @NotNull Long folderId,
-        @NotNull TrainingQuestionType type,
-        @NotNull TrainingQuestionGroup questionGroup,
-        @NotBlank String title,
-        @NotBlank String prompt,
+        Long restaurantId,
+        Long folderId,
+        TrainingQuestionType type,
+        TrainingQuestionGroup questionGroup,
+        String title,
+        String prompt,
         String explanation,
         Integer sortOrder,
         Boolean active,

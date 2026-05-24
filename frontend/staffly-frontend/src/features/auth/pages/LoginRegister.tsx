@@ -280,11 +280,14 @@ export default function LoginRegister() {
               onBlur={() => rBirthDateField.setTouched(true)}
               error={rBirthDateField.error}
               disabled={busy}
+              preventAutofill
             />
 
             <Input
               label="Пароль"
               type="password"
+              name="newPassword"
+              autoComplete="new-password"
               value={rPassword}
               onChange={(e) => setRPassword(e.target.value)}
               disabled={busy}

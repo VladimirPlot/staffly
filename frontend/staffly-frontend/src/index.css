@@ -14,12 +14,21 @@
     --staffly-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
     --staffly-control: rgba(24, 24, 27, 0.04);
     --staffly-control-hover: rgba(24, 24, 27, 0.07);
+    --staffly-divider: rgba(24, 24, 27, 0.18);
     --staffly-brand-surface: rgba(255, 255, 255, 0.88);
     --staffly-brand-border: rgba(24, 24, 27, 0.1);
     --staffly-brand-hover: rgba(24, 24, 27, 0.04);
     --staffly-release-bg: rgba(24, 24, 27, 0.05);
     --staffly-release-border: rgba(24, 24, 27, 0.08);
     --staffly-release-text: #3f3f46;
+    --staffly-loss-bg: #fff7f7;
+    --staffly-loss-bg-strong: #fef2f2;
+    --staffly-loss-border: #fecaca;
+    --staffly-loss-text: #dc2626;
+    --staffly-gain-bg: #f0fdf4;
+    --staffly-gain-bg-strong: #ecfdf5;
+    --staffly-gain-border: #a7f3d0;
+    --staffly-gain-text: #047857;
   }
 
   .dark {
@@ -34,12 +43,21 @@
     --staffly-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
     --staffly-control: rgba(255, 255, 255, 0.06);
     --staffly-control-hover: rgba(255, 255, 255, 0.1);
+    --staffly-divider: rgba(255, 255, 255, 0.22);
     --staffly-brand-surface: rgba(24, 24, 27, 0.92);
     --staffly-brand-border: rgba(250, 250, 250, 0.12);
     --staffly-brand-hover: rgba(250, 250, 250, 0.06);
     --staffly-release-bg: rgba(250, 250, 250, 0.08);
     --staffly-release-border: rgba(250, 250, 250, 0.1);
     --staffly-release-text: #d4d4d8;
+    --staffly-loss-bg: rgba(127, 29, 29, 0.16);
+    --staffly-loss-bg-strong: rgba(127, 29, 29, 0.28);
+    --staffly-loss-border: rgba(127, 29, 29, 0.48);
+    --staffly-loss-text: #fca5a5;
+    --staffly-gain-bg: rgba(6, 78, 59, 0.16);
+    --staffly-gain-bg-strong: rgba(6, 78, 59, 0.28);
+    --staffly-gain-border: rgba(6, 95, 70, 0.48);
+    --staffly-gain-text: #6ee7b7;
   }
 
   html,
@@ -77,6 +95,12 @@
 
   .border-subtle {
     border-color: var(--staffly-border);
+  }
+
+  .divide-subtle > :not([hidden]) ~ :not([hidden]) {
+    border-top-width: 1px;
+    border-top-style: solid;
+    border-top-color: var(--staffly-divider);
   }
 
   .text-muted {
@@ -192,18 +216,30 @@
   }
 
   .staffly-phone-country {
-    @apply relative flex min-w-[84px] items-center justify-center rounded-2xl border px-3 shadow-sm transition;
+    @apply relative flex min-w-[96px] items-stretch justify-start rounded-2xl border px-2 shadow-sm transition;
     border-color: var(--staffly-border);
     background-color: var(--staffly-surface);
   }
 
-  .staffly-phone .PhoneInputCountrySelect {
-    @apply absolute inset-0 h-full w-full cursor-pointer opacity-0;
+  .staffly-phone-country .PhoneInputCountryTrigger {
+    @apply flex-1 self-stretch rounded-[inherit] border-0 bg-transparent px-2 pr-7 text-sm font-medium shadow-none outline-none;
+    min-width: 0;
+    box-shadow: none;
+  }
+
+  .staffly-phone-country .PhoneInputCountryTrigger:focus,
+  .staffly-phone-country .PhoneInputCountryTrigger:focus-visible {
+    box-shadow: none;
+    outline: none;
   }
 
   .staffly-phone-countryValue {
     @apply flex items-center gap-2 text-sm font-medium;
     color: var(--staffly-text);
+  }
+
+  .staffly-phone-countryOption {
+    @apply flex items-center gap-2 whitespace-nowrap;
   }
 
   .staffly-phone-countryValue svg {
@@ -242,12 +278,12 @@
   }
 
   .staffly-phone:has(.PhoneInputInput:focus) .staffly-phone-country,
-  .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
+  .staffly-phone-country:has(.PhoneInputCountryTrigger:focus-visible) {
     box-shadow: 0 0 0 2px var(--staffly-ring);
   }
 
   .staffly-phone.is-error:has(.PhoneInputInput:focus) .staffly-phone-country,
-  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountrySelect:focus) {
+  .staffly-phone.is-error .staffly-phone-country:has(.PhoneInputCountryTrigger:focus-visible) {
     box-shadow: 0 0 0 2px rgba(254, 202, 202, 1);
   }
 }

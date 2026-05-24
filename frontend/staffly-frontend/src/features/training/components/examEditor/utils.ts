@@ -1,6 +1,7 @@
 import type { PositionDto } from "../../../dictionaries/api";
 import type { ExamSourceFolderDto, QuestionBankTreeNodeDto } from "../../api/types";
 import type { FlatTreeNode } from "./types";
+import type { TrainingExamMode } from "../../api/types";
 
 export function flattenTree(
   nodes: QuestionBankTreeNodeDto[],
@@ -76,14 +77,23 @@ export function calculateTotalQuestions(
 }
 
 export function buildAvailabilityLabel(
+  mode: TrainingExamMode,
   visibilityPositionIds: number[],
   positions: PositionDto[],
   isDesktop: boolean,
 ) {
-  if (visibilityPositionIds.length === 0) return "Всем сотрудникам";
+  if (mode === "PRACTICE" && visibilityPositionIds.length === 0) return "Всем сотрудникам";
+  if (mode === "CERTIFICATION" && visibilityPositionIds.length === 0) return "Должности не выбраны";
+  if (
+    mode === "CERTIFICATION"
+    && positions.length > 0
+    && visibilityPositionIds.length === positions.length
+  ) {
+    return "Всем сотрудникам";
+  }
 
   const selected = positions.filter((position) => visibilityPositionIds.includes(position.id));
-  if (selected.length === 0) return "Всем сотрудникам";
+  if (selected.length === 0) return mode === "PRACTICE" ? "Всем сотрудникам" : "Должности не выбраны";
 
   const visibleCount = isDesktop ? 4 : 2;
   if (selected.length <= visibleCount) {
@@ -95,4 +105,31 @@ export function buildAvailabilityLabel(
     .map((position) => position.name)
     .join(", ");
   return `${visibleNames} +${selected.length - visibleCount}`;
+}
+
+export function resolveInitialVisibilityPositionIds(
+  mode: TrainingExamMode,
+  examVisibilityPositionIds: number[] | undefined,
+  allPositionIds: number[],
+) {
+  if (mode !== "CERTIFICATION") {
+    return examVisibilityPositionIds ?? [];
+  }
+
+  if ((examVisibilityPositionIds ?? []).length > 0) {
+    return examVisibilityPositionIds ?? [];
+  }
+
+  return allPositionIds;
+}
+
+export function normalizeVisibilityForSubmit(
+  mode: TrainingExamMode,
+  visibilityPositionIds: number[],
+) {
+  if (mode === "CERTIFICATION") {
+    return Array.from(new Set(visibilityPositionIds));
+  }
+
+  return visibilityPositionIds;
 }

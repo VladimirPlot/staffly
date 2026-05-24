@@ -8,13 +8,16 @@ import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
-import ru.staffly.training.model.*;
+import ru.staffly.training.model.TrainingFolderType;
+import ru.staffly.training.model.TrainingQuestion;
+import ru.staffly.training.model.TrainingQuestionBlank;
 import ru.staffly.training.repository.*;
 
-import java.util.*;
-import java.util.regex.Pattern;
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -25,21 +28,25 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionMatchPairRepository pairs;
     private final TrainingQuestionBlankRepository blanks;
     private final TrainingQuestionBlankOptionRepository blankOptions;
+    private final TrainingExamSourceFolderRepository folderSources;
     private final TrainingExamSourceQuestionRepository questionSources;
+    private final TrainingQuestionValidator validator;
+    private final TrainingQuestionNestedPersistence nestedPersistence;
+    private final TrainingPolicyService trainingPolicyService;
 
     @Override
-    public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long folderId, TrainingQuestionGroup questionGroup, boolean includeInactive, String query) {
+    @Transactional(readOnly = true)
+    public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long userId, Long folderId, ru.staffly.training.model.TrainingQuestionGroup questionGroup, boolean includeInactive, String query) {
+        requireAccessibleQuestionBankFolder(restaurantId, userId, folderId);
         return toDtos(questions.listForFolder(restaurantId, folderId, questionGroup, includeInactive, query));
     }
 
     @Override
     @Transactional
-    public TrainingQuestionDto createQuestion(Long restaurantId, CreateTrainingQuestionRequest request) {
-        validateQuestionRequest(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
-        var folder = folders.findByIdAndRestaurantId(request.folderId(), restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found"));
-        if (folder.getType() != TrainingFolderType.QUESTION_BANK) throw new BadRequestException("Wrong folder type");
+    public TrainingQuestionDto createQuestion(Long restaurantId, Long userId, CreateTrainingQuestionRequest request) {
+        validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
+        var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
         var entity = questions.save(TrainingQuestion.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .folder(folder)
@@ -52,16 +59,17 @@ public class QuestionServiceImpl implements QuestionService {
                 .active(true)
                 .build());
 
-        saveNested(entity, request.options(), request.matchPairs(), request.blanks());
+        nestedPersistence.saveNested(entity, request.options(), request.matchPairs(), request.blanks());
         return toDtos(List.of(entity)).get(0);
     }
 
     @Override
     @Transactional
-    public TrainingQuestionDto updateQuestion(Long restaurantId, Long questionId, UpdateTrainingQuestionRequest request) {
-        validateQuestionRequest(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
-        var entity = questions.findByIdAndRestaurantId(questionId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Question not found"));
+    public TrainingQuestionDto updateQuestion(Long restaurantId, Long userId, Long questionId, UpdateTrainingQuestionRequest request) {
+        validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
+
+        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
 
         entity.setTitle(request.title().trim());
         entity.setPrompt(request.prompt().trim());
@@ -71,42 +79,57 @@ public class QuestionServiceImpl implements QuestionService {
         entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
         entity.setActive(request.active() == null ? entity.isActive() : request.active());
 
-        if (request.folderId() != null && !request.folderId().equals(entity.getFolder().getId())) {
-            var folder = folders.findByIdAndRestaurantId(request.folderId(), restaurantId)
-                    .orElseThrow(() -> new NotFoundException("Folder not found"));
-            if (folder.getType() != TrainingFolderType.QUESTION_BANK) throw new BadRequestException("Wrong folder type");
-            entity.setFolder(folder);
+        if (request.folderId() != null && !Objects.equals(request.folderId(), entity.getFolder().getId())) {
+            entity.setFolder(requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId()));
         }
 
-        clearNested(entity.getId());
-        saveNested(entity, request.options(), request.matchPairs(), request.blanks());
+        nestedPersistence.replaceNested(entity, request.options(), request.matchPairs(), request.blanks());
         return toDtos(List.of(entity)).get(0);
     }
 
     @Override
     @Transactional
-    public TrainingQuestionDto hideQuestion(Long restaurantId, Long questionId) {
-        var entity = questions.findByIdAndRestaurantId(questionId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Question not found"));
+    public TrainingQuestionDto moveQuestion(Long restaurantId, Long userId, Long questionId, MoveTrainingQuestionRequest request) {
+        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        if (!entity.isActive()) {
+            throw new BadRequestException("Скрытый вопрос нельзя перемещать.");
+        }
+        assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
+
+        var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
+        if (!folder.isActive()) {
+            throw new BadRequestException("Нельзя выбрать скрытую папку.");
+        }
+        entity.setFolder(folder);
+        entity.setSortOrder(request.sortOrder() == null
+                ? nextSortOrder(restaurantId, folder.getId())
+                : normalizeSortOrder(request.sortOrder()));
+        return toDtos(List.of(entity)).get(0);
+    }
+
+    @Override
+    @Transactional
+    public TrainingQuestionDto hideQuestion(Long restaurantId, Long userId, Long questionId) {
+        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
         entity.setActive(false);
         return toDtos(List.of(entity)).get(0);
     }
 
     @Override
     @Transactional
-    public TrainingQuestionDto restoreQuestion(Long restaurantId, Long questionId) {
-        var entity = questions.findByIdAndRestaurantId(questionId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Question not found"));
+    public TrainingQuestionDto restoreQuestion(Long restaurantId, Long userId, Long questionId) {
+        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
         entity.setActive(true);
         return toDtos(List.of(entity)).get(0);
     }
 
     @Override
     @Transactional
-    public void deleteQuestion(Long restaurantId, Long questionId) {
-        var entity = questions.findByIdAndRestaurantId(questionId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Question not found"));
-        if (entity.isActive()) throw new ConflictException("Сначала скройте вопрос, затем удаляйте.");
+    public void deleteQuestion(Long restaurantId, Long userId, Long questionId) {
+        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        if (entity.isActive()) {
+            throw new ConflictException("Сначала скройте вопрос, затем удаляйте.");
+        }
 
         var usages = questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, questionId);
         if (!usages.isEmpty()) {
@@ -116,190 +139,90 @@ public class QuestionServiceImpl implements QuestionService {
             );
         }
 
-        clearNested(entity.getId());
+        nestedPersistence.clearNested(entity.getId());
         questions.delete(entity);
     }
 
-    private void clearNested(Long questionId) {
-        options.deleteByQuestionId(questionId);
-        pairs.deleteByQuestionId(questionId);
-
-        var existingBlanks = blanks.findByQuestionIdOrderBySortOrderAscIdAsc(questionId);
-        if (!existingBlanks.isEmpty()) {
-            blankOptions.deleteByBlankIdIn(existingBlanks.stream().map(TrainingQuestionBlank::getId).toList());
-            blanks.deleteByQuestionId(questionId);
+    private ru.staffly.training.model.TrainingFolder requireAccessibleQuestionBankFolder(Long restaurantId, Long userId, Long folderId) {
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+        if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
+            throw new BadRequestException("Wrong folder type");
         }
+        trainingPolicyService.assertCanAccessQuestionBankByVisibility(
+                userId,
+                restaurantId,
+                folder.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
+        );
+        return folder;
     }
 
-    private void saveNested(
-            TrainingQuestion question,
-            List<TrainingQuestionOptionDto> optionDtos,
-            List<TrainingQuestionMatchPairDto> pairDtos,
-            List<TrainingQuestionBlankDto> blankDtos
-    ) {
-        if (optionDtos != null && !optionDtos.isEmpty()) {
-            options.saveAll(optionDtos.stream()
-                    .map(x -> TrainingQuestionOption.builder()
-                            .question(question)
-                            .text(x.text().trim())
-                            .correct(Boolean.TRUE.equals(x.correct()))
-                            .sortOrder(x.sortOrder() == null ? 0 : x.sortOrder())
-                            .build())
-                    .toList());
-        }
-
-        if (pairDtos != null && !pairDtos.isEmpty()) {
-            pairs.saveAll(pairDtos.stream()
-                    .map(x -> TrainingQuestionMatchPair.builder()
-                            .question(question)
-                            .leftText(x.leftText().trim())
-                            .rightText(x.rightText().trim())
-                            .sortOrder(x.sortOrder() == null ? 0 : x.sortOrder())
-                            .build())
-                    .toList());
-        }
-
-        if (blankDtos != null && !blankDtos.isEmpty()) {
-            // FIX #2: не используем i внутри лямбды/stream.filter, строим map один раз
-            var dtoByIndex = blankDtos.stream()
-                    .collect(Collectors.toMap(
-                            TrainingQuestionBlankDto::index,
-                            b -> b,
-                            (a, b) -> b
-                    ));
-
-            var blankEntities = blanks.saveAll(
-                    blankDtos.stream()
-                            .sorted(Comparator.comparing(TrainingQuestionBlankDto::index))
-                            .map(x -> TrainingQuestionBlank.builder()
-                                    .question(question)
-                                    .sortOrder(x.index() == null ? 0 : x.index() - 1)
-                                    .build())
-                            .toList()
-            );
-
-            List<TrainingQuestionBlankOption> optionEntities = new ArrayList<>();
-            for (int i = 0; i < blankEntities.size(); i++) {
-                int index = i + 1; // 1..N
-                var dto = dtoByIndex.get(index);
-                if (dto == null) {
-                    throw new BadRequestException("FILL_SELECT blank indexes must be 1..N without gaps");
-                }
-
-                for (int j = 0; j < dto.options().size(); j++) {
-                    var o = dto.options().get(j);
-                    optionEntities.add(TrainingQuestionBlankOption.builder()
-                            .blank(blankEntities.get(i))
-                            .text(o.text().trim())
-                            .correct(Boolean.TRUE.equals(o.correct()))
-                            .sortOrder(j)
-                            .build());
-                }
-            }
-
-            blankOptions.saveAll(optionEntities);
-        }
+    private int nextSortOrder(Long restaurantId, Long folderId) {
+        return java.util.Optional.ofNullable(questions.maxSortOrderInFolder(restaurantId, folderId)).orElse(-1) + 1;
     }
 
-    private void validateQuestionRequest(
-            TrainingQuestionType type,
-            String title,
-            String prompt,
-            List<TrainingQuestionOptionDto> optionDtos,
-            List<TrainingQuestionMatchPairDto> pairDtos,
-            List<TrainingQuestionBlankDto> blankDtos
-    ) {
-        if (title == null || title.trim().isEmpty()) throw new BadRequestException("Название вопроса обязательно.");
-        if (prompt == null || prompt.trim().isEmpty()) throw new BadRequestException("Формулировка вопроса обязательна.");
+    private int normalizeSortOrder(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value < 0) {
+            throw new BadRequestException("Порядок не может быть отрицательным");
+        }
+        return value;
+    }
 
-        if (type == TrainingQuestionType.MATCH) {
-            if (pairDtos == null || pairDtos.size() < 2) throw new BadRequestException("MATCH requires at least 2 pairs");
-            var pairSet = new HashSet<String>();
-            for (var pair : pairDtos) {
-                var left = pair.leftText() == null ? "" : pair.leftText().trim();
-                var right = pair.rightText() == null ? "" : pair.rightText().trim();
-                if (left.isEmpty() || right.isEmpty()) throw new BadRequestException("MATCH pairs must be complete");
-                if (!pairSet.add((left + "|||" + right).toLowerCase())) throw new ConflictException("MATCH contains duplicate pairs");
-            }
+    private TrainingQuestion requireAccessibleQuestion(Long restaurantId, Long userId, Long questionId) {
+        var question = questions.findByIdAndRestaurantIdWithFolderVisibility(questionId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Question not found"));
+        trainingPolicyService.assertCanAccessQuestionBankByVisibility(
+                userId,
+                restaurantId,
+                question.getFolder().getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
+        );
+        return question;
+    }
+
+    private void assertQuestionNotUsedInExamsForMutation(Long restaurantId, TrainingQuestion question) {
+        var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
+        questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
+                .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+        folderSources.findExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
+                .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+
+        var usages = List.copyOf(usagesByExamId.values());
+        if (usages.isEmpty()) {
             return;
         }
 
-        if (type == TrainingQuestionType.FILL_SELECT) {
-            var indexes = parsePlaceholderIndexes(prompt);
-            if (indexes.isEmpty()) throw new BadRequestException("FILL_SELECT prompt must contain placeholders like {{1}}");
-            var expected = IntStream.rangeClosed(1, indexes.size()).boxed().toList();
-            if (!indexes.equals(expected)) throw new BadRequestException("FILL_SELECT placeholders must be sequential: {{1}}..{{N}}");
-            if (blankDtos == null || blankDtos.size() != indexes.size()) throw new BadRequestException("FILL_SELECT blanks must match placeholders count");
-
-            var byIndex = blankDtos.stream().collect(Collectors.toMap(TrainingQuestionBlankDto::index, b -> b, (a, b) -> b));
-            if (!byIndex.keySet().containsAll(expected) || byIndex.size() != expected.size()) {
-                throw new BadRequestException("FILL_SELECT blank indexes must be 1..N without gaps");
-            }
-            for (Integer idx : expected) {
-                validateBlankOptions(byIndex.get(idx));
-            }
-            return;
-        }
-
-        if (optionDtos == null || optionDtos.size() < 2) throw new BadRequestException("Question requires at least 2 options");
-        Set<String> uniq = new HashSet<>();
-        for (var opt : optionDtos) {
-            var text = opt.text() == null ? "" : opt.text().trim();
-            if (text.isEmpty()) throw new BadRequestException("Option text is required");
-            if (!uniq.add(text.toLowerCase())) throw new ConflictException("Question contains duplicate options");
-        }
-        long correctCount = optionDtos.stream().filter(x -> Boolean.TRUE.equals(x.correct())).count();
-        if (type == TrainingQuestionType.MULTI && correctCount < 1) throw new BadRequestException("MULTI requires at least one correct option");
-        if ((type == TrainingQuestionType.SINGLE || type == TrainingQuestionType.TRUE_FALSE) && correctCount != 1) {
-            throw new BadRequestException(type + " requires exactly one correct option");
-        }
-    }
-
-    private void validateBlankOptions(TrainingQuestionBlankDto blankDto) {
-        if (blankDto == null || blankDto.options() == null || blankDto.options().size() < 2) {
-            throw new BadRequestException("Each blank requires at least 2 options");
-        }
-        Set<String> uniq = new HashSet<>();
-        long correctCount = 0;
-        for (var option : blankDto.options()) {
-            var text = option.text() == null ? "" : option.text().trim();
-            if (text.isEmpty()) throw new BadRequestException("Blank option text is required");
-            if (!uniq.add(text.toLowerCase())) throw new ConflictException("Blank contains duplicate options");
-            if (Boolean.TRUE.equals(option.correct())) correctCount++;
-        }
-        if (correctCount != 1) throw new BadRequestException("Each blank must contain exactly one correct option");
-    }
-
-    private List<Integer> parsePlaceholderIndexes(String prompt) {
-        // FIX #1: правильная regex-строка для {{1}}, {{2}}, ...
-        Pattern pattern = Pattern.compile("\\{\\{(\\d+)}}");
-        var matcher = pattern.matcher(prompt == null ? "" : prompt);
-
-        List<Integer> out = new ArrayList<>();
-        while (matcher.find()) {
-            out.add(Integer.parseInt(matcher.group(1)));
-        }
-        return out.stream().distinct().sorted().toList();
+        var message = usages.size() == 1
+                ? "Данный вопрос используется в тесте \"" + usages.get(0).getTitle() + "\", чтобы изменить его, нужно удалить тест или убрать данный вопрос из теста."
+                : "Данный вопрос используется в нескольких тестах. Чтобы изменить его, нужно удалить эти тесты или убрать из них данный вопрос.";
+        throw new ConflictException(
+                message,
+                Map.of("exams", usages)
+        );
     }
 
     private List<TrainingQuestionDto> toDtos(List<TrainingQuestion> entities) {
-        if (entities.isEmpty()) return List.of();
+        if (entities.isEmpty()) {
+            return List.of();
+        }
         var ids = entities.stream().map(TrainingQuestion::getId).toList();
 
         Map<Long, List<TrainingQuestionOptionDto>> optionsByQuestion = options.findByQuestionIdInOrderBySortOrderAscIdAsc(ids).stream()
                 .collect(Collectors.groupingBy(
-                        o -> o.getQuestion().getId(),
+                        option -> option.getQuestion().getId(),
                         Collectors.mapping(
-                                o -> new TrainingQuestionOptionDto(o.getId(), o.getText(), o.isCorrect(), o.getSortOrder()),
+                                option -> new TrainingQuestionOptionDto(option.getId(), option.getText(), option.isCorrect(), option.getSortOrder()),
                                 Collectors.toList()
                         )
                 ));
 
         Map<Long, List<TrainingQuestionMatchPairDto>> pairsByQuestion = pairs.findByQuestionIdInOrderBySortOrderAscIdAsc(ids).stream()
                 .collect(Collectors.groupingBy(
-                        p -> p.getQuestion().getId(),
+                        pair -> pair.getQuestion().getId(),
                         Collectors.mapping(
-                                p -> new TrainingQuestionMatchPairDto(p.getId(), p.getLeftText(), p.getRightText(), p.getSortOrder()),
+                                pair -> new TrainingQuestionMatchPairDto(pair.getId(), pair.getLeftText(), pair.getRightText(), pair.getSortOrder()),
                                 Collectors.toList()
                         )
                 ));
@@ -307,46 +230,45 @@ public class QuestionServiceImpl implements QuestionService {
         var blankEntities = blanks.findByQuestionIdInOrderBySortOrderAscIdAsc(ids);
         var blankIds = blankEntities.stream().map(TrainingQuestionBlank::getId).toList();
 
-        Map<Long, List<TrainingQuestionBlankOptionDto>> optionsByBlank =
-                blankIds.isEmpty()
-                        ? Map.of()
-                        : blankOptions.findByBlankIdInOrderBySortOrderAscIdAsc(blankIds).stream()
-                        .collect(Collectors.groupingBy(
-                                o -> o.getBlank().getId(),
-                                Collectors.mapping(
-                                        o -> new TrainingQuestionBlankOptionDto(o.getId(), o.getText(), o.isCorrect(), o.getSortOrder()),
-                                        Collectors.toList()
-                                )
-                        ));
+        Map<Long, List<TrainingQuestionBlankOptionDto>> optionsByBlank = blankIds.isEmpty()
+                ? Map.of()
+                : blankOptions.findByBlankIdInOrderBySortOrderAscIdAsc(blankIds).stream()
+                .collect(Collectors.groupingBy(
+                        option -> option.getBlank().getId(),
+                        Collectors.mapping(
+                                option -> new TrainingQuestionBlankOptionDto(option.getId(), option.getText(), option.isCorrect(), option.getSortOrder()),
+                                Collectors.toList()
+                        )
+                ));
 
         Map<Long, List<TrainingQuestionBlankDto>> blanksByQuestion = blankEntities.stream()
                 .collect(Collectors.groupingBy(
-                        b -> b.getQuestion().getId(),
+                        blank -> blank.getQuestion().getId(),
                         Collectors.mapping(
-                                b -> new TrainingQuestionBlankDto(
-                                        b.getId(),
-                                        b.getSortOrder() + 1,
-                                        optionsByBlank.getOrDefault(b.getId(), List.of())
+                                blank -> new TrainingQuestionBlankDto(
+                                        blank.getId(),
+                                        blank.getSortOrder() + 1,
+                                        optionsByBlank.getOrDefault(blank.getId(), List.of())
                                 ),
                                 Collectors.toList()
                         )
                 ));
 
         return entities.stream()
-                .map(q -> new TrainingQuestionDto(
-                        q.getId(),
-                        q.getRestaurant().getId(),
-                        q.getFolder().getId(),
-                        q.getType(),
-                        q.getQuestionGroup(),
-                        q.getTitle(),
-                        q.getPrompt(),
-                        q.getExplanation(),
-                        q.getSortOrder(),
-                        q.isActive(),
-                        optionsByQuestion.getOrDefault(q.getId(), List.of()),
-                        pairsByQuestion.getOrDefault(q.getId(), List.of()),
-                        blanksByQuestion.getOrDefault(q.getId(), List.of())
+                .map(question -> new TrainingQuestionDto(
+                        question.getId(),
+                        question.getRestaurant().getId(),
+                        question.getFolder().getId(),
+                        question.getType(),
+                        question.getQuestionGroup(),
+                        question.getTitle(),
+                        question.getPrompt(),
+                        question.getExplanation(),
+                        question.getSortOrder(),
+                        question.isActive(),
+                        optionsByQuestion.getOrDefault(question.getId(), List.of()),
+                        pairsByQuestion.getOrDefault(question.getId(), List.of()),
+                        blanksByQuestion.getOrDefault(question.getId(), List.of())
                 ))
                 .toList();
     }

@@ -14,6 +14,7 @@ type DashboardCardProps = {
   showIndicator?: boolean;
   isReorderMode: boolean;
   onEnterReorderMode: () => void;
+  containerClassName?: string;
 };
 
 const LONG_PRESS_MS = 320;
@@ -28,6 +29,7 @@ export default function DashboardCard({
   showIndicator,
   isReorderMode,
   onEnterReorderMode,
+  containerClassName,
 }: DashboardCardProps) {
   const navigate = useNavigate();
 
@@ -119,7 +121,7 @@ export default function DashboardCard({
       ref={setNodeRef}
       style={style}
       data-dashboard-card
-      className={isDragging ? "z-10 opacity-80" : undefined}
+      className={[containerClassName, isDragging ? "z-10 opacity-80" : null].filter(Boolean).join(" ")}
     >
       <div
         {...dndProps}

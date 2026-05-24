@@ -2,6 +2,14 @@ import React from "react";
 
 import Button from "../../../shared/ui/Button";
 import { type ScheduleData } from "../types";
+import {
+  canApplySchedulePreferences,
+  canEditScheduleContent,
+  canPublishSchedule,
+  getScheduleStatusLabel,
+  isCollectingPreferences,
+  isDraftSchedule,
+} from "../utils/status";
 
 type ScheduleDetailHeaderProps = {
   schedule: ScheduleData;
@@ -11,6 +19,14 @@ type ScheduleDetailHeaderProps = {
   deleting: boolean;
   onEnterEditMode: () => void;
   onDelete: () => void;
+  onOpenOwnerDialog: () => void;
+  onOpenPreferences: () => void;
+  canViewPreferences: boolean;
+  lifecycleAction: "startPreferences" | "closePreferences" | "applyPreferences" | "publish" | null;
+  onStartPreferenceCollection: () => void;
+  onClosePreferenceCollection: () => void;
+  onApplyPreferences: () => void;
+  onPublishSchedule: () => void;
   downloadMenuFor: number | null;
   onToggleDownloadMenu: (id: number | null) => void;
   downloading: { id: number; type: "xlsx" | "jpg" } | null;
@@ -29,6 +45,14 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   deleting,
   onEnterEditMode,
   onDelete,
+  onOpenOwnerDialog,
+  onOpenPreferences,
+  canViewPreferences,
+  lifecycleAction,
+  onStartPreferenceCollection,
+  onClosePreferenceCollection,
+  onApplyPreferences,
+  onPublishSchedule,
   downloadMenuFor,
   onToggleDownloadMenu,
   downloading,
@@ -38,28 +62,76 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onOpenReplacement,
   onOpenSwap,
 }) => {
+  const ownerName = schedule.owner?.displayName?.trim();
+  const ownerMeta = [schedule.owner?.role, schedule.owner?.positionName]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const createdByName = schedule.createdBy?.displayName?.trim();
+  const lifecycleDisabled = deleting || lifecycleAction != null;
+  const canEditContent = canEditScheduleContent(schedule.status);
+
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 space-y-1">
-        <div className="text-xl font-semibold text-strong">{schedule.title}</div>
-        <div className="text-sm text-muted">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-strong text-xl font-semibold">{schedule.title}</div>
+          <span className="border-subtle bg-surface text-muted rounded-full border px-2 py-0.5 text-xs font-medium">
+            {getScheduleStatusLabel(schedule.status)}
+          </span>
+        </div>
+        <div className="text-muted text-sm">
           {schedule.config.startDate} — {schedule.config.endDate}
+        </div>
+        <div className="text-muted flex flex-col gap-1 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3">
+          <span>
+            Ответственный: {ownerName || "не назначен"}
+            {ownerMeta.length > 0 && <> · {ownerMeta.join(" · ")}</>}
+          </span>
+          {createdByName && <span>Создал: {createdByName}</span>}
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {canManage && scheduleReadOnly && scheduleId && (
           <>
-            <Button variant="outline" onClick={onEnterEditMode} disabled={deleting}>
-              Редактировать
+            <Button variant="outline" onClick={onOpenOwnerDialog} disabled={deleting}>
+              Сменить ответственного
             </Button>
+            {canViewPreferences && (
+              <Button variant="outline" onClick={onOpenPreferences} disabled={deleting}>
+                Пожелания
+              </Button>
+            )}
+            {isDraftSchedule(schedule.status) && (
+              <Button variant="outline" onClick={onStartPreferenceCollection} disabled={lifecycleDisabled}>
+                {lifecycleAction === "startPreferences" ? "Запуск…" : "Собрать пожелания"}
+              </Button>
+            )}
+            {isCollectingPreferences(schedule.status) && (
+              <Button variant="outline" onClick={onClosePreferenceCollection} disabled={lifecycleDisabled}>
+                {lifecycleAction === "closePreferences" ? "Закрытие…" : "Закрыть сбор"}
+              </Button>
+            )}
+            {canApplySchedulePreferences(schedule.status) && (
+              <Button variant="outline" onClick={onApplyPreferences} disabled={lifecycleDisabled}>
+                {lifecycleAction === "applyPreferences" ? "Внесение…" : "Внести в черновик"}
+              </Button>
+            )}
+            {canPublishSchedule(schedule.status) && (
+              <Button variant="outline" onClick={onPublishSchedule} disabled={lifecycleDisabled}>
+                {lifecycleAction === "publish" ? "Публикация…" : "Опубликовать"}
+              </Button>
+            )}
+            {canEditContent && (
+              <Button variant="outline" onClick={onEnterEditMode} disabled={deleting}>
+                Редактировать
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={onDelete}
               disabled={deleting}
-              className={`border-red-200 text-red-600 hover:bg-red-50 ${
-                deleting ? "cursor-wait opacity-60" : ""
-              }`}
+              className={`border-red-200 text-red-600 hover:bg-red-50 ${deleting ? "cursor-wait opacity-60" : ""}`}
             >
               {deleting ? "Удаление…" : "Удалить"}
             </Button>
@@ -77,9 +149,9 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             </Button>
 
             {downloadMenuFor === scheduleId && (
-              <div className="absolute right-0 z-10 mt-2 w-36 rounded-xl border border-subtle bg-surface shadow-[var(--staffly-shadow)]">
+              <div className="border-subtle bg-surface absolute right-0 z-10 mt-2 w-36 rounded-xl border shadow-[var(--staffly-shadow)]">
                 <button
-                  className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
+                  className="text-default hover:bg-app block w-full px-3 py-2 text-left text-sm"
                   onClick={() => {
                     onDownloadXlsx(scheduleId);
                     onToggleDownloadMenu(null);
@@ -88,7 +160,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
                   Скачать .xlsx
                 </button>
                 <button
-                  className="block w-full px-3 py-2 text-left text-sm text-default hover:bg-app"
+                  className="text-default hover:bg-app block w-full px-3 py-2 text-left text-sm"
                   onClick={() => {
                     onDownloadJpg(scheduleId);
                     onToggleDownloadMenu(null);

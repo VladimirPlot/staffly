@@ -7,13 +7,25 @@ import PublicOnlyRoute from "./shared/routes/PublicOnlyRoute";
 import PageLoader from "./shared/ui/PageLoader";
 
 import Avatar from "./shared/ui/Avatar";
-import Button from "./shared/ui/Button";
+import DropdownMenu from "./shared/ui/DropdownMenu";
 import PwaUpdatePrompt from "./shared/pwa/PwaUpdatePrompt";
+import { updateMyProfile } from "./features/profile/api";
+import { applyThemeToDom, getStoredTheme, setStoredTheme, type Theme } from "./shared/utils/theme";
 
 import { fetchRestaurantName } from "./features/restaurants/api";
 import { fetchInboxUnreadCount } from "./features/inbox/api";
 
-import { Bell, Menu } from "lucide-react";
+import {
+  Bell,
+  ChevronDown,
+  ChevronRight,
+  LogOut,
+  Menu,
+  MoonStar,
+  SunMedium,
+  User,
+  Wallet,
+} from "lucide-react";
 import Icon from "./shared/ui/Icon";
 import IconButton from "./shared/ui/IconButton";
 
@@ -30,10 +42,8 @@ const NotesPage = React.lazy(() => import("./features/income/pages/NotesPage"));
 
 const PositionsPage = React.lazy(() => import("./features/dictionaries/pages/Positions"));
 
-const TrainingLandingPage = React.lazy(() => import("./features/training/pages/Landing"));
-const TrainingKnowledgeRootPage = React.lazy(
-  () => import("./features/training/pages/KnowledgeRootPage"),
-);
+const TrainingLandingPage = React.lazy(() => import("./features/training/pages/LandingPage"));
+const TrainingKnowledgePage = React.lazy(() => import("./features/training/pages/KnowledgePage"));
 const TrainingKnowledgeFolderPage = React.lazy(
   () => import("./features/training/pages/KnowledgeFolderPage"),
 );
@@ -44,7 +54,11 @@ const TrainingQuestionBankFolderPage = React.lazy(
   () => import("./features/training/pages/QuestionBankFolderPage"),
 );
 const TrainingExamsPage = React.lazy(() => import("./features/training/pages/ExamsPage"));
+const TrainingCertificationAnalyticsPage = React.lazy(() => import("./features/training/pages/CertificationAnalyticsPage"));
+const TrainingCertificationAttemptDetailsPage = React.lazy(() => import("./features/training/pages/CertificationAttemptDetailsPage"));
 const TrainingExamRunPage = React.lazy(() => import("./features/training/pages/ExamRunPage"));
+const TrainingCertificationMyResultPage = React.lazy(() => import("./features/training/pages/CertificationMyResultPage"));
+const TrainingCertificationEmployeeAnalyticsPage = React.lazy(() => import("./features/training/pages/CertificationEmployeeAnalyticsPage"));
 
 const RestaurantHome = React.lazy(() => import("./features/home/pages/RestaurantHome"));
 
@@ -68,15 +82,26 @@ const AnonymousLettersPage = React.lazy(
 );
 const PushRedirectPage = React.lazy(() => import("./features/push/pages/PushRedirectPage"));
 const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksPage"));
+const InventoriesPage = React.lazy(() => import("./features/inventories/pages/InventoriesPage"));
+const DishwareInventoriesPage = React.lazy(
+  () => import("./features/inventories/pages/DishwareInventoriesPage"),
+);
+const DishwareInventoryEditorPage = React.lazy(
+  () => import("./features/inventories/pages/DishwareInventoryEditorPage"),
+);
 
 /* ===== TopBar ===== */
 function TopBar() {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, refreshMe } = useAuth();
   const restaurantId = user?.restaurantId;
   const hasRestaurant = typeof restaurantId === "number";
   const [restName, setRestName] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState<number>(0);
+  const [theme, setTheme] = React.useState<Theme>(() => getStoredTheme() ?? "light");
+  const [themeBusy, setThemeBusy] = React.useState(false);
+  const [themeMsg, setThemeMsg] = React.useState<string | null>(null);
+  const mobileMenuId = React.useId();
 
   React.useEffect(() => {
     let alive = true;
@@ -100,6 +125,12 @@ function TopBar() {
   React.useEffect(() => {
     setMobileOpen(false);
   }, [token, restaurantId]);
+
+  React.useEffect(() => {
+    if (user?.theme === "light" || user?.theme === "dark") {
+      setTheme(user.theme);
+    }
+  }, [user?.theme]);
 
   React.useEffect(() => {
     let alive = true;
@@ -132,6 +163,30 @@ function TopBar() {
 
   const homeHref = token ? (hasRestaurant ? "/app" : "/restaurants") : "/login";
 
+  const closeMobileMenu = () => setMobileOpen(false);
+
+  const handleThemeChange = React.useCallback(
+    async (nextTheme: Theme) => {
+      if (themeBusy || nextTheme === theme) return;
+
+      setTheme(nextTheme);
+      setThemeMsg(null);
+      setStoredTheme(nextTheme);
+      applyThemeToDom(nextTheme);
+      setThemeBusy(true);
+
+      try {
+        await updateMyProfile({ theme: nextTheme });
+        await refreshMe();
+      } catch {
+        setThemeMsg("Тема сохранена локально и синхронизируется позже");
+      } finally {
+        setThemeBusy(false);
+      }
+    },
+    [refreshMe, theme, themeBusy],
+  );
+
   return (
     <div className="mb-6">
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 sm:flex-nowrap sm:items-center">
@@ -139,7 +194,7 @@ function TopBar() {
           <span className="staffly-brand-mark">
             <span className="staffly-brand-text">Staffly</span>
           </span>
-          <span className="staffly-release-badge">alpha 3.1.1</span>
+          <span className="staffly-release-badge">alpha 3.2.7</span>
         </Link>
 
         {token ? (
@@ -159,16 +214,6 @@ function TopBar() {
               </div>
             )}
 
-            {user && (
-              <>
-                <Avatar name={user.name} imageUrl={user.avatarUrl} />
-                <div className="hidden text-sm leading-tight sm:block">
-                  <div className="text-default font-medium">{user.name}</div>
-                  <div className="text-muted">{user.phone}</div>
-                </div>
-              </>
-            )}
-
             <div className="hidden items-center gap-3 sm:flex">
               {hasRestaurant && (
                 <Link to="/inbox" aria-label="Входящие">
@@ -177,15 +222,125 @@ function TopBar() {
                   </IconButton>
                 </Link>
               )}
-              <Link to="/me/income">
-                <Button variant="outline">Мои доходы</Button>
-              </Link>
-              <Link to="/profile">
-                <Button variant="outline">Профиль</Button>
-              </Link>
-              <Button variant="outline" onClick={logout}>
-                Выйти
-              </Button>
+
+              {user && (
+                <DropdownMenu
+                  menuClassName="w-[20rem]"
+                  alignClassName="right-0"
+                  trigger={({ onClick, ...aria }) => (
+                    <button
+                      type="button"
+                      {...aria}
+                      onClick={onClick}
+                      className="group border-subtle bg-surface hover:bg-app aria-expanded:bg-surface focus-visible:ring-default flex items-center gap-3 rounded-[1.25rem] border px-3 py-2 text-left shadow-[var(--staffly-shadow)] transition focus-visible:ring-2 focus-visible:outline-none aria-expanded:border-[color:var(--staffly-border)]"
+                    >
+                      <Avatar name={user.name} imageUrl={user.avatarUrl} className="h-10 w-10" />
+                      <div className="min-w-0">
+                        <div className="text-default truncate text-sm font-semibold">
+                          {user.name}
+                        </div>
+                        <div className="text-muted truncate text-xs">{user.phone}</div>
+                      </div>
+                      <Icon
+                        icon={ChevronDown}
+                        size="sm"
+                        className="text-muted transition-transform group-aria-expanded:rotate-180"
+                      />
+                    </button>
+                  )}
+                >
+                  {({ close }) => (
+                    <div className="border-subtle bg-surface w-[20rem] overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3">
+                        <div className="text-default text-sm font-medium">Тема</div>
+
+                        <div className="border-subtle inline-flex items-center rounded-full border bg-[color:var(--staffly-control)] p-1">
+                          <button
+                            type="button"
+                            disabled={themeBusy}
+                            onClick={() => void handleThemeChange("light")}
+                            aria-label="Светлая тема"
+                            aria-pressed={theme === "light"}
+                            className={`focus:ring-default inline-flex h-9 w-9 items-center justify-center rounded-full transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                              theme === "light"
+                                ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-[0_6px_14px_rgba(0,0,0,0.18)]"
+                                : "text-default hover:bg-[color:var(--staffly-control-hover)]"
+                            }`}
+                          >
+                            <Icon icon={SunMedium} size="sm" />
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={themeBusy}
+                            onClick={() => void handleThemeChange("dark")}
+                            aria-label="Тёмная тема"
+                            aria-pressed={theme === "dark"}
+                            className={`focus:ring-default inline-flex h-9 w-9 items-center justify-center rounded-full transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                              theme === "dark"
+                                ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-[0_6px_14px_rgba(0,0,0,0.18)]"
+                                : "text-default hover:bg-[color:var(--staffly-control-hover)]"
+                            }`}
+                          >
+                            <Icon icon={MoonStar} size="sm" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {themeMsg && <div className="text-muted px-4 pb-2 text-xs">{themeMsg}</div>}
+
+                      <div className="border-subtle border-t" />
+
+                      <div className="px-2 py-2">
+                        <Link
+                          to="/me/income"
+                          className="group text-default flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+                          onClick={close}
+                        >
+                          <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                            <Icon icon={Wallet} size="sm" />
+                          </span>
+                          <span className="min-w-0 flex-1 text-left text-sm font-medium">
+                            Мои доходы
+                          </span>
+                          <Icon icon={ChevronRight} size="sm" className="text-muted" />
+                        </Link>
+
+                        <Link
+                          to="/profile"
+                          className="group text-default flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+                          onClick={close}
+                        >
+                          <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                            <Icon icon={User} size="sm" />
+                          </span>
+                          <span className="min-w-0 flex-1 text-left text-sm font-medium">
+                            Профиль
+                          </span>
+                          <Icon icon={ChevronRight} size="sm" className="text-muted" />
+                        </Link>
+
+                        <div className="border-subtle mt-1 border-t pt-1">
+                          <button
+                            type="button"
+                            className="group text-default flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+                            onClick={() => {
+                              close();
+                              logout();
+                            }}
+                          >
+                            <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                              <Icon icon={LogOut} size="sm" />
+                            </span>
+                            <span className="min-w-0 flex-1 text-sm font-medium">Выйти</span>
+                            <Icon icon={ChevronRight} size="sm" className="text-muted" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </DropdownMenu>
+              )}
             </div>
 
             <div className="flex items-center gap-2 sm:hidden">
@@ -200,6 +355,8 @@ function TopBar() {
                 type="button"
                 className="border-subtle bg-surface text-default hover:bg-app ring-default inline-flex items-center justify-center rounded-2xl border px-3 py-2 text-sm font-medium shadow-[var(--staffly-shadow)] focus:ring-2 focus:outline-none"
                 aria-label="Открыть меню"
+                aria-controls={mobileMenuId}
+                aria-haspopup="menu"
                 aria-expanded={mobileOpen}
                 onClick={() => setMobileOpen((v) => !v)}
               >
@@ -215,59 +372,121 @@ function TopBar() {
       </header>
 
       {token && mobileOpen && (
-        <div className="border-subtle bg-surface mt-3 rounded-2xl border p-3 shadow-[var(--staffly-shadow)] sm:hidden">
-          {hasRestaurant && restName && (
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <Link
-                to="/app"
-                className="topbar-pill text-default rounded-full border px-3 py-1 text-xs"
-                onClick={() => setMobileOpen(false)}
-              >
-                {restName}
-              </Link>
-              <Link
-                to="/restaurants"
-                className="text-muted text-xs hover:underline"
-                onClick={() => setMobileOpen(false)}
-              >
-                Сменить ресторан
-              </Link>
-            </div>
-          )}
+        <nav
+          id={mobileMenuId}
+          aria-label="Мобильное меню"
+          className="border-subtle bg-surface mt-3 overflow-hidden rounded-[1.75rem] border shadow-[var(--staffly-shadow)] sm:hidden"
+        >
+          <div className="border-subtle bg-surface border-b p-4">
+            {user && (
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar name={user.name} imageUrl={user.avatarUrl} className="h-11 w-11" />
+                  <div className="min-w-0">
+                    <div className="text-default truncate text-sm font-semibold">{user.name}</div>
+                    <div className="text-muted truncate text-xs">{user.phone}</div>
+                  </div>
+                </div>
 
-          {user && (
-            <div className="mb-3 text-sm">
-              <div className="text-default font-medium">{user.name}</div>
-              <div className="text-muted">{user.phone}</div>
-            </div>
-          )}
+                <div className="border-subtle inline-flex items-center rounded-full border bg-[color:var(--staffly-control)] p-1">
+                  <button
+                    type="button"
+                    disabled={themeBusy}
+                    onClick={() => void handleThemeChange("light")}
+                    aria-label="Светлая тема"
+                    aria-pressed={theme === "light"}
+                    className={`focus:ring-default inline-flex h-9 w-9 items-center justify-center rounded-full transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                      theme === "light"
+                        ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-[0_6px_14px_rgba(0,0,0,0.18)]"
+                        : "text-default hover:bg-[color:var(--staffly-control-hover)]"
+                    }`}
+                  >
+                    <Icon icon={SunMedium} size="sm" />
+                  </button>
 
-          <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={themeBusy}
+                    onClick={() => void handleThemeChange("dark")}
+                    aria-label="Тёмная тема"
+                    aria-pressed={theme === "dark"}
+                    className={`focus:ring-default inline-flex h-9 w-9 items-center justify-center rounded-full transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 ${
+                      theme === "dark"
+                        ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-[0_6px_14px_rgba(0,0,0,0.18)]"
+                        : "text-default hover:bg-[color:var(--staffly-control-hover)]"
+                    }`}
+                  >
+                    <Icon icon={MoonStar} size="sm" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {hasRestaurant && restName && (
+              <div className="border-subtle bg-app mt-3 flex items-center justify-between gap-3 rounded-2xl border px-3 py-2">
+                <Link
+                  to="/app"
+                  className="topbar-link text-default inline-flex items-center rounded-full border px-3 py-1 text-xs"
+                  onClick={closeMobileMenu}
+                >
+                  {restName}
+                </Link>
+                <Link
+                  to="/restaurants"
+                  className="text-muted text-xs hover:underline"
+                  onClick={closeMobileMenu}
+                >
+                  Сменить ресторан
+                </Link>
+              </div>
+            )}
+          </div>
+
+          <div className="p-2">
             <Link
               to="/me/income"
-              className="text-default hover:bg-app rounded-xl px-3 py-2"
-              onClick={() => setMobileOpen(false)}
+              className="group text-default flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+              onClick={closeMobileMenu}
             >
-              Мои доходы
+              <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                <Icon icon={Wallet} size="sm" />
+              </span>
+              <span className="min-w-0 flex-1 text-left text-sm font-medium">Мои доходы</span>
+              <Icon icon={ChevronRight} size="sm" className="text-muted" />
             </Link>
+
             <Link
               to="/profile"
-              className="text-default hover:bg-app rounded-xl px-3 py-2"
-              onClick={() => setMobileOpen(false)}
+              className="group text-default flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+              onClick={closeMobileMenu}
             >
-              Профиль
+              <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                <Icon icon={User} size="sm" />
+              </span>
+              <span className="min-w-0 flex-1 text-left text-sm font-medium">Профиль</span>
+              <Icon icon={ChevronRight} size="sm" className="text-muted" />
             </Link>
-            <button
-              className="text-default hover:bg-app rounded-xl px-3 py-2 text-left"
-              onClick={() => {
-                setMobileOpen(false);
-                logout();
-              }}
-            >
-              Выйти
-            </button>
+
+            {themeMsg && <div className="text-muted mt-2 px-1 text-xs">{themeMsg}</div>}
+
+            <div className="border-subtle mt-2 border-t pt-2">
+              <button
+                type="button"
+                className="group text-default flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-[color:var(--staffly-control-hover)] focus-visible:bg-[color:var(--staffly-control-hover)] focus-visible:outline-none"
+                onClick={() => {
+                  closeMobileMenu();
+                  logout();
+                }}
+              >
+                <span className="border-subtle text-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border bg-[color:var(--staffly-control)]">
+                  <Icon icon={LogOut} size="sm" />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-medium">Выйти</span>
+                <Icon icon={ChevronRight} size="sm" className="text-muted" />
+              </button>
+            </div>
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );
@@ -319,7 +538,6 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route element={<AppShell />}>
-          {/* WIDE: графики */}
           <Route element={<WideLayout />}>
             <Route
               path="/schedule"
@@ -347,6 +565,16 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <MasterScheduleEditorPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inventories/dishware/:inventoryId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <DishwareInventoryEditorPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -401,7 +629,7 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>
-                    <TrainingKnowledgeRootPage />
+                    <TrainingKnowledgePage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -447,11 +675,31 @@ export default function App() {
               }
             />
             <Route
-              path="/training/exams/:examId"
+              path="/training/exams/:examId/analytics"
               element={
                 <ProtectedRoute>
                   <RequireRestaurant>
-                    <TrainingExamsPage />
+                    <TrainingCertificationAnalyticsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/exams/:examId/analytics/attempts/:attemptId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCertificationAttemptDetailsPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/exams/employees/:userId"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCertificationEmployeeAnalyticsPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -462,6 +710,16 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TrainingExamRunPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/training/exams/:examId/result"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <TrainingCertificationMyResultPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
@@ -526,6 +784,28 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <TasksPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/inventories"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <InventoriesPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/inventories/dishware"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <DishwareInventoriesPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }

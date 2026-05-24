@@ -49,33 +49,48 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             int examVersion
     );
 
-    @Query(value = """
-            select m.user_id as userId,
-                   u.full_name as fullName,
-                   count(a.id)::int as attemptsUsed,
-                   max(a.score_percent)::int as bestScore,
-                   max(coalesce(a.finished_at, a.started_at)) as lastAttemptAt,
-                   bool_or(a.passed) as passed
-            from restaurant_member m
-            join users u on u.id = m.user_id
-            left join training_exam_attempt a
-              on a.restaurant_id = m.restaurant_id
-             and a.user_id = m.user_id
-             and a.exam_id = :examId
-             and a.exam_version = :examVersion
-            where m.restaurant_id = :restaurantId
-              and (:positionId is null or m.position_id = :positionId)
-            group by m.user_id, u.full_name
-            order by u.full_name asc
-            """, nativeQuery = true)
-    List<TrainingExamResultProjection> listExamResults(
-            @Param("restaurantId") Long restaurantId,
-            @Param("examId") Long examId,
-            @Param("examVersion") int examVersion,
-            @Param("positionId") Long positionId
-    );
-
     Optional<TrainingExamAttempt> findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
             Long examId, Long restaurantId, Long userId, int examVersion
+    );
+
+    Optional<TrainingExamAttempt> findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+            Long assignmentId,
+            int examVersion
+    );
+
+    List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+            Long assignmentId,
+            int examVersion
+    );
+
+    List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+            Long assignmentId,
+            int examVersion
+    );
+
+    List<TrainingExamAttempt> findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(Long examId, Long restaurantId, Long userId);
+
+    @Query("""
+            select a from TrainingExamAttempt a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.user.id = :userId
+              and a.examVersion = :examVersion
+              and a.finishedAt is null
+              and (
+                (:assignmentId is null and a.assignment is null)
+                or a.assignment.id = :assignmentId
+              )
+            order by a.startedAt desc, a.id desc
+            """)
+    Optional<TrainingExamAttempt> findTopUnfinishedForStartContext(@Param("examId") Long examId,
+                                                                   @Param("restaurantId") Long restaurantId,
+                                                                   @Param("userId") Long userId,
+                                                                   @Param("examVersion") int examVersion,
+                                                                   @Param("assignmentId") Long assignmentId);
+
+    Optional<TrainingExamAttempt> findTopByAssignmentIdAndExamVersionAndPassedTrueAndFinishedAtIsNotNullOrderByFinishedAtAscIdAsc(
+            Long assignmentId,
+            int examVersion
     );
 }

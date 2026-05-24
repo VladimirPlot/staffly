@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AttemptQuestionSnapshotDto } from "../../api/types";
+import DropdownSelect from "../../../../shared/ui/DropdownSelect";
 
 export function measureTextWidth(text: string, font = '500 16px system-ui') {
   if (typeof document === "undefined") return 0;
@@ -75,8 +76,9 @@ export function renderInlineFillPrompt(
 
         return (
           <span key={part.key} className="mx-1 inline-block align-middle">
-            <select
-              className="h-10 rounded-xl border border-subtle bg-surface px-2 pr-7 text-sm text-default"
+            <DropdownSelect
+              aria-label={`Пропуск ${blank.blankIndex}`}
+              className="h-10 rounded-xl px-2 pr-7 text-sm"
               style={{ width: selectWidth, maxWidth: "100%" }}
               value={selectedValue}
               disabled={isConfirmed}
@@ -86,7 +88,7 @@ export function renderInlineFillPrompt(
               {blank.options.map((option) => (
                 <option key={option.text} value={option.text}>{option.text}</option>
               ))}
-            </select>
+            </DropdownSelect>
           </span>
         );
       })}

@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
 import Button from "../../../shared/ui/Button";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Icon from "../../../shared/ui/Icon";
 import Textarea from "../../../shared/ui/Textarea";
 import type { ChecklistRequest, ChecklistKind, ChecklistPeriodicity } from "../api";
@@ -252,8 +253,9 @@ const ChecklistDialog = ({
           <div className="space-y-3">
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
-                <select
-                  className="flex-1 rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                <DropdownSelect
+                  aria-label="Должность"
+                  className="flex-1 rounded-2xl p-2 text-base"
                   value={field.value}
                   onChange={(event) => handlePositionChange(field.id, event.target.value)}
                   disabled={submitting}
@@ -265,7 +267,7 @@ const ChecklistDialog = ({
                       {!position.active ? " (неактивна)" : ""}
                     </option>
                   ))}
-                </select>
+                </DropdownSelect>
                 <Button
                   variant="outline"
                   size="icon"
@@ -288,8 +290,9 @@ const ChecklistDialog = ({
           <div className="space-y-3">
             <div>
               <div className="mb-1 text-sm text-default">Периодичность</div>
-              <select
-                className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+              <DropdownSelect
+                aria-label="Периодичность"
+                className="w-full rounded-2xl p-2 text-base"
                 value={periodicity ?? ""}
                 onChange={(event) => setPeriodicity((event.target.value || undefined) as ChecklistPeriodicity | undefined)}
                 disabled={submitting}
@@ -299,7 +302,7 @@ const ChecklistDialog = ({
                 <option value="WEEKLY">Каждую неделю</option>
                 <option value="MONTHLY">Каждый месяц</option>
                 <option value="MANUAL">Только вручную</option>
-              </select>
+              </DropdownSelect>
             </div>
 
             {periodicity && periodicity !== "MANUAL" && (
@@ -307,8 +310,9 @@ const ChecklistDialog = ({
                 <div>
                   <div className="mb-1 text-sm text-default">Время сброса</div>
                   <div className="flex gap-2">
-                    <select
-                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                    <DropdownSelect
+                      aria-label="Часы"
+                      className="w-full rounded-2xl p-2 text-base"
                       value={resetHour}
                       onChange={(event) => setResetHour(event.target.value === "" ? "" : Number(event.target.value))}
                       disabled={submitting}
@@ -319,9 +323,10 @@ const ChecklistDialog = ({
                           {hour.toString().padStart(2, "0")}
                         </option>
                       ))}
-                    </select>
-                    <select
-                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                    </DropdownSelect>
+                    <DropdownSelect
+                      aria-label="Минуты"
+                      className="w-full rounded-2xl p-2 text-base"
                       value={resetMinute}
                       onChange={(event) => setResetMinute(event.target.value === "" ? "" : Number(event.target.value))}
                       disabled={submitting}
@@ -332,15 +337,16 @@ const ChecklistDialog = ({
                           {minute.toString().padStart(2, "0")}
                         </option>
                       ))}
-                    </select>
+                    </DropdownSelect>
                   </div>
                 </div>
 
                 {periodicity === "WEEKLY" && (
                   <div>
                     <div className="mb-1 text-sm text-default">День недели</div>
-                    <select
-                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                    <DropdownSelect
+                      aria-label="День недели"
+                      className="w-full rounded-2xl p-2 text-base"
                       value={resetDayOfWeek}
                       onChange={(event) => setResetDayOfWeek(event.target.value ? Number(event.target.value) : "")}
                       disabled={submitting}
@@ -353,7 +359,7 @@ const ChecklistDialog = ({
                       <option value={5}>Пятница</option>
                       <option value={6}>Суббота</option>
                       <option value={7}>Воскресенье</option>
-                    </select>
+                    </DropdownSelect>
                   </div>
                 )}
 

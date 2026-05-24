@@ -15,23 +15,17 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
 
-        // ВАЖНО: используем patterns, а не setAllowedOrigins
         cfg.setAllowedOriginPatterns(List.of(
-                // локальная разработка (vite)
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-
-                // локальная сеть (серверный ноут)
                 "http://192.168.*",
-
-                // домен (когда привяжешь)
                 "http://staffly.store",
                 "https://staffly.store"
         ));
 
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
-        cfg.setExposedHeaders(List.of("Authorization"));
+        cfg.setExposedHeaders(List.of("Authorization", "Content-Disposition"));
         cfg.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

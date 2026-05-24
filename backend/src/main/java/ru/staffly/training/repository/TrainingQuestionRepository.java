@@ -60,4 +60,21 @@ public interface TrainingQuestionRepository extends JpaRepository<TrainingQuesti
                                         @Param("includeInactive") boolean includeInactive);
 
     Optional<TrainingQuestion> findByIdAndRestaurantId(Long id, Long restaurantId);
+
+    @Query("""
+            select max(q.sortOrder) from TrainingQuestion q
+            where q.restaurant.id = :restaurantId
+              and q.folder.id = :folderId
+            """)
+    Integer maxSortOrderInFolder(@Param("restaurantId") Long restaurantId, @Param("folderId") Long folderId);
+
+    @Query("""
+            select distinct q from TrainingQuestion q
+            join fetch q.folder f
+            left join fetch f.visibilityPositions vp
+            where q.id = :id
+              and q.restaurant.id = :restaurantId
+            """)
+    Optional<TrainingQuestion> findByIdAndRestaurantIdWithFolderVisibility(@Param("id") Long id,
+                                                                           @Param("restaurantId") Long restaurantId);
 }

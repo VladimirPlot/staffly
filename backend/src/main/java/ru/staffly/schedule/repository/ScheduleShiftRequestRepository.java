@@ -17,6 +17,15 @@ public interface ScheduleShiftRequestRepository extends JpaRepository<ScheduleSh
 
     boolean existsByScheduleIdAndStatus(Long scheduleId, ScheduleShiftRequestStatus status);
 
+    List<ScheduleShiftRequest> findByScheduleIdAndStatus(Long scheduleId, ScheduleShiftRequestStatus status);
+
+    @Query("""
+            select case when count(r) > 0 then true else false end
+            from ScheduleShiftRequest r
+            where r.fromRow.id = :rowId or r.toRow.id = :rowId
+            """)
+    boolean existsByFromRowIdOrToRowId(Long rowId);
+
     @Query("""
             select r from ScheduleShiftRequest r
             where r.schedule.id = :scheduleId

@@ -1,0 +1,270 @@
+package ru.staffly.training.service;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.ForbiddenException;
+import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.model.PositionSpecializations;
+import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.restaurant.model.RestaurantRole;
+import ru.staffly.training.dto.CertificationOwnerCandidateDto;
+import ru.staffly.training.dto.CertificationOwnerCandidatesDto;
+import ru.staffly.training.dto.CertificationOwnerReassignmentOptionsDto;
+import ru.staffly.training.dto.OwnedCertificationExamDto;
+import ru.staffly.training.model.TrainingExam;
+import ru.staffly.training.model.TrainingExamMode;
+import ru.staffly.training.repository.TrainingExamRepository;
+import ru.staffly.user.model.User;
+
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class TrainingExamOwnershipService {
+    private final TrainingExamRepository exams;
+    private final RestaurantMemberRepository members;
+    private final TrainingPolicyService trainingPolicyService;
+
+    public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
+        var actorUser = User.builder().id(actorUserId).build();
+        exam.setCreatedBy(actorUser);
+        exam.setOwner(actorUser);
+    }
+
+    public TrainingExam changeOwner(Long restaurantId, Long actorUserId, Long examId, Long newOwnerUserId) {
+        var exam = requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        validateOwnerCandidate(exam, newOwnerUserId);
+        exam.setOwner(User.builder().id(newOwnerUserId).build());
+        return exam;
+    }
+
+    public CertificationOwnerCandidatesDto getOwnerCandidates(Long restaurantId, Long actorUserId, Long examId) {
+        if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
+            throw new ForbiddenException("Only managers can manage exam ownership");
+        }
+
+        var exam = requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        var currentOwner = exam.getOwner();
+
+        List<RestaurantMember> candidateMembers = filterOwnerCandidateMembers(
+                members.findWithUserAndPositionByRestaurantId(restaurantId),
+                currentOwner == null ? null : currentOwner.getId()
+        );
+
+        return new CertificationOwnerCandidatesDto(
+                exam.getId(),
+                exam.getTitle(),
+                currentOwner == null ? null : currentOwner.getId(),
+                currentOwner == null ? null : currentOwner.getFullName(),
+                buildCandidatesForExam(exam, candidateMembers)
+        );
+    }
+
+    public List<TrainingExam> findActiveOwnedCertificationExams(Long restaurantId, Long ownerUserId) {
+        return exams.findActiveCertificationByRestaurantIdAndOwnerUserIdWithVisibility(restaurantId, ownerUserId);
+    }
+
+    public CertificationOwnerReassignmentOptionsDto buildReassignmentOptions(Long restaurantId, Long actorUserId, Long ownerUserId) {
+        if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
+            throw new ForbiddenException("Only managers can manage exam ownership");
+        }
+
+        RestaurantMember ownerMember = members.findByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Member not found"));
+        List<TrainingExam> ownedExams = findActiveOwnedCertificationExams(restaurantId, ownerUserId)
+                .stream()
+                .filter(exam -> canActorManageExam(actorUserId, restaurantId, exam))
+                .toList();
+
+        if (ownedExams.isEmpty()) {
+            return new CertificationOwnerReassignmentOptionsDto(
+                    ownerUserId,
+                    ownerMember.getUser() == null ? null : ownerMember.getUser().getFullName(),
+                    List.of()
+            );
+        }
+
+        List<RestaurantMember> candidateMembers = filterOwnerCandidateMembers(
+                members.findWithUserAndPositionByRestaurantId(restaurantId),
+                ownerUserId
+        );
+
+        List<OwnedCertificationExamDto> examDtos = ownedExams.stream()
+                .map(exam -> toOwnedExamDto(exam, candidateMembers))
+                .toList();
+
+        return new CertificationOwnerReassignmentOptionsDto(
+                ownerUserId,
+                ownerMember.getUser() == null ? null : ownerMember.getUser().getFullName(),
+                examDtos
+        );
+    }
+
+    public CertificationOwnerReassignmentOptionsDto batchReassign(Long restaurantId,
+                                                                  Long actorUserId,
+                                                                  Long ownerUserId,
+                                                                  List<Map.Entry<Long, Long>> reassignments) {
+        if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
+            throw new ForbiddenException("Only managers can manage exam ownership");
+        }
+        if (reassignments == null || reassignments.isEmpty()) {
+            throw new BadRequestException("Reassignment items are required");
+        }
+
+        var distinctExamIds = reassignments.stream().map(Map.Entry::getKey).distinct().toList();
+        if (distinctExamIds.size() != reassignments.size()) {
+            throw new BadRequestException("Duplicate examId in reassignment items");
+        }
+        var requestedExamIds = distinctExamIds;
+        var examsById = exams.findActiveCertificationByRestaurantIdAndIdInWithVisibility(restaurantId, requestedExamIds)
+                .stream()
+                .collect(Collectors.toMap(TrainingExam::getId, Function.identity()));
+
+        for (var item : reassignments) {
+            var exam = examsById.get(item.getKey());
+            if (exam == null) {
+                throw new NotFoundException("Exam not found");
+            }
+            if (!Objects.equals(exam.getOwner() == null ? null : exam.getOwner().getId(), ownerUserId)) {
+                throw new ConflictException("Exam is not owned by specified user");
+            }
+            if (!canActorManageExam(actorUserId, restaurantId, exam)) {
+                throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
+            }
+            if (Objects.equals(item.getValue(), ownerUserId)) {
+                throw new BadRequestException("Новый ответственный должен отличаться от увольняемого сотрудника");
+            }
+            validateOwnerCandidate(exam, item.getValue());
+        }
+
+        for (var item : reassignments) {
+            examsById.get(item.getKey()).setOwner(User.builder().id(item.getValue()).build());
+        }
+        exams.flush();
+
+        return buildReassignmentOptions(restaurantId, actorUserId, ownerUserId);
+    }
+
+    public void validateOwnerCandidate(TrainingExam exam, Long ownerUserId) {
+        if (ownerUserId == null) {
+            throw new BadRequestException("ownerUserId is required");
+        }
+        Long restaurantId = exam.getRestaurant().getId();
+        var candidate = members.findByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
+                .orElseThrow(() -> new BadRequestException("Owner must be a restaurant member"));
+        if (candidate.getUser() == null) {
+            throw new BadRequestException("Owner member has no linked user");
+        }
+
+        if (!canManageTrainingAsMember(candidate)) {
+            throw new ForbiddenException("Selected owner cannot manage training");
+        }
+
+        var visibilityPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        trainingPolicyService.assertCanUseExamTargetPositions(ownerUserId, restaurantId, visibilityPositionIds);
+
+    }
+
+    private OwnedCertificationExamDto toOwnedExamDto(TrainingExam exam, List<RestaurantMember> candidateMembers) {
+        var visibilityPositions = exam.getVisibilityPositions().stream()
+                .sorted(Comparator.comparing(Position::getId))
+                .toList();
+        var visibilityIds = visibilityPositions.stream().map(Position::getId).toList();
+        var visibilityNames = visibilityPositions.stream().map(Position::getName).toList();
+
+        return new OwnedCertificationExamDto(
+                exam.getId(),
+                exam.getTitle(),
+                visibilityIds,
+                visibilityNames,
+                buildCandidatesForExam(exam, candidateMembers)
+        );
+    }
+
+    private List<CertificationOwnerCandidateDto> buildCandidatesForExam(TrainingExam exam, List<RestaurantMember> candidateMembers) {
+        return candidateMembers.stream()
+                .filter(member -> canManageExamVisibility(member, exam))
+                .map(member -> new CertificationOwnerCandidateDto(
+                        member.getUser().getId(),
+                        member.getUser().getFullName(),
+                        member.getRole(),
+                        member.getPosition() == null ? null : member.getPosition().getId(),
+                        member.getPosition() == null ? null : member.getPosition().getName()
+                ))
+                .toList();
+    }
+
+    private boolean canManageExamVisibility(RestaurantMember candidateMember, TrainingExam exam) {
+        if (candidateMember.getUser() == null) {
+            return false;
+        }
+        try {
+            trainingPolicyService.assertCanUseExamTargetPositions(
+                    candidateMember.getUser().getId(),
+                    exam.getRestaurant().getId(),
+                    exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+            );
+            return true;
+        } catch (RuntimeException ex) {
+            if (!isAccessPolicyDomainException(ex)) {
+                throw ex;
+            }
+            return false;
+        }
+    }
+
+    private TrainingExam requireManageableCertificationExam(Long restaurantId, Long actorUserId, Long examId) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Операция доступна только для аттестационного теста.");
+        }
+        if (!canActorManageExam(actorUserId, restaurantId, exam)) {
+            throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
+        }
+        return exam;
+    }
+
+    private boolean canActorManageExam(Long actorUserId, Long restaurantId, TrainingExam exam) {
+        try {
+            trainingPolicyService.assertCanAccessExamTargetByVisibility(
+                    actorUserId,
+                    restaurantId,
+                    exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+            );
+            return true;
+        } catch (ForbiddenException ex) {
+            return false;
+        }
+    }
+
+    private boolean canManageTrainingAsMember(RestaurantMember member) {
+        if (member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER) {
+            return true;
+        }
+        return member.getPosition() != null
+                && PositionSpecializations.hasExaminer(member.getPosition().getSpecializations());
+    }
+
+    private List<RestaurantMember> filterOwnerCandidateMembers(List<RestaurantMember> membersList, Long excludedUserId) {
+        return membersList.stream()
+                .filter(member -> member.getUser() != null)
+                .filter(member -> !Objects.equals(member.getUser().getId(), excludedUserId))
+                .filter(this::canManageTrainingAsMember)
+                .toList();
+    }
+
+    private boolean isAccessPolicyDomainException(RuntimeException ex) {
+        return ex instanceof ForbiddenException
+                || ex instanceof NotFoundException
+                || ex instanceof BadRequestException
+                || ex instanceof ConflictException
+                || ex instanceof IllegalStateException;
+    }
+}

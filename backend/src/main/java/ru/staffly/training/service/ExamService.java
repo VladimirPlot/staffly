@@ -6,16 +6,35 @@ import java.util.List;
 
 public interface ExamService {
     List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly);
+    List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId);
+    CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager);
     List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive);
-    TrainingExamDto createExam(Long restaurantId, CreateTrainingExamRequest request);
-    TrainingExamDto createKnowledgeExam(Long restaurantId, CreateTrainingExamRequest request);
-    TrainingExamDto updateExam(Long restaurantId, Long examId, UpdateTrainingExamRequest request);
-    TrainingExamDto hideExam(Long restaurantId, Long examId);
-    TrainingExamDto restoreExam(Long restaurantId, Long examId);
-    void deleteExam(Long restaurantId, Long examId);
-    void resetExamResults(Long restaurantId, Long examId);
-    List<TrainingExamProgressDto> listCurrentUserExamProgress(Long restaurantId, Long userId);
+    TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
+    TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
+    TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request);
+    TrainingExamDto movePracticeExam(Long restaurantId, Long userId, Long examId, MoveTrainingPracticeExamRequest request);
+    TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId);
+    TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId);
+    void deleteExam(Long restaurantId, Long userId, Long examId);
+    void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId);
+    List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId);
     StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager);
     AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
-    List<TrainingExamResultDto> listExamResults(Long restaurantId, Long examId, Long positionId);
+
+    void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId);
+    void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount);
+
+    CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long actorUserId, Long examId);
+    List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long actorUserId, Long examId);
+    List<CertificationExamEmployeeRowDto> getCertificationExamEmployeeTable(Long restaurantId, Long actorUserId, Long examId);
+    List<CertificationExamAttemptHistoryDto> getCertificationEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId);
+    CertificationAttemptDetailsDto getCertificationAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId);
+
+    TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId);
+    CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(Long restaurantId, Long actorUserId, Long examId);
+    CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId);
+    CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
+                                                                             Long actorUserId,
+                                                                             Long userId,
+                                                                             CertificationOwnerBatchReassignmentRequest request);
 }

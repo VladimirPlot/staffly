@@ -8,6 +8,12 @@ import ru.staffly.training.model.TrainingExamMode;
 
 import java.util.List;
 
+/**
+ * PUT DTO with full-replace semantics for mutable exam fields.
+ * <p>
+ * Collections ({@code visibilityPositionIds}, {@code sourcesFolders}, {@code sourceQuestionIds})
+ * are treated as the final state provided by client.
+ */
 public record UpdateTrainingExamRequest(
         @NotBlank String title,
         String description,

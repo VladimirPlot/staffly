@@ -1,0 +1,413 @@
+import { useDroppable } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS, useCombinedRefs } from "@dnd-kit/utilities";
+import { Archive, Download, Edit3, ExternalLink, Folder, FolderOpen, MoveRight, Printer, Trash2 } from "lucide-react";
+import type { KeyboardEvent, ReactNode } from "react";
+
+import { cn } from "../../../shared/lib/cn";
+import Card from "../../../shared/ui/Card";
+import Icon from "../../../shared/ui/Icon";
+import { formatDateFromIso } from "../../../shared/utils/date";
+import type { DishwareInventoryFolderDto, DishwareInventorySummaryDto } from "../api";
+import { folderDropId, getDragOverlayWidth, objectId } from "../dishwareInventoriesDnd";
+import type { DishwareObject } from "../dishwareInventoriesTypes";
+import { formatInventoryLossAmount, formatInventoryLossCount, getInventoryStatusBadgeClass } from "../utils";
+import DishwareInventoryObjectActionsMenu from "./DishwareInventoryObjectActionsMenu";
+
+const objectCardClassName =
+  "group hover:bg-app relative touch-manipulation select-none overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
+const selectedCardClassName =
+  "bg-[color:var(--staffly-control)]/25 shadow-[0_14px_34px_rgba(15,23,42,0.08)]";
+const selectedCardOverlayClassName =
+  "pointer-events-none absolute inset-0 rounded-[1.25rem] border border-[color:var(--staffly-divider)] opacity-0 shadow-[0_0_0_2px_rgba(24,24,27,0.035)_inset] transition-opacity duration-200 ease-out motion-reduce:transition-none";
+
+function handleObjectCardKeyDown(event: KeyboardEvent<HTMLElement>, onOpen: () => void, onClearSelection: () => void) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    onOpen();
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    onClearSelection();
+  }
+}
+
+function InventoryMetric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="border-subtle min-w-0 rounded-2xl border bg-[color:var(--staffly-control)]/45 px-3 py-2">
+      <div className="text-muted text-[11px] font-medium">{label}</div>
+      <div className="mt-1 min-w-0 truncate pr-1 font-semibold tabular-nums" title={String(value)}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function FolderCard({
+  folder,
+  actionLoading,
+  dragEnabled = false,
+  canDropInto = false,
+  isDragActive = false,
+  selected = false,
+  onOpen,
+  onSelect,
+  onClearSelection,
+  onEdit,
+  onMove,
+  onTrash,
+}: {
+  folder: DishwareInventoryFolderDto;
+  actionLoading: string | null;
+  dragEnabled?: boolean;
+  canDropInto?: boolean;
+  isDragActive?: boolean;
+  selected?: boolean;
+  onOpen: (folderId: number) => void;
+  onSelect: () => void;
+  onClearSelection: () => void;
+  onEdit: (folder: DishwareInventoryFolderDto) => void;
+  onMove: () => void;
+  onTrash: () => void;
+}) {
+  const trashActionKey = `trash-folder-${folder.id}`;
+  const sortableId = objectId("folder", folder.id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: sortableId,
+    disabled: !dragEnabled,
+  });
+  const { isOver, setNodeRef: setDropNodeRef } = useDroppable({
+    id: folderDropId(folder.id),
+    disabled: !dragEnabled || !canDropInto,
+  });
+  const setCombinedNodeRef = useCombinedRefs(setNodeRef, setDropNodeRef);
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+  const showUnavailableDrop = isDragActive && !canDropInto && !isDragging;
+
+  return (
+    <div ref={setCombinedNodeRef} style={style}>
+      <Card
+        {...attributes}
+        {...listeners}
+        data-dishware-object-card="true"
+        role="option"
+        tabIndex={0}
+        aria-selected={selected}
+        className={cn(
+          objectCardClassName,
+          dragEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
+          selected && selectedCardClassName,
+          isDragging && "opacity-0",
+          isDragActive && canDropInto && !isOver && "ring-dashed ring-1 ring-[var(--staffly-border)]/70 ring-inset",
+          isOver &&
+            "translate-y-[-1px] scale-[1.006] bg-[color:var(--staffly-control)]/45 shadow-[0_18px_42px_rgba(15,23,42,0.13)] ring-1 ring-[var(--staffly-ring)] ring-inset",
+          showUnavailableDrop && "opacity-60",
+        )}
+        onClick={onSelect}
+        onDoubleClick={() => onOpen(folder.id)}
+        onKeyDown={(event) => handleObjectCardKeyDown(event, () => onOpen(folder.id), onClearSelection)}
+      >
+        <span aria-hidden="true" className={cn(selectedCardOverlayClassName, selected && "opacity-100")} />
+        <div className="flex items-start gap-2">
+          <div className="flex min-h-14 min-w-0 flex-1 items-start gap-3 rounded-2xl px-2 py-2 text-left">
+            <span
+              className={cn(
+                "mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)] transition group-hover:bg-[color:var(--staffly-control-hover)]",
+                selected &&
+                  "text-strong bg-[color:var(--staffly-control-hover)] shadow-sm ring-1 ring-[var(--staffly-ring)]/70 ring-inset",
+                isOver &&
+                  "text-strong bg-[color:var(--staffly-control-hover)] shadow-sm ring-1 ring-[var(--staffly-ring)]/60 ring-inset",
+              )}
+            >
+              <Icon icon={isOver ? FolderOpen : Folder} size="sm" decorative />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-base font-semibold [overflow-wrap:anywhere]">{folder.name}</span>
+              {folder.description ? (
+                <span className="text-muted mt-1 block text-sm [overflow-wrap:anywhere]">{folder.description}</span>
+              ) : (
+                <span className="text-muted mt-1 block text-sm">Папка</span>
+              )}
+            </span>
+          </div>
+          <div
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <DishwareInventoryObjectActionsMenu
+              title={folder.name}
+              description={folder.description || "Папка инвентаризаций"}
+              actions={[
+                {
+                  label: "Открыть",
+                  icon: ExternalLink,
+                  onSelect: () => onOpen(folder.id),
+                },
+                {
+                  label: "Изменить",
+                  icon: Edit3,
+                  onSelect: () => onEdit(folder),
+                },
+                {
+                  label: "Переместить",
+                  icon: MoveRight,
+                  onSelect: onMove,
+                },
+                {
+                  label: actionLoading === trashActionKey ? "Перемещаем в корзину..." : "В корзину",
+                  icon: Trash2,
+                  tone: "danger",
+                  disabled: actionLoading === trashActionKey,
+                  onSelect: onTrash,
+                },
+              ]}
+            />
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function InventoryCard({
+  inventory,
+  actionLoading,
+  dragEnabled = false,
+  selected = false,
+  onOpen,
+  onSelect,
+  onClearSelection,
+  onMove,
+  onTrash,
+  onDownloadPrintForm,
+  onPrintForm,
+}: {
+  inventory: DishwareInventorySummaryDto;
+  actionLoading: string | null;
+  dragEnabled?: boolean;
+  selected?: boolean;
+  onOpen: (inventoryId: number) => void;
+  onSelect: () => void;
+  onClearSelection: () => void;
+  onMove: () => void;
+  onTrash: () => void;
+  onDownloadPrintForm: () => void;
+  onPrintForm: () => void;
+}) {
+  const trashActionKey = `trash-inventory-${inventory.id}`;
+  const downloadActionKey = `download-print-form-${inventory.id}`;
+  const printActionKey = `print-form-${inventory.id}`;
+  const sortableId = objectId("inventory", inventory.id);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: sortableId,
+    disabled: !dragEnabled,
+  });
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card
+        {...attributes}
+        {...listeners}
+        data-dishware-object-card="true"
+        role="option"
+        tabIndex={0}
+        aria-selected={selected}
+        className={cn(
+          objectCardClassName,
+          dragEnabled ? "cursor-grab active:cursor-grabbing" : "cursor-default",
+          selected && selectedCardClassName,
+          isDragging && "opacity-0",
+        )}
+        onClick={onSelect}
+        onDoubleClick={() => onOpen(inventory.id)}
+        onKeyDown={(event) => handleObjectCardKeyDown(event, () => onOpen(inventory.id), onClearSelection)}
+      >
+        <span aria-hidden="true" className={cn(selectedCardOverlayClassName, selected && "opacity-100")} />
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1 rounded-2xl px-2 py-2">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-lg font-semibold [overflow-wrap:anywhere]">{inventory.title}</span>
+                  <span className={getInventoryStatusBadgeClass(inventory.status)}>
+                    {inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
+                  </span>
+                </div>
+                <div className="text-muted mt-1 text-sm">
+                  Дата: {formatDateFromIso(inventory.inventoryDate)}
+                  {inventory.sourceInventoryTitle ? ` • На основе: ${inventory.sourceInventoryTitle}` : ""}
+                </div>
+                {inventory.comment ? (
+                  <div className="text-default mt-2 text-sm [overflow-wrap:anywhere]">{inventory.comment}</div>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-[minmax(74px,0.85fr)_minmax(74px,0.85fr)_minmax(116px,1.3fr)] gap-2 lg:min-w-[336px]">
+                <InventoryMetric label="Позиции" value={inventory.itemsCount} />
+                <InventoryMetric label="Потери" value={formatInventoryLossCount(inventory.totalLossQty)} />
+                <InventoryMetric label="Сумма" value={formatInventoryLossAmount(inventory.totalLossAmount)} />
+              </div>
+            </div>
+          </div>
+          <div
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onTouchStart={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <DishwareInventoryObjectActionsMenu
+              title={inventory.title}
+              description={`Документ от ${formatDateFromIso(inventory.inventoryDate)}`}
+              actions={[
+                {
+                  label: "Открыть",
+                  icon: ExternalLink,
+                  onSelect: () => onOpen(inventory.id),
+                },
+                {
+                  label: actionLoading === downloadActionKey ? "Скачиваем бланк..." : "Скачать бланк",
+                  icon: Download,
+                  disabled: actionLoading === downloadActionKey,
+                  onSelect: onDownloadPrintForm,
+                },
+                {
+                  label: actionLoading === printActionKey ? "Готовим печать..." : "Распечатать",
+                  icon: Printer,
+                  disabled: actionLoading === printActionKey,
+                  onSelect: onPrintForm,
+                },
+                {
+                  label: "Переместить",
+                  icon: MoveRight,
+                  onSelect: onMove,
+                },
+                {
+                  label: actionLoading === trashActionKey ? "Перемещаем в корзину..." : "В корзину",
+                  icon: Trash2,
+                  tone: "danger",
+                  disabled: actionLoading === trashActionKey,
+                  onSelect: onTrash,
+                },
+              ]}
+            />
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+export function DishwareDragOverlayCard({ object, width }: { object: DishwareObject | null; width: number | null }) {
+  if (!object) return null;
+
+  const title = object.kind === "folder" ? object.folder.name : object.inventory.title;
+  const subtitle =
+    object.kind === "folder"
+      ? object.folder.description || "Папка"
+      : `${formatDateFromIso(object.inventory.inventoryDate)} · ${
+          object.inventory.status === "COMPLETED" ? "Завершена" : "Черновик"
+        }`;
+  const IconComponent = object.kind === "folder" ? Folder : Archive;
+
+  return (
+    <div className="pointer-events-none" style={{ width: getDragOverlayWidth(width) }}>
+      <Card className="bg-surface/95 rounded-2xl p-2 opacity-50 shadow-xl ring-1 ring-[var(--staffly-ring)] backdrop-blur">
+        <div className="flex min-h-11 items-center gap-2.5">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[color:var(--staffly-control-hover)]">
+            <Icon icon={IconComponent} size="sm" decorative />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{title}</span>
+            <span className="text-muted mt-0.5 block truncate text-xs">{subtitle}</span>
+          </span>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+export default function DishwareObjectList({
+  objects,
+  activeObjectId,
+  selectedObjectId,
+  blockedFolderIds,
+  actionLoading,
+  onSelectObject,
+  onClearSelection,
+  onOpenFolder,
+  onOpenInventory,
+  onEditFolder,
+  onMoveObject,
+  onTrashObject,
+  onDownloadPrintForm,
+  onPrintForm,
+}: {
+  objects: DishwareObject[];
+  activeObjectId: string | null;
+  selectedObjectId: string | null;
+  blockedFolderIds: Set<number>;
+  actionLoading: string | null;
+  onSelectObject: (object: DishwareObject) => void;
+  onClearSelection: () => void;
+  onOpenFolder: (folderId: number) => void;
+  onOpenInventory: (inventoryId: number) => void;
+  onEditFolder: (folder: DishwareInventoryFolderDto) => void;
+  onMoveObject: (object: DishwareObject) => void;
+  onTrashObject: (object: DishwareObject) => void;
+  onDownloadPrintForm: (inventory: DishwareInventorySummaryDto) => void;
+  onPrintForm: (inventory: DishwareInventorySummaryDto) => void;
+}) {
+  if (objects.length === 0) return null;
+
+  return (
+    <div className="space-y-3" role="listbox" aria-label="Папки и документы инвентаризаций">
+      {objects.map((object) =>
+        object.kind === "folder" ? (
+          <FolderCard
+            key={objectId("folder", object.id)}
+            folder={object.folder}
+            actionLoading={actionLoading}
+            dragEnabled
+            canDropInto={Boolean(activeObjectId) && !blockedFolderIds.has(object.id)}
+            isDragActive={Boolean(activeObjectId)}
+            selected={selectedObjectId === objectId("folder", object.id)}
+            onOpen={onOpenFolder}
+            onSelect={() => onSelectObject(object)}
+            onClearSelection={onClearSelection}
+            onEdit={onEditFolder}
+            onMove={() => onMoveObject(object)}
+            onTrash={() => onTrashObject(object)}
+          />
+        ) : (
+          <InventoryCard
+            key={objectId("inventory", object.id)}
+            inventory={object.inventory}
+            actionLoading={actionLoading}
+            dragEnabled
+            selected={selectedObjectId === objectId("inventory", object.id)}
+            onOpen={onOpenInventory}
+            onSelect={() => onSelectObject(object)}
+            onClearSelection={onClearSelection}
+            onMove={() => onMoveObject(object)}
+            onTrash={() => onTrashObject(object)}
+            onDownloadPrintForm={() => onDownloadPrintForm(object.inventory)}
+            onPrintForm={() => onPrintForm(object.inventory)}
+          />
+        ),
+      )}
+    </div>
+  );
+}

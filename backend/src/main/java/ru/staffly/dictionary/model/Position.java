@@ -2,9 +2,12 @@ package ru.staffly.dictionary.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import ru.staffly.master_schedule.model.PayType;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
-import ru.staffly.master_schedule.model.PayType;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "position",
@@ -33,6 +36,13 @@ public class Position {
     @Column(name = "level", nullable = false, length = 20)
     @Builder.Default
     private RestaurantRole level = RestaurantRole.STAFF;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "position_specialization", joinColumns = @JoinColumn(name = "position_id"))
+    @Column(name = "specialization", nullable = false, length = 40)
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    private Set<PositionSpecialization> specializations = new LinkedHashSet<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pay_type", nullable = false, length = 20)

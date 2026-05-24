@@ -1,6 +1,9 @@
 package ru.staffly.member.dto;
 
+import ru.staffly.dictionary.model.PositionSpecialization;
 import ru.staffly.restaurant.model.RestaurantRole;
+
+import java.util.Set;
 
 public record MyMembershipDto(
         Long restaurantId,
@@ -8,5 +11,6 @@ public record MyMembershipDto(
         String restaurantDescription,
         String restaurantTimezone,
         boolean restaurantLocked,
-        RestaurantRole role
+        RestaurantRole role,
+        Set<PositionSpecialization> specializations
 ) {}

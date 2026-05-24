@@ -13,6 +13,8 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
             where e.restaurant.id = :restaurantId
             order by e.createdAt desc
             """)
@@ -21,6 +23,8 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
             where e.restaurant.id = :restaurantId
               and e.active = true
             order by e.createdAt desc
@@ -30,6 +34,8 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
             where e.restaurant.id = :restaurantId
               and e.active = true
               and (:mode is null or e.mode = :mode)
@@ -45,6 +51,8 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
             where e.id = :id and e.restaurant.id = :restaurantId
             """)
     Optional<TrainingExam> findByIdAndRestaurantIdWithVisibility(@Param("id") Long id, @Param("restaurantId") Long restaurantId);
@@ -55,16 +63,36 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
             where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.active = true
+            order by e.createdAt desc
+            """)
+    List<TrainingExam> findActiveCertificationByRestaurantIdWithVisibility(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
+            where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
               and e.knowledgeFolder.id = :folderId
               and (:includeInactive = true or e.active = true)
               and (:positionId is null or vp.id is null or vp.id = :positionId)
-            order by e.createdAt desc
+            order by e.sortOrder asc, e.createdAt desc
             """)
     List<TrainingExam> listPracticeByKnowledgeFolder(@Param("restaurantId") Long restaurantId,
                                                      @Param("folderId") Long folderId,
                                                      @Param("includeInactive") boolean includeInactive,
                                                      @Param("positionId") Long positionId);
+
+    @Query("""
+            select max(e.sortOrder) from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
+              and e.knowledgeFolder.id = :folderId
+            """)
+    Integer maxPracticeSortOrderInKnowledgeFolder(@Param("restaurantId") Long restaurantId, @Param("folderId") Long folderId);
 
     @Query("""
             select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)
@@ -75,4 +103,32 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             """)
     List<ru.staffly.training.dto.ExamUsageDto> findPracticeExamUsagesByKnowledgeFolderIds(@Param("restaurantId") Long restaurantId,
                                                                                           @Param("folderIds") List<Long> folderIds);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.active = true
+              and e.owner.id = :ownerUserId
+            order by e.createdAt desc
+            """)
+    List<TrainingExam> findActiveCertificationByRestaurantIdAndOwnerUserIdWithVisibility(@Param("restaurantId") Long restaurantId,
+                                                                                         @Param("ownerUserId") Long ownerUserId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions vp
+            left join fetch e.createdBy cb
+            left join fetch e.owner ow
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.active = true
+              and e.id in :examIds
+            """)
+    List<TrainingExam> findActiveCertificationByRestaurantIdAndIdInWithVisibility(@Param("restaurantId") Long restaurantId,
+                                                                                  @Param("examIds") List<Long> examIds);
+
 }

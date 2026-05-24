@@ -2,22 +2,40 @@ package ru.staffly.member.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import ru.staffly.member.dto.MyMembershipDto;
+import org.springframework.data.repository.query.Param;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.RestaurantRole;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface RestaurantMemberRepository extends JpaRepository<RestaurantMember, Long> {
 
     Optional<RestaurantMember> findByUserIdAndRestaurantId(Long userId, Long restaurantId);
 
+    @Query("""
+           select m from RestaurantMember m
+           join fetch m.user u
+           where u.id = :userId
+             and m.restaurant.id = :restaurantId
+           """)
+    Optional<RestaurantMember> findWithUserByUserIdAndRestaurantId(Long userId, Long restaurantId);
+
     List<RestaurantMember> findByRestaurantId(Long restaurantId);
 
     @Query("""
            select m from RestaurantMember m
+           join fetch m.user u
+           where m.restaurant.id = :restaurantId
+             and u.id in :userIds
+           """)
+    List<RestaurantMember> findByRestaurantIdAndUserIdIn(Long restaurantId, Set<Long> userIds);
+
+    @Query("""
+           select distinct m from RestaurantMember m
            left join fetch m.position p
+           left join fetch p.specializations
            where m.user.id = :userId and m.restaurant.id = :restaurantId
            """)
     Optional<RestaurantMember> findByUserIdAndRestaurantIdWithPosition(Long userId, Long restaurantId);
@@ -31,13 +49,68 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
 
     List<RestaurantMember> findByRestaurantIdAndPositionIdIn(Long restaurantId, List<Long> positionIds);
 
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and p.id in :positionIds
+           """)
+    List<RestaurantMember> findWithUserAndPositionByRestaurantIdAndPositionIdIn(@Param("restaurantId") Long restaurantId, @Param("positionIds") List<Long> positionIds);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           left join fetch p.specializations
+           where m.restaurant.id = :restaurantId
+           """)
+    List<RestaurantMember> findWithUserAndPositionByRestaurantId(Long restaurantId);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and p.id = :positionId
+           """)
+    List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndPositionId(Long restaurantId, Long positionId);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and (
+                  lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
+                  or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.lastName, ''), ' ', coalesce(u.firstName, ''))) like concat('%', :query, '%')
+             )
+           """)
+    List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndQuery(Long restaurantId, String query);
+
+    @Query("""
+           select distinct m from RestaurantMember m
+           join fetch m.user u
+           left join fetch m.position p
+           where m.restaurant.id = :restaurantId
+             and p.id = :positionId
+             and (
+                  lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
+                  or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.firstName, ''), ' ', coalesce(u.lastName, ''))) like concat('%', :query, '%')
+                  or lower(concat(coalesce(u.lastName, ''), ' ', coalesce(u.firstName, ''))) like concat('%', :query, '%')
+             )
+           """)
+    List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndPositionIdAndQuery(Long restaurantId, Long positionId, String query);
+
     long countByRestaurantIdAndRole(Long restaurantId, RestaurantRole role);
 
     boolean existsByRestaurantIdAndUserIdNot(Long restaurantId, Long userId);
 
     boolean existsByRestaurantIdAndUserId(Long restaurantId, Long userId);
 
-    // ADMIN или MANAGER
     @Query("""
            select m from RestaurantMember m
            where m.restaurant.id = :restaurantId
@@ -48,17 +121,12 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findByUserId(Long userId);
 
     @Query("""
-   select new ru.staffly.member.dto.MyMembershipDto(
-     m.restaurant.id,
-     m.restaurant.name,
-     m.restaurant.description,
-     m.restaurant.timezone,
-     m.restaurant.locked,
-     m.role
-   )
-   from RestaurantMember m
-   where m.user.id = :userId
-   order by m.restaurant.id asc
-""")
-    List<MyMembershipDto> findMembershipsDtoByUserId(Long userId);
+           select distinct m from RestaurantMember m
+           join fetch m.restaurant r
+           left join fetch m.position p
+           left join fetch p.specializations
+           where m.user.id = :userId
+           order by r.id asc
+           """)
+    List<RestaurantMember> findMembershipsByUserIdWithRestaurantAndPosition(Long userId);
 }

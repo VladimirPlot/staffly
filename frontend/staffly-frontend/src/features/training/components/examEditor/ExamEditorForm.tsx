@@ -68,6 +68,7 @@ export default function ExamEditorForm(props: Props) {
       />
 
       <ExamVisibilitySection
+        mode={props.mode}
         positions={props.positions}
         visibilityPositionIds={props.visibilityPositionIds}
         availabilityLabel={props.availabilityLabel}

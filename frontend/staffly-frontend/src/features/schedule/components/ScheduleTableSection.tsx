@@ -10,6 +10,7 @@ type ScheduleTableSectionProps = {
   scheduleReadOnly: boolean;
   scheduleId: number | null;
   saving: boolean;
+  savingDraft: boolean;
   monthFallback: string | null;
   canManage: boolean;
   loading: boolean;
@@ -17,6 +18,7 @@ type ScheduleTableSectionProps = {
   scheduleLoading: boolean;
   onCancelEdit: () => void;
   onSave: () => void;
+  onSaveDraft: () => void;
   onCellChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
 };
 
@@ -25,6 +27,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   scheduleReadOnly,
   scheduleId,
   saving,
+  savingDraft,
   monthFallback,
   canManage,
   loading,
@@ -32,10 +35,11 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   scheduleLoading,
   onCancelEdit,
   onSave,
+  onSaveDraft,
   onCellChange,
 }) => {
-  const showControls =
-    canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
+  const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
+  const saveDisabled = saving || savingDraft;
 
   return (
     <>
@@ -45,13 +49,23 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
             <Button
               variant="ghost"
               onClick={onCancelEdit}
-              disabled={saving}
-              className={saving ? "cursor-not-allowed opacity-60" : ""}
+              disabled={saveDisabled}
+              className={saveDisabled ? "cursor-not-allowed opacity-60" : ""}
             >
               Отменить
             </Button>
           )}
-          <Button onClick={onSave} disabled={saving} className={saving ? "cursor-wait opacity-70" : ""}>
+          {!scheduleId && (
+            <Button
+              variant="outline"
+              onClick={onSaveDraft}
+              disabled={saveDisabled}
+              className={savingDraft ? "cursor-wait opacity-70" : ""}
+            >
+              {savingDraft ? "Сохранение…" : "Сохранить черновик"}
+            </Button>
+          )}
+          <Button onClick={onSave} disabled={saveDisabled} className={saving ? "cursor-wait opacity-70" : ""}>
             {saving ? "Сохранение…" : scheduleId ? "Сохранить изменения" : "Сохранить график"}
           </Button>
         </div>
@@ -59,29 +73,25 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 
       <Card className="overflow-visible">
         {scheduleReadOnly && (
-          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted">
+          <div className="text-muted mb-3 text-xs font-medium tracking-wide uppercase">
             Просмотр сохранённого графика
           </div>
         )}
 
         {schedule.rows.length === 0 ? (
-          <div className="text-sm text-muted">
+          <div className="text-muted text-sm">
             В выбранных должностях пока нет сотрудников. Попробуйте выбрать другие должности.
           </div>
         ) : (
           <div className="-mx-6 max-h-[70vh] overflow-auto [webkit-overflow-scrolling:touch]">
             <div className="inline-block min-w-full px-6 align-top">
-              <ScheduleTable
-                data={schedule}
-                onChange={onCellChange}
-                readOnly={scheduleReadOnly}
-              />
+              <ScheduleTable data={schedule} onChange={onCellChange} readOnly={scheduleReadOnly} />
             </div>
           </div>
         )}
 
         {schedule.rows.length > 0 && monthFallback && (
-          <div className="mt-3 text-xs text-muted">
+          <div className="text-muted mt-3 text-xs">
             Период: {schedule.config.startDate} — {schedule.config.endDate} ({monthFallback})
           </div>
         )}

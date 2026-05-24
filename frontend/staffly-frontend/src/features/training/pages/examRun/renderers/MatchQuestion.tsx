@@ -1,4 +1,5 @@
 import type { AttemptQuestionSnapshotDto } from "../../../api/types";
+import DropdownSelect from "../../../../../shared/ui/DropdownSelect";
 import { parseMatchAnswer } from "../answerUtils";
 import QuestionFrame from "./QuestionFrame";
 
@@ -30,22 +31,32 @@ export default function MatchQuestion({
   return (
     <QuestionFrame index={index} prompt={question.prompt} explanation={explanation}>
       <div className="mt-3 space-y-2">
-        {pairs.map((pair) => {
+        {pairs.map((pair, pairIndex) => {
           const value = rightByLeft.get(pair.leftText) ?? "";
           return (
-            <div key={pair.leftText} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-default">{pair.leftText}</div>
-              <select
-                className="w-full rounded-xl border border-subtle bg-surface px-3 py-2 text-sm text-default sm:max-w-xs"
-                value={value}
-                disabled={isConfirmed}
-                onChange={(event) => onChange(pair.leftText, event.target.value)}
-              >
-                <option value="" disabled hidden />
-                {optionsFor(value).map((right) => (
-                  <option key={right} value={right}>{right}</option>
-                ))}
-              </select>
+            <div
+              key={pair.leftText}
+              className="grid grid-cols-[minmax(0,1fr)_8rem] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center sm:gap-3"
+            >
+              <div className="min-w-0 text-sm leading-5 text-default break-words text-pretty">{pair.leftText}</div>
+              <div className="min-w-0">
+                <DropdownSelect
+                  aria-label={`${pairIndex + 1}. ${pair.leftText}`}
+                  className="w-full rounded-xl px-3 py-2 text-sm"
+                  matchTriggerWidth={false}
+                  menuClassName="w-[min(16rem,calc(100vw-1rem))] sm:w-72"
+                  value={value}
+                  disabled={isConfirmed}
+                  onChange={(event) => onChange(pair.leftText, event.target.value)}
+                >
+                  <option value="" disabled hidden />
+                  {optionsFor(value).map((right) => (
+                    <option key={right} value={right}>
+                      {right}
+                    </option>
+                  ))}
+                </DropdownSelect>
+              </div>
             </div>
           );
         })}

@@ -42,8 +42,8 @@ export default function ExamRunPage() {
           onConfirm={state.confirmCurrentAnswer}
           onNext={state.goToNext}
           onExit={state.handleExit}
-          onRestart={state.loadAttempt}
-          onFinish={() => navigate(state.backRoute)}
+          onRestart={state.isCertificationExam ? undefined : state.loadAttempt}
+          onFinish={() => navigate(state.resultRoute ?? state.backRoute)}
           disableConfirm={Boolean(state.currentQuestionError)}
           questionContent={
             state.currentQuestion ? (

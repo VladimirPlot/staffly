@@ -5,9 +5,8 @@ import { toAbsoluteUrl } from "../../shared/utils/url";
 
 /* ===== Приглашения (оставляем как было) ===== */
 export type InviteRequest = {
-  phoneOrEmail: string;
-  role: RestaurantRole;         // "STAFF" | "MANAGER" | "ADMIN"
-  positionId?: number;          // опционально
+  phone: string;
+  positionId: number;
 };
 
 export type InviteResponse = {
@@ -30,9 +29,9 @@ export async function fetchMyRoleIn(restaurantId: number): Promise<RestaurantRol
 
 /* ===== Список участников ===== */
 export type MemberDto = {
-  id: number;                // id записи membership
+  id: number; // id записи membership
   userId: number;
-  role: RestaurantRole;      // роль доступа в ресторане
+  role: RestaurantRole; // роль доступа в ресторане
   positionId?: number | null;
   positionName?: string | null;
   avatarUrl?: string | null;
@@ -56,14 +55,86 @@ export async function listMembers(restaurantId: number): Promise<MemberDto[]> {
   }));
 }
 
+export type MemberResponsibilityType = "CERTIFICATION" | "SCHEDULE";
+
+export type MemberResponsibilityCandidateDto = {
+  userId: number;
+  memberId: number | null;
+  displayName: string;
+  role: string;
+  positionId: number | null;
+  positionName: string | null;
+};
+
+export type MemberResponsibilityPeriodDto = {
+  startDate: string;
+  endDate: string;
+};
+
+export type MemberResponsibilityItemDto = {
+  id: number;
+  title: string;
+  subtitle: string | null;
+  period: MemberResponsibilityPeriodDto | null;
+  candidates: MemberResponsibilityCandidateDto[];
+};
+
+export type MemberResponsibilityGroupDto = {
+  type: MemberResponsibilityType;
+  title: string;
+  items: MemberResponsibilityItemDto[];
+};
+
+export type MemberResponsibilityHandoffOptionsDto = {
+  userId: number;
+  fullName: string;
+  groups: MemberResponsibilityGroupDto[];
+};
+
+export type MemberResponsibilityHandoffRequest = {
+  items: {
+    type: MemberResponsibilityType;
+    resourceId: number;
+    newOwnerUserId: number;
+  }[];
+};
+
 export async function removeMember(restaurantId: number, memberId: number): Promise<void> {
   await api.delete(`/api/restaurants/${restaurantId}/members/${memberId}`);
+}
+
+export async function getMemberResponsibilityHandoffOptions(
+  restaurantId: number,
+  memberId: number,
+): Promise<MemberResponsibilityHandoffOptionsDto> {
+  const { data } = await api.get<MemberResponsibilityHandoffOptionsDto>(
+    `/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff-options`,
+  );
+
+  return {
+    ...data,
+    groups: (data.groups ?? []).map((group) => ({
+      ...group,
+      items: (group.items ?? []).map((item) => ({
+        ...item,
+        candidates: item.candidates ?? [],
+      })),
+    })),
+  };
+}
+
+export async function submitMemberResponsibilityHandoff(
+  restaurantId: number,
+  memberId: number,
+  payload: MemberResponsibilityHandoffRequest,
+): Promise<void> {
+  await api.post(`/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff`, payload);
 }
 
 export async function updateMemberRole(
   restaurantId: number,
   memberId: number,
-  role: RestaurantRole
+  role: RestaurantRole,
 ): Promise<MemberDto> {
   const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/role`, {
     role,
@@ -74,7 +145,7 @@ export async function updateMemberRole(
 export async function updateMemberPosition(
   restaurantId: number,
   memberId: number,
-  positionId: number | null
+  positionId: number | null,
 ): Promise<MemberDto> {
   const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/position`, {
     positionId,

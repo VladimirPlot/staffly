@@ -1,5 +1,4 @@
 import type { MemberDto } from "../api";
-import type { InviteRole } from "../../invitations/api";
 import type { RestaurantRole } from "../../dictionaries/api";
 
 export const ROLE_LABEL: Record<RestaurantRole, string> = {
@@ -34,18 +33,6 @@ export function positionKeyOf(member: MemberDto): string | null {
   if (member.positionId != null) return `id:${member.positionId}`;
   if (label) return `name:${label}`;
   return null;
-}
-
-export function allowedLevelsFor(role: InviteRole): RestaurantRole[] {
-  switch (role) {
-    case "ADMIN":
-      return ["ADMIN", "MANAGER", "STAFF"];
-    case "MANAGER":
-      return ["MANAGER", "STAFF"];
-    case "STAFF":
-    default:
-      return ["STAFF"];
-  }
 }
 
 export function sortMembers(members: MemberDto[]): MemberDto[] {

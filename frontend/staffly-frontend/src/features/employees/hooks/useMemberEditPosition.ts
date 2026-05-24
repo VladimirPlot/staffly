@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { PositionDto } from "../../dictionaries/api";
 import type { MemberDto } from "../api";
+import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 import { displayNameOf } from "../utils/memberUtils";
 
 type UseMemberEditPositionParams = {
@@ -56,8 +57,8 @@ export function useMemberEditPosition({
       }
       await updatePosition(memberToEdit.id, selectedPosition.id);
       setMemberToEdit(null);
-    } catch (e: any) {
-      setError(e?.friendlyMessage || "Не удалось сохранить должность");
+    } catch (error: unknown) {
+      setError(getFriendlyEmployeeErrorMessage(error, "Не удалось сохранить должность"));
     } finally {
       setSaving(false);
     }

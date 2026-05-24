@@ -1,9 +1,10 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Pencil, Trash2 } from "lucide-react";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
+import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
@@ -17,6 +18,7 @@ import {
   updatePosition,
   type PayType,
   type PositionDto,
+  type PositionSpecialization,
   type RestaurantRole,
 } from "../api";
 
@@ -25,6 +27,27 @@ const ROLE_LABEL: Record<RestaurantRole, string> = {
   MANAGER: "Менеджер",
   STAFF: "Сотрудник",
 };
+
+const SPECIALIZATION_LABEL: Record<PositionSpecialization, string> = {
+  EXAMINER: "Экзаменатор",
+};
+
+const SPECIALIZATION_OPTIONS: PositionSpecialization[] = ["EXAMINER"];
+
+function sortSpecializations(values: PositionSpecialization[]): PositionSpecialization[] {
+  return [...values].sort(
+    (a, b) => SPECIALIZATION_OPTIONS.indexOf(a) - SPECIALIZATION_OPTIONS.indexOf(b)
+  );
+}
+
+function formatPositionLevel(position: PositionDto): string {
+  const specializations = sortSpecializations(position.specializations ?? []);
+  if (specializations.length === 0) {
+    return ROLE_LABEL[position.level];
+  }
+  const labels = specializations.map((item) => SPECIALIZATION_LABEL[item] ?? item).join(", ");
+  return `${ROLE_LABEL[position.level]} • ${labels}`;
+}
 
 type PositionCompensationForm = {
   payType: PayType | "";
@@ -50,6 +73,8 @@ function PositionCompensationFields({
           onChange({
             ...value,
             payType: event.target.value as PayType | "",
+            payRate: event.target.value ? value.payRate : "",
+            normHours: event.target.value === "SALARY" ? value.normHours : "",
           })
         }
       >
@@ -58,15 +83,17 @@ function PositionCompensationFields({
         <option value="SHIFT">Сменная</option>
         <option value="SALARY">Оклад</option>
       </SelectField>
-      <Input
-        label={optional ? "Ставка (опционально)" : "Ставка"}
-        type="number"
-        inputMode="decimal"
-        min="0"
-        value={value.payRate}
-        onChange={(event) => onChange({ ...value, payRate: event.target.value })}
-      />
-      {(value.payType === "SALARY" || (optional && value.normHours !== "")) && (
+      {value.payType && (
+        <Input
+          label={optional ? "Ставка (опционально)" : "Ставка"}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          value={value.payRate}
+          onChange={(event) => onChange({ ...value, payRate: event.target.value })}
+        />
+      )}
+      {value.payType === "SALARY" && (
         <Input
           label={optional ? "Норматив часов (опционально)" : "Норматив часов"}
           type="number"
@@ -116,6 +143,94 @@ function parseCompensation(form: PositionCompensationForm): {
   };
 }
 
+function toggleSpecialization(
+  current: PositionSpecialization[],
+  specialization: PositionSpecialization
+): PositionSpecialization[] {
+  return current.includes(specialization)
+    ? current.filter((item) => item !== specialization)
+    : [...current, specialization];
+}
+
+function SpecializationsField({
+  value,
+  onChange,
+}: {
+  value: PositionSpecialization[];
+  onChange: (next: PositionSpecialization[]) => void;
+}) {
+  const sortedValue = sortSpecializations(value);
+  const isEmpty = sortedValue.length === 0;
+  const triggerLabel =
+    isEmpty
+      ? "Без специализации"
+      : sortedValue.map((item) => SPECIALIZATION_LABEL[item] ?? item).join(", ");
+
+  return (
+    <div className="min-w-0">
+      <label className="mb-1 block text-sm font-medium text-muted">Специализации</label>
+      <DropdownMenu
+        triggerWrapperClassName="relative flex w-full"
+        menuClassName="max-w-[calc(100vw-16px)]"
+        alignClassName="left-0"
+        matchTriggerWidth
+        mobileSheetTitle="Специализации"
+        mobileSheetSubtitle="Можно выбрать несколько ролей"
+        mobileSheetClassName="bg-surface/98"
+        mobileBackdropClassName="bg-black/15"
+        trigger={(triggerProps) => (
+          <button
+            type="button"
+            className="border-subtle bg-surface focus:ring-default relative h-10 w-full rounded-2xl border px-4 pr-10 text-left text-sm outline-none transition focus:ring-2"
+            {...triggerProps}
+          >
+            <span className={`block truncate ${isEmpty ? "text-muted" : "text-default"}`}>{triggerLabel}</span>
+            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          </button>
+        )}
+      >
+        {({ isMobile }) => (
+          <div className={isMobile ? "space-y-2" : "space-y-1 p-1"}>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={sortedValue.length === 0}
+              className={[
+                "text-default hover:bg-app flex w-full items-center justify-between rounded-2xl text-left text-sm outline-none transition",
+                isMobile ? "min-h-12 px-4 py-3 active:bg-app/80" : "px-3 py-2",
+              ].join(" ")}
+              onClick={() => onChange([])}
+            >
+              <span>Без специализации</span>
+              {sortedValue.length === 0 && <Check className="h-4 w-4 text-default" />}
+            </button>
+
+            {SPECIALIZATION_OPTIONS.map((specialization) => {
+              const checked = sortedValue.includes(specialization);
+              return (
+                <button
+                  key={specialization}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={checked}
+                  className={[
+                    "text-default hover:bg-app flex w-full items-center justify-between rounded-2xl text-left text-sm outline-none transition",
+                    isMobile ? "min-h-12 px-4 py-3 active:bg-app/80" : "px-3 py-2",
+                  ].join(" ")}
+                  onClick={() => onChange(toggleSpecialization(sortedValue, specialization))}
+                >
+                  <span>{SPECIALIZATION_LABEL[specialization]}</span>
+                  {checked && <Check className="h-4 w-4 text-default" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </DropdownMenu>
+    </div>
+  );
+}
+
 export default function PositionsPage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
@@ -127,6 +242,7 @@ export default function PositionsPage() {
   const [editing, setEditing] = React.useState<PositionDto | null>(null);
   const [editName, setEditName] = React.useState("");
   const [editLevel, setEditLevel] = React.useState<RestaurantRole>("STAFF");
+  const [editSpecializations, setEditSpecializations] = React.useState<PositionSpecialization[]>([]);
   const [editCompensation, setEditCompensation] = React.useState<PositionCompensationForm>({
     payType: "HOURLY",
     payRate: "",
@@ -136,6 +252,7 @@ export default function PositionsPage() {
 
   const [name, setName] = React.useState("");
   const [level, setLevel] = React.useState<RestaurantRole>("STAFF");
+  const [specializations, setSpecializations] = React.useState<PositionSpecialization[]>([]);
   const [createCompensation, setCreateCompensation] = React.useState<PositionCompensationForm>({
     payType: "",
     payRate: "",
@@ -171,8 +288,9 @@ export default function PositionsPage() {
     if (!editing) return;
     setEditName(editing.name);
     setEditLevel(editing.level);
+    setEditSpecializations(editing.specializations ?? []);
     setEditCompensation({
-      payType: editing.payType ?? "HOURLY",
+      payType: editing.payType ?? "",
       payRate: editing.payRate?.toString() ?? "",
       normHours: editing.normHours?.toString() ?? "",
     });
@@ -227,6 +345,7 @@ export default function PositionsPage() {
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
           </SelectField>
+          <SpecializationsField value={specializations} onChange={setSpecializations} />
           <PositionCompensationFields
             value={createCompensation}
             onChange={setCreateCompensation}
@@ -249,12 +368,14 @@ export default function PositionsPage() {
                   await createPosition(restaurantId, {
                     name,
                     level,
+                    specializations,
                     payType: compensation.payType,
                     payRate: compensation.payRate,
                     normHours: compensation.normHours,
                   });
                   setName("");
                   setLevel("STAFF");
+                  setSpecializations([]);
                   setCreateCompensation({ payType: "", payRate: "", normHours: "" });
                   await load();
                 } catch (e: any) {
@@ -331,7 +452,7 @@ export default function PositionsPage() {
                 <div className="min-w-0">
                   <div className="mt-1 flex items-center gap-2 text-xs text-muted">
                     <span className="rounded-full border border-subtle px-2 py-0.5 text-muted">
-                      {ROLE_LABEL[position.level]}
+                      {formatPositionLevel(position)}
                     </span>
                   </div>
                 </div>
@@ -363,6 +484,7 @@ export default function PositionsPage() {
                   await updatePosition(restaurantId, editing.id, {
                     name: editName.trim(),
                     level: editLevel,
+                    specializations: editSpecializations,
                     active: editing.active,
                     payType: compensation.payType ?? undefined,
                     payRate: compensation.payRate,
@@ -392,7 +514,8 @@ export default function PositionsPage() {
             <option value="MANAGER">Менеджер</option>
             <option value="ADMIN">Админ</option>
           </SelectField>
-          <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} />
+          <SpecializationsField value={editSpecializations} onChange={setEditSpecializations} />
+          <PositionCompensationFields value={editCompensation} onChange={setEditCompensation} optional />
         </div>
         {formError && <div className="mt-2 text-xs text-red-600">{formError}</div>}
       </Modal>
