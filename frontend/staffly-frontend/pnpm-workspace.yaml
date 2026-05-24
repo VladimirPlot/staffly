@@ -1,2 +1,4 @@
-onlyBuiltDependencies:
-  - esbuild
+nodeLinker: hoisted
+
+allowBuilds:
+  esbuild: true
