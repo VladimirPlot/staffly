@@ -1,13 +1,12 @@
-FROM node:20-alpine AS build
+FROM node:22.13-alpine AS build
 WORKDIR /app
 
-RUN corepack enable
+RUN npm install -g pnpm
 
 COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN rm -f .npmrc || true
 RUN pnpm build
 
 FROM nginx:1.27-alpine
