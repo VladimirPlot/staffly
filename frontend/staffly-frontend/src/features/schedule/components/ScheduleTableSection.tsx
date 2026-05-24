@@ -3,7 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
-import { type ScheduleData, type ScheduleCellKey } from "../types";
+import { type ScheduleData, type ScheduleCellKey, type SchedulePreferenceHintsByCellKey } from "../types";
 
 type ScheduleTableSectionProps = {
   schedule: ScheduleData;
@@ -20,6 +20,7 @@ type ScheduleTableSectionProps = {
   onSave: () => void;
   onSaveDraft: () => void;
   onCellChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
+  preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 
 const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
@@ -37,6 +38,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onSave,
   onSaveDraft,
   onCellChange,
+  preferenceHintsByCellKey,
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const saveDisabled = saving || savingDraft;
@@ -85,7 +87,12 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
         ) : (
           <div className="-mx-6 max-h-[70vh] overflow-auto [webkit-overflow-scrolling:touch]">
             <div className="inline-block min-w-full px-6 align-top">
-              <ScheduleTable data={schedule} onChange={onCellChange} readOnly={scheduleReadOnly} />
+              <ScheduleTable
+                data={schedule}
+                onChange={onCellChange}
+                readOnly={scheduleReadOnly}
+                preferenceHintsByCellKey={preferenceHintsByCellKey}
+              />
             </div>
           </div>
         )}

@@ -167,9 +167,9 @@ export default function useScheduleLifecycleActions({
     try {
       const updatedSchedule = await applySchedulePreferencesSimple(restaurantId, schedule.id);
       await applyUpdatedSchedule(updatedSchedule);
-      onScheduleMessage("Пожелания внесены в черновик");
+      onScheduleMessage("Черновик готов к ручной сборке");
     } catch (e: unknown) {
-      onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось внести пожелания"));
+      onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось подготовить черновик"));
     } finally {
       setPendingAction(null);
     }

@@ -35,3 +35,7 @@ export function canEditScheduleContent(status?: ScheduleStatus): boolean {
 export function canViewSchedulePreferences(status?: ScheduleStatus): boolean {
   return status === "COLLECTING_PREFERENCES" || status === "PREFERENCES_CLOSED" || status === "DRAFT_FROM_PREFERENCES";
 }
+
+export function canShowPreferenceHints(status?: ScheduleStatus): boolean {
+  return status === "DRAFT_FROM_PREFERENCES";
+}

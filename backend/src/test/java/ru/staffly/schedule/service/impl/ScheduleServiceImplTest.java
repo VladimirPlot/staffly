@@ -21,13 +21,9 @@ import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
-import ru.staffly.schedule.model.SchedulePreferenceCell;
-import ru.staffly.schedule.model.SchedulePreferenceSubmission;
-import ru.staffly.schedule.model.SchedulePreferenceType;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftMode;
 import ru.staffly.schedule.model.ScheduleStatus;
-import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -67,8 +63,6 @@ class ScheduleServiceImplTest {
     private PositionRepository positions;
     @Mock
     private ScheduleShiftRequestRepository shiftRequests;
-    @Mock
-    private SchedulePreferenceSubmissionRepository preferenceSubmissions;
     @Mock
     private RestaurantMemberRepository members;
     @Mock
@@ -269,39 +263,9 @@ class ScheduleServiceImplTest {
 
 
     @Test
-    void applyPreferencesSimpleTransfersFullDayPreferencesAndWritesAudit() {
+    void applyPreferencesSimpleMovesStatusToDraftFromPreferencesAndWritesAudit() {
         Schedule schedule = schedule(ScheduleStatus.PREFERENCES_CLOSED);
-        ScheduleRow row1 = row(501L, 1L);
-        ScheduleRow row2 = row(502L, 2L);
-        row1.getCells().add(ScheduleCell.builder()
-                .id(700L)
-                .row(row1)
-                .day(LocalDate.of(2026, 5, 12))
-                .value("old")
-                .build());
-        schedule.setRows(List.of(row1, row2));
-
-        RestaurantMember member1 = RestaurantMember.builder().id(501L).restaurant(restaurant).build();
-        RestaurantMember missingRowMember = RestaurantMember.builder().id(999L).restaurant(restaurant).build();
-        SchedulePreferenceSubmission submission1 = preferenceSubmission(
-                member1,
-                preferenceCell(10L, LocalDate.of(2026, 5, 12), SchedulePreferenceType.UNAVAILABLE, true, 1),
-                preferenceCell(11L, LocalDate.of(2026, 5, 12), SchedulePreferenceType.AVAILABLE, true, 2),
-                preferenceCell(12L, LocalDate.of(2026, 5, 13), SchedulePreferenceType.PREFER_DAY_OFF, true, 1),
-                preferenceCell(13L, LocalDate.of(2026, 5, 13), SchedulePreferenceType.PREFER_WORK, false, 2),
-                preferenceCell(14L, LocalDate.of(2026, 5, 20), SchedulePreferenceType.PREFER_WORK, true, 1)
-        );
-        SchedulePreferenceSubmission skippedSubmission = preferenceSubmission(
-                missingRowMember,
-                preferenceCell(20L, LocalDate.of(2026, 5, 12), SchedulePreferenceType.UNAVAILABLE, true, 1)
-        );
-        SchedulePreferenceSubmission emptySubmission = preferenceSubmission(
-                RestaurantMember.builder().id(502L).restaurant(restaurant).build()
-        );
-
         when(schedules.findByIdAndRestaurantId(SCHEDULE_ID, RESTAURANT_ID)).thenReturn(Optional.of(schedule));
-        when(preferenceSubmissions.findWithCellsByScheduleId(SCHEDULE_ID))
-                .thenReturn(List.of(submission1, skippedSubmission, emptySubmission));
 
         var result = service.applyPreferencesSimple(RESTAURANT_ID, SCHEDULE_ID, ACTOR_USER_ID);
 
@@ -309,59 +273,46 @@ class ScheduleServiceImplTest {
         assertThat(result.preferenceAppliedAt()).isNotNull();
         assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         assertThat(schedule.getPreferenceAppliedAt()).isNotNull();
-        assertThat(result.cellValues())
-                .containsEntry("501:2026-05-12", "+")
-                .containsEntry("501:2026-05-13", "-")
-                .doesNotContainKey("502:2026-05-12")
-                .doesNotContainKey("999:2026-05-12")
-                .doesNotContainKey("501:2026-05-20");
-        assertThat(row1.getCells()).hasSize(2);
-        assertThat(row1.getCells())
-                .filteredOn(cell -> cell.getDay().equals(LocalDate.of(2026, 5, 12)))
-                .singleElement()
-                .extracting(ScheduleCell::getValue)
-                .isEqualTo("+");
-        assertThat(row1.getCells())
-                .filteredOn(cell -> cell.getDay().equals(LocalDate.of(2026, 5, 13)))
-                .singleElement()
-                .satisfies(cell -> {
-                    assertThat(cell.getValue()).isEqualTo("-");
-                    assertThat(cell.getRow()).isSameAs(row1);
-                });
         verify(scheduleAuditService).record(
                 schedule,
                 ACTOR_USER_ID,
                 ScheduleAuditAction.PREFERENCES_APPLIED,
-                "Пожелания сотрудников внесены в черновик графика"
+                "Пожелания сотрудников подготовлены для ручной сборки графика"
         );
     }
 
     @Test
-    void applyPreferencesSimpleMapsPreferWorkAndUnavailable() {
+    void applyPreferencesSimpleDoesNotChangeExistingScheduleCells() {
+        Schedule schedule = schedule(ScheduleStatus.PREFERENCES_CLOSED);
+        ScheduleRow row = row(501L, 1L);
+        row.getCells().add(ScheduleCell.builder().id(700L).row(row).day(LocalDate.of(2026, 5, 12)).value("10:00-17:00").build());
+        schedule.setRows(List.of(row));
+        when(schedules.findByIdAndRestaurantId(SCHEDULE_ID, RESTAURANT_ID)).thenReturn(Optional.of(schedule));
+
+        service.applyPreferencesSimple(RESTAURANT_ID, SCHEDULE_ID, ACTOR_USER_ID);
+
+        assertThat(row.getCells()).hasSize(1);
+        assertThat(row.getCells().get(0).getValue()).isEqualTo("10:00-17:00");
+    }
+
+    @Test
+    void applyPreferencesSimpleDoesNotCreateNewScheduleCells() {
         Schedule schedule = schedule(ScheduleStatus.PREFERENCES_CLOSED);
         ScheduleRow row = row(501L, 1L);
         schedule.setRows(List.of(row));
-        SchedulePreferenceSubmission submission = preferenceSubmission(
-                RestaurantMember.builder().id(501L).restaurant(restaurant).build(),
-                preferenceCell(1L, LocalDate.of(2026, 5, 12), SchedulePreferenceType.PREFER_WORK, true, 1),
-                preferenceCell(2L, LocalDate.of(2026, 5, 13), SchedulePreferenceType.UNAVAILABLE, true, 1)
-        );
-
         when(schedules.findByIdAndRestaurantId(SCHEDULE_ID, RESTAURANT_ID)).thenReturn(Optional.of(schedule));
-        when(preferenceSubmissions.findWithCellsByScheduleId(SCHEDULE_ID)).thenReturn(List.of(submission));
 
-        var result = service.applyPreferencesSimple(RESTAURANT_ID, SCHEDULE_ID, ACTOR_USER_ID);
+        service.applyPreferencesSimple(RESTAURANT_ID, SCHEDULE_ID, ACTOR_USER_ID);
 
-        assertThat(result.cellValues())
-                .containsEntry("501:2026-05-12", "+")
-                .containsEntry("501:2026-05-13", "-");
+        assertThat(row.getCells()).isEmpty();
     }
 
     @Test
     void applyPreferencesSimpleRejectsStatusesOtherThanPreferencesClosed() {
         for (ScheduleStatus status : List.of(
-                ScheduleStatus.COLLECTING_PREFERENCES,
                 ScheduleStatus.DRAFT,
+                ScheduleStatus.COLLECTING_PREFERENCES,
+                ScheduleStatus.DRAFT_FROM_PREFERENCES,
                 ScheduleStatus.PUBLISHED
         )) {
             Schedule schedule = schedule(status);
@@ -371,24 +322,6 @@ class ScheduleServiceImplTest {
                     .isInstanceOf(BadRequestException.class)
                     .hasMessage("Внести пожелания можно только после закрытия сбора пожеланий");
         }
-    }
-
-    @Test
-    void applyPreferencesSimpleRejectsNullPreferenceType() {
-        Schedule schedule = schedule(ScheduleStatus.PREFERENCES_CLOSED);
-        ScheduleRow row = row(501L, 1L);
-        schedule.setRows(List.of(row));
-        SchedulePreferenceSubmission submission = preferenceSubmission(
-                RestaurantMember.builder().id(501L).restaurant(restaurant).build(),
-                preferenceCell(1L, LocalDate.of(2026, 5, 12), null, true, 1)
-        );
-
-        when(schedules.findByIdAndRestaurantId(SCHEDULE_ID, RESTAURANT_ID)).thenReturn(Optional.of(schedule));
-        when(preferenceSubmissions.findWithCellsByScheduleId(SCHEDULE_ID)).thenReturn(List.of(submission));
-
-        assertThatThrownBy(() -> service.applyPreferencesSimple(RESTAURANT_ID, SCHEDULE_ID, ACTOR_USER_ID))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessage("Preference cell type is required");
     }
 
     @Test
@@ -415,32 +348,6 @@ class ScheduleServiceImplTest {
                 .positionId(POSITION_ID)
                 .positionName("Cook")
                 .sortOrder(id.intValue())
-                .build();
-    }
-
-    private SchedulePreferenceSubmission preferenceSubmission(RestaurantMember member, SchedulePreferenceCell... cells) {
-        SchedulePreferenceSubmission submission = SchedulePreferenceSubmission.builder()
-                .schedule(schedule(ScheduleStatus.PREFERENCES_CLOSED))
-                .member(member)
-                .cells(List.of(cells))
-                .build();
-        for (SchedulePreferenceCell cell : cells) {
-            cell.setSubmission(submission);
-        }
-        return submission;
-    }
-
-    private SchedulePreferenceCell preferenceCell(Long id,
-                                                  LocalDate day,
-                                                  SchedulePreferenceType type,
-                                                  boolean fullDay,
-                                                  int sortOrder) {
-        return SchedulePreferenceCell.builder()
-                .id(id)
-                .day(day)
-                .type(type)
-                .fullDay(fullDay)
-                .sortOrder(sortOrder)
                 .build();
     }
 
