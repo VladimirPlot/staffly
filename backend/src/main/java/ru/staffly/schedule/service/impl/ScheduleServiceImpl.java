@@ -303,6 +303,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setPreferenceDeadline(deadline);
         schedule.setPreferenceClosedAt(null);
         schedule.setPreferenceAppliedAt(null);
+        schedule.setPreferenceAllSubmittedNotifiedAt(null);
 
         Schedule saved = schedules.save(schedule);
         scheduleAuditService.record(
@@ -385,6 +386,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 ScheduleAuditAction.PUBLISHED,
                 "График опубликован"
         );
+        notifySchedulePublished(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
@@ -651,6 +653,33 @@ public class ScheduleServiceImpl implements ScheduleService {
         String meta = "schedulePreferences:start:restaurant:" + schedule.getRestaurant().getId()
                 + ":schedule:" + schedule.getId()
                 + ":deadline:" + schedule.getPreferenceDeadline();
+        inboxMessages.createEvent(
+                schedule.getRestaurant(),
+                creator,
+                content,
+                InboxEventSubtype.SCHEDULE_PREFERENCES,
+                meta,
+                targets,
+                schedule.getEndDate()
+        );
+    }
+
+    private void notifySchedulePublished(Schedule schedule, Long actorUserId) {
+        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+            return;
+        }
+        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(),
+                schedule.getPositionIds()
+        );
+        if (targets.isEmpty()) {
+            return;
+        }
+        var creator = users.findById(actorUserId).orElse(null);
+        String content = "График «" + schedule.getTitle()
+                + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + " опубликован.";
+        String meta = "schedule:published:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId();
         inboxMessages.createEvent(
                 schedule.getRestaurant(),
                 creator,
