@@ -21,10 +21,12 @@ import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
+import ru.staffly.schedule.model.SchedulePreferenceSubmission;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleShiftMode;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
@@ -63,6 +65,8 @@ class ScheduleServiceImplTest {
     private PositionRepository positions;
     @Mock
     private ScheduleShiftRequestRepository shiftRequests;
+    @Mock
+    private SchedulePreferenceSubmissionRepository preferenceSubmissions;
     @Mock
     private RestaurantMemberRepository members;
     @Mock
@@ -337,6 +341,68 @@ class ScheduleServiceImplTest {
 
         assertThatThrownBy(() -> service.publish(RESTAURANT_ID, SCHEDULE_ID, ACTOR_USER_ID))
                 .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void listForManagerCollectingPreferencesIncludesPreferenceProgress() {
+        Schedule schedule = schedule(ScheduleStatus.COLLECTING_PREFERENCES);
+        RestaurantMember participantOne = RestaurantMember.builder().id(101L).restaurant(restaurant).build();
+        RestaurantMember participantTwo = RestaurantMember.builder().id(102L).restaurant(restaurant).build();
+        SchedulePreferenceSubmission submissionInside = SchedulePreferenceSubmission.builder()
+                .id(1001L)
+                .member(participantOne)
+                .build();
+        SchedulePreferenceSubmission submissionOutside = SchedulePreferenceSubmission.builder()
+                .id(1002L)
+                .member(RestaurantMember.builder().id(999L).restaurant(restaurant).build())
+                .build();
+
+        when(scheduleAccessService.canManageSchedules(ACTOR_USER_ID, RESTAURANT_ID)).thenReturn(true);
+        when(schedules.findByRestaurantIdOrderByCreatedAtDesc(RESTAURANT_ID)).thenReturn(List.of(schedule));
+        when(scheduleAccessService.canViewScheduleSummary(ACTOR_USER_ID, schedule)).thenReturn(true);
+        when(shiftRequests.existsByScheduleIdAndStatus(eq(SCHEDULE_ID), any())).thenReturn(false);
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(RESTAURANT_ID, List.of(POSITION_ID)))
+                .thenReturn(List.of(participantOne, participantTwo));
+        when(preferenceSubmissions.findByScheduleIdWithMember(SCHEDULE_ID))
+                .thenReturn(List.of(submissionInside, submissionOutside));
+
+        var result = service.list(RESTAURANT_ID, ACTOR_USER_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).preferenceSubmittedCount()).isEqualTo(1);
+        assertThat(result.get(0).preferenceTotalParticipants()).isEqualTo(2);
+    }
+
+    @Test
+    void listForNonCollectingStatusesReturnsNullPreferenceProgress() {
+        Schedule schedule = schedule(ScheduleStatus.PUBLISHED);
+        when(scheduleAccessService.canManageSchedules(ACTOR_USER_ID, RESTAURANT_ID)).thenReturn(true);
+        when(schedules.findByRestaurantIdOrderByCreatedAtDesc(RESTAURANT_ID)).thenReturn(List.of(schedule));
+        when(scheduleAccessService.canViewScheduleSummary(ACTOR_USER_ID, schedule)).thenReturn(true);
+        when(shiftRequests.existsByScheduleIdAndStatus(eq(SCHEDULE_ID), any())).thenReturn(false);
+
+        var result = service.list(RESTAURANT_ID, ACTOR_USER_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).preferenceSubmittedCount()).isNull();
+        assertThat(result.get(0).preferenceTotalParticipants()).isNull();
+    }
+
+    @Test
+    void listForStaffReturnsNullPreferenceProgress() {
+        Schedule schedule = schedule(ScheduleStatus.COLLECTING_PREFERENCES);
+        RestaurantMember staffMember = RestaurantMember.builder().id(123L).restaurant(restaurant).build();
+        when(scheduleAccessService.canManageSchedules(ACTOR_USER_ID, RESTAURANT_ID)).thenReturn(false);
+        when(members.findByUserIdAndRestaurantId(ACTOR_USER_ID, RESTAURANT_ID)).thenReturn(Optional.of(staffMember));
+        when(schedules.findByRestaurantIdOrderByCreatedAtDesc(RESTAURANT_ID)).thenReturn(List.of(schedule));
+        when(scheduleAccessService.canViewScheduleSummary(ACTOR_USER_ID, schedule)).thenReturn(true);
+        when(shiftRequests.existsActiveForMember(eq(SCHEDULE_ID), any(), eq(123L))).thenReturn(false);
+
+        var result = service.list(RESTAURANT_ID, ACTOR_USER_ID);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).preferenceSubmittedCount()).isNull();
+        assertThat(result.get(0).preferenceTotalParticipants()).isNull();
     }
 
 

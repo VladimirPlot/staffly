@@ -18,6 +18,7 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
@@ -43,6 +44,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleShiftRequestRepository shiftRequests;
+    private final SchedulePreferenceSubmissionRepository preferenceSubmissions;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -132,7 +134,9 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
                 .filter(schedule -> scheduleAccessService.canViewScheduleSummary(userId, schedule))
-                .map(s -> new ScheduleSummaryDto(
+                .map(s -> {
+                    PreferenceProgressSummary progress = resolvePreferenceProgressSummary(canManage, s);
+                    return new ScheduleSummaryDto(
                         s.getId(),
                         s.getTitle(),
                         s.getStartDate().toString(),
@@ -154,9 +158,46 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getPreferenceCollectionStartedAt(),
                         s.getPreferenceDeadline(),
                         s.getPreferenceClosedAt(),
-                        s.getPreferenceAppliedAt()
-                ))
+                        s.getPreferenceAppliedAt(),
+                        progress.submittedCount(),
+                        progress.totalParticipants()
+                );
+                })
                 .toList();
+    }
+
+    private PreferenceProgressSummary resolvePreferenceProgressSummary(boolean canManage, Schedule schedule) {
+        if (!canManage || schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
+            return PreferenceProgressSummary.empty();
+        }
+        List<Long> positionIds = schedule.getPositionIds();
+        if (positionIds == null || positionIds.isEmpty()) {
+            return new PreferenceProgressSummary(0, 0);
+        }
+
+        List<RestaurantMember> participants = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(),
+                positionIds
+        );
+        Set<Long> participantMemberIds = participants.stream()
+                .map(RestaurantMember::getId)
+                .collect(Collectors.toSet());
+        if (participantMemberIds.isEmpty()) {
+            return new PreferenceProgressSummary(0, 0);
+        }
+
+        int submittedCount = (int) preferenceSubmissions.findByScheduleIdWithMember(schedule.getId()).stream()
+                .map(submission -> submission.getMember().getId())
+                .filter(participantMemberIds::contains)
+                .distinct()
+                .count();
+        return new PreferenceProgressSummary(submittedCount, participantMemberIds.size());
+    }
+
+    private record PreferenceProgressSummary(Integer submittedCount, Integer totalParticipants) {
+        private static PreferenceProgressSummary empty() {
+            return new PreferenceProgressSummary(null, null);
+        }
     }
 
     @Override

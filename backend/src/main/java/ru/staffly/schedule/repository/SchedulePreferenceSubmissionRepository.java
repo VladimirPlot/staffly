@@ -30,6 +30,13 @@ public interface SchedulePreferenceSubmissionRepository extends JpaRepository<Sc
            """)
     List<SchedulePreferenceSubmission> findWithCellsByScheduleId(@Param("scheduleId") Long scheduleId);
 
+    @Query("""
+           select s from SchedulePreferenceSubmission s
+           join fetch s.member m
+           where s.schedule.id = :scheduleId
+           """)
+    List<SchedulePreferenceSubmission> findByScheduleIdWithMember(@Param("scheduleId") Long scheduleId);
+
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

@@ -44,6 +44,8 @@ export type ScheduleSummary = ScheduleLifecycleDto & {
   hasPendingShiftRequests: boolean;
   positionIds: number[];
   owner?: ScheduleOwnerDto | null;
+  preferenceSubmittedCount?: number | null;
+  preferenceTotalParticipants?: number | null;
 };
 
 export type ScheduleSummaryDto = ScheduleSummary;
@@ -228,6 +230,8 @@ function mapScheduleSummary(data: ScheduleSummary): ScheduleSummary {
     ...mapLifecycle(data),
     positionIds: data.positionIds ?? [],
     owner: data.owner ?? null,
+    preferenceSubmittedCount: data.preferenceSubmittedCount ?? null,
+    preferenceTotalParticipants: data.preferenceTotalParticipants ?? null,
   };
 }
 
