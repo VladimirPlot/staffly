@@ -11,6 +11,13 @@ import type {
 } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import {
+  canApplyPreferenceHint,
+  formatPreferenceHintTime,
+  getPreferenceHintLabel,
+  getPreferenceHintTone,
+  hasNegativePreferenceConflict,
+} from "../utils/preferenceHints";
+import {
   MINUTE_STEPS,
   formatRangeValue,
   formatTimeWithNormalization,
@@ -101,30 +108,6 @@ type ArrivalSelectorProps = {
   value: string;
   onCommit: (value: string) => void;
 };
-
-function getPreferenceHintLabel(type: import("../api").SchedulePreferenceCellDto["type"]): string {
-  if (type === "AVAILABLE") return "Может";
-  if (type === "UNAVAILABLE") return "Не может";
-  if (type === "PREFER_WORK") return "Хочет работать";
-  return "Хочет выходной";
-}
-
-function formatPreferenceHintTime(cell: import("../api").SchedulePreferenceCellDto): string {
-  if (cell.fullDay) return "весь день";
-  if (!cell.startTime || !cell.endTime) return "интервал не указан";
-  return `${cell.startTime}–${cell.endTime}`;
-}
-
-function canApplyPreferenceHint(params: {
-  readOnly: boolean;
-  shiftMode: ShiftMode;
-  cell: import("../api").SchedulePreferenceCellDto;
-}): boolean {
-  const { readOnly, shiftMode, cell } = params;
-  if (readOnly || shiftMode !== "FULL") return false;
-  if (cell.fullDay || !cell.startTime || !cell.endTime) return false;
-  return cell.type === "AVAILABLE" || cell.type === "PREFER_WORK";
-}
 
 const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, preferenceHintsByCellKey }) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
@@ -406,9 +389,20 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   );
 
   const missingEnd = shiftMode === "FULL" && hasStartWithoutEndValue(value);
+  const hasConflict = hints
+    ? hasNegativePreferenceConflict({
+        value,
+        hints,
+        shiftMode,
+      })
+    : false;
 
   return (
-    <div className="border-subtle border-b border-l px-1.5 py-1 text-sm">
+    <div
+      className={["border-subtle border-b border-l px-1.5 py-1 text-sm", hasConflict ? "bg-amber-50/70" : ""].join(" ")}
+      title={hasConflict ? "Есть отрицательное пожелание сотрудника" : undefined}
+      aria-label={hasConflict ? "Есть отрицательное пожелание сотрудника" : undefined}
+    >
       {readOnly ? (
         <ReadonlyCell value={value} shiftMode={shiftMode} />
       ) : (
@@ -433,14 +427,22 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                 key={`${cell.id ?? `${cell.day}:${cell.sortOrder}`}:${cell.type}`}
                 className="flex items-center gap-1"
               >
-                <span className="border-subtle bg-surface-muted text-muted rounded border px-1.5 py-0.5 text-[10px]">
-                  {cell.fullDay ? `${label} ${timeLabel}` : `${label} ${timeLabel}`.trim()}
+                <span
+                  className={[
+                    "rounded border px-1.5 py-0.5 text-[10px]",
+                    getPreferenceHintTone(cell.type) === "positive"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-amber-200 bg-amber-50 text-amber-800",
+                  ].join(" ")}
+                >
+                  {`${label} ${timeLabel}`.trim()}
                 </span>
                 {canApply && (
                   <button
                     type="button"
                     className="border-subtle bg-surface text-muted hover:bg-app rounded border px-1 py-0.5 text-[10px]"
-                    aria-label={`Применить пожелание ${label} ${timeLabel}`}
+                    aria-label={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
+                    title={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     onClick={() =>
                       onCellValueChange(memberId, day, `${cell.startTime}-${cell.endTime}`, { commit: true })
                     }
