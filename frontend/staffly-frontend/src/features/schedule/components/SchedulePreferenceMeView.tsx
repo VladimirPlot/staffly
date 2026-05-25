@@ -41,6 +41,14 @@ const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
   { value: "PREFER_WORK", label: "Хочу работать" },
 ];
 
+const QUICK_TIME_INTERVALS = [
+  { startTime: "10:00", endTime: "00:00" },
+  { startTime: "14:00", endTime: "00:00" },
+  { startTime: "17:00", endTime: "00:00" },
+  { startTime: "10:00", endTime: "17:00" },
+  { startTime: "17:00", endTime: "00:00" },
+] as const;
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -185,6 +193,19 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
       [day]: {
         ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "" }),
         [field]: value,
+      },
+    }));
+  }, []);
+
+  const handleQuickIntervalApply = React.useCallback((day: string, startTime: string, endTime: string) => {
+    setFormError(null);
+    setFormStateByDay((prev) => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "" }),
+        fullDay: false,
+        startTime,
+        endTime,
       },
     }));
   }, []);
@@ -394,21 +415,41 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                     Указать время
                   </label>
                   {!(formStateByDay[day.date]?.fullDay ?? true) && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="time"
-                        value={formStateByDay[day.date]?.startTime ?? ""}
-                        onChange={(event) => handleTimeChange(day.date, "startTime", event.target.value)}
-                        disabled={!data.canSubmit || saving}
-                        className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
-                      />
-                      <input
-                        type="time"
-                        value={formStateByDay[day.date]?.endTime ?? ""}
-                        onChange={(event) => handleTimeChange(day.date, "endTime", event.target.value)}
-                        disabled={!data.canSubmit || saving}
-                        className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
-                      />
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="time"
+                          value={formStateByDay[day.date]?.startTime ?? ""}
+                          onChange={(event) => handleTimeChange(day.date, "startTime", event.target.value)}
+                          disabled={!data.canSubmit || saving}
+                          className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
+                        />
+                        <input
+                          type="time"
+                          value={formStateByDay[day.date]?.endTime ?? ""}
+                          onChange={(event) => handleTimeChange(day.date, "endTime", event.target.value)}
+                          disabled={!data.canSubmit || saving}
+                          className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {QUICK_TIME_INTERVALS.map((interval, index) => {
+                          const label = `${interval.startTime}–${interval.endTime}`;
+                          return (
+                            <button
+                              key={`${day.date}-${label}-${index}`}
+                              type="button"
+                              disabled={!data.canSubmit || saving}
+                              onClick={() => handleQuickIntervalApply(day.date, interval.startTime, interval.endTime)}
+                              className="border-subtle bg-surface text-muted hover:bg-app rounded-full border px-2 py-1 text-[11px]"
+                              aria-label={`Подставить интервал ${label}`}
+                              title={`Подставить интервал ${label}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
