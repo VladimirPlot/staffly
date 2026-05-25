@@ -268,6 +268,10 @@ export type PreviewScheduleAutoBuildRequest = {
   templateId: number;
 };
 
+export type ApplyScheduleAutoBuildRequest = {
+  templateId: number;
+};
+
 export type ScheduleAutoBuildCellPreviewDto = {
   memberId: number | null;
   memberName: string | null;
@@ -498,6 +502,18 @@ export async function previewScheduleAutoBuild(
     unfilledCount: data.unfilledCount ?? 0,
     negativeAssignmentsCount: data.negativeAssignmentsCount ?? 0,
   };
+}
+
+export async function applyScheduleAutoBuild(
+  restaurantId: number,
+  scheduleId: number,
+  request: ApplyScheduleAutoBuildRequest,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/auto-build-apply`,
+    request,
+  );
+  return mapSchedule(data);
 }
 
 export async function publishSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {

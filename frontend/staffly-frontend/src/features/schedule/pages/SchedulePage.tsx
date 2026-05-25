@@ -33,6 +33,7 @@ import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleInitialData from "../hooks/useScheduleInitialData";
 import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
 import useScheduleAutoBuildPreviewActions from "../hooks/useScheduleAutoBuildPreviewActions";
+import useScheduleAutoBuildApplyActions from "../hooks/useScheduleAutoBuildApplyActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useSchedulePreferenceMeActions from "../hooks/useSchedulePreferenceMeActions";
 import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceManagerActions";
@@ -369,6 +370,18 @@ const SchedulePage: React.FC = () => {
   const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
 
   const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
+  const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
+    restaurantId,
+    scheduleId,
+    prepareSchedule,
+    onScheduleChanged: setSchedule,
+    onSavedSchedulesChanged: setSavedSchedules,
+    onScheduleReadOnlyChanged: setScheduleReadOnly,
+    onLastRangeChanged: setLastRange,
+    onClearScheduleNotices: clearScheduleNotices,
+    onScheduleMessage: setScheduleMessage,
+    onScheduleError: setScheduleError,
+  });
 
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
@@ -449,9 +462,15 @@ const SchedulePage: React.FC = () => {
   }, [buildTemplatesActions]);
 
   const handleCloseApplyPreferencesDialog = React.useCallback(() => {
-    if (lifecycleActions.pendingAction === "applyPreferences" || autoBuildPreviewActions.loading) return;
+    if (
+      lifecycleActions.pendingAction === "applyPreferences" ||
+      autoBuildPreviewActions.loading ||
+      autoBuildApplyActions.applying
+    ) {
+      return;
+    }
     setApplyPreferencesDialogOpen(false);
-  }, [autoBuildPreviewActions.loading, lifecycleActions.pendingAction]);
+  }, [autoBuildApplyActions.applying, autoBuildPreviewActions.loading, lifecycleActions.pendingAction]);
 
   const handleApplyPreferencesManual = React.useCallback(async () => {
     const success = await lifecycleActions.applyPreferencesSimple();
@@ -464,6 +483,18 @@ const SchedulePage: React.FC = () => {
   const handlePreviewAutoBuild = React.useCallback(
     async (templateId: number): Promise<boolean> => autoBuildPreviewActions.loadPreview(templateId),
     [autoBuildPreviewActions],
+  );
+
+  const handleApplyAutoBuild = React.useCallback(
+    async (templateId: number): Promise<boolean> => {
+      const ok = await autoBuildApplyActions.applyAutoBuild(templateId);
+      if (ok) {
+        setApplyPreferencesDialogOpen(false);
+        autoBuildPreviewActions.clearPreview();
+      }
+      return ok;
+    },
+    [autoBuildApplyActions, autoBuildPreviewActions],
   );
 
   React.useEffect(() => {
@@ -742,6 +773,7 @@ const SchedulePage: React.FC = () => {
       <ApplySchedulePreferencesDialog
         open={applyPreferencesDialogOpen}
         applying={lifecycleActions.pendingAction === "applyPreferences"}
+        autoApplying={autoBuildApplyActions.applying}
         templates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
         templatesError={buildTemplatesActions.error}
@@ -752,6 +784,7 @@ const SchedulePage: React.FC = () => {
         onClose={handleCloseApplyPreferencesDialog}
         onApplyManual={() => void handleApplyPreferencesManual()}
         onPreviewAutoBuild={handlePreviewAutoBuild}
+        onApplyAutoBuild={handleApplyAutoBuild}
       />
 
       <CreateScheduleDialog
