@@ -16,6 +16,7 @@ type SavedSchedulesSectionProps = {
   positionFilter: number | "all";
   onPositionFilterChange: (value: number | "all") => void;
   onOpenSavedSchedule: (id: number) => void;
+  getOpenButtonLabel?: (item: ScheduleSummary) => string;
   onEditSavedSchedule: (id: number) => void;
   onDeleteSavedSchedule: (id: number) => void;
   onDownloadXlsx: (id: number) => void;
@@ -36,6 +37,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
   positionFilter,
   onPositionFilterChange,
   onOpenSavedSchedule,
+  getOpenButtonLabel,
   onEditSavedSchedule,
   onDeleteSavedSchedule,
   onDownloadXlsx,
@@ -100,8 +102,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               const isDownloading = downloading?.id === item.id;
               const isDeleting = deletingId === item.id;
               const menuOpen = downloadMenuFor === item.id;
-              const openButtonLabel =
-                !canManage && item.status === "COLLECTING_PREFERENCES" ? "Оставить пожелания" : "Открыть";
+              const openButtonLabel = getOpenButtonLabel?.(item) ?? "Открыть";
               const shouldShowPreferenceProgress =
                 canManage && item.status === "COLLECTING_PREFERENCES" && item.preferenceTotalParticipants != null;
               const submitted = item.preferenceSubmittedCount ?? 0;
