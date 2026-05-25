@@ -11,12 +11,15 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import ru.staffly.schedule.dto.ApplyScheduleAutoBuildRequest;
 import ru.staffly.schedule.dto.PreviewScheduleAutoBuildRequest;
+import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleAutoBuildPreviewResponse;
 import ru.staffly.schedule.dto.SchedulePreferenceMyResponse;
 import ru.staffly.schedule.dto.SchedulePreferenceProgressResponse;
 import ru.staffly.schedule.dto.SchedulePreferenceSubmissionsResponse;
 import ru.staffly.schedule.dto.UpsertMySchedulePreferenceRequest;
+import ru.staffly.schedule.service.ScheduleAutoBuildApplyService;
 import ru.staffly.schedule.service.ScheduleAutoBuildPreviewService;
 import ru.staffly.schedule.service.SchedulePreferenceService;
 import ru.staffly.security.UserPrincipal;
@@ -28,6 +31,7 @@ public class SchedulePreferenceController {
 
     private final SchedulePreferenceService schedulePreferences;
     private final ScheduleAutoBuildPreviewService autoBuildPreviewService;
+    private final ScheduleAutoBuildApplyService autoBuildApplyService;
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @GetMapping("/me")
@@ -68,6 +72,15 @@ public class SchedulePreferenceController {
                                                              @AuthenticationPrincipal UserPrincipal principal,
                                                              @Valid @RequestBody PreviewScheduleAutoBuildRequest request) {
         return autoBuildPreviewService.preview(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/auto-build-apply")
+    public ScheduleDto applyAutoBuild(@PathVariable Long restaurantId,
+                                      @PathVariable Long scheduleId,
+                                      @AuthenticationPrincipal UserPrincipal principal,
+                                      @Valid @RequestBody ApplyScheduleAutoBuildRequest request) {
+        return autoBuildApplyService.apply(restaurantId, scheduleId, principal.userId(), request);
     }
 
 }
