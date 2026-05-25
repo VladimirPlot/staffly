@@ -11,6 +11,7 @@ import Icon from "../../../shared/ui/Icon";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
+import ScheduleBuildTemplatesSection from "../components/ScheduleBuildTemplatesSection";
 import SchedulePreferenceMeView from "../components/SchedulePreferenceMeView";
 import SchedulePreferenceManagerDialog from "../components/SchedulePreferenceManagerDialog";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
@@ -24,6 +25,7 @@ import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import useSavedScheduleActions from "../hooks/useSavedScheduleActions";
 import useScheduleCellEditing from "../hooks/useScheduleCellEditing";
+import useScheduleBuildTemplatesActions from "../hooks/useScheduleBuildTemplatesActions";
 import useScheduleDraftActions from "../hooks/useScheduleDraftActions";
 import useScheduleDerivedState from "../hooks/useScheduleDerivedState";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
@@ -361,6 +363,7 @@ const SchedulePage: React.FC = () => {
   });
 
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
+  const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
 
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
@@ -493,34 +496,50 @@ const SchedulePage: React.FC = () => {
       )}
 
       {!loading && !error && !schedule && !preferenceActions.preferenceViewScheduleId && (
-        <SavedSchedulesSection
-          canManage={canManage}
-          savedSchedules={derived.filteredSavedSchedules}
-          positions={positions}
-          positionFilter={positionFilter}
-          onPositionFilterChange={setPositionFilter}
-          onOpenSavedSchedule={handleOpenSavedSchedule}
-          getOpenButtonLabel={(item) =>
-            canOpenOwnPreferenceFlow({
-              summary: item,
-              currentMember: derived.currentMember,
-              currentUserId: user?.id,
-            })
-              ? "Оставить пожелания"
-              : "Открыть"
-          }
-          onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
-          onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
-          onDownloadXlsx={exportActions.downloadXlsx}
-          onDownloadJpg={exportActions.downloadJpg}
-          downloadMenuFor={downloadMenuFor}
-          onToggleDownloadMenu={setDownloadMenuFor}
-          downloading={exportActions.downloading}
-          selectedSavedId={savedScheduleActions.selectedSavedId}
-          scheduleLoading={savedScheduleActions.scheduleLoading}
-          hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
-          deletingId={savedScheduleActions.deletingId}
-        />
+        <>
+          <SavedSchedulesSection
+            canManage={canManage}
+            savedSchedules={derived.filteredSavedSchedules}
+            positions={positions}
+            positionFilter={positionFilter}
+            onPositionFilterChange={setPositionFilter}
+            onOpenSavedSchedule={handleOpenSavedSchedule}
+            getOpenButtonLabel={(item) =>
+              canOpenOwnPreferenceFlow({
+                summary: item,
+                currentMember: derived.currentMember,
+                currentUserId: user?.id,
+              })
+                ? "Оставить пожелания"
+                : "Открыть"
+            }
+            onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
+            onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
+            onDownloadXlsx={exportActions.downloadXlsx}
+            onDownloadJpg={exportActions.downloadJpg}
+            downloadMenuFor={downloadMenuFor}
+            onToggleDownloadMenu={setDownloadMenuFor}
+            downloading={exportActions.downloading}
+            selectedSavedId={savedScheduleActions.selectedSavedId}
+            scheduleLoading={savedScheduleActions.scheduleLoading}
+            hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
+            deletingId={savedScheduleActions.deletingId}
+          />
+          {canManage && (
+            <ScheduleBuildTemplatesSection
+              templates={buildTemplatesActions.templates}
+              loading={buildTemplatesActions.loading}
+              error={buildTemplatesActions.error}
+              saving={buildTemplatesActions.saving}
+              deletingId={buildTemplatesActions.deletingId}
+              positions={positions}
+              onLoad={buildTemplatesActions.loadTemplates}
+              onCreate={(request) => void buildTemplatesActions.createTemplate(request)}
+              onUpdate={(templateId, request) => void buildTemplatesActions.updateTemplate(templateId, request)}
+              onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
+            />
+          )}
+        </>
       )}
 
       {!loading &&
