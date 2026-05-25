@@ -264,6 +264,44 @@ export type SaveScheduleBuildPositionConfigRequest = {
   sortOrder: number;
 };
 
+export type PreviewScheduleAutoBuildRequest = {
+  templateId: number;
+};
+
+export type ScheduleAutoBuildCellPreviewDto = {
+  memberId: number | null;
+  memberName: string | null;
+  day: string;
+  value: string | null;
+  shiftOptionId: number | null;
+  shiftLabel: string | null;
+  reason: string | null;
+  warnings: string[];
+};
+
+export type ScheduleAutoBuildPositionPreviewDto = {
+  positionId: number;
+  positionName: string;
+  cells: ScheduleAutoBuildCellPreviewDto[];
+  warnings: string[];
+  totalAssignments: number;
+  warningsCount: number;
+  unfilledCount: number;
+  negativeAssignmentsCount: number;
+};
+
+export type ScheduleAutoBuildPreviewResponse = {
+  scheduleId: number;
+  templateId: number;
+  templateName: string;
+  positions: ScheduleAutoBuildPositionPreviewDto[];
+  warnings: string[];
+  totalAssignments: number;
+  warningsCount: number;
+  unfilledCount: number;
+  negativeAssignmentsCount: number;
+};
+
 export type SaveScheduleBuildTemplateRequest = {
   name: string;
   description?: string | null;
@@ -426,6 +464,40 @@ export async function applySchedulePreferencesSimple(restaurantId: number, sched
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/apply-simple`,
   );
   return mapSchedule(data);
+}
+
+export async function previewScheduleAutoBuild(
+  restaurantId: number,
+  scheduleId: number,
+  request: PreviewScheduleAutoBuildRequest,
+): Promise<ScheduleAutoBuildPreviewResponse> {
+  const response = await api.post(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/auto-build-preview`,
+    request,
+  );
+  const data = response.data ?? {};
+  return {
+    scheduleId: data.scheduleId,
+    templateId: data.templateId,
+    templateName: data.templateName,
+    positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
+      ...position,
+      cells: (position.cells ?? []).map((cell) => ({
+        ...cell,
+        warnings: cell.warnings ?? [],
+      })),
+      warnings: position.warnings ?? [],
+      totalAssignments: position.totalAssignments ?? 0,
+      warningsCount: position.warningsCount ?? 0,
+      unfilledCount: position.unfilledCount ?? 0,
+      negativeAssignmentsCount: position.negativeAssignmentsCount ?? 0,
+    })),
+    warnings: data.warnings ?? [],
+    totalAssignments: data.totalAssignments ?? 0,
+    warningsCount: data.warningsCount ?? 0,
+    unfilledCount: data.unfilledCount ?? 0,
+    negativeAssignmentsCount: data.negativeAssignmentsCount ?? 0,
+  };
 }
 
 export async function publishSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {

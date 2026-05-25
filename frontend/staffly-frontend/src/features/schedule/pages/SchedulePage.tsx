@@ -32,6 +32,7 @@ import useScheduleDerivedState from "../hooks/useScheduleDerivedState";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleInitialData from "../hooks/useScheduleInitialData";
 import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
+import useScheduleAutoBuildPreviewActions from "../hooks/useScheduleAutoBuildPreviewActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useSchedulePreferenceMeActions from "../hooks/useSchedulePreferenceMeActions";
 import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceManagerActions";
@@ -367,6 +368,8 @@ const SchedulePage: React.FC = () => {
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
   const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
 
+  const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
+
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
     canManage,
@@ -446,16 +449,22 @@ const SchedulePage: React.FC = () => {
   }, [buildTemplatesActions]);
 
   const handleCloseApplyPreferencesDialog = React.useCallback(() => {
-    if (lifecycleActions.pendingAction === "applyPreferences") return;
+    if (lifecycleActions.pendingAction === "applyPreferences" || autoBuildPreviewActions.loading) return;
     setApplyPreferencesDialogOpen(false);
-  }, [lifecycleActions.pendingAction]);
+  }, [autoBuildPreviewActions.loading, lifecycleActions.pendingAction]);
 
   const handleApplyPreferencesManual = React.useCallback(async () => {
     const success = await lifecycleActions.applyPreferencesSimple();
     if (success) {
       setApplyPreferencesDialogOpen(false);
+      autoBuildPreviewActions.clearPreview();
     }
-  }, [lifecycleActions]);
+  }, [autoBuildPreviewActions, lifecycleActions]);
+
+  const handlePreviewAutoBuild = React.useCallback(
+    async (templateId: number): Promise<boolean> => autoBuildPreviewActions.loadPreview(templateId),
+    [autoBuildPreviewActions],
+  );
 
   React.useEffect(() => {
     if (!derived.hasSchedule) {
@@ -736,9 +745,13 @@ const SchedulePage: React.FC = () => {
         templates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
         templatesError={buildTemplatesActions.error}
+        preview={autoBuildPreviewActions.preview}
+        previewLoading={autoBuildPreviewActions.loading}
+        previewError={autoBuildPreviewActions.error}
         onReloadTemplates={() => void buildTemplatesActions.loadTemplates()}
         onClose={handleCloseApplyPreferencesDialog}
         onApplyManual={() => void handleApplyPreferencesManual()}
+        onPreviewAutoBuild={handlePreviewAutoBuild}
       />
 
       <CreateScheduleDialog
