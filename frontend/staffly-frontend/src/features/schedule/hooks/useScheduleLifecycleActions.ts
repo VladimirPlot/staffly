@@ -98,7 +98,7 @@ export default function useScheduleLifecycleActions({
   }, [canManage]);
 
   const submitPreferenceCollection = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule?.id) return;
+    if (!canManage || !restaurantId || !schedule?.id) return false;
     if (!preferenceDeadline) {
       setPreferenceDeadlineError("Укажите дедлайн сбора пожеланий");
       return;
@@ -138,7 +138,7 @@ export default function useScheduleLifecycleActions({
   ]);
 
   const closePreferenceCollectionAction = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule?.id) return;
+    if (!canManage || !restaurantId || !schedule?.id) return false;
     setPendingAction("closePreferences");
     onClearScheduleNotices();
     try {
@@ -160,16 +160,18 @@ export default function useScheduleLifecycleActions({
     schedule?.id,
   ]);
 
-  const applyPreferencesSimpleAction = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule?.id) return;
+  const applyPreferencesSimpleAction = React.useCallback(async (): Promise<boolean> => {
+    if (!canManage || !restaurantId || !schedule?.id) return false;
     setPendingAction("applyPreferences");
     onClearScheduleNotices();
     try {
       const updatedSchedule = await applySchedulePreferencesSimple(restaurantId, schedule.id);
       await applyUpdatedSchedule(updatedSchedule);
       onScheduleMessage("Черновик готов к ручной сборке");
+      return true;
     } catch (e: unknown) {
       onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось подготовить черновик"));
+      return false;
     } finally {
       setPendingAction(null);
     }
@@ -184,7 +186,7 @@ export default function useScheduleLifecycleActions({
   ]);
 
   const publishScheduleAction = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule?.id) return;
+    if (!canManage || !restaurantId || !schedule?.id) return false;
     setPendingAction("publish");
     onClearScheduleNotices();
     try {
