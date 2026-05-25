@@ -10,12 +10,12 @@ import java.util.Optional;
 public interface ScheduleBuildTemplateRepository extends JpaRepository<ScheduleBuildTemplate, Long> {
 
     @EntityGraph(attributePaths = {
-            "positionConfigs", "positionConfigs.position", "positionConfigs.shiftOptions", "positionConfigs.coverageRules"
+            "positionConfigs", "positionConfigs.position"
     })
     List<ScheduleBuildTemplate> findByRestaurantIdAndIsActiveTrueOrderByNameAsc(Long restaurantId);
 
     @EntityGraph(attributePaths = {
-            "positionConfigs", "positionConfigs.position", "positionConfigs.shiftOptions", "positionConfigs.coverageRules"
+            "positionConfigs", "positionConfigs.position"
     })
     Optional<ScheduleBuildTemplate> findByIdAndRestaurantId(Long id, Long restaurantId);
 
