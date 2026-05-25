@@ -1,6 +1,7 @@
 package ru.staffly.schedule.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
@@ -34,7 +35,10 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     @Override @Transactional(readOnly = true)
     public List<ScheduleBuildTemplateDto> list(Long restaurantId, Long actorUserId) {
         assertManageAccess(restaurantId, actorUserId);
-        return templates.findByRestaurantIdAndIsActiveTrueOrderByNameAsc(restaurantId).stream().map(this::toDto).toList();
+        return templates.findByRestaurantIdAndIsActiveTrueOrderByNameAsc(restaurantId).stream()
+                .peek(this::initializeTemplateCollections)
+                .map(this::toDto)
+                .toList();
     }
     @Override @Transactional(readOnly = true)
     public ScheduleBuildTemplateDto get(Long restaurantId, Long templateId, Long actorUserId) {
@@ -68,7 +72,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private void applyRequest(ScheduleBuildTemplate template, Long restaurantId, SaveScheduleBuildTemplateRequest request, boolean creating) {
         String name = Optional.ofNullable(request.name()).map(String::trim).orElse("");
         if (name.isEmpty()) throw new BadRequestException("name is required");
-        if (creating || !name.equalsIgnoreCase(template.getName())) {
+        if (creating || !equalsIgnoreCase(name, template.getName())) {
             if (templates.existsByRestaurantIdAndNameIgnoreCase(restaurantId, name)) throw new BadRequestException("Template with this name already exists");
         }
         List<SaveScheduleBuildPositionConfigRequest> configRequests = Optional.ofNullable(request.positionConfigs()).orElse(List.of());
@@ -84,7 +88,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (positionMap.size() != positionIds.size()) throw new BadRequestException("All positionIds must belong to restaurant");
 
         template.setName(name);
-        template.setDescription(request.description());
+        template.setDescription(trimToNull(request.description()));
         template.setActive(request.isActive() == null || request.isActive());
         template.getPositionConfigs().clear();
 
@@ -100,6 +104,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setFullShiftStart(cfg.fullShiftStart());
             entity.setFullShiftEnd(cfg.fullShiftEnd());
             entity.setTargetPattern(cfg.targetPattern() == null ? ScheduleBuildPattern.NONE : cfg.targetPattern());
+            if (cfg.minRestHours() != null && cfg.minRestHours() < 0) throw new BadRequestException("minRestHours must be >= 0");
+            if (cfg.maxShiftsPerPeriod() != null && cfg.maxShiftsPerPeriod() <= 0) throw new BadRequestException("maxShiftsPerPeriod must be > 0");
             entity.setMinRestHours(cfg.minRestHours());
             entity.setMaxShiftsPerPeriod(cfg.maxShiftsPerPeriod());
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
@@ -111,7 +117,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 o.setPositionConfig(entity);
                 o.setStartTime(option.startTime());
                 o.setEndTime(option.endTime());
-                o.setLabel(option.label());
+                o.setLabel(trimToNull(option.label()));
                 o.setFullShift(Boolean.TRUE.equals(option.isFullShift()));
                 o.setSortOrder(option.sortOrder() != null ? option.sortOrder() : so++);
                 entity.getShiftOptions().add(o);
@@ -148,9 +154,19 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
     }
     private ScheduleBuildTemplate getTemplate(Long restaurantId, Long templateId) {
-        return templates.findByIdAndRestaurantId(templateId, restaurantId)
+        ScheduleBuildTemplate template = templates.findByIdAndRestaurantId(templateId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule build template not found: " + templateId));
+        initializeTemplateCollections(template);
+        return template;
     }
+
+    private void initializeTemplateCollections(ScheduleBuildTemplate template) {
+        for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getShiftOptions());
+            Hibernate.initialize(positionConfig.getCoverageRules());
+        }
+    }
+
     private ScheduleBuildTemplateDto toDto(ScheduleBuildTemplate t) {
         return new ScheduleBuildTemplateDto(t.getId(), t.getName(), t.getDescription(), t.isActive(), t.getCreatedAt(), t.getUpdatedAt(),
                 t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(
@@ -159,5 +175,15 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                         pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),
                         pc.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
                         pc.getSortOrder())).toList());
+    }
+
+    private boolean equalsIgnoreCase(String left, String right) {
+        return left != null && right != null && left.equalsIgnoreCase(right);
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }
