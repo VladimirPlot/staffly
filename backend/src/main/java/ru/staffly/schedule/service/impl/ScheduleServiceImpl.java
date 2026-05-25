@@ -130,12 +130,14 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (!canManage && membership.isEmpty()) {
             return List.of();
         }
-        final Long memberId = membership.map(RestaurantMember::getId).orElse(null);
+        final RestaurantMember currentMember = membership.orElse(null);
+        final Long memberId = currentMember != null ? currentMember.getId() : null;
 
         return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
                 .filter(schedule -> scheduleAccessService.canViewScheduleSummary(userId, schedule))
                 .map(s -> {
                     PreferenceProgressSummary progress = resolvePreferenceProgressSummary(canManage, s);
+                    Boolean myPreferenceSubmitted = resolveMyPreferenceSubmitted(s, currentMember, userId);
                     return new ScheduleSummaryDto(
                         s.getId(),
                         s.getTitle(),
@@ -160,10 +162,37 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getPreferenceClosedAt(),
                         s.getPreferenceAppliedAt(),
                         progress.submittedCount(),
-                        progress.totalParticipants()
+                        progress.totalParticipants(),
+                        myPreferenceSubmitted
                 );
                 })
                 .toList();
+    }
+
+    private Boolean resolveMyPreferenceSubmitted(Schedule schedule, RestaurantMember currentMember, Long currentUserId) {
+        if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES || currentMember == null) {
+            return null;
+        }
+        if (isScheduleOwner(schedule, currentMember, currentUserId)) {
+            return null;
+        }
+        if (currentMember.getPosition() == null || currentMember.getPosition().getId() == null) {
+            return null;
+        }
+        List<Long> positionIds = schedule.getPositionIds();
+        if (positionIds == null || !positionIds.contains(currentMember.getPosition().getId())) {
+            return null;
+        }
+        return preferenceSubmissions.existsByScheduleIdAndMemberId(schedule.getId(), currentMember.getId());
+    }
+
+    private boolean isScheduleOwner(Schedule schedule, RestaurantMember currentMember, Long currentUserId) {
+        Long ownerMemberId = schedule.getOwnerMember() != null ? schedule.getOwnerMember().getId() : null;
+        if (ownerMemberId != null && currentMember != null && ownerMemberId.equals(currentMember.getId())) {
+            return true;
+        }
+        Long ownerUserId = schedule.getOwnerUser() != null ? schedule.getOwnerUser().getId() : null;
+        return ownerUserId != null && currentUserId != null && ownerUserId.equals(currentUserId);
     }
 
     private PreferenceProgressSummary resolvePreferenceProgressSummary(boolean canManage, Schedule schedule) {

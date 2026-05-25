@@ -15,6 +15,8 @@ public interface SchedulePreferenceSubmissionRepository extends JpaRepository<Sc
 
     Optional<SchedulePreferenceSubmission> findByScheduleIdAndMemberId(Long scheduleId, Long memberId);
 
+    boolean existsByScheduleIdAndMemberId(Long scheduleId, Long memberId);
+
     @EntityGraph(attributePaths = {"cells", "member", "member.user", "member.position"})
     @Query("""
            select distinct s from SchedulePreferenceSubmission s
