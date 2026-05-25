@@ -62,6 +62,44 @@ function buildReadonlyMessage(data: SchedulePreferenceMyResponse): string {
   return "Срок отправки пожеланий истёк.";
 }
 
+function buildRepeatingPattern(
+  days: SchedulePreferenceMyResponse["days"],
+  workCount: number,
+  offCount: number,
+): Record<string, PreferenceSelectValue> {
+  const result: Record<string, PreferenceSelectValue> = {};
+  const cycleLength = workCount + offCount;
+
+  days.forEach((day, index) => {
+    const indexInCycle = index % cycleLength;
+    result[day.date] = indexInCycle < workCount ? "PREFER_WORK" : "PREFER_DAY_OFF";
+  });
+
+  return result;
+}
+
+function buildWeekdayPattern(days: SchedulePreferenceMyResponse["days"]): Record<string, PreferenceSelectValue> {
+  const result: Record<string, PreferenceSelectValue> = {};
+
+  days.forEach((day) => {
+    const weekday = new Date(`${day.date}T00:00:00`).getDay();
+    result[day.date] = weekday >= 1 && weekday <= 5 ? "PREFER_WORK" : "PREFER_DAY_OFF";
+  });
+
+  return result;
+}
+
+function fillAll(
+  days: SchedulePreferenceMyResponse["days"],
+  type: Extract<PreferenceSelectValue, SchedulePreferenceType>,
+): Record<string, PreferenceSelectValue> {
+  const result: Record<string, PreferenceSelectValue> = {};
+  days.forEach((day) => {
+    result[day.date] = type;
+  });
+  return result;
+}
+
 const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   data,
   loading,
@@ -115,6 +153,10 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
       comment: comment.trim().length > 0 ? comment.trim() : null,
     });
   }, [comment, data, onSubmit, selectedByDay]);
+
+  const clearAll = React.useCallback(() => {
+    setSelectedByDay({});
+  }, []);
 
   if (loading && !data) {
     return <Card>Загрузка пожеланий…</Card>;
@@ -182,6 +224,58 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
       </Card>
 
       <Card className="space-y-4">
+        <div className="space-y-2 rounded-2xl border border-[var(--staffly-border)] p-4">
+          <h3 className="text-strong text-base font-semibold">Быстро заполнить</h3>
+          <p className="text-muted text-sm">
+            Выберите шаблон, а потом при необходимости поправьте отдельные дни вручную.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!data.canSubmit || saving}
+              onClick={() => setSelectedByDay(buildRepeatingPattern(data.days, 2, 2))}
+            >
+              2/2
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!data.canSubmit || saving}
+              onClick={() => setSelectedByDay(buildRepeatingPattern(data.days, 3, 3))}
+            >
+              3/3
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!data.canSubmit || saving}
+              onClick={() => setSelectedByDay(buildWeekdayPattern(data.days))}
+            >
+              5/2
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!data.canSubmit || saving}
+              onClick={() => setSelectedByDay(fillAll(data.days, "AVAILABLE"))}
+            >
+              Все дни могу
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!data.canSubmit || saving}
+              onClick={() => setSelectedByDay(fillAll(data.days, "UNAVAILABLE"))}
+            >
+              Все дни не могу
+            </Button>
+            <Button type="button" variant="outline" disabled={!data.canSubmit || saving} onClick={clearAll}>
+              Очистить все
+            </Button>
+          </div>
+        </div>
+
         <div className="space-y-1">
           <h3 className="text-strong text-base font-semibold">Дни</h3>
           <p className="text-muted text-sm">Выберите одно пожелание на полный день или оставьте «Без пожелания».</p>
