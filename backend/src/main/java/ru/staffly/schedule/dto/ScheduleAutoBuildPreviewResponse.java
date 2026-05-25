@@ -7,6 +7,10 @@ public record ScheduleAutoBuildPreviewResponse(
         Long templateId,
         String templateName,
         List<ScheduleAutoBuildPositionPreviewDto> positions,
-        List<String> warnings
+        List<String> warnings,
+        int totalAssignments,
+        int warningsCount,
+        int unfilledCount,
+        int negativeAssignmentsCount
 ) {
 }

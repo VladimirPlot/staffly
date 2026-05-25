@@ -1,6 +1,7 @@
 package ru.staffly.schedule.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
@@ -49,6 +50,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
         ScheduleBuildTemplate template = templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(request.templateId(), restaurantId)
                 .orElseThrow(() -> new NotFoundException("Active template not found: " + request.templateId()));
+        initializeTemplateCollections(template);
 
         List<String> topWarnings = new ArrayList<>();
         List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
@@ -82,7 +84,23 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
             positionDtos.add(buildPositionPreview(restaurantId, schedule, config, prefByMember));
         }
 
-        return new ScheduleAutoBuildPreviewResponse(schedule.getId(), template.getId(), template.getName(), positionDtos, topWarnings.stream().distinct().toList());
+        List<String> distinctTopWarnings = topWarnings.stream().distinct().toList();
+        int totalAssignments = positionDtos.stream().mapToInt(ScheduleAutoBuildPositionPreviewDto::totalAssignments).sum();
+        int unfilledCount = positionDtos.stream().mapToInt(ScheduleAutoBuildPositionPreviewDto::unfilledCount).sum();
+        int negativeAssignmentsCount = positionDtos.stream().mapToInt(ScheduleAutoBuildPositionPreviewDto::negativeAssignmentsCount).sum();
+        int warningsCount = distinctTopWarnings.size()
+                + positionDtos.stream().mapToInt(ScheduleAutoBuildPositionPreviewDto::warningsCount).sum();
+        return new ScheduleAutoBuildPreviewResponse(
+                schedule.getId(),
+                template.getId(),
+                template.getName(),
+                positionDtos,
+                distinctTopWarnings,
+                totalAssignments,
+                warningsCount,
+                unfilledCount,
+                negativeAssignmentsCount
+        );
     }
 
     private ScheduleAutoBuildPositionPreviewDto buildPositionPreview(Long restaurantId,
@@ -97,6 +115,8 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         List<String> warnings = new ArrayList<>();
         List<ScheduleAutoBuildCellPreviewDto> cells = new ArrayList<>();
         Map<LocalDate, Set<Long>> usedByDay = new HashMap<>();
+        int unfilledCount = 0;
+        int negativeAssignmentsCount = 0;
 
         for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
             int dayOfWeek = day.getDayOfWeek().getValue();
@@ -111,10 +131,12 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                     RestaurantMember selected = pickMember(candidates, prefByMember, day, option, usedByDay.computeIfAbsent(day, k -> new HashSet<>()));
                     if (selected == null) {
                         warnings.add("Недостаточно сотрудников для покрытия " + day + " " + formatShift(option));
+                        unfilledCount++;
                         continue;
                     }
                     List<String> cellWarnings = new ArrayList<>();
-                    String reason = reasonFor(selected.getId(), prefByMember.getOrDefault(selected.getId(), List.of()), day, option, cellWarnings);
+                    PreferenceGrade selectedGrade = grade(prefByMember.getOrDefault(selected.getId(), List.of()), day, option);
+                    String reason = reasonFor(prefByMember.getOrDefault(selected.getId(), List.of()), day, option, cellWarnings, selectedGrade);
                     cells.add(new ScheduleAutoBuildCellPreviewDto(
                             selected.getId(),
                             displayName(selected),
@@ -125,11 +147,25 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                             reason,
                             cellWarnings
                     ));
+                    if (selectedGrade == PreferenceGrade.NEGATIVE) {
+                        negativeAssignmentsCount++;
+                    }
                     usedByDay.get(day).add(selected.getId());
                 }
             }
         }
-        return new ScheduleAutoBuildPositionPreviewDto(config.getPosition().getId(), config.getPosition().getName(), cells, warnings.stream().distinct().toList());
+        List<String> distinctWarnings = warnings.stream().distinct().toList();
+        int warningsCount = distinctWarnings.size() + cells.stream().mapToInt(c -> c.warnings().size()).sum();
+        return new ScheduleAutoBuildPositionPreviewDto(
+                config.getPosition().getId(),
+                config.getPosition().getName(),
+                cells,
+                distinctWarnings,
+                cells.size(),
+                warningsCount,
+                unfilledCount,
+                negativeAssignmentsCount
+        );
     }
 
     private RestaurantMember pickMember(List<RestaurantMember> candidates, Map<Long, List<SchedulePreferenceCell>> prefByMember,
@@ -149,8 +185,8 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         return negative.isEmpty() ? null : negative.get(0);
     }
 
-    private String reasonFor(Long memberId, List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option, List<String> warnings) {
-        PreferenceGrade grade = grade(cells, day, option);
+    private String reasonFor(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option,
+                             List<String> warnings, PreferenceGrade grade) {
         if (grade == PreferenceGrade.POSITIVE) {
             if (hasPartialOverlap(cells, day, option)) warnings.add("Пожелание частично пересекается со сменой");
             return "Подходит по пожеланию";
@@ -165,8 +201,14 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     private boolean hasPartialOverlap(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option) {
         int shiftStart = toMinute(option.getStartTime(), false);
         int shiftEnd = toMinute(option.getEndTime(), true);
-        return cells.stream().anyMatch(c -> c.getDay().equals(day) && !c.isFullDay() && c.getStartTime() != null && c.getEndTime() != null
-                && overlaps(toMinute(c.getStartTime(), false), toMinute(c.getEndTime(), true), shiftStart, shiftEnd));
+        return cells.stream().anyMatch(c -> c.getDay().equals(day)
+                && !c.isFullDay()
+                && isPositiveType(c.getType())
+                && c.getStartTime() != null
+                && c.getEndTime() != null
+                && overlaps(toMinute(c.getStartTime(), false), toMinute(c.getEndTime(), true), shiftStart, shiftEnd)
+                && !coversInterval(c.getStartTime(), c.getEndTime(), option.getStartTime(), option.getEndTime())
+                && !intervalsEqual(c.getStartTime(), c.getEndTime(), option.getStartTime(), option.getEndTime()));
     }
 
     private PreferenceGrade grade(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option) {
@@ -174,15 +216,27 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         if (dayCells.isEmpty()) return PreferenceGrade.NONE;
         boolean positive = dayCells.stream().anyMatch(c -> isPositive(c, option));
         if (positive) return PreferenceGrade.POSITIVE;
-        boolean negative = dayCells.stream().anyMatch(c -> c.getType() == SchedulePreferenceType.UNAVAILABLE || c.getType() == SchedulePreferenceType.PREFER_DAY_OFF);
+        boolean negative = dayCells.stream().anyMatch(c -> isNegativeForShift(c, option));
         return negative ? PreferenceGrade.NEGATIVE : PreferenceGrade.NONE;
     }
 
     private boolean isPositive(SchedulePreferenceCell c, ScheduleBuildShiftOption option) {
-        if (c.getType() != SchedulePreferenceType.AVAILABLE && c.getType() != SchedulePreferenceType.PREFER_WORK) return false;
+        if (!isPositiveType(c.getType())) return false;
         if (c.isFullDay()) return true;
         if (c.getStartTime() == null || c.getEndTime() == null) return false;
         return overlaps(toMinute(c.getStartTime(), false), toMinute(c.getEndTime(), true), toMinute(option.getStartTime(), false), toMinute(option.getEndTime(), true));
+    }
+
+    private boolean isNegativeForShift(SchedulePreferenceCell c, ScheduleBuildShiftOption option) {
+        if (c.getType() != SchedulePreferenceType.UNAVAILABLE && c.getType() != SchedulePreferenceType.PREFER_DAY_OFF) return false;
+        if (c.isFullDay()) return true;
+        if (c.getStartTime() == null || c.getEndTime() == null) return false;
+        return overlaps(toMinute(c.getStartTime(), false), toMinute(c.getEndTime(), true),
+                toMinute(option.getStartTime(), false), toMinute(option.getEndTime(), true));
+    }
+
+    private boolean isPositiveType(SchedulePreferenceType type) {
+        return type == SchedulePreferenceType.AVAILABLE || type == SchedulePreferenceType.PREFER_WORK;
     }
 
     private ScheduleBuildShiftOption findShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
@@ -196,9 +250,15 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     }
 
     private String displayName(RestaurantMember m) {
-        String first = m.getUser() == null ? "" : Optional.ofNullable(m.getUser().getFirstName()).orElse("");
-        String last = m.getUser() == null ? "" : Optional.ofNullable(m.getUser().getLastName()).orElse("");
-        return (first + " " + last).trim();
+        if (m.getUser() != null) {
+            String fullName = Optional.ofNullable(m.getUser().getFullName()).map(String::trim).orElse("");
+            if (!fullName.isBlank()) return fullName;
+            String first = Optional.ofNullable(m.getUser().getFirstName()).orElse("");
+            String last = Optional.ofNullable(m.getUser().getLastName()).orElse("");
+            String firstLast = (first + " " + last).trim();
+            if (!firstLast.isBlank()) return firstLast;
+        }
+        return "Сотрудник #" + m.getId();
     }
 
     private String formatShift(ScheduleBuildShiftOption option) {
@@ -216,6 +276,21 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
     private boolean covers(int shiftStart, int shiftEnd, int ruleStart, int ruleEnd) {
         return shiftStart <= ruleStart && shiftEnd >= ruleEnd;
+    }
+
+    private boolean coversInterval(LocalTime prefStart, LocalTime prefEnd, LocalTime shiftStart, LocalTime shiftEnd) {
+        return covers(toMinute(prefStart, false), toMinute(prefEnd, true), toMinute(shiftStart, false), toMinute(shiftEnd, true));
+    }
+
+    private boolean intervalsEqual(LocalTime startA, LocalTime endA, LocalTime startB, LocalTime endB) {
+        return toMinute(startA, false) == toMinute(startB, false) && toMinute(endA, true) == toMinute(endB, true);
+    }
+
+    private void initializeTemplateCollections(ScheduleBuildTemplate template) {
+        for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getShiftOptions());
+            Hibernate.initialize(positionConfig.getCoverageRules());
+        }
     }
 
     private enum PreferenceGrade {POSITIVE, NONE, NEGATIVE}
