@@ -6,7 +6,7 @@ create table if not exists schedule_build_template (
     is_active boolean not null default true,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    constraint fk_sbt_restaurant foreign key (restaurant_id) references restaurant(id) on delete cascade
+    constraint fk_sbt_restaurant foreign key (restaurant_id) references restaurants(id) on delete cascade
 );
 
 create index if not exists idx_sbt_restaurant on schedule_build_template(restaurant_id);

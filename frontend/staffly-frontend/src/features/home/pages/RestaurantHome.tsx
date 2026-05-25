@@ -17,6 +17,7 @@ import {
   CalendarCog,
   CalendarDays,
   ClipboardList,
+  Gamepad2,
   GraduationCap,
   LayoutList,
   ListChecks,
@@ -149,6 +150,14 @@ function createDashboardCards(access: DashboardAccess): DashboardCardItem[] {
     description: "Регулярные напоминания для сотрудников и команд",
     to: "/reminders",
     icon: AlarmClock,
+  });
+
+  cards.push({
+    id: "games",
+    title: "Игры",
+    description: "Игровые форматы для обучения и командной разминки.",
+    to: "/games",
+    icon: Gamepad2,
   });
 
   return cards;
