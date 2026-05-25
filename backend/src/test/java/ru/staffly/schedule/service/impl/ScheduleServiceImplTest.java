@@ -44,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -222,6 +223,15 @@ class ScheduleServiceImplTest {
                 ACTOR_USER_ID,
                 ScheduleAuditAction.PREFERENCE_COLLECTION_STARTED,
                 "Начат сбор пожеланий сотрудников"
+        );
+        verify(inboxMessages).createEvent(
+                eq(schedule.getRestaurant()),
+                any(),
+                eq("Оставьте пожелания по графику «Schedule» за период 2026-05-12 — 2026-05-13."),
+                eq(InboxEventSubtype.SCHEDULE_PREFERENCES),
+                argThat(meta -> meta.startsWith("schedulePreferences:start:restaurant:10:schedule:30:deadline:")),
+                argThat(targets -> targets.size() == 1 && targets.get(0).getId().equals(101L)),
+                eq(LocalDate.of(2026, 5, 13))
         );
     }
 
@@ -418,6 +428,14 @@ class ScheduleServiceImplTest {
     }
 
     private Schedule schedule(ScheduleStatus status) {
+        RestaurantMember eligible = RestaurantMember.builder()
+                .id(101L)
+                .restaurant(restaurant)
+                .user(User.builder().id(501L).build())
+                .position(Position.builder().id(POSITION_ID).build())
+                .build();
+        lenient().when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(RESTAURANT_ID, List.of(POSITION_ID)))
+                .thenReturn(List.of(eligible));
         return Schedule.builder()
                 .id(SCHEDULE_ID)
                 .restaurant(restaurant)
