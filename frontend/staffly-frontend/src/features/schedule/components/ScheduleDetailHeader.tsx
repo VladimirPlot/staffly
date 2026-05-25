@@ -25,7 +25,7 @@ type ScheduleDetailHeaderProps = {
   lifecycleAction: "startPreferences" | "closePreferences" | "applyPreferences" | "publish" | null;
   onStartPreferenceCollection: () => void;
   onClosePreferenceCollection: () => void;
-  onApplyPreferences: () => void;
+  onOpenApplyPreferencesDialog: () => void;
   onPublishSchedule: () => void;
   downloadMenuFor: number | null;
   onToggleDownloadMenu: (id: number | null) => void;
@@ -51,7 +51,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   lifecycleAction,
   onStartPreferenceCollection,
   onClosePreferenceCollection,
-  onApplyPreferences,
+  onOpenApplyPreferencesDialog,
   onPublishSchedule,
   downloadMenuFor,
   onToggleDownloadMenu,
@@ -113,7 +113,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
               </Button>
             )}
             {canApplySchedulePreferences(schedule.status) && (
-              <Button variant="outline" onClick={onApplyPreferences} disabled={lifecycleDisabled}>
+              <Button variant="outline" onClick={onOpenApplyPreferencesDialog} disabled={lifecycleDisabled}>
                 {lifecycleAction === "applyPreferences" ? "Подготовка…" : "Перейти к сборке"}
               </Button>
             )}

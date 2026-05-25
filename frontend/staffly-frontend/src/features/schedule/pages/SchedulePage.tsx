@@ -8,6 +8,7 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 import { ArrowLeft } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 
+import ApplySchedulePreferencesDialog from "../components/ApplySchedulePreferencesDialog";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
@@ -100,6 +101,7 @@ const SchedulePage: React.FC = () => {
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
+  const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -436,6 +438,25 @@ const SchedulePage: React.FC = () => {
     [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules, user?.id],
   );
 
+  const handleOpenApplyPreferencesDialog = React.useCallback(() => {
+    setApplyPreferencesDialogOpen(true);
+    if (!buildTemplatesActions.loading && buildTemplatesActions.templates.length === 0) {
+      void buildTemplatesActions.loadTemplates();
+    }
+  }, [buildTemplatesActions]);
+
+  const handleCloseApplyPreferencesDialog = React.useCallback(() => {
+    if (lifecycleActions.pendingAction === "applyPreferences") return;
+    setApplyPreferencesDialogOpen(false);
+  }, [lifecycleActions.pendingAction]);
+
+  const handleApplyPreferencesManual = React.useCallback(async () => {
+    const success = await lifecycleActions.applyPreferencesSimple();
+    if (success) {
+      setApplyPreferencesDialogOpen(false);
+    }
+  }, [lifecycleActions]);
+
   React.useEffect(() => {
     if (!derived.hasSchedule) {
       setActiveTab("table");
@@ -599,7 +620,7 @@ const SchedulePage: React.FC = () => {
             lifecycleAction={lifecycleActions.pendingAction}
             onStartPreferenceCollection={lifecycleActions.openPreferenceDialog}
             onClosePreferenceCollection={lifecycleActions.closePreferenceCollection}
-            onApplyPreferences={lifecycleActions.applyPreferencesSimple}
+            onOpenApplyPreferencesDialog={handleOpenApplyPreferencesDialog}
             onPublishSchedule={lifecycleActions.publishSchedule}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
@@ -707,6 +728,17 @@ const SchedulePage: React.FC = () => {
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
         onClose={lifecycleActions.closePreferenceDialog}
         onSubmit={() => void lifecycleActions.submitPreferenceCollection()}
+      />
+
+      <ApplySchedulePreferencesDialog
+        open={applyPreferencesDialogOpen}
+        applying={lifecycleActions.pendingAction === "applyPreferences"}
+        templates={buildTemplatesActions.templates}
+        templatesLoading={buildTemplatesActions.loading}
+        templatesError={buildTemplatesActions.error}
+        onReloadTemplates={() => void buildTemplatesActions.loadTemplates()}
+        onClose={handleCloseApplyPreferencesDialog}
+        onApplyManual={() => void handleApplyPreferencesManual()}
       />
 
       <CreateScheduleDialog
