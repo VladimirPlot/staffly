@@ -32,11 +32,12 @@ import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useSchedulePreferenceMeActions from "../hooks/useSchedulePreferenceMeActions";
 import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceManagerActions";
+import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
 import { buildMemberDisplayNameMap } from "../utils/names";
-import { canViewSchedulePreferences } from "../utils/status";
+import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 
@@ -134,6 +135,29 @@ const SchedulePage: React.FC = () => {
       access.normalizedRestaurantRole != null && allowedRoles.some((role) => role === access.normalizedRestaurantRole)
     );
   }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
+
+  const preferenceHintsEnabled = canManage && canShowPreferenceHints(schedule?.status) && Boolean(schedule?.id);
+  const preferenceHints = useSchedulePreferenceHints({
+    restaurantId,
+    scheduleId,
+    enabled: preferenceHintsEnabled,
+  });
+
+  const preferenceHintsByCellKey = React.useMemo(() => {
+    const map: Record<string, import("../api").SchedulePreferenceCellDto[]> = {};
+    const submissions = preferenceHints.submissions?.submissions ?? [];
+    submissions.forEach((submission) => {
+      const memberId = submission.member?.memberId;
+      if (!memberId) return;
+      submission.cells?.forEach((cell) => {
+        if (!cell.fullDay || !cell.day) return;
+        const key = `${memberId}:${cell.day}`;
+        if (!map[key]) map[key] = [];
+        map[key].push(cell);
+      });
+    });
+    return map;
+  }, [preferenceHints.submissions]);
 
   const derived = useScheduleDerivedState({
     userId: user?.id,
@@ -523,6 +547,7 @@ const SchedulePage: React.FC = () => {
 
           {activeTab === "table" && (
             <ScheduleTableSection
+              preferenceHintsByCellKey={preferenceHintsByCellKey}
               schedule={schedule}
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}

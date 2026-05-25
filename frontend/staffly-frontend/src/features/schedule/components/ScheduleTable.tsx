@@ -1,7 +1,14 @@
 import React from "react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
-import type { ScheduleCellKey, ScheduleData, ScheduleDay, ScheduleRow, ShiftMode } from "../types";
+import type {
+  ScheduleCellKey,
+  ScheduleData,
+  ScheduleDay,
+  SchedulePreferenceHintsByCellKey,
+  ScheduleRow,
+  ShiftMode,
+} from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import {
   MINUTE_STEPS,
@@ -30,6 +37,7 @@ type Props = {
   data: ScheduleData | null | undefined;
   onChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
   readOnly?: boolean;
+  preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 
 type CellValues = ScheduleData["cellValues"];
@@ -52,6 +60,7 @@ type ScheduleTableRowProps = {
   shiftMode: ShiftMode;
   placeholder: string;
   onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+  preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 
 type ScheduleCellEditorProps = {
@@ -62,6 +71,7 @@ type ScheduleCellEditorProps = {
   placeholder: string;
   readOnly: boolean;
   onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+  hints?: import("../api").SchedulePreferenceCellDto[];
 };
 
 type EditableCellProps = {
@@ -92,7 +102,7 @@ type ArrivalSelectorProps = {
   onCommit: (value: string) => void;
 };
 
-const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) => {
+const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, preferenceHintsByCellKey }) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
   const days = data?.days ?? EMPTY_DAYS;
   const rows = data?.rows ?? EMPTY_ROWS;
@@ -155,7 +165,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
     // ❗️скролл только в ScheduleTableSection (overflow-auto)
     <div className="inline-block min-w-full align-top">
       <div
-        className="grid border border-subtle bg-surface"
+        className="border-subtle bg-surface grid border"
         style={{ gridTemplateColumns, width: "max-content", minWidth: "100%" }}
       >
         <ScheduleTableHeader title={data.title} days={days} />
@@ -171,6 +181,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false }) =>
             shiftMode={shiftMode}
             placeholder={PLACEHOLDERS[shiftMode]}
             onCellValueChange={handleCellValueChange}
+            preferenceHintsByCellKey={preferenceHintsByCellKey}
           />
         ))}
 
@@ -185,7 +196,7 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
     <>
       {/* Заголовок таблицы (НЕ sticky) */}
       <div
-        className="flex items-center justify-center border-b border-subtle px-3 py-3 text-center font-semibold"
+        className="border-subtle flex items-center justify-center border-b px-3 py-3 text-center font-semibold"
         style={{ gridColumn: `1 / span ${days.length + 2}` }}
       >
         {title}
@@ -194,9 +205,9 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
       {/* ====== Линия 1: День недели (sticky top-0) ====== */}
       <div
         className={[
-          "sticky left-0 top-0 z-50 flex h-10 items-center justify-start",
-          "border-b border-r border-subtle bg-surface px-3",
-          "text-xs font-semibold text-default",
+          "sticky top-0 left-0 z-50 flex h-10 items-center justify-start",
+          "border-subtle bg-surface border-r border-b px-3",
+          "text-default text-xs font-semibold",
           STICKY_COL_SHADOW,
           STICKY_ROW_SHADOW,
         ].join(" ")}
@@ -209,8 +220,8 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
           key={`weekday-${day.date}`}
           className={[
             "sticky top-0 z-40 flex h-10 items-center justify-center",
-            "border-b border-l border-subtle bg-surface px-2",
-            "text-xs font-medium text-muted",
+            "border-subtle bg-surface border-b border-l px-2",
+            "text-muted text-xs font-medium",
             STICKY_ROW_SHADOW,
           ].join(" ")}
         >
@@ -221,8 +232,8 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
       <div
         className={[
           "sticky top-0 z-40 flex h-10 items-center justify-center",
-          "border-b border-l border-subtle bg-surface px-2 text-center",
-          "text-xs font-semibold text-default",
+          "border-subtle bg-surface border-b border-l px-2 text-center",
+          "text-default text-xs font-semibold",
           STICKY_ROW_SHADOW,
         ].join(" ")}
       >
@@ -232,9 +243,9 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
       {/* ====== Линия 2: День месяца (sticky top-10) ====== */}
       <div
         className={[
-          "sticky left-0 top-10 z-50 flex h-10 items-center justify-start",
-          "border-b border-r border-subtle bg-surface px-3",
-          "text-xs font-semibold text-default",
+          "sticky top-10 left-0 z-50 flex h-10 items-center justify-start",
+          "border-subtle bg-surface border-r border-b px-3",
+          "text-default text-xs font-semibold",
           STICKY_COL_SHADOW,
           STICKY_ROW_SHADOW,
         ].join(" ")}
@@ -247,8 +258,8 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
           key={`day-${day.date}`}
           className={[
             "sticky top-10 z-40 flex h-10 items-center justify-center",
-            "border-b border-l border-subtle bg-surface px-2",
-            "text-xs text-default",
+            "border-subtle bg-surface border-b border-l px-2",
+            "text-default text-xs",
             STICKY_ROW_SHADOW,
           ].join(" ")}
         >
@@ -259,8 +270,8 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
       <div
         className={[
           "sticky top-10 z-40 flex h-10 items-center justify-center",
-          "border-b border-l border-subtle bg-surface px-2 text-center",
-          "text-xs font-medium text-default",
+          "border-subtle bg-surface border-b border-l px-2 text-center",
+          "text-default text-xs font-medium",
           STICKY_ROW_SHADOW,
         ].join(" ")}
       >
@@ -280,6 +291,7 @@ const ScheduleTableRow = React.memo(
     shiftMode,
     placeholder,
     onCellValueChange,
+    preferenceHintsByCellKey,
   }: ScheduleTableRowProps) {
     return (
       <>
@@ -287,13 +299,13 @@ const ScheduleTableRow = React.memo(
         <div
           className={[
             "sticky left-0 z-30 flex flex-col justify-center",
-            "border-b border-r border-subtle bg-surface px-3 py-3",
-            "text-sm font-medium text-strong",
+            "border-subtle bg-surface border-r border-b px-3 py-3",
+            "text-strong text-sm font-medium",
             STICKY_COL_SHADOW,
           ].join(" ")}
         >
           <span className="truncate">{row.displayName}</span>
-          {row.positionName && <span className="truncate text-xs font-normal text-muted">{row.positionName}</span>}
+          {row.positionName && <span className="text-muted truncate text-xs font-normal">{row.positionName}</span>}
         </div>
 
         {days.map((day) => {
@@ -308,6 +320,7 @@ const ScheduleTableRow = React.memo(
               placeholder={placeholder}
               readOnly={readOnly}
               onCellValueChange={onCellValueChange}
+              hints={preferenceHintsByCellKey?.[key]}
             />
           );
         })}
@@ -324,7 +337,8 @@ const ScheduleTableRow = React.memo(
       prev.readOnly !== next.readOnly ||
       prev.shiftMode !== next.shiftMode ||
       prev.placeholder !== next.placeholder ||
-      prev.onCellValueChange !== next.onCellValueChange
+      prev.onCellValueChange !== next.onCellValueChange ||
+      prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey
     ) {
       return false;
     }
@@ -344,6 +358,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   placeholder,
   readOnly,
   onCellValueChange,
+  hints,
 }: ScheduleCellEditorProps) {
   const handleInputChange = React.useCallback(
     (newValue: string) => onCellValueChange(memberId, day, newValue),
@@ -369,7 +384,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   const missingEnd = shiftMode === "FULL" && hasStartWithoutEndValue(value);
 
   return (
-    <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
+    <div className="border-subtle border-b border-l px-1.5 py-1 text-sm">
       {readOnly ? (
         <ReadonlyCell value={value} shiftMode={shiftMode} />
       ) : (
@@ -382,6 +397,26 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
           onBlur={handleBlur}
           highlightEnd={missingEnd}
         />
+      )}
+      {hints && hints.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {hints
+            .filter((cell) => cell.fullDay)
+            .map((cell) => (
+              <span
+                key={`${cell.id ?? `${cell.day}:${cell.sortOrder}`}:${cell.type}`}
+                className="border-subtle bg-surface-muted text-muted rounded border px-1.5 py-0.5 text-[10px]"
+              >
+                {cell.type === "AVAILABLE"
+                  ? "Может"
+                  : cell.type === "UNAVAILABLE"
+                    ? "Не может"
+                    : cell.type === "PREFER_WORK"
+                      ? "Хочет работать"
+                      : "Хочет выходной"}
+              </span>
+            ))}
+        </div>
       )}
     </div>
   );
@@ -402,8 +437,8 @@ const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
       <div
         className={[
           "sticky left-0 z-20 flex flex-col justify-center",
-          "border-b border-r border-subtle bg-surface px-3 py-3",
-          "text-sm font-semibold text-strong",
+          "border-subtle bg-surface border-r border-b px-3 py-3",
+          "text-strong text-sm font-semibold",
           STICKY_COL_SHADOW,
         ].join(" ")}
       >
@@ -421,8 +456,8 @@ const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
 
 const ShiftCountCell = React.memo(function ShiftCountCell({ value }: { value: number }) {
   return (
-    <div className="border-b border-l border-subtle px-1.5 py-1 text-sm">
-      <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs font-semibold leading-tight text-strong">
+    <div className="border-subtle border-b border-l px-1.5 py-1 text-sm">
+      <div className="bg-surface text-strong flex min-h-[2.25rem] items-center justify-center rounded-xl px-1 text-center text-xs leading-tight font-semibold">
         {value}
       </div>
     </div>
@@ -451,7 +486,7 @@ function EditableCell({
           onChange={(event) => onInputChange(event.target.value)}
           onBlur={(event) => onBlur(event.target.value)}
           placeholder={placeholder}
-          className="h-10 w-full rounded-lg border border-transparent bg-app px-2 text-center text-base text-strong focus:bg-surface focus:outline-none focus:ring-2 ring-default"
+          className="bg-app text-strong focus:bg-surface ring-default h-10 w-full rounded-lg border border-transparent px-2 text-center text-base focus:ring-2 focus:outline-none"
         />
       );
   }
@@ -460,7 +495,7 @@ function EditableCell({
 function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMode }) {
   if (!value) {
     return (
-      <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs leading-tight text-muted">
+      <div className="bg-surface text-muted flex min-h-[2.25rem] items-center justify-center rounded-xl px-1 text-center text-xs leading-tight">
         —
       </div>
     );
@@ -473,7 +508,7 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
       .filter(Boolean);
 
     return (
-      <div className="flex min-h-[2.25rem] flex-col items-center justify-center rounded-xl bg-surface px-1 text-center text-xs leading-tight text-strong">
+      <div className="bg-surface text-strong flex min-h-[2.25rem] flex-col items-center justify-center rounded-xl px-1 text-center text-xs leading-tight">
         <span>{from}</span>
         {to && <span>{to}</span>}
       </div>
@@ -481,7 +516,7 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
   }
 
   return (
-    <div className="flex min-h-[2.25rem] items-center justify-center rounded-xl bg-surface px-1 text-center text-xs leading-tight text-strong">
+    <div className="bg-surface text-strong flex min-h-[2.25rem] items-center justify-center rounded-xl px-1 text-center text-xs leading-tight">
       {value}
     </div>
   );
@@ -505,7 +540,7 @@ function ArrivalSelector({ value, onCommit }: ArrivalSelectorProps) {
   };
 
   return (
-    <div className="flex min-h-[2.25rem] flex-col items-center justify-center gap-1 rounded-xl bg-surface px-1 text-xs text-strong">
+    <div className="bg-surface text-strong flex min-h-[2.25rem] flex-col items-center justify-center gap-1 rounded-xl px-1 text-xs">
       <TimeSelector value={time} onHourChange={handleHourChange} onMinuteChange={handleMinuteChange} />
     </div>
   );
@@ -523,16 +558,16 @@ function IntervalSelector({ value, onCommit, highlightEnd }: IntervalSelectorPro
   const showHighlight = Boolean(highlightEnd && from.hour !== null && to.hour === null);
 
   return (
-    <div className="flex min-h-[2.75rem] flex-col items-center justify-center gap-1 rounded-xl bg-surface px-1 text-[11px] text-strong">
+    <div className="bg-surface text-strong flex min-h-[2.75rem] flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px]">
       <TimeSelector
         value={from}
-        onHourChange={(hour) => updateRange("from", hour, hour === null ? null : from.minute ?? 0)}
+        onHourChange={(hour) => updateRange("from", hour, hour === null ? null : (from.minute ?? 0))}
         onMinuteChange={(minute) => updateRange("from", from.hour, minute)}
       />
       <TimeSelector
         highlight={showHighlight}
         value={to}
-        onHourChange={(hour) => updateRange("to", hour, hour === null ? null : to.minute ?? 0)}
+        onHourChange={(hour) => updateRange("to", hour, hour === null ? null : (to.minute ?? 0))}
         onMinuteChange={(minute) => updateRange("to", to.hour, minute)}
       />
       {showHighlight && <span className="text-[10px] font-medium text-amber-600">Укажите время ухода</span>}
@@ -576,7 +611,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
           else onMinuteChange(Number(rawValue));
         }}
         disabled={value.hour === null}
-        className={`${baseClasses} ${highlightClasses} disabled:cursor-not-allowed disabled:bg-app`.trim()}
+        className={`${baseClasses} ${highlightClasses} disabled:bg-app disabled:cursor-not-allowed`.trim()}
       >
         <option value="">--</option>
         {MINUTE_STEPS.map((minute) => (

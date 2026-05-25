@@ -7,6 +7,8 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.inbox.model.InboxEventSubtype;
+import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.dto.*;
@@ -17,6 +19,7 @@ import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.SchedulePreferenceService;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
+import ru.staffly.user.repository.UserRepository;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -39,6 +42,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
+    private final InboxMessageService inboxMessages;
+    private final UserRepository users;
 
     @Override
     @Transactional(readOnly = true)
@@ -96,7 +101,61 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
 
         SchedulePreferenceSubmission saved = submissions.save(submission);
+        notifyManagersIfAllSubmitted(schedule, now);
         return toMyResponse(schedule, member, saved);
+    }
+
+    private void notifyManagersIfAllSubmitted(Schedule schedule, Instant now) {
+        if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
+                || schedule.getPreferenceAllSubmittedNotifiedAt() != null) {
+            return;
+        }
+        List<RestaurantMember> participants = loadParticipants(schedule.getRestaurant().getId(), schedule);
+        int totalParticipants = participants.size();
+        if (totalParticipants <= 0) {
+            return;
+        }
+        Set<Long> participantIds = participants.stream().map(RestaurantMember::getId).collect(Collectors.toSet());
+        long submittedCount = submissions.findByScheduleIdWithMember(schedule.getId()).stream()
+                .map(SchedulePreferenceSubmission::getMember)
+                .filter(Objects::nonNull)
+                .map(RestaurantMember::getId)
+                .filter(participantIds::contains)
+                .distinct()
+                .count();
+        if (submittedCount != totalParticipants) {
+            return;
+        }
+
+        LinkedHashSet<Long> managerUserIds = new LinkedHashSet<>();
+        if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
+            managerUserIds.add(schedule.getOwnerUser().getId());
+        }
+        if (schedule.getCreatedByUser() != null && schedule.getCreatedByUser().getId() != null) {
+            managerUserIds.add(schedule.getCreatedByUser().getId());
+        }
+        if (managerUserIds.isEmpty()) {
+            schedule.setPreferenceAllSubmittedNotifiedAt(now);
+            return;
+        }
+        List<RestaurantMember> managerTargets = members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds);
+        if (managerTargets.isEmpty()) {
+            schedule.setPreferenceAllSubmittedNotifiedAt(now);
+            return;
+        }
+        User creator = users.findById(managerUserIds.iterator().next()).orElse(null);
+        String content = "Все сотрудники отправили пожелания по графику «" + schedule.getTitle()
+                + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + ".";
+        inboxMessages.createEvent(
+                schedule.getRestaurant(),
+                creator,
+                content,
+                InboxEventSubtype.SCHEDULE_PREFERENCES,
+                "schedulePreferences:allSubmitted:restaurant:" + schedule.getRestaurant().getId() + ":schedule:" + schedule.getId(),
+                managerTargets,
+                schedule.getEndDate()
+        );
+        schedule.setPreferenceAllSubmittedNotifiedAt(now);
     }
 
     @Override

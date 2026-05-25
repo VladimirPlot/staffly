@@ -98,6 +98,9 @@ public class Schedule {
     @Column(name = "preference_applied_at")
     private Instant preferenceAppliedAt;
 
+    @Column(name = "preference_all_submitted_notified_at")
+    private Instant preferenceAllSubmittedNotifiedAt;
+
     @PrePersist
     void prePersist() {
         Instant now = TimeProvider.now();

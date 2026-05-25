@@ -33,11 +33,9 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -322,77 +320,89 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
         RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
 
-        if (fromMember == null || toMember == null) {
+        List<RestaurantMember> targets = Stream.of(fromMember, toMember)
+                .filter(Objects::nonNull)
+                .filter(member -> member.getUser() != null)
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toMap(RestaurantMember::getId, m -> m, (a, b) -> a, LinkedHashMap::new),
+                        map -> new ArrayList<>(map.values())
+                ));
+        if (targets.isEmpty()) {
             return;
         }
 
-        String content;
-        if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
-            content = accepted
-                    ? String.format(
-                    "%s передал смену %s %s%s",
-                    request.getFromRow().getDisplayName(),
-                    request.getToRow().getDisplayName(),
-                    request.getDayFrom(),
-                    formatShiftValue(fromShiftValue)
-            )
-                    : String.format(
-                    "Заявка на передачу смены %s → %s %s%s была отклонена менеджером",
-                    request.getFromRow().getDisplayName(),
-                    request.getToRow().getDisplayName(),
-                    request.getDayFrom(),
-                    formatShiftValue(fromShiftValue)
-            );
-        } else {
-            content = accepted
-                    ? String.format(
-                    "%s и %s обменялись сменами %s%s ↔ %s%s",
-                    request.getFromRow().getDisplayName(),
-                    request.getToRow().getDisplayName(),
-                    request.getDayFrom(),
-                    formatShiftValue(fromShiftValue),
-                    request.getDayTo(),
-                    formatShiftValue(toShiftValue)
-            )
-                    : String.format(
-                    "Заявка на обмен сменами %s%s ↔ %s%s между %s и %s была отклонена менеджером",
-                    request.getDayFrom(),
-                    formatShiftValue(fromShiftValue),
-                    request.getDayTo(),
-                    formatShiftValue(toShiftValue),
-                    request.getFromRow().getDisplayName(),
-                    request.getToRow().getDisplayName()
-            );
-        }
+        String content = buildDecisionContent(request, accepted);
+        String decision = accepted ? "accepted" : "rejected";
 
         inboxMessages.createEvent(
                 request.getSchedule().getRestaurant(),
                 initiator != null ? initiator.getUser() : fromMember.getUser(),
                 content,
                 InboxEventSubtype.SCHEDULE_DECISION,
-                "scheduleRequest:" + request.getId(),
-                new ArrayList<>(Set.of(fromMember, toMember)),
+                "scheduleRequest:decision:" + request.getId() + ":" + decision,
+                targets,
                 Optional.ofNullable(request.getSchedule().getEndDate())
                         .orElse(request.getSchedule().getStartDate())
         );
     }
 
     private void notifyOwnerOnCreate(ScheduleShiftRequest request, User initiatorUser) {
-        RestaurantMember owner = request.getSchedule().getOwnerMember();
+        RestaurantMember initiatorMember = members.findById(request.getInitiatorMemberId()).orElse(null);
+        RestaurantMember owner = resolveOwnerTarget(request.getSchedule());
         if (owner == null || owner.getUser() == null) {
             return;
         }
+        if (initiatorMember != null && Objects.equals(initiatorMember.getId(), owner.getId())) {
+            return;
+        }
+        String initiatorName = initiatorUser != null ? initiatorUser.getFullName() : "сотрудника";
         String content = String.format("Новая заявка на смену в графике «%s» от %s", request.getSchedule().getTitle(),
-                initiatorUser != null ? initiatorUser.getFullName() : "сотрудника");
+                initiatorName);
+        if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
+            content = "Создана заявка замены от " + initiatorName + " для графика «" + request.getSchedule().getTitle() + "».";
+        } else if (request.getType() == ScheduleShiftRequestType.SWAP) {
+            RestaurantMember secondMember = members.findById(request.getToMemberId()).orElse(null);
+            String secondName = secondMember != null && secondMember.getUser() != null
+                    ? secondMember.getUser().getFullName()
+                    : "сотрудника";
+            content = "Создана заявка обмена от " + initiatorName + " с " + secondName
+                    + " для графика «" + request.getSchedule().getTitle() + "».";
+        }
         inboxMessages.createEvent(
                 request.getSchedule().getRestaurant(),
                 initiatorUser != null ? initiatorUser : owner.getUser(),
                 content,
                 InboxEventSubtype.SCHEDULE_DECISION,
-                "scheduleRequest:" + request.getId(),
+                "scheduleRequest:created:" + request.getId(),
                 List.of(owner),
                 Optional.ofNullable(request.getSchedule().getEndDate()).orElse(request.getSchedule().getStartDate())
         );
+    }
+
+    private RestaurantMember resolveOwnerTarget(Schedule schedule) {
+        RestaurantMember ownerMember = schedule.getOwnerMember();
+        if (ownerMember != null && ownerMember.getUser() != null) {
+            return ownerMember;
+        }
+        if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
+            return members.findByUserIdAndRestaurantId(schedule.getOwnerUser().getId(), schedule.getRestaurant().getId()).orElse(null);
+        }
+        if (schedule.getCreatedByUser() != null && schedule.getCreatedByUser().getId() != null) {
+            return members.findByUserIdAndRestaurantId(schedule.getCreatedByUser().getId(), schedule.getRestaurant().getId()).orElse(null);
+        }
+        return null;
+    }
+
+    private String buildDecisionContent(ScheduleShiftRequest request, boolean accepted) {
+        boolean isReplacement = request.getType() == ScheduleShiftRequestType.REPLACEMENT;
+        if (accepted) {
+            return isReplacement
+                    ? "Ваша заявка замены по графику «" + request.getSchedule().getTitle() + "» подтверждена."
+                    : "Ваша заявка обмена сменами по графику «" + request.getSchedule().getTitle() + "» подтверждена.";
+        }
+        return isReplacement
+                ? "Ваша заявка замены по графику «" + request.getSchedule().getTitle() + "» отклонена."
+                : "Ваша заявка обмена сменами по графику «" + request.getSchedule().getTitle() + "» отклонена.";
     }
 
     private String formatShiftValue(String value) {

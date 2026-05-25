@@ -16,20 +16,9 @@ import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
-import ru.staffly.schedule.model.Schedule;
-import ru.staffly.schedule.model.ScheduleAuditAction;
-import ru.staffly.schedule.model.ScheduleCell;
-import ru.staffly.schedule.model.ScheduleRow;
-import ru.staffly.schedule.model.SchedulePreferenceCell;
-import ru.staffly.schedule.model.SchedulePreferenceSubmission;
-import ru.staffly.schedule.model.SchedulePreferenceType;
-import ru.staffly.schedule.model.ScheduleShiftMode;
-import ru.staffly.schedule.model.ScheduleShiftRequest;
-import ru.staffly.schedule.model.ScheduleShiftRequestType;
-import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
-import ru.staffly.schedule.model.ScheduleStatus;
-import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
@@ -145,7 +134,9 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
                 .filter(schedule -> scheduleAccessService.canViewScheduleSummary(userId, schedule))
-                .map(s -> new ScheduleSummaryDto(
+                .map(s -> {
+                    PreferenceProgressSummary progress = resolvePreferenceProgressSummary(canManage, s);
+                    return new ScheduleSummaryDto(
                         s.getId(),
                         s.getTitle(),
                         s.getStartDate().toString(),
@@ -167,9 +158,46 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getPreferenceCollectionStartedAt(),
                         s.getPreferenceDeadline(),
                         s.getPreferenceClosedAt(),
-                        s.getPreferenceAppliedAt()
-                ))
+                        s.getPreferenceAppliedAt(),
+                        progress.submittedCount(),
+                        progress.totalParticipants()
+                );
+                })
                 .toList();
+    }
+
+    private PreferenceProgressSummary resolvePreferenceProgressSummary(boolean canManage, Schedule schedule) {
+        if (!canManage || schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
+            return PreferenceProgressSummary.empty();
+        }
+        List<Long> positionIds = schedule.getPositionIds();
+        if (positionIds == null || positionIds.isEmpty()) {
+            return new PreferenceProgressSummary(0, 0);
+        }
+
+        List<RestaurantMember> participants = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(),
+                positionIds
+        );
+        Set<Long> participantMemberIds = participants.stream()
+                .map(RestaurantMember::getId)
+                .collect(Collectors.toSet());
+        if (participantMemberIds.isEmpty()) {
+            return new PreferenceProgressSummary(0, 0);
+        }
+
+        int submittedCount = (int) preferenceSubmissions.findByScheduleIdWithMember(schedule.getId()).stream()
+                .map(submission -> submission.getMember().getId())
+                .filter(participantMemberIds::contains)
+                .distinct()
+                .count();
+        return new PreferenceProgressSummary(submittedCount, participantMemberIds.size());
+    }
+
+    private record PreferenceProgressSummary(Integer submittedCount, Integer totalParticipants) {
+        private static PreferenceProgressSummary empty() {
+            return new PreferenceProgressSummary(null, null);
+        }
     }
 
     @Override
@@ -275,6 +303,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setPreferenceDeadline(deadline);
         schedule.setPreferenceClosedAt(null);
         schedule.setPreferenceAppliedAt(null);
+        schedule.setPreferenceAllSubmittedNotifiedAt(null);
 
         Schedule saved = schedules.save(schedule);
         scheduleAuditService.record(
@@ -283,6 +312,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 ScheduleAuditAction.PREFERENCE_COLLECTION_STARTED,
                 "Начат сбор пожеланий сотрудников"
         );
+        notifyPreferenceCollectionStarted(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
@@ -322,39 +352,6 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("Внести пожелания можно только после закрытия сбора пожеланий");
         }
 
-        schedule.getRows().forEach(row -> row.getCells().size());
-        List<LocalDate> days = collectDays(schedule.getStartDate(), schedule.getEndDate());
-        Set<LocalDate> validDays = new HashSet<>(days);
-        Map<Long, ScheduleRow> rowsByMemberId = schedule.getRows().stream()
-                .collect(Collectors.toMap(ScheduleRow::getMemberId, row -> row, (left, right) -> left));
-
-        List<SchedulePreferenceSubmission> submissions = preferenceSubmissions.findWithCellsByScheduleId(scheduleId);
-        for (SchedulePreferenceSubmission submission : submissions) {
-            if (submission.getMember() == null) {
-                continue;
-            }
-            ScheduleRow row = rowsByMemberId.get(submission.getMember().getId());
-            if (row == null) {
-                continue;
-            }
-            Map<LocalDate, SchedulePreferenceCell> lastFullDayByDay = submission.getCells().stream()
-                    .filter(SchedulePreferenceCell::isFullDay)
-                    .filter(cell -> cell.getDay() != null && validDays.contains(cell.getDay()))
-                    .sorted(Comparator
-                            .comparing(SchedulePreferenceCell::getDay)
-                            .thenComparingInt(SchedulePreferenceCell::getSortOrder)
-                            .thenComparing(cell -> Optional.ofNullable(cell.getId()).orElse(Long.MAX_VALUE)))
-                    .collect(Collectors.toMap(
-                            SchedulePreferenceCell::getDay,
-                            cell -> cell,
-                            (previous, current) -> current,
-                            LinkedHashMap::new
-                    ));
-            for (SchedulePreferenceCell preferenceCell : lastFullDayByDay.values()) {
-                applyPreferenceCellValue(row, preferenceCell.getDay(), preferenceCell.getType());
-            }
-        }
-
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
 
@@ -363,32 +360,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                 saved,
                 actorUserId,
                 ScheduleAuditAction.PREFERENCES_APPLIED,
-                "Пожелания сотрудников внесены в черновик графика"
+                "Пожелания сотрудников подготовлены для ручной сборки графика"
         );
-        saved.getRows().forEach(row -> row.getCells().size());
-        return toDto(saved, days);
-    }
-
-    private void applyPreferenceCellValue(ScheduleRow row, LocalDate day, SchedulePreferenceType type) {
-        String value = mapPreferenceTypeToScheduleCellValue(type);
-        Map<LocalDate, ScheduleCell> cellsByDay = row.getCells().stream()
-                .collect(Collectors.toMap(ScheduleCell::getDay, cell -> cell, (left, right) -> left));
-        ScheduleCell existing = cellsByDay.get(day);
-        if (existing == null || !row.getCells().contains(existing)) {
-            row.getCells().add(ScheduleCell.builder().row(row).day(day).value(value).build());
-        } else {
-            existing.setValue(value);
-        }
-    }
-
-    private String mapPreferenceTypeToScheduleCellValue(SchedulePreferenceType type) {
-        if (type == null) {
-            throw new BadRequestException("Preference cell type is required");
-        }
-        return switch (type) {
-            case AVAILABLE, PREFER_WORK -> "+";
-            case UNAVAILABLE, PREFER_DAY_OFF -> "-";
-        };
+        return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
     @Override
@@ -412,6 +386,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 ScheduleAuditAction.PUBLISHED,
                 "График опубликован"
         );
+        notifySchedulePublished(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
@@ -658,6 +633,61 @@ public class ScheduleServiceImpl implements ScheduleService {
                 "scheduleRequest:" + request.getId(),
                 new ArrayList<>(Set.of(fromMember, toMember)),
                 Optional.ofNullable(request.getSchedule().getEndDate()).orElse(request.getSchedule().getStartDate())
+        );
+    }
+
+    private void notifyPreferenceCollectionStarted(Schedule schedule, Long actorUserId) {
+        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+            return;
+        }
+        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(),
+                schedule.getPositionIds()
+        );
+        if (targets.isEmpty()) {
+            return;
+        }
+        var creator = users.findById(actorUserId).orElse(null);
+        String content = "Оставьте пожелания по графику «" + schedule.getTitle()
+                + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + ".";
+        String meta = "schedulePreferences:start:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId()
+                + ":deadline:" + schedule.getPreferenceDeadline();
+        inboxMessages.createEvent(
+                schedule.getRestaurant(),
+                creator,
+                content,
+                InboxEventSubtype.SCHEDULE_PREFERENCES,
+                meta,
+                targets,
+                schedule.getEndDate()
+        );
+    }
+
+    private void notifySchedulePublished(Schedule schedule, Long actorUserId) {
+        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+            return;
+        }
+        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(),
+                schedule.getPositionIds()
+        );
+        if (targets.isEmpty()) {
+            return;
+        }
+        var creator = users.findById(actorUserId).orElse(null);
+        String content = "График «" + schedule.getTitle()
+                + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + " опубликован.";
+        String meta = "schedule:published:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId();
+        inboxMessages.createEvent(
+                schedule.getRestaurant(),
+                creator,
+                content,
+                InboxEventSubtype.SCHEDULE_PREFERENCES,
+                meta,
+                targets,
+                schedule.getEndDate()
         );
     }
 
