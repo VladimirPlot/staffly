@@ -24,6 +24,15 @@ type SchedulePreferenceMeViewProps = {
 
 type PreferenceSelectValue = "" | SchedulePreferenceType;
 
+type PreferenceFormValue = {
+  type: PreferenceSelectValue;
+  fullDay: boolean;
+  startTime: string;
+  endTime: string;
+};
+
+type PreferenceFormState = Record<string, PreferenceFormValue>;
+
 const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
   { value: "", label: "Без пожелания" },
   { value: "AVAILABLE", label: "Могу" },
@@ -45,13 +54,23 @@ function formatDateTime(value: string | null | undefined): string {
   });
 }
 
-function getInitialSelections(data: SchedulePreferenceMyResponse): Record<string, PreferenceSelectValue> {
-  const result: Record<string, PreferenceSelectValue> = {};
-  data.cells.forEach((cell) => {
-    if (cell.fullDay) {
-      result[cell.day] = cell.type;
-    }
+function getInitialFormState(data: SchedulePreferenceMyResponse): PreferenceFormState {
+  const result: PreferenceFormState = {};
+  const sortedCells = [...data.cells].sort((a, b) => {
+    if (a.day !== b.day) return a.day.localeCompare(b.day);
+    if ((a.sortOrder ?? 0) !== (b.sortOrder ?? 0)) return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+    return (a.id ?? 0) - (b.id ?? 0);
   });
+
+  sortedCells.forEach((cell) => {
+    result[cell.day] = {
+      type: cell.type,
+      fullDay: cell.fullDay,
+      startTime: cell.fullDay ? "" : (cell.startTime ?? ""),
+      endTime: cell.fullDay ? "" : (cell.endTime ?? ""),
+    };
+  });
+
   return result;
 }
 
@@ -66,24 +85,34 @@ function buildRepeatingPattern(
   days: SchedulePreferenceMyResponse["days"],
   workCount: number,
   offCount: number,
-): Record<string, PreferenceSelectValue> {
-  const result: Record<string, PreferenceSelectValue> = {};
+): PreferenceFormState {
+  const result: PreferenceFormState = {};
   const cycleLength = workCount + offCount;
 
   days.forEach((day, index) => {
     const indexInCycle = index % cycleLength;
-    result[day.date] = indexInCycle < workCount ? "PREFER_WORK" : "PREFER_DAY_OFF";
+    result[day.date] = {
+      type: indexInCycle < workCount ? "PREFER_WORK" : "PREFER_DAY_OFF",
+      fullDay: true,
+      startTime: "",
+      endTime: "",
+    };
   });
 
   return result;
 }
 
-function buildWeekdayPattern(days: SchedulePreferenceMyResponse["days"]): Record<string, PreferenceSelectValue> {
-  const result: Record<string, PreferenceSelectValue> = {};
+function buildWeekdayPattern(days: SchedulePreferenceMyResponse["days"]): PreferenceFormState {
+  const result: PreferenceFormState = {};
 
   days.forEach((day) => {
     const weekday = new Date(`${day.date}T00:00:00`).getDay();
-    result[day.date] = weekday >= 1 && weekday <= 5 ? "PREFER_WORK" : "PREFER_DAY_OFF";
+    result[day.date] = {
+      type: weekday >= 1 && weekday <= 5 ? "PREFER_WORK" : "PREFER_DAY_OFF",
+      fullDay: true,
+      startTime: "",
+      endTime: "",
+    };
   });
 
   return result;
@@ -92,10 +121,10 @@ function buildWeekdayPattern(days: SchedulePreferenceMyResponse["days"]): Record
 function fillAll(
   days: SchedulePreferenceMyResponse["days"],
   type: Extract<PreferenceSelectValue, SchedulePreferenceType>,
-): Record<string, PreferenceSelectValue> {
-  const result: Record<string, PreferenceSelectValue> = {};
+): PreferenceFormState {
+  const result: PreferenceFormState = {};
   days.forEach((day) => {
-    result[day.date] = type;
+    result[day.date] = { type, fullDay: true, startTime: "", endTime: "" };
   });
   return result;
 }
@@ -109,53 +138,101 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   onBack,
   onSubmit,
 }) => {
-  const [selectedByDay, setSelectedByDay] = React.useState<Record<string, PreferenceSelectValue>>({});
+  const [formStateByDay, setFormStateByDay] = React.useState<PreferenceFormState>({});
+  const [formError, setFormError] = React.useState<string | null>(null);
   const [comment, setComment] = React.useState("");
 
   React.useEffect(() => {
     if (!data) {
-      setSelectedByDay({});
+      setFormStateByDay({});
+      setFormError(null);
       setComment("");
       return;
     }
 
-    setSelectedByDay(getInitialSelections(data));
+    setFormStateByDay(getInitialFormState(data));
+    setFormError(null);
     setComment(data.comment ?? "");
   }, [data]);
 
   const handleSelectionChange = React.useCallback((day: string, value: string) => {
-    setSelectedByDay((prev) => ({
+    setFormError(null);
+    setFormStateByDay((prev) => ({
       ...prev,
-      [day]: value as PreferenceSelectValue,
+      [day]: {
+        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "" }),
+        type: value as PreferenceSelectValue,
+        fullDay: value ? (prev[day]?.fullDay ?? true) : true,
+      },
+    }));
+  }, []);
+
+  const handleUseTimeToggle = React.useCallback((day: string, checked: boolean) => {
+    setFormError(null);
+    setFormStateByDay((prev) => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "" }),
+        fullDay: !checked,
+      },
+    }));
+  }, []);
+
+  const handleTimeChange = React.useCallback((day: string, field: "startTime" | "endTime", value: string) => {
+    setFormError(null);
+    setFormStateByDay((prev) => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "" }),
+        [field]: value,
+      },
     }));
   }, []);
 
   const handleSubmit = React.useCallback(() => {
     if (!data || !data.canSubmit) return;
 
-    const cells: SchedulePreferenceCellRequest[] = data.days.flatMap((day) => {
-      const type = selectedByDay[day.date];
-      if (!type) return [];
-      return [
-        {
-          day: day.date,
-          type,
-          fullDay: true,
-          startTime: null,
-          endTime: null,
-          note: null,
-        },
-      ];
-    });
+    const cells: SchedulePreferenceCellRequest[] = [];
+
+    for (const day of data.days) {
+      const value = formStateByDay[day.date];
+      const type = value?.type ?? "";
+      if (!type) continue;
+
+      if (!value.fullDay) {
+        if (!value.startTime || !value.endTime) {
+          setFormError(`Заполните время для ${formatDateFromIso(day.date)}.`);
+          return;
+        }
+        if (value.startTime === value.endTime) {
+          setFormError(`Время начала и окончания не должно совпадать (${formatDateFromIso(day.date)}).`);
+          return;
+        }
+        if (value.endTime !== "00:00" && value.startTime >= value.endTime) {
+          setFormError(`Время начала должно быть раньше окончания (${formatDateFromIso(day.date)}).`);
+          return;
+        }
+      }
+
+      cells.push({
+        day: day.date,
+        type,
+        fullDay: value.fullDay,
+        startTime: value.fullDay ? null : value.startTime,
+        endTime: value.fullDay ? null : value.endTime,
+        note: null,
+      });
+    }
 
     onSubmit({
       cells,
       comment: comment.trim().length > 0 ? comment.trim() : null,
     });
-  }, [comment, data, onSubmit, selectedByDay]);
+  }, [comment, data, formStateByDay, onSubmit]);
 
   const clearAll = React.useCallback(() => {
-    setSelectedByDay({});
+    setFormStateByDay({});
+    setFormError(null);
   }, []);
 
   if (loading && !data) {
@@ -234,7 +311,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setSelectedByDay(buildRepeatingPattern(data.days, 2, 2))}
+              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 2, 2))}
             >
               2/2
             </Button>
@@ -242,7 +319,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setSelectedByDay(buildRepeatingPattern(data.days, 3, 3))}
+              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 3, 3))}
             >
               3/3
             </Button>
@@ -250,7 +327,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setSelectedByDay(buildWeekdayPattern(data.days))}
+              onClick={() => setFormStateByDay(buildWeekdayPattern(data.days))}
             >
               5/2
             </Button>
@@ -258,7 +335,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setSelectedByDay(fillAll(data.days, "AVAILABLE"))}
+              onClick={() => setFormStateByDay(fillAll(data.days, "AVAILABLE"))}
             >
               Все дни могу
             </Button>
@@ -266,7 +343,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setSelectedByDay(fillAll(data.days, "UNAVAILABLE"))}
+              onClick={() => setFormStateByDay(fillAll(data.days, "UNAVAILABLE"))}
             >
               Все дни не могу
             </Button>
@@ -278,7 +355,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 
         <div className="space-y-1">
           <h3 className="text-strong text-base font-semibold">Дни</h3>
-          <p className="text-muted text-sm">Выберите одно пожелание на полный день или оставьте «Без пожелания».</p>
+          <p className="text-muted text-sm">
+            Выберите пожелание на день. При необходимости можно указать конкретное время.
+          </p>
         </div>
 
         <div className="divide-subtle overflow-hidden rounded-2xl border border-[var(--staffly-border)]">
@@ -293,7 +372,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               </div>
               <DropdownSelect
                 aria-label={`Пожелание на ${formatDateFromIso(day.date)}`}
-                value={selectedByDay[day.date] ?? ""}
+                value={formStateByDay[day.date]?.type ?? ""}
                 onChange={(event) => handleSelectionChange(day.date, event.target.value)}
                 disabled={!data.canSubmit || saving}
               >
@@ -303,9 +382,44 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                   </option>
                 ))}
               </DropdownSelect>
+              {(formStateByDay[day.date]?.type ?? "") !== "" && (
+                <div className="space-y-2 sm:col-start-2">
+                  <label className="text-muted flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={!(formStateByDay[day.date]?.fullDay ?? true)}
+                      onChange={(event) => handleUseTimeToggle(day.date, event.target.checked)}
+                      disabled={!data.canSubmit || saving}
+                    />
+                    Указать время
+                  </label>
+                  {!(formStateByDay[day.date]?.fullDay ?? true) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="time"
+                        value={formStateByDay[day.date]?.startTime ?? ""}
+                        onChange={(event) => handleTimeChange(day.date, "startTime", event.target.value)}
+                        disabled={!data.canSubmit || saving}
+                        className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="time"
+                        value={formStateByDay[day.date]?.endTime ?? ""}
+                        onChange={(event) => handleTimeChange(day.date, "endTime", event.target.value)}
+                        disabled={!data.canSubmit || saving}
+                        className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
+
+        {formError && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</div>
+        )}
 
         <label className="block space-y-2">
           <span className="text-muted text-sm font-medium">Комментарий</span>

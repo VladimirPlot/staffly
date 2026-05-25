@@ -102,6 +102,30 @@ type ArrivalSelectorProps = {
   onCommit: (value: string) => void;
 };
 
+function getPreferenceHintLabel(type: import("../api").SchedulePreferenceCellDto["type"]): string {
+  if (type === "AVAILABLE") return "Может";
+  if (type === "UNAVAILABLE") return "Не может";
+  if (type === "PREFER_WORK") return "Хочет работать";
+  return "Хочет выходной";
+}
+
+function formatPreferenceHintTime(cell: import("../api").SchedulePreferenceCellDto): string {
+  if (cell.fullDay) return "весь день";
+  if (!cell.startTime || !cell.endTime) return "интервал не указан";
+  return `${cell.startTime}–${cell.endTime}`;
+}
+
+function canApplyPreferenceHint(params: {
+  readOnly: boolean;
+  shiftMode: ShiftMode;
+  cell: import("../api").SchedulePreferenceCellDto;
+}): boolean {
+  const { readOnly, shiftMode, cell } = params;
+  if (readOnly || shiftMode !== "FULL") return false;
+  if (cell.fullDay || !cell.startTime || !cell.endTime) return false;
+  return cell.type === "AVAILABLE" || cell.type === "PREFER_WORK";
+}
+
 const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, preferenceHintsByCellKey }) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
   const days = data?.days ?? EMPTY_DAYS;
@@ -400,22 +424,33 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
       )}
       {hints && hints.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
-          {hints
-            .filter((cell) => cell.fullDay)
-            .map((cell) => (
-              <span
+          {hints.map((cell) => {
+            const label = getPreferenceHintLabel(cell.type);
+            const timeLabel = formatPreferenceHintTime(cell);
+            const canApply = canApplyPreferenceHint({ readOnly, shiftMode, cell });
+            return (
+              <div
                 key={`${cell.id ?? `${cell.day}:${cell.sortOrder}`}:${cell.type}`}
-                className="border-subtle bg-surface-muted text-muted rounded border px-1.5 py-0.5 text-[10px]"
+                className="flex items-center gap-1"
               >
-                {cell.type === "AVAILABLE"
-                  ? "Может"
-                  : cell.type === "UNAVAILABLE"
-                    ? "Не может"
-                    : cell.type === "PREFER_WORK"
-                      ? "Хочет работать"
-                      : "Хочет выходной"}
-              </span>
-            ))}
+                <span className="border-subtle bg-surface-muted text-muted rounded border px-1.5 py-0.5 text-[10px]">
+                  {cell.fullDay ? `${label} ${timeLabel}` : `${label} ${timeLabel}`.trim()}
+                </span>
+                {canApply && (
+                  <button
+                    type="button"
+                    className="border-subtle bg-surface text-muted hover:bg-app rounded border px-1 py-0.5 text-[10px]"
+                    aria-label={`Применить пожелание ${label} ${timeLabel}`}
+                    onClick={() =>
+                      onCellValueChange(memberId, day, `${cell.startTime}-${cell.endTime}`, { commit: true })
+                    }
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
