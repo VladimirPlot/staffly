@@ -100,6 +100,8 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               const isDownloading = downloading?.id === item.id;
               const isDeleting = deletingId === item.id;
               const menuOpen = downloadMenuFor === item.id;
+              const openButtonLabel =
+                !canManage && item.status === "COLLECTING_PREFERENCES" ? "Оставить пожелания" : "Открыть";
               return (
                 <div
                   key={item.id}
@@ -133,7 +135,7 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                       onClick={() => onOpenSavedSchedule(item.id)}
                       disabled={isActive || isOpening}
                     >
-                      {isOpening ? "Открывается…" : isActive ? "Открыт" : "Открыть"}
+                      {isOpening ? "Открывается…" : isActive ? "Открыт" : openButtonLabel}
                     </Button>
                     {canManage && (
                       <>
