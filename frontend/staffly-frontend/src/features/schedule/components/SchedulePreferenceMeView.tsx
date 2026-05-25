@@ -46,7 +46,6 @@ const QUICK_TIME_INTERVALS = [
   { startTime: "14:00", endTime: "00:00" },
   { startTime: "17:00", endTime: "00:00" },
   { startTime: "10:00", endTime: "17:00" },
-  { startTime: "17:00", endTime: "00:00" },
 ] as const;
 
 function formatDateTime(value: string | null | undefined): string {
