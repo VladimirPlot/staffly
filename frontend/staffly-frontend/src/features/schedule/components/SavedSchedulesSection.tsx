@@ -102,6 +102,14 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
               const menuOpen = downloadMenuFor === item.id;
               const openButtonLabel =
                 !canManage && item.status === "COLLECTING_PREFERENCES" ? "Оставить пожелания" : "Открыть";
+              const shouldShowPreferenceProgress =
+                canManage && item.status === "COLLECTING_PREFERENCES" && item.preferenceTotalParticipants != null;
+              const submitted = item.preferenceSubmittedCount ?? 0;
+              const total = item.preferenceTotalParticipants ?? 0;
+              const preferenceProgressLabel =
+                submitted === total && total > 0
+                  ? `Все пожелания отправлены: ${submitted}/${total}`
+                  : `Пожелания: ${submitted}/${total}`;
               return (
                 <div
                   key={item.id}
@@ -128,6 +136,9 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                     <div className="text-muted mt-1 text-xs">
                       Ответственный: {item.owner?.displayName?.trim() || "не назначен"}
                     </div>
+                    {shouldShowPreferenceProgress && (
+                      <div className="text-muted mt-1 text-xs">{preferenceProgressLabel}</div>
+                    )}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
