@@ -311,6 +311,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 ScheduleAuditAction.PREFERENCE_COLLECTION_STARTED,
                 "Начат сбор пожеланий сотрудников"
         );
+        notifyPreferenceCollectionStarted(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
@@ -630,6 +631,34 @@ public class ScheduleServiceImpl implements ScheduleService {
                 "scheduleRequest:" + request.getId(),
                 new ArrayList<>(Set.of(fromMember, toMember)),
                 Optional.ofNullable(request.getSchedule().getEndDate()).orElse(request.getSchedule().getStartDate())
+        );
+    }
+
+    private void notifyPreferenceCollectionStarted(Schedule schedule, Long actorUserId) {
+        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+            return;
+        }
+        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(),
+                schedule.getPositionIds()
+        );
+        if (targets.isEmpty()) {
+            return;
+        }
+        var creator = users.findById(actorUserId).orElse(null);
+        String content = "Оставьте пожелания по графику «" + schedule.getTitle()
+                + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + ".";
+        String meta = "schedulePreferences:start:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId()
+                + ":deadline:" + schedule.getPreferenceDeadline();
+        inboxMessages.createEvent(
+                schedule.getRestaurant(),
+                creator,
+                content,
+                InboxEventSubtype.SCHEDULE_PREFERENCES,
+                meta,
+                targets,
+                schedule.getEndDate()
         );
     }
 
