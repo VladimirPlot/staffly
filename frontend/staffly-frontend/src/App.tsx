@@ -83,6 +83,7 @@ const AnonymousLettersPage = React.lazy(
 const PushRedirectPage = React.lazy(() => import("./features/push/pages/PushRedirectPage"));
 const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksPage"));
 const GamesPage = React.lazy(() => import("./features/games/pages/GamesPage"));
+const AliasPage = React.lazy(() => import("./features/games/pages/AliasPage"));
 const InventoriesPage = React.lazy(() => import("./features/inventories/pages/InventoriesPage"));
 const DishwareInventoriesPage = React.lazy(
   () => import("./features/inventories/pages/DishwareInventoriesPage"),
@@ -796,6 +797,17 @@ export default function App() {
                 <ProtectedRoute>
                   <RequireRestaurant>
                     <GamesPage />
+                  </RequireRestaurant>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/games/alias"
+              element={
+                <ProtectedRoute>
+                  <RequireRestaurant>
+                    <AliasPage />
                   </RequireRestaurant>
                 </ProtectedRoute>
               }
