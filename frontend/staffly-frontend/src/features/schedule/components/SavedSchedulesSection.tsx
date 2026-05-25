@@ -111,6 +111,14 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                 submitted === total && total > 0
                   ? `Все пожелания отправлены: ${submitted}/${total}`
                   : `Пожелания: ${submitted}/${total}`;
+              const shouldShowPreferenceStatus =
+                item.status === "COLLECTING_PREFERENCES" && item.myPreferenceSubmitted != null;
+              const preferenceStatusLabel = item.myPreferenceSubmitted
+                ? "Пожелания отправлены"
+                : "Пожелания не отправлены";
+              const preferenceStatusClass = item.myPreferenceSubmitted
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-amber-50 text-amber-700 border-amber-200";
               return (
                 <div
                   key={item.id}
@@ -139,6 +147,13 @@ const SavedSchedulesSection: React.FC<SavedSchedulesSectionProps> = ({
                     </div>
                     {shouldShowPreferenceProgress && (
                       <div className="text-muted mt-1 text-xs">{preferenceProgressLabel}</div>
+                    )}
+                    {shouldShowPreferenceStatus && (
+                      <div
+                        className={`mt-2 inline-flex w-fit rounded-full border px-2 py-0.5 text-[11px] font-medium ${preferenceStatusClass}`}
+                      >
+                        {preferenceStatusLabel}
+                      </div>
                     )}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">

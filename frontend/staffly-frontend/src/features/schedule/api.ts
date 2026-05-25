@@ -46,6 +46,7 @@ export type ScheduleSummary = ScheduleLifecycleDto & {
   owner?: ScheduleOwnerDto | null;
   preferenceSubmittedCount?: number | null;
   preferenceTotalParticipants?: number | null;
+  myPreferenceSubmitted?: boolean | null;
 };
 
 export type ScheduleSummaryDto = ScheduleSummary;
@@ -232,6 +233,7 @@ function mapScheduleSummary(data: ScheduleSummary): ScheduleSummary {
     owner: data.owner ?? null,
     preferenceSubmittedCount: data.preferenceSubmittedCount ?? null,
     preferenceTotalParticipants: data.preferenceTotalParticipants ?? null,
+    myPreferenceSubmitted: data.myPreferenceSubmitted ?? null,
   };
 }
 
