@@ -534,8 +534,8 @@ const SchedulePage: React.FC = () => {
               deletingId={buildTemplatesActions.deletingId}
               positions={positions}
               onLoad={buildTemplatesActions.loadTemplates}
-              onCreate={(request) => void buildTemplatesActions.createTemplate(request)}
-              onUpdate={(templateId, request) => void buildTemplatesActions.updateTemplate(templateId, request)}
+              onCreate={(request) => buildTemplatesActions.createTemplate(request)}
+              onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
               onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
             />
           )}

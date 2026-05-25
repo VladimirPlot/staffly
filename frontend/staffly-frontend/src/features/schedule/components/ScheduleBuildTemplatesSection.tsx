@@ -13,8 +13,8 @@ type Props = {
   deletingId: number | null;
   positions: PositionDto[];
   onLoad: () => void;
-  onCreate: (request: SaveScheduleBuildTemplateRequest) => void;
-  onUpdate: (templateId: number, request: SaveScheduleBuildTemplateRequest) => void;
+  onCreate: (request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
+  onUpdate: (templateId: number, request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
   onArchive: (templateId: number) => void;
 };
 
@@ -88,13 +88,9 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
         positions={positions}
         saving={saving}
         onClose={() => setOpen(false)}
-        onSubmit={(request, id) => {
-          if (id) {
-            onUpdate(id, request);
-          } else {
-            onCreate(request);
-          }
-          setOpen(false);
+        onSubmit={async (request, id) => {
+          if (id) return onUpdate(id, request);
+          return onCreate(request);
         }}
       />
     </Card>
