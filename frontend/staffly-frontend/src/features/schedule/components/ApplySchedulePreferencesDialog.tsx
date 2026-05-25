@@ -8,6 +8,7 @@ import type { ScheduleAutoBuildPreviewResponse, ScheduleBuildTemplateDto } from 
 type ApplySchedulePreferencesDialogProps = {
   open: boolean;
   applying: boolean;
+  autoApplying: boolean;
   previewLoading: boolean;
   previewError: string | null;
   preview: ScheduleAutoBuildPreviewResponse | null;
@@ -18,11 +19,13 @@ type ApplySchedulePreferencesDialogProps = {
   onClose: () => void;
   onApplyManual: () => void;
   onPreviewAutoBuild: (templateId: number) => Promise<boolean> | boolean;
+  onApplyAutoBuild: (templateId: number) => Promise<boolean> | void;
 };
 
 const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogProps> = ({
   open,
   applying,
+  autoApplying,
   templates,
   templatesLoading,
   templatesError,
@@ -33,6 +36,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   previewError,
   preview,
   onPreviewAutoBuild,
+  onApplyAutoBuild,
 }) => {
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>("");
 
@@ -54,9 +58,17 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   }, [onPreviewAutoBuild, selectedTemplateId]);
 
   const handleClose = React.useCallback(() => {
-    if (applying || previewLoading) return;
+    if (applying || previewLoading || autoApplying) return;
     onClose();
-  }, [applying, onClose, previewLoading]);
+  }, [applying, autoApplying, onClose, previewLoading]);
+
+  const canApplyAutoBuild =
+    Boolean(selectedTemplateId) &&
+    Boolean(preview) &&
+    (preview?.totalAssignments ?? 0) > 0 &&
+    !applying &&
+    !previewLoading &&
+    !autoApplying;
 
   return (
     <Modal
@@ -67,7 +79,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
       className="max-w-2xl"
       footer={
         <div className="flex w-full justify-end">
-          <Button variant="outline" onClick={handleClose} disabled={applying || previewLoading}>
+          <Button variant="outline" onClick={handleClose} disabled={applying || previewLoading || autoApplying}>
             Закрыть
           </Button>
         </div>
@@ -102,7 +114,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 label="Шаблон сборки"
                 value={selectedTemplateId}
                 onChange={(event) => setSelectedTemplateId(event.target.value)}
-                disabled={applying || templatesLoading || previewLoading}
+                disabled={applying || templatesLoading || previewLoading || autoApplying}
               >
                 {templates.map((template) => (
                   <option key={template.id} value={String(template.id)}>
@@ -124,18 +136,25 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               <Button
                 variant="outline"
                 onClick={onReloadTemplates}
-                disabled={applying || templatesLoading || previewLoading}
+                disabled={applying || templatesLoading || previewLoading || autoApplying}
               >
                 {templatesLoading ? "Загрузка…" : "Обновить шаблоны"}
               </Button>
               <Button
                 onClick={handlePreview}
-                disabled={applying || previewLoading || templatesLoading || templates.length === 0}
+                disabled={applying || previewLoading || templatesLoading || templates.length === 0 || autoApplying}
               >
                 {previewLoading ? "Строим…" : "Построить предпросмотр"}
               </Button>
-              <Button disabled>Применить автоматически</Button>
-              <span className="text-muted text-xs">Применение будет добавлено следующим шагом</span>
+              <Button
+                onClick={() => selectedTemplateId && void onApplyAutoBuild(Number(selectedTemplateId))}
+                disabled={!canApplyAutoBuild}
+              >
+                {autoApplying ? "Применение…" : "Применить автосборку"}
+              </Button>
+              <span className="text-xs text-amber-700">
+                Перед применением проверьте предупреждения. Автосборку можно будет поправить вручную после применения.
+              </span>
             </div>
           </div>
         </section>

@@ -10,7 +10,6 @@ import ru.staffly.schedule.dto.ApplyScheduleAutoBuildRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
-import ru.staffly.schedule.model.ScheduleAutoBuildPlan;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleRow;
@@ -22,6 +21,7 @@ import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleAutoBuildApplyService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
+import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
 import ru.staffly.security.SecurityService;
 
 import java.time.LocalDate;
