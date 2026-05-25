@@ -36,6 +36,7 @@ import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import type { ScheduleSummary } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
@@ -49,6 +50,42 @@ function normalizeRole(role: string | null | undefined): string | null {
     .replace(/^ROLE_/, "");
 }
 
+function isScheduleOwner(params: {
+  owner: ScheduleOwnerDto | null | undefined;
+  currentMemberId: number | null | undefined;
+  currentUserId: number | null | undefined;
+}): boolean {
+  const { owner, currentMemberId, currentUserId } = params;
+  if (!owner) return false;
+
+  const ownerMemberId = owner.memberId;
+  if (ownerMemberId != null && currentMemberId != null && ownerMemberId === currentMemberId) {
+    return true;
+  }
+
+  const ownerUserId = owner.userId;
+  return ownerUserId != null && currentUserId != null && ownerUserId === currentUserId;
+}
+
+function canOpenOwnPreferenceFlow(params: {
+  summary: ScheduleSummary;
+  currentMember: MemberDto | null;
+  currentUserId: number | null | undefined;
+}): boolean {
+  const { summary, currentMember, currentUserId } = params;
+  if (summary.status !== "COLLECTING_PREFERENCES") return false;
+  if (!currentMember) return false;
+
+  const positionId = currentMember.positionId;
+  const isParticipant = positionId != null && summary.positionIds.includes(positionId);
+  if (!isParticipant) return false;
+
+  return !isScheduleOwner({
+    owner: summary.owner,
+    currentMemberId: currentMember.id,
+    currentUserId,
+  });
+}
 const SchedulePage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
@@ -377,7 +414,14 @@ const SchedulePage: React.FC = () => {
     (id: number) => {
       const item = savedSchedules.find((candidate) => candidate.id === id);
 
-      if (!canManage && item?.status === "COLLECTING_PREFERENCES") {
+      if (
+        item &&
+        canOpenOwnPreferenceFlow({
+          summary: item,
+          currentMember: derived.currentMember,
+          currentUserId: user?.id,
+        })
+      ) {
         savedScheduleActions.closeSavedSchedule();
         void preferenceActions.openPreferenceView(id);
         return;
@@ -386,7 +430,7 @@ const SchedulePage: React.FC = () => {
       preferenceActions.closePreferenceView();
       void savedScheduleActions.openSavedSchedule(id);
     },
-    [canManage, preferenceActions, savedScheduleActions, savedSchedules],
+    [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules, user?.id],
   );
 
   React.useEffect(() => {
@@ -456,6 +500,15 @@ const SchedulePage: React.FC = () => {
           positionFilter={positionFilter}
           onPositionFilterChange={setPositionFilter}
           onOpenSavedSchedule={handleOpenSavedSchedule}
+          getOpenButtonLabel={(item) =>
+            canOpenOwnPreferenceFlow({
+              summary: item,
+              currentMember: derived.currentMember,
+              currentUserId: user?.id,
+            })
+              ? "Оставить пожелания"
+              : "Открыть"
+          }
           onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
           onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
           onDownloadXlsx={exportActions.downloadXlsx}
