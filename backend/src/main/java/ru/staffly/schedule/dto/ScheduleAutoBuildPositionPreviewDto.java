@@ -6,6 +6,10 @@ public record ScheduleAutoBuildPositionPreviewDto(
         Long positionId,
         String positionName,
         List<ScheduleAutoBuildCellPreviewDto> cells,
-        List<String> warnings
+        List<String> warnings,
+        int totalAssignments,
+        int warningsCount,
+        int unfilledCount,
+        int negativeAssignmentsCount
 ) {
 }
