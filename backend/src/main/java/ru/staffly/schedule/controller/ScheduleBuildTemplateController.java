@@ -1,6 +1,7 @@
 package ru.staffly.schedule.controller;
 
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -31,13 +32,13 @@ public class ScheduleBuildTemplateController {
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping
-    public ScheduleBuildTemplateDto create(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal, @RequestBody SaveScheduleBuildTemplateRequest request) {
+    public ScheduleBuildTemplateDto create(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal, @Valid @RequestBody SaveScheduleBuildTemplateRequest request) {
         return templates.create(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PutMapping("/{templateId}")
-    public ScheduleBuildTemplateDto update(@PathVariable Long restaurantId, @PathVariable Long templateId, @AuthenticationPrincipal UserPrincipal principal, @RequestBody SaveScheduleBuildTemplateRequest request) {
+    public ScheduleBuildTemplateDto update(@PathVariable Long restaurantId, @PathVariable Long templateId, @AuthenticationPrincipal UserPrincipal principal, @Valid @RequestBody SaveScheduleBuildTemplateRequest request) {
         return templates.update(restaurantId, templateId, principal.userId(), request);
     }
 
