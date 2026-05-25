@@ -216,8 +216,8 @@ export type ScheduleBuildPositionConfigDto = {
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
-  minRestHours: number;
-  maxShiftsPerPeriod: number;
+  minRestHours: number | null;
+  maxShiftsPerPeriod: number | null;
   shiftOptions: ScheduleBuildShiftOptionDto[];
   coverageRules: ScheduleBuildCoverageRuleDto[];
   sortOrder: number;
@@ -257,8 +257,8 @@ export type SaveScheduleBuildPositionConfigRequest = {
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
-  minRestHours: number;
-  maxShiftsPerPeriod: number;
+  minRestHours?: number | null;
+  maxShiftsPerPeriod?: number | null;
   shiftOptions: SaveScheduleBuildShiftOptionRequest[];
   coverageRules: SaveScheduleBuildCoverageRuleRequest[];
   sortOrder: number;
