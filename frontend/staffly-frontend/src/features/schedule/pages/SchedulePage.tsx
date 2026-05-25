@@ -187,7 +187,7 @@ const SchedulePage: React.FC = () => {
       const memberId = submission.member?.memberId;
       if (!memberId) return;
       submission.cells?.forEach((cell) => {
-        if (!cell.fullDay || !cell.day) return;
+        if (!cell.day) return;
         const key = `${memberId}:${cell.day}`;
         if (!map[key]) map[key] = [];
         map[key].push(cell);

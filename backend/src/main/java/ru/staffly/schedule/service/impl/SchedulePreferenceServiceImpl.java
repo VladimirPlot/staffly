@@ -36,6 +36,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
     private static final String[] WEEKDAY_LABELS = {"", "пн", "вт", "ср", "чт", "пт", "сб", "вс"};
     private static final int MAX_CELLS_PER_DAY = 8;
+    private static final LocalTime END_OF_DAY_TIME = LocalTime.MIDNIGHT;
 
     private final ScheduleRepository schedules;
     private final SchedulePreferenceSubmissionRepository submissions;
@@ -263,7 +264,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             } else {
                 startTime = parseTime(request.startTime(), "cells[" + i + "].startTime");
                 endTime = parseTime(request.endTime(), "cells[" + i + "].endTime");
-                if (!startTime.isBefore(endTime)) {
+                if (!isValidPreferenceInterval(startTime, endTime)) {
                     throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
                 }
             }
@@ -419,6 +420,16 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private boolean isValidPreferenceInterval(LocalTime startTime, LocalTime endTime) {
+        if (startTime.equals(endTime)) {
+            return false;
+        }
+        if (startTime.isBefore(endTime)) {
+            return true;
+        }
+        return endTime.equals(END_OF_DAY_TIME);
     }
 
     private record CellKey(LocalDate day, SchedulePreferenceType type, boolean fullDay, LocalTime startTime, LocalTime endTime) {}
