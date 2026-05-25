@@ -19,5 +19,11 @@ public interface ScheduleBuildTemplateRepository extends JpaRepository<ScheduleB
     })
     Optional<ScheduleBuildTemplate> findByIdAndRestaurantId(Long id, Long restaurantId);
 
+    @EntityGraph(attributePaths = {
+            "positionConfigs", "positionConfigs.position",
+            "positionConfigs.shiftOptions", "positionConfigs.coverageRules"
+    })
+    Optional<ScheduleBuildTemplate> findDetailedByIdAndRestaurantIdAndIsActiveTrue(Long id, Long restaurantId);
+
     boolean existsByRestaurantIdAndNameIgnoreCase(Long restaurantId, String name);
 }
