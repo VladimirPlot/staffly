@@ -1,4 +1,5 @@
 import React from "react";
+import { motion } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
@@ -19,7 +20,7 @@ import { useAliasControls } from "../hooks/useAliasControls";
 import { useAliasDeviceMode } from "../hooks/useAliasDeviceMode";
 import { getAliasRoundScore, useAliasGame } from "../hooks/useAliasGame";
 import { useAliasMotionControls } from "../hooks/useAliasMotionControls";
-import type { AliasRoundEvent, AliasTeam } from "../types";
+import type { AliasRoundEvent, AliasRoundResult, AliasTeam } from "../types";
 
 type AliasGameViewProps = ReturnType<typeof useAliasGame>;
 
@@ -34,6 +35,10 @@ const getMotionStatusLabel = (status: ReturnType<typeof useAliasMotionControls>[
   if (status === "unsupported") return "Наклоны недоступны";
   return "Наклоны: выкл";
 };
+
+const MotionSection = motion.section;
+const MotionDiv = motion.div;
+const MotionButton = motion.button;
 
 const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; targetScore: number }> = ({
   teams,
@@ -65,26 +70,73 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
   </div>
 );
 
-const RoundEventsList: React.FC<{ events: AliasRoundEvent[] }> = ({ events }) => {
+const getReviewButtonClassName = (isActive: boolean, result: AliasRoundResult) =>
+  [
+    "inline-flex h-8 w-8 items-center justify-center rounded-xl border transition",
+    isActive
+      ? getResultClassName(result)
+      : "border-[var(--staffly-border)] bg-[var(--staffly-surface)] text-muted hover:text-strong",
+  ].join(" ");
+
+const RoundEventsList: React.FC<{
+  events: AliasRoundEvent[];
+  onReview: (eventIndex: number, result: AliasRoundResult) => void;
+}> = ({ events, onReview }) => {
   if (events.length === 0) {
     return <div className="rounded-2xl border border-[var(--staffly-border)] bg-app p-4 text-sm text-muted">Пока нет ответов.</div>;
   }
 
   return (
-    <div className="grid max-h-56 gap-2 overflow-auto pr-1 sm:grid-cols-2">
-      {events.map((event, index) => (
-        <div
-          key={`${event.word.id}-${index}`}
-          className={[
-            "flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm",
-            getResultClassName(event.result),
-          ].join(" ")}
-        >
-          <span className="min-w-0 truncate font-medium">{event.word.text}</span>
-          <span className="shrink-0 text-xs font-semibold">{event.result === "correct" ? "+1" : "-1"}</span>
-        </div>
-      ))}
-    </div>
+    <MotionDiv
+      className="grid max-h-[min(58vh,34rem)] min-h-[18rem] gap-2 overflow-auto pr-1 sm:grid-cols-2"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
+      {events.map((event, index) => {
+        const isCorrect = event.result === "correct";
+
+        return (
+          <MotionDiv
+            key={`${event.word.id}-${index}`}
+            layout
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, delay: Math.min(index * 0.018, 0.16), ease: "easeOut" }}
+            className={[
+              "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-3 py-2 text-sm transition-colors duration-150",
+              getResultClassName(event.result),
+            ].join(" ")}
+          >
+            <span className="min-w-0 truncate font-medium">{event.word.text}</span>
+            <div className="flex shrink-0 items-center gap-1" aria-label={`Проверка слова ${event.word.text}`}>
+              <MotionButton
+                type="button"
+                className={getReviewButtonClassName(isCorrect, "correct")}
+                aria-pressed={isCorrect}
+                aria-label="Отметить верным"
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 420, damping: 26 }}
+                onClick={() => onReview(index, "correct")}
+              >
+                <Icon icon={Check} size="xs" decorative />
+              </MotionButton>
+              <MotionButton
+                type="button"
+                className={getReviewButtonClassName(!isCorrect, "skipped")}
+                aria-pressed={!isCorrect}
+                aria-label="Отметить неверным"
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 420, damping: 26 }}
+                onClick={() => onReview(index, "skipped")}
+              >
+                <Icon icon={X} size="xs" decorative />
+              </MotionButton>
+            </div>
+          </MotionDiv>
+        );
+      })}
+    </MotionDiv>
   );
 };
 
@@ -133,8 +185,14 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
     return null;
   }
 
+  const contentWidthClassName = state.phase === "roundSummary" ? "max-w-6xl" : "max-w-5xl";
+
   return (
-    <div className="relative z-10 flex w-full max-w-5xl flex-col gap-4">
+    <div
+      className={["relative z-10 flex w-full flex-col gap-4 transition-[max-width] duration-200", contentWidthClassName].join(
+        " ",
+      )}
+    >
       <Scoreboard teams={state.teams} activeTeamId={activeTeamId} targetScore={state.settings.targetScore} />
 
       {state.phase === "ready" && currentTeam ? (
@@ -270,7 +328,12 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
       ) : null}
 
       {state.phase === "roundSummary" && state.lastRoundTeam ? (
-        <section className="rounded-[1.75rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-sm sm:p-6">
+        <MotionSection
+          className="rounded-[1.75rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-sm sm:p-6"
+          initial={{ opacity: 0, y: 12, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.24, ease: "easeOut" }}
+        >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="text-sm font-medium text-muted">Итог раунда</div>
@@ -278,15 +341,28 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
             </div>
             <div className="rounded-2xl border border-[var(--staffly-border)] bg-app px-4 py-3 text-center">
               <div className="text-[10px] font-semibold tracking-wide text-muted uppercase">Очки</div>
-              <div className="text-3xl leading-none font-bold text-strong">{lastRoundScore > 0 ? `+${lastRoundScore}` : lastRoundScore}</div>
+              <MotionDiv
+                key={lastRoundScore}
+                className="text-3xl leading-none font-bold text-strong"
+                initial={{ scale: 0.94 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 420, damping: 18 }}
+              >
+                {lastRoundScore > 0 ? `+${lastRoundScore}` : lastRoundScore}
+              </MotionDiv>
             </div>
           </div>
           <div className="mt-5">
-            <RoundEventsList events={state.lastRoundEvents} />
+            <RoundEventsList events={state.lastRoundEvents} onReview={actions.reviewLastRoundEvent} />
           </div>
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-            <Button type="button" className="flex-1" leftIcon={<Icon icon={Flag} size="sm" decorative />} onClick={actions.nextTurn}>
-              Следующая команда
+            <Button
+              type="button"
+              className="flex-1"
+              leftIcon={<Icon icon={state.winnerTeam ? Trophy : Flag} size="sm" decorative />}
+              onClick={state.winnerTeam ? actions.completeGame : actions.nextTurn}
+            >
+              {state.winnerTeam ? "Завершить игру" : "Следующая команда"}
             </Button>
             <Button
               type="button"
@@ -298,7 +374,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
               Новая игра
             </Button>
           </div>
-        </section>
+        </MotionSection>
       ) : null}
 
       {state.phase === "gameOver" && state.winnerTeam ? (

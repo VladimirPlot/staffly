@@ -39,9 +39,11 @@ type AliasGameAction =
   | { type: "startRound" }
   | { type: "tick" }
   | { type: "markWord"; result: AliasRoundResult }
+  | { type: "reviewLastRoundEvent"; eventIndex: number; result: AliasRoundResult }
   | { type: "pauseRound" }
   | { type: "resumeRound" }
   | { type: "finishRound" }
+  | { type: "completeGame" }
   | { type: "nextTurn" }
   | { type: "resetGame" };
 
@@ -50,8 +52,10 @@ const createInitialTeams = (): AliasTeam[] => [
   { id: "team-2", name: "Команда 2", score: 0 },
 ];
 
+const getEventScore = (result: AliasRoundResult) => (result === "correct" ? 1 : -1);
+
 const getRoundScore = (events: AliasRoundEvent[]) =>
-  events.reduce((score, event) => score + (event.result === "correct" ? 1 : -1), 0);
+  events.reduce((score, event) => score + getEventScore(event.result), 0);
 
 const normalizeTeams = (teams: AliasTeam[]) =>
   teams.map((team, index) => ({
@@ -99,7 +103,7 @@ const finishRound = (state: AliasGameState): AliasGameState => {
 
   return {
     ...state,
-    phase: winnerTeam ? "gameOver" : "roundSummary",
+    phase: "roundSummary",
     teams: nextTeams,
     currentWord: null,
     remainingSeconds: 0,
@@ -189,12 +193,38 @@ const reducer = (state: AliasGameState, action: AliasGameAction): AliasGameState
         roundEvents: [...state.roundEvents, { word: state.currentWord, result: action.result }],
       };
     }
+    case "reviewLastRoundEvent": {
+      if (state.phase !== "roundSummary" || !state.lastRoundTeam) return state;
+
+      const currentEvent = state.lastRoundEvents[action.eventIndex];
+      if (!currentEvent || currentEvent.result === action.result) return state;
+
+      const scoreDelta = getEventScore(action.result) - getEventScore(currentEvent.result);
+      const lastRoundEvents = state.lastRoundEvents.map((event, index) =>
+        index === action.eventIndex ? { ...event, result: action.result } : event,
+      );
+      const teams = state.teams.map((team) =>
+        team.id === state.lastRoundTeam?.id ? { ...team, score: Math.max(0, team.score + scoreDelta) } : team,
+      );
+      const lastRoundTeam = teams.find((team) => team.id === state.lastRoundTeam?.id) ?? state.lastRoundTeam;
+      const winnerTeam = lastRoundTeam.score >= state.settings.targetScore ? lastRoundTeam : null;
+
+      return {
+        ...state,
+        teams,
+        lastRoundEvents,
+        lastRoundTeam,
+        winnerTeam,
+      };
+    }
     case "pauseRound":
       return state.phase === "playing" ? { ...state, phase: "paused" } : state;
     case "resumeRound":
       return state.phase === "paused" ? { ...state, phase: "playing" } : state;
     case "finishRound":
       return finishRound(state);
+    case "completeGame":
+      return state.winnerTeam ? { ...state, phase: "gameOver" } : state;
     case "nextTurn":
       return {
         ...state,
@@ -203,6 +233,7 @@ const reducer = (state: AliasGameState, action: AliasGameAction): AliasGameState
         remainingSeconds: state.settings.roundDurationSeconds,
         currentWord: null,
         roundEvents: [],
+        winnerTeam: null,
       };
     case "resetGame":
       return createInitialState();
@@ -236,9 +267,12 @@ export const useAliasGame = () => {
       startRound: () => dispatch({ type: "startRound" }),
       markCorrect: () => dispatch({ type: "markWord", result: "correct" }),
       markSkipped: () => dispatch({ type: "markWord", result: "skipped" }),
+      reviewLastRoundEvent: (eventIndex: number, result: AliasRoundResult) =>
+        dispatch({ type: "reviewLastRoundEvent", eventIndex, result }),
       pauseRound: () => dispatch({ type: "pauseRound" }),
       resumeRound: () => dispatch({ type: "resumeRound" }),
       finishRound: () => dispatch({ type: "finishRound" }),
+      completeGame: () => dispatch({ type: "completeGame" }),
       nextTurn: () => dispatch({ type: "nextTurn" }),
       resetGame: () => dispatch({ type: "resetGame" }),
     }),
