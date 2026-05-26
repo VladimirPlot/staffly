@@ -155,7 +155,7 @@ function createDashboardCards(access: DashboardAccess): DashboardCardItem[] {
   cards.push({
     id: "games",
     title: "Игры",
-    description: "Игровые форматы для обучения и командной разминки.",
+    description: "Интерактивные игры и квизы.",
     to: "/games",
     icon: Gamepad2,
   });
