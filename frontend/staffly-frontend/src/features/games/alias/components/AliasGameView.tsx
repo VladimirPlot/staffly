@@ -1,5 +1,5 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion, type PanInfo, useMotionValue, useTransform } from "framer-motion";
 import {
   ArrowDown,
   ArrowUp,
@@ -40,7 +40,8 @@ const getMotionStatusLabel = (status: ReturnType<typeof useAliasMotionControls>[
 
 const MotionSection = motion.section;
 const MotionDiv = motion.div;
-const MotionButton = motion.button;
+
+type ExitDirection = "up" | "down" | null;
 
 const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; targetScore: number }> = ({
   teams,
@@ -55,7 +56,7 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
         <div
           key={team.id}
           className={[
-            "w-full min-w-0 rounded-xl border p-3.5 transition-all duration-200 sm:w-[min(20rem,calc(50%-0.25rem))] lg:w-80",
+            "w-full min-w-0 rounded-xl border p-3.5 transition-all duration-200 sm:w-[min(20rem,calc(50%-0.2rem))] lg:w-80",
             isActive
               ? "border-[var(--staffly-text-strong)] bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-md"
               : "text-default border-[var(--staffly-border)] bg-[var(--staffly-surface)] shadow-xs",
@@ -74,7 +75,7 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
 
 const getReviewButtonClassName = (isActive: boolean, result: AliasRoundResult) =>
   [
-    "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]",
+    "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] cursor-pointer",
     isActive
       ? getResultClassName(result)
       : "border-[var(--staffly-border)] bg-[var(--staffly-surface)] text-muted hover:text-strong",
@@ -122,7 +123,7 @@ const RoundEventsList: React.FC<{
             <span className="min-w-0 truncate font-semibold">{event.word.text}</span>
             <div className="flex shrink-0 items-center gap-1" aria-label={`Проверка слова ${event.word.text}`}>
               {reviewActions.map(({ result, active, label, icon }) => (
-                <MotionButton
+                <motion.button
                   key={result}
                   type="button"
                   className={getReviewButtonClassName(active, result)}
@@ -133,7 +134,7 @@ const RoundEventsList: React.FC<{
                   onClick={() => onReview(index, result)}
                 >
                   <Icon icon={icon} size="xs" decorative />
-                </MotionButton>
+                </motion.button>
               ))}
             </div>
           </MotionDiv>
@@ -143,17 +144,217 @@ const RoundEventsList: React.FC<{
   );
 };
 
+const PausedRoundCard: React.FC<{
+  onResume: () => void;
+  onExit: () => void;
+}> = ({ onResume, onExit }) => (
+  <motion.div
+    key="paused-overlay"
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    exit={{ opacity: 0, scale: 0.95 }}
+    transition={{ duration: 0.2 }}
+    className="bg-app absolute inset-0 z-20 flex flex-col items-center justify-center rounded-[1.5rem] border border-[var(--staffly-border)] p-6 text-center select-none"
+  >
+    <div className="pointer-events-none absolute -inset-10 animate-[pulse_3s_infinite] bg-radial-[circle_at_center,var(--staffly-text-strong)/0.03,transparent_60%]" />
+    <div className="relative mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--staffly-border)] bg-[var(--staffly-control)] shadow-xs">
+      <div className="absolute inset-0 animate-ping rounded-full bg-[var(--staffly-text-strong)]/5 opacity-75" />
+      <Pause className="text-strong h-6 w-6 stroke-[2.5]" />
+    </div>
+
+    <div className="text-muted text-xs font-bold tracking-wider uppercase">раунд остановлен</div>
+    <div className="text-strong mt-2 text-2xl leading-tight font-extrabold sm:text-3xl">Время на паузе</div>
+    <p className="text-muted mt-2 max-w-[280px] text-xs sm:text-sm">Счет не изменится, пока вы не возобновите игру.</p>
+
+    <div className="z-30 mt-6 flex w-full max-w-xs gap-2">
+      <Button
+        type="button"
+        className="flex-1 cursor-pointer"
+        leftIcon={<Icon icon={Play} size="xs" decorative />}
+        onClick={onResume}
+      >
+        Продолжить
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="flex-1 cursor-pointer"
+        leftIcon={<Icon icon={X} size="xs" decorative />}
+        onClick={onExit}
+      >
+        Завершить
+      </Button>
+    </div>
+  </motion.div>
+);
+
+const WordCard: React.FC<{
+  word: AliasRoundEvent["word"] | null;
+  exitDirection: ExitDirection;
+  onCorrect: () => void;
+  onSkip: () => void;
+}> = ({ word, exitDirection, onCorrect, onSkip }) => {
+  const y = useMotionValue(0);
+  const rotate = useTransform(y, [-150, 150], [-4, 4]);
+  const opacity = useTransform(y, [-240, -160, 0, 160, 240], [0, 1, 1, 1, 0]);
+  const correctOverlayOpacity = useTransform(y, [0, 120], [0, 1]);
+  const skipOverlayOpacity = useTransform(y, [-120, 0], [1, 0]);
+  const correctScale = useTransform(y, [0, 120], [0.8, 1]);
+  const skipScale = useTransform(y, [-120, 0], [1, 0.8]);
+
+  React.useEffect(() => {
+    y.set(0);
+  }, [word?.id, y]);
+
+  const handleDragEnd = React.useCallback(
+    (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+      if (info.offset.y > 120) onCorrect();
+      if (info.offset.y < -120) onSkip();
+    },
+    [onCorrect, onSkip],
+  );
+
+  return (
+    <motion.div
+      key={word?.id}
+      drag="y"
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={0.8}
+      onDragEnd={handleDragEnd}
+      style={{ y, rotate, opacity }}
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{
+        opacity: 0,
+        scale: 0.96,
+        y: exitDirection === "down" ? 280 : exitDirection === "up" ? -280 : 0,
+        transition: { duration: 0.18, ease: "easeIn" },
+      }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      className="bg-app absolute inset-0 flex cursor-grab touch-none flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed border-[var(--staffly-divider)] p-6 text-center transition-colors outline-none select-none active:cursor-grabbing"
+      tabIndex={0}
+      aria-label="Карточка слова. Свайп вниз означает верно, свайп вверх означает пропуск."
+    >
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.5rem] border-2 border-emerald-500/80 bg-emerald-500/[0.08]"
+        style={{ opacity: correctOverlayOpacity }}
+      >
+        <motion.div
+          style={{ scale: correctScale }}
+          className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-xs"
+        >
+          <Check className="h-4 w-4 stroke-[3]" />
+          <span>Верно (+1)</span>
+        </motion.div>
+      </motion.div>
+
+      <motion.div
+        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.5rem] border-2 border-rose-500/80 bg-rose-500/[0.08]"
+        style={{ opacity: skipOverlayOpacity }}
+      >
+        <motion.div
+          style={{ scale: skipScale }}
+          className="flex items-center gap-1.5 rounded-full bg-rose-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-xs"
+        >
+          <X className="h-4 w-4 stroke-[3]" />
+          <span>Пропуск (-1)</span>
+        </motion.div>
+      </motion.div>
+
+      <div className="text-muted mb-5 flex gap-3 text-xs font-semibold select-none">
+        <span className="inline-flex items-center gap-1">
+          <Icon icon={ArrowDown} size="xs" decorative />
+          верно
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Icon icon={ArrowUp} size="xs" decorative />
+          пропуск
+        </span>
+      </div>
+      <div className="text-strong w-full max-w-full px-2 text-[clamp(2.25rem,10vw,4rem)] leading-tight font-black text-balance [overflow-wrap:anywhere] break-words [hyphens:auto] sm:text-[clamp(3rem,8vw,4.5rem)]">
+        {word?.text}
+      </div>
+    </motion.div>
+  );
+};
+
+const ExitConfirmationDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}> = ({ open, onClose, onConfirm }) => (
+  <AnimatePresence>
+    {open && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-md"
+      >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.94, y: 10 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          className="w-full max-w-sm rounded-[1.5rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-[var(--staffly-shadow)]"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-strong text-lg font-semibold">Завершить раунд?</div>
+              <div className="text-muted mt-1 text-sm">Текущие ответы будут засчитаны как итог этого хода.</div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 cursor-pointer"
+              aria-label="Закрыть подтверждение"
+              onClick={onClose}
+            >
+              <Icon icon={X} size="sm" />
+            </Button>
+          </div>
+          <div className="mt-5 flex gap-2">
+            <Button type="button" className="flex-1 cursor-pointer" onClick={onConfirm}>
+              Завершить
+            </Button>
+            <Button type="button" variant="outline" className="flex-1 cursor-pointer" onClick={onClose}>
+              Назад
+            </Button>
+          </div>
+        </motion.div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
+
 const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
   const [exitConfirmationOpen, setExitConfirmationOpen] = React.useState(false);
+  const [exitDirection, setExitDirection] = React.useState<ExitDirection>(null);
+
   const { isTouchDevice } = useAliasDeviceMode();
   const currentTeam = state.teams[state.currentTeamIndex] ?? null;
   const activeTeamId = currentTeam?.id ?? null;
   const roundScore = getAliasRoundScore(state.roundEvents);
   const lastRoundScore = getAliasRoundScore(state.lastRoundEvents);
+
+  const handleCorrect = React.useCallback(() => {
+    if (state.phase !== "playing") return;
+    setExitDirection("down");
+    actions.markCorrect();
+  }, [actions, state.phase]);
+
+  const handleSkip = React.useCallback(() => {
+    if (state.phase !== "playing") return;
+    setExitDirection("up");
+    actions.markSkipped();
+  }, [actions, state.phase]);
+
   const motionControls = useAliasMotionControls({
     enabled: state.phase === "playing",
-    onCorrect: actions.markCorrect,
-    onSkip: actions.markSkipped,
+    onCorrect: handleCorrect,
+    onSkip: handleSkip,
   });
 
   React.useEffect(() => {
@@ -161,6 +362,10 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
       motionControls.disableMotionControls();
     }
   }, [isTouchDevice, motionControls]);
+
+  React.useEffect(() => {
+    setExitDirection(null);
+  }, [state.currentWord?.id]);
 
   const handlePauseToggle = React.useCallback(() => {
     if (state.phase === "paused") {
@@ -176,13 +381,18 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
     actions.startRound();
   }, [actions, motionControls]);
 
-  const { cardHandlers } = useAliasControls({
+  useAliasControls({
     enabled: !exitConfirmationOpen && (state.phase === "playing" || state.phase === "paused"),
-    onCorrect: actions.markCorrect,
-    onSkip: actions.markSkipped,
+    onCorrect: handleCorrect,
+    onSkip: handleSkip,
     onPauseToggle: handlePauseToggle,
     onExitRequest: () => setExitConfirmationOpen(true),
   });
+
+  const handleConfirmExit = React.useCallback(() => {
+    setExitConfirmationOpen(false);
+    actions.finishRound();
+  }, [actions]);
 
   if (!currentTeam && state.phase !== "gameOver") {
     return null;
@@ -210,7 +420,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
             <Button
               type="button"
               size="lg"
-              className="w-full"
+              className="w-full cursor-pointer"
               leftIcon={<Icon icon={Play} size="sm" decorative />}
               onClick={handleStartRound}
             >
@@ -221,7 +431,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
                 type="button"
                 variant={motionControls.status === "active" ? "primary" : "outline"}
                 size="sm"
-                className="w-full"
+                className="w-full cursor-pointer"
                 leftIcon={<Icon icon={Smartphone} size="sm" decorative />}
                 disabled={motionControls.status === "denied" || motionControls.status === "unsupported"}
                 onClick={() => {
@@ -259,58 +469,28 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
             </div>
           </div>
 
-          <div
-            {...cardHandlers}
-            className={[
-              "bg-app flex min-h-[280px] cursor-grab touch-none flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed border-[var(--staffly-divider)] p-6 text-center outline-none select-none active:cursor-grabbing sm:min-h-[340px]",
-              state.phase === "paused" ? "opacity-45" : "",
-            ].join(" ")}
-            tabIndex={0}
-            aria-label="Карточка слова. Свайп вниз означает верно, свайп вверх означает пропуск."
-          >
-            <div className="text-muted mb-5 flex gap-3 text-xs font-semibold">
-              <span className="inline-flex items-center gap-1">
-                <Icon icon={ArrowDown} size="xs" decorative />
-                верно
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Icon icon={ArrowUp} size="xs" decorative />
-                пропуск
-              </span>
-            </div>
-            <div className="text-strong max-w-full text-5xl leading-tight font-black text-balance sm:text-7xl">
-              {state.currentWord?.text}
-            </div>
+          <div className="relative my-4 flex min-h-[280px] items-center justify-center overflow-hidden rounded-[1.5rem] sm:min-h-[340px]">
+            <AnimatePresence mode="popLayout">
+              {state.phase === "paused" ? (
+                <PausedRoundCard onResume={actions.resumeRound} onExit={() => setExitConfirmationOpen(true)} />
+              ) : (
+                <WordCard
+                  word={state.currentWord}
+                  exitDirection={exitDirection}
+                  onCorrect={handleCorrect}
+                  onSkip={handleSkip}
+                />
+              )}
+            </AnimatePresence>
           </div>
-
-          {state.phase === "paused" ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--staffly-surface)]/75 p-5 backdrop-blur-sm">
-              <div className="w-full max-w-sm rounded-[1.5rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 text-center shadow-[var(--staffly-shadow)]">
-                <div className="text-strong text-xl font-semibold">Пауза</div>
-                <div className="text-muted mt-2 text-sm">Раунд остановлен, счет не изменится до продолжения.</div>
-                <div className="mt-4 flex gap-2">
-                  <Button type="button" className="flex-1" onClick={actions.resumeRound}>
-                    Продолжить
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setExitConfirmationOpen(true)}
-                  >
-                    Завершить
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : null}
 
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             <Button
               type="button"
               size="lg"
+              className="cursor-pointer"
               leftIcon={<Icon icon={Check} size="sm" decorative />}
-              onClick={actions.markCorrect}
+              onClick={handleCorrect}
             >
               Верно
             </Button>
@@ -318,8 +498,9 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
               type="button"
               variant="outline"
               size="lg"
+              className="cursor-pointer"
               leftIcon={<Icon icon={SkipForward} size="sm" decorative />}
-              onClick={actions.markSkipped}
+              onClick={handleSkip}
             >
               Пропуск
             </Button>
@@ -327,6 +508,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
               type="button"
               variant="ghost"
               size="lg"
+              className="cursor-pointer"
               leftIcon={<Icon icon={state.phase === "paused" ? Play : Pause} size="sm" decorative />}
               onClick={handlePauseToggle}
             >
@@ -367,7 +549,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <Button
               type="button"
-              className="flex-1"
+              className="flex-1 cursor-pointer"
               leftIcon={<Icon icon={state.winnerTeam ? Trophy : Flag} size="sm" decorative />}
               onClick={state.winnerTeam ? actions.completeGame : actions.nextTurn}
             >
@@ -376,7 +558,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
             <Button
               type="button"
               variant="outline"
-              className="flex-1"
+              className="flex-1 cursor-pointer"
               leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
               onClick={actions.resetGame}
             >
@@ -406,7 +588,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           </div>
           <Button
             type="button"
-            className="mt-8 w-full max-w-xs"
+            className="mt-8 w-full max-w-xs cursor-pointer"
             leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
             onClick={actions.resetGame}
           >
@@ -415,43 +597,11 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
         </section>
       ) : null}
 
-      {exitConfirmationOpen ? (
-        <div className="absolute inset-0 z-30 flex items-center justify-center rounded-[1.75rem] bg-black/30 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-[1.5rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-[var(--staffly-shadow)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-strong text-lg font-semibold">Завершить раунд?</div>
-                <div className="text-muted mt-1 text-sm">Текущие ответы будут засчитаны как итог этого хода.</div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                aria-label="Закрыть подтверждение"
-                onClick={() => setExitConfirmationOpen(false)}
-              >
-                <Icon icon={X} size="sm" />
-              </Button>
-            </div>
-            <div className="mt-5 flex gap-2">
-              <Button
-                type="button"
-                className="flex-1"
-                onClick={() => {
-                  setExitConfirmationOpen(false);
-                  actions.finishRound();
-                }}
-              >
-                Завершить
-              </Button>
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setExitConfirmationOpen(false)}>
-                Назад
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ExitConfirmationDialog
+        open={exitConfirmationOpen}
+        onClose={() => setExitConfirmationOpen(false)}
+        onConfirm={handleConfirmExit}
+      />
     </div>
   );
 };
