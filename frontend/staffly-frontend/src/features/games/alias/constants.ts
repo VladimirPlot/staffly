@@ -2,6 +2,8 @@ import type { AliasOption, DifficultyId, WordPackId } from "./types";
 
 export const ALIAS_ROUND_DURATION_SECONDS = 60;
 export const ALIAS_TARGET_SCORE = 20;
+export const ALIAS_MIN_TARGET_SCORE = 5;
+export const ALIAS_MAX_TARGET_SCORE = 60;
 export const ALIAS_MIN_TEAMS = 2;
 export const ALIAS_MAX_TEAMS = 6;
 export const ALIAS_SWIPE_DISTANCE_THRESHOLD = 56;

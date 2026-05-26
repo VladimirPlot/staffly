@@ -55,16 +55,16 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
         <div
           key={team.id}
           className={[
-            "w-full min-w-0 rounded-2xl border p-3 transition sm:w-[min(20rem,calc(50%-0.25rem))] lg:w-80",
+            "w-full min-w-0 rounded-xl border p-3.5 transition-all duration-200 sm:w-[min(20rem,calc(50%-0.25rem))] lg:w-80",
             isActive
-              ? "border-[var(--staffly-text-strong)] bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
-              : "border-[var(--staffly-border)] bg-[var(--staffly-control)] text-default",
+              ? "border-[var(--staffly-text-strong)] bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)] shadow-md"
+              : "text-default border-[var(--staffly-border)] bg-[var(--staffly-surface)] shadow-xs",
           ].join(" ")}
         >
-          <div className="truncate text-xs font-medium opacity-75">{team.name}</div>
+          <div className="truncate text-xs font-semibold opacity-80">{team.name}</div>
           <div className="mt-1 flex items-end justify-between gap-2">
             <span className="text-2xl leading-none font-bold">{team.score}</span>
-            <span className="text-[11px] opacity-70">из {targetScore}</span>
+            <span className="text-[11px] opacity-60">из {targetScore}</span>
           </div>
         </div>
       );
@@ -74,7 +74,7 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
 
 const getReviewButtonClassName = (isActive: boolean, result: AliasRoundResult) =>
   [
-    "inline-flex h-8 w-8 items-center justify-center rounded-xl border transition",
+    "inline-flex h-8 w-8 items-center justify-center rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]",
     isActive
       ? getResultClassName(result)
       : "border-[var(--staffly-border)] bg-[var(--staffly-surface)] text-muted hover:text-strong",
@@ -85,12 +85,16 @@ const RoundEventsList: React.FC<{
   onReview: (eventIndex: number, result: AliasRoundResult) => void;
 }> = ({ events, onReview }) => {
   if (events.length === 0) {
-    return <div className="rounded-2xl border border-[var(--staffly-border)] bg-app p-4 text-sm text-muted">Пока нет ответов.</div>;
+    return (
+      <div className="bg-app text-muted rounded-xl border border-[var(--staffly-border)] p-4 text-sm">
+        Пока нет ответов.
+      </div>
+    );
   }
 
   return (
     <MotionDiv
-      className="grid max-h-[min(58vh,34rem)] min-h-[18rem] gap-2 overflow-auto pr-1 sm:grid-cols-2"
+      className="grid max-h-[min(50vh,30rem)] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
@@ -98,6 +102,10 @@ const RoundEventsList: React.FC<{
       {events.map((event, index) => {
         const isCorrect = event.result === "correct";
         const isSkipped = event.result === "skipped";
+        const reviewActions = [
+          { result: "correct", active: isCorrect, label: "Отметить верным", icon: Check },
+          { result: "skipped", active: isSkipped, label: "Отметить неверным", icon: X },
+        ] as const;
 
         return (
           <MotionDiv
@@ -107,34 +115,26 @@ const RoundEventsList: React.FC<{
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.18, delay: Math.min(index * 0.018, 0.16), ease: "easeOut" }}
             className={[
-              "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-3 py-2 text-sm transition-colors duration-150",
+              "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3.5 py-2 text-sm shadow-xs transition-all duration-150",
               getResultClassName(event.result),
             ].join(" ")}
           >
-            <span className="min-w-0 truncate font-medium">{event.word.text}</span>
+            <span className="min-w-0 truncate font-semibold">{event.word.text}</span>
             <div className="flex shrink-0 items-center gap-1" aria-label={`Проверка слова ${event.word.text}`}>
-              <MotionButton
-                type="button"
-                className={getReviewButtonClassName(isCorrect, "correct")}
-                aria-pressed={isCorrect}
-                aria-label="Отметить верным"
-                whileTap={{ scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 420, damping: 26 }}
-                onClick={() => onReview(index, "correct")}
-              >
-                <Icon icon={Check} size="xs" decorative />
-              </MotionButton>
-              <MotionButton
-                type="button"
-                className={getReviewButtonClassName(isSkipped, "skipped")}
-                aria-pressed={isSkipped}
-                aria-label="Отметить неверным"
-                whileTap={{ scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 420, damping: 26 }}
-                onClick={() => onReview(index, "skipped")}
-              >
-                <Icon icon={X} size="xs" decorative />
-              </MotionButton>
+              {reviewActions.map(({ result, active, label, icon }) => (
+                <MotionButton
+                  key={result}
+                  type="button"
+                  className={getReviewButtonClassName(active, result)}
+                  aria-pressed={active}
+                  aria-label={label}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 26 }}
+                  onClick={() => onReview(index, result)}
+                >
+                  <Icon icon={icon} size="xs" decorative />
+                </MotionButton>
+              ))}
             </div>
           </MotionDiv>
         );
@@ -188,21 +188,22 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
     return null;
   }
 
-  const contentWidthClassName = state.phase === "roundSummary" ? "max-w-6xl" : "max-w-5xl";
+  const contentWidthClassName = state.phase === "roundSummary" ? "max-w-6xl" : "max-w-2xl";
 
   return (
     <div
-      className={["relative z-10 flex w-full flex-col gap-4 transition-[max-width] duration-200", contentWidthClassName].join(
-        " ",
-      )}
+      className={[
+        "relative z-10 flex w-full flex-col gap-4 transition-[max-width] duration-200",
+        contentWidthClassName,
+      ].join(" ")}
     >
       <Scoreboard teams={state.teams} activeTeamId={activeTeamId} targetScore={state.settings.targetScore} />
 
       {state.phase === "ready" && currentTeam ? (
         <section className="flex min-h-[360px] flex-col items-center justify-center rounded-[1.75rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-6 text-center shadow-sm">
-          <div className="text-sm font-medium text-muted">Ход команды</div>
-          <h2 className="mt-2 max-w-full truncate text-4xl font-bold text-strong sm:text-5xl">{currentTeam.name}</h2>
-          <div className="mt-3 text-sm text-muted">
+          <div className="text-muted text-sm font-medium">Ход команды</div>
+          <h2 className="text-strong mt-2 max-w-full truncate text-4xl font-bold sm:text-5xl">{currentTeam.name}</h2>
+          <div className="text-muted mt-3 text-sm">
             {state.settings.roundDurationSeconds} секунд, верно +1, пропуск -1
           </div>
           <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
@@ -243,17 +244,17 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
         <section className="relative overflow-hidden rounded-[1.75rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-4 shadow-sm sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-medium text-muted">Объясняет</div>
-              <div className="text-lg font-semibold text-strong">{currentTeam.name}</div>
+              <div className="text-muted text-xs font-medium">Объясняет</div>
+              <div className="text-strong text-lg font-semibold">{currentTeam.name}</div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="rounded-2xl border border-[var(--staffly-border)] bg-app px-4 py-2 text-center">
-                <div className="text-[10px] font-semibold tracking-wide text-muted uppercase">Время</div>
-                <div className="text-2xl leading-none font-bold text-strong">{state.remainingSeconds}</div>
+              <div className="bg-app rounded-2xl border border-[var(--staffly-border)] px-4 py-2 text-center">
+                <div className="text-muted text-[10px] font-semibold tracking-wide uppercase">Время</div>
+                <div className="text-strong text-2xl leading-none font-bold">{state.remainingSeconds}</div>
               </div>
-              <div className="rounded-2xl border border-[var(--staffly-border)] bg-app px-4 py-2 text-center">
-                <div className="text-[10px] font-semibold tracking-wide text-muted uppercase">Раунд</div>
-                <div className="text-2xl leading-none font-bold text-strong">{roundScore}</div>
+              <div className="bg-app rounded-2xl border border-[var(--staffly-border)] px-4 py-2 text-center">
+                <div className="text-muted text-[10px] font-semibold tracking-wide uppercase">Раунд</div>
+                <div className="text-strong text-2xl leading-none font-bold">{roundScore}</div>
               </div>
             </div>
           </div>
@@ -261,13 +262,13 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           <div
             {...cardHandlers}
             className={[
-              "flex min-h-[280px] cursor-grab touch-none select-none flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed border-[var(--staffly-divider)] bg-app p-6 text-center outline-none active:cursor-grabbing sm:min-h-[340px]",
+              "bg-app flex min-h-[280px] cursor-grab touch-none flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed border-[var(--staffly-divider)] p-6 text-center outline-none select-none active:cursor-grabbing sm:min-h-[340px]",
               state.phase === "paused" ? "opacity-45" : "",
             ].join(" ")}
             tabIndex={0}
             aria-label="Карточка слова. Свайп вниз означает верно, свайп вверх означает пропуск."
           >
-            <div className="mb-5 flex gap-3 text-xs font-semibold text-muted">
+            <div className="text-muted mb-5 flex gap-3 text-xs font-semibold">
               <span className="inline-flex items-center gap-1">
                 <Icon icon={ArrowDown} size="xs" decorative />
                 верно
@@ -277,7 +278,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
                 пропуск
               </span>
             </div>
-            <div className="max-w-full text-5xl leading-tight font-black text-strong text-balance sm:text-7xl">
+            <div className="text-strong max-w-full text-5xl leading-tight font-black text-balance sm:text-7xl">
               {state.currentWord?.text}
             </div>
           </div>
@@ -285,13 +286,18 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           {state.phase === "paused" ? (
             <div className="absolute inset-0 flex items-center justify-center bg-[var(--staffly-surface)]/75 p-5 backdrop-blur-sm">
               <div className="w-full max-w-sm rounded-[1.5rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 text-center shadow-[var(--staffly-shadow)]">
-                <div className="text-xl font-semibold text-strong">Пауза</div>
-                <div className="mt-2 text-sm text-muted">Раунд остановлен, счет не изменится до продолжения.</div>
+                <div className="text-strong text-xl font-semibold">Пауза</div>
+                <div className="text-muted mt-2 text-sm">Раунд остановлен, счет не изменится до продолжения.</div>
                 <div className="mt-4 flex gap-2">
                   <Button type="button" className="flex-1" onClick={actions.resumeRound}>
                     Продолжить
                   </Button>
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => setExitConfirmationOpen(true)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setExitConfirmationOpen(true)}
+                  >
                     Завершить
                   </Button>
                 </div>
@@ -339,14 +345,14 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="text-sm font-medium text-muted">Итог раунда</div>
-              <h2 className="text-3xl font-bold text-strong">{state.lastRoundTeam.name}</h2>
+              <div className="text-muted text-sm font-medium">Итог раунда</div>
+              <h2 className="text-strong text-3xl font-bold">{state.lastRoundTeam.name}</h2>
             </div>
-            <div className="rounded-2xl border border-[var(--staffly-border)] bg-app px-4 py-3 text-center">
-              <div className="text-[10px] font-semibold tracking-wide text-muted uppercase">Очки</div>
+            <div className="min-w-[5.5rem] rounded-xl border border-[var(--staffly-border)] bg-[var(--staffly-control)]/45 px-4 py-2.5 text-center">
+              <div className="text-muted text-[10px] font-semibold tracking-wide uppercase">Очки</div>
               <MotionDiv
                 key={lastRoundScore}
-                className="text-3xl leading-none font-bold text-strong"
+                className="text-strong text-3xl leading-none font-bold"
                 initial={{ scale: 0.94 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 420, damping: 18 }}
@@ -381,14 +387,26 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
       ) : null}
 
       {state.phase === "gameOver" && state.winnerTeam ? (
-        <section className="flex min-h-[360px] flex-col items-center justify-center rounded-[1.75rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-6 text-center shadow-sm">
-          <Icon icon={Trophy} size="lg" className="text-[var(--staffly-gain-text)]" />
-          <div className="mt-4 text-sm font-medium text-muted">Победитель</div>
-          <h2 className="mt-1 max-w-full truncate text-4xl font-black text-strong sm:text-6xl">{state.winnerTeam.name}</h2>
-          <div className="mt-3 text-sm text-muted">Финальный счет: {state.winnerTeam.score}</div>
+        <section className="flex min-h-[360px] flex-col items-center justify-center rounded-[1.75rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-8 text-center shadow-sm">
+          <div className="relative flex items-center justify-center">
+            <Icon
+              icon={Trophy}
+              size="lg"
+              className="h-16 w-16 animate-[pulse_2s_infinite] text-amber-500 drop-shadow-[0_0_24px_rgba(245,158,11,0.35)]"
+              decorative
+            />
+          </div>
+          <div className="text-muted mt-5 text-xs font-bold tracking-widest uppercase">Победитель</div>
+          <h2 className="mt-2 max-w-full truncate text-4xl font-extrabold tracking-tight text-[var(--staffly-text-strong)] sm:text-5xl">
+            {state.winnerTeam.name}
+          </h2>
+          <div className="text-muted mt-3 text-sm font-medium">
+            Финальный счет:{" "}
+            <span className="font-bold text-[var(--staffly-text-strong)]">{state.winnerTeam.score} очков</span>
+          </div>
           <Button
             type="button"
-            className="mt-6 w-full max-w-xs"
+            className="mt-8 w-full max-w-xs"
             leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
             onClick={actions.resetGame}
           >
@@ -402,8 +420,8 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           <div className="w-full max-w-sm rounded-[1.5rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-[var(--staffly-shadow)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-lg font-semibold text-strong">Завершить раунд?</div>
-                <div className="mt-1 text-sm text-muted">Текущие ответы будут засчитаны как итог этого хода.</div>
+                <div className="text-strong text-lg font-semibold">Завершить раунд?</div>
+                <div className="text-muted mt-1 text-sm">Текущие ответы будут засчитаны как итог этого хода.</div>
               </div>
               <Button
                 type="button"

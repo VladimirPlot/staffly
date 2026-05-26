@@ -1,6 +1,13 @@
 import React from "react";
 
-import { ALIAS_MAX_TEAMS, ALIAS_MIN_TEAMS, ALIAS_ROUND_DURATION_SECONDS, ALIAS_TARGET_SCORE } from "../constants";
+import {
+  ALIAS_MAX_TARGET_SCORE,
+  ALIAS_MAX_TEAMS,
+  ALIAS_MIN_TARGET_SCORE,
+  ALIAS_MIN_TEAMS,
+  ALIAS_ROUND_DURATION_SECONDS,
+  ALIAS_TARGET_SCORE,
+} from "../constants";
 import { createAliasDeck, takeAliasWord } from "../utils/aliasDeck";
 import type {
   AliasGamePhase,
@@ -134,7 +141,10 @@ const reducer = (state: AliasGameState, action: AliasGameAction): AliasGameState
     }
     case "setTargetScore": {
       const targetScore = Number.isFinite(action.targetScore) ? action.targetScore : ALIAS_TARGET_SCORE;
-      const settings = { ...state.settings, targetScore: Math.min(60, Math.max(5, targetScore)) };
+      const settings = {
+        ...state.settings,
+        targetScore: Math.min(ALIAS_MAX_TARGET_SCORE, Math.max(ALIAS_MIN_TARGET_SCORE, targetScore)),
+      };
       return { ...state, settings };
     }
     case "renameTeam": {
