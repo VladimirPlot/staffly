@@ -44,6 +44,12 @@ export const useAliasMotionControls = ({ enabled, onCorrect, onSkip }: AliasMoti
     setStatus("active");
   }, []);
 
+  const disableMotionControls = React.useCallback(() => {
+    neutralBetaRef.current = null;
+    lastActionAtRef.current = 0;
+    setStatus("idle");
+  }, []);
+
   React.useEffect(() => {
     if (!enabled || status !== "active") return undefined;
 
@@ -85,6 +91,7 @@ export const useAliasMotionControls = ({ enabled, onCorrect, onSkip }: AliasMoti
   return {
     status,
     requestMotionPermission,
+    disableMotionControls,
     resetMotionBaseline,
   };
 };

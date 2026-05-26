@@ -16,6 +16,7 @@ import {
 import Button from "../../../../shared/ui/Button";
 import Icon from "../../../../shared/ui/Icon";
 import { useAliasControls } from "../hooks/useAliasControls";
+import { useAliasDeviceMode } from "../hooks/useAliasDeviceMode";
 import { getAliasRoundScore, useAliasGame } from "../hooks/useAliasGame";
 import { useAliasMotionControls } from "../hooks/useAliasMotionControls";
 import type { AliasRoundEvent, AliasTeam } from "../types";
@@ -28,10 +29,10 @@ const getResultClassName = (result: AliasRoundEvent["result"]) =>
     : "border-[var(--staffly-loss-border)] bg-[var(--staffly-loss-bg)] text-[var(--staffly-loss-text)]";
 
 const getMotionStatusLabel = (status: ReturnType<typeof useAliasMotionControls>["status"]) => {
-  if (status === "active") return "Наклоны включены";
+  if (status === "active") return "Наклоны: вкл";
   if (status === "denied") return "Нет доступа к наклонам";
   if (status === "unsupported") return "Наклоны недоступны";
-  return "Включить наклоны";
+  return "Наклоны: выкл";
 };
 
 const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; targetScore: number }> = ({
@@ -39,7 +40,7 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
   activeTeamId,
   targetScore,
 }) => (
-  <div className="grid w-full gap-2 sm:grid-cols-2 lg:grid-cols-3">
+  <div className="flex w-full flex-wrap justify-center gap-2">
     {teams.map((team) => {
       const isActive = team.id === activeTeamId;
 
@@ -47,7 +48,7 @@ const Scoreboard: React.FC<{ teams: AliasTeam[]; activeTeamId: string | null; ta
         <div
           key={team.id}
           className={[
-            "rounded-2xl border p-3 transition",
+            "w-full min-w-0 rounded-2xl border p-3 transition sm:w-[min(20rem,calc(50%-0.25rem))] lg:w-80",
             isActive
               ? "border-[var(--staffly-text-strong)] bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
               : "border-[var(--staffly-border)] bg-[var(--staffly-control)] text-default",
@@ -89,6 +90,7 @@ const RoundEventsList: React.FC<{ events: AliasRoundEvent[] }> = ({ events }) =>
 
 const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
   const [exitConfirmationOpen, setExitConfirmationOpen] = React.useState(false);
+  const { isTouchDevice } = useAliasDeviceMode();
   const currentTeam = state.teams[state.currentTeamIndex] ?? null;
   const activeTeamId = currentTeam?.id ?? null;
   const roundScore = getAliasRoundScore(state.roundEvents);
@@ -98,6 +100,12 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
     onCorrect: actions.markCorrect,
     onSkip: actions.markSkipped,
   });
+
+  React.useEffect(() => {
+    if (!isTouchDevice && motionControls.status === "active") {
+      motionControls.disableMotionControls();
+    }
+  }, [isTouchDevice, motionControls]);
 
   const handlePauseToggle = React.useCallback(() => {
     if (state.phase === "paused") {
@@ -136,29 +144,36 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           <div className="mt-3 text-sm text-muted">
             {state.settings.roundDurationSeconds} секунд, верно +1, пропуск -1
           </div>
-          <div className="mt-6 flex w-full max-w-md flex-col gap-2 sm:flex-row">
+          <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
             <Button
               type="button"
               size="lg"
-              className="flex-1"
+              className="w-full"
               leftIcon={<Icon icon={Play} size="sm" decorative />}
               onClick={handleStartRound}
             >
               Старт раунда
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="flex-1"
-              leftIcon={<Icon icon={Smartphone} size="sm" decorative />}
-              disabled={motionControls.status === "active"}
-              onClick={() => {
-                void motionControls.requestMotionPermission();
-              }}
-            >
-              {getMotionStatusLabel(motionControls.status)}
-            </Button>
+            {isTouchDevice ? (
+              <Button
+                type="button"
+                variant={motionControls.status === "active" ? "primary" : "outline"}
+                size="sm"
+                className="w-full"
+                leftIcon={<Icon icon={Smartphone} size="sm" decorative />}
+                disabled={motionControls.status === "denied" || motionControls.status === "unsupported"}
+                onClick={() => {
+                  if (motionControls.status === "active") {
+                    motionControls.disableMotionControls();
+                    return;
+                  }
+
+                  void motionControls.requestMotionPermission();
+                }}
+              >
+                {getMotionStatusLabel(motionControls.status)}
+              </Button>
+            ) : null}
           </div>
         </section>
       ) : null}
