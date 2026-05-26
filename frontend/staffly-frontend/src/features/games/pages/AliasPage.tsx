@@ -1,14 +1,16 @@
 import React from "react";
 
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
+import AliasGameView from "../alias/components/AliasGameView";
 import AliasGameShell from "../alias/components/AliasGameShell";
 import AliasStartMenu from "../alias/components/AliasStartMenu";
 import { useAliasFullscreen } from "../alias/hooks/useAliasFullscreen";
-import { useAliasSetupState } from "../alias/hooks/useAliasSetupState";
+import { useAliasGame } from "../alias/hooks/useAliasGame";
 
 const AliasPage: React.FC = () => {
   const { gameShellRef, isFullscreen, toggleFullscreen } = useAliasFullscreen();
-  const aliasSetup = useAliasSetupState();
+  const aliasGame = useAliasGame();
+  const { state, actions } = aliasGame;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -24,7 +26,24 @@ const AliasPage: React.FC = () => {
         isFullscreen={isFullscreen}
         onFullscreenToggle={toggleFullscreen}
       >
-        <AliasStartMenu {...aliasSetup} />
+        {state.phase === "setup" ? (
+          <AliasStartMenu
+            difficulty={state.settings.difficulty}
+            wordPack={state.settings.wordPack}
+            targetScore={state.settings.targetScore}
+            roundDurationSeconds={state.settings.roundDurationSeconds}
+            teams={state.teams}
+            onDifficultyChange={actions.setDifficulty}
+            onWordPackChange={actions.setWordPack}
+            onTargetScoreChange={actions.setTargetScore}
+            onTeamNameChange={actions.renameTeam}
+            onTeamAdd={actions.addTeam}
+            onTeamRemove={actions.removeTeam}
+            onStartGame={actions.startGame}
+          />
+        ) : (
+          <AliasGameView {...aliasGame} />
+        )}
       </AliasGameShell>
     </div>
   );

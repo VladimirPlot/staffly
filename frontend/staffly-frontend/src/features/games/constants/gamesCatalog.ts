@@ -17,6 +17,6 @@ export const GAME_CATALOG: GameCatalogItem[] = [
     description: "Командная игра на объяснение ресторанных терминов и ситуаций.",
     icon: MessageCircle,
     to: "/games/alias",
-    statusLabel: "(Тест)",
+    statusLabel: "Готово",
   },
 ];

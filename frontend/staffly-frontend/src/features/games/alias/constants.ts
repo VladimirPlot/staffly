@@ -1,6 +1,11 @@
 import type { AliasOption, DifficultyId, WordPackId } from "./types";
 
 export const ALIAS_ROUND_DURATION_SECONDS = 60;
+export const ALIAS_TARGET_SCORE = 20;
+export const ALIAS_MIN_TEAMS = 2;
+export const ALIAS_MAX_TEAMS = 6;
+export const ALIAS_SWIPE_DISTANCE_THRESHOLD = 56;
+export const ALIAS_SWIPE_VELOCITY_THRESHOLD = 0.55;
 
 export const DIFFICULTY_OPTIONS: AliasOption<DifficultyId>[] = [
   { id: "easy", label: "Легко", description: "понятные слова" },
