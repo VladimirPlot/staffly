@@ -6,6 +6,7 @@ import type {
   AliasGamePhase,
   AliasGameSettings,
   AliasRoundEvent,
+  AliasRoundEventResult,
   AliasRoundResult,
   AliasTeam,
   AliasWord,
@@ -52,10 +53,17 @@ const createInitialTeams = (): AliasTeam[] => [
   { id: "team-2", name: "Команда 2", score: 0 },
 ];
 
-const getEventScore = (result: AliasRoundResult) => (result === "correct" ? 1 : -1);
+const getEventScore = (result: AliasRoundEventResult) => {
+  if (result === "correct") return 1;
+  if (result === "skipped") return -1;
+  return 0;
+};
 
 const getRoundScore = (events: AliasRoundEvent[]) =>
   events.reduce((score, event) => score + getEventScore(event.result), 0);
+
+const getRoundEventsForSummary = (state: AliasGameState): AliasRoundEvent[] =>
+  state.currentWord ? [...state.roundEvents, { word: state.currentWord, result: "pending" }] : state.roundEvents;
 
 const normalizeTeams = (teams: AliasTeam[]) =>
   teams.map((team, index) => ({
@@ -94,7 +102,8 @@ const finishRound = (state: AliasGameState): AliasGameState => {
   }
 
   const currentTeam = state.teams[state.currentTeamIndex] as AliasTeam;
-  const roundScore = getRoundScore(state.roundEvents);
+  const roundEvents = getRoundEventsForSummary(state);
+  const roundScore = getRoundScore(roundEvents);
   const nextTeams = state.teams.map((team, index) =>
     index === state.currentTeamIndex ? { ...team, score: Math.max(0, team.score + roundScore) } : team,
   );
@@ -107,7 +116,7 @@ const finishRound = (state: AliasGameState): AliasGameState => {
     teams: nextTeams,
     currentWord: null,
     remainingSeconds: 0,
-    lastRoundEvents: state.roundEvents,
+    lastRoundEvents: roundEvents,
     lastRoundTeam: currentTeam,
     winnerTeam,
   };

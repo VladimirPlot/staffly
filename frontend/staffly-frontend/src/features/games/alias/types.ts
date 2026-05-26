@@ -2,6 +2,7 @@ export type DifficultyId = "easy" | "medium" | "hard";
 export type WordPackId = "all" | "food" | "bar" | "service";
 export type AliasWordPackId = Exclude<WordPackId, "all">;
 export type AliasRoundResult = "correct" | "skipped";
+export type AliasRoundEventResult = AliasRoundResult | "pending";
 export type AliasGamePhase = "setup" | "ready" | "playing" | "paused" | "roundSummary" | "gameOver";
 
 export type AliasOption<T extends string> = {
@@ -25,7 +26,7 @@ export type AliasTeam = {
 
 export type AliasRoundEvent = {
   word: AliasWord;
-  result: AliasRoundResult;
+  result: AliasRoundEventResult;
 };
 
 export type AliasGameSettings = {

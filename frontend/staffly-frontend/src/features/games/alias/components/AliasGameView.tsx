@@ -27,7 +27,9 @@ type AliasGameViewProps = ReturnType<typeof useAliasGame>;
 const getResultClassName = (result: AliasRoundEvent["result"]) =>
   result === "correct"
     ? "border-[var(--staffly-gain-border)] bg-[var(--staffly-gain-bg)] text-[var(--staffly-gain-text)]"
-    : "border-[var(--staffly-loss-border)] bg-[var(--staffly-loss-bg)] text-[var(--staffly-loss-text)]";
+    : result === "skipped"
+      ? "border-[var(--staffly-loss-border)] bg-[var(--staffly-loss-bg)] text-[var(--staffly-loss-text)]"
+      : "border-[var(--staffly-border)] bg-app text-muted";
 
 const getMotionStatusLabel = (status: ReturnType<typeof useAliasMotionControls>["status"]) => {
   if (status === "active") return "Наклоны: вкл";
@@ -95,6 +97,7 @@ const RoundEventsList: React.FC<{
     >
       {events.map((event, index) => {
         const isCorrect = event.result === "correct";
+        const isSkipped = event.result === "skipped";
 
         return (
           <MotionDiv
@@ -123,8 +126,8 @@ const RoundEventsList: React.FC<{
               </MotionButton>
               <MotionButton
                 type="button"
-                className={getReviewButtonClassName(!isCorrect, "skipped")}
-                aria-pressed={!isCorrect}
+                className={getReviewButtonClassName(isSkipped, "skipped")}
+                aria-pressed={isSkipped}
                 aria-label="Отметить неверным"
                 whileTap={{ scale: 0.9 }}
                 transition={{ type: "spring", stiffness: 420, damping: 26 }}
@@ -174,7 +177,7 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
   }, [actions, motionControls]);
 
   const { cardHandlers } = useAliasControls({
-    enabled: state.phase === "playing" || state.phase === "paused",
+    enabled: !exitConfirmationOpen && (state.phase === "playing" || state.phase === "paused"),
     onCorrect: actions.markCorrect,
     onSkip: actions.markSkipped,
     onPauseToggle: handlePauseToggle,
