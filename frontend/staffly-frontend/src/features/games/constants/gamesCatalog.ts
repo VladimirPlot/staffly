@@ -14,9 +14,9 @@ export const GAME_CATALOG: GameCatalogItem[] = [
   {
     id: "alias",
     title: "Алиас",
-    description: "Командная игра на объяснение ресторанных слов, блюд, напитков и ситуаций.",
+    description: "Командная игра на объяснение ресторанных терминов и ситуаций.",
     icon: MessageCircle,
     to: "/games/alias",
-    statusLabel: "Черновик",
+    statusLabel: "(Тест)",
   },
 ];
