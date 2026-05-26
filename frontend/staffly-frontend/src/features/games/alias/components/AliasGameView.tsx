@@ -549,8 +549,10 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <Button
               type="button"
-              className="flex-1 cursor-pointer"
-              leftIcon={<Icon icon={state.winnerTeam ? Trophy : Flag} size="sm" decorative />}
+              size="lg"
+              className="flex-1 cursor-pointer rounded-2xl text-lg font-semibold"
+              style={{ height: "3.5rem", minHeight: "3.5rem" }}
+              leftIcon={<Icon icon={state.winnerTeam ? Trophy : Flag} size="md" className="h-6 w-6" decorative />}
               onClick={state.winnerTeam ? actions.completeGame : actions.nextTurn}
             >
               {state.winnerTeam ? "Завершить игру" : "Следующая команда"}
@@ -558,8 +560,10 @@ const AliasGameView: React.FC<AliasGameViewProps> = ({ state, actions }) => {
             <Button
               type="button"
               variant="outline"
-              className="flex-1 cursor-pointer"
-              leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
+              size="lg"
+              className="flex-1 cursor-pointer rounded-2xl text-lg font-semibold"
+              style={{ height: "3.5rem", minHeight: "3.5rem" }}
+              leftIcon={<Icon icon={RotateCcw} size="md" className="h-6 w-6" decorative />}
               onClick={actions.resetGame}
             >
               Новая игра

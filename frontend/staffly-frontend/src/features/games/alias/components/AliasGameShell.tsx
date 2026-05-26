@@ -19,10 +19,10 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
     <section
       ref={gameShellRef}
       className={[
-        "relative flex items-center justify-center overflow-hidden border border-[var(--staffly-border)] transition-all duration-300 ease-in-out",
+        "flex items-center justify-center border border-[var(--staffly-border)] transition-all duration-300 ease-in-out",
         isFullscreen
-          ? "min-h-screen w-screen rounded-none bg-[var(--staffly-bg)] p-3 pt-14 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-8 sm:pt-16"
-          : "min-h-[520px] w-full rounded-[2rem] bg-[var(--staffly-control)]/30 p-3 sm:min-h-[620px] sm:p-6",
+          ? "fixed inset-0 z-[100] h-screen w-screen items-start overflow-y-auto overscroll-contain rounded-none bg-[var(--staffly-bg)] px-3 pt-14 pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[height:100dvh]:h-[100dvh] sm:items-center sm:p-8 sm:pt-16"
+          : "relative min-h-[520px] w-full overflow-hidden rounded-[2rem] bg-[var(--staffly-control)]/30 p-3 sm:min-h-[620px] sm:p-6",
       ].join(" ")}
     >
       <AliasFullscreenButton
