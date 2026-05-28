@@ -8,7 +8,7 @@ import { useAliasFullscreen } from "../alias/hooks/useAliasFullscreen";
 import { useAliasGame } from "../alias/hooks/useAliasGame";
 
 const AliasPage: React.FC = () => {
-  const { gameShellRef, isFullscreen, toggleFullscreen } = useAliasFullscreen();
+  const aliasFullscreen = useAliasFullscreen();
   const aliasGame = useAliasGame();
   const { state, actions } = aliasGame;
 
@@ -22,9 +22,17 @@ const AliasPage: React.FC = () => {
       </div>
 
       <AliasGameShell
-        gameShellRef={gameShellRef}
-        isFullscreen={isFullscreen}
-        onFullscreenToggle={toggleFullscreen}
+        gameShellRef={aliasFullscreen.gameShellRef}
+        fullscreenMode={aliasFullscreen.fullscreenMode}
+        fullscreenSupport={aliasFullscreen.fullscreenSupport}
+        fullscreenViewport={aliasFullscreen.fullscreenViewport}
+        isCompactLandscape={aliasFullscreen.isCompactLandscape}
+        orientationLockState={aliasFullscreen.orientationLockState}
+        showLandscapePrompt={aliasFullscreen.showLandscapePrompt}
+        installHintVisible={aliasFullscreen.installHintVisible}
+        fullscreenError={aliasFullscreen.fullscreenError}
+        onFullscreenToggle={aliasFullscreen.toggleFullscreen}
+        onInstallHintDismiss={aliasFullscreen.dismissInstallHint}
       >
         {state.phase === "setup" ? (
           <AliasStartMenu
@@ -33,6 +41,7 @@ const AliasPage: React.FC = () => {
             targetScore={state.settings.targetScore}
             roundDurationSeconds={state.settings.roundDurationSeconds}
             teams={state.teams}
+            isCompactLandscape={aliasFullscreen.isCompactLandscape}
             onDifficultyChange={actions.setDifficulty}
             onWordPackChange={actions.setWordPack}
             onTargetScoreChange={actions.setTargetScore}
@@ -42,7 +51,7 @@ const AliasPage: React.FC = () => {
             onStartGame={actions.startGame}
           />
         ) : (
-          <AliasGameView {...aliasGame} />
+          <AliasGameView {...aliasGame} isCompactLandscape={aliasFullscreen.isCompactLandscape} />
         )}
       </AliasGameShell>
     </div>

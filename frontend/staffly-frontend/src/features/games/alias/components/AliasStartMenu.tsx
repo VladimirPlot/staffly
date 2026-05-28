@@ -23,6 +23,7 @@ type AliasStartMenuProps = {
   targetScore: number;
   roundDurationSeconds: number;
   teams: AliasTeam[];
+  isCompactLandscape?: boolean;
   onDifficultyChange: (difficulty: DifficultyId) => void;
   onWordPackChange: (wordPack: WordPackId) => void;
   onTargetScoreChange: (targetScore: number) => void;
@@ -33,9 +34,9 @@ type AliasStartMenuProps = {
 };
 
 const statusBadgeClassName =
-  "text-muted inline-flex items-center gap-1.5 rounded-full border border-[var(--staffly-border)] bg-[var(--staffly-control)]/45 px-3 py-1 text-[11px] font-medium tracking-wide select-none";
+  "alias-status-badge text-muted inline-flex items-center gap-1.5 rounded-full border border-[var(--staffly-border)] bg-[var(--staffly-control)]/45 px-3 py-1 text-[11px] font-medium tracking-wide select-none";
 const startButtonClassName =
-  "flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--staffly-text-strong)] text-sm font-bold text-[var(--staffly-surface)] shadow-md transition-all hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]";
+  "alias-start-button flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[var(--staffly-text-strong)] text-sm font-bold text-[var(--staffly-surface)] shadow-md transition-all hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]";
 const MotionButton = motion(Button);
 
 const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
@@ -44,6 +45,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
   targetScore,
   roundDurationSeconds,
   teams,
+  isCompactLandscape = false,
   onDifficultyChange,
   onWordPackChange,
   onTargetScoreChange,
@@ -70,7 +72,10 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
       type="button"
       variant="outline"
       size="icon"
-      className="h-8 w-8 rounded-lg bg-[var(--staffly-surface)]"
+      className={[
+        "rounded-lg bg-[var(--staffly-surface)]",
+        isCompactLandscape ? "h-11 min-h-11 w-11" : "h-8 w-8",
+      ].join(" ")}
       disabled={disabled}
       aria-label={label}
       onClick={() => onTargetScoreChange(value)}
@@ -84,23 +89,60 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
       initial={{ opacity: 0, y: 15, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 260, damping: 25 }}
-      className="relative z-10 flex w-full max-w-3xl flex-col gap-6 rounded-[2rem] border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 sm:p-8"
+      className={[
+        "alias-start-menu relative z-10 w-full border border-[var(--staffly-border)] bg-[var(--staffly-surface)]",
+        isCompactLandscape
+          ? "grid h-full max-w-[min(62rem,calc(100vw-5rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-[0.65rem] overflow-hidden rounded-[1.25rem] p-3 sm:p-3"
+          : "flex max-w-3xl flex-col gap-6 rounded-[2rem] p-5 sm:p-8",
+      ].join(" ")}
     >
-      <div className="flex flex-col items-center text-center">
-        <span className="text-muted mb-2 text-[10px] leading-none font-bold tracking-[0.4em] uppercase select-none">
+      <div
+        className={[
+          "alias-start-header",
+          isCompactLandscape
+            ? "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 text-left"
+            : "flex flex-col items-center text-center",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "alias-start-brand text-muted mb-2 text-[10px] leading-none font-bold tracking-[0.4em] uppercase select-none",
+            isCompactLandscape ? "hidden" : "",
+          ].join(" ")}
+        >
           staffly
         </span>
-        <h1 className="text-4xl leading-none font-extrabold tracking-[0.3em] text-[var(--staffly-text-strong)] uppercase select-none sm:text-5xl sm:tracking-[0.4em]">
+        <h1
+          className={[
+            "alias-start-title leading-none font-extrabold text-[var(--staffly-text-strong)] uppercase select-none",
+            isCompactLandscape
+              ? "text-[1.7rem] tracking-[0.28em]"
+              : "text-4xl tracking-[0.3em] sm:text-5xl sm:tracking-[0.4em]",
+          ].join(" ")}
+        >
           alias
         </h1>
-        <div className="mt-3.5 h-px w-32 bg-gradient-to-r from-transparent via-[var(--staffly-border)] to-transparent" />
+        <div
+          className={[
+            "alias-start-divider mt-3.5 h-px w-32 bg-gradient-to-r from-transparent via-[var(--staffly-border)] to-transparent",
+            isCompactLandscape ? "hidden" : "",
+          ].join(" ")}
+        />
 
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <div
+          className={[
+            "alias-status-badges flex flex-wrap",
+            isCompactLandscape ? "mt-0 justify-end gap-1.5" : "mt-4 justify-center gap-2",
+          ].join(" ")}
+        >
           {statusBadges.map(({ id, icon, label }) => (
             <motion.span
               layout
               key={id}
-              className={statusBadgeClassName}
+              className={[
+                statusBadgeClassName,
+                isCompactLandscape ? "px-2 py-0.5 text-[0.64rem]" : "",
+              ].join(" ")}
               transition={{ type: "spring", stiffness: 350, damping: 28 }}
             >
               <Icon icon={icon} size="xs" className="h-3 w-3" decorative />
@@ -110,8 +152,21 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
         </div>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-2 md:divide-x md:divide-[var(--staffly-border)]/30">
-        <div className="space-y-4 pr-0 md:pr-8">
+      <div
+        className={[
+          "alias-start-grid grid md:divide-x md:divide-[var(--staffly-border)]/30",
+          isCompactLandscape
+            ? "min-h-0 grid-cols-[minmax(14rem,0.9fr)_minmax(21rem,1.1fr)] gap-[0.9rem] overflow-y-auto overscroll-contain"
+            : "gap-8 md:grid-cols-2",
+        ].join(" ")}
+        style={isCompactLandscape ? { WebkitOverflowScrolling: "touch" } : undefined}
+      >
+        <div
+          className={[
+            "alias-teams-panel pr-0",
+            isCompactLandscape ? "space-y-[0.55rem] pr-[0.9rem] md:pr-[0.9rem]" : "space-y-4 md:pr-8",
+          ].join(" ")}
+        >
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-strong text-sm font-bold tracking-tight">Команды</h2>
@@ -125,7 +180,10 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 rounded-xl bg-[var(--staffly-surface)] px-3 text-xs font-bold text-[var(--staffly-text-strong)]"
+                className={[
+                  "alias-team-add rounded-xl bg-[var(--staffly-surface)] px-3 text-xs font-bold text-[var(--staffly-text-strong)]",
+                  isCompactLandscape ? "h-11 min-h-11" : "h-8",
+                ].join(" ")}
                 leftIcon={<Icon icon={Plus} size="xs" className="h-3.5 w-3.5" decorative />}
               >
                 Добавить
@@ -133,7 +191,12 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
             )}
           </div>
 
-          <div className="relative space-y-2.5 overflow-hidden">
+          <div
+            className={[
+              "alias-team-list relative space-y-2.5",
+              isCompactLandscape ? "max-h-32 overflow-y-auto pr-0.5" : "overflow-hidden",
+            ].join(" ")}
+          >
             <AnimatePresence initial={false}>
               {teams.map((team, index) => (
                 <motion.div
@@ -152,7 +215,10 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
                     <input
                       id={`alias-team-${team.id}`}
                       value={team.name}
-                      className="text-strong h-10 w-full rounded-xl border border-[var(--staffly-border)] bg-[var(--staffly-surface)] px-4 pr-10 text-sm font-medium transition-all outline-none hover:border-[var(--staffly-muted)]/50 focus:border-[var(--staffly-text-strong)] focus:ring-2 focus:ring-[var(--staffly-ring)]"
+                      className={[
+                        "alias-team-input text-strong w-full rounded-xl border border-[var(--staffly-border)] bg-[var(--staffly-surface)] px-4 pr-10 text-sm font-medium transition-all outline-none hover:border-[var(--staffly-muted)]/50 focus:border-[var(--staffly-text-strong)] focus:ring-2 focus:ring-[var(--staffly-ring)]",
+                        isCompactLandscape ? "h-11 min-h-11" : "h-10",
+                      ].join(" ")}
                       maxLength={28}
                       placeholder={`Команда ${index + 1}`}
                       onChange={(event) => onTeamNameChange(team.id, event.target.value)}
@@ -169,7 +235,10 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
                       type="button"
                       variant="outline"
                       size="icon"
-                      className="text-muted h-10 w-10 shrink-0 rounded-xl bg-[var(--staffly-surface)] hover:border-red-200 hover:bg-red-50/50 hover:text-red-500 dark:hover:border-red-900/30 dark:hover:bg-red-950/20"
+                      className={[
+                        "alias-team-remove text-muted shrink-0 rounded-xl bg-[var(--staffly-surface)] hover:border-red-200 hover:bg-red-50/50 hover:text-red-500 dark:hover:border-red-900/30 dark:hover:bg-red-950/20",
+                        isCompactLandscape ? "h-11 min-h-11 w-11" : "h-10 w-10",
+                      ].join(" ")}
                       aria-label={`Удалить ${team.name || `команду ${index + 1}`}`}
                       onClick={() => onTeamRemove(team.id)}
                     >
@@ -182,12 +251,20 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
           </div>
         </div>
 
-        <div className="space-y-5 pl-0 md:pl-8">
+        <div
+          className={[
+            "alias-settings-panel pl-0",
+            isCompactLandscape
+              ? "flex min-h-0 flex-col gap-2 overflow-visible pb-1 pl-[0.9rem] md:pl-[0.9rem]"
+              : "space-y-5 md:pl-8",
+          ].join(" ")}
+        >
           <AliasOptionGroup
             title="Сложность"
             options={DIFFICULTY_OPTIONS}
             value={difficulty}
             columns={3}
+            isCompactLandscape={isCompactLandscape}
             onChange={onDifficultyChange}
           />
           <AliasOptionGroup
@@ -195,14 +272,30 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
             options={WORD_PACK_OPTIONS}
             value={wordPack}
             columns={4}
+            isCompactLandscape={isCompactLandscape}
             onChange={onWordPackChange}
           />
 
-          <div className="space-y-2">
-            <div className="text-muted pl-1 text-[10px] font-bold tracking-wider uppercase select-none">
+          <div
+            className={[
+              "alias-target-score",
+              isCompactLandscape ? "min-h-0 shrink-0 space-y-[0.35rem]" : "space-y-2",
+            ].join(" ")}
+          >
+            <div
+              className={[
+                "text-muted pl-1 text-[10px] font-bold tracking-wider uppercase select-none",
+                isCompactLandscape ? "leading-none" : "",
+              ].join(" ")}
+            >
               Целевой счет
             </div>
-            <div className="relative flex items-center justify-between rounded-xl border border-[var(--staffly-border)]/40 bg-[var(--staffly-border)]/50 p-1">
+            <div
+              className={[
+                "relative flex items-center justify-between rounded-xl border border-[var(--staffly-border)]/40 bg-[var(--staffly-border)]/50 p-1",
+                isCompactLandscape ? "min-h-11" : "",
+              ].join(" ")}
+            >
               {renderTargetScoreButton(targetScoreActions[0])}
 
               <div className="flex-1 text-center text-sm font-bold text-[var(--staffly-text-strong)] select-none">
@@ -221,7 +314,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
         onClick={onStartGame}
         type="button"
         size="lg"
-        className={startButtonClassName}
+        className={[startButtonClassName, isCompactLandscape ? "relative z-[1] h-11 min-h-11" : ""].join(" ")}
         leftIcon={<Icon icon={Play} size="xs" className="h-4 w-4 fill-current" decorative />}
       >
         Начать игру

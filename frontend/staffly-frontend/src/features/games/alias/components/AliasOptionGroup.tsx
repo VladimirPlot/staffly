@@ -6,6 +6,7 @@ type AliasOptionGroupProps<T extends string> = {
   options: AliasOption<T>[];
   value: T;
   columns: 3 | 4;
+  isCompactLandscape?: boolean;
   onChange: (value: T) => void;
 };
 
@@ -19,10 +20,24 @@ const selectedOptionClassName =
   "absolute inset-0 z-10 rounded-[8px] border border-[var(--staffly-border)]/80 bg-[var(--staffly-surface)] shadow-[0_2px_6px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_6px_rgba(0,0,0,0.4)]";
 const optionTransition = { type: "spring", stiffness: 380, damping: 30 } as const;
 
-const AliasOptionGroup = <T extends string>({ title, options, value, columns, onChange }: AliasOptionGroupProps<T>) => {
+const AliasOptionGroup = <T extends string>({
+  title,
+  options,
+  value,
+  columns,
+  isCompactLandscape = false,
+  onChange,
+}: AliasOptionGroupProps<T>) => {
   return (
-    <div className="space-y-2">
-      <div className="text-muted pl-1 text-[10px] font-bold tracking-wider uppercase select-none">{title}</div>
+    <div className={["alias-option-group", isCompactLandscape ? "shrink-0 space-y-[0.35rem]" : "space-y-2"].join(" ")}>
+      <div
+        className={[
+          "text-muted pl-1 text-[10px] font-bold tracking-wider uppercase select-none",
+          isCompactLandscape ? "leading-none" : "",
+        ].join(" ")}
+      >
+        {title}
+      </div>
       <div
         className={[
           "relative grid gap-1 rounded-xl border border-[var(--staffly-border)]/40 bg-[var(--staffly-border)]/50 p-1",
@@ -39,7 +54,7 @@ const AliasOptionGroup = <T extends string>({ title, options, value, columns, on
               aria-pressed={selected}
               aria-label={`${title}: ${option.label}`}
               title={option.description}
-              className={optionButtonClassName}
+              className={[optionButtonClassName, isCompactLandscape ? "h-11 min-h-11" : ""].join(" ")}
               onClick={() => onChange(option.id)}
             >
               <motion.span
