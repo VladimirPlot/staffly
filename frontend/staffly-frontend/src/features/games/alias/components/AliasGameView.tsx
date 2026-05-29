@@ -9,7 +9,6 @@ import {
   Play,
   RotateCcw,
   SkipForward,
-  Smartphone,
   Trophy,
   X,
 } from "lucide-react";
@@ -17,9 +16,7 @@ import {
 import Button from "../../../../shared/ui/Button";
 import Icon from "../../../../shared/ui/Icon";
 import { useAliasControls } from "../hooks/useAliasControls";
-import { useAliasDeviceMode } from "../hooks/useAliasDeviceMode";
 import { getAliasRoundScore, useAliasGame } from "../hooks/useAliasGame";
-import { useAliasMotionControls } from "../hooks/useAliasMotionControls";
 import type { AliasRoundEvent, AliasRoundResult, AliasTeam } from "../types";
 
 type AliasGameViewProps = ReturnType<typeof useAliasGame>;
@@ -33,13 +30,6 @@ const getResultClassName = (result: AliasRoundEvent["result"]) =>
     : result === "skipped"
       ? "border-[var(--staffly-loss-border)] bg-[var(--staffly-loss-bg)] text-[var(--staffly-loss-text)]"
       : "border-[var(--staffly-border)] bg-app text-muted";
-
-const getMotionStatusLabel = (status: ReturnType<typeof useAliasMotionControls>["status"]) => {
-  if (status === "active") return "Наклоны: вкл";
-  if (status === "denied") return "Нет доступа к наклонам";
-  if (status === "unsupported") return "Наклоны недоступны";
-  return "Наклоны: выкл";
-};
 
 const MotionSection = motion.section;
 const MotionDiv = motion.div;
@@ -377,7 +367,6 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
   const [exitConfirmationOpen, setExitConfirmationOpen] = React.useState(false);
   const [exitDirection, setExitDirection] = React.useState<ExitDirection>(null);
 
-  const { isTouchDevice } = useAliasDeviceMode();
   const currentTeam = state.teams[state.currentTeamIndex] ?? null;
   const activeTeamId = currentTeam?.id ?? null;
   const roundScore = getAliasRoundScore(state.roundEvents);
@@ -395,18 +384,6 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
     actions.markSkipped();
   }, [actions, state.phase]);
 
-  const motionControls = useAliasMotionControls({
-    enabled: state.phase === "playing",
-    onCorrect: handleCorrect,
-    onSkip: handleSkip,
-  });
-
-  React.useEffect(() => {
-    if (!isTouchDevice && motionControls.status === "active") {
-      motionControls.disableMotionControls();
-    }
-  }, [isTouchDevice, motionControls]);
-
   React.useEffect(() => {
     setExitDirection(null);
   }, [state.currentWord?.id]);
@@ -421,9 +398,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
   }, [actions, state.phase]);
 
   const handleStartRound = React.useCallback(() => {
-    motionControls.resetMotionBaseline();
     actions.startRound();
-  }, [actions, motionControls]);
+  }, [actions]);
 
   useAliasControls({
     enabled: !exitConfirmationOpen && (state.phase === "playing" || state.phase === "paused"),
@@ -486,26 +462,6 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
             >
               Старт раунда
             </Button>
-            {isTouchDevice ? (
-              <Button
-                type="button"
-                variant={motionControls.status === "active" ? "primary" : "outline"}
-                size="sm"
-                className="w-full cursor-pointer"
-                leftIcon={<Icon icon={Smartphone} size="sm" decorative />}
-                disabled={motionControls.status === "denied" || motionControls.status === "unsupported"}
-                onClick={() => {
-                  if (motionControls.status === "active") {
-                    motionControls.disableMotionControls();
-                    return;
-                  }
-
-                  void motionControls.requestMotionPermission();
-                }}
-              >
-                {getMotionStatusLabel(motionControls.status)}
-              </Button>
-            ) : null}
           </div>
         </section>
       ) : null}
