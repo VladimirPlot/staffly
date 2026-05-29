@@ -63,7 +63,7 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
       className={[
         "alias-game-shell flex items-center justify-center border border-[var(--staffly-border)] transition-all duration-300 ease-in-out",
         isFullscreen && isCompactLandscape
-          ? "fixed inset-0 z-[100] items-stretch overflow-hidden overscroll-contain rounded-none border-0 bg-[var(--staffly-bg)] pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(3.5rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))]"
+          ? "fixed inset-0 z-[100] items-stretch overflow-hidden overscroll-contain rounded-none border-0 bg-[var(--staffly-surface)] p-0"
           : isFullscreen
             ? "fixed inset-0 z-[100] h-screen w-screen items-start overflow-y-auto overscroll-contain rounded-none border-0 bg-[var(--staffly-bg)] px-[max(0.75rem,env(safe-area-inset-left))] pt-[max(3.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[height:100dvh]:h-[100dvh] sm:items-center sm:p-8 sm:pt-16"
             : "relative min-h-[520px] w-full overflow-hidden rounded-[2rem] bg-[var(--staffly-control)]/30 p-3 sm:min-h-[620px] sm:p-6",
@@ -93,7 +93,7 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
             </div>
             <button
               type="button"
-              className="text-muted flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--staffly-control)] hover:text-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]"
+              className="text-muted hover:text-strong flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--staffly-control)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]"
               aria-label="Скрыть подсказку"
               onClick={onInstallHintDismiss}
             >
@@ -107,7 +107,7 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
           <div className="relative max-w-sm rounded-2xl border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-lg">
             <button
               type="button"
-              className="text-muted absolute top-2 right-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--staffly-control)] hover:text-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]"
+              className="text-muted hover:text-strong absolute top-2 right-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--staffly-control)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]"
               aria-label="Свернуть игровой режим"
               onClick={() => {
                 void onFullscreenToggle();

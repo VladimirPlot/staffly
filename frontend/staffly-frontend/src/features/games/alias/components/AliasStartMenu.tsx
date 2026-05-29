@@ -74,7 +74,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
       size="icon"
       className={[
         "rounded-lg bg-[var(--staffly-surface)]",
-        isCompactLandscape ? "h-11 min-h-11 w-11" : "h-8 w-8",
+        isCompactLandscape ? "h-8 min-h-[2rem] w-8" : "h-8 w-8",
       ].join(" ")}
       disabled={disabled}
       aria-label={label}
@@ -92,7 +92,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
       className={[
         "alias-start-menu relative z-10 w-full border border-[var(--staffly-border)] bg-[var(--staffly-surface)]",
         isCompactLandscape
-          ? "grid h-full max-w-[min(62rem,calc(100vw-5rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-[0.65rem] overflow-hidden rounded-[1.25rem] p-3 sm:p-3"
+          ? "grid h-full w-full max-w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-[0.65rem] overflow-hidden rounded-none border-none p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(3.5rem,env(safe-area-inset-right))] pb-[max(0.6rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))]"
           : "flex max-w-3xl flex-col gap-6 rounded-[2rem] p-5 sm:p-8",
       ].join(" ")}
     >
@@ -116,7 +116,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
           className={[
             "alias-start-title leading-none font-extrabold text-[var(--staffly-text-strong)] uppercase select-none",
             isCompactLandscape
-              ? "text-[1.7rem] tracking-[0.28em]"
+              ? "text-[1.3rem] tracking-[0.25em]"
               : "text-4xl tracking-[0.3em] sm:text-5xl sm:tracking-[0.4em]",
           ].join(" ")}
         >
@@ -132,17 +132,14 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
         <div
           className={[
             "alias-status-badges flex flex-wrap",
-            isCompactLandscape ? "mt-0 justify-end gap-1.5" : "mt-4 justify-center gap-2",
+            isCompactLandscape ? "mt-0 justify-end gap-1.5 pr-10" : "mt-4 justify-center gap-2",
           ].join(" ")}
         >
           {statusBadges.map(({ id, icon, label }) => (
             <motion.span
               layout
               key={id}
-              className={[
-                statusBadgeClassName,
-                isCompactLandscape ? "px-2 py-0.5 text-[0.64rem]" : "",
-              ].join(" ")}
+              className={[statusBadgeClassName, isCompactLandscape ? "px-2 py-0.5 text-[0.64rem]" : ""].join(" ")}
               transition={{ type: "spring", stiffness: 350, damping: 28 }}
             >
               <Icon icon={icon} size="xs" className="h-3 w-3" decorative />
@@ -182,7 +179,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
                 size="sm"
                 className={[
                   "alias-team-add rounded-xl bg-[var(--staffly-surface)] px-3 text-xs font-bold text-[var(--staffly-text-strong)]",
-                  isCompactLandscape ? "h-11 min-h-11" : "h-8",
+                  isCompactLandscape ? "h-8 min-h-[2rem]" : "h-8",
                 ].join(" ")}
                 leftIcon={<Icon icon={Plus} size="xs" className="h-3.5 w-3.5" decorative />}
               >
@@ -217,7 +214,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
                       value={team.name}
                       className={[
                         "alias-team-input text-strong w-full rounded-xl border border-[var(--staffly-border)] bg-[var(--staffly-surface)] px-4 pr-10 text-sm font-medium transition-all outline-none hover:border-[var(--staffly-muted)]/50 focus:border-[var(--staffly-text-strong)] focus:ring-2 focus:ring-[var(--staffly-ring)]",
-                        isCompactLandscape ? "h-11 min-h-11" : "h-10",
+                        isCompactLandscape ? "h-8.5 min-h-[2.125rem]" : "h-10",
                       ].join(" ")}
                       maxLength={28}
                       placeholder={`Команда ${index + 1}`}
@@ -237,7 +234,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
                       size="icon"
                       className={[
                         "alias-team-remove text-muted shrink-0 rounded-xl bg-[var(--staffly-surface)] hover:border-red-200 hover:bg-red-50/50 hover:text-red-500 dark:hover:border-red-900/30 dark:hover:bg-red-950/20",
-                        isCompactLandscape ? "h-11 min-h-11 w-11" : "h-10 w-10",
+                        isCompactLandscape ? "h-8.5 min-h-[2.125rem] w-8.5" : "h-10 w-10",
                       ].join(" ")}
                       aria-label={`Удалить ${team.name || `команду ${index + 1}`}`}
                       onClick={() => onTeamRemove(team.id)}
@@ -314,7 +311,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
         onClick={onStartGame}
         type="button"
         size="lg"
-        className={[startButtonClassName, isCompactLandscape ? "relative z-[1] h-11 min-h-11" : ""].join(" ")}
+        className={[startButtonClassName, isCompactLandscape ? "relative z-[1] h-9.5 min-h-[2.375rem]" : ""].join(" ")}
         leftIcon={<Icon icon={Play} size="xs" className="h-4 w-4 fill-current" decorative />}
       >
         Начать игру

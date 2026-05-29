@@ -54,7 +54,7 @@ const AliasOptionGroup = <T extends string>({
               aria-pressed={selected}
               aria-label={`${title}: ${option.label}`}
               title={option.description}
-              className={[optionButtonClassName, isCompactLandscape ? "h-11 min-h-11" : ""].join(" ")}
+              className={[optionButtonClassName, isCompactLandscape ? "h-8 min-h-[2rem]" : ""].join(" ")}
               onClick={() => onChange(option.id)}
             >
               <motion.span

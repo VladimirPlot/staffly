@@ -28,7 +28,7 @@ const AliasFullscreenButton: React.FC<AliasFullscreenButtonProps> = ({
     <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] right-[max(0.5rem,env(safe-area-inset-right))] z-20">
       <IconButton
         aria-label={label}
-        className="h-9 w-9 bg-[var(--staffly-surface)]/90 p-0 backdrop-blur"
+        className="h-8 w-8 bg-[var(--staffly-surface)]/90 p-0 shadow-sm backdrop-blur transition-transform hover:scale-105 active:scale-95"
         title={label}
         onClick={() => {
           void onToggle();
