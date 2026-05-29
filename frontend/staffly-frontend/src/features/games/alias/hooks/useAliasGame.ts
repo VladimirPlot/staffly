@@ -62,7 +62,7 @@ const createInitialTeams = (): AliasTeam[] => [
 
 const getEventScore = (result: AliasRoundEventResult) => {
   if (result === "correct") return 1;
-  if (result === "skipped") return -1;
+  if (result === "skipped") return 0;
   return 0;
 };
 

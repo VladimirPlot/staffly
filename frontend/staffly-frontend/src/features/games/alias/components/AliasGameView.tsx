@@ -291,7 +291,7 @@ const WordCard: React.FC<{
           className="flex items-center gap-1.5 rounded-full bg-rose-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-xs"
         >
           <X className="h-4 w-4 stroke-[3]" />
-          <span>Пропуск (-1)</span>
+          <span>Пропуск (0)</span>
         </motion.div>
       </motion.div>
 
@@ -474,7 +474,7 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <div className="text-muted text-sm font-medium">Ход команды</div>
           <h2 className="text-strong mt-2 max-w-full truncate text-4xl font-bold sm:text-5xl">{currentTeam.name}</h2>
           <div className="text-muted mt-3 text-sm">
-            {state.settings.roundDurationSeconds} секунд, верно +1, пропуск -1
+            {state.settings.roundDurationSeconds} секунд, верно +1, пропуск 0
           </div>
           <div className="mt-6 flex w-full max-w-xs flex-col gap-2">
             <Button
