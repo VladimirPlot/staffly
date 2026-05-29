@@ -215,13 +215,14 @@ const WordCard: React.FC<{
   onCorrect: () => void;
   onSkip: () => void;
 }> = ({ word, exitDirection, isCompactLandscape = false, onCorrect, onSkip }) => {
+  const threshold = isCompactLandscape ? 60 : 80;
   const y = useMotionValue(0);
-  const rotate = useTransform(y, [-150, 150], [-4, 4]);
-  const opacity = useTransform(y, [-240, -160, 0, 160, 240], [0, 1, 1, 1, 0]);
-  const correctOverlayOpacity = useTransform(y, [0, 120], [0, 1]);
-  const skipOverlayOpacity = useTransform(y, [-120, 0], [1, 0]);
-  const correctScale = useTransform(y, [0, 120], [0.8, 1]);
-  const skipScale = useTransform(y, [-120, 0], [1, 0.8]);
+  const rotate = useTransform(y, [-threshold * 1.5, threshold * 1.5], [-4, 4]);
+  const opacity = useTransform(y, [-threshold * 2.5, -threshold * 1.5, 0, threshold * 1.5, threshold * 2.5], [0, 1, 1, 1, 0]);
+  const correctOverlayOpacity = useTransform(y, [0, threshold], [0, 1]);
+  const skipOverlayOpacity = useTransform(y, [-threshold, 0], [1, 0]);
+  const correctScale = useTransform(y, [0, threshold], [0.8, 1]);
+  const skipScale = useTransform(y, [-threshold, 0], [1, 0.8]);
 
   React.useEffect(() => {
     y.set(0);
@@ -229,10 +230,10 @@ const WordCard: React.FC<{
 
   const handleDragEnd = React.useCallback(
     (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-      if (info.offset.y > 120) onCorrect();
-      if (info.offset.y < -120) onSkip();
+      if (info.offset.y > threshold) onCorrect();
+      else if (info.offset.y < -threshold) onSkip();
     },
-    [onCorrect, onSkip],
+    [onCorrect, onSkip, threshold],
   );
 
   return (
@@ -241,6 +242,7 @@ const WordCard: React.FC<{
       drag="y"
       dragConstraints={{ top: 0, bottom: 0 }}
       dragElastic={0.8}
+      dragMomentum={false}
       onDragEnd={handleDragEnd}
       style={{ y, rotate, opacity }}
       initial={{ opacity: 0, scale: 0.96 }}
@@ -248,7 +250,7 @@ const WordCard: React.FC<{
       exit={{
         opacity: 0,
         scale: 0.96,
-        y: exitDirection === "down" ? 280 : exitDirection === "up" ? -280 : 0,
+        y: exitDirection === "down" ? threshold * 2.5 : exitDirection === "up" ? -threshold * 2.5 : 0,
         transition: { duration: 0.18, ease: "easeIn" },
       }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
@@ -520,6 +522,7 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
                 <PausedRoundCard onResume={actions.resumeRound} onExit={() => setExitConfirmationOpen(true)} />
               ) : (
                 <WordCard
+                  key={state.currentWord?.id ?? "empty-word"}
                   word={state.currentWord}
                   exitDirection={exitDirection}
                   isCompactLandscape={isCompactLandscape}
