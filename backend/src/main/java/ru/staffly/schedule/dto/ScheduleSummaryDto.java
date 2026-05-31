@@ -20,5 +20,6 @@ public record ScheduleSummaryDto(
         Instant preferenceClosedAt,
         Instant preferenceAppliedAt,
         Integer preferenceSubmittedCount,
-        Integer preferenceTotalParticipants
+        Integer preferenceTotalParticipants,
+        Boolean myPreferenceSubmitted
 ) {}

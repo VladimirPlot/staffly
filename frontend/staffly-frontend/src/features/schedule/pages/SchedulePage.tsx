@@ -8,9 +8,11 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 import { ArrowLeft } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 
+import ApplySchedulePreferencesDialog from "../components/ApplySchedulePreferencesDialog";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
+import ScheduleBuildTemplatesSection from "../components/ScheduleBuildTemplatesSection";
 import SchedulePreferenceMeView from "../components/SchedulePreferenceMeView";
 import SchedulePreferenceManagerDialog from "../components/SchedulePreferenceManagerDialog";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
@@ -24,11 +26,14 @@ import ShiftSwapDialog from "../components/ShiftSwapDialog";
 import TodayShiftsCard from "../components/TodayShiftsCard";
 import useSavedScheduleActions from "../hooks/useSavedScheduleActions";
 import useScheduleCellEditing from "../hooks/useScheduleCellEditing";
+import useScheduleBuildTemplatesActions from "../hooks/useScheduleBuildTemplatesActions";
 import useScheduleDraftActions from "../hooks/useScheduleDraftActions";
 import useScheduleDerivedState from "../hooks/useScheduleDerivedState";
 import useScheduleExportActions from "../hooks/useScheduleExportActions";
 import useScheduleInitialData from "../hooks/useScheduleInitialData";
 import useScheduleLifecycleActions from "../hooks/useScheduleLifecycleActions";
+import useScheduleAutoBuildPreviewActions from "../hooks/useScheduleAutoBuildPreviewActions";
+import useScheduleAutoBuildApplyActions from "../hooks/useScheduleAutoBuildApplyActions";
 import useScheduleOwnerDialog from "../hooks/useScheduleOwnerDialog";
 import useSchedulePreferenceMeActions from "../hooks/useSchedulePreferenceMeActions";
 import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceManagerActions";
@@ -36,6 +41,7 @@ import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import type { ScheduleSummary } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
@@ -49,6 +55,42 @@ function normalizeRole(role: string | null | undefined): string | null {
     .replace(/^ROLE_/, "");
 }
 
+function isScheduleOwner(params: {
+  owner: ScheduleOwnerDto | null | undefined;
+  currentMemberId: number | null | undefined;
+  currentUserId: number | null | undefined;
+}): boolean {
+  const { owner, currentMemberId, currentUserId } = params;
+  if (!owner) return false;
+
+  const ownerMemberId = owner.memberId;
+  if (ownerMemberId != null && currentMemberId != null && ownerMemberId === currentMemberId) {
+    return true;
+  }
+
+  const ownerUserId = owner.userId;
+  return ownerUserId != null && currentUserId != null && ownerUserId === currentUserId;
+}
+
+function canOpenOwnPreferenceFlow(params: {
+  summary: ScheduleSummary;
+  currentMember: MemberDto | null;
+  currentUserId: number | null | undefined;
+}): boolean {
+  const { summary, currentMember, currentUserId } = params;
+  if (summary.status !== "COLLECTING_PREFERENCES") return false;
+  if (!currentMember) return false;
+
+  const positionId = currentMember.positionId;
+  const isParticipant = positionId != null && summary.positionIds.includes(positionId);
+  if (!isParticipant) return false;
+
+  return !isScheduleOwner({
+    owner: summary.owner,
+    currentMemberId: currentMember.id,
+    currentUserId,
+  });
+}
 const SchedulePage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
@@ -61,6 +103,7 @@ const SchedulePage: React.FC = () => {
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
+  const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -150,7 +193,7 @@ const SchedulePage: React.FC = () => {
       const memberId = submission.member?.memberId;
       if (!memberId) return;
       submission.cells?.forEach((cell) => {
-        if (!cell.fullDay || !cell.day) return;
+        if (!cell.day) return;
         const key = `${memberId}:${cell.day}`;
         if (!map[key]) map[key] = [];
         map[key].push(cell);
@@ -324,6 +367,21 @@ const SchedulePage: React.FC = () => {
   });
 
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
+  const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
+
+  const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
+  const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
+    restaurantId,
+    scheduleId,
+    prepareSchedule,
+    onScheduleChanged: setSchedule,
+    onSavedSchedulesChanged: setSavedSchedules,
+    onScheduleReadOnlyChanged: setScheduleReadOnly,
+    onLastRangeChanged: setLastRange,
+    onClearScheduleNotices: clearScheduleNotices,
+    onScheduleMessage: setScheduleMessage,
+    onScheduleError: setScheduleError,
+  });
 
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
@@ -377,7 +435,14 @@ const SchedulePage: React.FC = () => {
     (id: number) => {
       const item = savedSchedules.find((candidate) => candidate.id === id);
 
-      if (!canManage && item?.status === "COLLECTING_PREFERENCES") {
+      if (
+        item &&
+        canOpenOwnPreferenceFlow({
+          summary: item,
+          currentMember: derived.currentMember,
+          currentUserId: user?.id,
+        })
+      ) {
         savedScheduleActions.closeSavedSchedule();
         void preferenceActions.openPreferenceView(id);
         return;
@@ -386,7 +451,50 @@ const SchedulePage: React.FC = () => {
       preferenceActions.closePreferenceView();
       void savedScheduleActions.openSavedSchedule(id);
     },
-    [canManage, preferenceActions, savedScheduleActions, savedSchedules],
+    [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules, user?.id],
+  );
+
+  const handleOpenApplyPreferencesDialog = React.useCallback(() => {
+    setApplyPreferencesDialogOpen(true);
+    if (!buildTemplatesActions.loading && buildTemplatesActions.templates.length === 0) {
+      void buildTemplatesActions.loadTemplates();
+    }
+  }, [buildTemplatesActions]);
+
+  const handleCloseApplyPreferencesDialog = React.useCallback(() => {
+    if (
+      lifecycleActions.pendingAction === "applyPreferences" ||
+      autoBuildPreviewActions.loading ||
+      autoBuildApplyActions.applying
+    ) {
+      return;
+    }
+    setApplyPreferencesDialogOpen(false);
+  }, [autoBuildApplyActions.applying, autoBuildPreviewActions.loading, lifecycleActions.pendingAction]);
+
+  const handleApplyPreferencesManual = React.useCallback(async () => {
+    const success = await lifecycleActions.applyPreferencesSimple();
+    if (success) {
+      setApplyPreferencesDialogOpen(false);
+      autoBuildPreviewActions.clearPreview();
+    }
+  }, [autoBuildPreviewActions, lifecycleActions]);
+
+  const handlePreviewAutoBuild = React.useCallback(
+    async (templateId: number): Promise<boolean> => autoBuildPreviewActions.loadPreview(templateId),
+    [autoBuildPreviewActions],
+  );
+
+  const handleApplyAutoBuild = React.useCallback(
+    async (templateId: number): Promise<boolean> => {
+      const ok = await autoBuildApplyActions.applyAutoBuild(templateId);
+      if (ok) {
+        setApplyPreferencesDialogOpen(false);
+        autoBuildPreviewActions.clearPreview();
+      }
+      return ok;
+    },
+    [autoBuildApplyActions, autoBuildPreviewActions],
   );
 
   React.useEffect(() => {
@@ -449,25 +557,50 @@ const SchedulePage: React.FC = () => {
       )}
 
       {!loading && !error && !schedule && !preferenceActions.preferenceViewScheduleId && (
-        <SavedSchedulesSection
-          canManage={canManage}
-          savedSchedules={derived.filteredSavedSchedules}
-          positions={positions}
-          positionFilter={positionFilter}
-          onPositionFilterChange={setPositionFilter}
-          onOpenSavedSchedule={handleOpenSavedSchedule}
-          onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
-          onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
-          onDownloadXlsx={exportActions.downloadXlsx}
-          onDownloadJpg={exportActions.downloadJpg}
-          downloadMenuFor={downloadMenuFor}
-          onToggleDownloadMenu={setDownloadMenuFor}
-          downloading={exportActions.downloading}
-          selectedSavedId={savedScheduleActions.selectedSavedId}
-          scheduleLoading={savedScheduleActions.scheduleLoading}
-          hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
-          deletingId={savedScheduleActions.deletingId}
-        />
+        <>
+          <SavedSchedulesSection
+            canManage={canManage}
+            savedSchedules={derived.filteredSavedSchedules}
+            positions={positions}
+            positionFilter={positionFilter}
+            onPositionFilterChange={setPositionFilter}
+            onOpenSavedSchedule={handleOpenSavedSchedule}
+            getOpenButtonLabel={(item) =>
+              canOpenOwnPreferenceFlow({
+                summary: item,
+                currentMember: derived.currentMember,
+                currentUserId: user?.id,
+              })
+                ? "Оставить пожелания"
+                : "Открыть"
+            }
+            onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
+            onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
+            onDownloadXlsx={exportActions.downloadXlsx}
+            onDownloadJpg={exportActions.downloadJpg}
+            downloadMenuFor={downloadMenuFor}
+            onToggleDownloadMenu={setDownloadMenuFor}
+            downloading={exportActions.downloading}
+            selectedSavedId={savedScheduleActions.selectedSavedId}
+            scheduleLoading={savedScheduleActions.scheduleLoading}
+            hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
+            deletingId={savedScheduleActions.deletingId}
+          />
+          {canManage && (
+            <ScheduleBuildTemplatesSection
+              templates={buildTemplatesActions.templates}
+              loading={buildTemplatesActions.loading}
+              error={buildTemplatesActions.error}
+              saving={buildTemplatesActions.saving}
+              deletingId={buildTemplatesActions.deletingId}
+              positions={positions}
+              onLoad={buildTemplatesActions.loadTemplates}
+              onCreate={(request) => buildTemplatesActions.createTemplate(request)}
+              onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
+              onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
+            />
+          )}
+        </>
       )}
 
       {!loading &&
@@ -527,7 +660,7 @@ const SchedulePage: React.FC = () => {
             lifecycleAction={lifecycleActions.pendingAction}
             onStartPreferenceCollection={lifecycleActions.openPreferenceDialog}
             onClosePreferenceCollection={lifecycleActions.closePreferenceCollection}
-            onApplyPreferences={lifecycleActions.applyPreferencesSimple}
+            onOpenApplyPreferencesDialog={handleOpenApplyPreferencesDialog}
             onPublishSchedule={lifecycleActions.publishSchedule}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
@@ -635,6 +768,23 @@ const SchedulePage: React.FC = () => {
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
         onClose={lifecycleActions.closePreferenceDialog}
         onSubmit={() => void lifecycleActions.submitPreferenceCollection()}
+      />
+
+      <ApplySchedulePreferencesDialog
+        open={applyPreferencesDialogOpen}
+        applying={lifecycleActions.pendingAction === "applyPreferences"}
+        autoApplying={autoBuildApplyActions.applying}
+        templates={buildTemplatesActions.templates}
+        templatesLoading={buildTemplatesActions.loading}
+        templatesError={buildTemplatesActions.error}
+        preview={autoBuildPreviewActions.preview}
+        previewLoading={autoBuildPreviewActions.loading}
+        previewError={autoBuildPreviewActions.error}
+        onReloadTemplates={() => void buildTemplatesActions.loadTemplates()}
+        onClose={handleCloseApplyPreferencesDialog}
+        onApplyManual={() => void handleApplyPreferencesManual()}
+        onPreviewAutoBuild={handlePreviewAutoBuild}
+        onApplyAutoBuild={handleApplyAutoBuild}
       />
 
       <CreateScheduleDialog

@@ -16,3 +16,4 @@ output/playwright/
 # misc
 .DS_Store
 .codex
+.agents

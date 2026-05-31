@@ -46,6 +46,7 @@ export type ScheduleSummary = ScheduleLifecycleDto & {
   owner?: ScheduleOwnerDto | null;
   preferenceSubmittedCount?: number | null;
   preferenceTotalParticipants?: number | null;
+  myPreferenceSubmitted?: boolean | null;
 };
 
 export type ScheduleSummaryDto = ScheduleSummary;
@@ -188,6 +189,128 @@ export type UpsertMySchedulePreferenceRequest = {
   cells: SchedulePreferenceCellRequest[];
   comment?: string | null;
 };
+export type ScheduleBuildTargetPattern = "NONE" | "TWO_TWO" | "THREE_THREE" | "FIVE_TWO";
+
+export type ScheduleBuildShiftOptionDto = {
+  id: number;
+  startTime: string;
+  endTime: string;
+  label: string | null;
+  isFullShift: boolean;
+  sortOrder: number;
+};
+
+export type ScheduleBuildCoverageRuleDto = {
+  id: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  requiredCount: number;
+  sortOrder: number;
+};
+
+export type ScheduleBuildPositionConfigDto = {
+  id: number;
+  positionId: number;
+  positionName: string;
+  fullShiftStart: string;
+  fullShiftEnd: string;
+  targetPattern: ScheduleBuildTargetPattern;
+  minRestHours: number | null;
+  maxShiftsPerPeriod: number | null;
+  shiftOptions: ScheduleBuildShiftOptionDto[];
+  coverageRules: ScheduleBuildCoverageRuleDto[];
+  sortOrder: number;
+};
+
+export type ScheduleBuildTemplateDto = {
+  id: number;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  positionConfigs: ScheduleBuildPositionConfigDto[];
+};
+
+export type SaveScheduleBuildShiftOptionRequest = {
+  id?: number;
+  startTime: string;
+  endTime: string;
+  label?: string | null;
+  isFullShift: boolean;
+  sortOrder: number;
+};
+
+export type SaveScheduleBuildCoverageRuleRequest = {
+  id?: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  requiredCount: number;
+  sortOrder: number;
+};
+
+export type SaveScheduleBuildPositionConfigRequest = {
+  id?: number;
+  positionId: number;
+  fullShiftStart: string;
+  fullShiftEnd: string;
+  targetPattern: ScheduleBuildTargetPattern;
+  minRestHours?: number | null;
+  maxShiftsPerPeriod?: number | null;
+  shiftOptions: SaveScheduleBuildShiftOptionRequest[];
+  coverageRules: SaveScheduleBuildCoverageRuleRequest[];
+  sortOrder: number;
+};
+
+export type PreviewScheduleAutoBuildRequest = {
+  templateId: number;
+};
+
+export type ApplyScheduleAutoBuildRequest = {
+  templateId: number;
+};
+
+export type ScheduleAutoBuildCellPreviewDto = {
+  memberId: number | null;
+  memberName: string | null;
+  day: string;
+  value: string | null;
+  shiftOptionId: number | null;
+  shiftLabel: string | null;
+  reason: string | null;
+  warnings: string[];
+};
+
+export type ScheduleAutoBuildPositionPreviewDto = {
+  positionId: number;
+  positionName: string;
+  cells: ScheduleAutoBuildCellPreviewDto[];
+  warnings: string[];
+  totalAssignments: number;
+  warningsCount: number;
+  unfilledCount: number;
+  negativeAssignmentsCount: number;
+};
+
+export type ScheduleAutoBuildPreviewResponse = {
+  scheduleId: number;
+  templateId: number;
+  templateName: string;
+  positions: ScheduleAutoBuildPositionPreviewDto[];
+  warnings: string[];
+  totalAssignments: number;
+  warningsCount: number;
+  unfilledCount: number;
+  negativeAssignmentsCount: number;
+};
+
+export type SaveScheduleBuildTemplateRequest = {
+  name: string;
+  description?: string | null;
+  positionConfigs: SaveScheduleBuildPositionConfigRequest[];
+};
 
 function nullableTimestamp(value: string | null | undefined): string | null {
   return value ?? null;
@@ -232,6 +355,7 @@ function mapScheduleSummary(data: ScheduleSummary): ScheduleSummary {
     owner: data.owner ?? null,
     preferenceSubmittedCount: data.preferenceSubmittedCount ?? null,
     preferenceTotalParticipants: data.preferenceTotalParticipants ?? null,
+    myPreferenceSubmitted: data.myPreferenceSubmitted ?? null,
   };
 }
 
@@ -271,6 +395,20 @@ function mapPreferenceSubmissionsResponse(
       updatedAt: nullableTimestamp(submission.updatedAt),
       comment: submission.comment ?? null,
       cells: submission.cells ?? [],
+    })),
+  };
+}
+
+function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuildTemplateDto {
+  return {
+    ...data,
+    description: data.description ?? null,
+    createdAt: nullableTimestamp(data.createdAt),
+    updatedAt: nullableTimestamp(data.updatedAt),
+    positionConfigs: (data.positionConfigs ?? []).map((config) => ({
+      ...config,
+      shiftOptions: config.shiftOptions ?? [],
+      coverageRules: config.coverageRules ?? [],
     })),
   };
 }
@@ -328,6 +466,52 @@ export async function closePreferenceCollection(restaurantId: number, scheduleId
 export async function applySchedulePreferencesSimple(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/apply-simple`,
+  );
+  return mapSchedule(data);
+}
+
+export async function previewScheduleAutoBuild(
+  restaurantId: number,
+  scheduleId: number,
+  request: PreviewScheduleAutoBuildRequest,
+): Promise<ScheduleAutoBuildPreviewResponse> {
+  const response = await api.post(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/auto-build-preview`,
+    request,
+  );
+  const data = response.data ?? {};
+  return {
+    scheduleId: data.scheduleId,
+    templateId: data.templateId,
+    templateName: data.templateName,
+    positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
+      ...position,
+      cells: (position.cells ?? []).map((cell) => ({
+        ...cell,
+        warnings: cell.warnings ?? [],
+      })),
+      warnings: position.warnings ?? [],
+      totalAssignments: position.totalAssignments ?? 0,
+      warningsCount: position.warningsCount ?? 0,
+      unfilledCount: position.unfilledCount ?? 0,
+      negativeAssignmentsCount: position.negativeAssignmentsCount ?? 0,
+    })),
+    warnings: data.warnings ?? [],
+    totalAssignments: data.totalAssignments ?? 0,
+    warningsCount: data.warningsCount ?? 0,
+    unfilledCount: data.unfilledCount ?? 0,
+    negativeAssignmentsCount: data.negativeAssignmentsCount ?? 0,
+  };
+}
+
+export async function applyScheduleAutoBuild(
+  restaurantId: number,
+  scheduleId: number,
+  request: ApplyScheduleAutoBuildRequest,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/auto-build-apply`,
+    request,
   );
   return mapSchedule(data);
 }
@@ -451,4 +635,48 @@ export async function getSchedulePreferenceSubmissions(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/submissions`,
   );
   return mapPreferenceSubmissionsResponse(data);
+}
+
+export async function listScheduleBuildTemplates(restaurantId: number): Promise<ScheduleBuildTemplateDto[]> {
+  const { data } = await api.get<ScheduleBuildTemplateDto[]>(
+    `/api/restaurants/${restaurantId}/schedules/build-templates`,
+  );
+  return (data ?? []).map(mapScheduleBuildTemplate);
+}
+
+export async function getScheduleBuildTemplate(
+  restaurantId: number,
+  templateId: number,
+): Promise<ScheduleBuildTemplateDto> {
+  const { data } = await api.get<ScheduleBuildTemplateDto>(
+    `/api/restaurants/${restaurantId}/schedules/build-templates/${templateId}`,
+  );
+  return mapScheduleBuildTemplate(data);
+}
+
+export async function createScheduleBuildTemplate(
+  restaurantId: number,
+  request: SaveScheduleBuildTemplateRequest,
+): Promise<ScheduleBuildTemplateDto> {
+  const { data } = await api.post<ScheduleBuildTemplateDto>(
+    `/api/restaurants/${restaurantId}/schedules/build-templates`,
+    request,
+  );
+  return mapScheduleBuildTemplate(data);
+}
+
+export async function updateScheduleBuildTemplate(
+  restaurantId: number,
+  templateId: number,
+  request: SaveScheduleBuildTemplateRequest,
+): Promise<ScheduleBuildTemplateDto> {
+  const { data } = await api.put<ScheduleBuildTemplateDto>(
+    `/api/restaurants/${restaurantId}/schedules/build-templates/${templateId}`,
+    request,
+  );
+  return mapScheduleBuildTemplate(data);
+}
+
+export async function archiveScheduleBuildTemplate(restaurantId: number, templateId: number): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/schedules/build-templates/${templateId}`);
 }

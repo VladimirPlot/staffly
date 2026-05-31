@@ -1,0 +1,64 @@
+package ru.staffly.schedule.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.BatchSize;
+import ru.staffly.dictionary.model.Position;
+
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "schedule_build_position_config",
+        indexes = {
+                @Index(name = "idx_sbpc_template", columnList = "template_id"),
+                @Index(name = "idx_sbpc_position", columnList = "position_id")
+        },
+        uniqueConstraints = @UniqueConstraint(name = "uq_sbpc_template_position", columnNames = {"template_id", "position_id"}))
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+public class ScheduleBuildPositionConfig {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "template_id", nullable = false)
+    private ScheduleBuildTemplate template;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "position_id", nullable = false)
+    private Position position;
+
+    @Column(name = "full_shift_start", nullable = false)
+    private LocalTime fullShiftStart;
+
+    @Column(name = "full_shift_end", nullable = false)
+    private LocalTime fullShiftEnd;
+
+    @Column(name = "min_rest_hours")
+    private Integer minRestHours;
+
+    @Column(name = "max_shifts_per_period")
+    private Integer maxShiftsPerPeriod;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_pattern", length = 20)
+    private ScheduleBuildPattern targetPattern;
+
+    @Column(name = "sort_order", nullable = false)
+    @Builder.Default
+    private Integer sortOrder = 0;
+
+    @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, id ASC")
+    @BatchSize(size = 64)
+    @Builder.Default
+    private List<ScheduleBuildShiftOption> shiftOptions = new ArrayList<>();
+
+    @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("dayOfWeek ASC, sortOrder ASC, id ASC")
+    @BatchSize(size = 64)
+    @Builder.Default
+    private List<ScheduleBuildCoverageRule> coverageRules = new ArrayList<>();
+}

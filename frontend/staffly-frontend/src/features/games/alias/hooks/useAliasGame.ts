@@ -1,0 +1,304 @@
+import React from "react";
+
+import {
+  ALIAS_MAX_TARGET_SCORE,
+  ALIAS_MAX_TEAMS,
+  ALIAS_MIN_TARGET_SCORE,
+  ALIAS_MIN_TEAMS,
+  ALIAS_ROUND_DURATION_SECONDS,
+  ALIAS_TARGET_SCORE,
+} from "../constants";
+import { createAliasDeck, takeAliasWord } from "../utils/aliasDeck";
+import type {
+  AliasGamePhase,
+  AliasGameSettings,
+  AliasRoundEvent,
+  AliasRoundEventResult,
+  AliasRoundResult,
+  AliasTeam,
+  AliasWord,
+  DifficultyId,
+  WordPackId,
+} from "../types";
+
+type AliasGameState = {
+  phase: AliasGamePhase;
+  settings: AliasGameSettings;
+  teams: AliasTeam[];
+  currentTeamIndex: number;
+  remainingSeconds: number;
+  deck: AliasWord[];
+  deckCursor: number;
+  currentWord: AliasWord | null;
+  roundEvents: AliasRoundEvent[];
+  lastRoundEvents: AliasRoundEvent[];
+  lastRoundTeam: AliasTeam | null;
+  winnerTeam: AliasTeam | null;
+};
+
+type AliasGameAction =
+  | { type: "setDifficulty"; difficulty: DifficultyId }
+  | { type: "setWordPack"; wordPack: WordPackId }
+  | { type: "setTargetScore"; targetScore: number }
+  | { type: "renameTeam"; teamId: string; name: string }
+  | { type: "addTeam" }
+  | { type: "removeTeam"; teamId: string }
+  | { type: "startGame" }
+  | { type: "startRound" }
+  | { type: "tick" }
+  | { type: "markWord"; result: AliasRoundResult }
+  | { type: "reviewLastRoundEvent"; eventIndex: number; result: AliasRoundResult }
+  | { type: "pauseRound" }
+  | { type: "resumeRound" }
+  | { type: "finishRound" }
+  | { type: "completeGame" }
+  | { type: "nextTurn" }
+  | { type: "resetGame" };
+
+const createInitialTeams = (): AliasTeam[] => [
+  { id: "team-1", name: "Команда 1", score: 0 },
+  { id: "team-2", name: "Команда 2", score: 0 },
+];
+
+const getEventScore = (result: AliasRoundEventResult) => {
+  if (result === "correct") return 1;
+  if (result === "skipped") return 0;
+  return 0;
+};
+
+const getRoundScore = (events: AliasRoundEvent[]) =>
+  events.reduce((score, event) => score + getEventScore(event.result), 0);
+
+const getRoundEventsForSummary = (state: AliasGameState): AliasRoundEvent[] =>
+  state.currentWord ? [...state.roundEvents, { word: state.currentWord, result: "pending" }] : state.roundEvents;
+
+const normalizeTeams = (teams: AliasTeam[]) =>
+  teams.map((team, index) => ({
+    ...team,
+    name: team.name.trim() || `Команда ${index + 1}`,
+  }));
+
+const createInitialState = (): AliasGameState => {
+  const settings: AliasGameSettings = {
+    difficulty: "medium",
+    wordPack: "all",
+    targetScore: ALIAS_TARGET_SCORE,
+    roundDurationSeconds: ALIAS_ROUND_DURATION_SECONDS,
+    teams: createInitialTeams(),
+  };
+
+  return {
+    phase: "setup",
+    settings,
+    teams: settings.teams,
+    currentTeamIndex: 0,
+    remainingSeconds: settings.roundDurationSeconds,
+    deck: createAliasDeck(settings),
+    deckCursor: 0,
+    currentWord: null,
+    roundEvents: [],
+    lastRoundEvents: [],
+    lastRoundTeam: null,
+    winnerTeam: null,
+  };
+};
+
+const finishRound = (state: AliasGameState): AliasGameState => {
+  if (state.phase !== "playing" && state.phase !== "paused") {
+    return state;
+  }
+
+  const currentTeam = state.teams[state.currentTeamIndex] as AliasTeam;
+  const roundEvents = getRoundEventsForSummary(state);
+  const roundScore = getRoundScore(roundEvents);
+  const nextTeams = state.teams.map((team, index) =>
+    index === state.currentTeamIndex ? { ...team, score: Math.max(0, team.score + roundScore) } : team,
+  );
+  const updatedTeam = nextTeams[state.currentTeamIndex] as AliasTeam;
+  const winnerTeam = updatedTeam.score >= state.settings.targetScore ? updatedTeam : null;
+
+  return {
+    ...state,
+    phase: "roundSummary",
+    teams: nextTeams,
+    currentWord: null,
+    remainingSeconds: 0,
+    lastRoundEvents: roundEvents,
+    lastRoundTeam: currentTeam,
+    winnerTeam,
+  };
+};
+
+const reducer = (state: AliasGameState, action: AliasGameAction): AliasGameState => {
+  switch (action.type) {
+    case "setDifficulty": {
+      const settings = { ...state.settings, difficulty: action.difficulty };
+      return { ...state, settings, deck: createAliasDeck(settings), deckCursor: 0 };
+    }
+    case "setWordPack": {
+      const settings = { ...state.settings, wordPack: action.wordPack };
+      return { ...state, settings, deck: createAliasDeck(settings), deckCursor: 0 };
+    }
+    case "setTargetScore": {
+      const targetScore = Number.isFinite(action.targetScore) ? action.targetScore : ALIAS_TARGET_SCORE;
+      const settings = {
+        ...state.settings,
+        targetScore: Math.min(ALIAS_MAX_TARGET_SCORE, Math.max(ALIAS_MIN_TARGET_SCORE, targetScore)),
+      };
+      return { ...state, settings };
+    }
+    case "renameTeam": {
+      const teams = state.teams.map((team) => (team.id === action.teamId ? { ...team, name: action.name } : team));
+      return { ...state, teams, settings: { ...state.settings, teams } };
+    }
+    case "addTeam": {
+      if (state.teams.length >= ALIAS_MAX_TEAMS) return state;
+
+      const nextNumber = state.teams.length + 1;
+      const teams = [...state.teams, { id: `team-${Date.now()}`, name: `Команда ${nextNumber}`, score: 0 }];
+      return { ...state, teams, settings: { ...state.settings, teams } };
+    }
+    case "removeTeam": {
+      if (state.teams.length <= ALIAS_MIN_TEAMS) return state;
+
+      const teams = state.teams.filter((team) => team.id !== action.teamId);
+      return { ...state, teams, settings: { ...state.settings, teams } };
+    }
+    case "startGame": {
+      const teams = normalizeTeams(state.teams).map((team) => ({ ...team, score: 0 }));
+      return {
+        ...state,
+        phase: "ready",
+        settings: { ...state.settings, teams },
+        teams,
+        currentTeamIndex: 0,
+        remainingSeconds: state.settings.roundDurationSeconds,
+        currentWord: null,
+        roundEvents: [],
+        lastRoundEvents: [],
+        lastRoundTeam: null,
+        winnerTeam: null,
+      };
+    }
+    case "startRound": {
+      const next = takeAliasWord(state.settings, state.deck, state.deckCursor);
+
+      return {
+        ...state,
+        phase: "playing",
+        deck: next.deck,
+        deckCursor: next.cursor,
+        currentWord: next.word,
+        remainingSeconds: state.settings.roundDurationSeconds,
+        roundEvents: [],
+      };
+    }
+    case "tick": {
+      if (state.phase !== "playing") return state;
+      if (state.remainingSeconds <= 1) return finishRound(state);
+
+      return { ...state, remainingSeconds: state.remainingSeconds - 1 };
+    }
+    case "markWord": {
+      if (state.phase !== "playing" || !state.currentWord) return state;
+
+      const next = takeAliasWord(state.settings, state.deck, state.deckCursor);
+
+      return {
+        ...state,
+        deck: next.deck,
+        deckCursor: next.cursor,
+        currentWord: next.word,
+        roundEvents: [...state.roundEvents, { word: state.currentWord, result: action.result }],
+      };
+    }
+    case "reviewLastRoundEvent": {
+      if (state.phase !== "roundSummary" || !state.lastRoundTeam) return state;
+
+      const currentEvent = state.lastRoundEvents[action.eventIndex];
+      if (!currentEvent || currentEvent.result === action.result) return state;
+
+      const scoreDelta = getEventScore(action.result) - getEventScore(currentEvent.result);
+      const lastRoundEvents = state.lastRoundEvents.map((event, index) =>
+        index === action.eventIndex ? { ...event, result: action.result } : event,
+      );
+      const teams = state.teams.map((team) =>
+        team.id === state.lastRoundTeam?.id ? { ...team, score: Math.max(0, team.score + scoreDelta) } : team,
+      );
+      const lastRoundTeam = teams.find((team) => team.id === state.lastRoundTeam?.id) ?? state.lastRoundTeam;
+      const winnerTeam = lastRoundTeam.score >= state.settings.targetScore ? lastRoundTeam : null;
+
+      return {
+        ...state,
+        teams,
+        lastRoundEvents,
+        lastRoundTeam,
+        winnerTeam,
+      };
+    }
+    case "pauseRound":
+      return state.phase === "playing" ? { ...state, phase: "paused" } : state;
+    case "resumeRound":
+      return state.phase === "paused" ? { ...state, phase: "playing" } : state;
+    case "finishRound":
+      return finishRound(state);
+    case "completeGame":
+      return state.winnerTeam ? { ...state, phase: "gameOver" } : state;
+    case "nextTurn":
+      return {
+        ...state,
+        phase: "ready",
+        currentTeamIndex: (state.currentTeamIndex + 1) % state.teams.length,
+        remainingSeconds: state.settings.roundDurationSeconds,
+        currentWord: null,
+        roundEvents: [],
+        winnerTeam: null,
+      };
+    case "resetGame":
+      return createInitialState();
+    default:
+      return state;
+  }
+};
+
+export const useAliasGame = () => {
+  const [state, dispatch] = React.useReducer(reducer, undefined, createInitialState);
+
+  React.useEffect(() => {
+    if (state.phase !== "playing") return undefined;
+
+    const intervalId = window.setInterval(() => {
+      dispatch({ type: "tick" });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [state.phase]);
+
+  const actions = React.useMemo(
+    () => ({
+      setDifficulty: (difficulty: DifficultyId) => dispatch({ type: "setDifficulty", difficulty }),
+      setWordPack: (wordPack: WordPackId) => dispatch({ type: "setWordPack", wordPack }),
+      setTargetScore: (targetScore: number) => dispatch({ type: "setTargetScore", targetScore }),
+      renameTeam: (teamId: string, name: string) => dispatch({ type: "renameTeam", teamId, name }),
+      addTeam: () => dispatch({ type: "addTeam" }),
+      removeTeam: (teamId: string) => dispatch({ type: "removeTeam", teamId }),
+      startGame: () => dispatch({ type: "startGame" }),
+      startRound: () => dispatch({ type: "startRound" }),
+      markCorrect: () => dispatch({ type: "markWord", result: "correct" }),
+      markSkipped: () => dispatch({ type: "markWord", result: "skipped" }),
+      reviewLastRoundEvent: (eventIndex: number, result: AliasRoundResult) =>
+        dispatch({ type: "reviewLastRoundEvent", eventIndex, result }),
+      pauseRound: () => dispatch({ type: "pauseRound" }),
+      resumeRound: () => dispatch({ type: "resumeRound" }),
+      finishRound: () => dispatch({ type: "finishRound" }),
+      completeGame: () => dispatch({ type: "completeGame" }),
+      nextTurn: () => dispatch({ type: "nextTurn" }),
+      resetGame: () => dispatch({ type: "resetGame" }),
+    }),
+    [],
+  );
+
+  return { state, actions };
+};
+
+export const getAliasRoundScore = getRoundScore;
