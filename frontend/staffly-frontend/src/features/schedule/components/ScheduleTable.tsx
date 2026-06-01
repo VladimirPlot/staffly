@@ -413,7 +413,9 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
     : false;
   const conflictLabel = "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
 
-  const sourceLabel = getScheduleCellSourceLabel(source);
+  const sourceMeta = getScheduleCellSourceMeta(source);
+  const sourceEditHint =
+    !readOnly && value.trim() && source && source !== "MANUAL" ? getScheduleCellSourceEditHint(source) : null;
 
   return (
     <div
@@ -438,11 +440,16 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         />
       )}
 
-      {value.trim() && sourceLabel && (
-        <div className="mt-1 flex justify-center">
-          <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
-            {sourceLabel}
+      {value.trim() && sourceMeta && (
+        <div className="mt-1 flex flex-col items-center gap-0.5">
+          <span
+            className={["rounded-full border px-1.5 py-0.5 text-[10px] font-semibold", sourceMeta.className].join(" ")}
+            aria-label={sourceMeta.title}
+            title={sourceMeta.title}
+          >
+            {sourceMeta.label}
           </span>
+          {sourceEditHint && <span className="text-muted text-center text-[10px] leading-tight">{sourceEditHint}</span>}
         </div>
       )}
       {hasConflict && (
@@ -502,12 +509,33 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   );
 });
 
-function getScheduleCellSourceLabel(source?: ScheduleCellSource): string | null {
+function getScheduleCellSourceMeta(
+  source?: ScheduleCellSource,
+): { label: string; title: string; className: string } | null {
   switch (source) {
     case "AUTO_BUILD":
-      return "Авто";
+      return {
+        label: "Авто",
+        title: "Смена создана автосборкой",
+        className: "border-sky-200 bg-sky-50 text-sky-700",
+      };
     case "PREFERENCE_HINT":
-      return "Пожелание";
+      return {
+        label: "Пожелание",
+        title: "Смена применена из пожелания сотрудника",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+    case "MANUAL":
+    default:
+      return null;
+  }
+}
+
+function getScheduleCellSourceEditHint(source?: ScheduleCellSource): string | null {
+  switch (source) {
+    case "AUTO_BUILD":
+    case "PREFERENCE_HINT":
+      return "Измените — станет ручной";
     case "MANUAL":
     default:
       return null;
