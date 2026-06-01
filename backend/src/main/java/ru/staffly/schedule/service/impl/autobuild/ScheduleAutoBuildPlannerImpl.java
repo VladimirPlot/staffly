@@ -11,7 +11,6 @@ import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.SchedulePreferenceCell;
-import ru.staffly.schedule.model.SchedulePreferenceSubmission;
 import ru.staffly.schedule.model.SchedulePreferenceType;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.AssignmentPlan;
@@ -24,7 +23,6 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,9 +54,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (!schedulePositions.contains(positionId)) {
                 topWarnings.add("В шаблоне есть позиция вне графика: " + config.getPosition().getName());
             }
-            if (config.getMinRestHours() != null || config.getMaxShiftsPerPeriod() != null) {
-                topWarnings.add("Ограничения minRestHours/maxShiftsPerPeriod будут применены на следующем этапе");
-            }
         }
 
         for (Long schedulePositionId : schedulePositions) {
@@ -68,13 +63,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
 
         Map<Long, List<SchedulePreferenceCell>> preferencesByMember = loadPreferencesByMember(schedule.getId());
+        PlannerState plannerState = new PlannerState();
         List<PositionPlan> positions = new ArrayList<>();
 
         for (ScheduleBuildPositionConfig config : positionConfigs) {
             if (!schedulePositions.contains(config.getPosition().getId())) {
                 continue;
             }
-            PositionPlan positionPlan = buildPosition(restaurantId, schedule, config, preferencesByMember);
+            PositionPlan positionPlan = buildPosition(restaurantId, schedule, config, preferencesByMember, plannerState);
             positions.add(positionPlan);
         }
 
@@ -103,12 +99,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Long restaurantId,
             Schedule schedule,
             ScheduleBuildPositionConfig config,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            PlannerState plannerState
     ) {
         List<RestaurantMember> candidates = loadCandidates(restaurantId, config);
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        Map<LocalDate, Set<Long>> usedMembersByDay = new HashMap<>();
 
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
@@ -119,7 +115,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     config,
                     candidates,
                     preferencesByMember,
-                    usedMembersByDay
+                    plannerState
             );
             assignments.addAll(dayResult.assignments());
             warnings.addAll(dayResult.warnings());
@@ -157,7 +153,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config,
             List<RestaurantMember> candidates,
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
-            Map<LocalDate, Set<Long>> usedMembersByDay
+            PlannerState plannerState
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -176,7 +172,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     rule,
                     candidates,
                     preferencesByMember,
-                    usedMembersByDay
+                    plannerState
             );
 
             assignments.addAll(ruleResult.assignments());
@@ -194,7 +190,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildCoverageRule rule,
             List<RestaurantMember> candidates,
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
-            Map<LocalDate, Set<Long>> usedMembersByDay
+            PlannerState plannerState
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -209,16 +205,23 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
 
         int requiredCount = safeRequiredCount(rule);
-        Set<Long> usedOnDay = usedMembersByDay.computeIfAbsent(day, ignored -> new HashSet<>());
 
         for (int index = 0; index < requiredCount; index++) {
-            RestaurantMember selected = pickMember(candidates, preferencesByMember, day, option, usedOnDay);
-            if (selected == null) {
-                warnings.add("Недостаточно сотрудников для покрытия " + day + " " + formatShift(option));
+            CandidateSelectionResult selection = pickMember(
+                    candidates,
+                    preferencesByMember,
+                    day,
+                    option,
+                    config,
+                    plannerState
+            );
+            if (selection.selected() == null) {
+                warnings.add(unfilledWarning(day, option, selection));
                 unfilledCount++;
                 continue;
             }
 
+            RestaurantMember selected = selection.selected().member();
             List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
             AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells);
 
@@ -226,7 +229,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
                 negativeAssignmentsCount++;
             }
-            usedOnDay.add(selected.getId());
+            registerAssignment(plannerState, selected, day, option);
         }
 
         return new CoverageRuleResult(assignments, warnings, unfilledCount, negativeAssignmentsCount);
@@ -275,42 +278,250 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         );
     }
 
-    private RestaurantMember pickMember(
+    private CandidateSelectionResult pickMember(
             List<RestaurantMember> candidates,
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
             LocalDate day,
             ScheduleBuildShiftOption option,
-            Set<Long> usedMemberIds
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState
     ) {
-        List<RestaurantMember> positive = new ArrayList<>();
-        List<RestaurantMember> neutral = new ArrayList<>();
-        List<RestaurantMember> negative = new ArrayList<>();
+        List<CandidateEvaluation> positive = new ArrayList<>();
+        List<CandidateEvaluation> neutral = new ArrayList<>();
+        List<CandidateEvaluation> negative = new ArrayList<>();
+        int maxShiftsRejectedCount = 0;
+        int minRestRejectedCount = 0;
+        int overlapRejectedCount = 0;
 
         for (RestaurantMember member : candidates) {
-            if (usedMemberIds.contains(member.getId())) {
+            CandidateEvaluation evaluation = evaluateCandidate(
+                    member,
+                    preferencesByMember,
+                    day,
+                    option,
+                    config,
+                    plannerState
+            );
+            if (!evaluation.eligible()) {
+                if (evaluation.rejectionReason() == CandidateRejectionReason.MAX_SHIFTS) {
+                    maxShiftsRejectedCount++;
+                } else if (evaluation.rejectionReason() == CandidateRejectionReason.MIN_REST) {
+                    minRestRejectedCount++;
+                } else if (evaluation.rejectionReason() == CandidateRejectionReason.OVERLAP) {
+                    overlapRejectedCount++;
+                }
                 continue;
             }
 
-            PreferenceGrade memberGrade = grade(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option);
-            if (memberGrade == PreferenceGrade.POSITIVE) {
-                positive.add(member);
-            } else if (memberGrade == PreferenceGrade.NONE) {
-                neutral.add(member);
+            if (evaluation.grade() == PreferenceGrade.POSITIVE) {
+                positive.add(evaluation);
+            } else if (evaluation.grade() == PreferenceGrade.NONE) {
+                neutral.add(evaluation);
             } else {
-                negative.add(member);
+                negative.add(evaluation);
             }
         }
 
-        if (!positive.isEmpty()) {
-            return positive.get(0);
+        CandidateEvaluation selected = selectBestCandidate(positive);
+        if (selected == null) {
+            selected = selectBestCandidate(neutral);
         }
-        if (!neutral.isEmpty()) {
-            return neutral.get(0);
+        if (selected == null) {
+            selected = selectBestCandidate(negative);
         }
-        if (negative.isEmpty()) {
-            return null;
+
+        return new CandidateSelectionResult(
+                selected,
+                maxShiftsRejectedCount,
+                minRestRejectedCount,
+                overlapRejectedCount
+        );
+    }
+
+    private CandidateEvaluation evaluateCandidate(
+            RestaurantMember member,
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            LocalDate day,
+            ScheduleBuildShiftOption option,
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState
+    ) {
+        int shiftsCount = plannerState.shiftsCount(member.getId());
+        String displayName = displayName(member);
+        CandidateRejectionReason rejectionReason = hardConstraintRejectionReason(
+                member,
+                day,
+                option,
+                config,
+                plannerState
+        );
+
+        if (rejectionReason != CandidateRejectionReason.NONE) {
+            return new CandidateEvaluation(
+                    member,
+                    PreferenceGrade.NONE,
+                    shiftsCount,
+                    displayName,
+                    false,
+                    rejectionReason
+            );
         }
-        return negative.get(0);
+
+        PreferenceGrade memberGrade = grade(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option);
+        return new CandidateEvaluation(
+                member,
+                memberGrade,
+                shiftsCount,
+                displayName,
+                true,
+                CandidateRejectionReason.NONE
+        );
+    }
+
+    private CandidateRejectionReason hardConstraintRejectionReason(
+            RestaurantMember member,
+            LocalDate day,
+            ScheduleBuildShiftOption option,
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState
+    ) {
+        if (violatesMaxShifts(member, config, plannerState)) {
+            return CandidateRejectionReason.MAX_SHIFTS;
+        }
+        if (overlapsExistingAssignment(member, plannerState, day, option.getStartTime(), option.getEndTime())) {
+            return CandidateRejectionReason.OVERLAP;
+        }
+        if (violatesMinRest(member, config, plannerState, day, option.getStartTime(), option.getEndTime())) {
+            return CandidateRejectionReason.MIN_REST;
+        }
+        return CandidateRejectionReason.NONE;
+    }
+
+    private boolean violatesMaxShifts(
+            RestaurantMember member,
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState
+    ) {
+        Integer maxShiftsPerPeriod = config.getMaxShiftsPerPeriod();
+        if (maxShiftsPerPeriod == null) {
+            return false;
+        }
+        return plannerState.shiftsCount(member.getId()) >= maxShiftsPerPeriod;
+    }
+
+    private boolean overlapsExistingAssignment(
+            RestaurantMember member,
+            PlannerState plannerState,
+            LocalDate day,
+            LocalTime startTime,
+            LocalTime endTime
+    ) {
+        long candidateStart = toAbsoluteMinute(day, startTime, false, startTime);
+        long candidateEnd = toAbsoluteMinute(day, endTime, true, startTime);
+
+        return plannerState.assignedIntervals(member.getId()).stream()
+                .anyMatch(interval -> overlaps(
+                        candidateStart,
+                        candidateEnd,
+                        interval.startAbsoluteMinute(),
+                        interval.endAbsoluteMinute()
+                ));
+    }
+
+    private boolean violatesMinRest(
+            RestaurantMember member,
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState,
+            LocalDate day,
+            LocalTime startTime,
+            LocalTime endTime
+    ) {
+        Integer minRestHours = config.getMinRestHours();
+        if (minRestHours == null) {
+            return false;
+        }
+        return !hasEnoughRest(
+                plannerState.assignedIntervals(member.getId()),
+                day,
+                startTime,
+                endTime,
+                minRestHours
+        );
+    }
+
+    private boolean hasEnoughRest(
+            List<AssignedInterval> existingAssignments,
+            LocalDate candidateDay,
+            LocalTime shiftStart,
+            LocalTime shiftEnd,
+            int minRestHours
+    ) {
+        long requiredRestMinutes = (long) minRestHours * 60;
+        long candidateStart = toAbsoluteMinute(candidateDay, shiftStart, false, shiftStart);
+        long candidateEnd = toAbsoluteMinute(candidateDay, shiftEnd, true, shiftStart);
+
+        for (AssignedInterval interval : existingAssignments) {
+            if (candidateStart >= interval.endAbsoluteMinute()) {
+                long restMinutes = candidateStart - interval.endAbsoluteMinute();
+                if (restMinutes < requiredRestMinutes) {
+                    return false;
+                }
+            } else if (interval.startAbsoluteMinute() >= candidateEnd) {
+                long restMinutes = interval.startAbsoluteMinute() - candidateEnd;
+                if (restMinutes < requiredRestMinutes) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private CandidateEvaluation selectBestCandidate(List<CandidateEvaluation> candidates) {
+        return candidates.stream()
+                .min((left, right) -> {
+                    int byShiftsCount = Integer.compare(left.shiftsCount(), right.shiftsCount());
+                    if (byShiftsCount != 0) {
+                        return byShiftsCount;
+                    }
+
+                    int byDisplayName = left.displayName().compareToIgnoreCase(right.displayName());
+                    if (byDisplayName != 0) {
+                        return byDisplayName;
+                    }
+
+                    return Long.compare(left.member().getId(), right.member().getId());
+                })
+                .orElse(null);
+    }
+
+    private void registerAssignment(
+            PlannerState plannerState,
+            RestaurantMember member,
+            LocalDate day,
+            ScheduleBuildShiftOption option
+    ) {
+        plannerState.register(member.getId(), new AssignedInterval(day, option.getStartTime(), option.getEndTime()));
+    }
+
+    private String unfilledWarning(
+            LocalDate day,
+            ScheduleBuildShiftOption option,
+            CandidateSelectionResult selection
+    ) {
+        if (selection.maxShiftsRejectedCount() > 0
+                && selection.minRestRejectedCount() == 0
+                && selection.overlapRejectedCount() == 0) {
+            return "Недостаточно сотрудников с учётом лимита смен за период";
+        }
+        if (selection.hasHardConstraintRejections()) {
+            return "Недостаточно сотрудников для покрытия "
+                    + day
+                    + " "
+                    + formatShift(option)
+                    + " с учётом ограничений";
+        }
+        return "Недостаточно сотрудников для покрытия " + day + " " + formatShift(option);
     }
 
     private String reasonFor(
@@ -496,6 +707,19 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return startA < endB && startB < endA;
     }
 
+    private boolean overlaps(long startA, long endA, long startB, long endB) {
+        return startA < endB && startB < endA;
+    }
+
+    private long toAbsoluteMinute(LocalDate day, LocalTime time, boolean endTime, LocalTime shiftStart) {
+        long dayStart = day.toEpochDay() * END_OF_DAY_MINUTES;
+        int minute = toMinute(time, endTime);
+        if (endTime && minute <= toMinute(shiftStart, false)) {
+            return dayStart + END_OF_DAY_MINUTES + minute;
+        }
+        return dayStart + minute;
+    }
+
     private boolean covers(int startA, int endA, int startB, int endB) {
         return startA <= startB && endA >= endB;
     }
@@ -555,15 +779,108 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 .filter(submission -> submission.getMember() != null)
                 .collect(Collectors.toMap(
                         submission -> submission.getMember().getId(),
-                        SchedulePreferenceSubmission::getCells,
+                        submission -> submission.getCells() == null ? List.of() : submission.getCells(),
                         (left, right) -> left
                 ));
+    }
+
+
+    private static final class PlannerState {
+        private final Map<Long, Integer> shiftsCountByMember = new HashMap<>();
+        private final Map<Long, List<AssignedInterval>> assignedIntervalsByMember = new HashMap<>();
+
+        private int shiftsCount(Long memberId) {
+            return shiftsCountByMember.getOrDefault(memberId, 0);
+        }
+
+        private List<AssignedInterval> assignedIntervals(Long memberId) {
+            return assignedIntervalsByMember.getOrDefault(memberId, List.of());
+        }
+
+        private void register(Long memberId, AssignedInterval interval) {
+            shiftsCountByMember.merge(memberId, 1, Integer::sum);
+            assignedIntervalsByMember.computeIfAbsent(memberId, ignored -> new ArrayList<>()).add(interval);
+        }
+    }
+
+    private static final class AssignedInterval {
+        private final LocalDate day;
+        private final LocalTime startTime;
+        private final LocalTime endTime;
+        private final long startAbsoluteMinute;
+        private final long endAbsoluteMinute;
+
+        private AssignedInterval(LocalDate day, LocalTime startTime, LocalTime endTime) {
+            this.day = day;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.startAbsoluteMinute = day.toEpochDay() * END_OF_DAY_MINUTES
+                    + startTime.getHour() * 60L
+                    + startTime.getMinute();
+            long endMinute = LocalTime.MIDNIGHT.equals(endTime)
+                    ? END_OF_DAY_MINUTES
+                    : endTime.getHour() * 60L + endTime.getMinute();
+            long startMinute = startTime.getHour() * 60L + startTime.getMinute();
+            if (endMinute <= startMinute) {
+                endMinute += END_OF_DAY_MINUTES;
+            }
+            this.endAbsoluteMinute = day.toEpochDay() * END_OF_DAY_MINUTES + endMinute;
+        }
+
+        private LocalDate day() {
+            return day;
+        }
+
+        private LocalTime startTime() {
+            return startTime;
+        }
+
+        private LocalTime endTime() {
+            return endTime;
+        }
+
+        private long startAbsoluteMinute() {
+            return startAbsoluteMinute;
+        }
+
+        private long endAbsoluteMinute() {
+            return endAbsoluteMinute;
+        }
+    }
+
+    private enum CandidateRejectionReason {
+        NONE,
+        MAX_SHIFTS,
+        MIN_REST,
+        OVERLAP
     }
 
     private enum PreferenceGrade {
         POSITIVE,
         NONE,
         NEGATIVE
+    }
+
+
+    private record CandidateEvaluation(
+            RestaurantMember member,
+            PreferenceGrade grade,
+            int shiftsCount,
+            String displayName,
+            boolean eligible,
+            CandidateRejectionReason rejectionReason
+    ) {
+    }
+
+    private record CandidateSelectionResult(
+            CandidateEvaluation selected,
+            int maxShiftsRejectedCount,
+            int minRestRejectedCount,
+            int overlapRejectedCount
+    ) {
+        private boolean hasHardConstraintRejections() {
+            return maxShiftsRejectedCount > 0 || minRestRejectedCount > 0 || overlapRejectedCount > 0;
+        }
     }
 
     private record DayBuildResult(
