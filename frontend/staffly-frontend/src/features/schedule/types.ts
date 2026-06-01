@@ -5,6 +5,11 @@ export type ShiftMode = "ARRIVAL_ONLY" | "FULL" | "NONE";
 
 export type ScheduleCellSource = "MANUAL" | "PREFERENCE_HINT" | "AUTO_BUILD";
 
+export type ScheduleCellChangeOptions = {
+  commit?: boolean;
+  source?: ScheduleCellSource;
+};
+
 export type ScheduleStatus =
   | "DRAFT"
   | "COLLECTING_PREFERENCES"

@@ -3,7 +3,12 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
-import { type ScheduleData, type ScheduleCellKey, type SchedulePreferenceHintsByCellKey } from "../types";
+import {
+  type ScheduleData,
+  type ScheduleCellChangeOptions,
+  type ScheduleCellKey,
+  type SchedulePreferenceHintsByCellKey,
+} from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 
 type ScheduleTableSectionProps = {
@@ -20,7 +25,7 @@ type ScheduleTableSectionProps = {
   onCancelEdit: () => void;
   onSave: () => void;
   onSaveDraft: () => void;
-  onCellChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
+  onCellChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 

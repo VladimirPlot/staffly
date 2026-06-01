@@ -88,6 +88,7 @@ export type SaveSchedulePayload = {
     positionName: string | null;
   }[];
   cellValues: Record<string, string>;
+  cellSources?: Record<string, ScheduleCellSource>;
 };
 
 export type CreateDraftScheduleRequest = SaveSchedulePayload;

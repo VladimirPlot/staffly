@@ -2,6 +2,7 @@ import React from "react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type {
+  ScheduleCellChangeOptions,
   ScheduleCellKey,
   ScheduleCellSource,
   ScheduleData,
@@ -43,7 +44,7 @@ const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // сн�
 
 type Props = {
   data: ScheduleData | null | undefined;
-  onChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
+  onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
@@ -70,7 +71,7 @@ type ScheduleTableRowProps = {
   readOnly: boolean;
   shiftMode: ShiftMode;
   placeholder: string;
-  onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+  onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 
@@ -82,7 +83,7 @@ type ScheduleCellEditorProps = {
   shiftMode: ShiftMode;
   placeholder: string;
   readOnly: boolean;
-  onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+  onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   hints?: import("../api").SchedulePreferenceCellDto[];
 };
 
@@ -144,7 +145,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
   }, [cellValues, days, rows]);
 
   const handleCellValueChange = React.useCallback(
-    (memberId: number, day: string, value: string, options?: { commit?: boolean }) => {
+    (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => {
       if (readOnly) return;
       onChange(`${memberId}:${day}`, value, options);
     },
@@ -389,7 +390,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   const handleCommit = React.useCallback(
     (newValue: string) => {
       const normalized = normalizeCellValue(newValue, shiftMode);
-      onCellValueChange(memberId, day, normalized, { commit: true });
+      onCellValueChange(memberId, day, normalized, { commit: true, source: "MANUAL" });
     },
     [day, memberId, onCellValueChange, shiftMode],
   );
@@ -397,7 +398,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   const handleBlur = React.useCallback(
     (rawValue: string) => {
       const normalized = normalizeCellValue(rawValue, shiftMode);
-      onCellValueChange(memberId, day, normalized, { commit: true });
+      onCellValueChange(memberId, day, normalized, { commit: true, source: "MANUAL" });
     },
     [day, memberId, onCellValueChange, shiftMode],
   );
@@ -483,7 +484,10 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                     aria-label={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     title={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     onClick={() =>
-                      onCellValueChange(memberId, day, `${cell.startTime}-${cell.endTime}`, { commit: true })
+                      onCellValueChange(memberId, day, `${cell.startTime}-${cell.endTime}`, {
+                        commit: true,
+                        source: "PREFERENCE_HINT",
+                      })
                     }
                   >
                     +
