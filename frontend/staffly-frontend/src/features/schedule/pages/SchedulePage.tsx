@@ -15,6 +15,7 @@ import SavedSchedulesSection from "../components/SavedSchedulesSection";
 import ScheduleBuildTemplatesSection from "../components/ScheduleBuildTemplatesSection";
 import SchedulePreferenceMeView from "../components/SchedulePreferenceMeView";
 import SchedulePreferenceManagerDialog from "../components/SchedulePreferenceManagerDialog";
+import PublishScheduleConfirmDialog from "../components/PublishScheduleConfirmDialog";
 import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
 import ScheduleHistoryBlock from "../components/ScheduleHistoryBlock";
 import ScheduleTableSection from "../components/ScheduleTableSection";
@@ -104,6 +105,7 @@ const SchedulePage: React.FC = () => {
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
   const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -497,6 +499,22 @@ const SchedulePage: React.FC = () => {
     [autoBuildApplyActions, autoBuildPreviewActions],
   );
 
+  const openPublishDialog = React.useCallback(() => {
+    setPublishDialogOpen(true);
+  }, []);
+
+  const closePublishDialog = React.useCallback(() => {
+    if (lifecycleActions.pendingAction === "publish") return;
+    setPublishDialogOpen(false);
+  }, [lifecycleActions.pendingAction]);
+
+  const handleConfirmPublish = React.useCallback(async () => {
+    const success = await lifecycleActions.publishSchedule();
+    if (success) {
+      setPublishDialogOpen(false);
+    }
+  }, [lifecycleActions]);
+
   React.useEffect(() => {
     if (!derived.hasSchedule) {
       setActiveTab("table");
@@ -661,7 +679,7 @@ const SchedulePage: React.FC = () => {
             onStartPreferenceCollection={lifecycleActions.openPreferenceDialog}
             onClosePreferenceCollection={lifecycleActions.closePreferenceCollection}
             onOpenApplyPreferencesDialog={handleOpenApplyPreferencesDialog}
-            onPublishSchedule={lifecycleActions.publishSchedule}
+            onPublishSchedule={openPublishDialog}
             downloadMenuFor={downloadMenuFor}
             onToggleDownloadMenu={setDownloadMenuFor}
             downloading={exportActions.downloading}
@@ -768,6 +786,15 @@ const SchedulePage: React.FC = () => {
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
         onClose={lifecycleActions.closePreferenceDialog}
         onSubmit={() => void lifecycleActions.submitPreferenceCollection()}
+      />
+
+      <PublishScheduleConfirmDialog
+        open={publishDialogOpen}
+        schedule={schedule}
+        preferenceHintsByCellKey={preferenceHintsByCellKey}
+        publishing={lifecycleActions.pendingAction === "publish"}
+        onClose={closePublishDialog}
+        onConfirm={() => void handleConfirmPublish()}
       />
 
       <ApplySchedulePreferencesDialog
