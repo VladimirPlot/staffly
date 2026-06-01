@@ -8,7 +8,7 @@ import {
   type SaveSchedulePayload,
   type ScheduleSummary,
 } from "../api";
-import type { ScheduleConfig, ScheduleData } from "../types";
+import type { ScheduleCellSource, ScheduleConfig, ScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
@@ -156,6 +156,7 @@ export default function useScheduleDraftActions({
         days,
         rows,
         cellValues: {},
+        cellSources: {},
       });
       onScheduleReadOnlyChanged(false);
       onClearScheduleNotices();
@@ -185,6 +186,14 @@ export default function useScheduleDraftActions({
       }
     });
 
+    const normalizedSources: Record<string, ScheduleCellSource> = {};
+    Object.keys(normalizedCells).forEach((key) => {
+      const source = schedule.cellSources?.[key];
+      if (source && source !== "MANUAL") {
+        normalizedSources[key] = source;
+      }
+    });
+
     return {
       title: schedule.title,
       config: schedule.config,
@@ -195,6 +204,7 @@ export default function useScheduleDraftActions({
         positionName: row.positionName ?? null,
       })),
       cellValues: normalizedCells,
+      cellSources: normalizedSources,
     };
   }, [schedule]);
 
