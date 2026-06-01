@@ -3,7 +3,11 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Modal from "../../../shared/ui/Modal";
-import type { ScheduleAutoBuildPreviewResponse, ScheduleBuildTemplateDto } from "../api";
+import type {
+  ScheduleAutoBuildCellPreviewDto,
+  ScheduleAutoBuildPreviewResponse,
+  ScheduleBuildTemplateDto,
+} from "../api";
 
 type ApplySchedulePreferencesDialogProps = {
   open: boolean;
@@ -21,6 +25,51 @@ type ApplySchedulePreferencesDialogProps = {
   onPreviewAutoBuild: (templateId: number) => Promise<boolean> | boolean;
   onApplyAutoBuild: (templateId: number) => Promise<boolean> | void;
 };
+
+type PreviewCellsByDay = Array<{
+  day: string;
+  cells: ScheduleAutoBuildCellPreviewDto[];
+}>;
+
+const groupPreviewCellsByDay = (cells: ScheduleAutoBuildCellPreviewDto[]): PreviewCellsByDay => {
+  const groups = new Map<string, ScheduleAutoBuildCellPreviewDto[]>();
+
+  cells.forEach((cell) => {
+    const dayCells = groups.get(cell.day) ?? [];
+    dayCells.push(cell);
+    groups.set(cell.day, dayCells);
+  });
+
+  return Array.from(groups.entries()).map(([day, dayCells]) => ({ day, cells: dayCells }));
+};
+
+const hasPreviewRisks = (preview: ScheduleAutoBuildPreviewResponse | null): boolean =>
+  Boolean(preview && (preview.unfilledCount > 0 || preview.negativeAssignmentsCount > 0));
+
+const getPreviewApplyHint = (preview: ScheduleAutoBuildPreviewResponse | null): string => {
+  if (!preview) return "Постройте предпросмотр, чтобы применить автосборку.";
+  if (hasPreviewRisks(preview)) return "Можно применить, но после этого проверьте проблемные места вручную.";
+  return "Предпросмотр без критичных предупреждений.";
+};
+
+const SummaryCounter: React.FC<{ label: string; value: number; tone?: "default" | "warning" }> = ({
+  label,
+  value,
+  tone = "default",
+}) => (
+  <div
+    className={`rounded-xl border px-3 py-2 ${
+      tone === "warning" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-subtle bg-card text-default"
+    }`}
+  >
+    <div className="text-muted text-xs">{label}</div>
+    <div className="mt-1 text-lg font-semibold">{value}</div>
+  </div>
+);
+
+const WarningBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{children}</div>
+);
 
 const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogProps> = ({
   open,
@@ -132,6 +181,11 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
             {templateError && <div className="text-sm text-red-700">{templateError}</div>}
             {previewError && <div className="text-sm text-red-700">{previewError}</div>}
 
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              При применении будут перезаписаны ячейки только по должностям из выбранного шаблона и только в периоде
+              текущего графика. Остальные должности и даты не будут затронуты.
+            </div>
+
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Button
                 variant="outline"
@@ -152,8 +206,8 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               >
                 {autoApplying ? "Применение…" : "Применить автосборку"}
               </Button>
-              <span className="text-xs text-amber-700">
-                Перед применением проверьте предупреждения. Автосборку можно будет поправить вручную после применения.
+              <span className={`text-xs ${hasPreviewRisks(preview) ? "text-amber-700" : "text-muted"}`}>
+                {getPreviewApplyHint(preview)}
               </span>
             </div>
           </div>
@@ -162,11 +216,24 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
         {preview && (
           <section className="border-subtle bg-app rounded-2xl border p-4">
             <h3 className="text-default text-sm font-semibold">Предпросмотр автосборки</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-              <div>Назначений: {preview.totalAssignments}</div>
-              <div>Незаполнено: {preview.unfilledCount}</div>
-              <div>Предупреждений: {preview.warningsCount}</div>
-              <div>Назначений вопреки пожеланиям: {preview.negativeAssignmentsCount}</div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
+              <SummaryCounter label="Назначений" value={preview.totalAssignments} />
+              <SummaryCounter label="Незаполнено" value={preview.unfilledCount} tone="warning" />
+              <SummaryCounter label="Предупреждений" value={preview.warningsCount} tone="warning" />
+              <SummaryCounter label="Вопреки пожеланиям" value={preview.negativeAssignmentsCount} tone="warning" />
+            </div>
+            <div className="mt-3 space-y-2">
+              {preview.unfilledCount > 0 && (
+                <WarningBox>Не все потребности закрыты. После применения проверьте пустые места вручную.</WarningBox>
+              )}
+              {preview.negativeAssignmentsCount > 0 && (
+                <WarningBox>Есть назначения вопреки отрицательным пожеланиям сотрудников.</WarningBox>
+              )}
+              {preview.totalAssignments === 0 && (
+                <WarningBox>
+                  Автосборка не создала ни одного назначения. Проверьте настройки покрытия и варианты смен.
+                </WarningBox>
+              )}
             </div>
             {preview.warnings.length > 0 && (
               <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-700">
@@ -180,11 +247,15 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               {preview.positions.map((position) => (
                 <div key={position.positionId} className="border-subtle rounded-xl border p-3">
                   <div className="text-sm font-semibold">{position.positionName}</div>
-                  <div className="text-muted mt-1 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
-                    <div>Назначений: {position.totalAssignments}</div>
-                    <div>Незаполнено: {position.unfilledCount}</div>
-                    <div>Предупреждений: {position.warningsCount}</div>
-                    <div>Вопреки пожеланиям: {position.negativeAssignmentsCount}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                    <SummaryCounter label="Назначений" value={position.totalAssignments} />
+                    <SummaryCounter label="Незаполнено" value={position.unfilledCount} tone="warning" />
+                    <SummaryCounter label="Предупреждений" value={position.warningsCount} tone="warning" />
+                    <SummaryCounter
+                      label="Вопреки пожеланиям"
+                      value={position.negativeAssignmentsCount}
+                      tone="warning"
+                    />
                   </div>
                   {position.warnings.length > 0 && (
                     <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
@@ -193,34 +264,37 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                       ))}
                     </ul>
                   )}
-                  <div className="mt-2 overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="text-muted">
-                          <th className="pr-2">Дата</th>
-                          <th className="pr-2">Сотрудник</th>
-                          <th className="pr-2">Смена</th>
-                          <th className="pr-2">Shift label</th>
-                          <th className="pr-2">Причина</th>
-                          <th>Warnings</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {position.cells.map((cell, idx) => (
-                          <tr
-                            key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
-                            className="align-top"
-                          >
-                            <td className="py-1 pr-2">{cell.day}</td>
-                            <td className="py-1 pr-2">{cell.memberName ?? "—"}</td>
-                            <td className="py-1 pr-2">{cell.value ?? "—"}</td>
-                            <td className="py-1 pr-2">{cell.shiftLabel ?? "—"}</td>
-                            <td className="py-1 pr-2">{cell.reason ?? "—"}</td>
-                            <td className="py-1">{cell.warnings.join("; ") || "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="mt-3 space-y-3">
+                    {groupPreviewCellsByDay(position.cells).map((dayGroup) => (
+                      <div key={`${position.positionId}-${dayGroup.day}`} className="rounded-xl bg-white/60 p-3">
+                        <div className="text-default text-xs font-semibold">{dayGroup.day}</div>
+                        <div className="mt-2 space-y-2">
+                          {dayGroup.cells.map((cell, idx) => (
+                            <div
+                              key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
+                              className="border-subtle rounded-lg border bg-white px-3 py-2 text-xs"
+                            >
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
+                                <span className="text-muted">—</span>
+                                <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
+                                <span className="text-muted">—</span>
+                                <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
+                              </div>
+                              {cell.warnings.length > 0 && (
+                                <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
+                                  {cell.warnings.map((warning, warningIdx) => (
+                                    <li key={`${position.positionId}-${cell.day}-${idx}-warning-${warningIdx}`}>
+                                      {warning}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
