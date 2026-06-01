@@ -33,4 +33,9 @@ public class ScheduleCell {
 
     @Column(nullable = false, columnDefinition = "text")
     private String value;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 32)
+    private ScheduleCellSource source = ScheduleCellSource.MANUAL;
 }

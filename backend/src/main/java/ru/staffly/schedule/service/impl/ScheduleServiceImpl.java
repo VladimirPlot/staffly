@@ -491,6 +491,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                     .row(row)
                     .day(day)
                     .value(trimmed)
+                    .source(ScheduleCellSource.MANUAL)
                     .build();
             cells.add(cell);
         }
@@ -633,9 +634,15 @@ public class ScheduleServiceImpl implements ScheduleService {
                 continue;
             }
             if (existing == null || !row.getCells().contains(existing)) {
-                row.getCells().add(ScheduleCell.builder().row(row).day(day).value(normalized).build());
+                row.getCells().add(ScheduleCell.builder()
+                        .row(row)
+                        .day(day)
+                        .value(normalized)
+                        .source(ScheduleCellSource.MANUAL)
+                        .build());
             } else {
                 existing.setValue(normalized);
+                existing.setSource(ScheduleCellSource.MANUAL);
             }
         }
     }
@@ -733,10 +740,16 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private ScheduleDto toDto(Schedule schedule, List<LocalDate> days) {
-        Map<String, String> cellValues = schedule.getRows().stream()
-                .flatMap(row -> row.getCells().stream()
-                        .map(cell -> Map.entry(row.getMemberId() + ":" + cell.getDay(), cell.getValue())))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        Map<String, String> cellValues = new HashMap<>();
+        Map<String, ScheduleCellSource> cellSources = new HashMap<>();
+        schedule.getRows().forEach(row -> row.getCells().forEach(cell -> {
+            if (cell.getValue() == null || cell.getValue().isBlank()) {
+                return;
+            }
+            String key = row.getMemberId() + ":" + cell.getDay();
+            cellValues.put(key, cell.getValue());
+            cellSources.put(key, cell.getSource() != null ? cell.getSource() : ScheduleCellSource.MANUAL);
+        }));
 
         List<ScheduleDayDto> dayDtos = days.stream()
                 .map(this::toDayDto)
@@ -768,6 +781,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 dayDtos,
                 rowDtos,
                 cellValues,
+                cellSources,
                 buildOwnerDto(schedule),
                 buildCreatedByDto(schedule),
                 scheduleAuditService.getRecentHistory(schedule, HISTORY_LIMIT),

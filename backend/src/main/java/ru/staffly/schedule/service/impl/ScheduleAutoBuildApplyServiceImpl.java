@@ -12,6 +12,7 @@ import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleCell;
+import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
@@ -128,8 +129,14 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                         .orElse(null);
                 if (existing != null) {
                     existing.setValue(assignment.value());
+                    existing.setSource(ScheduleCellSource.AUTO_BUILD);
                 } else {
-                    row.getCells().add(ScheduleCell.builder().row(row).day(day).value(assignment.value()).build());
+                    row.getCells().add(ScheduleCell.builder()
+                            .row(row)
+                            .day(day)
+                            .value(assignment.value())
+                            .source(ScheduleCellSource.AUTO_BUILD)
+                            .build());
                 }
             }
         }

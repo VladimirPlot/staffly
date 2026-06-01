@@ -3,6 +3,7 @@ import React from "react";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type {
   ScheduleCellKey,
+  ScheduleCellSource,
   ScheduleData,
   ScheduleDay,
   SchedulePreferenceHintsByCellKey,
@@ -48,10 +49,12 @@ type Props = {
 };
 
 type CellValues = ScheduleData["cellValues"];
+type CellSources = NonNullable<ScheduleData["cellSources"]>;
 
 const EMPTY_DAYS: ScheduleDay[] = [];
 const EMPTY_ROWS: ScheduleRow[] = [];
 const EMPTY_CELL_VALUES: CellValues = {};
+const EMPTY_CELL_SOURCES: CellSources = {};
 
 type ScheduleTableHeaderProps = {
   title: string;
@@ -62,6 +65,7 @@ type ScheduleTableRowProps = {
   row: ScheduleRow;
   days: ScheduleDay[];
   cellValues: CellValues;
+  cellSources: CellSources;
   memberShiftCount: number;
   readOnly: boolean;
   shiftMode: ShiftMode;
@@ -74,6 +78,7 @@ type ScheduleCellEditorProps = {
   memberId: number;
   day: string;
   value: string;
+  source?: ScheduleCellSource;
   shiftMode: ShiftMode;
   placeholder: string;
   readOnly: boolean;
@@ -114,6 +119,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
   const days = data?.days ?? EMPTY_DAYS;
   const rows = data?.rows ?? EMPTY_ROWS;
   const cellValues = data?.cellValues ?? EMPTY_CELL_VALUES;
+  const cellSources = data?.cellSources ?? EMPTY_CELL_SOURCES;
 
   const { memberShiftCounts, dayShiftCounts, totalShifts } = React.useMemo(() => {
     const nextMemberShiftCounts = rows.map(() => 0);
@@ -183,6 +189,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
             row={row}
             days={days}
             cellValues={cellValues}
+            cellSources={cellSources}
             memberShiftCount={memberShiftCounts[rowIndex] ?? 0}
             readOnly={readOnly}
             shiftMode={shiftMode}
@@ -293,6 +300,7 @@ const ScheduleTableRow = React.memo(
     row,
     days,
     cellValues,
+    cellSources,
     memberShiftCount,
     readOnly,
     shiftMode,
@@ -323,6 +331,7 @@ const ScheduleTableRow = React.memo(
               memberId={row.memberId}
               day={day.date}
               value={cellValues[key] ?? ""}
+              source={cellSources[key] ?? "MANUAL"}
               shiftMode={shiftMode}
               placeholder={placeholder}
               readOnly={readOnly}
@@ -345,6 +354,7 @@ const ScheduleTableRow = React.memo(
       prev.shiftMode !== next.shiftMode ||
       prev.placeholder !== next.placeholder ||
       prev.onCellValueChange !== next.onCellValueChange ||
+      prev.cellSources !== next.cellSources ||
       prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey
     ) {
       return false;
@@ -352,7 +362,10 @@ const ScheduleTableRow = React.memo(
 
     return prev.days.every((day) => {
       const key: ScheduleCellKey = `${prev.row.memberId}:${day.date}`;
-      return (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "");
+      return (
+        (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "") &&
+        (prev.cellSources[key] ?? "MANUAL") === (next.cellSources[key] ?? "MANUAL")
+      );
     });
   },
 );
@@ -361,6 +374,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   memberId,
   day,
   value,
+  source,
   shiftMode,
   placeholder,
   readOnly,
@@ -398,6 +412,8 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
     : false;
   const conflictLabel = "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
 
+  const sourceLabel = getScheduleCellSourceLabel(source);
+
   return (
     <div
       className={[
@@ -419,6 +435,14 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
           onBlur={handleBlur}
           highlightEnd={missingEnd}
         />
+      )}
+
+      {value.trim() && sourceLabel && (
+        <div className="mt-1 flex justify-center">
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+            {sourceLabel}
+          </span>
+        </div>
       )}
       {hasConflict && (
         <div className="mt-1 flex justify-center">
@@ -473,6 +497,18 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
     </div>
   );
 });
+
+function getScheduleCellSourceLabel(source?: ScheduleCellSource): string | null {
+  switch (source) {
+    case "AUTO_BUILD":
+      return "Авто";
+    case "PREFERENCE_HINT":
+      return "Пожелание";
+    case "MANUAL":
+    default:
+      return null;
+  }
+}
 
 const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
   days,
