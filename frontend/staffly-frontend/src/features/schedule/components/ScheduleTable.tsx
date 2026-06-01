@@ -396,12 +396,16 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         shiftMode,
       })
     : false;
+  const conflictLabel = "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
 
   return (
     <div
-      className={["border-subtle border-b border-l px-1.5 py-1 text-sm", hasConflict ? "bg-amber-50/70" : ""].join(" ")}
-      title={hasConflict ? "Есть отрицательное пожелание сотрудника" : undefined}
-      aria-label={hasConflict ? "Есть отрицательное пожелание сотрудника" : undefined}
+      className={[
+        "border-subtle border-b border-l px-1.5 py-1 text-sm",
+        hasConflict ? "bg-amber-50/80 ring-1 ring-amber-200 ring-inset" : "",
+      ].join(" ")}
+      title={hasConflict ? conflictLabel : undefined}
+      aria-label={hasConflict ? conflictLabel : undefined}
     >
       {readOnly ? (
         <ReadonlyCell value={value} shiftMode={shiftMode} />
@@ -415,6 +419,17 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
           onBlur={handleBlur}
           highlightEnd={missingEnd}
         />
+      )}
+      {hasConflict && (
+        <div className="mt-1 flex justify-center">
+          <span
+            className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900"
+            aria-label={conflictLabel}
+            title={conflictLabel}
+          >
+            Конфликт
+          </span>
+        </div>
       )}
       {hints && hints.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">

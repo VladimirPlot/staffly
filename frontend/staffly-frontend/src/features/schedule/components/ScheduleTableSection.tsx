@@ -4,6 +4,7 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
 import { type ScheduleData, type ScheduleCellKey, type SchedulePreferenceHintsByCellKey } from "../types";
+import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 
 type ScheduleTableSectionProps = {
   schedule: ScheduleData;
@@ -42,6 +43,46 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const saveDisabled = saving || savingDraft;
+  const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
+  const reviewSummary = React.useMemo(() => {
+    if (!showDraftFromPreferencesNotice) {
+      return null;
+    }
+
+    let filledCellsCount = 0;
+    let negativeConflictCount = 0;
+    let emptyCellsWithHintsCount = 0;
+
+    schedule.rows.forEach((row) => {
+      schedule.days.forEach((day) => {
+        const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
+        const value = schedule.cellValues[key] ?? "";
+        const hasValue = value.trim().length > 0;
+        const hints = preferenceHintsByCellKey?.[key] ?? [];
+
+        if (hasValue) {
+          filledCellsCount += 1;
+          if (
+            hints.length > 0 &&
+            hasNegativePreferenceConflict({
+              value,
+              hints,
+              shiftMode: schedule.config.shiftMode,
+            })
+          ) {
+            negativeConflictCount += 1;
+          }
+          return;
+        }
+
+        if (hints.length > 0) {
+          emptyCellsWithHintsCount += 1;
+        }
+      });
+    });
+
+    return { filledCellsCount, negativeConflictCount, emptyCellsWithHintsCount };
+  }, [preferenceHintsByCellKey, schedule, showDraftFromPreferencesNotice]);
 
   return (
     <>
@@ -74,6 +115,27 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
       )}
 
       <Card className="overflow-visible">
+        {showDraftFromPreferencesNotice && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="font-medium">
+              Это черновик после применения пожеланий/автосборки. Проверьте смены, предупреждения и при необходимости
+              отредактируйте часы вручную перед публикацией.
+            </p>
+            <p className="mt-1 text-xs">
+              {scheduleReadOnly
+                ? "Чтобы внести изменения, нажмите «Редактировать»."
+                : "После проверки сохраните изменения, затем опубликуйте график."}
+            </p>
+            {reviewSummary && (
+              <p className="mt-1 text-xs">
+                Заполнено ячеек: {reviewSummary.filledCellsCount}. Конфликтов с пожеланиями:{" "}
+                {reviewSummary.negativeConflictCount}. Пустых ячеек с пожеланиями:{" "}
+                {reviewSummary.emptyCellsWithHintsCount}.
+              </p>
+            )}
+          </div>
+        )}
+
         {scheduleReadOnly && (
           <div className="text-muted mb-3 text-xs font-medium tracking-wide uppercase">
             Просмотр сохранённого графика
