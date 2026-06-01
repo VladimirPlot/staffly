@@ -412,7 +412,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         schedule.setStatus(ScheduleStatus.PUBLISHED);
 
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(
                 saved,
                 actorUserId,
@@ -729,26 +729,47 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private void notifySchedulePublished(Schedule schedule, Long actorUserId) {
-        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+        if (schedule == null
+                || schedule.getRestaurant() == null
+                || schedule.getPositionIds() == null
+                || schedule.getPositionIds().isEmpty()) {
             return;
         }
-        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+
+        List<Long> positionIds = schedule.getPositionIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (positionIds.isEmpty()) {
+            return;
+        }
+
+        List<RestaurantMember> membersWithSchedulePositions = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 schedule.getRestaurant().getId(),
-                schedule.getPositionIds()
+                positionIds
         );
+        Map<Long, RestaurantMember> targetsByUserId = new LinkedHashMap<>();
+        for (RestaurantMember member : membersWithSchedulePositions) {
+            if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            targetsByUserId.putIfAbsent(member.getUser().getId(), member);
+        }
+        List<RestaurantMember> targets = new ArrayList<>(targetsByUserId.values());
         if (targets.isEmpty()) {
             return;
         }
+
         var creator = users.findById(actorUserId).orElse(null);
-        String content = "График «" + schedule.getTitle()
-                + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + " опубликован.";
+        String content = "Опубликован график «" + schedule.getTitle()
+                + "» на период " + schedule.getStartDate() + " — " + schedule.getEndDate();
         String meta = "schedule:published:restaurant:" + schedule.getRestaurant().getId()
                 + ":schedule:" + schedule.getId();
         inboxMessages.createEvent(
                 schedule.getRestaurant(),
                 creator,
                 content,
-                InboxEventSubtype.SCHEDULE_PREFERENCES,
+                InboxEventSubtype.SCHEDULE_DECISION,
                 meta,
                 targets,
                 schedule.getEndDate()
