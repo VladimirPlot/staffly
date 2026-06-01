@@ -24,7 +24,7 @@ public class PushPayloadFactory {
         Long messageId = message.getId();
         InboxMessageType type = message.getType();
 
-        String title = resolveTitle(type);
+        String title = resolveTitle(message);
         String body = resolveBody(type, message.getContent());
 
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -47,8 +47,13 @@ public class PushPayloadFactory {
         }
     }
 
-    private String resolveTitle(InboxMessageType type) {
-        return switch (type) {
+    private String resolveTitle(InboxMessage message) {
+        if (message.getType() == InboxMessageType.EVENT
+                && message.getMeta() != null
+                && message.getMeta().startsWith("schedule:published:")) {
+            return "График опубликован";
+        }
+        return switch (message.getType()) {
             case ANNOUNCEMENT -> "Объявление";
             case EVENT -> "Событие";
             case BIRTHDAY -> "День рождения";
