@@ -3,6 +3,13 @@ import type { RestaurantRole } from "../../shared/types/restaurant";
 
 export type ShiftMode = "ARRIVAL_ONLY" | "FULL" | "NONE";
 
+export type ScheduleCellSource = "MANUAL" | "PREFERENCE_HINT" | "AUTO_BUILD";
+
+export type ScheduleCellChangeOptions = {
+  commit?: boolean;
+  source?: ScheduleCellSource;
+};
+
 export type ScheduleStatus =
   | "DRAFT"
   | "COLLECTING_PREFERENCES"
@@ -75,6 +82,7 @@ export type ScheduleData = {
   days: ScheduleDay[];
   rows: ScheduleRow[];
   cellValues: Record<string, string>;
+  cellSources?: Record<string, ScheduleCellSource>;
   owner?: ScheduleOwnerDto | null;
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];

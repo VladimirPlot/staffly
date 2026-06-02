@@ -6,7 +6,7 @@ type AliasOptionGroupProps<T extends string> = {
   options: AliasOption<T>[];
   value: T;
   columns: 3 | 4;
-  isCompactLandscape?: boolean;
+  isFullscreenLayout?: boolean;
   onChange: (value: T) => void;
 };
 
@@ -25,15 +25,15 @@ const AliasOptionGroup = <T extends string>({
   options,
   value,
   columns,
-  isCompactLandscape = false,
+  isFullscreenLayout = false,
   onChange,
 }: AliasOptionGroupProps<T>) => {
   return (
-    <div className={["alias-option-group", isCompactLandscape ? "shrink-0 space-y-[0.35rem]" : "space-y-2"].join(" ")}>
+    <div className={["alias-option-group", isFullscreenLayout ? "shrink-0 space-y-[0.35rem]" : "space-y-2"].join(" ")}>
       <div
         className={[
           "text-muted pl-1 text-[10px] font-bold tracking-wider uppercase select-none",
-          isCompactLandscape ? "leading-none" : "",
+          isFullscreenLayout ? "leading-none" : "",
         ].join(" ")}
       >
         {title}
@@ -54,7 +54,7 @@ const AliasOptionGroup = <T extends string>({
               aria-pressed={selected}
               aria-label={`${title}: ${option.label}`}
               title={option.description}
-              className={[optionButtonClassName, isCompactLandscape ? "h-8 min-h-[2rem]" : ""].join(" ")}
+              className={[optionButtonClassName, isFullscreenLayout ? "h-8 min-h-[2rem]" : ""].join(" ")}
               onClick={() => onChange(option.id)}
             >
               <motion.span

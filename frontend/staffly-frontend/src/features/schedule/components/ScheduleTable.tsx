@@ -2,7 +2,9 @@ import React from "react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type {
+  ScheduleCellChangeOptions,
   ScheduleCellKey,
+  ScheduleCellSource,
   ScheduleData,
   ScheduleDay,
   SchedulePreferenceHintsByCellKey,
@@ -42,16 +44,18 @@ const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // сн�
 
 type Props = {
   data: ScheduleData | null | undefined;
-  onChange: (key: ScheduleCellKey, value: string, options?: { commit?: boolean }) => void;
+  onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 
 type CellValues = ScheduleData["cellValues"];
+type CellSources = NonNullable<ScheduleData["cellSources"]>;
 
 const EMPTY_DAYS: ScheduleDay[] = [];
 const EMPTY_ROWS: ScheduleRow[] = [];
 const EMPTY_CELL_VALUES: CellValues = {};
+const EMPTY_CELL_SOURCES: CellSources = {};
 
 type ScheduleTableHeaderProps = {
   title: string;
@@ -62,11 +66,12 @@ type ScheduleTableRowProps = {
   row: ScheduleRow;
   days: ScheduleDay[];
   cellValues: CellValues;
+  cellSources: CellSources;
   memberShiftCount: number;
   readOnly: boolean;
   shiftMode: ShiftMode;
   placeholder: string;
-  onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+  onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
 };
 
@@ -74,10 +79,11 @@ type ScheduleCellEditorProps = {
   memberId: number;
   day: string;
   value: string;
+  source?: ScheduleCellSource;
   shiftMode: ShiftMode;
   placeholder: string;
   readOnly: boolean;
-  onCellValueChange: (memberId: number, day: string, value: string, options?: { commit?: boolean }) => void;
+  onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   hints?: import("../api").SchedulePreferenceCellDto[];
 };
 
@@ -114,6 +120,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
   const days = data?.days ?? EMPTY_DAYS;
   const rows = data?.rows ?? EMPTY_ROWS;
   const cellValues = data?.cellValues ?? EMPTY_CELL_VALUES;
+  const cellSources = data?.cellSources ?? EMPTY_CELL_SOURCES;
 
   const { memberShiftCounts, dayShiftCounts, totalShifts } = React.useMemo(() => {
     const nextMemberShiftCounts = rows.map(() => 0);
@@ -138,7 +145,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
   }, [cellValues, days, rows]);
 
   const handleCellValueChange = React.useCallback(
-    (memberId: number, day: string, value: string, options?: { commit?: boolean }) => {
+    (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => {
       if (readOnly) return;
       onChange(`${memberId}:${day}`, value, options);
     },
@@ -183,6 +190,7 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
             row={row}
             days={days}
             cellValues={cellValues}
+            cellSources={cellSources}
             memberShiftCount={memberShiftCounts[rowIndex] ?? 0}
             readOnly={readOnly}
             shiftMode={shiftMode}
@@ -293,6 +301,7 @@ const ScheduleTableRow = React.memo(
     row,
     days,
     cellValues,
+    cellSources,
     memberShiftCount,
     readOnly,
     shiftMode,
@@ -323,6 +332,7 @@ const ScheduleTableRow = React.memo(
               memberId={row.memberId}
               day={day.date}
               value={cellValues[key] ?? ""}
+              source={cellSources[key] ?? "MANUAL"}
               shiftMode={shiftMode}
               placeholder={placeholder}
               readOnly={readOnly}
@@ -345,6 +355,7 @@ const ScheduleTableRow = React.memo(
       prev.shiftMode !== next.shiftMode ||
       prev.placeholder !== next.placeholder ||
       prev.onCellValueChange !== next.onCellValueChange ||
+      prev.cellSources !== next.cellSources ||
       prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey
     ) {
       return false;
@@ -352,7 +363,10 @@ const ScheduleTableRow = React.memo(
 
     return prev.days.every((day) => {
       const key: ScheduleCellKey = `${prev.row.memberId}:${day.date}`;
-      return (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "");
+      return (
+        (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "") &&
+        (prev.cellSources[key] ?? "MANUAL") === (next.cellSources[key] ?? "MANUAL")
+      );
     });
   },
 );
@@ -361,6 +375,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   memberId,
   day,
   value,
+  source,
   shiftMode,
   placeholder,
   readOnly,
@@ -375,7 +390,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   const handleCommit = React.useCallback(
     (newValue: string) => {
       const normalized = normalizeCellValue(newValue, shiftMode);
-      onCellValueChange(memberId, day, normalized, { commit: true });
+      onCellValueChange(memberId, day, normalized, { commit: true, source: "MANUAL" });
     },
     [day, memberId, onCellValueChange, shiftMode],
   );
@@ -383,7 +398,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   const handleBlur = React.useCallback(
     (rawValue: string) => {
       const normalized = normalizeCellValue(rawValue, shiftMode);
-      onCellValueChange(memberId, day, normalized, { commit: true });
+      onCellValueChange(memberId, day, normalized, { commit: true, source: "MANUAL" });
     },
     [day, memberId, onCellValueChange, shiftMode],
   );
@@ -396,12 +411,20 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         shiftMode,
       })
     : false;
+  const conflictLabel = "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
+
+  const sourceMeta = getScheduleCellSourceMeta(source);
+  const sourceEditHint =
+    !readOnly && value.trim() && source && source !== "MANUAL" ? getScheduleCellSourceEditHint(source) : null;
 
   return (
     <div
-      className={["border-subtle border-b border-l px-1.5 py-1 text-sm", hasConflict ? "bg-amber-50/70" : ""].join(" ")}
-      title={hasConflict ? "Есть отрицательное пожелание сотрудника" : undefined}
-      aria-label={hasConflict ? "Есть отрицательное пожелание сотрудника" : undefined}
+      className={[
+        "border-subtle border-b border-l px-1.5 py-1 text-sm",
+        hasConflict ? "bg-amber-50/80 ring-1 ring-amber-200 ring-inset" : "",
+      ].join(" ")}
+      title={hasConflict ? conflictLabel : undefined}
+      aria-label={hasConflict ? conflictLabel : undefined}
     >
       {readOnly ? (
         <ReadonlyCell value={value} shiftMode={shiftMode} />
@@ -415,6 +438,30 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
           onBlur={handleBlur}
           highlightEnd={missingEnd}
         />
+      )}
+
+      {value.trim() && sourceMeta && (
+        <div className="mt-1 flex flex-col items-center gap-0.5">
+          <span
+            className={["rounded-full border px-1.5 py-0.5 text-[10px] font-semibold", sourceMeta.className].join(" ")}
+            aria-label={sourceMeta.title}
+            title={sourceMeta.title}
+          >
+            {sourceMeta.label}
+          </span>
+          {sourceEditHint && <span className="text-muted text-center text-[10px] leading-tight">{sourceEditHint}</span>}
+        </div>
+      )}
+      {hasConflict && (
+        <div className="mt-1 flex justify-center">
+          <span
+            className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900"
+            aria-label={conflictLabel}
+            title={conflictLabel}
+          >
+            Конфликт
+          </span>
+        </div>
       )}
       {hints && hints.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
@@ -444,7 +491,10 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                     aria-label={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     title={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     onClick={() =>
-                      onCellValueChange(memberId, day, `${cell.startTime}-${cell.endTime}`, { commit: true })
+                      onCellValueChange(memberId, day, `${cell.startTime}-${cell.endTime}`, {
+                        commit: true,
+                        source: "PREFERENCE_HINT",
+                      })
                     }
                   >
                     +
@@ -458,6 +508,39 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
     </div>
   );
 });
+
+function getScheduleCellSourceMeta(
+  source?: ScheduleCellSource,
+): { label: string; title: string; className: string } | null {
+  switch (source) {
+    case "AUTO_BUILD":
+      return {
+        label: "Авто",
+        title: "Смена создана автосборкой",
+        className: "border-sky-200 bg-sky-50 text-sky-700",
+      };
+    case "PREFERENCE_HINT":
+      return {
+        label: "Пожелание",
+        title: "Смена применена из пожелания сотрудника",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+    case "MANUAL":
+    default:
+      return null;
+  }
+}
+
+function getScheduleCellSourceEditHint(source?: ScheduleCellSource): string | null {
+  switch (source) {
+    case "AUTO_BUILD":
+    case "PREFERENCE_HINT":
+      return "Измените — станет ручной";
+    case "MANUAL":
+    default:
+      return null;
+  }
+}
 
 const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
   days,

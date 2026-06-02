@@ -26,9 +26,9 @@ const AliasPage: React.FC = () => {
         fullscreenMode={aliasFullscreen.fullscreenMode}
         fullscreenSupport={aliasFullscreen.fullscreenSupport}
         fullscreenViewport={aliasFullscreen.fullscreenViewport}
-        isCompactLandscape={aliasFullscreen.isCompactLandscape}
+        isFullscreenLayout={aliasFullscreen.isFullscreenLayout}
         orientationLockState={aliasFullscreen.orientationLockState}
-        showLandscapePrompt={aliasFullscreen.showLandscapePrompt}
+        showPortraitPrompt={aliasFullscreen.showPortraitPrompt}
         installHintVisible={aliasFullscreen.installHintVisible}
         fullscreenError={aliasFullscreen.fullscreenError}
         onFullscreenToggle={aliasFullscreen.toggleFullscreen}
@@ -40,18 +40,20 @@ const AliasPage: React.FC = () => {
             wordPack={state.settings.wordPack}
             targetScore={state.settings.targetScore}
             roundDurationSeconds={state.settings.roundDurationSeconds}
+            penalizeSkippedWords={state.settings.penalizeSkippedWords}
             teams={state.teams}
-            isCompactLandscape={aliasFullscreen.isCompactLandscape}
+            isFullscreenLayout={aliasFullscreen.isFullscreenLayout}
             onDifficultyChange={actions.setDifficulty}
             onWordPackChange={actions.setWordPack}
             onTargetScoreChange={actions.setTargetScore}
+            onPenalizeSkippedWordsChange={actions.setPenalizeSkippedWords}
             onTeamNameChange={actions.renameTeam}
             onTeamAdd={actions.addTeam}
             onTeamRemove={actions.removeTeam}
             onStartGame={actions.startGame}
           />
         ) : (
-          <AliasGameView {...aliasGame} isCompactLandscape={aliasFullscreen.isCompactLandscape} />
+          <AliasGameView {...aliasGame} isFullscreenLayout={aliasFullscreen.isFullscreenLayout} />
         )}
       </AliasGameShell>
     </div>

@@ -185,7 +185,7 @@ export default function useScheduleLifecycleActions({
     schedule?.id,
   ]);
 
-  const publishScheduleAction = React.useCallback(async () => {
+  const publishScheduleAction = React.useCallback(async (): Promise<boolean> => {
     if (!canManage || !restaurantId || !schedule?.id) return false;
     setPendingAction("publish");
     onClearScheduleNotices();
@@ -193,8 +193,10 @@ export default function useScheduleLifecycleActions({
       const updatedSchedule = await publishSchedule(restaurantId, schedule.id);
       await applyUpdatedSchedule(updatedSchedule);
       onScheduleMessage("График опубликован");
+      return true;
     } catch (e: unknown) {
       onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось опубликовать график"));
+      return false;
     } finally {
       setPendingAction(null);
     }

@@ -16,9 +16,9 @@ type AliasGameShellProps = {
   fullscreenMode: AliasFullscreenMode;
   fullscreenSupport: AliasFullscreenSupport;
   fullscreenViewport: AliasFullscreenViewport;
-  isCompactLandscape: boolean;
+  isFullscreenLayout: boolean;
   orientationLockState: AliasOrientationLockState;
-  showLandscapePrompt: boolean;
+  showPortraitPrompt: boolean;
   installHintVisible: boolean;
   fullscreenError: string | null;
   onFullscreenToggle: () => Promise<void>;
@@ -31,9 +31,9 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
   fullscreenMode,
   fullscreenSupport,
   fullscreenViewport,
-  isCompactLandscape,
+  isFullscreenLayout,
   orientationLockState,
-  showLandscapePrompt,
+  showPortraitPrompt,
   installHintVisible,
   fullscreenError,
   onFullscreenToggle,
@@ -41,12 +41,12 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
 }) => {
   const isFullscreen = fullscreenMode !== "inline";
   const showInstallHint = installHintVisible || Boolean(fullscreenError);
-  const landscapePromptTitle =
+  const portraitPromptTitle =
     orientationLockState === "failed" ? "Не удалось повернуть экран автоматически" : "Поверните телефон";
-  const landscapePromptText =
+  const portraitPromptText =
     fullscreenSupport === "native"
-      ? "Разрешите автоповорот и поверните устройство горизонтально, чтобы Алиас занял игровой экран."
-      : "На iPhone Web App нельзя надежно зафиксировать ориентацию через браузер. Поверните устройство горизонтально для игрового режима.";
+      ? "Разрешите автоповорот и держите телефон вертикально, чтобы время, счет и карточка оставались на одном экране."
+      : "На iPhone Web App нельзя надежно зафиксировать ориентацию через браузер. Поверните устройство вертикально для игрового режима.";
 
   const fullscreenStyle =
     isFullscreen && fullscreenViewport.width > 0 && fullscreenViewport.height > 0
@@ -62,7 +62,7 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
       ref={gameShellRef}
       className={[
         "alias-game-shell flex items-center justify-center border border-[var(--staffly-border)] transition-all duration-300 ease-in-out",
-        isFullscreen && isCompactLandscape
+        isFullscreen && isFullscreenLayout
           ? "fixed inset-0 z-[100] items-stretch overflow-hidden overscroll-contain rounded-none border-0 bg-[var(--staffly-surface)] p-0"
           : isFullscreen
             ? "fixed inset-0 z-[100] h-screen w-screen items-start overflow-y-auto overscroll-contain rounded-none border-0 bg-[var(--staffly-bg)] px-[max(0.75rem,env(safe-area-inset-left))] pt-[max(3.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[height:100dvh]:h-[100dvh] sm:items-center sm:p-8 sm:pt-16"
@@ -102,7 +102,7 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
           </div>
         </div>
       ) : null}
-      {showLandscapePrompt ? (
+      {showPortraitPrompt ? (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-[var(--staffly-bg)]/95 p-6 text-center backdrop-blur">
           <div className="relative max-w-sm rounded-2xl border border-[var(--staffly-border)] bg-[var(--staffly-surface)] p-5 shadow-lg">
             <button
@@ -116,9 +116,9 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
               <Icon icon={X} size="xs" decorative />
             </button>
             <div className="pr-6">
-              <div className="text-muted text-xs font-bold tracking-widest uppercase">landscape</div>
-              <div className="text-strong mt-2 text-2xl font-extrabold">{landscapePromptTitle}</div>
-              <div className="text-muted mt-2 text-sm leading-relaxed">{landscapePromptText}</div>
+              <div className="text-muted text-xs font-bold tracking-widest uppercase">portrait</div>
+              <div className="text-strong mt-2 text-2xl font-extrabold">{portraitPromptTitle}</div>
+              <div className="text-muted mt-2 text-sm leading-relaxed">{portraitPromptText}</div>
             </div>
           </div>
         </div>

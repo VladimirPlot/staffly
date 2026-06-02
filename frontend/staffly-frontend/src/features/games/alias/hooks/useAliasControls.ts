@@ -31,12 +31,12 @@ export const useAliasControls = ({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
 
-      if (event.key === "Enter" || event.key === "ArrowDown") {
+      if (event.key === "Enter" || event.key === "ArrowUp") {
         event.preventDefault();
         onCorrect();
       }
 
-      if (event.key === "Backspace" || event.key === "ArrowUp") {
+      if (event.key === "Backspace" || event.key === "ArrowDown") {
         event.preventDefault();
         onSkip();
       }
@@ -89,7 +89,7 @@ export const useAliasControls = ({
 
       if (!isIntentionalSwipe) return;
 
-      if (distance > 0) {
+      if (distance < 0) {
         onCorrect();
       } else {
         onSkip();

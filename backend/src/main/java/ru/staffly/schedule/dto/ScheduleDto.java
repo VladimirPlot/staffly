@@ -1,5 +1,6 @@
 package ru.staffly.schedule.dto;
 
+import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleStatus;
 
 import java.time.Instant;
@@ -13,6 +14,7 @@ public record ScheduleDto(
         List<ScheduleDayDto> days,
         List<ScheduleRowDto> rows,
         Map<String, String> cellValues,
+        Map<String, ScheduleCellSource> cellSources,
         ScheduleOwnerDto owner,
         ScheduleCreatedByDto createdBy,
         List<ScheduleAuditLogDto> history,

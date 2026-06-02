@@ -48,7 +48,7 @@ export default function useScheduleAutoBuildApplyActions({
         const savedList = await listSavedSchedules(restaurantId);
         onSavedSchedulesChanged(savedList);
 
-        onScheduleMessage("Автосборка применена к черновику");
+        onScheduleMessage("Автосборка применена. Проверьте черновик и при необходимости отредактируйте смены вручную.");
         return true;
       } catch (e: unknown) {
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось применить автосборку"));
