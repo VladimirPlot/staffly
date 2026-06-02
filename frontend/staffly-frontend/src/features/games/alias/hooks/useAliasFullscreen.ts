@@ -34,6 +34,15 @@ type ScreenOrientationWithLock = ScreenOrientation & {
   unlock?: () => void;
 };
 
+const ALIAS_FULLSCREEN_VIEWPORT_CONTENT =
+  "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+
+const getViewportMeta = () => {
+  if (typeof document === "undefined") return null;
+
+  return document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+};
+
 const getFullscreenElement = () => {
   const fullscreenDocument = document as FullscreenDocument;
   return document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
@@ -147,12 +156,12 @@ const getScreenOrientation = () => {
   return screen.orientation as ScreenOrientationWithLock | undefined;
 };
 
-const lockLandscapeOrientation = async () => {
+const lockPortraitOrientation = async () => {
   const orientation = getScreenOrientation();
 
   if (typeof orientation?.lock !== "function") return false;
 
-  await orientation.lock("landscape");
+  await orientation.lock("portrait");
   return true;
 };
 
@@ -175,11 +184,11 @@ export const useAliasFullscreen = () => {
 
   const support = getSupport(environment);
   const isFullscreen = mode !== "inline";
-  const isCompactLandscape = isFullscreen && isLandscape && viewportSize.height > 0 && viewportSize.height <= 560;
-  const showLandscapePrompt =
+  const isFullscreenLayout = isFullscreen && environment.isMobile;
+  const showPortraitPrompt =
     isFullscreen &&
     environment.isMobile &&
-    !isLandscape &&
+    isLandscape &&
     orientationLockState !== "locking" &&
     orientationLockState !== "locked";
 
@@ -268,15 +277,22 @@ export const useAliasFullscreen = () => {
     if (!isFullscreen) return undefined;
 
     const { body, documentElement } = document;
+    const viewportMeta = getViewportMeta();
+    const previousViewportContent = viewportMeta?.getAttribute("content") ?? null;
     const previousBodyOverflow = body.style.overflow;
     const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
     const previousDocumentOverscrollBehavior = documentElement.style.overscrollBehavior;
 
+    viewportMeta?.setAttribute("content", ALIAS_FULLSCREEN_VIEWPORT_CONTENT);
     body.style.overflow = "hidden";
     body.style.overscrollBehavior = "none";
     documentElement.style.overscrollBehavior = "none";
 
     return () => {
+      if (previousViewportContent) {
+        viewportMeta?.setAttribute("content", previousViewportContent);
+      }
+
       body.style.overflow = previousBodyOverflow;
       body.style.overscrollBehavior = previousBodyOverscrollBehavior;
       documentElement.style.overscrollBehavior = previousDocumentOverscrollBehavior;
@@ -292,13 +308,13 @@ export const useAliasFullscreen = () => {
 
   React.useEffect(() => () => unlockOrientation(), []);
 
-  const requestLandscapeLock = React.useCallback(async () => {
+  const requestPortraitLock = React.useCallback(async () => {
     if (!environment.isMobile) return;
 
     setOrientationLockState("locking");
 
     try {
-      const locked = await lockLandscapeOrientation();
+      const locked = await lockPortraitOrientation();
       setOrientationLockState(locked ? "locked" : "unsupported");
     } catch {
       setOrientationLockState("failed");
@@ -340,7 +356,7 @@ export const useAliasFullscreen = () => {
     if (support === "iosWebApp" || support === "browserFallback") {
       setInstallHintVisible(false);
       setMode("webApp");
-      void requestLandscapeLock();
+      void requestPortraitLock();
       return;
     }
 
@@ -349,12 +365,12 @@ export const useAliasFullscreen = () => {
       if (getFullscreenElement() === shell) {
         setInstallHintVisible(false);
         setMode("native");
-        await requestLandscapeLock();
+        await requestPortraitLock();
       }
     } catch {
       setFullscreenError("Браузер не разрешил полноэкранный режим. Попробуйте открыть игру из установленного Web App.");
     }
-  }, [requestLandscapeLock, support]);
+  }, [requestPortraitLock, support]);
 
   const toggleFullscreen = React.useCallback(async () => {
     if (mode === "inline") {
@@ -368,13 +384,13 @@ export const useAliasFullscreen = () => {
   return {
     gameShellRef,
     isFullscreen,
-    isCompactLandscape,
+    isFullscreenLayout,
     isLandscape,
     fullscreenViewport: viewportSize,
     fullscreenMode: mode,
     fullscreenSupport: support,
     orientationLockState,
-    showLandscapePrompt,
+    showPortraitPrompt,
     installHintVisible,
     fullscreenError,
     toggleFullscreen,

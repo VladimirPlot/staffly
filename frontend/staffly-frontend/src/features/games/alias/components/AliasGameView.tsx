@@ -10,7 +10,7 @@ import type { AliasRoundEvent, AliasRoundResult, AliasTeam } from "../types";
 
 type AliasGameViewProps = ReturnType<typeof useAliasGame>;
 type AliasGameViewComponentProps = AliasGameViewProps & {
-  isCompactLandscape?: boolean;
+  isFullscreenLayout?: boolean;
 };
 
 const getResultClassName = (result: AliasRoundEvent["result"]) =>
@@ -29,12 +29,12 @@ const Scoreboard: React.FC<{
   teams: AliasTeam[];
   activeTeamId: string | null;
   targetScore: number;
-  isCompactLandscape?: boolean;
-}> = ({ teams, activeTeamId, targetScore, isCompactLandscape = false }) => (
+  isFullscreenLayout?: boolean;
+}> = ({ teams, activeTeamId, targetScore, isFullscreenLayout = false }) => (
   <div
     className={[
       "alias-scoreboard flex w-full justify-center",
-      isCompactLandscape ? "flex-nowrap gap-1.5 overflow-x-auto pb-[0.05rem]" : "flex-wrap gap-2",
+      isFullscreenLayout ? "flex-nowrap gap-1.5 overflow-x-auto pb-[0.05rem]" : "flex-wrap gap-2",
     ].join(" ")}
   >
     {teams.map((team) => {
@@ -45,7 +45,7 @@ const Scoreboard: React.FC<{
           key={team.id}
           className={[
             "alias-score-card min-w-0 rounded-xl border transition-all duration-200",
-            isCompactLandscape
+            isFullscreenLayout
               ? "w-[min(11rem,calc(50%-0.2rem))] rounded-[0.6rem] px-2 py-1"
               : "w-full p-3.5 sm:w-[min(20rem,calc(50%-0.2rem))] lg:w-80",
             isActive
@@ -55,7 +55,7 @@ const Scoreboard: React.FC<{
         >
           <div className="truncate text-xs font-semibold opacity-80">{team.name}</div>
           <div className="mt-1 flex items-end justify-between gap-2">
-            <span className={[isCompactLandscape ? "text-[0.95rem]" : "text-2xl", "leading-none font-bold"].join(" ")}>
+            <span className={[isFullscreenLayout ? "text-[0.95rem]" : "text-2xl", "leading-none font-bold"].join(" ")}>
               {team.score}
             </span>
             <span className="text-[11px] opacity-60">из {targetScore}</span>
@@ -77,8 +77,8 @@ const getReviewButtonClassName = (isActive: boolean, result: AliasRoundResult) =
 const RoundEventsList: React.FC<{
   events: AliasRoundEvent[];
   onReview: (eventIndex: number, result: AliasRoundResult) => void;
-  isCompactLandscape?: boolean;
-}> = ({ events, onReview, isCompactLandscape = false }) => {
+  isFullscreenLayout?: boolean;
+}> = ({ events, onReview, isFullscreenLayout = false }) => {
   if (events.length === 0) {
     return (
       <div className="bg-app text-muted rounded-xl border border-[var(--staffly-border)] p-4 text-sm">
@@ -91,7 +91,7 @@ const RoundEventsList: React.FC<{
     <MotionDiv
       className={[
         "alias-round-events grid grid-cols-1 gap-2 overflow-y-auto pr-1",
-        isCompactLandscape ? "h-full max-h-full" : "max-h-[min(50vh,30rem)] sm:grid-cols-2",
+        isFullscreenLayout ? "h-full max-h-full" : "max-h-[min(50vh,30rem)] sm:grid-cols-2",
       ].join(" ")}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -120,7 +120,7 @@ const RoundEventsList: React.FC<{
             <span
               className={[
                 "min-w-0 font-semibold",
-                isCompactLandscape ? "[overflow-wrap:anywhere] whitespace-normal" : "truncate",
+                isFullscreenLayout ? "[overflow-wrap:anywhere] whitespace-normal" : "truncate",
               ].join(" ")}
             >
               {event.word.text}
@@ -195,11 +195,12 @@ const PausedRoundCard: React.FC<{
 const WordCard: React.FC<{
   word: AliasRoundEvent["word"] | null;
   exitDirection: ExitDirection;
-  isCompactLandscape?: boolean;
+  isFullscreenLayout?: boolean;
+  skipScore: number;
   onCorrect: () => void;
   onSkip: () => void;
-}> = ({ word, exitDirection, isCompactLandscape = false, onCorrect, onSkip }) => {
-  const threshold = isCompactLandscape ? 60 : 80;
+}> = ({ word, exitDirection, isFullscreenLayout = false, skipScore, onCorrect, onSkip }) => {
+  const threshold = isFullscreenLayout ? 60 : 80;
   const y = useMotionValue(0);
   const rotate = useTransform(y, [-threshold * 1.5, threshold * 1.5], [-4, 4]);
   const opacity = useTransform(
@@ -207,10 +208,10 @@ const WordCard: React.FC<{
     [-threshold * 2.5, -threshold * 1.5, 0, threshold * 1.5, threshold * 2.5],
     [0, 1, 1, 1, 0],
   );
-  const correctOverlayOpacity = useTransform(y, [0, threshold], [0, 1]);
-  const skipOverlayOpacity = useTransform(y, [-threshold, 0], [1, 0]);
-  const correctScale = useTransform(y, [0, threshold], [0.8, 1]);
-  const skipScale = useTransform(y, [-threshold, 0], [1, 0.8]);
+  const correctOverlayOpacity = useTransform(y, [-threshold, 0], [1, 0]);
+  const skipOverlayOpacity = useTransform(y, [0, threshold], [0, 1]);
+  const correctScale = useTransform(y, [-threshold, 0], [1, 0.8]);
+  const skipScale = useTransform(y, [0, threshold], [0.8, 1]);
 
   React.useEffect(() => {
     y.set(0);
@@ -218,8 +219,8 @@ const WordCard: React.FC<{
 
   const handleDragEnd = React.useCallback(
     (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-      if (info.offset.y > threshold) onCorrect();
-      else if (info.offset.y < -threshold) onSkip();
+      if (info.offset.y < -threshold) onCorrect();
+      else if (info.offset.y > threshold) onSkip();
     },
     [onCorrect, onSkip, threshold],
   );
@@ -244,10 +245,10 @@ const WordCard: React.FC<{
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className={[
         "alias-word-card bg-app absolute inset-0 flex cursor-grab touch-none flex-col items-center justify-center border-2 border-dashed border-[var(--staffly-divider)] text-center transition-colors outline-none select-none active:cursor-grabbing",
-        isCompactLandscape ? "rounded-[1.1rem] p-[0.85rem]" : "rounded-[1.5rem] p-6",
+        isFullscreenLayout ? "rounded-[1.1rem] p-[0.85rem]" : "rounded-[1.5rem] p-6",
       ].join(" ")}
       tabIndex={0}
-      aria-label="Карточка слова. Свайп вниз означает верно, свайп вверх означает пропуск."
+      aria-label="Карточка слова. Свайп вверх означает верно, свайп вниз означает пропуск."
     >
       <motion.div
         className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.5rem] border-2 border-emerald-500/80 bg-emerald-500/[0.08]"
@@ -271,29 +272,29 @@ const WordCard: React.FC<{
           className="flex items-center gap-1.5 rounded-full bg-rose-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-xs"
         >
           <X className="h-4 w-4 stroke-[3]" />
-          <span>Пропуск (0)</span>
+          <span>Пропуск ({skipScore})</span>
         </motion.div>
       </motion.div>
 
       <div
         className={[
           "alias-word-hints text-muted flex gap-3 text-xs font-semibold select-none",
-          isCompactLandscape ? "mb-2" : "mb-5",
+          isFullscreenLayout ? "mb-2" : "mb-5",
         ].join(" ")}
       >
         <span className="inline-flex items-center gap-1">
-          <Icon icon={ArrowDown} size="xs" decorative />
+          <Icon icon={ArrowUp} size="xs" decorative />
           верно
         </span>
         <span className="inline-flex items-center gap-1">
-          <Icon icon={ArrowUp} size="xs" decorative />
+          <Icon icon={ArrowDown} size="xs" decorative />
           пропуск
         </span>
       </div>
       <div
         className={[
           "alias-word-text text-strong w-full max-w-full px-2 leading-tight font-black text-balance [overflow-wrap:anywhere] break-words [hyphens:auto]",
-          isCompactLandscape
+          isFullscreenLayout
             ? "text-[clamp(2rem,12vh,3.6rem)]"
             : "text-[clamp(2.25rem,10vw,4rem)] sm:text-[clamp(3rem,8vw,4.5rem)]",
         ].join(" ")}
@@ -355,24 +356,25 @@ const ExitConfirmationDialog: React.FC<{
   </AnimatePresence>
 );
 
-const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, isCompactLandscape = false }) => {
+const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, isFullscreenLayout = false }) => {
   const [exitConfirmationOpen, setExitConfirmationOpen] = React.useState(false);
   const [exitDirection, setExitDirection] = React.useState<ExitDirection>(null);
 
   const currentTeam = state.teams[state.currentTeamIndex] ?? null;
   const activeTeamId = currentTeam?.id ?? null;
-  const roundScore = getAliasRoundScore(state.roundEvents);
-  const lastRoundScore = getAliasRoundScore(state.lastRoundEvents);
+  const skipScore = state.settings.penalizeSkippedWords ? -1 : 0;
+  const roundScore = getAliasRoundScore(state.roundEvents, state.settings.penalizeSkippedWords);
+  const lastRoundScore = getAliasRoundScore(state.lastRoundEvents, state.settings.penalizeSkippedWords);
 
   const handleCorrect = React.useCallback(() => {
     if (state.phase !== "playing") return;
-    setExitDirection("down");
+    setExitDirection("up");
     actions.markCorrect();
   }, [actions, state.phase]);
 
   const handleSkip = React.useCallback(() => {
     if (state.phase !== "playing") return;
-    setExitDirection("up");
+    setExitDirection("down");
     actions.markSkipped();
   }, [actions, state.phase]);
 
@@ -410,8 +412,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
     return null;
   }
 
-  const contentWidthClassName = isCompactLandscape
-    ? "h-full w-full max-w-full min-h-0 gap-[0.45rem] pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(3.5rem,env(safe-area-inset-right))] pb-[max(0.6rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))]"
+  const contentWidthClassName = isFullscreenLayout
+    ? "mx-auto h-full min-h-0 w-full max-w-md gap-2 pt-[max(3.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))]"
     : state.phase === "roundSummary"
       ? "max-w-6xl"
       : "max-w-2xl";
@@ -427,14 +429,14 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
         teams={state.teams}
         activeTeamId={activeTeamId}
         targetScore={state.settings.targetScore}
-        isCompactLandscape={isCompactLandscape}
+        isFullscreenLayout={isFullscreenLayout}
       />
 
       {state.phase === "ready" && currentTeam ? (
         <section
           className={[
             "alias-ready-panel flex flex-col items-center justify-center border border-[var(--staffly-border)] bg-[var(--staffly-surface)] text-center shadow-sm",
-            isCompactLandscape
+            isFullscreenLayout
               ? "min-h-0 flex-1 rounded-none border-none bg-transparent p-4 shadow-none"
               : "min-h-[360px] rounded-[1.75rem] p-6",
           ].join(" ")}
@@ -443,18 +445,18 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <h2
             className={[
               "text-strong max-w-full truncate font-bold",
-              isCompactLandscape ? "mt-1 text-2xl" : "mt-2 text-4xl sm:text-5xl",
+              isFullscreenLayout ? "mt-1 text-2xl" : "mt-2 text-4xl sm:text-5xl",
             ].join(" ")}
           >
             {currentTeam.name}
           </h2>
-          <div className={["text-muted text-sm", isCompactLandscape ? "mt-1" : "mt-3"].join(" ")}>
-            {state.settings.roundDurationSeconds} секунд, верно +1, пропуск 0
+          <div className={["text-muted text-sm", isFullscreenLayout ? "mt-1" : "mt-3"].join(" ")}>
+            {state.settings.roundDurationSeconds} секунд, верно +1, пропуск {skipScore}
           </div>
-          <div className={["flex w-full max-w-xs flex-col gap-2", isCompactLandscape ? "mt-3" : "mt-6"].join(" ")}>
+          <div className={["flex w-full max-w-xs flex-col gap-2", isFullscreenLayout ? "mt-3" : "mt-6"].join(" ")}>
             <Button
               type="button"
-              size={isCompactLandscape ? "sm" : "lg"}
+              size={isFullscreenLayout ? "sm" : "lg"}
               className="w-full cursor-pointer"
               leftIcon={<Icon icon={Play} size="sm" decorative />}
               onClick={handleStartRound}
@@ -469,41 +471,41 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
         <section
           className={[
             "alias-playing-panel relative overflow-hidden border border-[var(--staffly-border)] bg-[var(--staffly-surface)] shadow-sm",
-            isCompactLandscape
-              ? "grid flex-1 grid-cols-[minmax(18rem,1fr)_minmax(10rem,13rem)] grid-rows-[auto_minmax(0,1fr)] gap-[0.55rem] rounded-none border-none bg-transparent p-0 shadow-none"
+            isFullscreenLayout
+              ? "flex min-h-0 flex-1 flex-col gap-2 rounded-none border-none bg-transparent p-0 shadow-none"
               : "rounded-[1.75rem] p-4 sm:p-5",
           ].join(" ")}
         >
           <div
             className={[
               "alias-round-header flex flex-wrap items-center justify-between gap-3",
-              isCompactLandscape ? "col-start-2 row-start-1 mb-0 items-start gap-[0.4rem]" : "mb-4",
+              isFullscreenLayout ? "mb-0 gap-2" : "mb-4",
             ].join(" ")}
           >
             <div>
-              <div className={["text-muted font-medium", isCompactLandscape ? "text-[10px]" : "text-xs"].join(" ")}>
+              <div className={["text-muted font-medium", isFullscreenLayout ? "text-[10px]" : "text-xs"].join(" ")}>
                 Объясняет
               </div>
-              <div className={["text-strong font-semibold", isCompactLandscape ? "text-sm" : "text-lg"].join(" ")}>
+              <div className={["text-strong font-semibold", isFullscreenLayout ? "text-sm" : "text-lg"].join(" ")}>
                 {currentTeam.name}
               </div>
             </div>
             <div
               className={[
                 "alias-round-metrics flex items-center",
-                isCompactLandscape ? "w-full gap-[0.4rem]" : "gap-2",
+                isFullscreenLayout ? "w-full gap-[0.4rem]" : "gap-2",
               ].join(" ")}
             >
               <div
                 className={[
                   "alias-round-metric bg-app border border-[var(--staffly-border)] text-center",
-                  isCompactLandscape ? "flex-1 rounded-[0.6rem] px-1.5 py-1" : "rounded-2xl px-4 py-2",
+                  isFullscreenLayout ? "flex-1 rounded-[0.6rem] px-1.5 py-1" : "rounded-2xl px-4 py-2",
                 ].join(" ")}
               >
                 <div
                   className={[
                     "text-muted font-semibold tracking-wide uppercase",
-                    isCompactLandscape ? "text-[8px]" : "text-[10px]",
+                    isFullscreenLayout ? "text-[8px]" : "text-[10px]",
                   ].join(" ")}
                 >
                   Время
@@ -511,7 +513,7 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
                 <div
                   className={[
                     "text-strong leading-none font-bold",
-                    isCompactLandscape ? "text-[1.15rem]" : "text-2xl",
+                    isFullscreenLayout ? "text-[1.15rem]" : "text-2xl",
                   ].join(" ")}
                 >
                   {state.remainingSeconds}
@@ -520,21 +522,21 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
               <div
                 className={[
                   "alias-round-metric bg-app border border-[var(--staffly-border)] text-center",
-                  isCompactLandscape ? "flex-1 rounded-[0.6rem] px-1.5 py-1" : "rounded-2xl px-4 py-2",
+                  isFullscreenLayout ? "flex-1 rounded-[0.6rem] px-1.5 py-1" : "rounded-2xl px-4 py-2",
                 ].join(" ")}
               >
                 <div
                   className={[
                     "text-muted font-semibold tracking-wide uppercase",
-                    isCompactLandscape ? "text-[8px]" : "text-[10px]",
+                    isFullscreenLayout ? "text-[8px]" : "text-[10px]",
                   ].join(" ")}
                 >
-                  Раунд
+                  Очки
                 </div>
                 <div
                   className={[
                     "text-strong leading-none font-bold",
-                    isCompactLandscape ? "text-[1.15rem]" : "text-2xl",
+                    isFullscreenLayout ? "text-[1.15rem]" : "text-2xl",
                   ].join(" ")}
                 >
                   {roundScore}
@@ -546,8 +548,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <div
             className={[
               "alias-word-stage relative flex items-center justify-center overflow-hidden",
-              isCompactLandscape
-                ? "col-start-1 row-span-2 row-start-1 m-0 h-full min-h-0 rounded-[1.1rem]"
+              isFullscreenLayout
+                ? "m-0 min-h-0 flex-1 rounded-[1.1rem]"
                 : "my-4 min-h-[280px] rounded-[1.5rem] sm:min-h-[340px]",
             ].join(" ")}
           >
@@ -559,7 +561,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
                   key={state.currentWord?.id ?? "empty-word"}
                   word={state.currentWord}
                   exitDirection={exitDirection}
-                  isCompactLandscape={isCompactLandscape}
+                  isFullscreenLayout={isFullscreenLayout}
+                  skipScore={skipScore}
                   onCorrect={handleCorrect}
                   onSkip={handleSkip}
                 />
@@ -570,13 +573,13 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <div
             className={[
               "alias-action-grid grid gap-2",
-              isCompactLandscape ? "col-start-2 row-start-2 mt-0 grid-cols-1 self-end" : "mt-4 sm:grid-cols-3",
+              isFullscreenLayout ? "mt-0 grid-cols-3" : "mt-4 sm:grid-cols-3",
             ].join(" ")}
           >
             <Button
               type="button"
-              size={isCompactLandscape ? "sm" : "lg"}
-              className={["cursor-pointer", isCompactLandscape ? "h-8.5 min-h-[2.125rem] py-1 text-xs" : ""].join(" ")}
+              size={isFullscreenLayout ? "sm" : "lg"}
+              className={["cursor-pointer", isFullscreenLayout ? "h-8.5 min-h-[2.125rem] py-1 text-xs" : ""].join(" ")}
               leftIcon={<Icon icon={Check} size="sm" decorative />}
               onClick={handleCorrect}
             >
@@ -585,8 +588,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
             <Button
               type="button"
               variant="outline"
-              size={isCompactLandscape ? "sm" : "lg"}
-              className={["cursor-pointer", isCompactLandscape ? "h-8.5 min-h-[2.125rem] py-1 text-xs" : ""].join(" ")}
+              size={isFullscreenLayout ? "sm" : "lg"}
+              className={["cursor-pointer", isFullscreenLayout ? "h-8.5 min-h-[2.125rem] py-1 text-xs" : ""].join(" ")}
               leftIcon={<Icon icon={SkipForward} size="sm" decorative />}
               onClick={handleSkip}
             >
@@ -595,8 +598,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
             <Button
               type="button"
               variant="ghost"
-              size={isCompactLandscape ? "sm" : "lg"}
-              className={["cursor-pointer", isCompactLandscape ? "h-8.5 min-h-[2.125rem] py-1 text-xs" : ""].join(" ")}
+              size={isFullscreenLayout ? "sm" : "lg"}
+              className={["cursor-pointer", isFullscreenLayout ? "h-8.5 min-h-[2.125rem] py-1 text-xs" : ""].join(" ")}
               leftIcon={<Icon icon={state.phase === "paused" ? Play : Pause} size="sm" decorative />}
               onClick={handlePauseToggle}
             >
@@ -610,8 +613,8 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
         <MotionSection
           className={[
             "alias-summary-panel border border-[var(--staffly-border)] bg-[var(--staffly-surface)] shadow-sm",
-            isCompactLandscape
-              ? "grid min-h-0 flex-1 grid-cols-[minmax(18rem,1fr)_minmax(12rem,17rem)] grid-rows-[auto_minmax(0,1fr)] gap-[0.65rem] overflow-hidden rounded-none border-none bg-transparent p-0 shadow-none"
+            isFullscreenLayout
+              ? "flex min-h-0 flex-1 flex-col gap-2 overflow-hidden rounded-none border-none bg-transparent p-0 shadow-none"
               : "rounded-[1.75rem] p-5 sm:p-6",
           ].join(" ")}
           initial={{ opacity: 0, y: 12, scale: 0.985 }}
@@ -621,17 +624,17 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <div
             className={[
               "alias-summary-header flex flex-col",
-              isCompactLandscape
-                ? "col-start-2 row-start-1 gap-2"
+              isFullscreenLayout
+                ? "gap-2"
                 : "gap-4 sm:flex-row sm:items-end sm:justify-between",
             ].join(" ")}
           >
             <div>
-              <div className={["text-muted font-medium", isCompactLandscape ? "text-[11px]" : "text-sm"].join(" ")}>
+              <div className={["text-muted font-medium", isFullscreenLayout ? "text-[11px]" : "text-sm"].join(" ")}>
                 Итог раунда
               </div>
               <h2
-                className={["text-strong font-bold", isCompactLandscape ? "text-xl leading-tight" : "text-3xl"].join(
+                className={["text-strong font-bold", isFullscreenLayout ? "text-xl leading-tight" : "text-3xl"].join(
                   " ",
                 )}
               >
@@ -641,20 +644,20 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
             <div
               className={[
                 "rounded-xl border border-[var(--staffly-border)] bg-[var(--staffly-control)]/45 text-center",
-                isCompactLandscape ? "min-w-[4rem] px-2 py-1" : "min-w-[5.5rem] px-4 py-2.5",
+                isFullscreenLayout ? "min-w-[4rem] px-2 py-1" : "min-w-[5.5rem] px-4 py-2.5",
               ].join(" ")}
             >
               <div
                 className={[
                   "text-muted font-semibold tracking-wide uppercase",
-                  isCompactLandscape ? "text-[8px]" : "text-[10px]",
+                  isFullscreenLayout ? "text-[8px]" : "text-[10px]",
                 ].join(" ")}
               >
                 Очки
               </div>
               <MotionDiv
                 key={lastRoundScore}
-                className={["text-strong leading-none font-bold", isCompactLandscape ? "text-xl" : "text-3xl"].join(
+                className={["text-strong leading-none font-bold", isFullscreenLayout ? "text-xl" : "text-3xl"].join(
                   " ",
                 )}
                 initial={{ scale: 0.94 }}
@@ -668,38 +671,38 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <div
             className={[
               "alias-summary-events",
-              isCompactLandscape ? "col-start-1 row-span-2 row-start-1 mt-0 min-h-0" : "mt-5",
+              isFullscreenLayout ? "mt-0 min-h-0 flex-1" : "mt-5",
             ].join(" ")}
           >
             <RoundEventsList
               events={state.lastRoundEvents}
-              isCompactLandscape={isCompactLandscape}
+              isFullscreenLayout={isFullscreenLayout}
               onReview={actions.reviewLastRoundEvent}
             />
           </div>
           <div
             className={[
               "alias-summary-actions flex flex-col gap-2",
-              isCompactLandscape ? "col-start-2 row-start-2 mt-0 self-end" : "mt-5 sm:flex-row",
+              isFullscreenLayout ? "mt-0 flex-row" : "mt-5 sm:flex-row",
             ].join(" ")}
           >
             <Button
               type="button"
-              size={isCompactLandscape ? "sm" : "lg"}
+              size={isFullscreenLayout ? "sm" : "lg"}
               className={[
                 "alias-summary-action-button flex-1 cursor-pointer font-semibold",
-                isCompactLandscape ? "rounded-xl px-3 text-sm leading-[1.05] whitespace-normal" : "rounded-2xl text-lg",
+                isFullscreenLayout ? "rounded-xl px-3 text-sm leading-[1.05] whitespace-normal" : "rounded-2xl text-lg",
               ].join(" ")}
               style={
-                isCompactLandscape
+                isFullscreenLayout
                   ? { height: "2.375rem", minHeight: "2.375rem", borderRadius: "10px", fontSize: "13px" }
                   : { height: "3.5rem", minHeight: "3.5rem" }
               }
               leftIcon={
                 <Icon
                   icon={state.winnerTeam ? Trophy : Flag}
-                  size={isCompactLandscape ? "sm" : "md"}
-                  className={isCompactLandscape ? "h-4 w-4" : "h-6 w-6"}
+                  size={isFullscreenLayout ? "sm" : "md"}
+                  className={isFullscreenLayout ? "h-4 w-4" : "h-6 w-6"}
                   decorative
                 />
               }
@@ -710,21 +713,21 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
             <Button
               type="button"
               variant="outline"
-              size={isCompactLandscape ? "sm" : "lg"}
+              size={isFullscreenLayout ? "sm" : "lg"}
               className={[
                 "alias-summary-action-button flex-1 cursor-pointer font-semibold",
-                isCompactLandscape ? "rounded-xl px-3 text-sm leading-[1.05] whitespace-normal" : "rounded-2xl text-lg",
+                isFullscreenLayout ? "rounded-xl px-3 text-sm leading-[1.05] whitespace-normal" : "rounded-2xl text-lg",
               ].join(" ")}
               style={
-                isCompactLandscape
+                isFullscreenLayout
                   ? { height: "2.375rem", minHeight: "2.375rem", borderRadius: "10px", fontSize: "13px" }
                   : { height: "3.5rem", minHeight: "3.5rem" }
               }
               leftIcon={
                 <Icon
                   icon={RotateCcw}
-                  size={isCompactLandscape ? "sm" : "md"}
-                  className={isCompactLandscape ? "h-4 w-4" : "h-6 w-6"}
+                  size={isFullscreenLayout ? "sm" : "md"}
+                  className={isFullscreenLayout ? "h-4 w-4" : "h-6 w-6"}
                   decorative
                 />
               }
@@ -740,7 +743,7 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
         <section
           className={[
             "alias-game-over-panel flex flex-col items-center justify-center border border-[var(--staffly-border)] bg-[var(--staffly-surface)] text-center shadow-sm",
-            isCompactLandscape
+            isFullscreenLayout
               ? "min-h-0 flex-1 rounded-none border-none bg-transparent p-4 shadow-none"
               : "min-h-[360px] rounded-[1.75rem] p-8",
           ].join(" ")}
@@ -757,19 +760,19 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
           <h2
             className={[
               "max-w-full truncate font-extrabold tracking-tight text-[var(--staffly-text-strong)]",
-              isCompactLandscape ? "mt-1 text-2xl" : "mt-2 text-4xl sm:text-5xl",
+              isFullscreenLayout ? "mt-1 text-2xl" : "mt-2 text-4xl sm:text-5xl",
             ].join(" ")}
           >
             {state.winnerTeam.name}
           </h2>
-          <div className={["text-muted text-sm font-medium", isCompactLandscape ? "mt-1" : "mt-3"].join(" ")}>
+          <div className={["text-muted text-sm font-medium", isFullscreenLayout ? "mt-1" : "mt-3"].join(" ")}>
             Финальный счет:{" "}
             <span className="font-bold text-[var(--staffly-text-strong)]">{state.winnerTeam.score} очков</span>
           </div>
           <Button
             type="button"
-            size={isCompactLandscape ? "sm" : "lg"}
-            className={["w-full max-w-xs cursor-pointer", isCompactLandscape ? "mt-4" : "mt-8"].join(" ")}
+            size={isFullscreenLayout ? "sm" : "lg"}
+            className={["w-full max-w-xs cursor-pointer", isFullscreenLayout ? "mt-4" : "mt-8"].join(" ")}
             leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}
             onClick={actions.resetGame}
           >

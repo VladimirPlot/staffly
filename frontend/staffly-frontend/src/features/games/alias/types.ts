@@ -34,5 +34,6 @@ export type AliasGameSettings = {
   wordPack: WordPackId;
   targetScore: number;
   roundDurationSeconds: number;
+  penalizeSkippedWords: boolean;
   teams: AliasTeam[];
 };

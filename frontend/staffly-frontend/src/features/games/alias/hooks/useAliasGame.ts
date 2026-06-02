@@ -40,6 +40,7 @@ type AliasGameAction =
   | { type: "setDifficulty"; difficulty: DifficultyId }
   | { type: "setWordPack"; wordPack: WordPackId }
   | { type: "setTargetScore"; targetScore: number }
+  | { type: "setPenalizeSkippedWords"; penalizeSkippedWords: boolean }
   | { type: "renameTeam"; teamId: string; name: string }
   | { type: "addTeam" }
   | { type: "removeTeam"; teamId: string }
@@ -60,14 +61,24 @@ const createInitialTeams = (): AliasTeam[] => [
   { id: "team-2", name: "Команда 2", score: 0 },
 ];
 
-const getEventScore = (result: AliasRoundEventResult) => {
+const getEventScore = (result: AliasRoundEventResult, penalizeSkippedWords = false) => {
   if (result === "correct") return 1;
-  if (result === "skipped") return 0;
+  if (result === "skipped") return penalizeSkippedWords ? -1 : 0;
   return 0;
 };
 
-const getRoundScore = (events: AliasRoundEvent[]) =>
-  events.reduce((score, event) => score + getEventScore(event.result), 0);
+const getRoundScore = (events: AliasRoundEvent[], penalizeSkippedWords = false) =>
+  events.reduce((score, event) => score + getEventScore(event.result, penalizeSkippedWords), 0);
+
+const getWinnerAfterCompletedTurn = (teams: AliasTeam[], completedTeamIndex: number, targetScore: number) => {
+  if (completedTeamIndex !== teams.length - 1) return null;
+
+  const highestScore = Math.max(...teams.map((team) => team.score));
+  if (highestScore < targetScore) return null;
+
+  const leadingTeams = teams.filter((team) => team.score === highestScore);
+  return leadingTeams.length === 1 ? (leadingTeams[0] ?? null) : null;
+};
 
 const getRoundEventsForSummary = (state: AliasGameState): AliasRoundEvent[] =>
   state.currentWord ? [...state.roundEvents, { word: state.currentWord, result: "pending" }] : state.roundEvents;
@@ -84,6 +95,7 @@ const createInitialState = (): AliasGameState => {
     wordPack: "all",
     targetScore: ALIAS_TARGET_SCORE,
     roundDurationSeconds: ALIAS_ROUND_DURATION_SECONDS,
+    penalizeSkippedWords: false,
     teams: createInitialTeams(),
   };
 
@@ -110,12 +122,11 @@ const finishRound = (state: AliasGameState): AliasGameState => {
 
   const currentTeam = state.teams[state.currentTeamIndex] as AliasTeam;
   const roundEvents = getRoundEventsForSummary(state);
-  const roundScore = getRoundScore(roundEvents);
+  const roundScore = getRoundScore(roundEvents, state.settings.penalizeSkippedWords);
   const nextTeams = state.teams.map((team, index) =>
     index === state.currentTeamIndex ? { ...team, score: Math.max(0, team.score + roundScore) } : team,
   );
-  const updatedTeam = nextTeams[state.currentTeamIndex] as AliasTeam;
-  const winnerTeam = updatedTeam.score >= state.settings.targetScore ? updatedTeam : null;
+  const winnerTeam = getWinnerAfterCompletedTurn(nextTeams, state.currentTeamIndex, state.settings.targetScore);
 
   return {
     ...state,
@@ -145,6 +156,10 @@ const reducer = (state: AliasGameState, action: AliasGameAction): AliasGameState
         ...state.settings,
         targetScore: Math.min(ALIAS_MAX_TARGET_SCORE, Math.max(ALIAS_MIN_TARGET_SCORE, targetScore)),
       };
+      return { ...state, settings };
+    }
+    case "setPenalizeSkippedWords": {
+      const settings = { ...state.settings, penalizeSkippedWords: action.penalizeSkippedWords };
       return { ...state, settings };
     }
     case "renameTeam": {
@@ -218,21 +233,21 @@ const reducer = (state: AliasGameState, action: AliasGameAction): AliasGameState
       const currentEvent = state.lastRoundEvents[action.eventIndex];
       if (!currentEvent || currentEvent.result === action.result) return state;
 
-      const scoreDelta = getEventScore(action.result) - getEventScore(currentEvent.result);
       const lastRoundEvents = state.lastRoundEvents.map((event, index) =>
         index === action.eventIndex ? { ...event, result: action.result } : event,
       );
+      const reviewedRoundScore = getRoundScore(lastRoundEvents, state.settings.penalizeSkippedWords);
       const teams = state.teams.map((team) =>
-        team.id === state.lastRoundTeam?.id ? { ...team, score: Math.max(0, team.score + scoreDelta) } : team,
+        team.id === state.lastRoundTeam?.id
+          ? { ...team, score: Math.max(0, state.lastRoundTeam.score + reviewedRoundScore) }
+          : team,
       );
-      const lastRoundTeam = teams.find((team) => team.id === state.lastRoundTeam?.id) ?? state.lastRoundTeam;
-      const winnerTeam = lastRoundTeam.score >= state.settings.targetScore ? lastRoundTeam : null;
+      const winnerTeam = getWinnerAfterCompletedTurn(teams, state.currentTeamIndex, state.settings.targetScore);
 
       return {
         ...state,
         teams,
         lastRoundEvents,
-        lastRoundTeam,
         winnerTeam,
       };
     }
@@ -279,6 +294,8 @@ export const useAliasGame = () => {
       setDifficulty: (difficulty: DifficultyId) => dispatch({ type: "setDifficulty", difficulty }),
       setWordPack: (wordPack: WordPackId) => dispatch({ type: "setWordPack", wordPack }),
       setTargetScore: (targetScore: number) => dispatch({ type: "setTargetScore", targetScore }),
+      setPenalizeSkippedWords: (penalizeSkippedWords: boolean) =>
+        dispatch({ type: "setPenalizeSkippedWords", penalizeSkippedWords }),
       renameTeam: (teamId: string, name: string) => dispatch({ type: "renameTeam", teamId, name }),
       addTeam: () => dispatch({ type: "addTeam" }),
       removeTeam: (teamId: string) => dispatch({ type: "removeTeam", teamId }),
