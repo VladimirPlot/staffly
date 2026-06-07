@@ -49,6 +49,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     public ScheduleDto apply(Long restaurantId, Long scheduleId, Long actorUserId, ApplyScheduleAutoBuildRequest request) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
+        validateRequest(request);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
@@ -81,6 +82,12 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
+    }
+
+    private void validateRequest(ApplyScheduleAutoBuildRequest request) {
+        if (request == null || request.templateId() == null) {
+            throw new BadRequestException("templateId is required");
+        }
     }
 
     private void validateScheduleStatus(Schedule schedule) {

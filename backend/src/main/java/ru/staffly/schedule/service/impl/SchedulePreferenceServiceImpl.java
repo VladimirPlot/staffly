@@ -139,7 +139,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
         }
-        List<RestaurantMember> managerTargets = members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds);
+        List<RestaurantMember> managerTargets = deduplicateMembersByUserId(
+                members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds)
+        );
         if (managerTargets.isEmpty()) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
@@ -157,6 +159,21 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 schedule.getEndDate()
         );
         schedule.setPreferenceAllSubmittedNotifiedAt(now);
+    }
+
+
+    private List<RestaurantMember> deduplicateMembersByUserId(List<RestaurantMember> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, RestaurantMember> byUserId = new LinkedHashMap<>();
+        for (RestaurantMember member : source) {
+            if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            byUserId.putIfAbsent(member.getUser().getId(), member);
+        }
+        return new ArrayList<>(byUserId.values());
     }
 
     @Override
@@ -216,10 +233,24 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private RestaurantMember loadEligibleMember(Long restaurantId, Schedule schedule, Long userId) {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
-        if (member.getPosition() == null || !schedule.getPositionIds().contains(member.getPosition().getId())) {
+        if (isScheduleOwner(schedule, member, userId)) {
+            throw new ForbiddenException("Ответственный за график управляет сбором пожеланий через менеджерский режим");
+        }
+        if (schedule.getPositionIds() == null
+                || member.getPosition() == null
+                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
             throw new ForbiddenException("Должность сотрудника не входит в позиции графика");
         }
         return member;
+    }
+
+    private boolean isScheduleOwner(Schedule schedule, RestaurantMember member, Long userId) {
+        Long ownerMemberId = schedule.getOwnerMember() != null ? schedule.getOwnerMember().getId() : null;
+        if (ownerMemberId != null && member != null && ownerMemberId.equals(member.getId())) {
+            return true;
+        }
+        Long ownerUserId = schedule.getOwnerUser() != null ? schedule.getOwnerUser().getId() : null;
+        return ownerUserId != null && userId != null && ownerUserId.equals(userId);
     }
 
     private List<RestaurantMember> loadParticipants(Long restaurantId, Schedule schedule) {

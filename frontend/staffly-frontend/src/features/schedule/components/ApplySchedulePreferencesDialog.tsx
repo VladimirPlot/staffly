@@ -111,9 +111,13 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
     onClose();
   }, [applying, autoApplying, onClose, previewLoading]);
 
+  const selectedTemplateNumericId = selectedTemplateId ? Number(selectedTemplateId) : null;
+  const previewMatchesSelectedTemplate =
+    selectedTemplateNumericId != null && preview?.templateId === selectedTemplateNumericId;
   const canApplyAutoBuild =
     Boolean(selectedTemplateId) &&
     Boolean(preview) &&
+    previewMatchesSelectedTemplate &&
     (preview?.totalAssignments ?? 0) > 0 &&
     !applying &&
     !previewLoading &&
@@ -141,7 +145,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
             Пожелания сотрудников будут показаны подсказками в таблице. Смены менеджер расставляет вручную.
           </p>
           <div className="mt-3 flex items-center gap-3">
-            <Button onClick={onApplyManual} disabled={applying || previewLoading}>
+            <Button onClick={onApplyManual} disabled={applying || previewLoading || autoApplying}>
               {applying ? "Подготовка…" : "Продолжить вручную"}
             </Button>
           </div>
@@ -207,7 +211,9 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 {autoApplying ? "Применение…" : "Применить автосборку"}
               </Button>
               <span className={`text-xs ${hasPreviewRisks(preview) ? "text-amber-700" : "text-muted"}`}>
-                {getPreviewApplyHint(preview)}
+                {preview && !previewMatchesSelectedTemplate
+                  ? "Предпросмотр построен для другого шаблона. Постройте новый предпросмотр."
+                  : getPreviewApplyHint(preview)}
               </span>
             </div>
           </div>

@@ -472,7 +472,8 @@ const SchedulePage: React.FC = () => {
       return;
     }
     setApplyPreferencesDialogOpen(false);
-  }, [autoBuildApplyActions.applying, autoBuildPreviewActions.loading, lifecycleActions.pendingAction]);
+    autoBuildPreviewActions.clearPreview();
+  }, [autoBuildApplyActions.applying, autoBuildPreviewActions, lifecycleActions.pendingAction]);
 
   const handleApplyPreferencesManual = React.useCallback(async () => {
     const success = await lifecycleActions.applyPreferencesSimple();

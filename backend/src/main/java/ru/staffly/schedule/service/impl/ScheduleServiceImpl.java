@@ -700,13 +700,30 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
     }
 
+
+    private List<RestaurantMember> deduplicateMembersByUserId(List<RestaurantMember> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, RestaurantMember> byUserId = new LinkedHashMap<>();
+        for (RestaurantMember member : source) {
+            if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            byUserId.putIfAbsent(member.getUser().getId(), member);
+        }
+        return new ArrayList<>(byUserId.values());
+    }
+
     private void notifyPreferenceCollectionStarted(Schedule schedule, Long actorUserId) {
         if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
             return;
         }
-        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                schedule.getRestaurant().getId(),
-                schedule.getPositionIds()
+        List<RestaurantMember> targets = deduplicateMembersByUserId(
+                members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                        schedule.getRestaurant().getId(),
+                        schedule.getPositionIds()
+                )
         );
         if (targets.isEmpty()) {
             return;

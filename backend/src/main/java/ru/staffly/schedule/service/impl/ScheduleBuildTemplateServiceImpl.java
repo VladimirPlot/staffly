@@ -70,6 +70,9 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     }
 
     private void applyRequest(ScheduleBuildTemplate template, Long restaurantId, SaveScheduleBuildTemplateRequest request, boolean creating) {
+        if (request == null) {
+            throw new BadRequestException("request body is required");
+        }
         String name = Optional.ofNullable(request.name()).map(String::trim).orElse("");
         if (name.isEmpty()) throw new BadRequestException("name is required");
         if (creating || !equalsIgnoreCase(name, template.getName())) {
@@ -80,6 +83,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
         Set<Long> positionIds = new HashSet<>();
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
+            if (cfg == null) throw new BadRequestException("positionConfig is required");
             if (cfg.positionId() == null || !positionIds.add(cfg.positionId())) throw new BadRequestException("Duplicate or null positionId in positionConfigs");
         }
         Map<Long, Position> positionMap = positions.findAllById(positionIds).stream()
@@ -94,6 +98,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
         int idx = 0;
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
+            if (cfg == null) throw new BadRequestException("positionConfig is required");
             validateInterval(cfg.fullShiftStart(), cfg.fullShiftEnd(), "fullShift");
             List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional.ofNullable(cfg.shiftOptions()).orElse(List.of());
             if (shiftOptions.isEmpty()) throw new BadRequestException("shiftOptions must not be empty");
@@ -112,6 +117,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
             int so = 0;
             for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
+                if (option == null) throw new BadRequestException("shiftOption is required");
                 validateInterval(option.startTime(), option.endTime(), "shiftOption");
                 ScheduleBuildShiftOption o = new ScheduleBuildShiftOption();
                 o.setPositionConfig(entity);
@@ -125,6 +131,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
             int cro = 0;
             for (SaveScheduleBuildCoverageRuleRequest rule : Optional.ofNullable(cfg.coverageRules()).orElse(List.of())) {
+                if (rule == null) throw new BadRequestException("coverageRule is required");
                 if (rule.dayOfWeek() == null || rule.dayOfWeek() < 1 || rule.dayOfWeek() > 7) throw new BadRequestException("coverageRule.dayOfWeek must be 1..7");
                 if (rule.requiredCount() == null || rule.requiredCount() <= 0) throw new BadRequestException("coverageRule.requiredCount must be > 0");
                 validateInterval(rule.startTime(), rule.endTime(), "coverageRule");

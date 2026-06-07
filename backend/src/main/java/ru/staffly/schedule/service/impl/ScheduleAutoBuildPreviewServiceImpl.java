@@ -34,6 +34,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     public ScheduleAutoBuildPreviewResponse preview(Long restaurantId, Long scheduleId, Long actorUserId, PreviewScheduleAutoBuildRequest request) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
+        validateRequest(request);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
@@ -62,6 +63,12 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 plan.unfilledCount(),
                 plan.negativeAssignmentsCount()
         );
+    }
+
+    private void validateRequest(PreviewScheduleAutoBuildRequest request) {
+        if (request == null || request.templateId() == null) {
+            throw new BadRequestException("templateId is required");
+        }
     }
 
     private ScheduleAutoBuildPositionPreviewDto toPositionDto(ScheduleAutoBuildPlanner.PositionPlan plan) {
