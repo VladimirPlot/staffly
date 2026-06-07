@@ -352,7 +352,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         if (owner == null || owner.getUser() == null) {
             return;
         }
-        if (initiatorMember != null && Objects.equals(initiatorMember.getId(), owner.getId())) {
+        boolean sameOwnerUser = initiatorMember != null
+                && initiatorMember.getUser() != null
+                && Objects.equals(initiatorMember.getUser().getId(), owner.getUser().getId());
+        if (initiatorMember != null && (Objects.equals(initiatorMember.getId(), owner.getId()) || sameOwnerUser)) {
             return;
         }
         String initiatorName = initiatorUser != null ? initiatorUser.getFullName() : "сотрудника";
