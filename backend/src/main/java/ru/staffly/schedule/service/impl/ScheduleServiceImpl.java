@@ -381,6 +381,9 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            return toDto(schedule, collectDays(schedule.getStartDate(), schedule.getEndDate()));
+        }
         if (schedule.getStatus() != ScheduleStatus.PREFERENCES_CLOSED) {
             throw new BadRequestException("Внести пожелания можно только после закрытия сбора пожеланий");
         }
