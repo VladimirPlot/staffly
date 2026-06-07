@@ -197,14 +197,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
+        int requiredCount = safeRequiredCount(rule);
         List<ScheduleBuildShiftOption> shiftOptions = safeShiftOptions(config);
         ScheduleBuildShiftOption option = findShiftOption(shiftOptions, rule);
         if (option == null) {
-            warnings.add("Не найден shiftOption для правила " + rule.getStartTime() + "-" + rule.getEndTime());
-            return new CoverageRuleResult(assignments, warnings, unfilledCount, negativeAssignmentsCount);
+            warnings.add(missingShiftOptionWarning(config, rule, shiftOptions));
+            return new CoverageRuleResult(assignments, warnings, requiredCount, negativeAssignmentsCount);
         }
-
-        int requiredCount = safeRequiredCount(rule);
 
         for (int index = 0; index < requiredCount; index++) {
             CandidateSelectionResult selection = pickMember(
@@ -680,6 +679,28 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return null;
     }
 
+    private String missingShiftOptionWarning(
+            ScheduleBuildPositionConfig config,
+            ScheduleBuildCoverageRule rule,
+            List<ScheduleBuildShiftOption> shiftOptions
+    ) {
+        if (shiftOptions.isEmpty()) {
+            return "Для должности " + config.getPosition().getName() + " не настроены варианты смен";
+        }
+
+        return "Не найден shiftOption для правила "
+                + formatInterval(rule.getStartTime(), rule.getEndTime())
+                + ". Доступные варианты: "
+                + shiftOptions.stream()
+                .map(option -> formatInterval(option.getStartTime(), option.getEndTime()))
+                .distinct()
+                .collect(Collectors.joining(", "));
+    }
+
+    private String formatInterval(LocalTime startTime, LocalTime endTime) {
+        return startTime.format(HH_MM) + "-" + endTime.format(HH_MM);
+    }
+
     private String displayName(RestaurantMember member) {
         String fullName = Optional.ofNullable(member.getUser().getFullName()).map(String::trim).orElse("");
         if (!fullName.isBlank()) {
@@ -697,7 +718,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private String formatShift(ScheduleBuildShiftOption option) {
-        return option.getStartTime().format(HH_MM) + "-" + option.getEndTime().format(HH_MM);
+        return formatInterval(option.getStartTime(), option.getEndTime());
     }
 
     private int toMinute(LocalTime time, boolean endTime) {

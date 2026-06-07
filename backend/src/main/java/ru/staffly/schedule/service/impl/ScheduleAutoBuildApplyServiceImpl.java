@@ -1,6 +1,7 @@
 package ru.staffly.schedule.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
@@ -10,6 +11,7 @@ import ru.staffly.schedule.dto.ApplyScheduleAutoBuildRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
+import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
@@ -58,6 +60,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         ScheduleBuildTemplate template = templates
                 .findDetailedByIdAndRestaurantIdAndIsActiveTrue(request.templateId(), restaurantId)
                 .orElseThrow(() -> new NotFoundException("Active template not found: " + request.templateId()));
+        initializeTemplateCollections(template);
         validateTemplateHasSchedulePositions(schedule, template);
 
         var plan = planner.build(restaurantId, schedule, template);
@@ -82,6 +85,13 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
+    }
+
+    private void initializeTemplateCollections(ScheduleBuildTemplate template) {
+        for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getShiftOptions());
+            Hibernate.initialize(positionConfig.getCoverageRules());
+        }
     }
 
     private void validateRequest(ApplyScheduleAutoBuildRequest request) {

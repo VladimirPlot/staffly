@@ -1,12 +1,14 @@
 package ru.staffly.schedule.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
@@ -44,6 +46,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
         ScheduleBuildTemplate template = templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(request.templateId(), restaurantId)
                 .orElseThrow(() -> new NotFoundException("Active template not found: " + request.templateId()));
+        initializeTemplateCollections(template);
 
         Set<Long> templatePositions = template.getPositionConfigs().stream().map(pc -> pc.getPosition().getId()).collect(java.util.stream.Collectors.toSet());
         List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
@@ -63,6 +66,13 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 plan.unfilledCount(),
                 plan.negativeAssignmentsCount()
         );
+    }
+
+    private void initializeTemplateCollections(ScheduleBuildTemplate template) {
+        for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getShiftOptions());
+            Hibernate.initialize(positionConfig.getCoverageRules());
+        }
     }
 
     private void validateRequest(PreviewScheduleAutoBuildRequest request) {

@@ -46,10 +46,20 @@ const groupPreviewCellsByDay = (cells: ScheduleAutoBuildCellPreviewDto[]): Previ
 };
 
 const hasPreviewRisks = (preview: ScheduleAutoBuildPreviewResponse | null): boolean =>
-  Boolean(preview && (preview.unfilledCount > 0 || preview.negativeAssignmentsCount > 0));
+  Boolean(
+    preview &&
+      (preview.totalAssignments === 0 ||
+        preview.warningsCount > 0 ||
+        preview.unfilledCount > 0 ||
+        preview.negativeAssignmentsCount > 0),
+  );
 
 const getPreviewApplyHint = (preview: ScheduleAutoBuildPreviewResponse | null): string => {
   if (!preview) return "Постройте предпросмотр, чтобы применить автосборку.";
+  if (preview.totalAssignments === 0) {
+    return "Автосборка не создала назначений. Проверьте правила покрытия и варианты смен.";
+  }
+  if (preview.warningsCount > 0) return "Предпросмотр содержит предупреждения. Проверьте детали перед применением.";
   if (hasPreviewRisks(preview)) return "Можно применить, но после этого проверьте проблемные места вручную.";
   return "Предпросмотр без критичных предупреждений.";
 };
