@@ -8,9 +8,11 @@ import type {
   ScheduleAutoBuildPreviewResponse,
   ScheduleBuildTemplateDto,
 } from "../api";
+import type { ScheduleStatus } from "../types";
 
 type ApplySchedulePreferencesDialogProps = {
   open: boolean;
+  scheduleStatus?: ScheduleStatus;
   applying: boolean;
   autoApplying: boolean;
   previewLoading: boolean;
@@ -73,6 +75,7 @@ const WarningBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogProps> = ({
   open,
+  scheduleStatus,
   applying,
   autoApplying,
   templates,
@@ -88,6 +91,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   onApplyAutoBuild,
 }) => {
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>("");
+  const isDraftFromPreferences = scheduleStatus === "DRAFT_FROM_PREFERENCES";
 
   React.useEffect(() => {
     if (!open) return;
@@ -127,8 +131,12 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
     <Modal
       open={open}
       onClose={handleClose}
-      title="Подготовить черновик графика"
-      description="Выберите, как перейти от закрытых пожеланий к подготовке черновика."
+      title="Сборка по пожеланиям"
+      description={
+        isDraftFromPreferences
+          ? "Продолжайте ручную сборку или запустите автосборку по собранным пожеланиям."
+          : "Выберите, как перейти от закрытых пожеланий к подготовке черновика."
+      }
       className="max-w-2xl"
       footer={
         <div className="flex w-full justify-end">
@@ -139,17 +147,19 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
       }
     >
       <div className="space-y-4">
-        <section className="border-subtle bg-app rounded-2xl border p-4">
-          <h3 className="text-default text-sm font-semibold">Ручной режим</h3>
-          <p className="text-muted mt-2 text-sm">
-            Пожелания сотрудников будут показаны подсказками в таблице. Смены менеджер расставляет вручную.
-          </p>
-          <div className="mt-3 flex items-center gap-3">
-            <Button onClick={onApplyManual} disabled={applying || previewLoading || autoApplying}>
-              {applying ? "Подготовка…" : "Продолжить вручную"}
-            </Button>
-          </div>
-        </section>
+        {!isDraftFromPreferences && (
+          <section className="border-subtle bg-app rounded-2xl border p-4">
+            <h3 className="text-default text-sm font-semibold">Ручной режим</h3>
+            <p className="text-muted mt-2 text-sm">
+              Пожелания сотрудников будут показаны подсказками в таблице. Смены менеджер расставляет вручную.
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <Button onClick={onApplyManual} disabled={applying || previewLoading || autoApplying}>
+                {applying ? "Подготовка…" : "Продолжить вручную"}
+              </Button>
+            </div>
+          </section>
+        )}
 
         <section className="border-subtle rounded-2xl border border-dashed p-4">
           <div className="flex items-center justify-between gap-2">

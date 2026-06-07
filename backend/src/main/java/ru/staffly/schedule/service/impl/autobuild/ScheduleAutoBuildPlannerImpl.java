@@ -654,19 +654,23 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private ScheduleBuildShiftOption findShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
         for (ScheduleBuildShiftOption option : options) {
-            boolean exactMatch = option.getStartTime().equals(rule.getStartTime())
-                    && option.getEndTime().equals(rule.getEndTime());
+            boolean exactMatch = intervalsEqual(
+                    option.getStartTime(),
+                    option.getEndTime(),
+                    rule.getStartTime(),
+                    rule.getEndTime()
+            );
             if (exactMatch) {
                 return option;
             }
         }
 
         for (ScheduleBuildShiftOption option : options) {
-            boolean containsRuleInterval = covers(
-                    toMinute(option.getStartTime(), false),
-                    toMinute(option.getEndTime(), true),
-                    toMinute(rule.getStartTime(), false),
-                    toMinute(rule.getEndTime(), true)
+            boolean containsRuleInterval = coversInterval(
+                    option.getStartTime(),
+                    option.getEndTime(),
+                    rule.getStartTime(),
+                    rule.getEndTime()
             );
             if (containsRuleInterval) {
                 return option;

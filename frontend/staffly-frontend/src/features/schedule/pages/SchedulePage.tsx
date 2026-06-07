@@ -800,6 +800,7 @@ const SchedulePage: React.FC = () => {
 
       <ApplySchedulePreferencesDialog
         open={applyPreferencesDialogOpen}
+        scheduleStatus={schedule?.status}
         applying={lifecycleActions.pendingAction === "applyPreferences"}
         autoApplying={autoBuildApplyActions.applying}
         templates={buildTemplatesActions.templates}

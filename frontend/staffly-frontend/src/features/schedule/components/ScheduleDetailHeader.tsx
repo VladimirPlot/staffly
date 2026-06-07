@@ -69,6 +69,8 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   const createdByName = schedule.createdBy?.displayName?.trim();
   const lifecycleDisabled = deleting || lifecycleAction != null;
   const canEditContent = canEditScheduleContent(schedule.status);
+  const applyPreferencesLabel =
+    schedule.status === "DRAFT_FROM_PREFERENCES" ? "Сборка по пожеланиям" : "Перейти к сборке";
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -114,7 +116,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             )}
             {canApplySchedulePreferences(schedule.status) && (
               <Button variant="outline" onClick={onOpenApplyPreferencesDialog} disabled={lifecycleDisabled}>
-                {lifecycleAction === "applyPreferences" ? "Подготовка…" : "Перейти к сборке"}
+                {lifecycleAction === "applyPreferences" ? "Подготовка…" : applyPreferencesLabel}
               </Button>
             )}
             {canPublishSchedule(schedule.status) && (
