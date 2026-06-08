@@ -42,7 +42,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
         return created;
       } catch (e: unknown) {
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось создать шаблон"));
-        return null;
+        throw e;
       } finally {
         setSaving(false);
       }
@@ -61,7 +61,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
         return updated;
       } catch (e: unknown) {
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось обновить шаблон"));
-        return null;
+        throw e;
       } finally {
         setSaving(false);
       }

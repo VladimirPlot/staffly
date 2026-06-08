@@ -51,33 +51,46 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
           </option>
         ))}
     </DropdownSelect>
-    <div className="grid grid-cols-2 gap-2">
-      <Input
-        label="Полная смена с"
-        type="time"
-        value={config.fullShiftStart}
-        disabled={saving}
-        onChange={(e) => onChange({ ...config, fullShiftStart: e.target.value })}
-      />
-      <Input
-        label="по"
-        type="time"
-        value={config.fullShiftEnd}
-        disabled={saving}
-        onChange={(e) => onChange({ ...config, fullShiftEnd: e.target.value })}
-      />
+    <div className="space-y-2">
+      <div>
+        <div className="text-sm font-medium">Рабочий диапазон должности</div>
+        <div className="text-muted text-xs">
+          Это общий период, в рамках которого могут быть смены. Автосборка не назначает этот интервал автоматически.
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Input
+          label="С"
+          type="time"
+          value={config.fullShiftStart}
+          disabled={saving}
+          onChange={(e) => onChange({ ...config, fullShiftStart: e.target.value })}
+        />
+        <Input
+          label="По"
+          type="time"
+          value={config.fullShiftEnd}
+          disabled={saving}
+          onChange={(e) => onChange({ ...config, fullShiftEnd: e.target.value })}
+        />
+      </div>
     </div>
-    <DropdownSelect
-      value={config.targetPattern}
-      disabled={saving}
-      onChange={(e) => onChange({ ...config, targetPattern: e.target.value as ScheduleBuildTargetPattern })}
-    >
-      {patterns.map((pattern) => (
-        <option key={pattern.value} value={pattern.value}>
-          {pattern.label}
-        </option>
-      ))}
-    </DropdownSelect>
+    <div className="space-y-1">
+      <DropdownSelect
+        value={config.targetPattern}
+        disabled={saving}
+        onChange={(e) => onChange({ ...config, targetPattern: e.target.value as ScheduleBuildTargetPattern })}
+      >
+        {patterns.map((pattern) => (
+          <option key={pattern.value} value={pattern.value}>
+            {pattern.label}
+          </option>
+        ))}
+      </DropdownSelect>
+      <div className="text-muted text-xs">
+        Ограничение/ориентир для будущей автосборки. Если не уверены — оставьте «Без шаблона».
+      </div>
+    </div>
     <div className="grid grid-cols-2 gap-2">
       <Input
         label="Мин. отдых (ч)"

@@ -14,7 +14,10 @@ type Props = {
 
 const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, saving, onChange, onAdd, onRemove }) => (
   <div className="space-y-2">
-    <div className="text-sm font-medium">Варианты смен</div>
+    <div>
+      <div className="text-sm font-medium">Варианты смен</div>
+      <div className="text-muted text-xs">Автосборка назначает сотрудникам только эти варианты смен.</div>
+    </div>
     {config.shiftOptions.map((option, optionIndex) => (
       <div key={optionIndex} className="border-subtle grid grid-cols-2 gap-2 rounded-xl border p-2">
         <Input

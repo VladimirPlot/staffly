@@ -125,7 +125,7 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
   for (let i = 0; i < draft.positionConfigs.length; i++) {
     const config = draft.positionConfigs[i];
     if (!config.positionId) return `Укажите должность #${i + 1}`;
-    if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите полную смену для должности #${i + 1}`;
+    if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите рабочий диапазон для должности #${i + 1}`;
     if ((config.shiftOptions ?? []).length === 0) return `Добавьте хотя бы одну смену для должности #${i + 1}`;
     for (const option of config.shiftOptions) {
       if (!option.startTime || !option.endTime) return `Заполните время смены для должности #${i + 1}`;
