@@ -34,6 +34,23 @@ export type ScheduleBuildTemplateDraft = {
   positionConfigs: ScheduleBuildPositionConfigDraft[];
 };
 
+export const SCHEDULE_BUILD_TIME_STEP_SECONDS = 15 * 60;
+
+const TIME_MULTIPLE_OF_15_MINUTES_ERROR = "Время должно быть кратно 15 минутам.";
+
+export const isTimeMultipleOf15Minutes = (time: string): boolean => {
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+  if (!match) return false;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = match[3] ? Number(match[3]) : 0;
+
+  if (hours > 23 || minutes > 59 || seconds > 59) return false;
+
+  return (hours * 60 * 60 + minutes * 60 + seconds) % SCHEDULE_BUILD_TIME_STEP_SECONDS === 0;
+};
+
 export const createShiftOptionDraft = (): ScheduleBuildShiftOptionDraft => ({
   startTime: "",
   endTime: "",
@@ -126,9 +143,21 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
     const config = draft.positionConfigs[i];
     if (!config.positionId) return `Укажите должность #${i + 1}`;
     if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите рабочий диапазон для должности #${i + 1}`;
+    if (!isTimeMultipleOf15Minutes(config.fullShiftStart) || !isTimeMultipleOf15Minutes(config.fullShiftEnd)) {
+      return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
+    }
     if ((config.shiftOptions ?? []).length === 0) return `Добавьте хотя бы одну смену для должности #${i + 1}`;
     for (const option of config.shiftOptions) {
       if (!option.startTime || !option.endTime) return `Заполните время смены для должности #${i + 1}`;
+      if (!isTimeMultipleOf15Minutes(option.startTime) || !isTimeMultipleOf15Minutes(option.endTime)) {
+        return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
+      }
+    }
+    for (const rule of config.coverageRules) {
+      if (!rule.startTime || !rule.endTime) return `Заполните время правила покрытия для должности #${i + 1}`;
+      if (!isTimeMultipleOf15Minutes(rule.startTime) || !isTimeMultipleOf15Minutes(rule.endTime)) {
+        return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
+      }
     }
   }
 

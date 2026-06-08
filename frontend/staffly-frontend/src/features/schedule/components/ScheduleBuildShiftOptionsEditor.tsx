@@ -2,7 +2,7 @@ import React from "react";
 
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import type { ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import { SCHEDULE_BUILD_TIME_STEP_SECONDS, type ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
 
 type Props = {
   config: ScheduleBuildPositionConfigDraft;
@@ -22,6 +22,7 @@ const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, saving, onCh
       <div key={optionIndex} className="border-subtle grid grid-cols-2 gap-2 rounded-xl border p-2">
         <Input
           type="time"
+          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
           label="С"
           value={option.startTime}
           disabled={saving}
@@ -36,6 +37,7 @@ const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, saving, onCh
         />
         <Input
           type="time"
+          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
           label="По"
           value={option.endTime}
           disabled={saving}

@@ -3,7 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
-import type { ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import { SCHEDULE_BUILD_TIME_STEP_SECONDS, type ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
 
 const dayOptions = [
   { value: 1, label: "1 — Пн" },
@@ -74,6 +74,7 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
         <Input
           label="С"
           type="time"
+          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
           value={rule.startTime}
           disabled={saving}
           onChange={(e) =>
@@ -88,6 +89,7 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
         <Input
           label="По"
           type="time"
+          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
           value={rule.endTime}
           disabled={saving}
           onChange={(e) =>

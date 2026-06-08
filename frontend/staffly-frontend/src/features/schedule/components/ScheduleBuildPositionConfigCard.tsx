@@ -8,6 +8,7 @@ import type { ScheduleBuildTargetPattern } from "../api";
 import {
   createCoverageRuleDraft,
   createShiftOptionDraft,
+  SCHEDULE_BUILD_TIME_STEP_SECONDS,
   type ScheduleBuildPositionConfigDraft,
 } from "../utils/buildTemplateDraft";
 import ScheduleBuildCoverageRulesEditor from "./ScheduleBuildCoverageRulesEditor";
@@ -62,6 +63,7 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
         <Input
           label="С"
           type="time"
+          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
           value={config.fullShiftStart}
           disabled={saving}
           onChange={(e) => onChange({ ...config, fullShiftStart: e.target.value })}
@@ -69,6 +71,7 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
         <Input
           label="По"
           type="time"
+          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
           value={config.fullShiftEnd}
           disabled={saving}
           onChange={(e) => onChange({ ...config, fullShiftEnd: e.target.value })}
