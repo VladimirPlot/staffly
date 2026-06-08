@@ -66,49 +66,162 @@ function sortCells(cells: SchedulePreferenceCellDto[]): SchedulePreferenceCellDt
   });
 }
 
-function SubmissionCard({ submission }: { submission: SchedulePreferenceSubmissionDto }) {
-  const positionName = submission.positionName ?? submission.member.positionName;
-  const cells = sortCells(submission.cells);
+type PreferenceSummary = {
+  preferWork: number;
+  preferDayOff: number;
+  unavailable: number;
+};
+
+type EmployeePreferenceRow = {
+  key: string;
+  displayName?: string | null;
+  positionName?: string | null;
+  submitted: boolean;
+  submittedAt?: string | null;
+  revision: number;
+  cellsCount: number;
+  submission?: SchedulePreferenceSubmissionDto;
+};
+
+function countPreferenceSummary(cells: SchedulePreferenceCellDto[]): PreferenceSummary {
+  return cells.reduce<PreferenceSummary>(
+    (summary, cell) => {
+      if (cell.type === "PREFER_WORK") summary.preferWork += 1;
+      if (cell.type === "PREFER_DAY_OFF") summary.preferDayOff += 1;
+      if (cell.type === "UNAVAILABLE") summary.unavailable += 1;
+      return summary;
+    },
+    { preferWork: 0, preferDayOff: 0, unavailable: 0 },
+  );
+}
+
+function formatPreferenceSummary(summary: PreferenceSummary): string {
+  return `хочу работать: ${summary.preferWork}, выходной: ${summary.preferDayOff}, не могу: ${summary.unavailable}`;
+}
+
+function buildEmployeePreferenceRows(
+  progress: SchedulePreferenceProgressResponse | null,
+  submissions: SchedulePreferenceSubmissionsResponse | null,
+): EmployeePreferenceRow[] {
+  const submissionsByMemberId = new Map<number, SchedulePreferenceSubmissionDto>();
+
+  submissions?.submissions.forEach((submission) => {
+    submissionsByMemberId.set(submission.member.memberId, submission);
+  });
+
+  if (progress) {
+    return progress.participants.map((participant) => {
+      const submission = submissionsByMemberId.get(participant.memberId);
+      const positionName = submission?.positionName ?? submission?.member.positionName ?? participant.positionName;
+
+      return {
+        key: `member-${participant.memberId}`,
+        displayName: submission?.member.displayName ?? participant.displayName,
+        positionName,
+        submitted: participant.submitted,
+        submittedAt: participant.submittedAt ?? submission?.submittedAt,
+        revision: participant.revision || submission?.revision || 0,
+        cellsCount: submission?.cells.length ?? participant.cellsCount,
+        submission,
+      };
+    });
+  }
+
+  return (submissions?.submissions ?? []).map((submission) => ({
+    key: `submission-${submission.submissionId}`,
+    displayName: submission.member.displayName,
+    positionName: submission.positionName ?? submission.member.positionName,
+    submitted: true,
+    submittedAt: submission.submittedAt,
+    revision: submission.revision,
+    cellsCount: submission.cells.length,
+    submission,
+  }));
+}
+
+function EmployeePreferenceAccordionRow({
+  row,
+  expanded,
+  onToggle,
+}: {
+  row: EmployeePreferenceRow;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const cells = sortCells(row.submission?.cells ?? []);
+  const summary = countPreferenceSummary(cells);
+  const statusClassName = row.submitted
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
 
   return (
-    <div className="border-subtle bg-surface rounded-2xl border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-strong text-sm font-semibold">{formatMemberName(submission.member.displayName)}</div>
-          <div className="text-muted text-xs">{formatPosition(positionName)}</div>
+    <div className="border-subtle bg-surface overflow-hidden rounded-2xl border">
+      <button
+        type="button"
+        className="grid w-full gap-3 p-4 text-left transition hover:bg-[var(--staffly-control-hover)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+        onClick={onToggle}
+        aria-expanded={expanded}
+      >
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-strong text-sm font-semibold">{formatMemberName(row.displayName)}</span>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${statusClassName}`}>
+              {row.submitted ? "Отправлено" : "Не отправлено"}
+            </span>
+          </div>
+          <div className="text-muted text-xs">{formatPosition(row.positionName)}</div>
+          <div className="text-muted flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <span>заполнено: {row.cellsCount}</span>
+            <span>{formatPreferenceSummary(summary)}</span>
+            {row.submittedAt && <span>отправлено: {formatDateTime(row.submittedAt)}</span>}
+            {row.revision > 0 && <span>ревизия {row.revision}</span>}
+          </div>
         </div>
-        <div className="text-muted text-xs">
-          {formatDateTime(submission.submittedAt)}
-          {submission.revision > 0 && <> · ревизия {submission.revision}</>}
+        <div className="text-muted flex items-center justify-between gap-2 text-sm font-medium sm:justify-end">
+          <span>{expanded ? "Свернуть" : "Развернуть"}</span>
+          <span
+            aria-hidden="true"
+            className={`text-lg leading-none transition-transform ${expanded ? "rotate-180" : ""}`}
+          >
+            ˅
+          </span>
         </div>
-      </div>
+      </button>
 
-      {submission.comment && (
-        <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-          {submission.comment}
-        </div>
-      )}
-
-      {cells.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {cells.map((cell, index) => (
-            <div
-              key={`${cell.id ?? "new"}-${cell.day}-${cell.sortOrder}-${index}`}
-              className="border-subtle bg-surface-muted rounded-xl border px-3 py-2 text-sm"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-default font-medium">{formatDateFromIso(cell.day)}</span>
-                <span className="border-subtle bg-surface text-muted rounded-full border px-2 py-0.5 text-xs">
-                  {PREFERENCE_TYPE_LABELS[cell.type]}
-                </span>
-                <span className="text-muted text-xs">{formatCellTime(cell)}</span>
-              </div>
-              {cell.note && <div className="text-muted mt-1 text-xs">{cell.note}</div>}
+      {expanded && (
+        <div className="border-subtle border-t p-4 pt-3">
+          {row.submission?.comment && (
+            <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+              {row.submission.comment}
             </div>
-          ))}
+          )}
+
+          {!row.submitted && <div className="text-muted text-sm">Сотрудник ещё не отправил пожелания.</div>}
+
+          {row.submitted && cells.length > 0 && (
+            <div className="space-y-2">
+              {cells.map((cell, index) => (
+                <div
+                  key={`${cell.id ?? "new"}-${cell.day}-${cell.sortOrder}-${index}`}
+                  className="border-subtle bg-surface-muted rounded-xl border px-3 py-2 text-sm"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-default font-medium">{formatDateFromIso(cell.day)}</span>
+                    <span className="border-subtle bg-surface text-muted rounded-full border px-2 py-0.5 text-xs">
+                      {PREFERENCE_TYPE_LABELS[cell.type]}
+                    </span>
+                    <span className="text-muted text-xs">{formatCellTime(cell)}</span>
+                  </div>
+                  {cell.note && <div className="text-muted mt-1 text-xs">{cell.note}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {row.submitted && cells.length === 0 && (
+            <div className="text-muted text-sm">Пожелания по дням не указаны.</div>
+          )}
         </div>
-      ) : (
-        <div className="text-muted mt-3 text-sm">Пожелания по дням не указаны.</div>
       )}
     </div>
   );
@@ -135,7 +248,32 @@ const SchedulePreferenceManagerDialog: React.FC<SchedulePreferenceManagerDialogP
     "Прогресс и отправленные пожелания по графику."
   );
 
-  const hasSubmissions = (submissions?.submissions.length ?? 0) > 0;
+  const employeeRows = React.useMemo(() => buildEmployeePreferenceRows(progress, submissions), [progress, submissions]);
+  const [expandedRows, setExpandedRows] = React.useState<Set<string>>(() => new Set());
+
+  React.useEffect(() => {
+    setExpandedRows(new Set());
+  }, [open, metadata?.scheduleId]);
+
+  const toggleRow = React.useCallback((rowKey: string) => {
+    setExpandedRows((current) => {
+      const next = new Set(current);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const expandAll = React.useCallback(() => {
+    setExpandedRows(new Set(employeeRows.map((row) => row.key)));
+  }, [employeeRows]);
+
+  const collapseAll = React.useCallback(() => {
+    setExpandedRows(new Set());
+  }, []);
 
   return (
     <Modal
@@ -181,55 +319,49 @@ const SchedulePreferenceManagerDialog: React.FC<SchedulePreferenceManagerDialogP
                 <div className="mt-1 text-2xl font-semibold text-amber-800">{progress.notSubmittedCount}</div>
               </div>
             </div>
-
-            <div className="border-subtle overflow-hidden rounded-2xl border">
-              {progress.participants.map((participant) => (
-                <div
-                  key={participant.memberId}
-                  className="border-subtle grid gap-2 border-b p-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="text-default text-sm font-medium">{formatMemberName(participant.displayName)}</div>
-                    <div className="text-muted text-xs">{formatPosition(participant.positionName)}</div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className={
-                        participant.submitted
-                          ? "rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700"
-                          : "rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-700"
-                      }
-                    >
-                      {participant.submitted ? "Отправил" : "Не отправил"}
-                    </span>
-                    {participant.submittedAt && (
-                      <span className="text-muted">{formatDateTime(participant.submittedAt)}</span>
-                    )}
-                    {participant.revision > 0 && <span className="text-muted">ревизия {participant.revision}</span>}
-                    <span className="text-muted">ячеек: {participant.cellsCount}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
           </section>
         )}
 
         <section className="space-y-3">
-          <div>
-            <h3 className="text-strong text-base font-semibold">Отправленные пожелания</h3>
-            <p className="text-muted text-sm">Просмотр без редактирования и применения к графику.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-strong text-base font-semibold">Сотрудники и пожелания</h3>
+              <p className="text-muted text-sm">
+                Все строки свернуты по умолчанию. Раскройте сотрудника, чтобы посмотреть дни.
+              </p>
+            </div>
+            {employeeRows.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={expandAll}
+                  disabled={expandedRows.size === employeeRows.length}
+                >
+                  Развернуть всех
+                </Button>
+                <Button variant="outline" size="sm" onClick={collapseAll} disabled={expandedRows.size === 0}>
+                  Свернуть всех
+                </Button>
+              </div>
+            )}
           </div>
 
-          {submissions && !hasSubmissions && (
+          {(progress || submissions) && employeeRows.length === 0 && (
             <div className="border-subtle bg-surface-muted text-muted rounded-2xl border p-4 text-sm">
-              Пока никто не отправил пожелания
+              Пока нет сотрудников или отправленных пожеланий
             </div>
           )}
 
-          {submissions && hasSubmissions && (
-            <div className="space-y-3">
-              {submissions.submissions.map((submission) => (
-                <SubmissionCard key={submission.submissionId} submission={submission} />
+          {employeeRows.length > 0 && (
+            <div className="space-y-2">
+              {employeeRows.map((row) => (
+                <EmployeePreferenceAccordionRow
+                  key={row.key}
+                  row={row}
+                  expanded={expandedRows.has(row.key)}
+                  onToggle={() => toggleRow(row.key)}
+                />
               ))}
             </div>
           )}
