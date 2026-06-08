@@ -88,34 +88,31 @@ function buildReadonlyMessage(data: SchedulePreferenceMyResponse): string {
   return "Срок отправки пожеланий истёк.";
 }
 
+function getDayOffsetFromStart(day: string, startDay: string): number {
+  const dayDate = new Date(`${day}T00:00:00Z`);
+  const startDate = new Date(`${startDay}T00:00:00Z`);
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+  return Math.round((dayDate.getTime() - startDate.getTime()) / millisecondsPerDay);
+}
+
+function getPositiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
 function buildRepeatingPattern(
   days: SchedulePreferenceMyResponse["days"],
   workCount: number,
   offCount: number,
+  startDay: string,
 ): PreferenceFormState {
   const result: PreferenceFormState = {};
   const cycleLength = workCount + offCount;
 
-  days.forEach((day, index) => {
-    const indexInCycle = index % cycleLength;
+  days.forEach((day) => {
+    const indexInCycle = getPositiveModulo(getDayOffsetFromStart(day.date, startDay), cycleLength);
     result[day.date] = {
       type: indexInCycle < workCount ? "PREFER_WORK" : "PREFER_DAY_OFF",
-      fullDay: true,
-      startTime: "",
-      endTime: "",
-    };
-  });
-
-  return result;
-}
-
-function buildWeekdayPattern(days: SchedulePreferenceMyResponse["days"]): PreferenceFormState {
-  const result: PreferenceFormState = {};
-
-  days.forEach((day) => {
-    const weekday = new Date(`${day.date}T00:00:00`).getDay();
-    result[day.date] = {
-      type: weekday >= 1 && weekday <= 5 ? "PREFER_WORK" : "PREFER_DAY_OFF",
       fullDay: true,
       startTime: "",
       endTime: "",
@@ -148,18 +145,21 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   const [formStateByDay, setFormStateByDay] = React.useState<PreferenceFormState>({});
   const [formError, setFormError] = React.useState<string | null>(null);
   const [comment, setComment] = React.useState("");
+  const [quickPatternStartDay, setQuickPatternStartDay] = React.useState("");
 
   React.useEffect(() => {
     if (!data) {
       setFormStateByDay({});
       setFormError(null);
       setComment("");
+      setQuickPatternStartDay("");
       return;
     }
 
     setFormStateByDay(getInitialFormState(data));
     setFormError(null);
     setComment(data.comment ?? "");
+    setQuickPatternStartDay(data.days[0]?.date ?? "");
   }, [data]);
 
   const handleSelectionChange = React.useCallback((day: string, value: string) => {
@@ -194,6 +194,10 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         [field]: value,
       },
     }));
+  }, []);
+
+  const handleQuickPatternStartDayChange = React.useCallback((value: string) => {
+    setQuickPatternStartDay(value);
   }, []);
 
   const handleQuickIntervalApply = React.useCallback((day: string, startTime: string, endTime: string) => {
@@ -275,6 +279,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   }
 
   const submitButtonLabel = data.submittedAt ? "Переотправить пожелания" : "Отправить пожелания";
+  const selectedQuickPatternStartDay = data.days.some((day) => day.date === quickPatternStartDay)
+    ? quickPatternStartDay
+    : (data.days[0]?.date ?? "");
 
   return (
     <div className="space-y-4">
@@ -326,12 +333,28 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
           <p className="text-muted text-sm">
             Выберите шаблон, а потом при необходимости поправьте отдельные дни вручную.
           </p>
+          <div className="grid gap-2 sm:max-w-xs">
+            <DropdownSelect
+              label="Старт схемы"
+              aria-label="Старт схемы"
+              value={selectedQuickPatternStartDay}
+              onChange={(event) => handleQuickPatternStartDayChange(event.target.value)}
+              disabled={!data.canSubmit || saving}
+            >
+              {data.days.map((day) => (
+                <option key={day.date} value={day.date}>
+                  {day.date} · {day.weekdayLabel}
+                </option>
+              ))}
+            </DropdownSelect>
+            <p className="text-muted text-xs">Выберите день, с которого начинается рабочая часть схемы.</p>
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 2, 2))}
+              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 2, 2, selectedQuickPatternStartDay))}
             >
               2/2
             </Button>
@@ -339,7 +362,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 3, 3))}
+              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 3, 3, selectedQuickPatternStartDay))}
             >
               3/3
             </Button>
@@ -347,7 +370,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(buildWeekdayPattern(data.days))}
+              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 5, 2, selectedQuickPatternStartDay))}
             >
               5/2
             </Button>
