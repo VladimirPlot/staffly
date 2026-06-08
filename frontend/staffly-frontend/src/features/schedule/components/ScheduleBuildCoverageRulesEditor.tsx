@@ -25,7 +25,13 @@ type Props = {
 
 const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onChange, onAdd, onRemove }) => (
   <div className="space-y-2">
-    <div className="text-sm font-medium">Правила покрытия</div>
+    <div>
+      <div className="text-sm font-medium">Правила покрытия</div>
+      <div className="text-muted text-xs">
+        В MVP каждое правило покрытия должно соответствовать одному варианту смены или покрываться одним вариантом
+        смены. Если нужно поставить разные смены в один день, укажите количество по каждому варианту отдельно.
+      </div>
+    </div>
     {config.coverageRules.length === 0 && (
       <div className="text-muted text-sm">
         Правила покрытия можно добавить позже; без них автосборка не сможет рассчитать потребность.

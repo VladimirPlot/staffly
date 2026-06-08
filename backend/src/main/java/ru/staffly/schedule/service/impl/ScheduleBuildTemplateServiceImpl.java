@@ -94,7 +94,11 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         template.setName(name);
         template.setDescription(trimToNull(request.description()));
         template.setActive(request.isActive() == null || request.isActive());
-        template.getPositionConfigs().clear();
+
+        Map<Long, ScheduleBuildPositionConfig> existingByPositionId = template.getPositionConfigs().stream()
+                .filter(config -> config.getPosition() != null && config.getPosition().getId() != null)
+                .collect(Collectors.toMap(config -> config.getPosition().getId(), Function.identity()));
+        Set<Long> requestedPositionIds = new HashSet<>();
 
         int idx = 0;
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
@@ -103,7 +107,12 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional.ofNullable(cfg.shiftOptions()).orElse(List.of());
             if (shiftOptions.isEmpty()) throw new BadRequestException("shiftOptions must not be empty");
 
-            ScheduleBuildPositionConfig entity = new ScheduleBuildPositionConfig();
+            ScheduleBuildPositionConfig entity = existingByPositionId.get(cfg.positionId());
+            if (entity == null) {
+                entity = new ScheduleBuildPositionConfig();
+                template.getPositionConfigs().add(entity);
+            }
+            requestedPositionIds.add(cfg.positionId());
             entity.setTemplate(template);
             entity.setPosition(positionMap.get(cfg.positionId()));
             entity.setFullShiftStart(cfg.fullShiftStart());
@@ -115,6 +124,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setMaxShiftsPerPeriod(cfg.maxShiftsPerPeriod());
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
 
+            entity.getShiftOptions().clear();
             int so = 0;
             for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
                 if (option == null) throw new BadRequestException("shiftOption is required");
@@ -129,12 +139,14 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 entity.getShiftOptions().add(o);
             }
 
+            entity.getCoverageRules().clear();
             int cro = 0;
             for (SaveScheduleBuildCoverageRuleRequest rule : Optional.ofNullable(cfg.coverageRules()).orElse(List.of())) {
                 if (rule == null) throw new BadRequestException("coverageRule is required");
                 if (rule.dayOfWeek() == null || rule.dayOfWeek() < 1 || rule.dayOfWeek() > 7) throw new BadRequestException("coverageRule.dayOfWeek must be 1..7");
                 if (rule.requiredCount() == null || rule.requiredCount() <= 0) throw new BadRequestException("coverageRule.requiredCount must be > 0");
                 validateInterval(rule.startTime(), rule.endTime(), "coverageRule");
+                validateCoverageRuleHasShiftOption(rule, entity.getShiftOptions());
                 ScheduleBuildCoverageRule r = new ScheduleBuildCoverageRule();
                 r.setPositionConfig(entity);
                 r.setDayOfWeek(rule.dayOfWeek());
@@ -145,15 +157,54 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 entity.getCoverageRules().add(r);
             }
 
-            template.getPositionConfigs().add(entity);
             idx++;
         }
+
+        template.getPositionConfigs().removeIf(config -> config.getPosition() == null || !requestedPositionIds.contains(config.getPosition().getId()));
+        template.getPositionConfigs().sort(Comparator.comparing(ScheduleBuildPositionConfig::getSortOrder));
     }
 
     private void validateInterval(LocalTime start, LocalTime end, String field) {
         if (start == null || end == null) throw new BadRequestException(field + " interval is required");
         if (start.equals(end)) throw new BadRequestException(field + " startTime must not equal endTime");
         if (!end.equals(LocalTime.MIDNIGHT) && start.isAfter(end)) throw new BadRequestException(field + " startTime must be before endTime");
+    }
+
+    private void validateCoverageRuleHasShiftOption(SaveScheduleBuildCoverageRuleRequest rule, List<ScheduleBuildShiftOption> shiftOptions) {
+        boolean hasCoveringShiftOption = shiftOptions.stream().anyMatch(option -> intervalsEqual(
+                option.getStartTime(),
+                option.getEndTime(),
+                rule.startTime(),
+                rule.endTime()
+        ) || coversInterval(
+                option.getStartTime(),
+                option.getEndTime(),
+                rule.startTime(),
+                rule.endTime()
+        ));
+        if (!hasCoveringShiftOption) {
+            throw new BadRequestException("Для правила покрытия "
+                    + rule.dayOfWeek() + " "
+                    + rule.startTime() + "–" + rule.endTime()
+                    + " не найден подходящий вариант смены. Добавьте вариант смены, который покрывает этот интервал.");
+        }
+    }
+
+    private boolean intervalsEqual(LocalTime leftStart, LocalTime leftEnd, LocalTime rightStart, LocalTime rightEnd) {
+        return toMinute(leftStart, false) == toMinute(rightStart, false)
+                && toMinute(leftEnd, true) == toMinute(rightEnd, true);
+    }
+
+    private boolean coversInterval(LocalTime outerStart, LocalTime outerEnd, LocalTime innerStart, LocalTime innerEnd) {
+        return toMinute(outerStart, false) <= toMinute(innerStart, false)
+                && toMinute(outerEnd, true) >= toMinute(innerEnd, true);
+    }
+
+    private int toMinute(LocalTime time, boolean endTime) {
+        if (endTime && LocalTime.MIDNIGHT.equals(time)) {
+            return 24 * 60;
+        }
+        return time.getHour() * 60 + time.getMinute();
     }
 
     private void assertManageAccess(Long restaurantId, Long actorUserId) {
