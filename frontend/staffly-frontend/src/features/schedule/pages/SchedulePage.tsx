@@ -73,7 +73,7 @@ function isScheduleOwner(params: {
   return ownerUserId != null && currentUserId != null && ownerUserId === currentUserId;
 }
 
-function canOpenOwnPreferenceFlow(params: {
+function isOwnPreferenceParticipant(params: {
   summary: ScheduleSummary;
   currentMember: MemberDto | null;
   currentUserId: number | null | undefined;
@@ -91,6 +91,23 @@ function canOpenOwnPreferenceFlow(params: {
     currentMemberId: currentMember.id,
     currentUserId,
   });
+}
+
+function canOpenOwnPreferenceFlow(params: {
+  summary: ScheduleSummary;
+  currentMember: MemberDto | null;
+  currentUserId: number | null | undefined;
+}): boolean {
+  return isOwnPreferenceParticipant(params);
+}
+
+function getSavedScheduleOpenButtonLabel(params: {
+  summary: ScheduleSummary;
+  currentMember: MemberDto | null;
+  currentUserId: number | null | undefined;
+}): string {
+  if (!isOwnPreferenceParticipant(params)) return "Открыть";
+  return params.summary.myPreferenceSubmitted ? "Пожелания отправлены" : "Оставить пожелания";
 }
 const SchedulePage: React.FC = () => {
   const { user } = useAuth();
@@ -127,12 +144,13 @@ const SchedulePage: React.FC = () => {
     clearScheduleNotices();
   }, [clearScheduleNotices]);
 
-  const { loading, error, myRole, positions, members, savedSchedules, setSavedSchedules } = useScheduleInitialData({
-    restaurantId,
-    userRoles: user?.roles,
-    onRestaurantMissing: handleRestaurantMissing,
-    onBeforeLoad: handleBeforeInitialLoad,
-  });
+  const { loading, error, myRole, positions, members, savedSchedules, setSavedSchedules, reloadSavedSchedules } =
+    useScheduleInitialData({
+      restaurantId,
+      userRoles: user?.roles,
+      onRestaurantMissing: handleRestaurantMissing,
+      onBeforeLoad: handleBeforeInitialLoad,
+    });
 
   const access = React.useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
@@ -366,6 +384,7 @@ const SchedulePage: React.FC = () => {
     restaurantId,
     onScheduleChanged: setSchedule,
     onClearScheduleNotices: clearScheduleNotices,
+    onPreferenceSubmitted: reloadSavedSchedules,
   });
 
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
@@ -585,13 +604,11 @@ const SchedulePage: React.FC = () => {
             onPositionFilterChange={setPositionFilter}
             onOpenSavedSchedule={handleOpenSavedSchedule}
             getOpenButtonLabel={(item) =>
-              canOpenOwnPreferenceFlow({
+              getSavedScheduleOpenButtonLabel({
                 summary: item,
                 currentMember: derived.currentMember,
                 currentUserId: user?.id,
               })
-                ? "Оставить пожелания"
-                : "Открыть"
             }
             onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
             onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}

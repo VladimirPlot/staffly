@@ -31,6 +31,16 @@ export default function useScheduleInitialData({
     setReloadVersion((prev) => prev + 1);
   }, []);
 
+  const reloadSavedSchedules = React.useCallback(async () => {
+    if (!restaurantId) {
+      setSavedSchedules([]);
+      return;
+    }
+
+    const savedList = await listSavedSchedules(restaurantId);
+    setSavedSchedules(savedList);
+  }, [restaurantId]);
+
   React.useEffect(() => {
     if (!restaurantId) {
       setLoading(false);
@@ -94,5 +104,6 @@ export default function useScheduleInitialData({
     setMembers,
     setPositions,
     reload,
+    reloadSavedSchedules,
   };
 }
