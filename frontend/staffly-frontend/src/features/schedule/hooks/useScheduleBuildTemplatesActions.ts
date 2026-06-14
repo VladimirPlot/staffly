@@ -13,6 +13,7 @@ import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 export default function useScheduleBuildTemplatesActions(restaurantId: number | null) {
   const [templates, setTemplates] = React.useState<ScheduleBuildTemplateDto[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [templatesLoaded, setTemplatesLoaded] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -24,6 +25,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
     try {
       const data = await listScheduleBuildTemplates(restaurantId);
       setTemplates(data);
+      setTemplatesLoaded(true);
     } catch (e: unknown) {
       setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить шаблоны сборки"));
     } finally {
@@ -91,6 +93,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
   React.useEffect(() => {
     setTemplates([]);
     setLoading(false);
+    setTemplatesLoaded(false);
     setSaving(false);
     setDeletingId(null);
     setError(null);
@@ -99,6 +102,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
   return {
     templates,
     loading,
+    templatesLoaded,
     error,
     saving,
     deletingId,

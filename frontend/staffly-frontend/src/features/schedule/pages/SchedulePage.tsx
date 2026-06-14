@@ -119,6 +119,7 @@ const SchedulePage: React.FC = () => {
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
+  const [activePageTab, setActivePageTab] = React.useState<"schedules" | "templates">("schedules");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
   const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
@@ -389,6 +390,22 @@ const SchedulePage: React.FC = () => {
 
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
   const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
+  const { loading: buildTemplatesLoading, loadTemplates, templatesLoaded } = buildTemplatesActions;
+
+  const showPageTabs = !schedule && !preferenceActions.preferenceViewScheduleId;
+  const showSchedulesTabContent = showPageTabs && activePageTab === "schedules";
+  const showTemplatesTabContent = showPageTabs && canManage && activePageTab === "templates";
+
+  React.useEffect(() => {
+    if (!canManage && activePageTab === "templates") {
+      setActivePageTab("schedules");
+    }
+  }, [activePageTab, canManage]);
+
+  const loadBuildTemplatesIfNeeded = React.useCallback(() => {
+    if (templatesLoaded || buildTemplatesLoading) return;
+    void loadTemplates();
+  }, [buildTemplatesLoading, loadTemplates, templatesLoaded]);
 
   const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
   const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
@@ -576,11 +593,48 @@ const SchedulePage: React.FC = () => {
           <div className="min-w-0 flex-1">
             <h1 className="text-strong text-2xl font-semibold">Графики</h1>
           </div>
-          {derived.showCreateScheduleButton && (
+          {derived.showCreateScheduleButton && showPageTabs && activePageTab === "schedules" && (
             <Button onClick={draftActions.openDialog} disabled={loading} className="shrink-0">
               Создать график
             </Button>
           )}
+        </div>
+      )}
+
+      {showPageTabs && canManage && (
+        <div
+          className="border-subtle bg-surface inline-flex rounded-2xl border p-1 shadow-[var(--staffly-shadow)]"
+          role="tablist"
+          aria-label="Разделы графиков"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activePageTab === "schedules"}
+            onClick={() => setActivePageTab("schedules")}
+            className={
+              "rounded-xl px-4 py-2 text-sm font-medium transition " +
+              (activePageTab === "schedules"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-muted hover:bg-app hover:text-default")
+            }
+          >
+            Графики
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activePageTab === "templates"}
+            onClick={() => setActivePageTab("templates")}
+            className={
+              "rounded-xl px-4 py-2 text-sm font-medium transition " +
+              (activePageTab === "templates"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-muted hover:bg-app hover:text-default")
+            }
+          >
+            Шаблоны
+          </button>
         </div>
       )}
 
@@ -594,7 +648,7 @@ const SchedulePage: React.FC = () => {
         <Card className="border-emerald-200 bg-emerald-50 text-emerald-700">{scheduleMessage}</Card>
       )}
 
-      {!loading && !error && !schedule && !preferenceActions.preferenceViewScheduleId && (
+      {!loading && !error && showSchedulesTabContent && (
         <>
           <SavedSchedulesSection
             canManage={canManage}
@@ -622,29 +676,29 @@ const SchedulePage: React.FC = () => {
             hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
             deletingId={savedScheduleActions.deletingId}
           />
-          {canManage && (
-            <ScheduleBuildTemplatesSection
-              templates={buildTemplatesActions.templates}
-              loading={buildTemplatesActions.loading}
-              error={buildTemplatesActions.error}
-              saving={buildTemplatesActions.saving}
-              deletingId={buildTemplatesActions.deletingId}
-              positions={positions}
-              onLoad={buildTemplatesActions.loadTemplates}
-              onCreate={(request) => buildTemplatesActions.createTemplate(request)}
-              onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
-              onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
-            />
-          )}
         </>
+      )}
+
+      {!loading && !error && showTemplatesTabContent && (
+        <ScheduleBuildTemplatesSection
+          templates={buildTemplatesActions.templates}
+          loading={buildTemplatesActions.loading}
+          error={buildTemplatesActions.error}
+          saving={buildTemplatesActions.saving}
+          deletingId={buildTemplatesActions.deletingId}
+          positions={positions}
+          onLoad={loadBuildTemplatesIfNeeded}
+          onCreate={(request) => buildTemplatesActions.createTemplate(request)}
+          onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
+          onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
+        />
       )}
 
       {!loading &&
         !error &&
         !canManage &&
         derived.filteredSavedSchedules.length === 0 &&
-        !schedule &&
-        !preferenceActions.preferenceViewScheduleId &&
+        showSchedulesTabContent &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
             <div className="text-muted text-sm">
@@ -657,8 +711,7 @@ const SchedulePage: React.FC = () => {
         !error &&
         canManage &&
         derived.filteredSavedSchedules.length === 0 &&
-        !schedule &&
-        !preferenceActions.preferenceViewScheduleId &&
+        showSchedulesTabContent &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
             <div className="text-muted space-y-2 text-sm">
