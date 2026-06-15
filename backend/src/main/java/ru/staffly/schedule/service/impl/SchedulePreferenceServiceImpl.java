@@ -73,7 +73,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             throw new BadRequestException("Срок отправки пожеланий истёк");
         }
         RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
-        List<SchedulePreferenceCell> cells = buildCells(schedule, request == null ? null : request.cells());
+        List<SchedulePreferenceCell> cells = buildCells(schedule, member, request == null ? null : request.cells());
         String comment = trimToNull(request == null ? null : request.comment());
 
         SchedulePreferenceSubmission submission = submissions.findForUpdateByScheduleIdAndMemberId(scheduleId, member.getId())
@@ -260,7 +260,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, schedule.getPositionIds());
     }
 
-    private List<SchedulePreferenceCell> buildCells(Schedule schedule, List<SchedulePreferenceCellRequest> requests) {
+    private List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {
         List<SchedulePreferenceCellRequest> safeRequests = requests == null ? List.of() : requests;
         long daysCount = schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).count();
         int maxCells = Math.toIntExact(daysCount * MAX_CELLS_PER_DAY);
@@ -298,6 +298,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 if (!isValidPreferenceInterval(startTime, endTime)) {
                     throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
                 }
+                if (!isAllowedShiftOption(schedule, member, startTime, endTime)) {
+                    throw new BadRequestException("cells[" + i + "] interval is not available for member position");
+                }
             }
             CellKey key = new CellKey(day, request.type(), fullDay, startTime, endTime);
             if (!seen.add(key)) {
@@ -316,6 +319,27 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return cells;
     }
 
+    private boolean isAllowedShiftOption(Schedule schedule,
+                                         RestaurantMember member,
+                                         LocalTime startTime,
+                                         LocalTime endTime) {
+        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
+        if (template == null) {
+            return true;
+        }
+        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
+        if (positionId == null) {
+            return false;
+        }
+        return template.getPositionConfigs().stream()
+                .filter(config -> config.getPosition() != null && positionId.equals(config.getPosition().getId()))
+                .findFirst()
+                .map(config -> config.getShiftOptions().stream()
+                        .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
+                                && Objects.equals(option.getEndTime(), endTime)))
+                .orElse(false);
+    }
+
     private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {
         return new SchedulePreferenceMyResponse(
                 schedule.getId(),
@@ -330,9 +354,35 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission == null ? null : submission.getUpdatedAt(),
                 submission == null ? 0 : submission.getRevision(),
                 toMemberDto(member),
+                allowedShiftOptions(schedule, member),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
                 submission == null ? null : submission.getComment()
         );
+    }
+
+    private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, RestaurantMember member) {
+        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
+        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
+        if (template == null || positionId == null) {
+            return List.of();
+        }
+        return template.getPositionConfigs().stream()
+                .filter(config -> config.getPosition() != null && positionId.equals(config.getPosition().getId()))
+                .findFirst()
+                .map(config -> config.getShiftOptions().stream()
+                        .sorted(Comparator.comparing(
+                                        ScheduleBuildShiftOption::getSortOrder,
+                                        Comparator.nullsLast(Integer::compareTo)
+                                )
+                                .thenComparing(option -> option.getId() == null ? Long.MAX_VALUE : option.getId()))
+                        .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
+                                option.getId(),
+                                option.getLabel(),
+                                option.getStartTime(),
+                                option.getEndTime()
+                        ))
+                        .toList())
+                .orElseGet(List::of);
     }
 
     private boolean canSubmit(Schedule schedule) {

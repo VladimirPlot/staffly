@@ -92,6 +92,10 @@ public class Schedule {
     @Column(name = "preference_deadline")
     private Instant preferenceDeadline;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "preference_build_template_id")
+    private ScheduleBuildTemplate preferenceBuildTemplate;
+
     @Column(name = "preference_closed_at")
     private Instant preferenceClosedAt;
 

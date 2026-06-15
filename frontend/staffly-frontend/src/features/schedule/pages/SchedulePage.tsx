@@ -852,9 +852,14 @@ const SchedulePage: React.FC = () => {
       <StartPreferenceCollectionDialog
         open={lifecycleActions.preferenceDialogOpen}
         deadline={lifecycleActions.preferenceDeadline}
+        buildTemplateId={lifecycleActions.preferenceBuildTemplateId}
+        buildTemplates={buildTemplatesActions.templates}
+        templatesLoading={buildTemplatesActions.loading}
         error={lifecycleActions.preferenceDeadlineError}
         saving={lifecycleActions.pendingAction === "startPreferences"}
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
+        onBuildTemplateChange={lifecycleActions.setPreferenceBuildTemplateId}
+        onLoadTemplates={loadBuildTemplatesIfNeeded}
         onClose={lifecycleActions.closePreferenceDialog}
         onSubmit={() => void lifecycleActions.submitPreferenceCollection()}
       />

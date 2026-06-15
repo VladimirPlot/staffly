@@ -18,6 +18,7 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -41,6 +42,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final int HISTORY_LIMIT = 20;
 
     private final ScheduleRepository schedules;
+    private final ScheduleBuildTemplateRepository buildTemplates;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleShiftRequestRepository shiftRequests;
@@ -331,7 +333,14 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
 
+        ScheduleBuildTemplate preferenceBuildTemplate = resolvePreferenceBuildTemplate(
+                restaurantId,
+                schedule,
+                request == null ? null : request.buildTemplateId()
+        );
+
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
+        schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
         schedule.setPreferenceCollectionStartedAt(now);
         schedule.setPreferenceDeadline(deadline);
         schedule.setPreferenceClosedAt(null);
@@ -347,6 +356,24 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
         notifyPreferenceCollectionStarted(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
+    }
+
+    private ScheduleBuildTemplate resolvePreferenceBuildTemplate(Long restaurantId, Schedule schedule, Long buildTemplateId) {
+        if (buildTemplateId == null) {
+            return null;
+        }
+        ScheduleBuildTemplate template = buildTemplates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(buildTemplateId, restaurantId)
+                .orElseThrow(() -> new BadRequestException("Активный шаблон сборки не найден"));
+        List<Long> schedulePositionIds = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        boolean hasSchedulePositionConfig = template.getPositionConfigs().stream()
+                .map(ScheduleBuildPositionConfig::getPosition)
+                .filter(Objects::nonNull)
+                .map(position -> position.getId())
+                .anyMatch(schedulePositionIds::contains);
+        if (!hasSchedulePositionConfig) {
+            throw new BadRequestException("Шаблон сборки не содержит настроек для позиций графика");
+        }
+        return template;
     }
 
     @Override

@@ -95,6 +95,7 @@ export type CreateDraftScheduleRequest = SaveSchedulePayload;
 
 export type StartPreferenceCollectionRequest = {
   preferenceDeadline: string;
+  buildTemplateId?: number | null;
 };
 
 export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF" | "PREFER_WORK";
@@ -127,6 +128,13 @@ export type SchedulePreferenceMemberDto = {
   positionName?: string | null;
 };
 
+export type SchedulePreferenceAllowedShiftOptionDto = {
+  id: number;
+  label?: string | null;
+  startTime: string;
+  endTime: string;
+};
+
 export type SchedulePreferenceMyResponse = {
   scheduleId: number;
   title: string;
@@ -140,6 +148,7 @@ export type SchedulePreferenceMyResponse = {
   updatedAt?: string | null;
   revision: number;
   member: SchedulePreferenceMemberDto;
+  allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
   cells: SchedulePreferenceCellDto[];
   comment?: string | null;
 };

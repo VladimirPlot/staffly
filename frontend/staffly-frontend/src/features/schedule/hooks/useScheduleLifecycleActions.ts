@@ -43,6 +43,7 @@ export default function useScheduleLifecycleActions({
 }: UseScheduleLifecycleActionsParams) {
   const [preferenceDialogOpen, setPreferenceDialogOpen] = React.useState(false);
   const [preferenceDeadline, setPreferenceDeadline] = React.useState("");
+  const [preferenceBuildTemplateId, setPreferenceBuildTemplateId] = React.useState("");
   const [preferenceDeadlineError, setPreferenceDeadlineError] = React.useState<string | null>(null);
   const [pendingAction, setPendingAction] = React.useState<LifecycleAction | null>(null);
 
@@ -50,6 +51,7 @@ export default function useScheduleLifecycleActions({
     if (!canManage) {
       setPreferenceDialogOpen(false);
       setPreferenceDeadline("");
+      setPreferenceBuildTemplateId("");
       setPreferenceDeadlineError(null);
       setPendingAction(null);
     }
@@ -58,6 +60,7 @@ export default function useScheduleLifecycleActions({
   React.useEffect(() => {
     setPreferenceDialogOpen(false);
     setPreferenceDeadline("");
+    setPreferenceBuildTemplateId("");
     setPreferenceDeadlineError(null);
     setPendingAction(null);
   }, [restaurantId]);
@@ -87,12 +90,14 @@ export default function useScheduleLifecycleActions({
     if (pendingAction === "startPreferences") return;
     setPreferenceDialogOpen(false);
     setPreferenceDeadline("");
+    setPreferenceBuildTemplateId("");
     setPreferenceDeadlineError(null);
   }, [pendingAction]);
 
   const openPreferenceDialog = React.useCallback(() => {
     if (!canManage) return;
     setPreferenceDeadline("");
+    setPreferenceBuildTemplateId("");
     setPreferenceDeadlineError(null);
     setPreferenceDialogOpen(true);
   }, [canManage]);
@@ -114,12 +119,15 @@ export default function useScheduleLifecycleActions({
     setPreferenceDeadlineError(null);
     onClearScheduleNotices();
     try {
+      const parsedBuildTemplateId = preferenceBuildTemplateId ? Number(preferenceBuildTemplateId) : null;
       const updatedSchedule = await startPreferenceCollection(restaurantId, schedule.id, {
         preferenceDeadline: parsedDeadline.toISOString(),
+        buildTemplateId: Number.isFinite(parsedBuildTemplateId) ? parsedBuildTemplateId : null,
       });
       await applyUpdatedSchedule(updatedSchedule);
       setPreferenceDialogOpen(false);
       setPreferenceDeadline("");
+      setPreferenceBuildTemplateId("");
       onScheduleMessage("Сбор пожеланий запущен");
     } catch (e: unknown) {
       onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось запустить сбор пожеланий"));
@@ -132,6 +140,7 @@ export default function useScheduleLifecycleActions({
     onClearScheduleNotices,
     onScheduleError,
     onScheduleMessage,
+    preferenceBuildTemplateId,
     preferenceDeadline,
     restaurantId,
     schedule?.id,
@@ -214,9 +223,11 @@ export default function useScheduleLifecycleActions({
     () => ({
       preferenceDialogOpen,
       preferenceDeadline,
+      preferenceBuildTemplateId,
       preferenceDeadlineError,
       pendingAction,
       setPreferenceDeadline,
+      setPreferenceBuildTemplateId,
       openPreferenceDialog,
       closePreferenceDialog,
       submitPreferenceCollection,
@@ -230,6 +241,7 @@ export default function useScheduleLifecycleActions({
       closePreferenceDialog,
       openPreferenceDialog,
       pendingAction,
+      preferenceBuildTemplateId,
       preferenceDeadline,
       preferenceDeadlineError,
       preferenceDialogOpen,

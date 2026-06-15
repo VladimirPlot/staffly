@@ -41,13 +41,6 @@ const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
   { value: "PREFER_WORK", label: "Хочу работать" },
 ];
 
-const QUICK_TIME_INTERVALS = [
-  { startTime: "10:00", endTime: "00:00" },
-  { startTime: "14:00", endTime: "00:00" },
-  { startTime: "17:00", endTime: "00:00" },
-  { startTime: "10:00", endTime: "17:00" },
-] as const;
-
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -185,22 +178,8 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
     }));
   }, []);
 
-  const handleTimeChange = React.useCallback((day: string, field: "startTime" | "endTime", value: string) => {
-    setFormError(null);
-    setFormStateByDay((prev) => ({
-      ...prev,
-      [day]: {
-        ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "" }),
-        [field]: value,
-      },
-    }));
-  }, []);
-
-  const handleQuickPatternStartDayChange = React.useCallback((value: string) => {
-    setQuickPatternStartDay(value);
-  }, []);
-
-  const handleQuickIntervalApply = React.useCallback((day: string, startTime: string, endTime: string) => {
+  const handleShiftOptionChange = React.useCallback((day: string, value: string) => {
+    const [startTime = "", endTime = ""] = value.split("|");
     setFormError(null);
     setFormStateByDay((prev) => ({
       ...prev,
@@ -211,6 +190,10 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         endTime,
       },
     }));
+  }, []);
+
+  const handleQuickPatternStartDayChange = React.useCallback((value: string) => {
+    setQuickPatternStartDay(value);
   }, []);
 
   const handleSubmit = React.useCallback(() => {
@@ -282,6 +265,8 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   const selectedQuickPatternStartDay = data.days.some((day) => day.date === quickPatternStartDay)
     ? quickPatternStartDay
     : (data.days[0]?.date ?? "");
+  const allowedShiftOptions = data.allowedShiftOptions ?? [];
+  const hasAllowedShiftOptions = allowedShiftOptions.length > 0;
 
   return (
     <div className="space-y-4">
@@ -399,7 +384,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         <div className="space-y-1">
           <h3 className="text-strong text-base font-semibold">Дни</h3>
           <p className="text-muted text-sm">
-            Выберите пожелание на день. При необходимости можно указать конкретное время.
+            Выберите пожелание на день. При необходимости можно указать конкретное время из вариантов смен.
           </p>
         </div>
 
@@ -438,40 +423,34 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                   </label>
                   {!(formStateByDay[day.date]?.fullDay ?? true) && (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="time"
-                          value={formStateByDay[day.date]?.startTime ?? ""}
-                          onChange={(event) => handleTimeChange(day.date, "startTime", event.target.value)}
+                      {hasAllowedShiftOptions ? (
+                        <DropdownSelect
+                          aria-label={`Вариант смены на ${formatDateFromIso(day.date)}`}
+                          value={`${formStateByDay[day.date]?.startTime ?? ""}|${formStateByDay[day.date]?.endTime ?? ""}`}
+                          onChange={(event) => handleShiftOptionChange(day.date, event.target.value)}
                           disabled={!data.canSubmit || saving}
-                          className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
-                        />
-                        <input
-                          type="time"
-                          value={formStateByDay[day.date]?.endTime ?? ""}
-                          onChange={(event) => handleTimeChange(day.date, "endTime", event.target.value)}
-                          disabled={!data.canSubmit || saving}
-                          className="border-subtle bg-surface text-default rounded-xl border px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {QUICK_TIME_INTERVALS.map((interval, index) => {
-                          const label = `${interval.startTime}–${interval.endTime}`;
-                          return (
-                            <button
-                              key={`${day.date}-${label}-${index}`}
-                              type="button"
-                              disabled={!data.canSubmit || saving}
-                              onClick={() => handleQuickIntervalApply(day.date, interval.startTime, interval.endTime)}
-                              className="border-subtle bg-surface text-muted hover:bg-app rounded-full border px-2 py-1 text-[11px]"
-                              aria-label={`Подставить интервал ${label}`}
-                              title={`Подставить интервал ${label}`}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                        >
+                          <option value="|">Выберите вариант смены</option>
+                          {allowedShiftOptions.map((option) => {
+                            const interval = `${option.startTime}–${option.endTime}`;
+                            return (
+                              <option key={option.id} value={`${option.startTime}|${option.endTime}`}>
+                                {option.label ? `${option.label} ${interval}` : interval}
+                              </option>
+                            );
+                          })}
+                        </DropdownSelect>
+                      ) : (
+                        <div className="text-muted rounded-xl border border-dashed border-[var(--staffly-border)] px-3 py-2 text-sm">
+                          Для вашей должности не настроены варианты смен. Оставьте пожелание на весь день.
+                          {formStateByDay[day.date]?.startTime && formStateByDay[day.date]?.endTime ? (
+                            <span className="block text-xs">
+                              Ранее отправленный интервал: {formStateByDay[day.date]?.startTime}–
+                              {formStateByDay[day.date]?.endTime}
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -5,5 +5,6 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 
 public record StartPreferenceCollectionRequest(
-        @NotNull Instant preferenceDeadline
+        @NotNull Instant preferenceDeadline,
+        Long buildTemplateId
 ) {}
