@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ImagePlus, Trash2, X } from "lucide-react";
+import { ImagePlus, Trash2 } from "lucide-react";
 
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
@@ -79,8 +79,12 @@ const ChecklistDialog = ({
   const [name, setName] = useState(initialData?.name ?? "");
   const [content, setContent] = useState(initialData?.content ?? "");
   const [periodicity, setPeriodicity] = useState<ChecklistPeriodicity | undefined>(initialData?.periodicity);
-  const [resetHour, setResetHour] = useState<number | "">(initialData?.resetTime ? Number(initialData.resetTime.split(":")[0]) : "");
-  const [resetMinute, setResetMinute] = useState<number | "">(initialData?.resetTime ? Number(initialData.resetTime.split(":")[1]) : "");
+  const [resetHour, setResetHour] = useState<number | "">(
+    initialData?.resetTime ? Number(initialData.resetTime.split(":")[0]) : "",
+  );
+  const [resetMinute, setResetMinute] = useState<number | "">(
+    initialData?.resetTime ? Number(initialData.resetTime.split(":")[1]) : "",
+  );
   const [resetDayOfWeek, setResetDayOfWeek] = useState<number | "">(initialData?.resetDayOfWeek ?? "");
   const [resetDayOfMonth, setResetDayOfMonth] = useState<number | "">(initialData?.resetDayOfMonth ?? "");
   const [positionFields, setPositionFields] = useState<PositionField[]>([]);
@@ -110,7 +114,7 @@ const ChecklistDialog = ({
           value: item.text,
           completionPhotoRequired: item.completionPhotoRequired,
           examplePhotoUrl: item.examplePhotoUrl,
-        }))
+        })),
       );
     } else {
       setItems([{ clientId: createId(), value: "", completionPhotoRequired: false }]);
@@ -132,10 +136,7 @@ const ChecklistDialog = ({
     }
   }, [open]);
 
-  const positionOptions = useMemo(
-    () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
-    [positions]
-  );
+  const positionOptions = useMemo(() => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")), [positions]);
 
   const isTrackable = kind === "TRACKABLE";
 
@@ -148,7 +149,9 @@ const ChecklistDialog = ({
   }, []);
 
   const handlePositionChange = useCallback((id: string, value: string) => {
-    setPositionFields((prev) => prev.map((field) => (field.id === id ? { ...field, value: value ? Number(value) : "" } : field)));
+    setPositionFields((prev) =>
+      prev.map((field) => (field.id === id ? { ...field, value: value ? Number(value) : "" } : field)),
+    );
   }, []);
 
   const handleAddItem = useCallback(() => {
@@ -172,7 +175,7 @@ const ChecklistDialog = ({
 
   const handleItemRequiredChange = useCallback((clientId: string, value: boolean) => {
     setItems((prev) =>
-      prev.map((item) => (item.clientId === clientId ? { ...item, completionPhotoRequired: value } : item))
+      prev.map((item) => (item.clientId === clientId ? { ...item, completionPhotoRequired: value } : item)),
     );
   }, []);
 
@@ -192,7 +195,7 @@ const ChecklistDialog = ({
           examplePreviewUrl: URL.createObjectURL(file),
           removeExamplePhoto: false,
         };
-      })
+      }),
     );
   }, []);
 
@@ -210,7 +213,7 @@ const ChecklistDialog = ({
           examplePhotoUrl: null,
           removeExamplePhoto: Boolean(item.id),
         };
-      })
+      }),
     );
   }, []);
 
@@ -352,7 +355,7 @@ const ChecklistDialog = ({
         <Input label="Название" value={name} onChange={(event) => setName(event.target.value)} disabled={submitting} />
 
         <div>
-          <div className="mb-2 text-sm text-muted">Должности</div>
+          <div className="text-muted mb-2 text-sm">Должности</div>
           <div className="space-y-3">
             {positionFields.map((field) => (
               <div key={field.id} className="flex items-center gap-3">
@@ -392,12 +395,14 @@ const ChecklistDialog = ({
         {isTrackable ? (
           <div className="space-y-3">
             <div>
-              <div className="mb-1 text-sm text-default">Периодичность</div>
+              <div className="text-default mb-1 text-sm">Периодичность</div>
               <DropdownSelect
                 aria-label="Периодичность"
                 className="w-full rounded-2xl p-2 text-base"
                 value={periodicity ?? ""}
-                onChange={(event) => setPeriodicity((event.target.value || undefined) as ChecklistPeriodicity | undefined)}
+                onChange={(event) =>
+                  setPeriodicity((event.target.value || undefined) as ChecklistPeriodicity | undefined)
+                }
                 disabled={submitting}
               >
                 <option value="">Выберите периодичность</option>
@@ -411,7 +416,7 @@ const ChecklistDialog = ({
             {periodicity && periodicity !== "MANUAL" && (
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <div className="mb-1 text-sm text-default">Время сброса</div>
+                  <div className="text-default mb-1 text-sm">Время сброса</div>
                   <div className="flex gap-2">
                     <DropdownSelect
                       aria-label="Часы"
@@ -446,7 +451,7 @@ const ChecklistDialog = ({
 
                 {periodicity === "WEEKLY" && (
                   <div>
-                    <div className="mb-1 text-sm text-default">День недели</div>
+                    <div className="text-default mb-1 text-sm">День недели</div>
                     <DropdownSelect
                       aria-label="День недели"
                       className="w-full rounded-2xl p-2 text-base"
@@ -468,12 +473,12 @@ const ChecklistDialog = ({
 
                 {periodicity === "MONTHLY" && (
                   <div>
-                    <div className="mb-1 text-sm text-default">День месяца</div>
+                    <div className="text-default mb-1 text-sm">День месяца</div>
                     <input
                       type="number"
                       min={1}
                       max={31}
-                      className="w-full rounded-2xl border border-subtle bg-surface p-2 text-base text-default"
+                      className="border-subtle bg-surface text-default w-full rounded-2xl border p-2 text-base"
                       value={resetDayOfMonth}
                       onChange={(event) => setResetDayOfMonth(event.target.value ? Number(event.target.value) : "")}
                       disabled={submitting}
@@ -484,99 +489,99 @@ const ChecklistDialog = ({
             )}
 
             <div>
-              <div className="mb-2 text-sm text-default">Пункты чек-листа</div>
+              <div className="text-default mb-2 text-sm">Пункты чек-листа</div>
               <div className="space-y-3">
                 {items.map((item, index) => {
                   const examplePreview = item.examplePreviewUrl || item.examplePhotoUrl || undefined;
                   return (
-                  <div key={item.clientId} className="space-y-2 rounded-2xl border border-subtle bg-app/60 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-muted">Пункт {index + 1}</span>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleRemoveItem(item.clientId)}
-                        disabled={items.length <= 1 || submitting}
-                        className="text-default"
-                        aria-label="Удалить пункт чек-листа"
-                      >
-                        <Icon icon={Trash2} />
-                      </Button>
-                    </div>
-                    <textarea
-                      value={item.value}
-                      onChange={(event) => handleItemChange(item.clientId, event.target.value)}
-                      rows={2}
-                      disabled={submitting}
-                      className="w-full resize-y rounded-2xl border border-subtle bg-surface p-3 text-[16px] text-default outline-none transition focus:ring-2 focus:ring-default [overflow-wrap:anywhere]"
-                    />
-                    <label className="flex items-center gap-2 text-sm text-default">
-                      <input
-                        type="checkbox"
-                        checked={item.completionPhotoRequired}
-                        onChange={(event) => handleItemRequiredChange(item.clientId, event.target.checked)}
+                    <div key={item.clientId} className="border-subtle bg-app/60 space-y-3 rounded-xl border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted text-sm">Пункт {index + 1}</span>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleRemoveItem(item.clientId)}
+                          disabled={items.length <= 1 || submitting}
+                          className="text-default"
+                          aria-label="Удалить пункт чек-листа"
+                        >
+                          <Icon icon={Trash2} />
+                        </Button>
+                      </div>
+                      <textarea
+                        value={item.value}
+                        onChange={(event) => handleItemChange(item.clientId, event.target.value)}
+                        rows={2}
                         disabled={submitting}
-                        className="h-4 w-4 accent-[var(--staffly-text-strong)]"
+                        className="border-subtle bg-surface text-default focus:ring-default w-full resize-y rounded-xl border p-3 text-[16px] [overflow-wrap:anywhere] transition outline-none focus:ring-2"
                       />
-                      <span>Фото выполнения обязательно</span>
-                    </label>
-                    <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-subtle bg-surface/70 p-2 sm:flex-row sm:items-center">
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        {examplePreview ? (
-                          <img
-                            src={examplePreview}
-                            alt={`Пример пункта ${index + 1}`}
-                            className="h-14 w-14 shrink-0 rounded-xl object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-app text-muted">
-                            <Icon icon={ImagePlus} decorative />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-default">Пример результата</div>
-                          <div className="text-xs text-muted">
-                            {item.exampleFile
-                              ? item.exampleFile.name
-                              : examplePreview
-                                ? "Фото прикреплено"
-                                : "Можно добавить фото-эталон"}
+                      <label className="bg-surface text-default inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={item.completionPhotoRequired}
+                          onChange={(event) => handleItemRequiredChange(item.clientId, event.target.checked)}
+                          disabled={submitting}
+                          className="h-4 w-4 accent-[var(--staffly-text-strong)]"
+                        />
+                        <span>Требовать фото перед закрытием</span>
+                      </label>
+                      <div className="border-subtle bg-surface grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          {examplePreview ? (
+                            <img
+                              src={examplePreview}
+                              alt={`Эталон пункта ${index + 1}`}
+                              className="h-20 w-28 shrink-0 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className="border-subtle bg-app text-muted flex h-20 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed">
+                              <Icon icon={ImagePlus} decorative />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="text-default text-sm font-medium">Эталон для сотрудника</div>
+                            <div className="text-muted text-xs">
+                              {item.exampleFile
+                                ? item.exampleFile.name
+                                : examplePreview
+                                  ? "Фото прикреплено"
+                                  : "Можно оставить без эталона"}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-subtle bg-[var(--staffly-control)] px-3 text-sm font-medium text-default shadow-sm transition hover:bg-[var(--staffly-control-hover)]">
-                          <Icon icon={ImagePlus} size="sm" decorative />
-                          <span>{examplePreview ? "Заменить" : "Добавить"}</span>
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            className="hidden"
-                            disabled={submitting}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) {
-                                handleExampleFileChange(item.clientId, file);
-                              }
-                              event.target.value = "";
-                            }}
-                          />
-                        </label>
-                        {examplePreview && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleRemoveExamplePhoto(item.clientId)}
-                            disabled={submitting}
-                            aria-label="Удалить пример"
-                          >
-                            <Icon icon={X} />
-                          </Button>
-                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <label className="border-subtle text-default inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-2xl border bg-[var(--staffly-control)] px-3 text-sm font-medium shadow-sm transition hover:bg-[var(--staffly-control-hover)]">
+                            <Icon icon={ImagePlus} size="sm" decorative />
+                            <span>{examplePreview ? "Заменить эталон" : "Добавить эталон"}</span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              disabled={submitting}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) {
+                                  handleExampleFileChange(item.clientId, file);
+                                }
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                          {examplePreview && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => handleRemoveExamplePhoto(item.clientId)}
+                              disabled={submitting}
+                              className="h-9 text-sm"
+                              aria-label="Удалить пример"
+                            >
+                              Удалить
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
                   );
                 })}
               </div>
