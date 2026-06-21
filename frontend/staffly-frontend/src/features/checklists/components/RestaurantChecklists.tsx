@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Camera, Check, Download, History, Image as ImageIcon, Lock, Pencil, Trash2, Unlock, X } from "lucide-react";
+import {
+  Camera,
+  Check,
+  Download,
+  History,
+  Image as ImageIcon,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Unlock,
+  X,
+} from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import ContentText from "../../../shared/ui/ContentText";
@@ -94,7 +106,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
   const [itemActionError, setItemActionError] = useState<string | null>(null);
   const [resetting, setResetting] = useState<number | null>(null);
   const [downloading, setDownloading] = useState<number | null>(null);
-  const [downloadMenuFor, setDownloadMenuFor] = useState<number | null>(null);
+  const [actionMenuFor, setActionMenuFor] = useState<number | null>(null);
   const [mediaExpanded, setMediaExpanded] = useState<Set<string>>(new Set());
   const [photoUploading, setPhotoUploading] = useState<Set<string>>(new Set());
   const [historyTarget, setHistoryTarget] = useState<ChecklistDto | null>(null);
@@ -109,7 +121,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
   const checklistRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
-  const downloadMenuRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
+  const actionMenuRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
   const errorTimeoutRef = useRef<number | null>(null);
 
   const activeTab = searchParams.get("tab") === "scripts" ? "scripts" : "checklists";
@@ -514,7 +526,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
   const handleDownloadJpg = useCallback(async (checklist: ChecklistDto) => {
     const node = checklistRefs.current.get(checklist.id);
     if (!node) return;
-    setDownloadMenuFor(null);
+    setActionMenuFor(null);
     setDownloading(checklist.id);
     try {
       const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, backgroundColor: "#ffffff" });
@@ -533,26 +545,26 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
     checklistRefs.current.set(id, node);
   }, []);
 
-  const setDownloadMenuRef = useCallback((id: number, node: HTMLDivElement | null) => {
-    downloadMenuRefs.current.set(id, node);
+  const setActionMenuRef = useCallback((id: number, node: HTMLDivElement | null) => {
+    actionMenuRefs.current.set(id, node);
   }, []);
 
-  const toggleDownloadMenu = useCallback((checklistId: number) => {
-    setDownloadMenuFor((current) => (current === checklistId ? null : checklistId));
+  const toggleActionMenu = useCallback((checklistId: number) => {
+    setActionMenuFor((current) => (current === checklistId ? null : checklistId));
   }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (downloadMenuFor === null) return;
-      const menuNode = downloadMenuRefs.current.get(downloadMenuFor);
+      if (actionMenuFor === null) return;
+      const menuNode = actionMenuRefs.current.get(actionMenuFor);
       if (menuNode && !menuNode.contains(event.target as Node)) {
-        setDownloadMenuFor(null);
+        setActionMenuFor(null);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setDownloadMenuFor(null);
+        setActionMenuFor(null);
       }
     }
 
@@ -562,7 +574,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [downloadMenuFor]);
+  }, [actionMenuFor]);
 
   useEffect(() => {
     return () => {
@@ -689,72 +701,81 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                       {isExpanded ? "Свернуть" : "Открыть"}
                     </Button>
                     {canManage && (
-                      <div className="relative" ref={(node) => setDownloadMenuRef(checklist.id, node)}>
+                      <div className="relative" ref={(node) => setActionMenuRef(checklist.id, node)}>
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => toggleDownloadMenu(checklist.id)}
+                          onClick={() => toggleActionMenu(checklist.id)}
                           disabled={isDownloading}
                           className="text-default"
                           aria-haspopup="menu"
-                          aria-expanded={downloadMenuFor === checklist.id}
-                          aria-controls={downloadMenuFor === checklist.id ? `download-menu-${checklist.id}` : undefined}
+                          aria-expanded={actionMenuFor === checklist.id}
+                          aria-controls={actionMenuFor === checklist.id ? `action-menu-${checklist.id}` : undefined}
+                          aria-label="Действия с чек-листом"
                         >
-                          <Icon icon={Download} />
-                          <span className="sr-only">Скачать</span>
+                          <Icon icon={MoreHorizontal} />
                         </Button>
-                        {downloadMenuFor === checklist.id && (
+                        {actionMenuFor === checklist.id && (
                           <div
-                            id={`download-menu-${checklist.id}`}
+                            id={`action-menu-${checklist.id}`}
                             role="menu"
-                            className="border-subtle bg-surface absolute right-0 z-10 mt-2 w-36 rounded-2xl border p-1 shadow-[var(--staffly-shadow)]"
+                            className="border-subtle bg-surface absolute right-0 z-10 mt-2 w-48 rounded-2xl border p-1 shadow-[var(--staffly-shadow)]"
                           >
                             <Button
                               variant="ghost"
                               size="sm"
                               className="text-default w-full justify-start text-sm"
+                              leftIcon={<Icon icon={Download} size="sm" decorative />}
                               onClick={() => handleDownloadJpg(checklist)}
                               disabled={isDownloading}
                               role="menuitem"
                             >
                               Скачать .jpg
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-default w-full justify-start text-sm"
+                              leftIcon={<Icon icon={Pencil} size="sm" decorative />}
+                              onClick={() => {
+                                setActionMenuFor(null);
+                                openEditDialog(checklist);
+                              }}
+                              role="menuitem"
+                            >
+                              Редактировать
+                            </Button>
+                            {isTrackable && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-default w-full justify-start text-sm"
+                                leftIcon={<Icon icon={History} size="sm" decorative />}
+                                onClick={() => {
+                                  setActionMenuFor(null);
+                                  void openHistoryModal(checklist);
+                                }}
+                                role="menuitem"
+                              >
+                                История
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start text-sm text-red-600 hover:bg-red-50"
+                              leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                              onClick={() => {
+                                setActionMenuFor(null);
+                                openDeleteDialog(checklist);
+                              }}
+                              role="menuitem"
+                            >
+                              Удалить
+                            </Button>
                           </div>
                         )}
                       </div>
-                    )}
-                    {canManage && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => openEditDialog(checklist)}
-                        className="text-default"
-                        aria-label="Редактировать"
-                      >
-                        <Icon icon={Pencil} />
-                      </Button>
-                    )}
-                    {canManage && isTrackable && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => openHistoryModal(checklist)}
-                        className="text-default"
-                        aria-label="История"
-                      >
-                        <Icon icon={History} />
-                      </Button>
-                    )}
-                    {canManage && (
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => openDeleteDialog(checklist)}
-                        className="text-default"
-                        aria-label="Удалить"
-                      >
-                        <Icon icon={Trash2} />
-                      </Button>
                     )}
                   </div>
                 </div>
