@@ -143,8 +143,7 @@ function buildChecklistItemSections(items: ChecklistItemDto[]): ChecklistItemSec
       description: "закреплены за сотрудником",
       items: reserved,
       icon: Lock,
-      badgeClassName:
-        "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15",
+      badgeClassName: "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15",
       lineClassName: "bg-amber-300/70 dark:bg-amber-500/40",
     },
     {
@@ -153,8 +152,7 @@ function buildChecklistItemSections(items: ChecklistItemDto[]): ChecklistItemSec
       description: "закрытые пункты",
       items: done,
       icon: Check,
-      badgeClassName:
-        "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+      badgeClassName: "border-emerald-300 bg-emerald-50 text-default dark:border-emerald-500/45 dark:bg-emerald-500/15",
       lineClassName: "bg-emerald-300/70 dark:bg-emerald-500/40",
     },
   ];
@@ -182,8 +180,7 @@ function getChecklistWorkSummary(checklist: ChecklistDto): ChecklistWorkSummary 
       label: "Все готово",
       detail: `${doneCount}/${total} закрыто`,
       dotClassName: "bg-emerald-500 ring-emerald-200/80 dark:ring-emerald-500/25",
-      badgeClassName:
-        "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+      badgeClassName: "border-emerald-300 bg-emerald-50 text-default dark:border-emerald-500/45 dark:bg-emerald-500/15",
     };
   }
 
@@ -192,8 +189,7 @@ function getChecklistWorkSummary(checklist: ChecklistDto): ChecklistWorkSummary 
       label: `${reservedCount} в работе`,
       detail: availableCount > 0 ? `${availableCount} не взято` : `${doneCount}/${total} закрыто`,
       dotClassName: "bg-amber-400 ring-amber-200/80 dark:ring-amber-500/25",
-      badgeClassName:
-        "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15",
+      badgeClassName: "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15",
     };
   }
 
@@ -778,8 +774,8 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
 
       <div className="mt-6 space-y-3">
         {loading && <Card className="text-muted text-sm">Загрузка чек-листов…</Card>}
-        {error && <Card className="text-sm text-red-600">{error}</Card>}
-        {itemActionError && <Card className="text-sm text-red-600">{itemActionError}</Card>}
+        {error && <Card className="text-sm text-red-700 dark:text-red-300">{error}</Card>}
+        {itemActionError && <Card className="text-sm text-red-700 dark:text-red-300">{itemActionError}</Card>}
         {!loading && !error && visibleChecklists.length === 0 && (
           <Card className="text-muted text-sm">{emptyStateLabel}</Card>
         )}
@@ -904,7 +900,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="w-full justify-start text-sm text-red-600 hover:bg-red-50"
+                              className="w-full justify-start text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
                               leftIcon={<Icon icon={Trash2} size="sm" decorative />}
                               onClick={() => {
                                 setActionMenuFor(null);
@@ -921,7 +917,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="border-subtle bg-surface text-default mt-4 rounded-2xl border text-sm">
+                  <div className="border-subtle bg-surface text-default mt-4 rounded-xl border text-sm sm:rounded-2xl">
                     {isTrackable ? (
                       <div>
                         {itemSections.length === 0 ? (
@@ -929,17 +925,17 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                         ) : (
                           itemSections.map((section) => (
                             <section key={section.key} className="pt-4 first:pt-3" aria-label={section.title}>
-                              <div className="px-3">
+                              <div className="px-2 sm:px-3">
                                 <div className="flex items-center gap-3">
-                                  <span className={`h-px min-w-8 flex-1 ${section.lineClassName}`} aria-hidden />
+                                  <span className={`h-px min-w-4 flex-1 ${section.lineClassName}`} aria-hidden />
                                   <span
-                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${section.badgeClassName}`}
+                                    className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${section.badgeClassName}`}
                                   >
                                     <Icon icon={section.icon} size="xs" decorative />
                                     <span>{section.title}</span>
                                     <span className="tabular-nums opacity-70">{section.items.length}</span>
                                   </span>
-                                  <span className={`h-px min-w-8 flex-1 ${section.lineClassName}`} aria-hidden />
+                                  <span className={`h-px min-w-4 flex-1 ${section.lineClassName}`} aria-hidden />
                                 </div>
                                 <div className="text-muted mt-1 text-center text-[11px] tracking-wide">
                                   {section.description}
@@ -967,7 +963,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                   const doneByName = item.doneBy?.name ?? "без автора";
                                   const reservedByName = item.reservedBy?.name ?? "сотрудник";
                                   const statusClass = item.done
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200"
+                                    ? "border-emerald-300 bg-emerald-50 text-default dark:border-emerald-500/45 dark:bg-emerald-500/15"
                                     : item.reservedBy
                                       ? "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15"
                                       : "border-subtle bg-[color:var(--staffly-control)] text-default";
@@ -989,7 +985,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                   return (
                                     <div
                                       key={item.id}
-                                      className={`border-subtle border-b px-3 py-3 transition-colors last:border-b-0 sm:px-4 ${itemRowClass}`}
+                                      className={`border-subtle border-b px-2.5 py-3 transition-colors last:border-b-0 sm:px-4 ${itemRowClass}`}
                                     >
                                       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(13rem,auto)] md:items-start">
                                         <div className="min-w-0 flex-1">
@@ -1003,8 +999,8 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                               <span
                                                 className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
                                                   missingRequiredPhoto
-                                                    ? "border-red-200 bg-red-50 text-red-700"
-                                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                    ? "border-red-300 bg-red-50 text-red-700 dark:border-red-500/45 dark:bg-red-500/15 dark:text-red-200"
+                                                    : "text-default border-emerald-300 bg-emerald-50 dark:border-emerald-500/45 dark:bg-emerald-500/15"
                                                 }`}
                                               >
                                                 {missingRequiredPhoto ? "Нужно фото" : "Фото приложено"}
@@ -1032,20 +1028,20 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                               </>
                                             ) : item.reservedBy ? (
                                               <>
-                                                <span className="text-strong font-semibold">{reservedByName}</span>{" "}
-                                                взял пункт в работу
+                                                <span className="text-strong font-semibold">{reservedByName}</span> взял
+                                                пункт в работу
                                               </>
                                             ) : (
                                               "Можно брать в работу"
                                             )}
                                           </div>
                                         </div>
-                                        <div className="flex flex-wrap items-center justify-start gap-2 md:max-w-[18rem] md:justify-end">
+                                        <div className="grid grid-cols-2 gap-2 md:flex md:max-w-[18rem] md:flex-wrap md:items-center md:justify-end">
                                           {canToggleOptionalMedia && (
                                             <Button
                                               variant="outline"
                                               size="sm"
-                                              className="min-h-11 text-sm sm:min-h-9"
+                                              className="min-h-12 w-full text-sm sm:min-h-9 md:w-auto"
                                               leftIcon={
                                                 <Icon icon={isMediaExpanded ? X : Camera} size="sm" decorative />
                                               }
@@ -1058,7 +1054,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                             <Button
                                               variant="outline"
                                               size="sm"
-                                              className="min-h-11 text-sm sm:min-h-9"
+                                              className="min-h-12 w-full text-sm sm:min-h-9 md:w-auto"
                                               leftIcon={
                                                 !reserveLoading ? <Icon icon={Lock} size="sm" decorative /> : undefined
                                               }
@@ -1078,7 +1074,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                             <Button
                                               variant="ghost"
                                               size="sm"
-                                              className="min-h-11 text-sm sm:min-h-9"
+                                              className="min-h-12 w-full text-sm sm:min-h-9 md:w-auto"
                                               leftIcon={
                                                 !unreserveLoading ? (
                                                   <Icon icon={Unlock} size="sm" decorative />
@@ -1099,7 +1095,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                           {!item.done && (
                                             <Button
                                               size="sm"
-                                              className="min-h-11 text-sm sm:min-h-9"
+                                              className="min-h-12 w-full text-sm sm:min-h-9 md:w-auto"
                                               leftIcon={
                                                 !completeLoading ? (
                                                   <Icon icon={Check} size="sm" decorative />
@@ -1121,7 +1117,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                             <Button
                                               variant="outline"
                                               size="sm"
-                                              className="min-h-11 text-sm sm:min-h-9"
+                                              className="min-h-12 w-full text-sm sm:min-h-9 md:w-auto"
                                               leftIcon={
                                                 !undoLoading ? <Icon icon={X} size="sm" decorative /> : undefined
                                               }
@@ -1140,8 +1136,8 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                         </div>
                                       </div>
                                       {shouldShowMedia && (
-                                        <div className="border-subtle mt-3 grid gap-3 border-t pt-3 md:grid-cols-2">
-                                          <div className="border-subtle bg-surface rounded-xl border p-3">
+                                        <div className="border-subtle mt-3 grid grid-cols-2 gap-2 border-t pt-3 md:gap-3">
+                                          <div className="border-subtle bg-surface rounded-xl border p-2 sm:p-3">
                                             <div className="text-muted mb-2 flex items-center gap-2 text-xs font-medium">
                                               <Icon icon={ImageIcon} size="xs" decorative />
                                               <span>Эталон</span>
@@ -1156,33 +1152,33 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                                     url: item.examplePhotoUrl!,
                                                   })
                                                 }
-                                                className="group hover:bg-app focus:ring-default flex w-full items-center gap-3 rounded-lg text-left transition focus:ring-2 focus:outline-none"
+                                                className="group hover:bg-app focus:ring-default flex w-full flex-col gap-2 rounded-lg text-left transition focus:ring-2 focus:outline-none xl:flex-row xl:items-center"
                                               >
                                                 <img
                                                   src={item.examplePhotoUrl!}
                                                   alt={`Эталон результата: ${item.text}`}
-                                                  className="h-20 w-28 shrink-0 rounded-lg object-cover"
+                                                  className="h-20 w-full shrink-0 rounded-lg object-cover sm:h-24 xl:h-20 xl:w-28"
                                                 />
                                                 <span className="min-w-0">
-                                                  <span className="text-default block text-sm font-medium">
+                                                  <span className="text-default block text-xs leading-4 font-medium sm:text-sm">
                                                     Фото от менеджера
                                                   </span>
-                                                  <span className="text-muted group-hover:text-default mt-1 block text-xs">
+                                                  <span className="text-muted group-hover:text-default mt-0.5 block text-[11px] leading-4 sm:text-xs">
                                                     Открыть крупно
                                                   </span>
                                                 </span>
                                               </button>
                                             ) : (
-                                              <div className="border-subtle bg-app/50 text-muted flex min-h-20 items-center gap-3 rounded-lg border border-dashed p-3 text-sm">
+                                              <div className="border-subtle bg-app/50 text-muted flex min-h-20 items-center gap-2 rounded-lg border border-dashed p-2 text-xs sm:text-sm">
                                                 <Icon icon={ImageIcon} decorative />
                                                 <span>Эталон не добавлен</span>
                                               </div>
                                             )}
                                           </div>
                                           <div
-                                            className={`rounded-xl border p-3 ${
+                                            className={`rounded-xl border p-2 sm:p-3 ${
                                               missingRequiredPhoto
-                                                ? "border-red-200 bg-red-50/70"
+                                                ? "border-red-300 bg-red-50/70 dark:border-red-500/45 dark:bg-red-500/10"
                                                 : "border-subtle bg-surface"
                                             }`}
                                           >
@@ -1190,7 +1186,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                               <Icon icon={Camera} size="xs" decorative />
                                               <span>Фото выполнения</span>
                                             </div>
-                                            <div className="flex gap-3">
+                                            <div className="flex flex-col gap-2 xl:flex-row">
                                               {hasCompletionPhoto ? (
                                                 <button
                                                   type="button"
@@ -1206,20 +1202,24 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                                   <img
                                                     src={item.completionPhotoUrl!}
                                                     alt={`Фото выполнения: ${item.text}`}
-                                                    className="h-20 w-28 rounded-lg object-cover"
+                                                    className="h-20 w-full rounded-lg object-cover sm:h-24 xl:h-20 xl:w-28"
                                                   />
                                                 </button>
                                               ) : (
-                                                <div className="border-subtle bg-app/50 text-muted flex h-20 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed">
+                                                <div className="border-subtle bg-app/50 text-muted flex h-20 w-full shrink-0 items-center justify-center rounded-lg border border-dashed sm:h-24 xl:h-20 xl:w-28">
                                                   <Icon icon={Camera} decorative />
                                                 </div>
                                               )}
                                               <div className="min-w-0 flex-1">
-                                                <div className="text-default text-sm">
+                                                <div className="text-default text-xs leading-4 font-medium sm:text-sm">
                                                   {hasCompletionPhoto ? "Фото прикреплено" : "Фото еще нет"}
                                                 </div>
                                                 <div
-                                                  className={`mt-1 text-xs ${missingRequiredPhoto ? "text-red-700" : "text-muted"}`}
+                                                  className={`mt-0.5 text-[11px] leading-4 sm:text-xs ${
+                                                    missingRequiredPhoto
+                                                      ? "text-red-700 dark:text-red-200"
+                                                      : "text-muted"
+                                                  }`}
                                                 >
                                                   {hasCompletionPhoto
                                                     ? `${item.completionPhotoUploadedBy?.name || "Сотрудник"} · ${formatDateTime(
@@ -1230,9 +1230,9 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                                       : "Можно приложить при необходимости"}
                                                 </div>
                                                 {!item.done && (
-                                                  <div className="mt-2 flex flex-wrap gap-2">
+                                                  <div className="mt-2 flex flex-col gap-2 xl:flex-row xl:flex-wrap">
                                                     <label
-                                                      className={`border-subtle text-default inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border bg-[var(--staffly-control)] px-3 text-sm font-medium transition hover:bg-[var(--staffly-control-hover)] sm:min-h-9 ${
+                                                      className={`border-subtle text-default inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border bg-[var(--staffly-control)] px-2 text-sm font-medium transition hover:bg-[var(--staffly-control-hover)] xl:min-h-9 xl:w-auto xl:px-3 ${
                                                         isPhotoUploading ? "pointer-events-none opacity-60" : ""
                                                       }`}
                                                       aria-disabled={isPhotoUploading}
@@ -1259,7 +1259,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                                         variant="ghost"
                                                         onClick={() => handleCompletionPhotoDelete(checklist, item)}
                                                         disabled={isPhotoUploading}
-                                                        className="min-h-11 text-sm sm:min-h-9"
+                                                        className="min-h-12 w-full text-sm sm:min-h-9 sm:w-auto"
                                                       >
                                                         Удалить
                                                       </Button>
@@ -1341,7 +1341,11 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
         }
       >
         <div className="space-y-4">
-          {historyError && <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{historyError}</div>}
+          {historyError && (
+            <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-200">
+              {historyError}
+            </div>
+          )}
           {historyLoading && <div className="text-muted text-sm">Загрузка истории…</div>}
           {!historyLoading && historySummaries.length === 0 && (
             <div className="border-subtle text-muted rounded-2xl border p-4 text-sm">История пока не записана.</div>
@@ -1400,7 +1404,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                             <ContentText className="text-default min-w-0 text-sm [overflow-wrap:anywhere]">
                               {item.itemOrder}. {item.text}
                             </ContentText>
-                            <div className={`text-xs ${item.done ? "text-emerald-700" : "text-muted"}`}>
+                            <div className={`text-xs ${item.done ? "text-default font-medium" : "text-muted"}`}>
                               {item.done ? "Выполнено" : "Не выполнено"}
                             </div>
                           </div>
