@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "react-phone-number-input/style.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+
 @layer base {
   :root {
     --staffly-bg: #f8fafc;
