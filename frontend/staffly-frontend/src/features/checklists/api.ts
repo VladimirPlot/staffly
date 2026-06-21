@@ -18,6 +18,11 @@ export type ChecklistItemDto = {
   doneAt?: string | null;
   reservedBy?: ChecklistMemberShortDto | null;
   reservedAt?: string | null;
+  examplePhotoUrl?: string | null;
+  completionPhotoUrl?: string | null;
+  completionPhotoRequired: boolean;
+  completionPhotoUploadedBy?: ChecklistMemberShortDto | null;
+  completionPhotoUploadedAt?: string | null;
 };
 
 export type ChecklistKind = "INFO" | "TRACKABLE";
@@ -48,7 +53,53 @@ export type ChecklistRequest = {
   resetDayOfWeek?: number;
   resetDayOfMonth?: number;
   items?: string[];
+  itemDetails?: ChecklistItemRequest[];
   positionIds: number[];
+};
+
+export type ChecklistItemRequest = {
+  id?: number;
+  text: string;
+  completionPhotoRequired: boolean;
+};
+
+export type ChecklistHistorySummaryDto = {
+  id: number;
+  checklistId?: number | null;
+  checklistName: string;
+  resetAt?: string | null;
+  resetReason?: "AUTO" | "MANUAL" | string | null;
+  completed: boolean;
+  totalItems: number;
+  completedItems: number;
+  positionsSnapshot?: string | null;
+};
+
+export type ChecklistHistoryItemDto = {
+  id: number;
+  sourceItemId?: number | null;
+  itemOrder: number;
+  text: string;
+  done: boolean;
+  doneBy?: ChecklistMemberShortDto | null;
+  doneByName?: string | null;
+  doneAt?: string | null;
+  reservedBy?: ChecklistMemberShortDto | null;
+  reservedByName?: string | null;
+  reservedAt?: string | null;
+  completionPhotoRequired: boolean;
+  examplePhotoUrl?: string | null;
+  completionPhotoUrl?: string | null;
+};
+
+export type ChecklistHistoryDetailDto = ChecklistHistorySummaryDto & {
+  kind?: ChecklistKind | string | null;
+  periodicity?: ChecklistPeriodicity | string | null;
+  resetTime?: string | null;
+  resetDayOfWeek?: number | null;
+  resetDayOfMonth?: number | null;
+  startedAt?: string | null;
+  items: ChecklistHistoryItemDto[];
 };
 
 export type ListChecklistsParams = {
@@ -97,6 +148,7 @@ export async function createChecklist(
     resetDayOfWeek: payload.resetDayOfWeek,
     resetDayOfMonth: payload.resetDayOfMonth,
     items: payload.items,
+    itemDetails: payload.itemDetails,
     positionIds: payload.positionIds,
   };
   const { data } = await api.post(`/api/restaurants/${restaurantId}/checklists`, body);
@@ -117,6 +169,7 @@ export async function updateChecklist(
     resetDayOfWeek: payload.resetDayOfWeek,
     resetDayOfMonth: payload.resetDayOfMonth,
     items: payload.items,
+    itemDetails: payload.itemDetails,
     positionIds: payload.positionIds,
   };
   const { data } = await api.put(`/api/restaurants/${restaurantId}/checklists/${checklistId}`, body);
@@ -177,4 +230,72 @@ export async function resetChecklist(
 ): Promise<ChecklistDto> {
   const { data } = await api.post(`/api/restaurants/${restaurantId}/checklists/${checklistId}/reset`);
   return data as ChecklistDto;
+}
+
+export async function uploadChecklistItemExamplePhoto(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number,
+  file: File
+): Promise<ChecklistDto> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/example-photo`,
+    formData
+  );
+  return data as ChecklistDto;
+}
+
+export async function deleteChecklistItemExamplePhoto(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number
+): Promise<ChecklistDto> {
+  const { data } = await api.delete(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/example-photo`
+  );
+  return data as ChecklistDto;
+}
+
+export async function uploadChecklistItemCompletionPhoto(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number,
+  file: File
+): Promise<ChecklistDto> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/completion-photo`,
+    formData
+  );
+  return data as ChecklistDto;
+}
+
+export async function deleteChecklistItemCompletionPhoto(
+  restaurantId: number,
+  checklistId: number,
+  itemId: number
+): Promise<ChecklistDto> {
+  const { data } = await api.delete(
+    `/api/restaurants/${restaurantId}/checklists/${checklistId}/items/${itemId}/completion-photo`
+  );
+  return data as ChecklistDto;
+}
+
+export async function listChecklistHistory(
+  restaurantId: number,
+  checklistId: number
+): Promise<ChecklistHistorySummaryDto[]> {
+  const { data } = await api.get(`/api/restaurants/${restaurantId}/checklists/${checklistId}/history`);
+  return data as ChecklistHistorySummaryDto[];
+}
+
+export async function getChecklistHistory(
+  restaurantId: number,
+  historyId: number
+): Promise<ChecklistHistoryDetailDto> {
+  const { data } = await api.get(`/api/restaurants/${restaurantId}/checklists/history/${historyId}`);
+  return data as ChecklistHistoryDetailDto;
 }

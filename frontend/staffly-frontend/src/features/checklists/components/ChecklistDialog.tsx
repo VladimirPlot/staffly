@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { ImagePlus, Trash2, X } from "lucide-react";
 
 import Modal from "../../../shared/ui/Modal";
 import Input from "../../../shared/ui/Input";
@@ -11,6 +11,16 @@ import type { ChecklistRequest, ChecklistKind, ChecklistPeriodicity } from "../a
 import type { PositionDto } from "../../dictionaries/api";
 
 type PositionField = { id: string; value: number | "" };
+type ChecklistItemField = {
+  clientId: string;
+  id?: number;
+  value: string;
+  completionPhotoRequired: boolean;
+  examplePhotoUrl?: string | null;
+  exampleFile?: File;
+  examplePreviewUrl?: string;
+  removeExamplePhoto?: boolean;
+};
 
 function createId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -31,7 +41,17 @@ export type ChecklistDialogInitial = {
   resetTime?: string;
   resetDayOfWeek?: number;
   resetDayOfMonth?: number;
-  items?: string[];
+  items?: Array<{
+    id?: number;
+    text: string;
+    completionPhotoRequired: boolean;
+    examplePhotoUrl?: string | null;
+  }>;
+};
+
+export type ChecklistDialogSubmitPayload = ChecklistRequest & {
+  exampleFiles?: Array<{ index: number; file: File }>;
+  examplePhotoDeletes?: number[];
 };
 
 type ChecklistDialogProps = {
@@ -42,7 +62,7 @@ type ChecklistDialogProps = {
   submitting: boolean;
   error?: string | null;
   onClose: () => void;
-  onSubmit: (payload: ChecklistRequest) => void;
+  onSubmit: (payload: ChecklistDialogSubmitPayload) => void;
 };
 
 const ChecklistDialog = ({
@@ -64,7 +84,7 @@ const ChecklistDialog = ({
   const [resetDayOfWeek, setResetDayOfWeek] = useState<number | "">(initialData?.resetDayOfWeek ?? "");
   const [resetDayOfMonth, setResetDayOfMonth] = useState<number | "">(initialData?.resetDayOfMonth ?? "");
   const [positionFields, setPositionFields] = useState<PositionField[]>([]);
-  const [items, setItems] = useState<{ id: string; value: string }[]>([]);
+  const [items, setItems] = useState<ChecklistItemField[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,9 +103,17 @@ const ChecklistDialog = ({
       setPositionFields([{ id: createId(), value: "" }]);
     }
     if (initialData?.items?.length) {
-      setItems(initialData.items.map((value) => ({ id: createId(), value })));
+      setItems(
+        initialData.items.map((item) => ({
+          clientId: createId(),
+          id: item.id,
+          value: item.text,
+          completionPhotoRequired: item.completionPhotoRequired,
+          examplePhotoUrl: item.examplePhotoUrl,
+        }))
+      );
     } else {
-      setItems([{ id: createId(), value: "" }]);
+      setItems([{ clientId: createId(), value: "", completionPhotoRequired: false }]);
     }
     setLocalError(null);
   }, [open, initialData]);
@@ -93,7 +121,14 @@ const ChecklistDialog = ({
   useEffect(() => {
     if (!open) {
       setPositionFields([]);
-      setItems([]);
+      setItems((prev) => {
+        prev.forEach((item) => {
+          if (item.examplePreviewUrl) {
+            URL.revokeObjectURL(item.examplePreviewUrl);
+          }
+        });
+        return [];
+      });
     }
   }, [open]);
 
@@ -117,15 +152,66 @@ const ChecklistDialog = ({
   }, []);
 
   const handleAddItem = useCallback(() => {
-    setItems((prev) => [...prev, { id: createId(), value: "" }]);
+    setItems((prev) => [...prev, { clientId: createId(), value: "", completionPhotoRequired: false }]);
   }, []);
 
-  const handleRemoveItem = useCallback((id: string) => {
-    setItems((prev) => (prev.length <= 1 ? prev : prev.filter((item) => item.id !== id)));
+  const handleRemoveItem = useCallback((clientId: string) => {
+    setItems((prev) => {
+      if (prev.length <= 1) return prev;
+      const item = prev.find((entry) => entry.clientId === clientId);
+      if (item?.examplePreviewUrl) {
+        URL.revokeObjectURL(item.examplePreviewUrl);
+      }
+      return prev.filter((entry) => entry.clientId !== clientId);
+    });
   }, []);
 
-  const handleItemChange = useCallback((id: string, value: string) => {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, value } : item)));
+  const handleItemChange = useCallback((clientId: string, value: string) => {
+    setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, value } : item)));
+  }, []);
+
+  const handleItemRequiredChange = useCallback((clientId: string, value: boolean) => {
+    setItems((prev) =>
+      prev.map((item) => (item.clientId === clientId ? { ...item, completionPhotoRequired: value } : item))
+    );
+  }, []);
+
+  const handleExampleFileChange = useCallback((clientId: string, file?: File) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.clientId !== clientId) return item;
+        if (item.examplePreviewUrl) {
+          URL.revokeObjectURL(item.examplePreviewUrl);
+        }
+        if (!file) {
+          return { ...item, exampleFile: undefined, examplePreviewUrl: undefined };
+        }
+        return {
+          ...item,
+          exampleFile: file,
+          examplePreviewUrl: URL.createObjectURL(file),
+          removeExamplePhoto: false,
+        };
+      })
+    );
+  }, []);
+
+  const handleRemoveExamplePhoto = useCallback((clientId: string) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.clientId !== clientId) return item;
+        if (item.examplePreviewUrl) {
+          URL.revokeObjectURL(item.examplePreviewUrl);
+        }
+        return {
+          ...item,
+          exampleFile: undefined,
+          examplePreviewUrl: undefined,
+          examplePhotoUrl: null,
+          removeExamplePhoto: Boolean(item.id),
+        };
+      })
+    );
   }, []);
 
   const buildResetTime = useCallback(() => {
@@ -195,11 +281,25 @@ const ChecklistDialog = ({
       }
     }
 
-    const itemTexts = items.map((item) => item.value.trim()).filter((v) => v.length > 0);
-    if (itemTexts.length === 0) {
+    const normalizedItems = items
+      .map((item) => ({ item, text: item.value.trim() }))
+      .filter((entry) => entry.text.length > 0);
+    if (normalizedItems.length === 0) {
       setLocalError("Добавьте хотя бы один пункт");
       return;
     }
+
+    const itemDetails = normalizedItems.map((entry) => ({
+      id: entry.item.id,
+      text: entry.text,
+      completionPhotoRequired: entry.item.completionPhotoRequired,
+    }));
+    const exampleFiles = normalizedItems
+      .map((entry, index) => (entry.item.exampleFile ? { index, file: entry.item.exampleFile } : null))
+      .filter((entry): entry is { index: number; file: File } => Boolean(entry));
+    const examplePhotoDeletes = normalizedItems
+      .map((entry) => (entry.item.removeExamplePhoto && entry.item.id ? entry.item.id : null))
+      .filter((id): id is number => typeof id === "number");
 
     setLocalError(null);
     onSubmit({
@@ -210,7 +310,10 @@ const ChecklistDialog = ({
       resetTime: time,
       resetDayOfWeek: typeof resetDayOfWeek === "number" ? resetDayOfWeek : undefined,
       resetDayOfMonth: typeof resetDayOfMonth === "number" ? resetDayOfMonth : Number(resetDayOfMonth) || undefined,
-      items: itemTexts,
+      itemDetails,
+      items: itemDetails.map((item) => item.text),
+      exampleFiles,
+      examplePhotoDeletes,
       positionIds: uniqueIds,
     });
   }, [
@@ -383,14 +486,16 @@ const ChecklistDialog = ({
             <div>
               <div className="mb-2 text-sm text-default">Пункты чек-листа</div>
               <div className="space-y-3">
-                {items.map((item) => (
-                  <div key={item.id} className="space-y-1">
+                {items.map((item, index) => {
+                  const examplePreview = item.examplePreviewUrl || item.examplePhotoUrl || undefined;
+                  return (
+                  <div key={item.clientId} className="space-y-2 rounded-2xl border border-subtle bg-app/60 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm text-muted">Пункт чек-листа</span>
+                      <span className="text-sm text-muted">Пункт {index + 1}</span>
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => handleRemoveItem(item.id)}
+                        onClick={() => handleRemoveItem(item.clientId)}
                         disabled={items.length <= 1 || submitting}
                         className="text-default"
                         aria-label="Удалить пункт чек-листа"
@@ -400,13 +505,80 @@ const ChecklistDialog = ({
                     </div>
                     <textarea
                       value={item.value}
-                      onChange={(event) => handleItemChange(item.id, event.target.value)}
+                      onChange={(event) => handleItemChange(item.clientId, event.target.value)}
                       rows={2}
                       disabled={submitting}
                       className="w-full resize-y rounded-2xl border border-subtle bg-surface p-3 text-[16px] text-default outline-none transition focus:ring-2 focus:ring-default [overflow-wrap:anywhere]"
                     />
+                    <label className="flex items-center gap-2 text-sm text-default">
+                      <input
+                        type="checkbox"
+                        checked={item.completionPhotoRequired}
+                        onChange={(event) => handleItemRequiredChange(item.clientId, event.target.checked)}
+                        disabled={submitting}
+                        className="h-4 w-4 accent-[var(--staffly-text-strong)]"
+                      />
+                      <span>Фото выполнения обязательно</span>
+                    </label>
+                    <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-subtle bg-surface/70 p-2 sm:flex-row sm:items-center">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        {examplePreview ? (
+                          <img
+                            src={examplePreview}
+                            alt={`Пример пункта ${index + 1}`}
+                            className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-app text-muted">
+                            <Icon icon={ImagePlus} decorative />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-default">Пример результата</div>
+                          <div className="text-xs text-muted">
+                            {item.exampleFile
+                              ? item.exampleFile.name
+                              : examplePreview
+                                ? "Фото прикреплено"
+                                : "Можно добавить фото-эталон"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-subtle bg-[var(--staffly-control)] px-3 text-sm font-medium text-default shadow-sm transition hover:bg-[var(--staffly-control-hover)]">
+                          <Icon icon={ImagePlus} size="sm" decorative />
+                          <span>{examplePreview ? "Заменить" : "Добавить"}</span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            disabled={submitting}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) {
+                                handleExampleFileChange(item.clientId, file);
+                              }
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
+                        {examplePreview && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleRemoveExamplePhoto(item.clientId)}
+                            disabled={submitting}
+                            aria-label="Удалить пример"
+                          >
+                            <Icon icon={X} />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <Button variant="outline" onClick={handleAddItem} disabled={submitting} className="mt-2 text-sm">
                 Добавить пункт

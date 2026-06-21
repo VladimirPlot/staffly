@@ -63,4 +63,58 @@ final class ChecklistResetCalculator {
             case MANUAL -> null;
         };
     }
+
+    static Instant computeLatestDueReset(Instant base, Checklist checklist, ZoneId zone, Instant now) {
+        ChecklistPeriodicity periodicity = checklist.getPeriodicity();
+        LocalTime resetTime = checklist.getResetTime();
+        if (periodicity == null
+                || periodicity == ChecklistPeriodicity.MANUAL
+                || resetTime == null
+                || base == null
+                || now == null
+                || base.isAfter(now)) {
+            return null;
+        }
+
+        ZonedDateTime nowZoned = now.atZone(zone);
+        ZonedDateTime candidate = switch (periodicity) {
+            case DAILY -> {
+                ZonedDateTime today = ZonedDateTime.of(nowZoned.toLocalDate(), resetTime, zone);
+                yield today.isAfter(nowZoned) ? today.minusDays(1) : today;
+            }
+            case WEEKLY -> {
+                Integer dow = checklist.getResetDayOfWeek();
+                if (dow == null || dow < 1 || dow > 7) {
+                    yield null;
+                }
+                DayOfWeek target = DayOfWeek.of(dow);
+                ZonedDateTime thisWeek = ZonedDateTime.of(nowZoned.toLocalDate(), resetTime, zone)
+                        .with(TemporalAdjusters.previousOrSame(target));
+                yield thisWeek.isAfter(nowZoned) ? thisWeek.minusWeeks(1) : thisWeek;
+            }
+            case MONTHLY -> {
+                Integer dom = checklist.getResetDayOfMonth();
+                if (dom == null || dom < 1 || dom > 31) {
+                    yield null;
+                }
+                ZonedDateTime thisMonth = monthlyCandidate(nowZoned.toLocalDate(), dom, resetTime, zone);
+                if (!thisMonth.isAfter(nowZoned)) {
+                    yield thisMonth;
+                }
+                yield monthlyCandidate(nowZoned.toLocalDate().minusMonths(1), dom, resetTime, zone);
+            }
+            case MANUAL -> null;
+        };
+
+        if (candidate == null) {
+            return null;
+        }
+        Instant latestDue = candidate.toInstant();
+        return latestDue.isAfter(base) ? latestDue : null;
+    }
+
+    private static ZonedDateTime monthlyCandidate(LocalDate date, int dayOfMonth, LocalTime resetTime, ZoneId zone) {
+        int day = Math.min(dayOfMonth, date.lengthOfMonth());
+        return ZonedDateTime.of(date.withDayOfMonth(day), resetTime, zone);
+    }
 }

@@ -1,5 +1,6 @@
 package ru.staffly.checklist.mapper;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistItemDto;
@@ -10,6 +11,7 @@ import ru.staffly.checklist.model.ChecklistItem;
 import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.model.ChecklistPeriodicity;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.media.ChecklistImageStorage;
 import ru.staffly.member.model.RestaurantMember;
 
 import java.time.DayOfWeek;
@@ -19,7 +21,10 @@ import java.util.List;
 import java.util.Set;
 
 @Component
+@RequiredArgsConstructor
 public class ChecklistMapper {
+
+    private final ChecklistImageStorage imageStorage;
 
     public ChecklistDto toDto(Checklist entity) {
         List<ChecklistPositionDto> positions = entity.getPositions() == null
@@ -39,7 +44,12 @@ public class ChecklistMapper {
                         toMemberShort(item.getDoneBy()),
                         item.getDoneAt() != null ? item.getDoneAt().toString() : null,
                         toMemberShort(item.getReservedBy()),
-                        item.getReservedAt() != null ? item.getReservedAt().toString() : null
+                        item.getReservedAt() != null ? item.getReservedAt().toString() : null,
+                        item.getExamplePhotoUrl(),
+                        imageStorage.toCompletionPhotoUrl(item.getCompletionPhotoUrl()),
+                        item.isCompletionPhotoRequired(),
+                        toMemberShort(item.getCompletionPhotoUploadedBy()),
+                        item.getCompletionPhotoUploadedAt() != null ? item.getCompletionPhotoUploadedAt().toString() : null
                 ))
                 .toList();
         return new ChecklistDto(

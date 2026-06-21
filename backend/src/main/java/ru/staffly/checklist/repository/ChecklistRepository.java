@@ -2,10 +2,13 @@ package ru.staffly.checklist.repository;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import ru.staffly.checklist.model.Checklist;
 import ru.staffly.checklist.model.ChecklistKind;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,7 +21,9 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             "items.doneBy",
             "items.doneBy.user",
             "items.reservedBy",
-            "items.reservedBy.user"
+            "items.reservedBy.user",
+            "items.completionPhotoUploadedBy",
+            "items.completionPhotoUploadedBy.user"
     })
     @Query("""
             select distinct c
@@ -45,7 +50,28 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             "items.doneBy",
             "items.doneBy.user",
             "items.reservedBy",
-            "items.reservedBy.user"
+            "items.reservedBy.user",
+            "items.completionPhotoUploadedBy",
+            "items.completionPhotoUploadedBy.user"
     })
     Optional<Checklist> findDetailedById(Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {
+            "positions",
+            "restaurant",
+            "items",
+            "items.doneBy",
+            "items.doneBy.user",
+            "items.reservedBy",
+            "items.reservedBy.user",
+            "items.completionPhotoUploadedBy",
+            "items.completionPhotoUploadedBy.user"
+    })
+    @Query("""
+            select c
+            from Checklist c
+            where c.id = :id
+            """)
+    Optional<Checklist> findDetailedByIdForUpdate(@Param("id") Long id);
 }

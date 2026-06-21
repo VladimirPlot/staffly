@@ -1,15 +1,24 @@
 package ru.staffly.checklist.service;
 
 import jakarta.transaction.Transactional;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.stereotype.Service;
 import ru.staffly.checklist.dto.ChecklistDto;
+import ru.staffly.checklist.dto.ChecklistHistoryDetailDto;
+import ru.staffly.checklist.dto.ChecklistHistorySummaryDto;
+import ru.staffly.checklist.dto.ChecklistItemRequest;
 import ru.staffly.checklist.dto.ChecklistRequest;
+import ru.staffly.checklist.mapper.ChecklistHistoryMapper;
 import ru.staffly.checklist.mapper.ChecklistMapper;
 import ru.staffly.checklist.model.Checklist;
 import ru.staffly.checklist.model.ChecklistItem;
 import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.model.ChecklistPeriodicity;
+import ru.staffly.checklist.model.ChecklistResetReason;
+import ru.staffly.checklist.repository.ChecklistHistoryRepository;
 import ru.staffly.checklist.repository.ChecklistRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
@@ -23,7 +32,10 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
+import ru.staffly.media.ChecklistImageStorage;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.text.Collator;
 import java.time.Instant;
 import java.time.LocalTime;
@@ -32,8 +44,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -42,16 +56,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ChecklistServiceImpl implements ChecklistService {
 
+    private static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
+
+    private final EntityManager entityManager;
     private final ChecklistRepository checklists;
+    private final ChecklistHistoryRepository histories;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final RestaurantMemberRepository members;
     private final ChecklistMapper mapper;
+    private final ChecklistHistoryMapper historyMapper;
+    private final ChecklistHistoryService historyService;
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
+    private final ChecklistImageStorage imageStorage;
 
     @Override
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional
     public List<ChecklistDto> list(
             Long restaurantId,
             Long currentUserId,
@@ -109,7 +130,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         LocalTime resetTime = parseResetTime(request.resetTime());
         Integer resetDayOfWeek = request.resetDayOfWeek();
         Integer resetDayOfMonth = request.resetDayOfMonth();
-        List<String> items = request.items();
+        List<NormalizedChecklistItem> items = normalizeItemRequests(request);
 
         String content;
         if (kind == ChecklistKind.INFO) {
@@ -151,7 +172,7 @@ public class ChecklistServiceImpl implements ChecklistService {
     @Transactional
     public ChecklistDto update(Long restaurantId, Long currentUserId, Long checklistId, ChecklistRequest request) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        Checklist entity = checklists.findDetailedById(checklistId)
+        Checklist entity = checklists.findDetailedByIdForUpdate(checklistId)
                 .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
         if (!entity.getRestaurant().getId().equals(restaurantId)) {
             throw new NotFoundException("Checklist not found in this restaurant");
@@ -167,7 +188,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         LocalTime resetTime = parseResetTime(request.resetTime());
         Integer resetDayOfWeek = request.resetDayOfWeek();
         Integer resetDayOfMonth = request.resetDayOfMonth();
-        List<String> items = request.items();
+        List<NormalizedChecklistItem> items = normalizeItemRequests(request);
 
         String content;
         if (kind == ChecklistKind.INFO) {
@@ -192,6 +213,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             entity.setLastResetAt(restaurantTime.nowInstant());
         }
         if (kind == ChecklistKind.INFO) {
+            scheduleItemPhotoCleanup(entity.getItems());
             entity.getItems().clear();
             entity.setCompleted(false);
         } else {
@@ -246,6 +268,9 @@ public class ChecklistServiceImpl implements ChecklistService {
             throw new ConflictException("Пункт забронирован другим сотрудником");
         }
         if (!item.isDone()) {
+            if (item.isCompletionPhotoRequired() && isBlank(item.getCompletionPhotoUrl())) {
+                throw new BadRequestException("Прикрепите фото выполнения");
+            }
             item.setDone(true);
             item.setDoneAt(restaurantTime.nowInstant());
             item.setDoneBy(context.member());
@@ -262,11 +287,16 @@ public class ChecklistServiceImpl implements ChecklistService {
         security.assertAtLeastManager(currentUserId, restaurantId);
         ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
         ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        String previousCompletionPhotoUrl = item.getCompletionPhotoUrl();
         item.setDone(false);
         item.setDoneAt(null);
         item.setDoneBy(null);
         item.setReservedBy(null);
         item.setReservedAt(null);
+        item.setCompletionPhotoUrl(null);
+        item.setCompletionPhotoUploadedBy(null);
+        item.setCompletionPhotoUploadedAt(null);
+        deleteCompletionPhotoAfterCommit(previousCompletionPhotoUrl);
         context.checklist().setCompleted(context.checklist().getItems().stream().allMatch(ChecklistItem::isDone));
         return mapper.toDto(checklists.save(context.checklist()));
     }
@@ -275,7 +305,7 @@ public class ChecklistServiceImpl implements ChecklistService {
     @Transactional
     public ChecklistDto reset(Long restaurantId, Long currentUserId, Long checklistId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        Checklist checklist = checklists.findDetailedById(checklistId)
+        Checklist checklist = checklists.findDetailedByIdForUpdate(checklistId)
                 .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
         if (!Objects.equals(checklist.getRestaurant().getId(), restaurantId)) {
             throw new NotFoundException("Checklist not found in this restaurant");
@@ -283,7 +313,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         if (checklist.getKind() != ChecklistKind.TRACKABLE) {
             throw new BadRequestException("Можно сбросить только проверяемый чек-лист");
         }
-        resetChecklist(checklist, restaurantTime.nowInstant());
+        resetChecklist(checklist, restaurantTime.nowInstant(), ChecklistResetReason.MANUAL);
         checklist = checklists.save(checklist);
         return mapper.toDto(checklist);
     }
@@ -292,12 +322,129 @@ public class ChecklistServiceImpl implements ChecklistService {
     @Transactional
     public void delete(Long restaurantId, Long currentUserId, Long checklistId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        Checklist entity = checklists.findById(checklistId)
+        Checklist entity = checklists.findDetailedByIdForUpdate(checklistId)
                 .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
         if (!entity.getRestaurant().getId().equals(restaurantId)) {
             throw new NotFoundException("Checklist not found in this restaurant");
         }
+        List<String> examplePhotoUrls = entity.getItems().stream()
+                .map(ChecklistItem::getExamplePhotoUrl)
+                .filter(url -> !isBlank(url))
+                .toList();
+        List<String> completionPhotoUrls = entity.getItems().stream()
+                .map(ChecklistItem::getCompletionPhotoUrl)
+                .filter(url -> !isBlank(url))
+                .toList();
         checklists.delete(entity);
+        afterCommit(() -> {
+            examplePhotoUrls.forEach(this::deleteExamplePhotoIfNotArchived);
+            completionPhotoUrls.forEach(this::deleteCompletionPhotoIfNotArchived);
+        });
+    }
+
+    @Override
+    @Transactional
+    public ChecklistDto uploadExamplePhoto(Long restaurantId,
+                                           Long currentUserId,
+                                           Long checklistId,
+                                           Long itemId,
+                                           MultipartFile file) throws IOException {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        validateImageFile(file);
+        Checklist checklist = loadManageableTrackableChecklist(restaurantId, checklistId);
+        ChecklistItem item = findChecklistItem(checklist, itemId);
+
+        String previousPhotoUrl = item.getExamplePhotoUrl();
+        String uploadedPhotoUrl = imageStorage.saveExampleForItem(itemId, file);
+        item.setExamplePhotoUrl(uploadedPhotoUrl);
+
+        afterCommit(() -> deleteExamplePhotoIfNotArchived(previousPhotoUrl));
+        afterRollback(() -> imageStorage.deleteByPublicUrl(uploadedPhotoUrl));
+        return mapper.toDto(checklists.save(checklist));
+    }
+
+    @Override
+    @Transactional
+    public ChecklistDto deleteExamplePhoto(Long restaurantId,
+                                           Long currentUserId,
+                                           Long checklistId,
+                                           Long itemId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        Checklist checklist = loadManageableTrackableChecklist(restaurantId, checklistId);
+        ChecklistItem item = findChecklistItem(checklist, itemId);
+        String previousPhotoUrl = item.getExamplePhotoUrl();
+        item.setExamplePhotoUrl(null);
+        afterCommit(() -> deleteExamplePhotoIfNotArchived(previousPhotoUrl));
+        return mapper.toDto(checklists.save(checklist));
+    }
+
+    @Override
+    @Transactional
+    public ChecklistDto uploadCompletionPhoto(Long restaurantId,
+                                              Long currentUserId,
+                                              Long checklistId,
+                                              Long itemId,
+                                              MultipartFile file) throws IOException {
+        validateImageFile(file);
+        ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
+        ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        assertCanChangeCompletionPhoto(item, context);
+
+        String previousPhotoUrl = item.getCompletionPhotoUrl();
+        String uploadedPhotoUrl = imageStorage.saveCompletionForItem(itemId, file);
+        item.setCompletionPhotoUrl(uploadedPhotoUrl);
+        item.setCompletionPhotoUploadedBy(context.member());
+        item.setCompletionPhotoUploadedAt(restaurantTime.nowInstant());
+
+        afterCommit(() -> deleteCompletionPhotoIfNotArchived(previousPhotoUrl));
+        afterRollback(() -> imageStorage.deleteCompletionReference(uploadedPhotoUrl));
+        return mapper.toDto(checklists.save(context.checklist()));
+    }
+
+    @Override
+    @Transactional
+    public ChecklistDto deleteCompletionPhoto(Long restaurantId,
+                                              Long currentUserId,
+                                              Long checklistId,
+                                              Long itemId) {
+        ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
+        ChecklistItem item = findChecklistItem(context.checklist(), itemId);
+        assertCanChangeCompletionPhoto(item, context);
+        if (item.getCompletionPhotoUploadedBy() != null
+                && !item.getCompletionPhotoUploadedBy().getId().equals(context.member().getId())
+                && !context.canManage()) {
+            throw new ConflictException("Фото выполнения прикрепил другой сотрудник");
+        }
+
+        String previousPhotoUrl = item.getCompletionPhotoUrl();
+        item.setCompletionPhotoUrl(null);
+        item.setCompletionPhotoUploadedBy(null);
+        item.setCompletionPhotoUploadedAt(null);
+        afterCommit(() -> deleteCompletionPhotoIfNotArchived(previousPhotoUrl));
+        return mapper.toDto(checklists.save(context.checklist()));
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public List<ChecklistHistorySummaryDto> listHistory(Long restaurantId, Long currentUserId, Long checklistId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        Checklist checklist = checklists.findWithPositionsById(checklistId)
+                .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
+        if (!Objects.equals(checklist.getRestaurant().getId(), restaurantId)) {
+            throw new NotFoundException("Checklist not found in this restaurant");
+        }
+        return histories.findTop50ByChecklistIdAndRestaurantIdOrderByResetAtDesc(checklistId, restaurantId).stream()
+                .map(historyMapper::toSummaryDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public ChecklistHistoryDetailDto getHistory(Long restaurantId, Long currentUserId, Long historyId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        return histories.findByIdAndRestaurantId(historyId, restaurantId)
+                .map(historyMapper::toDetailDto)
+                .orElseThrow(() -> new NotFoundException("Checklist history not found: " + historyId));
     }
 
     private void sortChecklists(List<Checklist> checklists, ChecklistKind kind) {
@@ -336,7 +483,7 @@ public class ChecklistServiceImpl implements ChecklistService {
 
     private ChecklistContext loadChecklistContext(Long restaurantId, Long currentUserId, Long checklistId) {
         security.assertMember(currentUserId, restaurantId);
-        Checklist checklist = checklists.findDetailedById(checklistId)
+        Checklist checklist = checklists.findDetailedByIdForUpdate(checklistId)
                 .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
         if (!Objects.equals(checklist.getRestaurant().getId(), restaurantId)) {
             throw new NotFoundException("Checklist not found in this restaurant");
@@ -348,7 +495,7 @@ public class ChecklistServiceImpl implements ChecklistService {
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         boolean canManage = isManagerOrAdmin(member);
         assertChecklistAccess(checklist, member, canManage);
-        if (applyLazyResetIfNeeded(checklist)) {
+        if (applyDueAutoReset(checklist)) {
             checklists.save(checklist);
         }
         return new ChecklistContext(checklist, member, canManage);
@@ -444,7 +591,7 @@ public class ChecklistServiceImpl implements ChecklistService {
                                    LocalTime resetTime,
                                    Integer resetDayOfWeek,
                                    Integer resetDayOfMonth,
-                                   List<String> items) {
+                                   List<NormalizedChecklistItem> items) {
         if (kind != ChecklistKind.TRACKABLE) {
             return;
         }
@@ -461,84 +608,184 @@ public class ChecklistServiceImpl implements ChecklistService {
                 throw new BadRequestException("Укажите день месяца");
             }
         }
-        if (items == null || items.stream().map(this::normalize).filter(s -> s != null && !s.isBlank()).count() == 0) {
+        if (items == null || items.isEmpty()) {
             throw new BadRequestException("Добавьте хотя бы один пункт");
         }
     }
 
-    private void applyItems(Checklist entity, List<String> itemTexts) {
-        List<String> normalizedItems = itemTexts == null
-                ? List.of()
-                : itemTexts.stream()
+    private List<NormalizedChecklistItem> normalizeItemRequests(ChecklistRequest request) {
+        if (request.itemDetails() != null && !request.itemDetails().isEmpty()) {
+            return request.itemDetails().stream()
+                    .map(this::normalizeItemRequest)
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+        if (request.items() == null || request.items().isEmpty()) {
+            return List.of();
+        }
+        return request.items().stream()
                 .map(this::normalize)
                 .filter(text -> text != null && !text.isBlank())
+                .map(text -> new NormalizedChecklistItem(null, text, false))
                 .toList();
+    }
 
-        List<ChecklistItem> existingItems = entity.getItems().stream()
+    private NormalizedChecklistItem normalizeItemRequest(ChecklistItemRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String text = normalize(request.text());
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return new NormalizedChecklistItem(request.id(), text, Boolean.TRUE.equals(request.completionPhotoRequired()));
+    }
+
+    private void applyItems(Checklist entity, List<NormalizedChecklistItem> requestedItems) {
+        List<NormalizedChecklistItem> safeRequests = requestedItems == null ? List.of() : requestedItems;
+        Map<Long, ChecklistItem> existingById = entity.getItems().stream()
+                .filter(item -> item.getId() != null)
+                .collect(Collectors.toMap(ChecklistItem::getId, item -> item, (left, right) -> left, LinkedHashMap::new));
+        List<ChecklistItem> existingOrdered = entity.getItems().stream()
                 .sorted(Comparator.comparing(ChecklistItem::getItemOrder)
                         .thenComparing(item -> item.getId() == null ? Long.MAX_VALUE : item.getId()))
                 .toList();
 
-        int targetCount = normalizedItems.size();
-        for (int i = 0; i < targetCount; i++) {
-            ChecklistItem item;
-            if (i < existingItems.size()) {
-                item = existingItems.get(i);
+        Set<Long> usedIds = new HashSet<>();
+        int legacyIndex = 0;
+        List<ChecklistItem> nextItems = new ArrayList<>();
+        for (int index = 0; index < safeRequests.size(); index++) {
+            NormalizedChecklistItem request = safeRequests.get(index);
+            ChecklistItem item = null;
+            if (request.id() != null) {
+                if (!usedIds.add(request.id())) {
+                    throw new BadRequestException("Пункт чек-листа указан несколько раз: " + request.id());
+                }
+                item = existingById.get(request.id());
+                if (item == null) {
+                    throw new BadRequestException("Пункт чек-листа не найден: " + request.id());
+                }
             } else {
-                item = ChecklistItem.builder()
-                        .checklist(entity)
-                        .done(false)
-                        .build();
-                entity.getItems().add(item);
+                while (legacyIndex < existingOrdered.size()) {
+                    ChecklistItem candidate = existingOrdered.get(legacyIndex++);
+                    Long candidateId = candidate.getId();
+                    if (candidateId == null || !usedIds.contains(candidateId)) {
+                        item = candidate;
+                        if (candidateId != null) {
+                            usedIds.add(candidateId);
+                        }
+                        break;
+                    }
+                }
+                if (item == null) {
+                    item = ChecklistItem.builder()
+                            .checklist(entity)
+                            .done(false)
+                            .completionPhotoRequired(false)
+                            .build();
+                    entity.getItems().add(item);
+                }
             }
-            item.setItemOrder(i + 1);
-            item.setText(normalizedItems.get(i));
-            if (!item.isDone()) {
-                item.setDoneBy(null);
-                item.setDoneAt(null);
-            }
+
+            item.setText(request.text());
+            item.setCompletionPhotoRequired(request.completionPhotoRequired());
+            nextItems.add(item);
         }
 
-        for (int i = targetCount; i < existingItems.size(); i++) {
-            entity.getItems().remove(existingItems.get(i));
+        List<ChecklistItem> removedItems = entity.getItems().stream()
+                .filter(item -> !nextItems.contains(item))
+                .toList();
+        moveExistingItemsToTemporaryOrders(entity);
+        for (ChecklistItem removedItem : removedItems) {
+            String examplePhotoUrl = removedItem.getExamplePhotoUrl();
+            String completionPhotoUrl = removedItem.getCompletionPhotoUrl();
+            removedItem.setExamplePhotoUrl(null);
+            removedItem.setCompletionPhotoUrl(null);
+            removedItem.setCompletionPhotoUploadedBy(null);
+            removedItem.setCompletionPhotoUploadedAt(null);
+            entity.getItems().remove(removedItem);
+            afterCommit(() -> {
+                deleteExamplePhotoIfNotArchived(examplePhotoUrl);
+                deleteCompletionPhotoIfNotArchived(completionPhotoUrl);
+            });
+        }
+        for (int index = 0; index < nextItems.size(); index++) {
+            nextItems.get(index).setItemOrder(index + 1);
         }
 
-        entity.setCompleted(false);
+        entity.setCompleted(!nextItems.isEmpty() && nextItems.stream().allMatch(ChecklistItem::isDone));
+    }
+
+    private void moveExistingItemsToTemporaryOrders(Checklist entity) {
+        if (entity.getId() == null || entity.getItems().stream().noneMatch(item -> item.getId() != null)) {
+            return;
+        }
+        List<ChecklistItem> items = entity.getItems().stream()
+                .sorted(Comparator.comparing(ChecklistItem::getItemOrder, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(item -> item.getId() == null ? Long.MAX_VALUE : item.getId()))
+                .toList();
+        for (int index = 0; index < items.size(); index++) {
+            items.get(index).setItemOrder(-(index + 1));
+        }
+        entityManager.flush();
     }
 
     private boolean applyLazyResetIfNeeded(Checklist checklist) {
-        if (checklist.getKind() != ChecklistKind.TRACKABLE) {
+        if (!hasDueAutoReset(checklist)) {
+            return false;
+        }
+
+        Checklist lockedChecklist = checklists.findDetailedByIdForUpdate(checklist.getId()).orElse(checklist);
+        return applyDueAutoReset(lockedChecklist);
+    }
+
+    private boolean applyDueAutoReset(Checklist lockedChecklist) {
+        if (!hasDueAutoReset(lockedChecklist)) {
+            return false;
+        }
+        Instant resetMoment = computeLatestDueReset(lockedChecklist);
+        if (resetMoment == null) {
+            return false;
+        }
+        resetChecklist(lockedChecklist, resetMoment, ChecklistResetReason.AUTO);
+        return true;
+    }
+
+    private boolean hasDueAutoReset(Checklist checklist) {
+        if (checklist == null || checklist.getKind() != ChecklistKind.TRACKABLE) {
             return false;
         }
         ChecklistPeriodicity periodicity = checklist.getPeriodicity();
         if (periodicity == null || periodicity == ChecklistPeriodicity.MANUAL) {
             return false;
         }
+        return computeLatestDueReset(checklist) != null;
+    }
+
+    private Instant computeLatestDueReset(Checklist checklist) {
         Instant last = checklist.getLastResetAt() != null ? checklist.getLastResetAt() : checklist.getCreatedAt();
         if (last == null) {
             last = restaurantTime.nowInstant();
         }
-        Instant next = computeNextReset(last, checklist);
-        boolean updated = false;
-        Instant now = restaurantTime.nowInstant();
-        while (next != null && !next.isAfter(now)) {
-            resetChecklist(checklist, next);
-            updated = true;
-            next = computeNextReset(checklist.getLastResetAt(), checklist);
-        }
-        return updated;
+        ZoneId zone = restaurantTime.zoneFor(checklist.getRestaurant());
+        return ChecklistResetCalculator.computeLatestDueReset(last, checklist, zone, restaurantTime.nowInstant());
     }
 
-    private void resetChecklist(Checklist checklist, Instant moment) {
+    private void resetChecklist(Checklist checklist, Instant moment, ChecklistResetReason reason) {
+        Instant resetMoment = moment != null ? moment : restaurantTime.nowInstant();
+        historyService.snapshotBeforeReset(checklist, resetMoment, reason);
         for (ChecklistItem item : checklist.getItems()) {
             item.setDone(false);
             item.setDoneBy(null);
             item.setDoneAt(null);
             item.setReservedBy(null);
             item.setReservedAt(null);
+            item.setCompletionPhotoUrl(null);
+            item.setCompletionPhotoUploadedBy(null);
+            item.setCompletionPhotoUploadedAt(null);
         }
         checklist.setCompleted(false);
-        checklist.setLastResetAt(moment != null ? moment : restaurantTime.nowInstant());
+        checklist.setLastResetAt(resetMoment);
     }
 
     private int checklistGroupKey(Checklist checklist) {
@@ -554,12 +801,135 @@ public class ChecklistServiceImpl implements ChecklistService {
         return 3;
     }
 
-    private Instant computeNextReset(Instant base, Checklist checklist) {
-        if (base == null) {
-            return null;
+    private Checklist loadManageableTrackableChecklist(Long restaurantId, Long checklistId) {
+        Checklist checklist = checklists.findDetailedByIdForUpdate(checklistId)
+                .orElseThrow(() -> new NotFoundException("Checklist not found: " + checklistId));
+        if (!Objects.equals(checklist.getRestaurant().getId(), restaurantId)) {
+            throw new NotFoundException("Checklist not found in this restaurant");
         }
-        ZoneId zone = restaurantTime.zoneFor(checklist.getRestaurant());
-        return ChecklistResetCalculator.computeNextReset(base, checklist, zone);
+        if (checklist.getKind() != ChecklistKind.TRACKABLE) {
+            throw new BadRequestException("Можно работать только с проверяемыми чек-листами");
+        }
+        if (applyDueAutoReset(checklist)) {
+            checklists.save(checklist);
+        }
+        return checklist;
+    }
+
+    private void assertCanChangeCompletionPhoto(ChecklistItem item, ChecklistContext context) {
+        if (item.isDone()) {
+            throw new BadRequestException("Нельзя менять фото выполненного пункта");
+        }
+        if (item.getReservedBy() != null && !item.getReservedBy().getId().equals(context.member().getId())) {
+            throw new ConflictException("Пункт забронирован другим сотрудником");
+        }
+    }
+
+    private void validateImageFile(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("Файл не выбран");
+        }
+        if (file.getSize() > MAX_IMAGE_BYTES) {
+            throw new BadRequestException("Файл больше 2MB");
+        }
+
+        String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
+        int separator = contentType.indexOf(';');
+        if (separator > -1) {
+            contentType = contentType.substring(0, separator).trim();
+        }
+        if (!Set.of("image/jpeg", "image/png", "image/webp").contains(contentType)) {
+            throw new BadRequestException("Разрешены только JPEG/PNG/WEBP");
+        }
+
+        byte[] bytes = file.getBytes();
+        if (bytes.length < 12) {
+            throw new BadRequestException("Некорректный файл изображения");
+        }
+
+        boolean jpeg = (bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8;
+        boolean png = (bytes[0] & 0xFF) == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47;
+        boolean webp = bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
+        if (!jpeg && !png && !webp) {
+            throw new BadRequestException("Некорректная сигнатура изображения");
+        }
+    }
+
+    private void scheduleItemPhotoCleanup(Set<ChecklistItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        List<String> examplePhotoUrls = items.stream()
+                .map(ChecklistItem::getExamplePhotoUrl)
+                .filter(url -> !isBlank(url))
+                .toList();
+        List<String> completionPhotoUrls = items.stream()
+                .map(ChecklistItem::getCompletionPhotoUrl)
+                .filter(url -> !isBlank(url))
+                .toList();
+        afterCommit(() -> {
+            examplePhotoUrls.forEach(this::deleteExamplePhotoIfNotArchived);
+            completionPhotoUrls.forEach(this::deleteCompletionPhotoIfNotArchived);
+        });
+    }
+
+    private void deleteCompletionPhotoAfterCommit(String publicUrl) {
+        afterCommit(() -> deleteCompletionPhotoIfNotArchived(publicUrl));
+    }
+
+    private void deleteExamplePhotoIfNotArchived(String publicUrl) {
+        if (isBlank(publicUrl) || historyService.isExamplePhotoReferenced(publicUrl)) {
+            return;
+        }
+        imageStorage.deleteByPublicUrl(publicUrl);
+    }
+
+    private void deleteCompletionPhotoIfNotArchived(String publicUrl) {
+        if (isBlank(publicUrl) || historyService.isCompletionPhotoReferenced(publicUrl)) {
+            return;
+        }
+        imageStorage.deleteCompletionReference(publicUrl);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private void afterCommit(Runnable action) {
+        registerTransactionCallback(action, null);
+    }
+
+    private void afterRollback(Runnable action) {
+        registerTransactionCallback(null, action);
+    }
+
+    private void registerTransactionCallback(Runnable afterCommitAction, Runnable afterRollbackAction) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            if (afterCommitAction != null) {
+                afterCommitAction.run();
+            }
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                if (afterCommitAction != null) {
+                    afterCommitAction.run();
+                }
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED && afterRollbackAction != null) {
+                    afterRollbackAction.run();
+                }
+            }
+        });
+    }
+
+    private record NormalizedChecklistItem(Long id, String text, boolean completionPhotoRequired) {
     }
 
     private record ChecklistContext(Checklist checklist, RestaurantMember member, boolean canManage) {

@@ -1,17 +1,19 @@
 package ru.staffly.checklist.dto;
 
-public record ChecklistItemDto(
+public record ChecklistHistoryItemDto(
         Long id,
+        Long sourceItemId,
+        int itemOrder,
         String text,
         boolean done,
         ChecklistMemberShortDto doneBy,
+        String doneByName,
         String doneAt,
         ChecklistMemberShortDto reservedBy,
+        String reservedByName,
         String reservedAt,
-        String examplePhotoUrl,
-        String completionPhotoUrl,
         boolean completionPhotoRequired,
-        ChecklistMemberShortDto completionPhotoUploadedBy,
-        String completionPhotoUploadedAt
+        String examplePhotoUrl,
+        String completionPhotoUrl
 ) {
 }
