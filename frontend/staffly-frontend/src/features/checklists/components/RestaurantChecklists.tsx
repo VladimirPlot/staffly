@@ -515,13 +515,21 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
     [loadHistoryDetail, restaurantId],
   );
 
+  const closePhotoPreview = useCallback(() => {
+    setPhotoPreview(null);
+  }, []);
+
   const closeHistoryModal = useCallback(() => {
+    if (photoPreview) {
+      closePhotoPreview();
+      return;
+    }
     if (historyLoading || historyDetailLoading !== null) return;
     setHistoryTarget(null);
     setHistorySummaries([]);
     setHistoryDetail(null);
     setHistoryError(null);
-  }, [historyDetailLoading, historyLoading]);
+  }, [closePhotoPreview, historyDetailLoading, historyLoading, photoPreview]);
 
   const handleDownloadJpg = useCallback(async (checklist: ChecklistDto) => {
     const node = checklistRefs.current.get(checklist.id);
@@ -813,6 +821,8 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                               : "border-subtle bg-app text-muted";
                           const shouldShowMedia =
                             isMediaExpanded || hasExamplePhoto || hasCompletionPhoto || item.completionPhotoRequired;
+                          const canToggleOptionalMedia =
+                            !item.done && !hasExamplePhoto && !hasCompletionPhoto && !item.completionPhotoRequired;
                           return (
                             <div
                               key={item.id}
@@ -856,15 +866,15 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                   <div className="text-muted mt-1 text-xs">{statusDetail}</div>
                                 </div>
                                 <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-                                  {!shouldShowMedia && !item.done && (
+                                  {canToggleOptionalMedia && (
                                     <Button
                                       variant="outline"
                                       size="sm"
                                       className="h-9 text-sm"
-                                      leftIcon={<Icon icon={Camera} size="sm" decorative />}
+                                      leftIcon={<Icon icon={isMediaExpanded ? X : Camera} size="sm" decorative />}
                                       onClick={() => toggleMediaExpanded(checklist.id, item.id)}
                                     >
-                                      Фото
+                                      {isMediaExpanded ? "Свернуть" : "Фото"}
                                     </Button>
                                   )}
                                   {!item.done && !item.reservedBy && (
@@ -1270,10 +1280,10 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
         open={Boolean(photoPreview)}
         title={photoPreview?.title ?? "Фото"}
         description={photoPreview?.description}
-        onClose={() => setPhotoPreview(null)}
+        onClose={closePhotoPreview}
         className="max-w-3xl"
         footer={
-          <Button variant="outline" onClick={() => setPhotoPreview(null)}>
+          <Button variant="outline" onClick={closePhotoPreview}>
             Закрыть
           </Button>
         }

@@ -2,6 +2,7 @@ package ru.staffly.checklist.service;
 
 import jakarta.transaction.Transactional;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -731,11 +732,16 @@ public class ChecklistServiceImpl implements ChecklistService {
     }
 
     private boolean applyLazyResetIfNeeded(Checklist checklist) {
-        if (!hasDueAutoReset(checklist)) {
+        if (checklist == null || checklist.getId() == null || !hasDueAutoReset(checklist)) {
             return false;
         }
 
-        Checklist lockedChecklist = checklists.findDetailedByIdForUpdate(checklist.getId()).orElse(checklist);
+        Checklist lockedChecklist = checklists.findDetailedByIdForUpdate(checklist.getId()).orElse(null);
+        if (lockedChecklist == null) {
+            return false;
+        }
+
+        entityManager.refresh(lockedChecklist, LockModeType.PESSIMISTIC_WRITE);
         return applyDueAutoReset(lockedChecklist);
     }
 
