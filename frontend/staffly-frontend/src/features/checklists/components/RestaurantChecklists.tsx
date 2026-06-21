@@ -13,6 +13,7 @@ import {
   Unlock,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import ContentText from "../../../shared/ui/ContentText";
@@ -87,6 +88,122 @@ type PhotoPreview = {
   url: string;
   description?: string;
 };
+
+type ChecklistItemSectionKey = "available" | "reserved" | "done";
+
+type ChecklistItemSection = {
+  key: ChecklistItemSectionKey;
+  title: string;
+  description: string;
+  items: ChecklistItemDto[];
+  icon: LucideIcon;
+  badgeClassName: string;
+  lineClassName: string;
+};
+
+type ChecklistWorkSummary = {
+  label: string;
+  detail: string;
+  dotClassName: string;
+  badgeClassName: string;
+};
+
+function buildChecklistItemSections(items: ChecklistItemDto[]): ChecklistItemSection[] {
+  const available: ChecklistItemDto[] = [];
+  const reserved: ChecklistItemDto[] = [];
+  const done: ChecklistItemDto[] = [];
+
+  items.forEach((item) => {
+    if (item.done) {
+      done.push(item);
+      return;
+    }
+
+    if (item.reservedBy) {
+      reserved.push(item);
+      return;
+    }
+
+    available.push(item);
+  });
+
+  const sections: ChecklistItemSection[] = [
+    {
+      key: "available",
+      title: "Не взяты",
+      description: "можно взять в работу",
+      items: available,
+      icon: Unlock,
+      badgeClassName: "border-subtle bg-[color:var(--staffly-control)] text-default",
+      lineClassName: "bg-[var(--staffly-divider)]",
+    },
+    {
+      key: "reserved",
+      title: "В работе",
+      description: "закреплены за сотрудником",
+      items: reserved,
+      icon: Lock,
+      badgeClassName:
+        "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15",
+      lineClassName: "bg-amber-300/70 dark:bg-amber-500/40",
+    },
+    {
+      key: "done",
+      title: "Готово",
+      description: "закрытые пункты",
+      items: done,
+      icon: Check,
+      badgeClassName:
+        "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+      lineClassName: "bg-emerald-300/70 dark:bg-emerald-500/40",
+    },
+  ];
+
+  return sections.filter((section) => section.items.length > 0);
+}
+
+function getChecklistWorkSummary(checklist: ChecklistDto): ChecklistWorkSummary {
+  const total = checklist.items.length;
+  const doneCount = checklist.items.filter((item) => item.done).length;
+  const reservedCount = checklist.items.filter((item) => !item.done && item.reservedBy).length;
+  const availableCount = checklist.items.filter((item) => !item.done && !item.reservedBy).length;
+
+  if (total === 0) {
+    return {
+      label: "Нет пунктов",
+      detail: "пока нечего брать",
+      dotClassName: "bg-zinc-300 ring-zinc-200/70 dark:bg-zinc-600 dark:ring-zinc-500/25",
+      badgeClassName: "border-subtle bg-[color:var(--staffly-control)] text-muted",
+    };
+  }
+
+  if (checklist.completed || doneCount === total) {
+    return {
+      label: "Все готово",
+      detail: `${doneCount}/${total} закрыто`,
+      dotClassName: "bg-emerald-500 ring-emerald-200/80 dark:ring-emerald-500/25",
+      badgeClassName:
+        "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200",
+    };
+  }
+
+  if (reservedCount > 0) {
+    return {
+      label: `${reservedCount} в работе`,
+      detail: availableCount > 0 ? `${availableCount} не взято` : `${doneCount}/${total} закрыто`,
+      dotClassName: "bg-amber-400 ring-amber-200/80 dark:ring-amber-500/25",
+      badgeClassName:
+        "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15",
+    };
+  }
+
+  return {
+    label: `${availableCount} не взято`,
+    detail: doneCount > 0 ? `${doneCount}/${total} закрыто` : "ожидает старта",
+    dotClassName: "bg-zinc-300 ring-zinc-200/70 dark:bg-zinc-600 dark:ring-zinc-500/25",
+    badgeClassName: "border-subtle bg-[color:var(--staffly-control)] text-default",
+  };
+}
 
 const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsProps) => {
   const [positions, setPositions] = useState<PositionDto[]>([]);
@@ -676,6 +793,8 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
             const isTrackable = checklist.kind === "TRACKABLE";
             const isResetting = resetting === checklist.id;
             const isDownloading = downloading === checklist.id;
+            const workSummary = isTrackable ? getChecklistWorkSummary(checklist) : null;
+            const itemSections = isTrackable && isExpanded ? buildChecklistItemSections(checklist.items) : [];
             return (
               <div
                 key={checklist.id}
@@ -683,29 +802,43 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                 ref={(node) => setChecklistRef(checklist.id, node)}
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-3">
                       {isTrackable && (
                         <span
-                          className={`inline-block h-3 w-3 rounded-full ${
-                            checklist.completed ? "bg-emerald-500" : "bg-amber-400"
-                          }`}
+                          className={`mt-1.5 inline-block h-3 w-3 shrink-0 rounded-full ring-4 ${workSummary?.dotClassName ?? ""}`}
                           aria-hidden
                         />
                       )}
-                      <div className="text-strong text-base font-semibold [overflow-wrap:anywhere]">
-                        {checklist.name}
+                      <div className="min-w-0">
+                        <div className="text-strong text-base leading-6 font-semibold [overflow-wrap:anywhere]">
+                          {checklist.name}
+                        </div>
+                        <div className="text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                          {isTrackable && checklist.periodLabel && (
+                            <span className="text-default">{checklist.periodLabel}</span>
+                          )}
+                          <span className="tracking-wide [overflow-wrap:anywhere] uppercase">{assignedNames}</span>
+                        </div>
                       </div>
                     </div>
-                    {isTrackable && checklist.periodLabel && (
-                      <div className="text-default text-sm">{checklist.periodLabel}</div>
+                    {workSummary && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${workSummary.badgeClassName}`}
+                        >
+                          {workSummary.label}
+                        </span>
+                        <span className="text-muted text-xs">{workSummary.detail}</span>
+                      </div>
                     )}
-                    <div className="text-muted mt-1 text-xs tracking-wide [overflow-wrap:anywhere] uppercase">
-                      {assignedNames}
-                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => toggleExpanded(checklist.id)} className="text-sm">
+                  <div className="flex w-full shrink-0 flex-wrap items-center gap-2 md:w-auto md:justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => toggleExpanded(checklist.id)}
+                      className="min-h-11 text-sm sm:min-h-10"
+                    >
                       {isExpanded ? "Свернуть" : "Открыть"}
                     </Button>
                     {canManage && (
@@ -715,7 +848,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                           size="icon"
                           onClick={() => toggleActionMenu(checklist.id)}
                           disabled={isDownloading}
-                          className="text-default"
+                          className="text-default min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
                           aria-haspopup="menu"
                           aria-expanded={actionMenuFor === checklist.id}
                           aria-controls={actionMenuFor === checklist.id ? `action-menu-${checklist.id}` : undefined}
@@ -791,312 +924,370 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                   <div className="border-subtle bg-surface text-default mt-4 rounded-2xl border text-sm">
                     {isTrackable ? (
                       <div>
-                        {checklist.items.map((item) => {
-                          const reserveKey = `${checklist.id}-${item.id}-reserve`;
-                          const unreserveKey = `${checklist.id}-${item.id}-unreserve`;
-                          const completeKey = `${checklist.id}-${item.id}-complete`;
-                          const undoKey = `${checklist.id}-${item.id}-undo`;
-                          const reserveLoading = itemActionLoading.has(reserveKey);
-                          const unreserveLoading = itemActionLoading.has(unreserveKey);
-                          const completeLoading = itemActionLoading.has(completeKey);
-                          const undoLoading = itemActionLoading.has(undoKey);
-                          const isBusy = reserveLoading || unreserveLoading || completeLoading || undoLoading;
-                          const mediaKey = `${checklist.id}-${item.id}`;
-                          const completionPhotoKey = `${checklist.id}-${item.id}-completion-photo`;
-                          const isMediaExpanded = mediaExpanded.has(mediaKey);
-                          const isPhotoUploading = photoUploading.has(completionPhotoKey);
-                          const hasExamplePhoto = hasPhoto(item.examplePhotoUrl);
-                          const hasCompletionPhoto = hasPhoto(item.completionPhotoUrl);
-                          const missingRequiredPhoto = item.completionPhotoRequired && !hasCompletionPhoto;
-                          const statusLabel = item.done ? "Готово" : item.reservedBy ? "В работе" : "Свободно";
-                          const statusDetail = item.done
-                            ? `Выполнил: ${item.doneBy?.name ?? "без автора"}${item.doneAt ? ` · ${formatDateTime(item.doneAt)}` : ""}`
-                            : item.reservedBy
-                              ? `${item.reservedBy?.name ?? "сотрудник"} взял пункт в работу`
-                              : "Можно брать в работу";
-                          const statusClass = item.done
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : item.reservedBy
-                              ? "border-amber-200 bg-amber-50 text-amber-800"
-                              : "border-subtle bg-app text-muted";
-                          const shouldShowMedia =
-                            isMediaExpanded || hasExamplePhoto || hasCompletionPhoto || item.completionPhotoRequired;
-                          const canToggleOptionalMedia =
-                            !item.done && !hasExamplePhoto && !hasCompletionPhoto && !item.completionPhotoRequired;
-                          return (
-                            <div
-                              key={item.id}
-                              className={`border-subtle border-b px-3 py-3 last:border-b-0 ${
-                                item.done ? "bg-emerald-50/30" : ""
-                              }`}
-                            >
-                              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                                <div className="min-w-0 flex-1">
-                                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                                    <span
-                                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}
-                                    >
-                                      {statusLabel}
-                                    </span>
-                                    {item.completionPhotoRequired && (
-                                      <span
-                                        className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                                          missingRequiredPhoto
-                                            ? "border-red-200 bg-red-50 text-red-700"
-                                            : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                        }`}
-                                      >
-                                        {missingRequiredPhoto ? "Нужно фото" : "Фото приложено"}
-                                      </span>
-                                    )}
-                                    {hasExamplePhoto && (
-                                      <span className="border-subtle bg-surface text-default inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs">
-                                        <Icon icon={ImageIcon} size="xs" decorative />
-                                        Есть эталон
-                                      </span>
-                                    )}
-                                  </div>
-                                  <ContentText
-                                    className={`text-[15px] leading-6 [overflow-wrap:anywhere] ${
-                                      item.done ? "text-muted line-through" : "text-strong"
-                                    }`}
+                        {itemSections.length === 0 ? (
+                          <div className="text-muted px-3 py-4 text-sm">Пункты пока не добавлены.</div>
+                        ) : (
+                          itemSections.map((section) => (
+                            <section key={section.key} className="pt-4 first:pt-3" aria-label={section.title}>
+                              <div className="px-3">
+                                <div className="flex items-center gap-3">
+                                  <span className={`h-px min-w-8 flex-1 ${section.lineClassName}`} aria-hidden />
+                                  <span
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${section.badgeClassName}`}
                                   >
-                                    {item.text}
-                                  </ContentText>
-                                  <div className="text-muted mt-1 text-xs">{statusDetail}</div>
+                                    <Icon icon={section.icon} size="xs" decorative />
+                                    <span>{section.title}</span>
+                                    <span className="tabular-nums opacity-70">{section.items.length}</span>
+                                  </span>
+                                  <span className={`h-px min-w-8 flex-1 ${section.lineClassName}`} aria-hidden />
                                 </div>
-                                <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-                                  {canToggleOptionalMedia && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-9 text-sm"
-                                      leftIcon={<Icon icon={isMediaExpanded ? X : Camera} size="sm" decorative />}
-                                      onClick={() => toggleMediaExpanded(checklist.id, item.id)}
-                                    >
-                                      {isMediaExpanded ? "Свернуть" : "Фото"}
-                                    </Button>
-                                  )}
-                                  {!item.done && !item.reservedBy && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-9 text-sm"
-                                      leftIcon={!reserveLoading ? <Icon icon={Lock} size="sm" decorative /> : undefined}
-                                      aria-label="Взять в работу"
-                                      disabled={isBusy}
-                                      isLoading={reserveLoading}
-                                      onClick={() =>
-                                        handleItemAction(reserveKey, () =>
-                                          reserveChecklistItem(restaurantId, checklist.id, item.id),
-                                        )
-                                      }
-                                    >
-                                      В работу
-                                    </Button>
-                                  )}
-                                  {!item.done && item.reservedBy && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-9 text-sm"
-                                      leftIcon={
-                                        !unreserveLoading ? <Icon icon={Unlock} size="sm" decorative /> : undefined
-                                      }
-                                      aria-label="Снять бронь"
-                                      disabled={isBusy}
-                                      isLoading={unreserveLoading}
-                                      onClick={() =>
-                                        handleItemAction(unreserveKey, () =>
-                                          unreserveChecklistItem(restaurantId, checklist.id, item.id),
-                                        )
-                                      }
-                                    >
-                                      Отпустить
-                                    </Button>
-                                  )}
-                                  {!item.done && (
-                                    <Button
-                                      size="sm"
-                                      className="h-9 text-sm"
-                                      leftIcon={
-                                        !completeLoading ? <Icon icon={Check} size="sm" decorative /> : undefined
-                                      }
-                                      aria-label="Отметить как готово"
-                                      disabled={isBusy || missingRequiredPhoto}
-                                      isLoading={completeLoading}
-                                      onClick={() =>
-                                        handleItemAction(completeKey, () =>
-                                          completeChecklistItem(restaurantId, checklist.id, item.id),
-                                        )
-                                      }
-                                    >
-                                      Готово
-                                    </Button>
-                                  )}
-                                  {item.done && canManage && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-9 text-sm"
-                                      leftIcon={!undoLoading ? <Icon icon={X} size="sm" decorative /> : undefined}
-                                      aria-label="Снять выполнение"
-                                      disabled={isBusy}
-                                      isLoading={undoLoading}
-                                      onClick={() =>
-                                        handleItemAction(undoKey, () =>
-                                          undoChecklistItem(restaurantId, checklist.id, item.id),
-                                        )
-                                      }
-                                    >
-                                      Вернуть
-                                    </Button>
-                                  )}
+                                <div className="text-muted mt-1 text-center text-[11px] tracking-wide">
+                                  {section.description}
                                 </div>
                               </div>
-                              {shouldShowMedia && (
-                                <div className="border-subtle mt-3 grid gap-3 border-t pt-3 md:grid-cols-2">
-                                  <div className="border-subtle bg-surface rounded-xl border p-3">
-                                    <div className="text-muted mb-2 flex items-center gap-2 text-xs font-medium">
-                                      <Icon icon={ImageIcon} size="xs" decorative />
-                                      <span>Эталон</span>
-                                    </div>
-                                    {hasExamplePhoto ? (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setPhotoPreview({
-                                            title: "Эталон результата",
-                                            description: item.text,
-                                            url: item.examplePhotoUrl!,
-                                          })
-                                        }
-                                        className="group hover:bg-app focus:ring-default flex w-full items-center gap-3 rounded-lg text-left transition focus:ring-2 focus:outline-none"
-                                      >
-                                        <img
-                                          src={item.examplePhotoUrl!}
-                                          alt={`Эталон результата: ${item.text}`}
-                                          className="h-20 w-28 shrink-0 rounded-lg object-cover"
-                                        />
-                                        <span className="min-w-0">
-                                          <span className="text-default block text-sm font-medium">
-                                            Фото от менеджера
-                                          </span>
-                                          <span className="text-muted group-hover:text-default mt-1 block text-xs">
-                                            Открыть крупно
-                                          </span>
-                                        </span>
-                                      </button>
-                                    ) : (
-                                      <div className="border-subtle bg-app/50 text-muted flex min-h-20 items-center gap-3 rounded-lg border border-dashed p-3 text-sm">
-                                        <Icon icon={ImageIcon} decorative />
-                                        <span>Эталон не добавлен</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div
-                                    className={`rounded-xl border p-3 ${
-                                      missingRequiredPhoto ? "border-red-200 bg-red-50/70" : "border-subtle bg-surface"
-                                    }`}
-                                  >
-                                    <div className="text-muted mb-2 flex items-center gap-2 text-xs font-medium">
-                                      <Icon icon={Camera} size="xs" decorative />
-                                      <span>Фото выполнения</span>
-                                    </div>
-                                    <div className="flex gap-3">
-                                      {hasCompletionPhoto ? (
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            setPhotoPreview({
-                                              title: "Фото выполнения",
-                                              description: item.text,
-                                              url: item.completionPhotoUrl!,
-                                            })
-                                          }
-                                          className="focus:ring-default shrink-0 rounded-lg focus:ring-2 focus:outline-none"
-                                        >
-                                          <img
-                                            src={item.completionPhotoUrl!}
-                                            alt={`Фото выполнения: ${item.text}`}
-                                            className="h-20 w-28 rounded-lg object-cover"
-                                          />
-                                        </button>
-                                      ) : (
-                                        <div className="border-subtle bg-app/50 text-muted flex h-20 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed">
-                                          <Icon icon={Camera} decorative />
-                                        </div>
-                                      )}
-                                      <div className="min-w-0 flex-1">
-                                        <div className="text-default text-sm">
-                                          {hasCompletionPhoto ? "Фото прикреплено" : "Фото еще нет"}
-                                        </div>
-                                        <div
-                                          className={`mt-1 text-xs ${missingRequiredPhoto ? "text-red-700" : "text-muted"}`}
-                                        >
-                                          {hasCompletionPhoto
-                                            ? `${item.completionPhotoUploadedBy?.name || "Сотрудник"} · ${formatDateTime(
-                                                item.completionPhotoUploadedAt,
-                                              )}`
-                                            : item.completionPhotoRequired
-                                              ? "Без фото пункт нельзя закрыть"
-                                              : "Можно приложить при необходимости"}
-                                        </div>
-                                        {!item.done && (
-                                          <div className="mt-2 flex flex-wrap gap-2">
-                                            <label
-                                              className={`border-subtle text-default inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-xl border bg-[var(--staffly-control)] px-3 text-sm font-medium transition hover:bg-[var(--staffly-control-hover)] ${
-                                                isPhotoUploading ? "pointer-events-none opacity-60" : ""
-                                              }`}
-                                              aria-disabled={isPhotoUploading}
+                              <div className="mt-2 overflow-hidden">
+                                {section.items.map((item) => {
+                                  const reserveKey = `${checklist.id}-${item.id}-reserve`;
+                                  const unreserveKey = `${checklist.id}-${item.id}-unreserve`;
+                                  const completeKey = `${checklist.id}-${item.id}-complete`;
+                                  const undoKey = `${checklist.id}-${item.id}-undo`;
+                                  const reserveLoading = itemActionLoading.has(reserveKey);
+                                  const unreserveLoading = itemActionLoading.has(unreserveKey);
+                                  const completeLoading = itemActionLoading.has(completeKey);
+                                  const undoLoading = itemActionLoading.has(undoKey);
+                                  const isBusy = reserveLoading || unreserveLoading || completeLoading || undoLoading;
+                                  const mediaKey = `${checklist.id}-${item.id}`;
+                                  const completionPhotoKey = `${checklist.id}-${item.id}-completion-photo`;
+                                  const isMediaExpanded = mediaExpanded.has(mediaKey);
+                                  const isPhotoUploading = photoUploading.has(completionPhotoKey);
+                                  const hasExamplePhoto = hasPhoto(item.examplePhotoUrl);
+                                  const hasCompletionPhoto = hasPhoto(item.completionPhotoUrl);
+                                  const missingRequiredPhoto = item.completionPhotoRequired && !hasCompletionPhoto;
+                                  const statusLabel = item.done ? "Готово" : item.reservedBy ? "В работе" : "Свободно";
+                                  const doneByName = item.doneBy?.name ?? "без автора";
+                                  const reservedByName = item.reservedBy?.name ?? "сотрудник";
+                                  const statusClass = item.done
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-200"
+                                    : item.reservedBy
+                                      ? "border-amber-300 bg-amber-50 text-default dark:border-amber-500/45 dark:bg-amber-500/15"
+                                      : "border-subtle bg-[color:var(--staffly-control)] text-default";
+                                  const itemRowClass = item.done
+                                    ? "bg-emerald-50/30 dark:bg-emerald-500/[0.06]"
+                                    : item.reservedBy
+                                      ? "bg-amber-50/25 dark:bg-amber-500/[0.06]"
+                                      : "bg-surface";
+                                  const shouldShowMedia =
+                                    isMediaExpanded ||
+                                    hasExamplePhoto ||
+                                    hasCompletionPhoto ||
+                                    item.completionPhotoRequired;
+                                  const canToggleOptionalMedia =
+                                    !item.done &&
+                                    !hasExamplePhoto &&
+                                    !hasCompletionPhoto &&
+                                    !item.completionPhotoRequired;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className={`border-subtle border-b px-3 py-3 transition-colors last:border-b-0 sm:px-4 ${itemRowClass}`}
+                                    >
+                                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(13rem,auto)] md:items-start">
+                                        <div className="min-w-0 flex-1">
+                                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                                            <span
+                                              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}
                                             >
-                                              <Icon icon={Camera} size="sm" decorative />
-                                              <span>{hasCompletionPhoto ? "Заменить" : "Прикрепить"}</span>
-                                              <input
-                                                type="file"
-                                                accept="image/jpeg,image/png,image/webp"
-                                                className="hidden"
-                                                disabled={isPhotoUploading}
-                                                onChange={(event) => {
-                                                  const file = event.target.files?.[0];
-                                                  if (file) {
-                                                    void handleCompletionPhotoUpload(checklist, item, file);
-                                                  }
-                                                  event.target.value = "";
-                                                }}
-                                              />
-                                            </label>
-                                            {hasCompletionPhoto && (
-                                              <Button
-                                                type="button"
-                                                variant="ghost"
-                                                onClick={() => handleCompletionPhotoDelete(checklist, item)}
-                                                disabled={isPhotoUploading}
-                                                className="h-9 text-sm"
+                                              {statusLabel}
+                                            </span>
+                                            {item.completionPhotoRequired && (
+                                              <span
+                                                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                                                  missingRequiredPhoto
+                                                    ? "border-red-200 bg-red-50 text-red-700"
+                                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                }`}
                                               >
-                                                Удалить
-                                              </Button>
+                                                {missingRequiredPhoto ? "Нужно фото" : "Фото приложено"}
+                                              </span>
+                                            )}
+                                            {hasExamplePhoto && (
+                                              <span className="border-subtle bg-surface text-default inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs">
+                                                <Icon icon={ImageIcon} size="xs" decorative />
+                                                Есть эталон
+                                              </span>
                                             )}
                                           </div>
-                                        )}
+                                          <ContentText
+                                            className={`text-[15px] leading-6 [overflow-wrap:anywhere] ${
+                                              item.done ? "text-muted line-through" : "text-strong"
+                                            }`}
+                                          >
+                                            {item.text}
+                                          </ContentText>
+                                          <div className="text-muted mt-1 text-xs">
+                                            {item.done ? (
+                                              <>
+                                                Выполнил: <span className="text-default font-medium">{doneByName}</span>
+                                                {item.doneAt ? ` · ${formatDateTime(item.doneAt)}` : ""}
+                                              </>
+                                            ) : item.reservedBy ? (
+                                              <>
+                                                <span className="text-strong font-semibold">{reservedByName}</span>{" "}
+                                                взял пункт в работу
+                                              </>
+                                            ) : (
+                                              "Можно брать в работу"
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-start gap-2 md:max-w-[18rem] md:justify-end">
+                                          {canToggleOptionalMedia && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="min-h-11 text-sm sm:min-h-9"
+                                              leftIcon={
+                                                <Icon icon={isMediaExpanded ? X : Camera} size="sm" decorative />
+                                              }
+                                              onClick={() => toggleMediaExpanded(checklist.id, item.id)}
+                                            >
+                                              {isMediaExpanded ? "Свернуть" : "Фото"}
+                                            </Button>
+                                          )}
+                                          {!item.done && !item.reservedBy && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="min-h-11 text-sm sm:min-h-9"
+                                              leftIcon={
+                                                !reserveLoading ? <Icon icon={Lock} size="sm" decorative /> : undefined
+                                              }
+                                              aria-label="Взять в работу"
+                                              disabled={isBusy}
+                                              isLoading={reserveLoading}
+                                              onClick={() =>
+                                                handleItemAction(reserveKey, () =>
+                                                  reserveChecklistItem(restaurantId, checklist.id, item.id),
+                                                )
+                                              }
+                                            >
+                                              В работу
+                                            </Button>
+                                          )}
+                                          {!item.done && item.reservedBy && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="min-h-11 text-sm sm:min-h-9"
+                                              leftIcon={
+                                                !unreserveLoading ? (
+                                                  <Icon icon={Unlock} size="sm" decorative />
+                                                ) : undefined
+                                              }
+                                              aria-label="Снять бронь"
+                                              disabled={isBusy}
+                                              isLoading={unreserveLoading}
+                                              onClick={() =>
+                                                handleItemAction(unreserveKey, () =>
+                                                  unreserveChecklistItem(restaurantId, checklist.id, item.id),
+                                                )
+                                              }
+                                            >
+                                              Отпустить
+                                            </Button>
+                                          )}
+                                          {!item.done && (
+                                            <Button
+                                              size="sm"
+                                              className="min-h-11 text-sm sm:min-h-9"
+                                              leftIcon={
+                                                !completeLoading ? (
+                                                  <Icon icon={Check} size="sm" decorative />
+                                                ) : undefined
+                                              }
+                                              aria-label="Отметить как готово"
+                                              disabled={isBusy || missingRequiredPhoto}
+                                              isLoading={completeLoading}
+                                              onClick={() =>
+                                                handleItemAction(completeKey, () =>
+                                                  completeChecklistItem(restaurantId, checklist.id, item.id),
+                                                )
+                                              }
+                                            >
+                                              Готово
+                                            </Button>
+                                          )}
+                                          {item.done && canManage && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="min-h-11 text-sm sm:min-h-9"
+                                              leftIcon={
+                                                !undoLoading ? <Icon icon={X} size="sm" decorative /> : undefined
+                                              }
+                                              aria-label="Снять выполнение"
+                                              disabled={isBusy}
+                                              isLoading={undoLoading}
+                                              onClick={() =>
+                                                handleItemAction(undoKey, () =>
+                                                  undoChecklistItem(restaurantId, checklist.id, item.id),
+                                                )
+                                              }
+                                            >
+                                              Вернуть
+                                            </Button>
+                                          )}
+                                        </div>
                                       </div>
+                                      {shouldShowMedia && (
+                                        <div className="border-subtle mt-3 grid gap-3 border-t pt-3 md:grid-cols-2">
+                                          <div className="border-subtle bg-surface rounded-xl border p-3">
+                                            <div className="text-muted mb-2 flex items-center gap-2 text-xs font-medium">
+                                              <Icon icon={ImageIcon} size="xs" decorative />
+                                              <span>Эталон</span>
+                                            </div>
+                                            {hasExamplePhoto ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setPhotoPreview({
+                                                    title: "Эталон результата",
+                                                    description: item.text,
+                                                    url: item.examplePhotoUrl!,
+                                                  })
+                                                }
+                                                className="group hover:bg-app focus:ring-default flex w-full items-center gap-3 rounded-lg text-left transition focus:ring-2 focus:outline-none"
+                                              >
+                                                <img
+                                                  src={item.examplePhotoUrl!}
+                                                  alt={`Эталон результата: ${item.text}`}
+                                                  className="h-20 w-28 shrink-0 rounded-lg object-cover"
+                                                />
+                                                <span className="min-w-0">
+                                                  <span className="text-default block text-sm font-medium">
+                                                    Фото от менеджера
+                                                  </span>
+                                                  <span className="text-muted group-hover:text-default mt-1 block text-xs">
+                                                    Открыть крупно
+                                                  </span>
+                                                </span>
+                                              </button>
+                                            ) : (
+                                              <div className="border-subtle bg-app/50 text-muted flex min-h-20 items-center gap-3 rounded-lg border border-dashed p-3 text-sm">
+                                                <Icon icon={ImageIcon} decorative />
+                                                <span>Эталон не добавлен</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div
+                                            className={`rounded-xl border p-3 ${
+                                              missingRequiredPhoto
+                                                ? "border-red-200 bg-red-50/70"
+                                                : "border-subtle bg-surface"
+                                            }`}
+                                          >
+                                            <div className="text-muted mb-2 flex items-center gap-2 text-xs font-medium">
+                                              <Icon icon={Camera} size="xs" decorative />
+                                              <span>Фото выполнения</span>
+                                            </div>
+                                            <div className="flex gap-3">
+                                              {hasCompletionPhoto ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setPhotoPreview({
+                                                      title: "Фото выполнения",
+                                                      description: item.text,
+                                                      url: item.completionPhotoUrl!,
+                                                    })
+                                                  }
+                                                  className="focus:ring-default shrink-0 rounded-lg focus:ring-2 focus:outline-none"
+                                                >
+                                                  <img
+                                                    src={item.completionPhotoUrl!}
+                                                    alt={`Фото выполнения: ${item.text}`}
+                                                    className="h-20 w-28 rounded-lg object-cover"
+                                                  />
+                                                </button>
+                                              ) : (
+                                                <div className="border-subtle bg-app/50 text-muted flex h-20 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed">
+                                                  <Icon icon={Camera} decorative />
+                                                </div>
+                                              )}
+                                              <div className="min-w-0 flex-1">
+                                                <div className="text-default text-sm">
+                                                  {hasCompletionPhoto ? "Фото прикреплено" : "Фото еще нет"}
+                                                </div>
+                                                <div
+                                                  className={`mt-1 text-xs ${missingRequiredPhoto ? "text-red-700" : "text-muted"}`}
+                                                >
+                                                  {hasCompletionPhoto
+                                                    ? `${item.completionPhotoUploadedBy?.name || "Сотрудник"} · ${formatDateTime(
+                                                        item.completionPhotoUploadedAt,
+                                                      )}`
+                                                    : item.completionPhotoRequired
+                                                      ? "Без фото пункт нельзя закрыть"
+                                                      : "Можно приложить при необходимости"}
+                                                </div>
+                                                {!item.done && (
+                                                  <div className="mt-2 flex flex-wrap gap-2">
+                                                    <label
+                                                      className={`border-subtle text-default inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border bg-[var(--staffly-control)] px-3 text-sm font-medium transition hover:bg-[var(--staffly-control-hover)] sm:min-h-9 ${
+                                                        isPhotoUploading ? "pointer-events-none opacity-60" : ""
+                                                      }`}
+                                                      aria-disabled={isPhotoUploading}
+                                                    >
+                                                      <Icon icon={Camera} size="sm" decorative />
+                                                      <span>{hasCompletionPhoto ? "Заменить" : "Прикрепить"}</span>
+                                                      <input
+                                                        type="file"
+                                                        accept="image/jpeg,image/png,image/webp"
+                                                        className="hidden"
+                                                        disabled={isPhotoUploading}
+                                                        onChange={(event) => {
+                                                          const file = event.target.files?.[0];
+                                                          if (file) {
+                                                            void handleCompletionPhotoUpload(checklist, item, file);
+                                                          }
+                                                          event.target.value = "";
+                                                        }}
+                                                      />
+                                                    </label>
+                                                    {hasCompletionPhoto && (
+                                                      <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() => handleCompletionPhotoDelete(checklist, item)}
+                                                        disabled={isPhotoUploading}
+                                                        className="min-h-11 text-sm sm:min-h-9"
+                                                      >
+                                                        Удалить
+                                                      </Button>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                            {isPhotoUploading && (
+                                              <div className="text-muted mt-2 text-xs">Загружаем фото...</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
-                                    {isPhotoUploading && (
-                                      <div className="text-muted mt-2 text-xs">Загружаем фото...</div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                                  );
+                                })}
+                              </div>
+                            </section>
+                          ))
+                        )}
                         <div className="flex flex-wrap gap-2 px-3 py-3">
                           {canManage && (
                             <Button
                               variant="outline"
                               onClick={() => handleReset(checklist)}
                               disabled={isResetting}
-                              className="text-sm"
+                              className="min-h-11 text-sm sm:min-h-10"
                             >
                               {isResetting ? "Сбрасываем…" : "Сбросить"}
                             </Button>
