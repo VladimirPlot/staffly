@@ -375,11 +375,10 @@ const ChecklistDialog = ({
                   ))}
                 </DropdownSelect>
                 <Button
-                  variant="outline"
+                  variant="danger-ghost"
                   size="icon"
                   onClick={() => handleRemovePosition(field.id)}
                   disabled={positionFields.length <= 1 || submitting}
-                  className="text-default"
                   aria-label="Удалить должность"
                 >
                   <Icon icon={Trash2} />
@@ -498,11 +497,10 @@ const ChecklistDialog = ({
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-muted text-sm">Пункт {index + 1}</span>
                         <Button
-                          variant="outline"
+                          variant="danger-ghost"
                           size="icon"
                           onClick={() => handleRemoveItem(item.clientId)}
                           disabled={items.length <= 1 || submitting}
-                          className="text-default"
                           aria-label="Удалить пункт чек-листа"
                         >
                           <Icon icon={Trash2} />
@@ -570,7 +568,7 @@ const ChecklistDialog = ({
                           {examplePreview && (
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="danger-ghost"
                               onClick={() => handleRemoveExamplePhoto(item.clientId)}
                               disabled={submitting}
                               className="h-9 text-sm"

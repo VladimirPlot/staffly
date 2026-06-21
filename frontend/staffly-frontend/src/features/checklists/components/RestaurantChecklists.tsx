@@ -898,9 +898,9 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                               </Button>
                             )}
                             <Button
-                              variant="ghost"
+                              variant="danger-ghost"
                               size="sm"
-                              className="w-full justify-start text-sm text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+                              className="mt-1 w-full justify-start text-sm shadow-none"
                               leftIcon={<Icon icon={Trash2} size="sm" decorative />}
                               onClick={() => {
                                 setActionMenuFor(null);
@@ -1256,7 +1256,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                                                     {hasCompletionPhoto && (
                                                       <Button
                                                         type="button"
-                                                        variant="ghost"
+                                                        variant="danger-ghost"
                                                         onClick={() => handleCompletionPhotoDelete(checklist, item)}
                                                         disabled={isPhotoUploading}
                                                         className="min-h-12 w-full text-sm sm:min-h-9 sm:w-auto"
@@ -1321,6 +1321,7 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
         description="Это действие нельзя будет отменить"
         confirming={deleting}
         confirmText="Удалить"
+        tone="danger"
         onConfirm={confirmDelete}
         onCancel={closeDeleteDialog}
       />
