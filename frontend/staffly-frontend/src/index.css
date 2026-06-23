@@ -68,6 +68,10 @@
     background-color: var(--staffly-bg);
     color: var(--staffly-text);
   }
+
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 
 /* ===== animations ===== */
