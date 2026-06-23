@@ -5,6 +5,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  Clock,
   Download,
   History,
   Image as ImageIcon,
@@ -960,32 +961,35 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
           )}
         </div>
         {canManage && viewScope === "all" && positions.length > 0 && (
-          <div className="no-scrollbar flex flex-wrap gap-2 overflow-x-auto py-1">
-            <button
-              type="button"
-              onClick={() => handlePositionFilterChange(null)}
-              className={`inline-flex h-9 items-center justify-center rounded-2xl px-4 text-xs font-semibold shadow-sm transition focus:ring-2 focus:outline-none ${
-                positionFilter === null
-                  ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
-                  : "border border-[var(--staffly-border)] bg-[var(--staffly-control)] text-[var(--staffly-text)] hover:bg-[var(--staffly-control-hover)]"
-              }`}
-            >
-              Все должности
-            </button>
-            {positions.map((pos) => (
+          <div className="relative">
+            <div className="no-scrollbar flex flex-nowrap gap-2 overflow-x-auto py-1 pr-12">
               <button
-                key={pos.id}
                 type="button"
-                onClick={() => handlePositionFilterChange(pos.id)}
-                className={`inline-flex h-9 items-center justify-center rounded-2xl px-4 text-xs font-semibold shadow-sm transition focus:ring-2 focus:outline-none ${
-                  positionFilter === pos.id
+                onClick={() => handlePositionFilterChange(null)}
+                className={`inline-flex h-9 shrink-0 items-center justify-center rounded-2xl px-4 text-xs font-semibold shadow-sm transition focus:ring-2 focus:outline-none ${
+                  positionFilter === null
                     ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
                     : "border border-[var(--staffly-border)] bg-[var(--staffly-control)] text-[var(--staffly-text)] hover:bg-[var(--staffly-control-hover)]"
                 }`}
               >
-                {pos.name}
+                Все должности
               </button>
-            ))}
+              {positions.map((pos) => (
+                <button
+                  key={pos.id}
+                  type="button"
+                  onClick={() => handlePositionFilterChange(pos.id)}
+                  className={`inline-flex h-9 shrink-0 items-center justify-center rounded-2xl px-4 text-xs font-semibold shadow-sm transition focus:ring-2 focus:outline-none ${
+                    positionFilter === pos.id
+                      ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
+                      : "border border-[var(--staffly-border)] bg-[var(--staffly-control)] text-[var(--staffly-text)] hover:bg-[var(--staffly-control-hover)]"
+                  }`}
+                >
+                  {pos.name}
+                </button>
+              ))}
+            </div>
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-[var(--staffly-surface)] to-transparent" />
           </div>
         )}
       </div>
@@ -1001,9 +1005,6 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
           !error &&
           visibleChecklists.map((checklist) => {
             const isExpanded = expandedId === checklist.id;
-            const assignedNames = checklist.positions.length
-              ? checklist.positions.map((p) => p.name || positionNames.get(p.id) || `Должность #${p.id}`).join(", ")
-              : "—";
             const isTrackable = checklist.kind === "TRACKABLE";
             const isResetting = resetting === checklist.id;
             const isDownloading = downloading === checklist.id;
@@ -1043,11 +1044,35 @@ const RestaurantChecklists = ({ restaurantId, canManage }: RestaurantChecklistsP
                         <div className="text-strong text-base leading-6 font-semibold [overflow-wrap:anywhere]">
                           {checklist.name}
                         </div>
-                        <div className="text-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <div className="text-muted mt-1.5 flex flex-wrap items-center gap-2 text-xs">
                           {isTrackable && checklist.periodLabel && (
-                            <span className="text-default">{checklist.periodLabel}</span>
+                            <span className="text-default flex items-center gap-1">
+                              <Icon icon={Clock} size="xs" decorative />
+                              {checklist.periodLabel}
+                            </span>
                           )}
-                          <span className="tracking-wide [overflow-wrap:anywhere] uppercase">{assignedNames}</span>
+                          {isTrackable && checklist.periodLabel && checklist.positions.length > 0 && (
+                            <span className="text-muted/40" aria-hidden>·</span>
+                          )}
+                          {checklist.positions.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {checklist.positions.slice(0, 3).map((p) => (
+                                <span
+                                  key={p.id}
+                                  className="text-muted bg-[var(--staffly-control)] rounded-full px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase"
+                                >
+                                  {p.name || positionNames.get(p.id) || `Должность #${p.id}`}
+                                </span>
+                              ))}
+                              {checklist.positions.length > 3 && (
+                                <span className="text-muted bg-[var(--staffly-control-hover)] rounded-full px-2 py-0.5 text-[11px] font-bold">
+                                  +{checklist.positions.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted/50 tracking-wide uppercase">—</span>
+                          )}
                         </div>
                       </div>
                     </div>
