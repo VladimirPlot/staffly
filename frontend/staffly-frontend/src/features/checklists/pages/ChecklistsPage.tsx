@@ -12,6 +12,7 @@ const ChecklistsPage = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const [myRole, setMyRole] = useState<RestaurantRole | null>(null);
+  const [createDialogRequestKey, setCreateDialogRequestKey] = useState(0);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get("tab") === "scripts" ? "scripts" : "checklists";
@@ -37,10 +38,7 @@ const ChecklistsPage = () => {
     };
   }, [restaurantId]);
 
-  const access = useMemo(
-    () => resolveRestaurantAccess(user?.roles, myRole),
-    [user?.roles, myRole]
-  );
+  const access = useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
   if (!restaurantId) {
     return null;
@@ -77,7 +75,7 @@ const ChecklistsPage = () => {
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold">{pageTitle}</h2>
-          <div className="text-sm text-muted">
+          <div className="text-muted text-sm">
             {activeTab === "scripts"
               ? "Готовые инструкции для сотрудников по должностям"
               : "Готовые чек-листы для сотрудников по должностям"}
@@ -85,15 +83,14 @@ const ChecklistsPage = () => {
         </div>
 
         {access.isManagerLike && (
-          <Button onClick={() => window.dispatchEvent(new Event("open-checklist-dialog"))}>
-            {createLabel}
-          </Button>
+          <Button onClick={() => setCreateDialogRequestKey((current) => current + 1)}>{createLabel}</Button>
         )}
       </div>
 
       <RestaurantChecklists
         restaurantId={restaurantId}
         canManage={access.isManagerLike}
+        createDialogRequestKey={createDialogRequestKey}
       />
     </div>
   );
