@@ -21,11 +21,9 @@ type TrackableChecklistPanelProps = {
   activeItemTab: ChecklistItemSectionKey;
   resetting: boolean;
   itemActionLoading: Set<string>;
-  mediaExpanded: Set<string>;
   photoUploading: Set<string>;
   onActiveItemTabChange: (tab: ChecklistItemSectionKey) => void;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
-  onToggleMediaExpanded: (checklistId: number, itemId: number) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
   onReset: (checklist: ChecklistDto) => void;
@@ -40,11 +38,9 @@ export default function TrackableChecklistPanel({
   activeItemTab,
   resetting,
   itemActionLoading,
-  mediaExpanded,
   photoUploading,
   onActiveItemTabChange,
   onItemAction,
-  onToggleMediaExpanded,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
   onReset,
@@ -74,7 +70,6 @@ export default function TrackableChecklistPanel({
           ) : (
             <div className="overflow-hidden">
               {activeItems.map((item) => {
-                const mediaKey = `${checklist.id}-${item.id}`;
                 const completionPhotoKey = `${checklist.id}-${item.id}-completion-photo`;
                 return (
                   <ChecklistItemRow
@@ -84,10 +79,8 @@ export default function TrackableChecklistPanel({
                     item={item}
                     canManage={canManage}
                     itemActionLoading={itemActionLoading}
-                    isMediaExpanded={mediaExpanded.has(mediaKey)}
                     isPhotoUploading={photoUploading.has(completionPhotoKey)}
                     onItemAction={onItemAction}
-                    onToggleMediaExpanded={onToggleMediaExpanded}
                     onCompletionPhotoUpload={onCompletionPhotoUpload}
                     onCompletionPhotoDelete={onCompletionPhotoDelete}
                     onPhotoPreview={onPhotoPreview}

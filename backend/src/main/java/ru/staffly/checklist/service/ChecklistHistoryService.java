@@ -7,6 +7,7 @@ import ru.staffly.checklist.model.ChecklistHistory;
 import ru.staffly.checklist.model.ChecklistItem;
 import ru.staffly.checklist.model.ChecklistItemHistory;
 import ru.staffly.checklist.model.ChecklistKind;
+import ru.staffly.checklist.model.ChecklistPhotoMode;
 import ru.staffly.checklist.model.ChecklistResetReason;
 import ru.staffly.checklist.repository.ChecklistHistoryRepository;
 import ru.staffly.dictionary.model.Position;
@@ -67,8 +68,9 @@ public class ChecklistHistoryService {
                     .reservedBy(item.getReservedBy())
                     .reservedByName(memberName(item.getReservedBy()))
                     .reservedAt(item.getReservedAt())
-                    .completionPhotoRequired(item.isCompletionPhotoRequired())
-                    .examplePhotoUrl(item.getExamplePhotoUrl())
+                    .completionPhotoMode(photoMode(item))
+                    .completionPhotoRequired(photoMode(item) == ChecklistPhotoMode.REQUIRED)
+                    .examplePhotoUrl(photoMode(item) == ChecklistPhotoMode.NONE ? null : item.getExamplePhotoUrl())
                     .completionPhotoUrl(item.getCompletionPhotoUrl())
                     .build();
             history.getItems().add(itemHistory);
@@ -83,6 +85,13 @@ public class ChecklistHistoryService {
 
     public boolean isCompletionPhotoReferenced(String url) {
         return url != null && !url.isBlank() && histories.existsByCompletionPhotoUrl(url);
+    }
+
+    private ChecklistPhotoMode photoMode(ChecklistItem item) {
+        if (item.getCompletionPhotoMode() != null) {
+            return item.getCompletionPhotoMode();
+        }
+        return item.isCompletionPhotoRequired() ? ChecklistPhotoMode.REQUIRED : ChecklistPhotoMode.NONE;
     }
 
     private String buildPositionsSnapshot(Checklist checklist) {

@@ -18,6 +18,7 @@ import ru.staffly.checklist.model.Checklist;
 import ru.staffly.checklist.model.ChecklistItem;
 import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.model.ChecklistPeriodicity;
+import ru.staffly.checklist.model.ChecklistPhotoMode;
 import ru.staffly.checklist.model.ChecklistResetReason;
 import ru.staffly.checklist.repository.ChecklistHistoryRepository;
 import ru.staffly.checklist.repository.ChecklistRepository;
@@ -269,7 +270,7 @@ public class ChecklistServiceImpl implements ChecklistService {
             throw new ConflictException("Пункт забронирован другим сотрудником");
         }
         if (!item.isDone()) {
-            if (item.isCompletionPhotoRequired() && isBlank(item.getCompletionPhotoUrl())) {
+            if (requiresCompletionPhoto(item) && isBlank(item.getCompletionPhotoUrl())) {
                 throw new BadRequestException("Прикрепите фото выполнения");
             }
             item.setDone(true);
@@ -354,6 +355,9 @@ public class ChecklistServiceImpl implements ChecklistService {
         validateImageFile(file);
         Checklist checklist = loadManageableTrackableChecklist(restaurantId, checklistId);
         ChecklistItem item = findChecklistItem(checklist, itemId);
+        if (photoMode(item) == ChecklistPhotoMode.NONE) {
+            throw new BadRequestException("Эталон доступен только для пунктов с фото выполнения");
+        }
 
         String previousPhotoUrl = item.getExamplePhotoUrl();
         String uploadedPhotoUrl = imageStorage.saveExampleForItem(itemId, file);
@@ -390,6 +394,9 @@ public class ChecklistServiceImpl implements ChecklistService {
         ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
         ChecklistItem item = findChecklistItem(context.checklist(), itemId);
         assertCanChangeCompletionPhoto(item, context);
+        if (photoMode(item) == ChecklistPhotoMode.NONE) {
+            throw new BadRequestException("Фото выполнения отключено для этого пункта");
+        }
 
         String previousPhotoUrl = item.getCompletionPhotoUrl();
         String uploadedPhotoUrl = imageStorage.saveCompletionForItem(itemId, file);
@@ -627,7 +634,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         return request.items().stream()
                 .map(this::normalize)
                 .filter(text -> text != null && !text.isBlank())
-                .map(text -> new NormalizedChecklistItem(null, text, false))
+                .map(text -> new NormalizedChecklistItem(null, text, ChecklistPhotoMode.NONE))
                 .toList();
     }
 
@@ -639,7 +646,11 @@ public class ChecklistServiceImpl implements ChecklistService {
         if (text == null || text.isBlank()) {
             return null;
         }
-        return new NormalizedChecklistItem(request.id(), text, Boolean.TRUE.equals(request.completionPhotoRequired()));
+        return new NormalizedChecklistItem(
+                request.id(),
+                text,
+                parsePhotoMode(request.completionPhotoMode(), request.completionPhotoRequired())
+        );
     }
 
     private void applyItems(Checklist entity, List<NormalizedChecklistItem> requestedItems) {
@@ -682,6 +693,7 @@ public class ChecklistServiceImpl implements ChecklistService {
                     item = ChecklistItem.builder()
                             .checklist(entity)
                             .done(false)
+                            .completionPhotoMode(ChecklistPhotoMode.NONE)
                             .completionPhotoRequired(false)
                             .build();
                     entity.getItems().add(item);
@@ -689,7 +701,28 @@ public class ChecklistServiceImpl implements ChecklistService {
             }
 
             item.setText(request.text());
-            item.setCompletionPhotoRequired(request.completionPhotoRequired());
+            ChecklistPhotoMode nextPhotoMode = request.completionPhotoMode() != null
+                    ? request.completionPhotoMode()
+                    : ChecklistPhotoMode.NONE;
+            String previousExamplePhotoUrl = item.getExamplePhotoUrl();
+            String previousCompletionPhotoUrl = item.getCompletionPhotoUrl();
+            item.setCompletionPhotoMode(nextPhotoMode);
+            item.setCompletionPhotoRequired(nextPhotoMode == ChecklistPhotoMode.REQUIRED);
+            if (nextPhotoMode == ChecklistPhotoMode.NONE) {
+                item.setExamplePhotoUrl(null);
+                item.setCompletionPhotoUrl(null);
+                item.setCompletionPhotoUploadedBy(null);
+                item.setCompletionPhotoUploadedAt(null);
+                afterCommit(() -> {
+                    deleteExamplePhotoIfNotArchived(previousExamplePhotoUrl);
+                    deleteCompletionPhotoIfNotArchived(previousCompletionPhotoUrl);
+                });
+            }
+            if (nextPhotoMode == ChecklistPhotoMode.REQUIRED && item.isDone() && isBlank(item.getCompletionPhotoUrl())) {
+                item.setDone(false);
+                item.setDoneBy(null);
+                item.setDoneAt(null);
+            }
             nextItems.add(item);
         }
 
@@ -831,6 +864,28 @@ public class ChecklistServiceImpl implements ChecklistService {
         }
     }
 
+    private ChecklistPhotoMode parsePhotoMode(String value, Boolean legacyRequired) {
+        if (value == null || value.isBlank()) {
+            return Boolean.TRUE.equals(legacyRequired) ? ChecklistPhotoMode.REQUIRED : ChecklistPhotoMode.NONE;
+        }
+        try {
+            return ChecklistPhotoMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Неизвестный режим фото выполнения");
+        }
+    }
+
+    private ChecklistPhotoMode photoMode(ChecklistItem item) {
+        if (item.getCompletionPhotoMode() != null) {
+            return item.getCompletionPhotoMode();
+        }
+        return item.isCompletionPhotoRequired() ? ChecklistPhotoMode.REQUIRED : ChecklistPhotoMode.NONE;
+    }
+
+    private boolean requiresCompletionPhoto(ChecklistItem item) {
+        return photoMode(item) == ChecklistPhotoMode.REQUIRED;
+    }
+
     private void validateImageFile(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Файл не выбран");
@@ -935,7 +990,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         });
     }
 
-    private record NormalizedChecklistItem(Long id, String text, boolean completionPhotoRequired) {
+    private record NormalizedChecklistItem(Long id, String text, ChecklistPhotoMode completionPhotoMode) {
     }
 
     private record ChecklistContext(Checklist checklist, RestaurantMember member, boolean canManage) {

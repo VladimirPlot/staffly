@@ -10,6 +10,7 @@ import {
   unreserveChecklistItem,
   type ChecklistDto,
   type ChecklistItemDto,
+  type ChecklistPhotoMode,
 } from "../api";
 import type { PhotoPreview } from "../types";
 import { formatDateTime, hasPhoto } from "../utils/formatters";
@@ -21,14 +22,16 @@ type ChecklistItemRowProps = {
   item: ChecklistItemDto;
   canManage: boolean;
   itemActionLoading: Set<string>;
-  isMediaExpanded: boolean;
   isPhotoUploading: boolean;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
-  onToggleMediaExpanded: (checklistId: number, itemId: number) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
   onPhotoPreview: (preview: PhotoPreview) => void;
 };
+
+function resolvePhotoMode(item: ChecklistItemDto): ChecklistPhotoMode {
+  return item.completionPhotoMode ?? (item.completionPhotoRequired ? "REQUIRED" : "NONE");
+}
 
 export default function ChecklistItemRow({
   restaurantId,
@@ -36,10 +39,8 @@ export default function ChecklistItemRow({
   item,
   canManage,
   itemActionLoading,
-  isMediaExpanded,
   isPhotoUploading,
   onItemAction,
-  onToggleMediaExpanded,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
   onPhotoPreview,
@@ -55,8 +56,18 @@ export default function ChecklistItemRow({
   const isBusy = reserveLoading || unreserveLoading || completeLoading || undoLoading;
   const hasExamplePhoto = hasPhoto(item.examplePhotoUrl);
   const hasCompletionPhoto = hasPhoto(item.completionPhotoUrl);
-  const missingRequiredPhoto = item.completionPhotoRequired && !hasCompletionPhoto;
+  const photoMode = resolvePhotoMode(item);
+  const hasCompletionPhotoEnabled = photoMode !== "NONE";
+  const missingRequiredPhoto = photoMode === "REQUIRED" && !hasCompletionPhoto;
   const statusLabel = item.done ? "Готово" : item.reservedBy ? "В работе" : "Свободно";
+  const photoStatusLabel =
+    photoMode === "REQUIRED"
+      ? missingRequiredPhoto
+        ? "Нужно фото"
+        : "Фото приложено"
+      : hasCompletionPhoto
+        ? "Фото приложено"
+        : "Фото по желанию";
   const doneByName = item.doneBy?.name ?? "без автора";
   const reservedByName = item.reservedBy?.name ?? "сотрудник";
   const statusClass = item.done
@@ -69,8 +80,7 @@ export default function ChecklistItemRow({
     : item.reservedBy
       ? "bg-amber-50/25 dark:bg-amber-500/[0.06]"
       : "bg-surface";
-  const shouldShowMedia = isMediaExpanded || hasExamplePhoto || hasCompletionPhoto || item.completionPhotoRequired;
-  const canToggleOptionalMedia = !item.done && !hasExamplePhoto && !hasCompletionPhoto && !item.completionPhotoRequired;
+  const shouldShowMedia = hasExamplePhoto || hasCompletionPhoto || hasCompletionPhotoEnabled;
 
   return (
     <div className={`border-subtle border-b px-2.5 py-3 transition-colors last:border-b-0 sm:px-4 ${itemRowClass}`}>
@@ -78,7 +88,7 @@ export default function ChecklistItemRow({
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
-            {item.completionPhotoRequired && (
+            {hasCompletionPhotoEnabled && (
               <span
                 className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
                   missingRequiredPhoto
@@ -86,7 +96,10 @@ export default function ChecklistItemRow({
                     : "text-default border-emerald-300 bg-emerald-50 dark:border-emerald-500/45 dark:bg-emerald-500/15"
                 }`}
               >
-                {missingRequiredPhoto ? "Нужно фото" : "Фото приложено"}
+                <span className="inline-flex items-center gap-1">
+                  <Icon icon={Camera} size="xs" decorative />
+                  {photoStatusLabel}
+                </span>
               </span>
             )}
             {hasExamplePhoto && (
@@ -119,17 +132,6 @@ export default function ChecklistItemRow({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5 md:max-w-[9rem] md:justify-self-end">
-          {canToggleOptionalMedia && (
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 rounded-xl shadow-none"
-              leftIcon={<Icon icon={isMediaExpanded ? X : Camera} size="sm" decorative />}
-              aria-label={isMediaExpanded ? "Свернуть фото" : "Показать фото"}
-              title={isMediaExpanded ? "Свернуть фото" : "Показать фото"}
-              onClick={() => onToggleMediaExpanded(checklist.id, item.id)}
-            />
-          )}
           {!item.done && !item.reservedBy && (
             <Button
               variant="outline"

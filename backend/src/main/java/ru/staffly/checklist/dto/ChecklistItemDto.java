@@ -10,6 +10,7 @@ public record ChecklistItemDto(
         String reservedAt,
         String examplePhotoUrl,
         String completionPhotoUrl,
+        String completionPhotoMode,
         boolean completionPhotoRequired,
         ChecklistMemberShortDto completionPhotoUploadedBy,
         String completionPhotoUploadedAt

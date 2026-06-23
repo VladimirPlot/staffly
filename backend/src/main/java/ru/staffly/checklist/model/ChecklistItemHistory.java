@@ -64,6 +64,10 @@ public class ChecklistItemHistory {
     @Column(name = "reserved_at")
     private Instant reservedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "completion_photo_mode", nullable = false, length = 20)
+    private ChecklistPhotoMode completionPhotoMode;
+
     @Column(name = "completion_photo_required", nullable = false)
     private boolean completionPhotoRequired;
 

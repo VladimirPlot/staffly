@@ -57,6 +57,11 @@ public class ChecklistItem {
     private String completionPhotoUrl;
 
     @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "completion_photo_mode", nullable = false, length = 20)
+    private ChecklistPhotoMode completionPhotoMode = ChecklistPhotoMode.NONE;
+
+    @Builder.Default
     @Column(name = "completion_photo_required", nullable = false)
     private boolean completionPhotoRequired = false;
 

@@ -18,7 +18,6 @@ type ChecklistListProps = {
   downloading: number | null;
   actionMenuFor: number | null;
   itemActionLoading: Set<string>;
-  mediaExpanded: Set<string>;
   photoUploading: Set<string>;
   onChecklistRef: (id: number, node: HTMLDivElement | null) => void;
   onActionMenuRef: (id: number, node: HTMLDivElement | null) => void;
@@ -31,7 +30,6 @@ type ChecklistListProps = {
   onDelete: (checklist: ChecklistDto) => void;
   onActiveItemTabChange: (tab: ChecklistItemSectionKey) => void;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
-  onToggleMediaExpanded: (checklistId: number, itemId: number) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
   onReset: (checklist: ChecklistDto) => void;
@@ -53,7 +51,6 @@ export default function ChecklistList({
   downloading,
   actionMenuFor,
   itemActionLoading,
-  mediaExpanded,
   photoUploading,
   onChecklistRef,
   onActionMenuRef,
@@ -66,7 +63,6 @@ export default function ChecklistList({
   onDelete,
   onActiveItemTabChange,
   onItemAction,
-  onToggleMediaExpanded,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
   onReset,
@@ -95,7 +91,6 @@ export default function ChecklistList({
             isDownloading={downloading === checklist.id}
             isActionMenuOpen={actionMenuFor === checklist.id}
             itemActionLoading={itemActionLoading}
-            mediaExpanded={mediaExpanded}
             photoUploading={photoUploading}
             onChecklistRef={onChecklistRef}
             onActionMenuRef={onActionMenuRef}
@@ -108,7 +103,6 @@ export default function ChecklistList({
             onDelete={onDelete}
             onActiveItemTabChange={onActiveItemTabChange}
             onItemAction={onItemAction}
-            onToggleMediaExpanded={onToggleMediaExpanded}
             onCompletionPhotoUpload={onCompletionPhotoUpload}
             onCompletionPhotoDelete={onCompletionPhotoDelete}
             onReset={onReset}

@@ -90,7 +90,7 @@ const ChecklistDialog = ({
               onAddItem={form.handleAddItem}
               onRemoveItem={form.handleRemoveItem}
               onItemChange={form.handleItemChange}
-              onItemRequiredChange={form.handleItemRequiredChange}
+              onItemPhotoModeChange={form.handleItemPhotoModeChange}
               onExampleFileChange={form.handleExampleFileChange}
               onRemoveExamplePhoto={form.handleRemoveExamplePhoto}
             />

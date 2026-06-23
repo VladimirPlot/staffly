@@ -22,7 +22,6 @@ type ChecklistCardProps = {
   isDownloading: boolean;
   isActionMenuOpen: boolean;
   itemActionLoading: Set<string>;
-  mediaExpanded: Set<string>;
   photoUploading: Set<string>;
   onChecklistRef: (id: number, node: HTMLDivElement | null) => void;
   onActionMenuRef: (id: number, node: HTMLDivElement | null) => void;
@@ -35,7 +34,6 @@ type ChecklistCardProps = {
   onDelete: (checklist: ChecklistDto) => void;
   onActiveItemTabChange: (tab: ChecklistItemSectionKey) => void;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
-  onToggleMediaExpanded: (checklistId: number, itemId: number) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
   onReset: (checklist: ChecklistDto) => void;
@@ -53,7 +51,6 @@ export default function ChecklistCard({
   isDownloading,
   isActionMenuOpen,
   itemActionLoading,
-  mediaExpanded,
   photoUploading,
   onChecklistRef,
   onActionMenuRef,
@@ -66,7 +63,6 @@ export default function ChecklistCard({
   onDelete,
   onActiveItemTabChange,
   onItemAction,
-  onToggleMediaExpanded,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
   onReset,
@@ -77,6 +73,9 @@ export default function ChecklistCard({
   const workSummary = isTrackable ? getChecklistWorkSummary(checklist, itemGroups) : null;
   const total = getChecklistItemTotal(itemGroups);
   const doneCount = itemGroups.done.length;
+  const showPeriodLabel = isTrackable && Boolean(checklist.periodLabel);
+  const showPositions = canManage && checklist.positions.length > 0;
+  const showMeta = showPeriodLabel || canManage;
 
   return (
     <div className="border-subtle bg-app/70 rounded-2xl border p-4" ref={(node) => onChecklistRef(checklist.id, node)}>
@@ -104,38 +103,40 @@ export default function ChecklistCard({
               <div className="text-strong text-base leading-6 font-semibold [overflow-wrap:anywhere]">
                 {checklist.name}
               </div>
-              <div className="text-muted mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-                {isTrackable && checklist.periodLabel && (
-                  <span className="text-default flex items-center gap-1">
-                    <Icon icon={Clock} size="xs" decorative />
-                    {checklist.periodLabel}
-                  </span>
-                )}
-                {isTrackable && checklist.periodLabel && checklist.positions.length > 0 && (
-                  <span className="text-muted/40" aria-hidden>
-                    ·
-                  </span>
-                )}
-                {checklist.positions.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1">
-                    {checklist.positions.slice(0, 3).map((position) => (
-                      <span
-                        key={position.id}
-                        className="text-muted rounded-full bg-[var(--staffly-control)] px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase"
-                      >
-                        {position.name || positionNames.get(position.id) || `Должность #${position.id}`}
-                      </span>
-                    ))}
-                    {checklist.positions.length > 3 && (
-                      <span className="text-muted rounded-full bg-[var(--staffly-control-hover)] px-2 py-0.5 text-[11px] font-bold">
-                        +{checklist.positions.length - 3}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-muted/50 tracking-wide uppercase">—</span>
-                )}
-              </div>
+              {showMeta && (
+                <div className="text-muted mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                  {showPeriodLabel && (
+                    <span className="text-default flex items-center gap-1">
+                      <Icon icon={Clock} size="xs" decorative />
+                      {checklist.periodLabel}
+                    </span>
+                  )}
+                  {showPeriodLabel && showPositions && (
+                    <span className="text-muted/40" aria-hidden>
+                      ·
+                    </span>
+                  )}
+                  {showPositions ? (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {checklist.positions.slice(0, 3).map((position) => (
+                        <span
+                          key={position.id}
+                          className="text-muted rounded-full bg-[var(--staffly-control)] px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase"
+                        >
+                          {position.name || positionNames.get(position.id) || `Должность #${position.id}`}
+                        </span>
+                      ))}
+                      {checklist.positions.length > 3 && (
+                        <span className="text-muted rounded-full bg-[var(--staffly-control-hover)] px-2 py-0.5 text-[11px] font-bold">
+                          +{checklist.positions.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  ) : canManage ? (
+                    <span className="text-muted/50 tracking-wide uppercase">—</span>
+                  ) : null}
+                </div>
+              )}
             </div>
           </div>
           {workSummary && (
@@ -199,11 +200,9 @@ export default function ChecklistCard({
                   activeItemTab={activeItemTab}
                   resetting={isResetting}
                   itemActionLoading={itemActionLoading}
-                  mediaExpanded={mediaExpanded}
                   photoUploading={photoUploading}
                   onActiveItemTabChange={onActiveItemTabChange}
                   onItemAction={onItemAction}
-                  onToggleMediaExpanded={onToggleMediaExpanded}
                   onCompletionPhotoUpload={onCompletionPhotoUpload}
                   onCompletionPhotoDelete={onCompletionPhotoDelete}
                   onReset={onReset}

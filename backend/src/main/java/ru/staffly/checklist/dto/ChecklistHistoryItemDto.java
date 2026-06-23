@@ -12,6 +12,7 @@ public record ChecklistHistoryItemDto(
         ChecklistMemberShortDto reservedBy,
         String reservedByName,
         String reservedAt,
+        String completionPhotoMode,
         boolean completionPhotoRequired,
         String examplePhotoUrl,
         String completionPhotoUrl

@@ -7,10 +7,16 @@ import {
   updateChecklist,
   uploadChecklistItemExamplePhoto,
   type ChecklistDto,
+  type ChecklistItemDto,
   type ChecklistKind,
+  type ChecklistPhotoMode,
 } from "../api";
 import type { ChecklistTab } from "../types";
 import type { ChecklistDialogInitial, ChecklistDialogSubmitPayload } from "../components/ChecklistDialog";
+
+function resolvePhotoMode(item: ChecklistItemDto): ChecklistPhotoMode {
+  return item.completionPhotoMode ?? (item.completionPhotoRequired ? "REQUIRED" : "NONE");
+}
 
 function buildDialogInitialFromChecklist(checklist: ChecklistDto): ChecklistDialogInitial {
   return {
@@ -25,6 +31,7 @@ function buildDialogInitialFromChecklist(checklist: ChecklistDto): ChecklistDial
     items: checklist.items.map((item) => ({
       id: item.id,
       text: item.text,
+      completionPhotoMode: resolvePhotoMode(item),
       completionPhotoRequired: item.completionPhotoRequired,
       examplePhotoUrl: item.examplePhotoUrl,
     })),
@@ -59,7 +66,7 @@ export function useChecklistDialogController({
       content: "",
       positionIds: [],
       periodicity: activeKind === "TRACKABLE" ? "DAILY" : undefined,
-      items: [{ text: "", completionPhotoRequired: false }],
+      items: [{ text: "", completionPhotoMode: "NONE", completionPhotoRequired: false }],
     });
     setDialogOpen(true);
   }, [activeKind]);

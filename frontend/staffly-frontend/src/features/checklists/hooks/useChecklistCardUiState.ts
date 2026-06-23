@@ -16,7 +16,6 @@ export function useChecklistCardUiState() {
   const [activeItemTab, setActiveItemTab] = useState<ChecklistItemSectionKey>("available");
   const [downloading, setDownloading] = useState<number | null>(null);
   const [actionMenuFor, setActionMenuFor] = useState<number | null>(null);
-  const [mediaExpanded, setMediaExpanded] = useState<Set<string>>(new Set());
 
   const checklistRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
   const actionMenuRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
@@ -24,7 +23,6 @@ export function useChecklistCardUiState() {
 
   const resetExpandedState = useCallback(() => {
     setExpandedId(null);
-    setMediaExpanded(new Set());
   }, []);
 
   const scrollChecklistIntoView = useCallback((checklistId: number) => {
@@ -68,19 +66,6 @@ export function useChecklistCardUiState() {
     },
     [expandedId, scrollChecklistIntoView],
   );
-
-  const toggleMediaExpanded = useCallback((checklistId: number, itemId: number) => {
-    const key = `${checklistId}-${itemId}`;
-    setMediaExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []);
 
   const handleDownloadJpg = useCallback(async (checklist: ChecklistDto) => {
     const node = checklistRefs.current.get(checklist.id);
@@ -152,11 +137,9 @@ export function useChecklistCardUiState() {
     activeItemTab,
     downloading,
     actionMenuFor,
-    mediaExpanded,
     setActiveItemTab,
     resetExpandedState,
     toggleExpanded,
-    toggleMediaExpanded,
     handleDownloadJpg,
     setChecklistRef,
     setActionMenuRef,

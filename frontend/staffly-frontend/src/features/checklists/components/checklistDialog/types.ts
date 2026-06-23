@@ -1,4 +1,4 @@
-import type { ChecklistKind, ChecklistPeriodicity, ChecklistRequest } from "../../api";
+import type { ChecklistKind, ChecklistPeriodicity, ChecklistPhotoMode, ChecklistRequest } from "../../api";
 
 export type PositionField = { id: string; value: number | "" };
 
@@ -6,7 +6,7 @@ export type ChecklistItemField = {
   clientId: string;
   id?: number;
   value: string;
-  completionPhotoRequired: boolean;
+  completionPhotoMode: ChecklistPhotoMode;
   examplePhotoUrl?: string | null;
   exampleFile?: File;
   examplePreviewUrl?: string;
@@ -25,6 +25,7 @@ export type ChecklistDialogInitial = {
   items?: Array<{
     id?: number;
     text: string;
+    completionPhotoMode?: ChecklistPhotoMode | null;
     completionPhotoRequired: boolean;
     examplePhotoUrl?: string | null;
   }>;

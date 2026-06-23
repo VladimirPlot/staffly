@@ -8,6 +8,7 @@ import ru.staffly.checklist.dto.ChecklistHistorySummaryDto;
 import ru.staffly.checklist.dto.ChecklistMemberShortDto;
 import ru.staffly.checklist.model.ChecklistHistory;
 import ru.staffly.checklist.model.ChecklistItemHistory;
+import ru.staffly.checklist.model.ChecklistPhotoMode;
 import ru.staffly.media.ChecklistImageStorage;
 import ru.staffly.member.model.RestaurantMember;
 
@@ -66,6 +67,7 @@ public class ChecklistHistoryMapper {
     }
 
     private ChecklistHistoryItemDto toItemDto(ChecklistItemHistory entity) {
+        ChecklistPhotoMode mode = photoMode(entity);
         return new ChecklistHistoryItemDto(
                 entity.getId(),
                 entity.getSourceItem() != null ? entity.getSourceItem().getId() : null,
@@ -78,10 +80,18 @@ public class ChecklistHistoryMapper {
                 toMemberShort(entity.getReservedBy()),
                 entity.getReservedByName(),
                 entity.getReservedAt() != null ? entity.getReservedAt().toString() : null,
-                entity.isCompletionPhotoRequired(),
-                entity.getExamplePhotoUrl(),
+                mode.name(),
+                mode == ChecklistPhotoMode.REQUIRED,
+                mode == ChecklistPhotoMode.NONE ? null : entity.getExamplePhotoUrl(),
                 imageStorage.toCompletionPhotoUrl(entity.getCompletionPhotoUrl())
         );
+    }
+
+    private ChecklistPhotoMode photoMode(ChecklistItemHistory item) {
+        if (item.getCompletionPhotoMode() != null) {
+            return item.getCompletionPhotoMode();
+        }
+        return item.isCompletionPhotoRequired() ? ChecklistPhotoMode.REQUIRED : ChecklistPhotoMode.NONE;
     }
 
     private ChecklistMemberShortDto toMemberShort(RestaurantMember member) {

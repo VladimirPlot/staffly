@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { ChecklistPeriodicity } from "../../api";
+import type { ChecklistPeriodicity, ChecklistPhotoMode } from "../../api";
 import type { PositionDto } from "../../../dictionaries/api";
 import type { ChecklistDialogInitial, ChecklistDialogSubmitPayload, ChecklistItemField, PositionField } from "./types";
 
@@ -13,6 +13,20 @@ function createId(): string {
 
 function parseResetTimePart(resetTime: string | undefined, part: 0 | 1): number | "" {
   return resetTime ? Number(resetTime.split(":")[part]) : "";
+}
+
+function resolvePhotoMode(item: { completionPhotoMode?: ChecklistPhotoMode | null; completionPhotoRequired: boolean }) {
+  return item.completionPhotoMode ?? (item.completionPhotoRequired ? "REQUIRED" : "NONE");
+}
+
+function clearExamplePhoto(item: ChecklistItemField): ChecklistItemField {
+  return {
+    ...item,
+    exampleFile: undefined,
+    examplePreviewUrl: undefined,
+    examplePhotoUrl: null,
+    removeExamplePhoto: Boolean(item.id && item.examplePhotoUrl) || item.removeExamplePhoto,
+  };
 }
 
 type UseChecklistDialogFormParams = {
@@ -56,10 +70,10 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
             clientId: createId(),
             id: item.id,
             value: item.text,
-            completionPhotoRequired: item.completionPhotoRequired,
+            completionPhotoMode: resolvePhotoMode(item),
             examplePhotoUrl: item.examplePhotoUrl,
           }))
-        : [{ clientId: createId(), value: "", completionPhotoRequired: false }],
+        : [{ clientId: createId(), value: "", completionPhotoMode: "NONE" }],
     );
     setLocalError(null);
   }, [open, initialData]);
@@ -96,7 +110,7 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
   }, []);
 
   const handleAddItem = useCallback(() => {
-    setItems((prev) => [...prev, { clientId: createId(), value: "", completionPhotoRequired: false }]);
+    setItems((prev) => [...prev, { clientId: createId(), value: "", completionPhotoMode: "NONE" }]);
   }, []);
 
   const handleRemoveItem = useCallback((clientId: string) => {
@@ -114,9 +128,16 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
     setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, value } : item)));
   }, []);
 
-  const handleItemRequiredChange = useCallback((clientId: string, value: boolean) => {
+  const handleItemPhotoModeChange = useCallback((clientId: string, value: ChecklistPhotoMode) => {
     setItems((prev) =>
-      prev.map((item) => (item.clientId === clientId ? { ...item, completionPhotoRequired: value } : item)),
+      prev.map((item) => {
+        if (item.clientId !== clientId) return item;
+        if (item.examplePreviewUrl && value === "NONE") {
+          URL.revokeObjectURL(item.examplePreviewUrl);
+        }
+        const nextItem = { ...item, completionPhotoMode: value };
+        return value === "NONE" ? clearExamplePhoto(nextItem) : nextItem;
+      }),
     );
   }, []);
 
@@ -236,13 +257,23 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
     const itemDetails = normalizedItems.map((entry) => ({
       id: entry.item.id,
       text: entry.text,
-      completionPhotoRequired: entry.item.completionPhotoRequired,
+      completionPhotoMode: entry.item.completionPhotoMode,
+      completionPhotoRequired: entry.item.completionPhotoMode === "REQUIRED",
     }));
     const exampleFiles = normalizedItems
-      .map((entry, index) => (entry.item.exampleFile ? { index, file: entry.item.exampleFile } : null))
+      .map((entry, index) =>
+        entry.item.exampleFile && entry.item.completionPhotoMode !== "NONE"
+          ? { index, file: entry.item.exampleFile }
+          : null,
+      )
       .filter((entry): entry is { index: number; file: File } => Boolean(entry));
     const examplePhotoDeletes = normalizedItems
-      .map((entry) => (entry.item.removeExamplePhoto && entry.item.id ? entry.item.id : null))
+      .map((entry) =>
+        entry.item.id &&
+        (entry.item.removeExamplePhoto || (entry.item.completionPhotoMode === "NONE" && entry.item.examplePhotoUrl))
+          ? entry.item.id
+          : null,
+      )
       .filter((id): id is number => typeof id === "number");
 
     setLocalError(null);
@@ -302,7 +333,7 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
     handleAddItem,
     handleRemoveItem,
     handleItemChange,
-    handleItemRequiredChange,
+    handleItemPhotoModeChange,
     handleExampleFileChange,
     handleRemoveExamplePhoto,
     handleSubmit,

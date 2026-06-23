@@ -92,7 +92,7 @@ export function useChecklistsData({
   useEffect(() => {
     if (!canManage) {
       setMyPositionId(null);
-      setViewScope("all");
+      setViewScope("my");
       setMyPositionLoaded(true);
       return;
     }
