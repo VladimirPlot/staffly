@@ -15,6 +15,14 @@ const weekdays = [
 
 const getShiftLabel = (label: string, index: number) => (label.trim() ? label.trim() : `Смена ${index + 1}`);
 
+const formatTimeShort = (value?: string | null) => {
+  if (!value) return "";
+  return value.slice(0, 5);
+};
+
+const formatShiftRange = (startTime?: string | null, endTime?: string | null) =>
+  `${formatTimeShort(startTime)}–${formatTimeShort(endTime)}`;
+
 const findRuleIndex = (
   coverageRules: ScheduleBuildCoverageRuleDraft[],
   dayOfWeek: number,
@@ -85,10 +93,10 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
         <div className="text-muted text-sm">Добавьте варианты смен, чтобы настроить покрытие.</div>
       ) : (
         <div className="border-subtle overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[520px] border-collapse text-sm">
+          <table className="w-full min-w-[680px] border-collapse text-sm">
             <thead className="bg-muted/30">
               <tr>
-                <th className="border-subtle w-44 border-b px-2 py-2 text-left font-medium">Смена</th>
+                <th className="border-subtle w-40 border-b px-3 py-2 text-left font-medium">Смена</th>
                 {weekdays.map((day) => (
                   <th key={day.value} className="border-subtle border-b px-1 py-2 text-center font-medium">
                     {day.label}
@@ -99,10 +107,12 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
             <tbody>
               {config.shiftOptions.map((shiftOption, shiftOptionIndex) => (
                 <tr key={shiftOptionIndex} className="border-subtle border-t">
-                  <th className="px-2 py-2 text-left align-middle font-normal">
-                    <div className="font-medium">{getShiftLabel(shiftOption.label, shiftOptionIndex)}</div>
-                    <div className="text-muted text-xs">
-                      {shiftOption.startTime || "—"}–{shiftOption.endTime || "—"}
+                  <th className="w-40 px-3 py-2 text-left align-middle font-normal">
+                    <div className="leading-tight font-medium">
+                      {getShiftLabel(shiftOption.label, shiftOptionIndex)}
+                    </div>
+                    <div className="text-muted mt-0.5 text-xs leading-tight">
+                      {formatShiftRange(shiftOption.startTime, shiftOption.endTime) || "—"}
                     </div>
                   </th>
                   {weekdays.map((day) => {
@@ -117,7 +127,7 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
                       <td key={day.value} className="px-1 py-2 text-center align-middle">
                         <Input
                           aria-label={`${getShiftLabel(shiftOption.label, shiftOptionIndex)} ${day.label}`}
-                          className="mx-auto h-8 w-14 rounded-xl px-2 text-center text-sm"
+                          className="mx-auto h-11 w-[72px] min-w-[72px] rounded-xl px-2 text-center text-sm"
                           label={<span className="sr-only">{day.label}</span>}
                           min={0}
                           type="number"
