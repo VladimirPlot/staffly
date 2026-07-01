@@ -28,8 +28,10 @@ import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAu
 import ru.staffly.security.SecurityService;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -131,27 +133,35 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private int applyAssignments(Schedule schedule, ScheduleAutoBuildPlan plan, Map<Long, ScheduleRow> rowsByMember) {
         int skippedAssignments = 0;
 
+        Set<String> appliedMemberDays = new HashSet<>();
+
         for (var position : plan.positions()) {
             for (var assignment : position.cells()) {
+                validateAssignment(assignment);
+                String assignmentKey = assignment.memberId() + ":" + assignment.day();
+                if (!appliedMemberDays.add(assignmentKey)) {
+                    throw new BadRequestException("Автосборка содержит несколько смен для одного сотрудника в день: " + assignment.day());
+                }
+
                 ScheduleRow row = rowsByMember.get(assignment.memberId());
                 if (row == null) {
                     skippedAssignments++;
                     continue;
                 }
 
-                LocalDate day = LocalDate.parse(assignment.day());
+                LocalDate day = parseDay(assignment.day());
                 ScheduleCell existing = row.getCells().stream()
                         .filter(cell -> cell.getDay().equals(day))
                         .findFirst()
                         .orElse(null);
                 if (existing != null) {
-                    existing.setValue(assignment.value());
+                    existing.setValue(resolveCellValue(assignment));
                     existing.setSource(ScheduleCellSource.AUTO_BUILD);
                 } else {
                     row.getCells().add(ScheduleCell.builder()
                             .row(row)
                             .day(day)
-                            .value(assignment.value())
+                            .value(resolveCellValue(assignment))
                             .source(ScheduleCellSource.AUTO_BUILD)
                             .build());
                 }
@@ -159,6 +169,52 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         }
 
         return skippedAssignments;
+    }
+
+
+    private void validateAssignment(ScheduleAutoBuildPlanner.AssignmentPlan assignment) {
+        if (assignment.memberId() == null) {
+            throw new BadRequestException("Автосборка содержит назначение без сотрудника");
+        }
+        parseDay(assignment.day());
+        if (!hasText(assignment.value()) && (!hasText(assignment.startTime()) || !hasText(assignment.endTime()))) {
+            throw new BadRequestException("Автосборка содержит назначение без смены: " + assignment.day());
+        }
+        if (hasText(assignment.startTime()) || hasText(assignment.endTime())) {
+            parseTime(assignment.startTime(), "startTime");
+            parseTime(assignment.endTime(), "endTime");
+        }
+    }
+
+    private LocalDate parseDay(String day) {
+        try {
+            return LocalDate.parse(day);
+        } catch (RuntimeException e) {
+            throw new BadRequestException("Автосборка содержит некорректную дату смены: " + day);
+        }
+    }
+
+    private LocalTime parseTime(String value, String field) {
+        try {
+            return LocalTime.parse(value);
+        } catch (RuntimeException e) {
+            throw new BadRequestException("Автосборка содержит некорректное время " + field + ": " + value);
+        }
+    }
+
+    private String resolveCellValue(ScheduleAutoBuildPlanner.AssignmentPlan assignment) {
+        if (hasText(assignment.startTime()) && hasText(assignment.endTime())) {
+            return formatInterval(assignment.startTime(), assignment.endTime());
+        }
+        return assignment.value().trim();
+    }
+
+    private String formatInterval(String startTime, String endTime) {
+        return parseTime(startTime, "startTime").toString() + "–" + parseTime(endTime, "endTime").toString();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String buildAuditDetails(ScheduleAutoBuildPlan plan, int skippedAssignments) {
