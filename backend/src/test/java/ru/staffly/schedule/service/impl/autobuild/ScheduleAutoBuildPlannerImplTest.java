@@ -191,17 +191,124 @@ class ScheduleAutoBuildPlannerImplTest {
         assertThat(plan.positions().get(0).cells().get(0).matchStatus()).isEqualTo("COVERING_INTERVAL_PREFERENCE");
     }
 
+    @Test
+    void distributesFullDayPositiveAndNoPreferenceRoughlyEvenlyAcrossPeriod() {
+        RestaurantMember available = member(1, "Available");
+        RestaurantMember noPreference = member(2, "NoPreference");
+        Schedule schedule = schedule(FRIDAY, FRIDAY.plusDays(9));
+        ScheduleBuildTemplate template = dailyTemplate(1, schedule, option(1, T10, T00));
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList()))
+                .thenReturn(List.of(available, noPreference));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(
+                submission(available, availableFullDays(schedule))
+        ));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells()).hasSize(10);
+        assertThat(plan.positions().get(0).cells()).extracting(ScheduleAutoBuildPlanner.AssignmentPlan::memberId)
+                .filteredOn(id -> id.equals(1L))
+                .hasSize(5);
+        assertThat(plan.positions().get(0).cells()).extracting(ScheduleAutoBuildPlanner.AssignmentPlan::memberId)
+                .filteredOn(id -> id.equals(2L))
+                .hasSize(5);
+    }
+
+    @Test
+    void choosesCandidateWithFewerShiftsInsideSamePreferenceGroup() {
+        RestaurantMember a = member(1, "A");
+        RestaurantMember b = member(2, "B");
+        Schedule schedule = schedule(FRIDAY, FRIDAY.plusDays(1));
+        ScheduleBuildTemplate template = dailyTemplate(1, schedule, option(1, T10, T00));
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList())).thenReturn(List.of(a, b));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of());
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells()).extracting(ScheduleAutoBuildPlanner.AssignmentPlan::memberId)
+                .containsExactly(1L, 2L);
+    }
+
+    @Test
+    void fullDayPositiveAndNoPreferenceSharePreferenceGroupSoFairnessCanPickNoPreference() {
+        RestaurantMember fullDay = member(1, "FullDay");
+        RestaurantMember noPreference = member(2, "NoPreference");
+        Schedule schedule = schedule(FRIDAY, FRIDAY.plusDays(1));
+        ScheduleBuildTemplate template = dailyTemplate(1, schedule, option(1, T10, T00));
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList()))
+                .thenReturn(List.of(fullDay, noPreference));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(
+                submission(fullDay, availableFullDay(FRIDAY), availableFullDay(FRIDAY.plusDays(1)))
+        ));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells()).extracting(ScheduleAutoBuildPlanner.AssignmentPlan::memberId)
+                .containsExactly(1L, 2L);
+        assertThat(plan.positions().get(0).cells().get(1).matchStatus()).isEqualTo("NO_PREFERENCE");
+    }
+
+    @Test
+    void exactIntervalPreferenceStillBeatsNoPreference() {
+        RestaurantMember exact = member(1, "Exact");
+        RestaurantMember noPreference = member(2, "NoPreference");
+        ScheduleBuildTemplate template = template(1, option(1, T10, T00));
+        Schedule schedule = schedule();
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList())).thenReturn(List.of(noPreference, exact));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(
+                submission(exact, available(T10, T00))
+        ));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells().get(0).memberId()).isEqualTo(1L);
+        assertThat(plan.positions().get(0).cells().get(0).matchStatus()).isEqualTo("EXACT_INTERVAL_PREFERENCE");
+    }
+
+    @Test
+    void fairnessStillUsesNegativeFallbackWhenItIsOnlyCoverageOption() {
+        RestaurantMember unavailable = member(1, "Unavailable");
+        ScheduleBuildTemplate template = template(1, option(1, T10, T00));
+        Schedule schedule = schedule();
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList())).thenReturn(List.of(unavailable));
+        when(submissions.findWithCellsByScheduleId(schedule.getId()))
+                .thenReturn(List.of(submission(unavailable, unavailableFullDay())));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells()).hasSize(1);
+        assertThat(plan.positions().get(0).cells().get(0).matchStatus()).isEqualTo("NEGATIVE_FALLBACK");
+        assertThat(plan.uncoveredSlots()).isEmpty();
+    }
+
     private static Schedule schedule() {
-        return Schedule.builder().id(10L).startDate(FRIDAY).endDate(FRIDAY).positionIds(List.of(100L)).build();
+        return schedule(FRIDAY, FRIDAY);
+    }
+
+    private static Schedule schedule(LocalDate startDate, LocalDate endDate) {
+        return Schedule.builder().id(10L).startDate(startDate).endDate(endDate).positionIds(List.of(100L)).build();
     }
 
     private static ScheduleBuildTemplate template(int requiredCount, ScheduleBuildShiftOption... options) {
+        return dailyTemplate(requiredCount, schedule(), options);
+    }
+
+    private static ScheduleBuildTemplate dailyTemplate(int requiredCount, Schedule schedule, ScheduleBuildShiftOption... options) {
         Position position = Position.builder().id(100L).name("Официант").build();
+        List<ScheduleBuildCoverageRule> rules = new java.util.ArrayList<>();
+        long ruleId = 300L;
+        for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
+            int dayOfWeek = day.getDayOfWeek().getValue();
+            boolean hasRuleForDay = rules.stream().anyMatch(rule -> rule.getDayOfWeek() == dayOfWeek);
+            if (!hasRuleForDay) {
+                rules.add(ScheduleBuildCoverageRule.builder()
+                        .id(ruleId++).dayOfWeek(dayOfWeek).startTime(T10).endTime(T00).requiredCount(requiredCount).build());
+            }
+        }
         ScheduleBuildPositionConfig config = ScheduleBuildPositionConfig.builder()
                 .id(200L).position(position).fullShiftStart(T10).fullShiftEnd(T00)
                 .shiftOptions(List.of(options))
-                .coverageRules(List.of(ScheduleBuildCoverageRule.builder()
-                        .id(300L).dayOfWeek(FRIDAY.getDayOfWeek().getValue()).startTime(T10).endTime(T00).requiredCount(requiredCount).build()))
+                .coverageRules(rules)
                 .build();
         return ScheduleBuildTemplate.builder().id(400L).name("Template").positionConfigs(List.of(config)).build();
     }
@@ -223,7 +330,19 @@ class ScheduleAutoBuildPlannerImplTest {
     }
 
     private static SchedulePreferenceCell availableFullDay() {
-        return SchedulePreferenceCell.builder().day(FRIDAY).type(SchedulePreferenceType.AVAILABLE).fullDay(true).build();
+        return availableFullDay(FRIDAY);
+    }
+
+    private static SchedulePreferenceCell availableFullDay(LocalDate day) {
+        return SchedulePreferenceCell.builder().day(day).type(SchedulePreferenceType.AVAILABLE).fullDay(true).build();
+    }
+
+    private static SchedulePreferenceCell[] availableFullDays(Schedule schedule) {
+        List<SchedulePreferenceCell> cells = new java.util.ArrayList<>();
+        for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
+            cells.add(availableFullDay(day));
+        }
+        return cells.toArray(SchedulePreferenceCell[]::new);
     }
 
     private static SchedulePreferenceCell available(LocalTime start, LocalTime end) {
