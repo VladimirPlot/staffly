@@ -56,6 +56,9 @@ const groupPreviewCellsByDay = (cells: EditableAssignment[]): PreviewCellsByDay 
   return Array.from(groups.entries()).map(([day, dayCells]) => ({ day, cells: dayCells }));
 };
 
+const EMPTY_EDITABLE_PREVIEW_WARNING =
+  "Нет назначений для применения. Добавьте сотрудника в предпросмотр или постройте preview заново.";
+
 const hasPreviewRisks = (preview: ScheduleAutoBuildPreviewResponse | null): boolean =>
   Boolean(
     preview &&
@@ -301,11 +304,12 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   const effectivePreviewTemplateId = preview?.effectiveBuildTemplateId ?? preview?.templateId ?? null;
   const previewMatchesSelectedTemplate =
     selectedTemplateNumericId != null && effectivePreviewTemplateId === selectedTemplateNumericId;
+  const isEditablePreviewEmpty = Boolean(preview) && editableAssignments.length === 0;
   const canApplyAutoBuild =
     Boolean(selectedTemplateId) &&
     Boolean(preview) &&
     previewMatchesSelectedTemplate &&
-    editableAssignments.length > 0 &&
+    !isEditablePreviewEmpty &&
     !applying &&
     !previewLoading &&
     !autoApplying;
@@ -410,10 +414,14 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               >
                 {autoApplying ? "Применение…" : "Применить автосборку"}
               </Button>
-              <span className={`text-xs ${hasPreviewRisks(preview) ? "text-amber-700" : "text-muted"}`}>
+              <span
+                className={`text-xs ${hasPreviewRisks(preview) || isEditablePreviewEmpty ? "text-amber-700" : "text-muted"}`}
+              >
                 {preview && !previewMatchesSelectedTemplate
                   ? "Предпросмотр построен для другого шаблона. Постройте новый предпросмотр."
-                  : getPreviewApplyHint(preview)}
+                  : isEditablePreviewEmpty
+                    ? EMPTY_EDITABLE_PREVIEW_WARNING
+                    : getPreviewApplyHint(preview)}
               </span>
             </div>
           </div>
@@ -429,6 +437,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               <SummaryCounter label="Вопреки пожеланиям" value={preview.negativeAssignmentsCount} tone="warning" />
             </div>
             <div className="mt-3 space-y-2">
+              {isEditablePreviewEmpty && <WarningBox>{EMPTY_EDITABLE_PREVIEW_WARNING}</WarningBox>}
               {preview.unfilledCount > 0 && (
                 <WarningBox>Не все потребности закрыты. После применения проверьте пустые места вручную.</WarningBox>
               )}
