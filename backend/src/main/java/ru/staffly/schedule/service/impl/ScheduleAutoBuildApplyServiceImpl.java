@@ -111,6 +111,9 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         Map<Long, ScheduleBuildPositionConfig> configsByPosition = template.getPositionConfigs().stream()
                 .collect(Collectors.toMap(config -> config.getPosition().getId(), config -> config));
         Set<Long> schedulePositions = new HashSet<>(schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
+        Set<Long> affectedPositionIds = configsByPosition.keySet().stream()
+                .filter(schedulePositions::contains)
+                .collect(Collectors.toSet());
         Set<String> memberDays = new HashSet<>();
         Map<Long, List<ScheduleAutoBuildPlanner.AssignmentPlan>> byPosition = new HashMap<>();
 
@@ -142,7 +145,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 })
                 .toList();
 
-        return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), byPosition.keySet(), positions, List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
+        return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), affectedPositionIds, positions, List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
     }
 
     private RestaurantMember validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsByPosition,
