@@ -59,9 +59,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         validateScheduleStatus(schedule);
 
-        ScheduleBuildTemplate template = templates
-                .findDetailedByIdAndRestaurantIdAndIsActiveTrue(request.templateId(), restaurantId)
-                .orElseThrow(() -> new NotFoundException("Active template not found: " + request.templateId()));
+        ScheduleBuildTemplate template = resolveEffectiveTemplate(restaurantId, schedule, request.templateId());
         initializeTemplateCollections(template);
         validateTemplateHasSchedulePositions(schedule, template);
 
@@ -87,6 +85,21 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
+    }
+
+    private ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
+        ScheduleBuildTemplate preferenceTemplate = schedule.getPreferenceBuildTemplate();
+        if (preferenceTemplate != null) {
+            Long preferenceTemplateId = preferenceTemplate.getId();
+            if (requestedTemplateId != null && !preferenceTemplateId.equals(requestedTemplateId)) {
+                throw new BadRequestException("Автосборка использует шаблон, выбранный при сборе пожеланий. Передан другой templateId: " + requestedTemplateId);
+            }
+            return templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(preferenceTemplateId, restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Active preference template not found: " + preferenceTemplateId));
+        }
+
+        return templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(requestedTemplateId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Active template not found: " + requestedTemplateId));
     }
 
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {

@@ -13,6 +13,7 @@ import type { ScheduleStatus } from "../types";
 type ApplySchedulePreferencesDialogProps = {
   open: boolean;
   scheduleStatus?: ScheduleStatus;
+  preferenceBuildTemplateId?: number | null;
   applying: boolean;
   autoApplying: boolean;
   previewLoading: boolean;
@@ -86,6 +87,7 @@ const WarningBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogProps> = ({
   open,
   scheduleStatus,
+  preferenceBuildTemplateId,
   applying,
   autoApplying,
   templates,
@@ -102,12 +104,18 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
 }) => {
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>("");
   const isDraftFromPreferences = scheduleStatus === "DRAFT_FROM_PREFERENCES";
+  const lockedTemplateId = preferenceBuildTemplateId ?? null;
+  const isTemplateLocked = lockedTemplateId != null;
 
   React.useEffect(() => {
     if (!open) return;
+    if (isTemplateLocked) {
+      setSelectedTemplateId(String(lockedTemplateId));
+      return;
+    }
     if (templates.length === 0 || selectedTemplateId) return;
     setSelectedTemplateId(String(templates[0].id));
-  }, [open, selectedTemplateId, templates]);
+  }, [isTemplateLocked, lockedTemplateId, open, selectedTemplateId, templates]);
 
   const [templateError, setTemplateError] = React.useState<string | null>(null);
 
@@ -126,8 +134,9 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   }, [applying, autoApplying, onClose, previewLoading]);
 
   const selectedTemplateNumericId = selectedTemplateId ? Number(selectedTemplateId) : null;
+  const effectivePreviewTemplateId = preview?.effectiveBuildTemplateId ?? preview?.templateId ?? null;
   const previewMatchesSelectedTemplate =
-    selectedTemplateNumericId != null && preview?.templateId === selectedTemplateNumericId;
+    selectedTemplateNumericId != null && effectivePreviewTemplateId === selectedTemplateNumericId;
   const canApplyAutoBuild =
     Boolean(selectedTemplateId) &&
     Boolean(preview) &&
@@ -187,7 +196,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 label="Шаблон сборки"
                 value={selectedTemplateId}
                 onChange={(event) => setSelectedTemplateId(event.target.value)}
-                disabled={applying || templatesLoading || previewLoading || autoApplying}
+                disabled={applying || templatesLoading || previewLoading || autoApplying || isTemplateLocked}
               >
                 {templates.map((template) => (
                   <option key={template.id} value={String(template.id)}>
@@ -201,6 +210,9 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               </div>
             )}
 
+            {isTemplateLocked && (
+              <div className="text-muted text-sm">Автосборка использует шаблон, выбранный при сборе пожеланий.</div>
+            )}
             {templatesError && <div className="text-sm text-red-700">{templatesError}</div>}
             {templateError && <div className="text-sm text-red-700">{templateError}</div>}
             {previewError && <div className="text-sm text-red-700">{previewError}</div>}
@@ -225,7 +237,11 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 {previewLoading ? "Строим…" : "Построить предпросмотр"}
               </Button>
               <Button
-                onClick={() => selectedTemplateId && void onApplyAutoBuild(Number(selectedTemplateId))}
+                onClick={() => {
+                  const templateId =
+                    preview?.effectiveBuildTemplateId ?? preview?.templateId ?? selectedTemplateNumericId;
+                  if (templateId) void onApplyAutoBuild(templateId);
+                }}
                 disabled={!canApplyAutoBuild}
               >
                 {autoApplying ? "Применение…" : "Применить автосборку"}

@@ -885,7 +885,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceCollectionStartedAt(),
                 schedule.getPreferenceDeadline(),
                 schedule.getPreferenceClosedAt(),
-                schedule.getPreferenceAppliedAt()
+                schedule.getPreferenceAppliedAt(),
+                schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );
     }
 

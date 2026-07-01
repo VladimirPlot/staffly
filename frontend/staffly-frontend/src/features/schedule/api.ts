@@ -320,6 +320,7 @@ export type ScheduleAutoBuildUncoveredSlotDto = {
 export type ScheduleAutoBuildPreviewResponse = {
   scheduleId: number;
   templateId: number;
+  effectiveBuildTemplateId?: number | null;
   templateName: string;
   positions: ScheduleAutoBuildPositionPreviewDto[];
   warnings: string[];
@@ -347,6 +348,7 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
     preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
     preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
     preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+    preferenceBuildTemplateId: data.preferenceBuildTemplateId ?? null,
   };
 }
 
@@ -508,6 +510,7 @@ export async function previewScheduleAutoBuild(
   return {
     scheduleId: data.scheduleId,
     templateId: data.templateId,
+    effectiveBuildTemplateId: data.effectiveBuildTemplateId ?? data.templateId ?? null,
     templateName: data.templateName,
     positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
       ...position,
