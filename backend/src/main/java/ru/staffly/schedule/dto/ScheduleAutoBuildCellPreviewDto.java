@@ -9,6 +9,8 @@ public record ScheduleAutoBuildCellPreviewDto(
         String value,
         Long shiftOptionId,
         String shiftLabel,
+        String startTime,
+        String endTime,
         String reason,
         List<String> warnings
 ) {

@@ -96,7 +96,18 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     }
 
     private ScheduleAutoBuildCellPreviewDto toCellDto(ScheduleAutoBuildPlanner.AssignmentPlan a) {
-        return new ScheduleAutoBuildCellPreviewDto(a.memberId(), a.memberName(), a.day(), a.value(), a.shiftOptionId(), a.shiftLabel(), a.reason(), a.warnings());
+        return new ScheduleAutoBuildCellPreviewDto(
+                a.memberId(),
+                a.memberName(),
+                a.day(),
+                a.value(),
+                a.shiftOptionId(),
+                a.shiftLabel(),
+                a.startTime(),
+                a.endTime(),
+                a.reason(),
+                a.warnings()
+        );
     }
 
     private ScheduleAutoBuildUncoveredSlotDto toUncoveredSlotDto(ScheduleAutoBuildPlanner.UncoveredSlotPlan slot) {

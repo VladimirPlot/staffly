@@ -50,6 +50,8 @@ public interface ScheduleAutoBuildPlanner {
             String value,
             Long shiftOptionId,
             String shiftLabel,
+            String startTime,
+            String endTime,
             String reason,
             java.util.List<String> warnings
     ) {}

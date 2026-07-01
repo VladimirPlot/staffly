@@ -271,6 +271,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 formatShift(option),
                 option.getId(),
                 option.getLabel(),
+                option.getStartTime().toString(),
+                option.getEndTime().toString(),
                 reason,
                 cellWarnings
         );

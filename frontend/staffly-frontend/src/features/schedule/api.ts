@@ -291,6 +291,8 @@ export type ScheduleAutoBuildCellPreviewDto = {
   value: string | null;
   shiftOptionId: number | null;
   shiftLabel: string | null;
+  startTime: string | null;
+  endTime: string | null;
   reason: string | null;
   warnings: string[];
 };
@@ -511,6 +513,8 @@ export async function previewScheduleAutoBuild(
       ...position,
       cells: (position.cells ?? []).map((cell) => ({
         ...cell,
+        startTime: cell.startTime ?? null,
+        endTime: cell.endTime ?? null,
         warnings: cell.warnings ?? [],
       })),
       warnings: position.warnings ?? [],
