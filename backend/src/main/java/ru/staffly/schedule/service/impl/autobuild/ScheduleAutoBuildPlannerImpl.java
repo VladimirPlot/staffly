@@ -261,8 +261,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<SchedulePreferenceCell> memberCells
     ) {
         List<String> cellWarnings = new ArrayList<>();
-        PreferenceGrade grade = grade(memberCells, day, option);
-        String reason = reasonFor(memberCells, day, option, cellWarnings, grade);
+        MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
+        PreferenceGrade grade = grade(matchStatus);
+        String reason = reasonFor(cellWarnings, matchStatus);
+        String warningMessage = warningMessageFor(matchStatus);
 
         AssignmentPlan assignment = new AssignmentPlan(
                 member.getId(),
@@ -274,6 +276,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 option.getStartTime().toString(),
                 option.getEndTime().toString(),
                 reason,
+                matchStatus.name(),
+                warningMessage,
                 cellWarnings
         );
 
@@ -388,7 +392,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             );
         }
 
-        PreferenceGrade memberGrade = grade(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option);
+        PreferenceGrade memberGrade = grade(matchStatusFor(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option));
         return new CandidateEvaluation(
                 member,
                 memberGrade,
@@ -553,21 +557,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return "Недостаточно сотрудников для покрытия " + day + " " + formatShift(option);
     }
 
-    private String reasonFor(
-            List<SchedulePreferenceCell> cells,
-            LocalDate day,
-            ScheduleBuildShiftOption option,
-            List<String> warnings,
-            PreferenceGrade grade
-    ) {
-        if (grade == PreferenceGrade.POSITIVE) {
-            if (hasPartialPositiveOverlap(cells, day, option)) {
-                warnings.add("Пожелание частично пересекается со сменой");
-            }
+    private String reasonFor(List<String> warnings, MatchStatus matchStatus) {
+        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
             return "Подходит по пожеланию";
         }
 
-        if (grade == PreferenceGrade.NEGATIVE) {
+        if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
             warnings.add("Есть отрицательное пожелание на этот день");
             return "Поставлен для покрытия потребности";
         }
@@ -575,26 +570,68 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return "Нет пожелания, выбран по доступности";
     }
 
-    private PreferenceGrade grade(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option) {
+    private String warningMessageFor(MatchStatus matchStatus) {
+        if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
+            return "Сотрудник назначен несмотря на отрицательное пожелание, потому что не найдено альтернатив.";
+        }
+        return null;
+    }
+
+    private PreferenceGrade grade(MatchStatus matchStatus) {
+        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
+            return PreferenceGrade.POSITIVE;
+        }
+        if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
+            return PreferenceGrade.NEGATIVE;
+        }
+        return PreferenceGrade.NONE;
+    }
+
+    private MatchStatus matchStatusFor(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option) {
         List<SchedulePreferenceCell> dayCells = cells.stream()
                 .filter(cell -> cell != null && day.equals(cell.getDay()))
                 .toList();
 
         if (dayCells.isEmpty()) {
-            return PreferenceGrade.NONE;
+            return MatchStatus.NO_PREFERENCE;
         }
 
-        boolean hasPositive = dayCells.stream().anyMatch(cell -> isPositiveForShift(cell, option));
-        if (hasPositive) {
-            return PreferenceGrade.POSITIVE;
+        boolean hasExactPositive = dayCells.stream().anyMatch(cell -> isExactPositiveForShift(cell, option));
+        if (hasExactPositive) {
+            return MatchStatus.EXACT_INTERVAL_PREFERENCE;
+        }
+
+        boolean hasFullDayPositive = dayCells.stream().anyMatch(this::isFullDayPositive);
+        if (hasFullDayPositive) {
+            return MatchStatus.FULL_DAY_POSITIVE;
         }
 
         boolean hasNegative = dayCells.stream().anyMatch(cell -> isNegativeForShift(cell, option));
         if (hasNegative) {
-            return PreferenceGrade.NEGATIVE;
+            return MatchStatus.NEGATIVE_FALLBACK;
         }
 
-        return PreferenceGrade.NONE;
+        return MatchStatus.NO_PREFERENCE;
+    }
+
+    private boolean isFullDayPositive(SchedulePreferenceCell cell) {
+        return cell.isFullDay() && isPositiveType(cell.getType());
+    }
+
+    private boolean isExactPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
+        if (!isPositiveType(cell.getType()) || cell.isFullDay()) {
+            return false;
+        }
+        if (cell.getStartTime() == null || cell.getEndTime() == null) {
+            return false;
+        }
+
+        return intervalsEqual(
+                cell.getStartTime(),
+                cell.getEndTime(),
+                option.getStartTime(),
+                option.getEndTime()
+        );
     }
 
     private boolean isPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
@@ -962,6 +999,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         POSITIVE,
         NONE,
         NEGATIVE
+    }
+
+    private enum MatchStatus {
+        EXACT_INTERVAL_PREFERENCE,
+        FULL_DAY_POSITIVE,
+        NO_PREFERENCE,
+        NEGATIVE_FALLBACK
     }
 
 

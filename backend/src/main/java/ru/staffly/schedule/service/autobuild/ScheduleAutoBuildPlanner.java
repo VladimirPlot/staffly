@@ -53,6 +53,8 @@ public interface ScheduleAutoBuildPlanner {
             String startTime,
             String endTime,
             String reason,
+            String matchStatus,
+            String warningMessage,
             java.util.List<String> warnings
     ) {}
 }

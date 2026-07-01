@@ -284,6 +284,12 @@ export type ApplyScheduleAutoBuildRequest = {
   templateId: number;
 };
 
+export type ScheduleAutoBuildMatchStatus =
+  | "EXACT_INTERVAL_PREFERENCE"
+  | "FULL_DAY_POSITIVE"
+  | "NO_PREFERENCE"
+  | "NEGATIVE_FALLBACK";
+
 export type ScheduleAutoBuildCellPreviewDto = {
   memberId: number | null;
   memberName: string | null;
@@ -294,6 +300,8 @@ export type ScheduleAutoBuildCellPreviewDto = {
   startTime: string | null;
   endTime: string | null;
   reason: string | null;
+  matchStatus: ScheduleAutoBuildMatchStatus;
+  warningMessage: string | null;
   warnings: string[];
 };
 
@@ -518,6 +526,8 @@ export async function previewScheduleAutoBuild(
         ...cell,
         startTime: cell.startTime ?? null,
         endTime: cell.endTime ?? null,
+        matchStatus: cell.matchStatus ?? "NO_PREFERENCE",
+        warningMessage: cell.warningMessage ?? null,
         warnings: cell.warnings ?? [],
       })),
       warnings: position.warnings ?? [],
