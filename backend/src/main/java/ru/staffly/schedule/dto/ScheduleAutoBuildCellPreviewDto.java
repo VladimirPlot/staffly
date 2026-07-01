@@ -12,6 +12,8 @@ public record ScheduleAutoBuildCellPreviewDto(
         String startTime,
         String endTime,
         String reason,
+        String matchStatus,
+        String warningMessage,
         List<String> warnings
 ) {
 }

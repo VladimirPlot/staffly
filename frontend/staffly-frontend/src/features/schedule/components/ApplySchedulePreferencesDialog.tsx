@@ -84,6 +84,34 @@ const WarningBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{children}</div>
 );
 
+const MATCH_STATUS_BADGE: Record<ScheduleAutoBuildCellPreviewDto["matchStatus"], { label: string; className: string }> =
+  {
+    EXACT_INTERVAL_PREFERENCE: {
+      label: "Хочет эту смену",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    },
+    FULL_DAY_POSITIVE: {
+      label: "Готов весь день",
+      className: "border-sky-200 bg-sky-50 text-sky-700",
+    },
+    NO_PREFERENCE: {
+      label: "Без пожелания",
+      className: "border-slate-200 bg-slate-50 text-slate-600",
+    },
+    NEGATIVE_FALLBACK: {
+      label: "Спорное",
+      className: "border-amber-300 bg-amber-100 text-amber-800",
+    },
+  };
+
+const AssignmentMatchBadge: React.FC<{ cell: ScheduleAutoBuildCellPreviewDto }> = ({ cell }) => {
+  const badge = MATCH_STATUS_BADGE[cell.matchStatus] ?? MATCH_STATUS_BADGE.NO_PREFERENCE;
+
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>{badge.label}</span>
+  );
+};
+
 const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogProps> = ({
   open,
   scheduleStatus,
@@ -327,7 +355,11 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                           {dayGroup.cells.map((cell, idx) => (
                             <div
                               key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
-                              className="border-subtle rounded-lg border bg-white px-3 py-2 text-xs"
+                              className={`rounded-lg border px-3 py-2 text-xs ${
+                                cell.matchStatus === "NEGATIVE_FALLBACK"
+                                  ? "border-amber-200 bg-amber-50/80"
+                                  : "border-subtle bg-white"
+                              }`}
                             >
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
@@ -335,7 +367,9 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                                 <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
                                 <span className="text-muted">—</span>
                                 <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
+                                <AssignmentMatchBadge cell={cell} />
                               </div>
+                              {cell.warningMessage && <div className="mt-1 text-amber-700">{cell.warningMessage}</div>}
                               {cell.warnings.length > 0 && (
                                 <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
                                   {cell.warnings.map((warning, warningIdx) => (

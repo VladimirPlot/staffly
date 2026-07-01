@@ -121,6 +121,8 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 a.startTime(),
                 a.endTime(),
                 a.reason(),
+                a.matchStatus(),
+                a.warningMessage(),
                 a.warnings()
         );
     }
