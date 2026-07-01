@@ -7,11 +7,15 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.schedule.dto.AdjustedScheduleAutoBuildAssignmentDto;
 import ru.staffly.schedule.dto.ApplyScheduleAutoBuildRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
+import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
+import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
@@ -45,6 +49,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private final ScheduleAccessService scheduleAccessService;
     private final ScheduleRepository schedules;
     private final ScheduleBuildTemplateRepository templates;
+    private final RestaurantMemberRepository members;
     private final ScheduleAutoBuildPlanner planner;
     private final ScheduleAuditService scheduleAuditService;
     private final ScheduleService scheduleService;
@@ -63,7 +68,9 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         initializeTemplateCollections(template);
         validateTemplateHasSchedulePositions(schedule, template);
 
-        var plan = planner.build(restaurantId, schedule, template);
+        ScheduleAutoBuildPlan plan = hasAdjustedAssignments(request)
+                ? buildAdjustedPlan(restaurantId, schedule, template, request.adjustedAssignments())
+                : planner.build(restaurantId, schedule, template);
         if (plan.totalAssignments() == 0) {
             throw new BadRequestException("Автосборка не создала ни одной смены");
         }
@@ -85,6 +92,119 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
+    }
+
+
+    private boolean hasAdjustedAssignments(ApplyScheduleAutoBuildRequest request) {
+        return request.adjustedAssignments() != null;
+    }
+
+    private ScheduleAutoBuildPlan buildAdjustedPlan(Long restaurantId, Schedule schedule, ScheduleBuildTemplate template,
+                                                   List<AdjustedScheduleAutoBuildAssignmentDto> adjustedAssignments) {
+        if (adjustedAssignments.isEmpty()) {
+            throw new BadRequestException("Переданный предпросмотр не содержит назначений");
+        }
+
+        Map<Long, RestaurantMember> membersById = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+                .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
+        Map<Long, ScheduleBuildPositionConfig> configsByPosition = template.getPositionConfigs().stream()
+                .collect(Collectors.toMap(config -> config.getPosition().getId(), config -> config));
+        Set<Long> schedulePositions = new HashSet<>(schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
+        Set<String> memberDays = new HashSet<>();
+        Map<Long, List<ScheduleAutoBuildPlanner.AssignmentPlan>> byPosition = new HashMap<>();
+
+        for (AdjustedScheduleAutoBuildAssignmentDto assignment : adjustedAssignments) {
+            RestaurantMember member = validateAdjustedAssignment(schedule, configsByPosition, schedulePositions, memberDays, membersById, assignment);
+            byPosition.computeIfAbsent(assignment.positionId(), ignored -> new java.util.ArrayList<>()).add(
+                    new ScheduleAutoBuildPlanner.AssignmentPlan(
+                            assignment.memberId(),
+                            hasText(assignment.memberName()) ? assignment.memberName() : memberDisplayName(member),
+                            assignment.day(),
+                            resolveAdjustedValue(assignment),
+                            assignment.shiftOptionId(),
+                            assignment.shiftLabel(),
+                            assignment.startTime(),
+                            assignment.endTime(),
+                            hasText(assignment.reason()) ? assignment.reason() : "Изменено вручную",
+                            "MANUAL_OVERRIDE",
+                            assignment.warningMessage(),
+                            List.of()
+                    )
+            );
+        }
+
+        List<ScheduleAutoBuildPlanner.PositionPlan> positions = byPosition.entrySet().stream()
+                .map(entry -> {
+                    ScheduleBuildPositionConfig config = configsByPosition.get(entry.getKey());
+                    List<ScheduleAutoBuildPlanner.AssignmentPlan> cells = entry.getValue();
+                    return new ScheduleAutoBuildPlanner.PositionPlan(entry.getKey(), config.getPosition().getName(), cells, List.of(), cells.size(), 0, 0, 0);
+                })
+                .toList();
+
+        return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), byPosition.keySet(), positions, List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
+    }
+
+    private RestaurantMember validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsByPosition,
+                                                        Set<Long> schedulePositions, Set<String> memberDays,
+                                                        Map<Long, RestaurantMember> membersById,
+                                                        AdjustedScheduleAutoBuildAssignmentDto assignment) {
+        if (assignment.memberId() == null || assignment.positionId() == null) {
+            throw new BadRequestException("Переданное назначение должно содержать memberId и positionId");
+        }
+        if (!schedulePositions.contains(assignment.positionId())) {
+            throw new BadRequestException("Позиция назначения не входит в график: " + assignment.positionId());
+        }
+        ScheduleBuildPositionConfig config = configsByPosition.get(assignment.positionId());
+        if (config == null) {
+            throw new BadRequestException("Шаблон не содержит позицию назначения: " + assignment.positionId());
+        }
+        RestaurantMember member = membersById.get(assignment.memberId());
+        if (member == null) {
+            throw new BadRequestException("Сотрудник не принадлежит ресторану: " + assignment.memberId());
+        }
+        if (member.getPosition() == null || !assignment.positionId().equals(member.getPosition().getId())) {
+            throw new BadRequestException("Сотрудник не соответствует должности назначения: " + assignment.memberId());
+        }
+
+        LocalDate day = parseDay(assignment.day());
+        if (day.isBefore(schedule.getStartDate()) || day.isAfter(schedule.getEndDate())) {
+            throw new BadRequestException("Дата назначения вне периода графика: " + assignment.day());
+        }
+        LocalTime start = parseTime(assignment.startTime(), "startTime");
+        LocalTime end = parseTime(assignment.endTime(), "endTime");
+        if (start.equals(end)) {
+            throw new BadRequestException("Начало и конец смены не должны совпадать: " + assignment.day());
+        }
+        boolean allowedShift = config.getShiftOptions().stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
+        if (!allowedShift) {
+            throw new BadRequestException("Интервал назначения не входит в варианты смен для должности: " + assignment.day());
+        }
+        String key = assignment.memberId() + ":" + assignment.day();
+        if (!memberDays.add(key)) {
+            throw new BadRequestException("Один сотрудник не может иметь больше одной смены в день: " + assignment.day());
+        }
+        return member;
+    }
+
+    private boolean shiftMatches(ScheduleBuildShiftOption option, LocalTime start, LocalTime end, Long shiftOptionId) {
+        if (shiftOptionId != null && !shiftOptionId.equals(option.getId())) {
+            return false;
+        }
+        return option.getStartTime().equals(start) && option.getEndTime().equals(end);
+    }
+
+    private String resolveAdjustedValue(AdjustedScheduleAutoBuildAssignmentDto assignment) {
+        if (hasText(assignment.value())) {
+            return assignment.value().trim();
+        }
+        return formatInterval(assignment.startTime(), assignment.endTime());
+    }
+
+    private String memberDisplayName(RestaurantMember member) {
+        String first = member.getUser() == null ? "" : java.util.Objects.toString(member.getUser().getFirstName(), "").trim();
+        String last = member.getUser() == null ? "" : java.util.Objects.toString(member.getUser().getLastName(), "").trim();
+        String full = (first + " " + last).trim();
+        return full.isBlank() ? "Сотрудник #" + member.getId() : full;
     }
 
     private ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {

@@ -280,15 +280,32 @@ export type PreviewScheduleAutoBuildRequest = {
   templateId: number;
 };
 
+export type AdjustedScheduleAutoBuildAssignment = {
+  memberId: number;
+  memberName?: string | null;
+  positionId: number;
+  day: string;
+  value?: string | null;
+  shiftOptionId?: number | null;
+  shiftLabel?: string | null;
+  startTime: string;
+  endTime: string;
+  reason?: string | null;
+  matchStatus?: ScheduleAutoBuildMatchStatus;
+  warningMessage?: string | null;
+};
+
 export type ApplyScheduleAutoBuildRequest = {
   templateId: number;
+  adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[];
 };
 
 export type ScheduleAutoBuildMatchStatus =
   | "EXACT_INTERVAL_PREFERENCE"
   | "FULL_DAY_POSITIVE"
   | "NO_PREFERENCE"
-  | "NEGATIVE_FALLBACK";
+  | "NEGATIVE_FALLBACK"
+  | "MANUAL_OVERRIDE";
 
 export type ScheduleAutoBuildCellPreviewDto = {
   memberId: number | null;

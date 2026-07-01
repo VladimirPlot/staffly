@@ -4,10 +4,14 @@ import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Modal from "../../../shared/ui/Modal";
 import type {
+  AdjustedScheduleAutoBuildAssignment,
   ScheduleAutoBuildCellPreviewDto,
   ScheduleAutoBuildPreviewResponse,
+  ScheduleAutoBuildUncoveredSlotDto,
   ScheduleBuildTemplateDto,
 } from "../api";
+import type { MemberDto } from "../../employees/api";
+import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 import type { ScheduleStatus } from "../types";
 
 type ApplySchedulePreferencesDialogProps = {
@@ -22,20 +26,26 @@ type ApplySchedulePreferencesDialogProps = {
   templates: ScheduleBuildTemplateDto[];
   templatesLoading: boolean;
   templatesError: string | null;
+  members: MemberDto[];
   onReloadTemplates: () => void;
   onClose: () => void;
   onApplyManual: () => void;
   onPreviewAutoBuild: (templateId: number) => Promise<boolean> | boolean;
-  onApplyAutoBuild: (templateId: number) => Promise<boolean> | void;
+  onApplyAutoBuild: (
+    templateId: number,
+    adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[],
+  ) => Promise<boolean> | void;
 };
+
+type EditableAssignment = ScheduleAutoBuildCellPreviewDto & { id: string; positionId: number };
 
 type PreviewCellsByDay = Array<{
   day: string;
-  cells: ScheduleAutoBuildCellPreviewDto[];
+  cells: EditableAssignment[];
 }>;
 
-const groupPreviewCellsByDay = (cells: ScheduleAutoBuildCellPreviewDto[]): PreviewCellsByDay => {
-  const groups = new Map<string, ScheduleAutoBuildCellPreviewDto[]>();
+const groupPreviewCellsByDay = (cells: EditableAssignment[]): PreviewCellsByDay => {
+  const groups = new Map<string, EditableAssignment[]>();
 
   cells.forEach((cell) => {
     const dayCells = groups.get(cell.day) ?? [];
@@ -102,6 +112,10 @@ const MATCH_STATUS_BADGE: Record<ScheduleAutoBuildCellPreviewDto["matchStatus"],
       label: "Спорное",
       className: "border-amber-300 bg-amber-100 text-amber-800",
     },
+    MANUAL_OVERRIDE: {
+      label: "Изменено вручную",
+      className: "border-violet-200 bg-violet-50 text-violet-700",
+    },
   };
 
 const AssignmentMatchBadge: React.FC<{ cell: ScheduleAutoBuildCellPreviewDto }> = ({ cell }) => {
@@ -121,6 +135,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   templates,
   templatesLoading,
   templatesError,
+  members,
   onReloadTemplates,
   onClose,
   onApplyManual,
@@ -131,6 +146,127 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
   onApplyAutoBuild,
 }) => {
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>("");
+  const [editableAssignments, setEditableAssignments] = React.useState<EditableAssignment[]>([]);
+  const [manualWarning, setManualWarning] = React.useState<string | null>(null);
+
+  const memberNames = React.useMemo(() => buildMemberDisplayNameMap(members), [members]);
+
+  React.useEffect(() => {
+    if (!preview) {
+      setEditableAssignments([]);
+      setManualWarning(null);
+      return;
+    }
+    setEditableAssignments(
+      preview.positions.flatMap((position) =>
+        position.cells
+          .filter((cell) => cell.memberId != null && cell.startTime && cell.endTime)
+          .map((cell, index) => ({
+            ...cell,
+            id: `${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${cell.startTime ?? ""}-${index}`,
+            positionId: position.positionId,
+          })),
+      ),
+    );
+    setManualWarning(null);
+  }, [preview]);
+
+  const membersByPosition = React.useMemo(() => {
+    const grouped = new Map<number, MemberDto[]>();
+    members.forEach((member) => {
+      if (member.positionId == null) return;
+      grouped.set(member.positionId, [...(grouped.get(member.positionId) ?? []), member]);
+    });
+    return grouped;
+  }, [members]);
+
+  const isMemberBusy = React.useCallback(
+    (memberId: number, day: string, exceptAssignmentId?: string) =>
+      editableAssignments.some(
+        (assignment) =>
+          assignment.id !== exceptAssignmentId && assignment.memberId === memberId && assignment.day === day,
+      ),
+    [editableAssignments],
+  );
+
+  const replaceAssignmentMember = React.useCallback(
+    (assignmentId: string, memberIdValue: string) => {
+      const memberId = Number(memberIdValue);
+      const member = members.find((candidate) => candidate.id === memberId);
+      if (!member) return;
+      setEditableAssignments((current) =>
+        current.map((assignment) =>
+          assignment.id === assignmentId
+            ? {
+                ...assignment,
+                memberId,
+                memberName: memberDisplayName(member, memberNames),
+                matchStatus: "MANUAL_OVERRIDE",
+                reason: "Изменено вручную",
+              }
+            : assignment,
+        ),
+      );
+      setManualWarning("Предпросмотр изменён вручную. После удаления или замены покрытие может быть неполным.");
+    },
+    [memberNames, members],
+  );
+
+  const deleteAssignment = React.useCallback((assignmentId: string) => {
+    setEditableAssignments((current) => current.filter((assignment) => assignment.id !== assignmentId));
+    setManualWarning("Назначение удалено. После применения покрытие может быть неполным.");
+  }, []);
+
+  const assignUncoveredSlot = React.useCallback(
+    (slot: ScheduleAutoBuildUncoveredSlotDto, memberIdValue: string) => {
+      const memberId = Number(memberIdValue);
+      const member = members.find((candidate) => candidate.id === memberId);
+      if (!member) return;
+      setEditableAssignments((current) => [
+        ...current,
+        {
+          id: `manual-${slot.positionId}-${slot.date}-${slot.startTime}-${memberId}-${Date.now()}`,
+          positionId: slot.positionId,
+          memberId,
+          memberName: memberDisplayName(member, memberNames),
+          day: slot.date,
+          value: `${slot.startTime}–${slot.endTime}`,
+          shiftOptionId: null,
+          shiftLabel: `${slot.startTime}–${slot.endTime}`,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          reason: "Назначено вручную",
+          matchStatus: "MANUAL_OVERRIDE",
+          warningMessage: null,
+          warnings: [],
+        },
+      ]);
+      setManualWarning("Сотрудник назначен на незакрытый слот вручную.");
+    },
+    [memberNames, members],
+  );
+
+  const adjustedAssignments = React.useMemo<AdjustedScheduleAutoBuildAssignment[]>(
+    () =>
+      editableAssignments
+        .filter((assignment) => assignment.memberId != null && assignment.startTime && assignment.endTime)
+        .map((assignment) => ({
+          memberId: assignment.memberId as number,
+          memberName: assignment.memberName,
+          positionId: assignment.positionId,
+          day: assignment.day,
+          value: assignment.value,
+          shiftOptionId: assignment.shiftOptionId,
+          shiftLabel: assignment.shiftLabel,
+          startTime: assignment.startTime as string,
+          endTime: assignment.endTime as string,
+          reason: assignment.reason,
+          matchStatus: assignment.matchStatus,
+          warningMessage: assignment.warningMessage,
+        })),
+    [editableAssignments],
+  );
+
   const isDraftFromPreferences = scheduleStatus === "DRAFT_FROM_PREFERENCES";
   const lockedTemplateId = preferenceBuildTemplateId ?? null;
   const isTemplateLocked = lockedTemplateId != null;
@@ -169,7 +305,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
     Boolean(selectedTemplateId) &&
     Boolean(preview) &&
     previewMatchesSelectedTemplate &&
-    (preview?.totalAssignments ?? 0) > 0 &&
+    editableAssignments.length > 0 &&
     !applying &&
     !previewLoading &&
     !autoApplying;
@@ -268,7 +404,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 onClick={() => {
                   const templateId =
                     preview?.effectiveBuildTemplateId ?? preview?.templateId ?? selectedTemplateNumericId;
-                  if (templateId) void onApplyAutoBuild(templateId);
+                  if (templateId) void onApplyAutoBuild(templateId, adjustedAssignments);
                 }}
                 disabled={!canApplyAutoBuild}
               >
@@ -287,7 +423,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
           <section className="border-subtle bg-app rounded-2xl border p-4">
             <h3 className="text-default text-sm font-semibold">Предпросмотр автосборки</h3>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
-              <SummaryCounter label="Назначений" value={preview.totalAssignments} />
+              <SummaryCounter label="Назначений" value={editableAssignments.length} />
               <SummaryCounter label="Незаполнено" value={preview.unfilledCount} tone="warning" />
               <SummaryCounter label="Предупреждений" value={preview.warningsCount} tone="warning" />
               <SummaryCounter label="Вопреки пожеланиям" value={preview.negativeAssignmentsCount} tone="warning" />
@@ -300,15 +436,38 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   <div className="font-semibold">Не закрыто</div>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    {preview.uncoveredSlots.map((slot, idx) => (
-                      <li key={`${slot.date}-${slot.positionId}-${slot.startTime}-${slot.endTime}-${idx}`}>
-                        {slot.date}, {slot.startTime}–{slot.endTime}: не хватает{" "}
-                        {Math.max(slot.requiredCount - slot.assignedCount, 0)} из {slot.requiredCount}
-                      </li>
-                    ))}
+                    {preview.uncoveredSlots.map((slot, idx) => {
+                      const candidates = (membersByPosition.get(slot.positionId) ?? []).filter(
+                        (member) => !isMemberBusy(member.id, slot.date),
+                      );
+                      return (
+                        <li key={`${slot.date}-${slot.positionId}-${slot.startTime}-${slot.endTime}-${idx}`}>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>
+                              {slot.date}, {slot.startTime}–{slot.endTime}: не хватает{" "}
+                              {Math.max(slot.requiredCount - slot.assignedCount, 0)} из {slot.requiredCount}
+                            </span>
+                            <select
+                              className="border-subtle rounded-lg border bg-white px-2 py-1 text-xs"
+                              value=""
+                              onChange={(event) => assignUncoveredSlot(slot, event.target.value)}
+                              disabled={candidates.length === 0 || autoApplying}
+                            >
+                              <option value="">Назначить сотрудника</option>
+                              {candidates.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {memberDisplayName(member, memberNames)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
+              {manualWarning && <WarningBox>{manualWarning}</WarningBox>}
               {preview.negativeAssignmentsCount > 0 && (
                 <WarningBox>Есть назначения вопреки отрицательным пожеланиям сотрудников.</WarningBox>
               )}
@@ -327,66 +486,102 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
             )}
 
             <div className="mt-4 space-y-4">
-              {preview.positions.map((position) => (
-                <div key={position.positionId} className="border-subtle rounded-xl border p-3">
-                  <div className="text-sm font-semibold">{position.positionName}</div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
-                    <SummaryCounter label="Назначений" value={position.totalAssignments} />
-                    <SummaryCounter label="Незаполнено" value={position.unfilledCount} tone="warning" />
-                    <SummaryCounter label="Предупреждений" value={position.warningsCount} tone="warning" />
-                    <SummaryCounter
-                      label="Вопреки пожеланиям"
-                      value={position.negativeAssignmentsCount}
-                      tone="warning"
-                    />
-                  </div>
-                  {position.warnings.length > 0 && (
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
-                      {position.warnings.map((warning, idx) => (
-                        <li key={`${position.positionId}-warning-${idx}`}>{warning}</li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="mt-3 space-y-3">
-                    {groupPreviewCellsByDay(position.cells).map((dayGroup) => (
-                      <div key={`${position.positionId}-${dayGroup.day}`} className="rounded-xl bg-white/60 p-3">
-                        <div className="text-default text-xs font-semibold">{dayGroup.day}</div>
-                        <div className="mt-2 space-y-2">
-                          {dayGroup.cells.map((cell, idx) => (
-                            <div
-                              key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
-                              className={`rounded-lg border px-3 py-2 text-xs ${
-                                cell.matchStatus === "NEGATIVE_FALLBACK"
-                                  ? "border-amber-200 bg-amber-50/80"
-                                  : "border-subtle bg-white"
-                              }`}
-                            >
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
-                                <span className="text-muted">—</span>
-                                <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
-                                <span className="text-muted">—</span>
-                                <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
-                                <AssignmentMatchBadge cell={cell} />
+              {preview.positions.map((position) => {
+                const positionAssignments = editableAssignments.filter(
+                  (assignment) => assignment.positionId === position.positionId,
+                );
+                return (
+                  <div key={position.positionId} className="border-subtle rounded-xl border p-3">
+                    <div className="text-sm font-semibold">{position.positionName}</div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                      <SummaryCounter label="Назначений" value={positionAssignments.length} />
+                      <SummaryCounter label="Незаполнено" value={position.unfilledCount} tone="warning" />
+                      <SummaryCounter label="Предупреждений" value={position.warningsCount} tone="warning" />
+                      <SummaryCounter
+                        label="Вопреки пожеланиям"
+                        value={position.negativeAssignmentsCount}
+                        tone="warning"
+                      />
+                    </div>
+                    {position.warnings.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
+                        {position.warnings.map((warning, idx) => (
+                          <li key={`${position.positionId}-warning-${idx}`}>{warning}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="mt-3 space-y-3">
+                      {groupPreviewCellsByDay(positionAssignments).map((dayGroup) => (
+                        <div key={`${position.positionId}-${dayGroup.day}`} className="rounded-xl bg-white/60 p-3">
+                          <div className="text-default text-xs font-semibold">{dayGroup.day}</div>
+                          <div className="mt-2 space-y-2">
+                            {dayGroup.cells.map((cell, idx) => (
+                              <div
+                                key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
+                                className={`rounded-lg border px-3 py-2 text-xs ${
+                                  cell.matchStatus === "NEGATIVE_FALLBACK"
+                                    ? "border-amber-200 bg-amber-50/80"
+                                    : "border-subtle bg-white"
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
+                                  <span className="text-muted">—</span>
+                                  <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
+                                  <span className="text-muted">—</span>
+                                  <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
+                                  <AssignmentMatchBadge cell={cell} />
+                                </div>
+                                {cell.warningMessage && (
+                                  <div className="mt-1 text-amber-700">{cell.warningMessage}</div>
+                                )}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <select
+                                    className="border-subtle rounded-lg border bg-white px-2 py-1"
+                                    value={cell.memberId ?? ""}
+                                    onChange={(event) =>
+                                      replaceAssignmentMember((cell as EditableAssignment).id, event.target.value)
+                                    }
+                                    disabled={autoApplying}
+                                  >
+                                    {(membersByPosition.get(position.positionId) ?? [])
+                                      .filter(
+                                        (member) =>
+                                          member.id === cell.memberId ||
+                                          !isMemberBusy(member.id, cell.day, (cell as EditableAssignment).id),
+                                      )
+                                      .map((member) => (
+                                        <option key={member.id} value={member.id}>
+                                          {memberDisplayName(member, memberNames)}
+                                        </option>
+                                      ))}
+                                  </select>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => deleteAssignment((cell as EditableAssignment).id)}
+                                    disabled={autoApplying}
+                                  >
+                                    Удалить
+                                  </Button>
+                                </div>
+                                {cell.warnings.length > 0 && (
+                                  <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
+                                    {cell.warnings.map((warning, warningIdx) => (
+                                      <li key={`${position.positionId}-${cell.day}-${idx}-warning-${warningIdx}`}>
+                                        {warning}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
-                              {cell.warningMessage && <div className="mt-1 text-amber-700">{cell.warningMessage}</div>}
-                              {cell.warnings.length > 0 && (
-                                <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
-                                  {cell.warnings.map((warning, warningIdx) => (
-                                    <li key={`${position.positionId}-${cell.day}-${idx}-warning-${warningIdx}`}>
-                                      {warning}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
