@@ -302,6 +302,7 @@ export type ApplyScheduleAutoBuildRequest = {
 
 export type ScheduleAutoBuildMatchStatus =
   | "EXACT_INTERVAL_PREFERENCE"
+  | "COVERING_INTERVAL_PREFERENCE"
   | "FULL_DAY_POSITIVE"
   | "NO_PREFERENCE"
   | "NEGATIVE_FALLBACK"

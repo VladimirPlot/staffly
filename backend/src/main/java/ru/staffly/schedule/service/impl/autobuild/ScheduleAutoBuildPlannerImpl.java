@@ -214,44 +214,228 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         int requiredCount = safeRequiredCount(rule);
         List<ScheduleBuildShiftOption> shiftOptions = safeShiftOptions(config);
-        ScheduleBuildShiftOption option = findShiftOption(shiftOptions, rule);
-        if (option == null) {
-            warnings.add(missingShiftOptionWarning(config, rule, shiftOptions));
-            uncoveredSlots.add(toUncoveredSlot(day, config.getPosition().getId(), rule.getStartTime(), rule.getEndTime(), requiredCount, 0));
-            return new CoverageRuleResult(assignments, warnings, uncoveredSlots, requiredCount, negativeAssignmentsCount);
-        }
+        ScheduleBuildShiftOption singleOption = findExactShiftOption(shiftOptions, rule);
 
         for (int index = 0; index < requiredCount; index++) {
-            CandidateSelectionResult selection = pickMember(
+            if (singleOption != null) {
+                CandidateSelectionResult singleSelection = pickMember(
+                        candidates,
+                        preferencesByMember,
+                        day,
+                        singleOption,
+                        config,
+                        plannerState
+                );
+                if (singleSelection.selected() != null && singleSelection.selected().grade() != PreferenceGrade.NEGATIVE) {
+                    AssignmentBuildResult assignmentResult = assignSelected(
+                            assignments,
+                            plannerState,
+                            singleSelection.selected().member(),
+                            day,
+                            singleOption,
+                            preferencesByMember
+                    );
+                    if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+                        negativeAssignmentsCount++;
+                    }
+                    continue;
+                }
+            }
+
+            CoverageLayerResult layerResult = buildFallbackCoverageLayer(
+                    day,
+                    config,
+                    rule,
                     candidates,
                     preferencesByMember,
-                    day,
-                    option,
-                    config,
-                    plannerState
+                    plannerState,
+                    shiftOptions
             );
-            if (selection.selected() == null) {
-                warnings.add(unfilledWarning(day, option, selection));
-                unfilledCount++;
-                continue;
-            }
-
-            RestaurantMember selected = selection.selected().member();
-            List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
-            AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells);
-
-            assignments.add(assignmentResult.assignment());
-            if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
-                negativeAssignmentsCount++;
-            }
-            registerAssignment(plannerState, selected, day, option);
-        }
-
-        if (unfilledCount > 0) {
-            uncoveredSlots.add(toUncoveredSlot(day, config.getPosition().getId(), option.getStartTime(), option.getEndTime(), requiredCount, assignments.size()));
+            assignments.addAll(layerResult.assignments());
+            warnings.addAll(layerResult.warnings());
+            uncoveredSlots.addAll(layerResult.uncoveredSlots());
+            unfilledCount += layerResult.unfilledCount();
+            negativeAssignmentsCount += layerResult.negativeAssignmentsCount();
         }
 
         return new CoverageRuleResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
+    }
+
+    private CoverageLayerResult buildFallbackCoverageLayer(
+            LocalDate day,
+            ScheduleBuildPositionConfig config,
+            ScheduleBuildCoverageRule rule,
+            List<RestaurantMember> candidates,
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            PlannerState plannerState,
+            List<ScheduleBuildShiftOption> shiftOptions
+    ) {
+        List<AssignmentPlan> assignments = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
+        int negativeAssignmentsCount = 0;
+        int unfilledCount = 0;
+
+        int ruleStart = toMinute(rule.getStartTime(), false);
+        int ruleEnd = toMinute(rule.getEndTime(), true);
+        int cursor = ruleStart;
+
+        while (cursor < ruleEnd) {
+            SplitOptionSelection splitSelection = selectSplitOption(
+                    shiftOptions,
+                    rule,
+                    cursor,
+                    candidates,
+                    preferencesByMember,
+                    day,
+                    config,
+                    plannerState
+            );
+
+            if (splitSelection.option() == null || splitSelection.selection().selected() == null) {
+                int nextBoundary = nextCoverageBoundary(shiftOptions, rule, cursor, ruleEnd);
+                LocalTime uncoveredStart = minuteToTime(cursor);
+                LocalTime uncoveredEnd = minuteToTime(nextBoundary);
+                ScheduleBuildShiftOption warningOption = ScheduleBuildShiftOption.builder()
+                        .startTime(uncoveredStart)
+                        .endTime(uncoveredEnd)
+                        .build();
+                warnings.add(unfilledWarning(day, warningOption, splitSelection.selection()));
+                uncoveredSlots.add(toUncoveredSlot(day, config.getPosition().getId(), uncoveredStart, uncoveredEnd, 1, 0));
+                unfilledCount++;
+                cursor = nextBoundary;
+                continue;
+            }
+
+            ScheduleBuildShiftOption option = splitSelection.option();
+            RestaurantMember selected = splitSelection.selection().selected().member();
+            AssignmentBuildResult assignmentResult = assignSelected(
+                    assignments,
+                    plannerState,
+                    selected,
+                    day,
+                    option,
+                    preferencesByMember
+            );
+            if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+                negativeAssignmentsCount++;
+            }
+            cursor = Math.max(cursor + 1, toMinute(option.getEndTime(), true));
+        }
+
+        return new CoverageLayerResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
+    }
+
+    private AssignmentBuildResult assignSelected(
+            List<AssignmentPlan> assignments,
+            PlannerState plannerState,
+            RestaurantMember selected,
+            LocalDate day,
+            ScheduleBuildShiftOption option,
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember
+    ) {
+        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
+        AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells);
+        assignments.add(assignmentResult.assignment());
+        registerAssignment(plannerState, selected, day, option);
+        return assignmentResult;
+    }
+
+    private SplitOptionSelection selectSplitOption(
+            List<ScheduleBuildShiftOption> shiftOptions,
+            ScheduleBuildCoverageRule rule,
+            int cursor,
+            List<RestaurantMember> candidates,
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            LocalDate day,
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState
+    ) {
+        SplitOptionSelection best = null;
+        for (ScheduleBuildShiftOption option : shiftOptions) {
+            int optionStart = toMinute(option.getStartTime(), false);
+            int optionEnd = toMinute(option.getEndTime(), true);
+            if (optionStart < toMinute(rule.getStartTime(), false) || optionEnd > toMinute(rule.getEndTime(), true)) {
+                continue;
+            }
+            if (optionStart > cursor || optionEnd <= cursor) {
+                continue;
+            }
+            CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState);
+            if (selection.selected() == null) {
+                best = best == null ? new SplitOptionSelection(option, selection) : best;
+                continue;
+            }
+            SplitOptionSelection current = new SplitOptionSelection(option, selection);
+            if (best == null || compareSplitOption(current, best, cursor) < 0) {
+                best = current;
+            }
+        }
+        return best == null ? new SplitOptionSelection(null, CandidateSelectionResult.empty()) : best;
+    }
+
+    private int compareSplitOption(SplitOptionSelection left, SplitOptionSelection right, int cursor) {
+        CandidateEvaluation leftCandidate = left.selection().selected();
+        CandidateEvaluation rightCandidate = right.selection().selected();
+        if (leftCandidate == null && rightCandidate != null) {
+            return 1;
+        }
+        if (leftCandidate != null && rightCandidate == null) {
+            return -1;
+        }
+        int leftStart = toMinute(left.option().getStartTime(), false);
+        int rightStart = toMinute(right.option().getStartTime(), false);
+        int byExactStart = Boolean.compare(rightStart == cursor, leftStart == cursor);
+        if (byExactStart != 0) {
+            return byExactStart;
+        }
+        int byGrade = Integer.compare(gradeRank(leftCandidate.grade()), gradeRank(rightCandidate.grade()));
+        if (byGrade != 0) {
+            return byGrade;
+        }
+        int byEnd = Integer.compare(toMinute(left.option().getEndTime(), true), toMinute(right.option().getEndTime(), true));
+        if (byEnd != 0) {
+            return byEnd;
+        }
+        return Integer.compare(
+                Optional.ofNullable(left.option().getSortOrder()).orElse(0),
+                Optional.ofNullable(right.option().getSortOrder()).orElse(0)
+        );
+    }
+
+    private int matchStatusRank(MatchStatus matchStatus) {
+        return switch (matchStatus) {
+            case EXACT_INTERVAL_PREFERENCE -> 0;
+            case COVERING_INTERVAL_PREFERENCE -> 1;
+            case FULL_DAY_POSITIVE -> 2;
+            case NO_PREFERENCE -> 3;
+            case NEGATIVE_FALLBACK -> 4;
+        };
+    }
+
+    private int gradeRank(PreferenceGrade grade) {
+        if (grade == PreferenceGrade.POSITIVE) {
+            return 0;
+        }
+        if (grade == PreferenceGrade.NONE) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private int nextCoverageBoundary(List<ScheduleBuildShiftOption> shiftOptions, ScheduleBuildCoverageRule rule, int cursor, int ruleEnd) {
+        return shiftOptions.stream()
+                .mapToInt(option -> toMinute(option.getStartTime(), false))
+                .filter(start -> start > cursor && start < ruleEnd)
+                .min()
+                .orElse(ruleEnd);
+    }
+
+    private LocalTime minuteToTime(int minute) {
+        if (minute >= END_OF_DAY_MINUTES) {
+            return LocalTime.MIDNIGHT;
+        }
+        return LocalTime.of(minute / 60, minute % 60);
     }
 
     private AssignmentBuildResult createAssignment(
@@ -384,6 +568,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (rejectionReason != CandidateRejectionReason.NONE) {
             return new CandidateEvaluation(
                     member,
+                    MatchStatus.NO_PREFERENCE,
                     PreferenceGrade.NONE,
                     shiftsCount,
                     displayName,
@@ -392,9 +577,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             );
         }
 
-        PreferenceGrade memberGrade = grade(matchStatusFor(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option));
+        MatchStatus matchStatus = matchStatusFor(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option);
+        PreferenceGrade memberGrade = grade(matchStatus);
         return new CandidateEvaluation(
                 member,
+                matchStatus,
                 memberGrade,
                 shiftsCount,
                 displayName,
@@ -513,6 +700,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private CandidateEvaluation selectBestCandidate(List<CandidateEvaluation> candidates) {
         return candidates.stream()
                 .min((left, right) -> {
+                    int byMatchStatus = Integer.compare(matchStatusRank(left.matchStatus()), matchStatusRank(right.matchStatus()));
+                    if (byMatchStatus != 0) {
+                        return byMatchStatus;
+                    }
+
                     int byShiftsCount = Integer.compare(left.shiftsCount(), right.shiftsCount());
                     if (byShiftsCount != 0) {
                         return byShiftsCount;
@@ -558,7 +750,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private String reasonFor(List<String> warnings, MatchStatus matchStatus) {
-        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
+        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
             return "Подходит по пожеланию";
         }
 
@@ -578,7 +772,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private PreferenceGrade grade(MatchStatus matchStatus) {
-        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
+        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
             return PreferenceGrade.POSITIVE;
         }
         if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
@@ -599,6 +795,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         boolean hasExactPositive = dayCells.stream().anyMatch(cell -> isExactPositiveForShift(cell, option));
         if (hasExactPositive) {
             return MatchStatus.EXACT_INTERVAL_PREFERENCE;
+        }
+
+        boolean hasCoveringPositive = dayCells.stream().anyMatch(cell -> isCoveringPositiveForShift(cell, option));
+        if (hasCoveringPositive) {
+            return MatchStatus.COVERING_INTERVAL_PREFERENCE;
         }
 
         boolean hasFullDayPositive = dayCells.stream().anyMatch(this::isFullDayPositive);
@@ -632,6 +833,17 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 option.getStartTime(),
                 option.getEndTime()
         );
+    }
+
+    private boolean isCoveringPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
+        if (!isPositiveType(cell.getType()) || cell.isFullDay()) {
+            return false;
+        }
+        if (cell.getStartTime() == null || cell.getEndTime() == null) {
+            return false;
+        }
+        return coversInterval(cell.getStartTime(), cell.getEndTime(), option.getStartTime(), option.getEndTime())
+                && !intervalsEqual(cell.getStartTime(), cell.getEndTime(), option.getStartTime(), option.getEndTime());
     }
 
     private boolean isPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
@@ -716,6 +928,15 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private boolean isNegativeType(SchedulePreferenceType type) {
         return type == SchedulePreferenceType.UNAVAILABLE || type == SchedulePreferenceType.PREFER_DAY_OFF;
+    }
+
+    private ScheduleBuildShiftOption findExactShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
+        for (ScheduleBuildShiftOption option : options) {
+            if (intervalsEqual(option.getStartTime(), option.getEndTime(), rule.getStartTime(), rule.getEndTime())) {
+                return option;
+            }
+        }
+        return null;
     }
 
     private ScheduleBuildShiftOption findShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
@@ -1003,6 +1224,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private enum MatchStatus {
         EXACT_INTERVAL_PREFERENCE,
+        COVERING_INTERVAL_PREFERENCE,
         FULL_DAY_POSITIVE,
         NO_PREFERENCE,
         NEGATIVE_FALLBACK
@@ -1011,6 +1233,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private record CandidateEvaluation(
             RestaurantMember member,
+            MatchStatus matchStatus,
             PreferenceGrade grade,
             int shiftsCount,
             String displayName,
@@ -1025,9 +1248,28 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             int minRestRejectedCount,
             int overlapRejectedCount
     ) {
+        private static CandidateSelectionResult empty() {
+            return new CandidateSelectionResult(null, 0, 0, 0);
+        }
+
         private boolean hasHardConstraintRejections() {
             return maxShiftsRejectedCount > 0 || minRestRejectedCount > 0 || overlapRejectedCount > 0;
         }
+    }
+
+    private record SplitOptionSelection(
+            ScheduleBuildShiftOption option,
+            CandidateSelectionResult selection
+    ) {
+    }
+
+    private record CoverageLayerResult(
+            List<AssignmentPlan> assignments,
+            List<String> warnings,
+            List<UncoveredSlotPlan> uncoveredSlots,
+            int unfilledCount,
+            int negativeAssignmentsCount
+    ) {
     }
 
     private record DayBuildResult(

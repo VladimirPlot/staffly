@@ -103,9 +103,13 @@ const MATCH_STATUS_BADGE: Record<ScheduleAutoBuildCellPreviewDto["matchStatus"],
       label: "Хочет эту смену",
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     },
+    COVERING_INTERVAL_PREFERENCE: {
+      label: "Готов в это время",
+      className: "border-sky-200 bg-sky-50 text-sky-700",
+    },
     FULL_DAY_POSITIVE: {
       label: "Готов весь день",
-      className: "border-sky-200 bg-sky-50 text-sky-700",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     },
     NO_PREFERENCE: {
       label: "Без пожелания",
