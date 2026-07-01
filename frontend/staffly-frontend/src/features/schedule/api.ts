@@ -306,12 +306,22 @@ export type ScheduleAutoBuildPositionPreviewDto = {
   negativeAssignmentsCount: number;
 };
 
+export type ScheduleAutoBuildUncoveredSlotDto = {
+  date: string;
+  positionId: number;
+  startTime: string;
+  endTime: string;
+  requiredCount: number;
+  assignedCount: number;
+};
+
 export type ScheduleAutoBuildPreviewResponse = {
   scheduleId: number;
   templateId: number;
   templateName: string;
   positions: ScheduleAutoBuildPositionPreviewDto[];
   warnings: string[];
+  uncoveredSlots: ScheduleAutoBuildUncoveredSlotDto[];
   totalAssignments: number;
   warningsCount: number;
   unfilledCount: number;
@@ -510,6 +520,7 @@ export async function previewScheduleAutoBuild(
       negativeAssignmentsCount: position.negativeAssignmentsCount ?? 0,
     })),
     warnings: data.warnings ?? [],
+    uncoveredSlots: data.uncoveredSlots ?? [],
     totalAssignments: data.totalAssignments ?? 0,
     warningsCount: data.warningsCount ?? 0,
     unfilledCount: data.unfilledCount ?? 0,
