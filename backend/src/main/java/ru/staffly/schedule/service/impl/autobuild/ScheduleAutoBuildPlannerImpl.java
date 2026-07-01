@@ -467,7 +467,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             case COVERING_INTERVAL_PREFERENCE -> 1;
             case FULL_DAY_POSITIVE -> 2;
             case NO_PREFERENCE -> 3;
-            case NEGATIVE_FALLBACK -> 4;
+            case PARTIAL_INTERVAL_FALLBACK -> 4;
+            case NEGATIVE_FALLBACK -> 5;
         };
     }
 
@@ -638,10 +639,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(member.getId(), List.of());
         MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
         PreferenceGrade memberGrade = grade(matchStatus);
-        if (matchStatus == MatchStatus.NO_PREFERENCE && hasPartialPositiveOverlap(memberCells, day, option)) {
-            matchStatus = MatchStatus.NEGATIVE_FALLBACK;
-            memberGrade = PreferenceGrade.NEGATIVE;
-        }
         return new CandidateEvaluation(
                 member,
                 matchStatus,
@@ -819,6 +816,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return "Подходит по пожеланию";
         }
 
+        if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
+            warnings.add("Назначение частично выходит за пределы пожелания сотрудника");
+            return "Частично совпадает с пожеланием";
+        }
+
         if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
             warnings.add("Есть отрицательное пожелание на этот день");
             return "Поставлен для покрытия потребности";
@@ -828,6 +830,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private String warningMessageFor(MatchStatus matchStatus) {
+        if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
+            return "Назначение частично выходит за пределы пожелания сотрудника.";
+        }
         if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
             return "Сотрудник назначен несмотря на отрицательное пожелание, потому что не найдено альтернатив.";
         }
@@ -840,7 +845,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
             return PreferenceGrade.POSITIVE;
         }
-        if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
+        if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK || matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
             return PreferenceGrade.NEGATIVE;
         }
         return PreferenceGrade.NONE;
@@ -868,6 +873,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         boolean hasFullDayPositive = dayCells.stream().anyMatch(this::isFullDayPositive);
         if (hasFullDayPositive) {
             return MatchStatus.FULL_DAY_POSITIVE;
+        }
+
+        boolean hasPartialPositiveOverlap = hasPartialPositiveOverlap(dayCells, day, option);
+        if (hasPartialPositiveOverlap) {
+            return MatchStatus.PARTIAL_INTERVAL_FALLBACK;
         }
 
         boolean hasNegative = dayCells.stream().anyMatch(cell -> isNegativeForShift(cell, option));
@@ -1308,6 +1318,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         COVERING_INTERVAL_PREFERENCE,
         FULL_DAY_POSITIVE,
         NO_PREFERENCE,
+        PARTIAL_INTERVAL_FALLBACK,
         NEGATIVE_FALLBACK
     }
 
