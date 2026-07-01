@@ -876,6 +876,7 @@ const SchedulePage: React.FC = () => {
       <ApplySchedulePreferencesDialog
         open={applyPreferencesDialogOpen}
         scheduleStatus={schedule?.status}
+        preferenceBuildTemplateId={schedule?.preferenceBuildTemplateId ?? null}
         applying={lifecycleActions.pendingAction === "applyPreferences"}
         autoApplying={autoBuildApplyActions.applying}
         templates={buildTemplatesActions.templates}
