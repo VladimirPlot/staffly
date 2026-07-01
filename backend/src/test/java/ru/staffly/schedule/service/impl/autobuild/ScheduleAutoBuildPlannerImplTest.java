@@ -144,6 +144,53 @@ class ScheduleAutoBuildPlannerImplTest {
         assertThat(plan.uncoveredSlots()).isEmpty();
     }
 
+
+    @Test
+    void marksPartialIntervalFallbackWhenAssignedShiftExceedsPositiveIntervalPreference() {
+        RestaurantMember fullDay = member(1, "Full");
+        RestaurantMember partial = member(2, "Partial");
+        RestaurantMember negative = member(3, "Negative");
+        ScheduleBuildTemplate template = template(3,
+                option(1, T10, T17), option(2, T14, T00), option(3, T17, T00), option(4, T10, T00)
+        );
+        Schedule schedule = schedule();
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList()))
+                .thenReturn(List.of(fullDay, partial, negative));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(
+                submission(fullDay, availableFullDay()),
+                submission(partial, available(T10, T17)),
+                submission(negative, unavailableFullDay())
+        ));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells())
+                .extracting(ScheduleAutoBuildPlanner.AssignmentPlan::memberId, ScheduleAutoBuildPlanner.AssignmentPlan::startTime,
+                        ScheduleAutoBuildPlanner.AssignmentPlan::endTime, ScheduleAutoBuildPlanner.AssignmentPlan::matchStatus,
+                        ScheduleAutoBuildPlanner.AssignmentPlan::warningMessage)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple(1L, "10:00", "00:00", "FULL_DAY_POSITIVE", null),
+                        org.assertj.core.groups.Tuple.tuple(2L, "10:00", "00:00", "PARTIAL_INTERVAL_FALLBACK",
+                                "Назначение частично выходит за пределы пожелания сотрудника."),
+                        org.assertj.core.groups.Tuple.tuple(3L, "10:00", "00:00", "NEGATIVE_FALLBACK",
+                                "Сотрудник назначен несмотря на отрицательное пожелание, потому что не найдено альтернатив.")
+                );
+        assertThat(plan.positions().get(0).counters().warningsCount()).isEqualTo(2);
+    }
+
+    @Test
+    void keepsCoveringIntervalPreferenceWhenPositiveIntervalContainsAssignedShift() {
+        RestaurantMember member = member(1, "A");
+        ScheduleBuildTemplate template = template(1, option(1, T17, T00));
+        Schedule schedule = schedule();
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList())).thenReturn(List.of(member));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(submission(member, available(T14, T00))));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells().get(0).matchStatus()).isEqualTo("COVERING_INTERVAL_PREFERENCE");
+    }
+
     private static Schedule schedule() {
         return Schedule.builder().id(10L).startDate(FRIDAY).endDate(FRIDAY).positionIds(List.of(100L)).build();
     }
@@ -173,6 +220,10 @@ class ScheduleAutoBuildPlannerImplTest {
 
     private static SchedulePreferenceCell unavailableFullDay() {
         return SchedulePreferenceCell.builder().day(FRIDAY).type(SchedulePreferenceType.PREFER_DAY_OFF).fullDay(true).build();
+    }
+
+    private static SchedulePreferenceCell availableFullDay() {
+        return SchedulePreferenceCell.builder().day(FRIDAY).type(SchedulePreferenceType.AVAILABLE).fullDay(true).build();
     }
 
     private static SchedulePreferenceCell available(LocalTime start, LocalTime end) {
