@@ -226,7 +226,42 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         config,
                         plannerState
                 );
-                if (singleSelection.selected() != null && singleSelection.selected().grade() != PreferenceGrade.NEGATIVE) {
+                if (singleSelection.selected() != null) {
+                    if (singleSelection.selected().grade() != PreferenceGrade.NEGATIVE) {
+                        AssignmentBuildResult assignmentResult = assignSelected(
+                                assignments,
+                                plannerState,
+                                singleSelection.selected().member(),
+                                day,
+                                singleOption,
+                                preferencesByMember
+                        );
+                        if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+                            negativeAssignmentsCount++;
+                        }
+                        continue;
+                    }
+
+                    CoverageLayerResult positiveSplitResult = buildFallbackCoverageLayer(
+                            day,
+                            config,
+                            rule,
+                            candidates,
+                            preferencesByMember,
+                            plannerState,
+                            shiftOptions,
+                            false,
+                            true
+                    );
+                    if (positiveSplitResult.isComplete()) {
+                        assignments.addAll(positiveSplitResult.assignments());
+                        warnings.addAll(positiveSplitResult.warnings());
+                        uncoveredSlots.addAll(positiveSplitResult.uncoveredSlots());
+                        unfilledCount += positiveSplitResult.unfilledCount();
+                        negativeAssignmentsCount += positiveSplitResult.negativeAssignmentsCount();
+                        continue;
+                    }
+
                     AssignmentBuildResult assignmentResult = assignSelected(
                             assignments,
                             plannerState,
@@ -249,7 +284,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     candidates,
                     preferencesByMember,
                     plannerState,
-                    shiftOptions
+                    shiftOptions,
+                    true,
+                    false
             );
             assignments.addAll(layerResult.assignments());
             warnings.addAll(layerResult.warnings());
@@ -268,7 +305,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<RestaurantMember> candidates,
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
             PlannerState plannerState,
-            List<ScheduleBuildShiftOption> shiftOptions
+            List<ScheduleBuildShiftOption> shiftOptions,
+            boolean allowNegativeAssignments,
+            boolean requireComplete
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -276,6 +315,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int negativeAssignmentsCount = 0;
         int unfilledCount = 0;
 
+        PlannerState workingState = requireComplete ? plannerState.copy() : plannerState;
         int ruleStart = toMinute(rule.getStartTime(), false);
         int ruleEnd = toMinute(rule.getEndTime(), true);
         int cursor = ruleStart;
@@ -289,7 +329,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     preferencesByMember,
                     day,
                     config,
-                    plannerState
+                    workingState,
+                    allowNegativeAssignments
             );
 
             if (splitSelection.option() == null || splitSelection.selection().selected() == null) {
@@ -311,7 +352,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember selected = splitSelection.selection().selected().member();
             AssignmentBuildResult assignmentResult = assignSelected(
                     assignments,
-                    plannerState,
+                    workingState,
                     selected,
                     day,
                     option,
@@ -323,7 +364,15 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             cursor = Math.max(cursor + 1, toMinute(option.getEndTime(), true));
         }
 
-        return new CoverageLayerResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
+        boolean complete = uncoveredSlots.isEmpty() && cursor >= ruleEnd;
+        if (requireComplete && !complete) {
+            return new CoverageLayerResult(List.of(), List.of(), List.of(), 0, 0, false);
+        }
+        if (requireComplete) {
+            plannerState.replaceWith(workingState);
+        }
+
+        return new CoverageLayerResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount, complete);
     }
 
     private AssignmentBuildResult assignSelected(
@@ -349,7 +398,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
             LocalDate day,
             ScheduleBuildPositionConfig config,
-            PlannerState plannerState
+            PlannerState plannerState,
+            boolean allowNegativeAssignments
     ) {
         SplitOptionSelection best = null;
         for (ScheduleBuildShiftOption option : shiftOptions) {
@@ -362,6 +412,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 continue;
             }
             CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState);
+            if (!allowNegativeAssignments && selection.selected() != null && selection.selected().grade() == PreferenceGrade.NEGATIVE) {
+                selection = new CandidateSelectionResult(
+                        null,
+                        selection.maxShiftsRejectedCount(),
+                        selection.minRestRejectedCount(),
+                        selection.overlapRejectedCount()
+                );
+            }
             if (selection.selected() == null) {
                 best = best == null ? new SplitOptionSelection(option, selection) : best;
                 continue;
@@ -577,8 +635,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             );
         }
 
-        MatchStatus matchStatus = matchStatusFor(preferencesByMember.getOrDefault(member.getId(), List.of()), day, option);
+        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(member.getId(), List.of());
+        MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
         PreferenceGrade memberGrade = grade(matchStatus);
+        if (matchStatus == MatchStatus.NO_PREFERENCE && hasPartialPositiveOverlap(memberCells, day, option)) {
+            matchStatus = MatchStatus.NEGATIVE_FALLBACK;
+            memberGrade = PreferenceGrade.NEGATIVE;
+        }
         return new CandidateEvaluation(
                 member,
                 matchStatus,
@@ -1162,6 +1225,24 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             shiftsCountByMember.merge(memberId, 1, Integer::sum);
             assignedIntervalsByMember.computeIfAbsent(memberId, ignored -> new ArrayList<>()).add(interval);
         }
+
+        private PlannerState copy() {
+            PlannerState copy = new PlannerState();
+            copy.shiftsCountByMember.putAll(shiftsCountByMember);
+            assignedIntervalsByMember.forEach((memberId, intervals) ->
+                    copy.assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
+            );
+            return copy;
+        }
+
+        private void replaceWith(PlannerState other) {
+            shiftsCountByMember.clear();
+            shiftsCountByMember.putAll(other.shiftsCountByMember);
+            assignedIntervalsByMember.clear();
+            other.assignedIntervalsByMember.forEach((memberId, intervals) ->
+                    assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
+            );
+        }
     }
 
     private static final class AssignedInterval {
@@ -1268,7 +1349,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<String> warnings,
             List<UncoveredSlotPlan> uncoveredSlots,
             int unfilledCount,
-            int negativeAssignmentsCount
+            int negativeAssignmentsCount,
+            boolean isComplete
     ) {
     }
 
