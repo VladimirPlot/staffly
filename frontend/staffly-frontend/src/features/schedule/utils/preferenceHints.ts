@@ -5,7 +5,7 @@ import { hasCompleteRangeValue, parseTimeRangeValue, parseTimeValue } from "./ti
 export type PreferenceHintTone = "positive" | "negative";
 
 export function isPositivePreference(type: SchedulePreferenceCellDto["type"]): boolean {
-  return type === "AVAILABLE" || type === "PREFER_WORK";
+  return type === "AVAILABLE";
 }
 
 export function isNegativePreference(type: SchedulePreferenceCellDto["type"]): boolean {
@@ -13,10 +13,9 @@ export function isNegativePreference(type: SchedulePreferenceCellDto["type"]): b
 }
 
 export function getPreferenceHintLabel(type: SchedulePreferenceCellDto["type"]): string {
-  if (type === "AVAILABLE") return "Может";
-  if (type === "PREFER_WORK") return "Хочет";
-  if (type === "UNAVAILABLE") return "Не может";
-  return "Хочет выходной";
+  if (type === "AVAILABLE") return "Может работать";
+  if (type === "UNAVAILABLE") return "Не может работать";
+  return "Предпочитает выходной";
 }
 
 export function getPreferenceHintTone(type: SchedulePreferenceCellDto["type"]): PreferenceHintTone {

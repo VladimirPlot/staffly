@@ -35,10 +35,9 @@ type PreferenceFormState = Record<string, PreferenceFormValue>;
 
 const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
   { value: "", label: "Без пожелания" },
-  { value: "AVAILABLE", label: "Могу" },
-  { value: "UNAVAILABLE", label: "Не могу" },
-  { value: "PREFER_DAY_OFF", label: "Хочу выходной" },
-  { value: "PREFER_WORK", label: "Хочу работать" },
+  { value: "AVAILABLE", label: "Могу работать" },
+  { value: "UNAVAILABLE", label: "Не могу работать" },
+  { value: "PREFER_DAY_OFF", label: "Предпочитаю выходной" },
 ];
 
 function formatDateTime(value: string | null | undefined): string {
@@ -138,7 +137,7 @@ function buildRepeatingPattern(
   days.forEach((day) => {
     const indexInCycle = getPositiveModulo(getDayOffsetFromStart(day.date, startDay), cycleLength);
     result[day.date] = {
-      type: indexInCycle < workCount ? "PREFER_WORK" : "PREFER_DAY_OFF",
+      type: indexInCycle < workCount ? "AVAILABLE" : "PREFER_DAY_OFF",
       fullDay: true,
       startTime: "",
       endTime: "",
@@ -398,7 +397,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               disabled={!data.canSubmit || saving}
               onClick={() => setFormStateByDay(fillAll(data.days, "AVAILABLE"))}
             >
-              Все дни могу
+              Все дни могу работать
             </Button>
             <Button
               type="button"
@@ -406,7 +405,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               disabled={!data.canSubmit || saving}
               onClick={() => setFormStateByDay(fillAll(data.days, "UNAVAILABLE"))}
             >
-              Все дни не могу
+              Все дни не могу работать
             </Button>
             <Button type="button" variant="outline" disabled={!data.canSubmit || saving} onClick={clearAll}>
               Очистить все

@@ -986,7 +986,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private boolean isPositiveType(SchedulePreferenceType type) {
-        return type == SchedulePreferenceType.AVAILABLE || type == SchedulePreferenceType.PREFER_WORK;
+        return type == SchedulePreferenceType.AVAILABLE;
     }
 
     private boolean isNegativeType(SchedulePreferenceType type) {
