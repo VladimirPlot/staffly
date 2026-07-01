@@ -16,6 +16,7 @@ public interface ScheduleAutoBuildPlanner {
             Set<Long> affectedPositionIds,
             java.util.List<PositionPlan> positions,
             java.util.List<String> warnings,
+            java.util.List<UncoveredSlotPlan> uncoveredSlots,
             int totalAssignments,
             int warningsCount,
             int unfilledCount,
@@ -31,6 +32,15 @@ public interface ScheduleAutoBuildPlanner {
             int warningsCount,
             int unfilledCount,
             int negativeAssignmentsCount
+    ) {}
+
+    record UncoveredSlotPlan(
+            String date,
+            Long positionId,
+            String startTime,
+            String endTime,
+            int requiredCount,
+            int assignedCount
     ) {}
 
     record AssignmentPlan(

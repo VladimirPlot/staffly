@@ -61,6 +61,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 plan.templateName(),
                 plan.positions().stream().map(this::toPositionDto).toList(),
                 plan.warnings(),
+                plan.uncoveredSlots().stream().map(this::toUncoveredSlotDto).toList(),
                 plan.totalAssignments(),
                 plan.warningsCount(),
                 plan.unfilledCount(),
@@ -96,5 +97,16 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
     private ScheduleAutoBuildCellPreviewDto toCellDto(ScheduleAutoBuildPlanner.AssignmentPlan a) {
         return new ScheduleAutoBuildCellPreviewDto(a.memberId(), a.memberName(), a.day(), a.value(), a.shiftOptionId(), a.shiftLabel(), a.reason(), a.warnings());
+    }
+
+    private ScheduleAutoBuildUncoveredSlotDto toUncoveredSlotDto(ScheduleAutoBuildPlanner.UncoveredSlotPlan slot) {
+        return new ScheduleAutoBuildUncoveredSlotDto(
+                slot.date(),
+                slot.positionId(),
+                slot.startTime(),
+                slot.endTime(),
+                slot.requiredCount(),
+                slot.assignedCount()
+        );
     }
 }

@@ -8,6 +8,7 @@ public record ScheduleAutoBuildPreviewResponse(
         String templateName,
         List<ScheduleAutoBuildPositionPreviewDto> positions,
         List<String> warnings,
+        List<ScheduleAutoBuildUncoveredSlotDto> uncoveredSlots,
         int totalAssignments,
         int warningsCount,
         int unfilledCount,

@@ -252,6 +252,19 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
               {preview.unfilledCount > 0 && (
                 <WarningBox>Не все потребности закрыты. После применения проверьте пустые места вручную.</WarningBox>
               )}
+              {preview.uncoveredSlots.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <div className="font-semibold">Не закрыто</div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {preview.uncoveredSlots.map((slot, idx) => (
+                      <li key={`${slot.date}-${slot.positionId}-${slot.startTime}-${slot.endTime}-${idx}`}>
+                        {slot.date}, {slot.startTime}–{slot.endTime}: не хватает{" "}
+                        {Math.max(slot.requiredCount - slot.assignedCount, 0)} из {slot.requiredCount}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {preview.negativeAssignmentsCount > 0 && (
                 <WarningBox>Есть назначения вопреки отрицательным пожеланиям сотрудников.</WarningBox>
               )}

@@ -16,6 +16,7 @@ import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.AssignmentPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.PositionPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
+import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.UncoveredSlotPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 
 import java.time.LocalDate;
@@ -65,13 +66,15 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         Map<Long, List<SchedulePreferenceCell>> preferencesByMember = loadPreferencesByMember(schedule.getId());
         PlannerState plannerState = new PlannerState();
         List<PositionPlan> positions = new ArrayList<>();
+        List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
 
         for (ScheduleBuildPositionConfig config : positionConfigs) {
             if (!schedulePositions.contains(config.getPosition().getId())) {
                 continue;
             }
-            PositionPlan positionPlan = buildPosition(restaurantId, schedule, config, preferencesByMember, plannerState);
-            positions.add(positionPlan);
+            PositionBuildResult positionResult = buildPosition(restaurantId, schedule, config, preferencesByMember, plannerState);
+            positions.add(positionResult.positionPlan());
+            uncoveredSlots.addAll(positionResult.uncoveredSlots());
         }
 
         List<String> distinctTopWarnings = topWarnings.stream().distinct().toList();
@@ -88,6 +91,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 affected,
                 positions,
                 distinctTopWarnings,
+                uncoveredSlots,
                 totalAssignments,
                 warningsCount,
                 unfilledCount,
@@ -95,7 +99,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         );
     }
 
-    private PositionPlan buildPosition(
+    private PositionBuildResult buildPosition(
             Long restaurantId,
             Schedule schedule,
             ScheduleBuildPositionConfig config,
@@ -105,6 +109,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<RestaurantMember> candidates = loadCandidates(restaurantId, config);
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
 
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
@@ -119,13 +124,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             );
             assignments.addAll(dayResult.assignments());
             warnings.addAll(dayResult.warnings());
+            uncoveredSlots.addAll(dayResult.uncoveredSlots());
             unfilledCount += dayResult.unfilledCount();
             negativeAssignmentsCount += dayResult.negativeAssignmentsCount();
         }
 
         PositionCounters counters = buildPositionCounters(assignments, warnings, unfilledCount, negativeAssignmentsCount);
 
-        return new PositionPlan(
+        PositionPlan positionPlan = new PositionPlan(
                 config.getPosition().getId(),
                 config.getPosition().getName(),
                 assignments,
@@ -135,6 +141,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 counters.unfilledCount(),
                 counters.negativeAssignmentsCount()
         );
+        return new PositionBuildResult(positionPlan, uncoveredSlots);
     }
 
     private List<RestaurantMember> loadCandidates(Long restaurantId, ScheduleBuildPositionConfig config) {
@@ -157,11 +164,17 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
         int dayOfWeek = day.getDayOfWeek().getValue();
-        List<ScheduleBuildCoverageRule> coverageRules = safeCoverageRules(config).stream()
+        List<ScheduleBuildCoverageRule> allCoverageRules = safeCoverageRules(config);
+        if (allCoverageRules.isEmpty()) {
+            return buildLegacyAssignmentsForDay(day, config, candidates, preferencesByMember, plannerState);
+        }
+
+        List<ScheduleBuildCoverageRule> coverageRules = allCoverageRules.stream()
                 .filter(rule -> rule.getDayOfWeek() == dayOfWeek)
                 .toList();
 
@@ -177,11 +190,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
             assignments.addAll(ruleResult.assignments());
             warnings.addAll(ruleResult.warnings());
+            uncoveredSlots.addAll(ruleResult.uncoveredSlots());
             unfilledCount += ruleResult.unfilledCount();
             negativeAssignmentsCount += ruleResult.negativeAssignmentsCount();
         }
 
-        return new DayBuildResult(assignments, warnings, unfilledCount, negativeAssignmentsCount);
+        return new DayBuildResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
     }
 
     private CoverageRuleResult buildAssignmentForCoverageRule(
@@ -194,6 +208,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
@@ -202,7 +217,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         ScheduleBuildShiftOption option = findShiftOption(shiftOptions, rule);
         if (option == null) {
             warnings.add(missingShiftOptionWarning(config, rule, shiftOptions));
-            return new CoverageRuleResult(assignments, warnings, requiredCount, negativeAssignmentsCount);
+            uncoveredSlots.add(toUncoveredSlot(day, config.getPosition().getId(), rule.getStartTime(), rule.getEndTime(), requiredCount, 0));
+            return new CoverageRuleResult(assignments, warnings, uncoveredSlots, requiredCount, negativeAssignmentsCount);
         }
 
         for (int index = 0; index < requiredCount; index++) {
@@ -231,7 +247,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             registerAssignment(plannerState, selected, day, option);
         }
 
-        return new CoverageRuleResult(assignments, warnings, unfilledCount, negativeAssignmentsCount);
+        if (unfilledCount > 0) {
+            uncoveredSlots.add(toUncoveredSlot(day, config.getPosition().getId(), option.getStartTime(), option.getEndTime(), requiredCount, assignments.size()));
+        }
+
+        return new CoverageRuleResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
     }
 
     private AssignmentBuildResult createAssignment(
@@ -387,6 +407,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (violatesMaxShifts(member, config, plannerState)) {
             return CandidateRejectionReason.MAX_SHIFTS;
         }
+        if (hasAssignmentOnDay(member, plannerState, day)) {
+            return CandidateRejectionReason.OVERLAP;
+        }
         if (overlapsExistingAssignment(member, plannerState, day, option.getStartTime(), option.getEndTime())) {
             return CandidateRejectionReason.OVERLAP;
         }
@@ -406,6 +429,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return false;
         }
         return plannerState.shiftsCount(member.getId()) >= maxShiftsPerPeriod;
+    }
+
+    private boolean hasAssignmentOnDay(RestaurantMember member, PlannerState plannerState, LocalDate day) {
+        return plannerState.assignedIntervals(member.getId()).stream()
+                .anyMatch(interval -> day.equals(interval.day()));
     }
 
     private boolean overlapsExistingAssignment(
@@ -578,11 +606,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return false;
         }
 
-        return overlaps(
-                toMinute(cell.getStartTime(), false),
-                toMinute(cell.getEndTime(), true),
-                toMinute(option.getStartTime(), false),
-                toMinute(option.getEndTime(), true)
+        return intervalsEqual(
+                cell.getStartTime(),
+                cell.getEndTime(),
+                option.getStartTime(),
+                option.getEndTime()
         );
     }
 
@@ -799,6 +827,54 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return requiredCount;
     }
 
+    private DayBuildResult buildLegacyAssignmentsForDay(
+            LocalDate day,
+            ScheduleBuildPositionConfig config,
+            List<RestaurantMember> candidates,
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            PlannerState plannerState
+    ) {
+        List<AssignmentPlan> assignments = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        int negativeAssignmentsCount = 0;
+
+        for (ScheduleBuildShiftOption option : safeShiftOptions(config)) {
+            CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState);
+            if (selection.selected() == null) {
+                continue;
+            }
+
+            RestaurantMember selected = selection.selected().member();
+            List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
+            AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells);
+            assignments.add(assignmentResult.assignment());
+            if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+                negativeAssignmentsCount++;
+            }
+            registerAssignment(plannerState, selected, day, option);
+        }
+
+        return new DayBuildResult(assignments, warnings, List.of(), 0, negativeAssignmentsCount);
+    }
+
+    private UncoveredSlotPlan toUncoveredSlot(
+            LocalDate day,
+            Long positionId,
+            LocalTime startTime,
+            LocalTime endTime,
+            int requiredCount,
+            int assignedCount
+    ) {
+        return new UncoveredSlotPlan(
+                day.toString(),
+                positionId,
+                startTime.format(HH_MM),
+                endTime.format(HH_MM),
+                requiredCount,
+                assignedCount
+        );
+    }
+
     private Map<Long, List<SchedulePreferenceCell>> loadPreferencesByMember(Long scheduleId) {
         return submissions.findWithCellsByScheduleId(scheduleId).stream()
                 .filter(submission -> submission.getMember() != null)
@@ -911,6 +987,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private record DayBuildResult(
             List<AssignmentPlan> assignments,
             List<String> warnings,
+            List<UncoveredSlotPlan> uncoveredSlots,
             int unfilledCount,
             int negativeAssignmentsCount
     ) {
@@ -919,9 +996,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private record CoverageRuleResult(
             List<AssignmentPlan> assignments,
             List<String> warnings,
+            List<UncoveredSlotPlan> uncoveredSlots,
             int unfilledCount,
             int negativeAssignmentsCount
     ) {
+    }
+
+    private record PositionBuildResult(PositionPlan positionPlan, List<UncoveredSlotPlan> uncoveredSlots) {
     }
 
     private record AssignmentBuildResult(AssignmentPlan assignment, PreferenceGrade grade) {
