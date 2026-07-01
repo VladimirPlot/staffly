@@ -54,6 +54,39 @@ function formatDateTime(value: string | null | undefined): string {
   });
 }
 
+function parseTimeToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = match[3] === undefined ? 0 : Number(match[3]);
+
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+
+  return hours * 60 + minutes;
+}
+
+function isMidnight(value: string): boolean {
+  return parseTimeToMinutes(value) === 0;
+}
+
+function getEndTimeMinutesForPreference(value: string): number | null {
+  const minutes = parseTimeToMinutes(value);
+  if (minutes === null) return null;
+
+  return isMidnight(value) ? 24 * 60 : minutes;
+}
+
+function isValidPreferenceTimeInterval(startTime: string, endTime: string): boolean {
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = getEndTimeMinutesForPreference(endTime);
+
+  if (startMinutes === null || endMinutes === null) return false;
+
+  return startMinutes < endMinutes;
+}
+
 function getInitialFormState(data: SchedulePreferenceMyResponse): PreferenceFormState {
   const result: PreferenceFormState = {};
   const sortedCells = [...data.cells].sort((a, b) => {
@@ -211,11 +244,11 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
           setFormError(`Заполните время для ${formatDateFromIso(day.date)}.`);
           return;
         }
-        if (value.startTime === value.endTime) {
+        if (parseTimeToMinutes(value.startTime) === parseTimeToMinutes(value.endTime)) {
           setFormError(`Время начала и окончания не должно совпадать (${formatDateFromIso(day.date)}).`);
           return;
         }
-        if (value.endTime !== "00:00" && value.startTime >= value.endTime) {
+        if (!isValidPreferenceTimeInterval(value.startTime, value.endTime)) {
           setFormError(`Время начала должно быть раньше окончания (${formatDateFromIso(day.date)}).`);
           return;
         }
