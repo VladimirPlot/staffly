@@ -68,7 +68,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         initializeTemplateCollections(template);
         validateTemplateHasSchedulePositions(schedule, template);
 
-        ScheduleAutoBuildPlan plan = hasAdjustedAssignments(request)
+        boolean adjustedApply = hasAdjustedAssignments(request);
+        ScheduleAutoBuildPlan plan = adjustedApply
                 ? buildAdjustedPlan(restaurantId, schedule, template, request.adjustedAssignments())
                 : planner.build(restaurantId, schedule, template);
         if (plan.totalAssignments() == 0) {
@@ -87,8 +88,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         scheduleAuditService.record(
                 saved,
                 actorUserId,
-                ScheduleAuditAction.PREFERENCES_APPLIED,
-                buildAuditDetails(plan, skippedAssignments)
+                ScheduleAuditAction.AUTO_BUILD_APPLIED,
+                buildAuditDetails(plan, skippedAssignments, countManualOverrides(request), adjustedApply)
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
@@ -350,9 +351,25 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         return value != null && !value.isBlank();
     }
 
-    private String buildAuditDetails(ScheduleAutoBuildPlan plan, int skippedAssignments) {
-        return "Автосборка графика выполнена по шаблону: " + plan.templateName()
-                + ". Назначений: " + plan.totalAssignments()
+    private int countManualOverrides(ApplyScheduleAutoBuildRequest request) {
+        if (!hasAdjustedAssignments(request)) {
+            return 0;
+        }
+        return Math.toIntExact(request.adjustedAssignments().stream()
+                .filter(assignment -> "MANUAL_OVERRIDE".equalsIgnoreCase(assignment.matchStatus()))
+                .count());
+    }
+
+    private String buildAuditDetails(ScheduleAutoBuildPlan plan, int skippedAssignments,
+                                     int manualOverridesCount, boolean adjustedApply) {
+        int uncoveredSlotsCount = plan.uncoveredSlots() == null ? 0 : plan.uncoveredSlots().size();
+        return "Автосборка применена: "
+                + plan.totalAssignments() + " назначений"
+                + ", ручных правок: " + manualOverridesCount
+                + ", незакрыто: " + uncoveredSlotsCount
+                + ". Шаблон: " + plan.templateName()
+                + " (templateId: " + plan.templateId() + ")"
+                + ", adjustedAssignments: " + adjustedApply
                 + ", незаполнено: " + plan.unfilledCount()
                 + ", предупреждений: " + plan.warningsCount()
                 + ", пропущено без строки: " + skippedAssignments;
