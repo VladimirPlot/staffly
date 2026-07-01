@@ -23,10 +23,9 @@ type SchedulePreferenceManagerDialogProps = {
 };
 
 const PREFERENCE_TYPE_LABELS: Record<SchedulePreferenceType, string> = {
-  AVAILABLE: "Могу",
-  UNAVAILABLE: "Не могу",
-  PREFER_DAY_OFF: "Хочу выходной",
-  PREFER_WORK: "Хочу работать",
+  AVAILABLE: "Могу работать",
+  UNAVAILABLE: "Не могу работать",
+  PREFER_DAY_OFF: "Предпочитаю выходной",
 };
 
 function formatDateTime(value: string | null | undefined): string {
@@ -67,7 +66,7 @@ function sortCells(cells: SchedulePreferenceCellDto[]): SchedulePreferenceCellDt
 }
 
 type PreferenceSummary = {
-  preferWork: number;
+  available: number;
   preferDayOff: number;
   unavailable: number;
 };
@@ -86,17 +85,17 @@ type EmployeePreferenceRow = {
 function countPreferenceSummary(cells: SchedulePreferenceCellDto[]): PreferenceSummary {
   return cells.reduce<PreferenceSummary>(
     (summary, cell) => {
-      if (cell.type === "PREFER_WORK") summary.preferWork += 1;
+      if (cell.type === "AVAILABLE") summary.available += 1;
       if (cell.type === "PREFER_DAY_OFF") summary.preferDayOff += 1;
       if (cell.type === "UNAVAILABLE") summary.unavailable += 1;
       return summary;
     },
-    { preferWork: 0, preferDayOff: 0, unavailable: 0 },
+    { available: 0, preferDayOff: 0, unavailable: 0 },
   );
 }
 
 function formatPreferenceSummary(summary: PreferenceSummary): string {
-  return `хочу работать: ${summary.preferWork}, выходной: ${summary.preferDayOff}, не могу: ${summary.unavailable}`;
+  return `могу работать: ${summary.available}, предпочитаю выходной: ${summary.preferDayOff}, не могу работать: ${summary.unavailable}`;
 }
 
 function buildEmployeePreferenceRows(

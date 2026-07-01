@@ -98,7 +98,7 @@ export type StartPreferenceCollectionRequest = {
   buildTemplateId?: number | null;
 };
 
-export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF" | "PREFER_WORK";
+export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF";
 
 export type SchedulePreferenceCellDto = {
   id: number | null;
