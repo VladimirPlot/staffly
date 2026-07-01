@@ -1,115 +1,141 @@
 import React from "react";
 
-import Button from "../../../shared/ui/Button";
-import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
-import { SCHEDULE_BUILD_TIME_STEP_SECONDS, type ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import type { ScheduleBuildCoverageRuleDraft, ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
 
-const dayOptions = [
-  { value: 1, label: "1 — Пн" },
-  { value: 2, label: "2 — Вт" },
-  { value: 3, label: "3 — Ср" },
-  { value: 4, label: "4 — Чт" },
-  { value: 5, label: "5 — Пт" },
-  { value: 6, label: "6 — Сб" },
-  { value: 7, label: "7 — Вс" },
+const weekdays = [
+  { value: 1, label: "Пн" },
+  { value: 2, label: "Вт" },
+  { value: 3, label: "Ср" },
+  { value: 4, label: "Чт" },
+  { value: 5, label: "Пт" },
+  { value: 6, label: "Сб" },
+  { value: 7, label: "Вс" },
 ];
+
+const getShiftLabel = (label: string, index: number) => (label.trim() ? label.trim() : `Смена ${index + 1}`);
+
+const findRuleIndex = (
+  coverageRules: ScheduleBuildCoverageRuleDraft[],
+  dayOfWeek: number,
+  startTime: string,
+  endTime: string,
+) =>
+  coverageRules.findIndex(
+    (rule) => rule.dayOfWeek === dayOfWeek && rule.startTime === startTime && rule.endTime === endTime,
+  );
 
 type Props = {
   config: ScheduleBuildPositionConfigDraft;
   saving: boolean;
   onChange: (next: ScheduleBuildPositionConfigDraft) => void;
-  onAdd: () => void;
-  onRemove: (index: number) => void;
 };
 
-const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onChange, onAdd, onRemove }) => (
-  <div className="space-y-2">
-    <div>
-      <div className="text-sm font-medium">Правила покрытия</div>
-      <div className="text-muted text-xs">
-        В MVP каждое правило покрытия должно соответствовать одному варианту смены или покрываться одним вариантом
-        смены. Если нужно поставить разные смены в один день, укажите количество по каждому варианту отдельно.
+const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onChange }) => {
+  const handleRequiredCountChange = (shiftOptionIndex: number, dayOfWeek: number, rawValue: string) => {
+    const shiftOption = config.shiftOptions[shiftOptionIndex];
+    if (!shiftOption) return;
+
+    const requiredCount = Math.max(0, Number(rawValue) || 0);
+    const ruleIndex = findRuleIndex(config.coverageRules, dayOfWeek, shiftOption.startTime, shiftOption.endTime);
+
+    if (requiredCount === 0) {
+      if (ruleIndex === -1) return;
+      onChange({
+        ...config,
+        coverageRules: config.coverageRules.filter((_, index) => index !== ruleIndex),
+      });
+      return;
+    }
+
+    if (ruleIndex === -1) {
+      onChange({
+        ...config,
+        coverageRules: [
+          ...config.coverageRules,
+          {
+            dayOfWeek,
+            startTime: shiftOption.startTime,
+            endTime: shiftOption.endTime,
+            requiredCount,
+            sortOrder: config.coverageRules.length,
+          },
+        ],
+      });
+      return;
+    }
+
+    onChange({
+      ...config,
+      coverageRules: config.coverageRules.map((rule, index) =>
+        index === ruleIndex ? { ...rule, requiredCount } : rule,
+      ),
+    });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <div className="text-sm font-medium">Правила покрытия</div>
+        <div className="text-muted text-xs">
+          Укажите, сколько сотрудников требуется на каждый вариант смены по дням недели.
+        </div>
       </div>
+      {config.shiftOptions.length === 0 ? (
+        <div className="text-muted text-sm">Добавьте варианты смен, чтобы настроить покрытие.</div>
+      ) : (
+        <div className="border-subtle overflow-x-auto rounded-xl border">
+          <table className="w-full min-w-[520px] border-collapse text-sm">
+            <thead className="bg-muted/30">
+              <tr>
+                <th className="border-subtle w-44 border-b px-2 py-2 text-left font-medium">Смена</th>
+                {weekdays.map((day) => (
+                  <th key={day.value} className="border-subtle border-b px-1 py-2 text-center font-medium">
+                    {day.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {config.shiftOptions.map((shiftOption, shiftOptionIndex) => (
+                <tr key={shiftOptionIndex} className="border-subtle border-t">
+                  <th className="px-2 py-2 text-left align-middle font-normal">
+                    <div className="font-medium">{getShiftLabel(shiftOption.label, shiftOptionIndex)}</div>
+                    <div className="text-muted text-xs">
+                      {shiftOption.startTime || "—"}–{shiftOption.endTime || "—"}
+                    </div>
+                  </th>
+                  {weekdays.map((day) => {
+                    const rule = config.coverageRules.find(
+                      (item) =>
+                        item.dayOfWeek === day.value &&
+                        item.startTime === shiftOption.startTime &&
+                        item.endTime === shiftOption.endTime,
+                    );
+
+                    return (
+                      <td key={day.value} className="px-1 py-2 text-center align-middle">
+                        <Input
+                          aria-label={`${getShiftLabel(shiftOption.label, shiftOptionIndex)} ${day.label}`}
+                          className="mx-auto h-8 w-14 rounded-xl px-2 text-center text-sm"
+                          label={<span className="sr-only">{day.label}</span>}
+                          min={0}
+                          type="number"
+                          value={String(rule?.requiredCount ?? 0)}
+                          disabled={saving || !shiftOption.startTime || !shiftOption.endTime}
+                          onChange={(e) => handleRequiredCountChange(shiftOptionIndex, day.value, e.target.value)}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
-    {config.coverageRules.length === 0 && (
-      <div className="text-muted text-sm">
-        Правила покрытия можно добавить позже; без них автосборка не сможет рассчитать потребность.
-      </div>
-    )}
-    {config.coverageRules.map((rule, ruleIndex) => (
-      <div key={ruleIndex} className="border-subtle grid grid-cols-2 gap-2 rounded-xl border p-2">
-        <DropdownSelect
-          value={String(rule.dayOfWeek)}
-          disabled={saving}
-          onChange={(e) =>
-            onChange({
-              ...config,
-              coverageRules: config.coverageRules.map((item, idx) =>
-                idx === ruleIndex ? { ...item, dayOfWeek: Number(e.target.value) } : item,
-              ),
-            })
-          }
-        >
-          {dayOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </DropdownSelect>
-        <Input
-          label="Требуется"
-          type="number"
-          value={String(rule.requiredCount)}
-          disabled={saving}
-          onChange={(e) =>
-            onChange({
-              ...config,
-              coverageRules: config.coverageRules.map((item, idx) =>
-                idx === ruleIndex ? { ...item, requiredCount: Number(e.target.value) } : item,
-              ),
-            })
-          }
-        />
-        <Input
-          label="С"
-          type="time"
-          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-          value={rule.startTime}
-          disabled={saving}
-          onChange={(e) =>
-            onChange({
-              ...config,
-              coverageRules: config.coverageRules.map((item, idx) =>
-                idx === ruleIndex ? { ...item, startTime: e.target.value } : item,
-              ),
-            })
-          }
-        />
-        <Input
-          label="По"
-          type="time"
-          step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-          value={rule.endTime}
-          disabled={saving}
-          onChange={(e) =>
-            onChange({
-              ...config,
-              coverageRules: config.coverageRules.map((item, idx) =>
-                idx === ruleIndex ? { ...item, endTime: e.target.value } : item,
-              ),
-            })
-          }
-        />
-        <Button variant="outline" disabled={saving} onClick={() => onRemove(ruleIndex)}>
-          Удалить правило
-        </Button>
-      </div>
-    ))}
-    <Button variant="outline" disabled={saving} onClick={onAdd}>
-      Добавить правило
-    </Button>
-  </div>
-);
+  );
+};
 
 export default ScheduleBuildCoverageRulesEditor;

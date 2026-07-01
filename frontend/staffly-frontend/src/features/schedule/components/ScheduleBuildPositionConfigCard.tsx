@@ -6,7 +6,6 @@ import Input from "../../../shared/ui/Input";
 import type { PositionDto } from "../../dictionaries/api";
 import type { ScheduleBuildTargetPattern } from "../api";
 import {
-  createCoverageRuleDraft,
   createShiftOptionDraft,
   SCHEDULE_BUILD_TIME_STEP_SECONDS,
   type ScheduleBuildPositionConfigDraft,
@@ -118,20 +117,21 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
       saving={saving}
       onChange={onChange}
       onAdd={() => onChange({ ...config, shiftOptions: [...config.shiftOptions, createShiftOptionDraft()] })}
-      onRemove={(shiftOptionIndex) =>
-        onChange({ ...config, shiftOptions: config.shiftOptions.filter((_, idx) => idx !== shiftOptionIndex) })
-      }
+      onRemove={(shiftOptionIndex) => {
+        const shiftOption = config.shiftOptions[shiftOptionIndex];
+        onChange({
+          ...config,
+          shiftOptions: config.shiftOptions.filter((_, idx) => idx !== shiftOptionIndex),
+          coverageRules: shiftOption
+            ? config.coverageRules.filter(
+                (rule) => rule.startTime !== shiftOption.startTime || rule.endTime !== shiftOption.endTime,
+              )
+            : config.coverageRules,
+        });
+      }}
     />
 
-    <ScheduleBuildCoverageRulesEditor
-      config={config}
-      saving={saving}
-      onChange={onChange}
-      onAdd={() => onChange({ ...config, coverageRules: [...config.coverageRules, createCoverageRuleDraft()] })}
-      onRemove={(coverageRuleIndex) =>
-        onChange({ ...config, coverageRules: config.coverageRules.filter((_, idx) => idx !== coverageRuleIndex) })
-      }
-    />
+    <ScheduleBuildCoverageRulesEditor config={config} saving={saving} onChange={onChange} />
   </div>
 );
 
