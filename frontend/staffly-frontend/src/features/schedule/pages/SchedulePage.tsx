@@ -42,7 +42,7 @@ import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
-import type { ScheduleSummary } from "../api";
+import type { AdjustedScheduleAutoBuildAssignment, ScheduleSummary } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
@@ -525,8 +525,8 @@ const SchedulePage: React.FC = () => {
   );
 
   const handleApplyAutoBuild = React.useCallback(
-    async (templateId: number): Promise<boolean> => {
-      const ok = await autoBuildApplyActions.applyAutoBuild(templateId);
+    async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
+      const ok = await autoBuildApplyActions.applyAutoBuild(templateId, adjustedAssignments);
       if (ok) {
         setApplyPreferencesDialogOpen(false);
         autoBuildPreviewActions.clearPreview();
@@ -882,6 +882,7 @@ const SchedulePage: React.FC = () => {
         templates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
         templatesError={buildTemplatesActions.error}
+        members={members}
         preview={autoBuildPreviewActions.preview}
         previewLoading={autoBuildPreviewActions.loading}
         previewError={autoBuildPreviewActions.error}

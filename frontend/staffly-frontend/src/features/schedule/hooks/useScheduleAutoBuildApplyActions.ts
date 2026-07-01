@@ -1,6 +1,11 @@
 import React from "react";
 
-import { applyScheduleAutoBuild, listSavedSchedules, type ScheduleSummary } from "../api";
+import {
+  applyScheduleAutoBuild,
+  listSavedSchedules,
+  type AdjustedScheduleAutoBuildAssignment,
+  type ScheduleSummary,
+} from "../api";
 import type { ScheduleData } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
@@ -34,12 +39,12 @@ export default function useScheduleAutoBuildApplyActions({
   const [applying, setApplying] = React.useState(false);
 
   const applyAutoBuild = React.useCallback(
-    async (templateId: number): Promise<boolean> => {
+    async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
       if (!restaurantId || !scheduleId || !templateId) return false;
       setApplying(true);
       onClearScheduleNotices();
       try {
-        const updated = await applyScheduleAutoBuild(restaurantId, scheduleId, { templateId });
+        const updated = await applyScheduleAutoBuild(restaurantId, scheduleId, { templateId, adjustedAssignments });
         const prepared = prepareSchedule(updated);
         onScheduleChanged(prepared);
         onScheduleReadOnlyChanged(true);
