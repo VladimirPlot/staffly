@@ -188,7 +188,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     rule,
                     candidates,
                     preferencesByMember,
-                    plannerState
+                    plannerState,
+                    targetShiftsPerCandidate
             );
 
             assignments.addAll(ruleResult.assignments());
@@ -207,7 +208,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildCoverageRule rule,
             List<RestaurantMember> candidates,
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
-            PlannerState plannerState
+            PlannerState plannerState,
+            double targetShiftsPerCandidate
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
