@@ -40,6 +40,27 @@ const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
   { value: "PREFER_DAY_OFF", label: "Предпочитаю выходной" },
 ];
 
+function getIntervalToggleLabel(type: PreferenceSelectValue): string {
+  if (type === "AVAILABLE") return "Указать смену, когда могу";
+  if (type === "PREFER_DAY_OFF") return "Указать смену, когда предпочитаю выходной";
+  if (type === "UNAVAILABLE") return "Указать смену, когда не могу";
+  return "Указать время";
+}
+
+function getIntervalSelectLabel(type: PreferenceSelectValue): string {
+  if (type === "AVAILABLE") return "Когда можете работать";
+  if (type === "PREFER_DAY_OFF") return "Когда лучше не ставить";
+  if (type === "UNAVAILABLE") return "Когда точно не можете";
+  return "Выберите вариант смены";
+}
+
+function getFullDayHelp(type: PreferenceSelectValue): string | null {
+  if (type === "AVAILABLE") return "Без времени: могу весь день.";
+  if (type === "PREFER_DAY_OFF") return "Без времени: предпочитаю выходной весь день.";
+  if (type === "UNAVAILABLE") return "Без времени: не могу весь день.";
+  return null;
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -451,8 +472,12 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                       onChange={(event) => handleUseTimeToggle(day.date, event.target.checked)}
                       disabled={!data.canSubmit || saving}
                     />
-                    Указать время
+                    {getIntervalToggleLabel(formStateByDay[day.date]?.type ?? "")}
                   </label>
+                  {(formStateByDay[day.date]?.fullDay ?? true) &&
+                  getFullDayHelp(formStateByDay[day.date]?.type ?? "") ? (
+                    <div className="text-muted text-xs">{getFullDayHelp(formStateByDay[day.date]?.type ?? "")}</div>
+                  ) : null}
                   {!(formStateByDay[day.date]?.fullDay ?? true) && (
                     <div className="space-y-2">
                       {hasAllowedShiftOptions ? (
@@ -462,7 +487,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                           onChange={(event) => handleShiftOptionChange(day.date, event.target.value)}
                           disabled={!data.canSubmit || saving}
                         >
-                          <option value="|">Выберите вариант смены</option>
+                          <option value="|">{getIntervalSelectLabel(formStateByDay[day.date]?.type ?? "")}</option>
                           {allowedShiftOptions.map((option) => {
                             const interval = `${option.startTime}–${option.endTime}`;
                             return (

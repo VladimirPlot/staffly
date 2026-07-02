@@ -306,7 +306,8 @@ export type ScheduleAutoBuildMatchStatus =
   | "FULL_DAY_POSITIVE"
   | "NO_PREFERENCE"
   | "PARTIAL_INTERVAL_FALLBACK"
-  | "NEGATIVE_FALLBACK"
+  | "SOFT_NEGATIVE_FALLBACK"
+  | "HARD_NEGATIVE_FALLBACK"
   | "MANUAL_OVERRIDE";
 
 export type ScheduleAutoBuildCellPreviewDto = {

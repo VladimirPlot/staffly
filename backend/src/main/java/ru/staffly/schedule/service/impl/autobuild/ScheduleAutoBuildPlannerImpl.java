@@ -233,7 +233,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         targetShiftsPerCandidate
                 );
                 if (singleSelection.selected() != null) {
-                    if (singleSelection.selected().grade() != PreferenceGrade.NEGATIVE) {
+                    if (!isNegativeGrade(singleSelection.selected().grade())) {
                         AssignmentBuildResult assignmentResult = assignSelected(
                                 assignments,
                                 plannerState,
@@ -242,7 +242,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                                 singleOption,
                                 preferencesByMember
                         );
-                        if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+                        if (isNegativeGrade(assignmentResult.grade())) {
                             negativeAssignmentsCount++;
                         }
                         continue;
@@ -277,7 +277,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                             singleOption,
                             preferencesByMember
                     );
-                    if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+                    if (isNegativeGrade(assignmentResult.grade())) {
                         negativeAssignmentsCount++;
                     }
                     continue;
@@ -368,7 +368,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     option,
                     preferencesByMember
             );
-            if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+            if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
             }
             cursor = Math.max(cursor + 1, toMinute(option.getEndTime(), true));
@@ -423,7 +423,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 continue;
             }
             CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState, targetShiftsPerCandidate);
-            if (!allowNegativeAssignments && selection.selected() != null && selection.selected().grade() == PreferenceGrade.NEGATIVE) {
+            if (!allowNegativeAssignments && selection.selected() != null && isNegativeGrade(selection.selected().grade())) {
                 selection = new CandidateSelectionResult(
                         null,
                         selection.maxShiftsRejectedCount(),
@@ -478,18 +478,23 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             case COVERING_INTERVAL_PREFERENCE -> 1;
             case FULL_DAY_POSITIVE, NO_PREFERENCE -> 2;
             case PARTIAL_INTERVAL_FALLBACK -> 4;
-            case NEGATIVE_FALLBACK -> 5;
+            case SOFT_NEGATIVE_FALLBACK -> 5;
+            case HARD_NEGATIVE_FALLBACK -> 6;
         };
     }
 
     private int gradeRank(PreferenceGrade grade) {
-        if (grade == PreferenceGrade.POSITIVE) {
-            return 0;
-        }
-        if (grade == PreferenceGrade.NONE) {
-            return 1;
-        }
-        return 2;
+        return switch (grade) {
+            case POSITIVE -> 0;
+            case NONE -> 1;
+            case FALLBACK -> 2;
+            case SOFT_NEGATIVE -> 3;
+            case HARD_NEGATIVE -> 4;
+        };
+    }
+
+    private boolean isNegativeGrade(PreferenceGrade grade) {
+        return grade == PreferenceGrade.SOFT_NEGATIVE || grade == PreferenceGrade.HARD_NEGATIVE;
     }
 
     private int nextCoverageBoundary(List<ScheduleBuildShiftOption> shiftOptions, ScheduleBuildCoverageRule rule, int cursor, int ruleEnd) {
@@ -886,9 +891,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return "Частично совпадает с пожеланием";
         }
 
-        if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
-            warnings.add("Есть отрицательное пожелание на этот день");
-            return "Поставлен для покрытия потребности";
+        if (matchStatus == MatchStatus.SOFT_NEGATIVE_FALLBACK) {
+            warnings.add("Сотрудник предпочитал выходной в это время");
+            return "Поставлен несмотря на предпочтение выходного";
+        }
+
+        if (matchStatus == MatchStatus.HARD_NEGATIVE_FALLBACK) {
+            warnings.add("Сотрудник указал, что не может работать в это время");
+            return "Поставлен вопреки недоступности";
         }
 
         return "Нет пожелания, выбран по доступности";
@@ -898,19 +908,29 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
             return "Назначение частично выходит за пределы пожелания сотрудника.";
         }
-        if (matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
-            return "Сотрудник назначен несмотря на отрицательное пожелание, потому что не найдено альтернатив.";
+        if (matchStatus == MatchStatus.SOFT_NEGATIVE_FALLBACK) {
+            return "Сотрудник предпочитал выходной в это время.";
+        }
+        if (matchStatus == MatchStatus.HARD_NEGATIVE_FALLBACK) {
+            return "Сотрудник указал, что не может работать в это время.";
         }
         return null;
     }
 
     private PreferenceGrade grade(MatchStatus matchStatus) {
         if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE
-                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE) {
+                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
             return PreferenceGrade.POSITIVE;
         }
-        if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK || matchStatus == MatchStatus.NEGATIVE_FALLBACK) {
-            return PreferenceGrade.NEGATIVE;
+        if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
+            return PreferenceGrade.FALLBACK;
+        }
+        if (matchStatus == MatchStatus.SOFT_NEGATIVE_FALLBACK) {
+            return PreferenceGrade.SOFT_NEGATIVE;
+        }
+        if (matchStatus == MatchStatus.HARD_NEGATIVE_FALLBACK) {
+            return PreferenceGrade.HARD_NEGATIVE;
         }
         return PreferenceGrade.NONE;
     }
@@ -922,6 +942,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         if (dayCells.isEmpty()) {
             return MatchStatus.NO_PREFERENCE;
+        }
+
+        boolean hasHardNegative = dayCells.stream().anyMatch(cell -> isHardNegativeForShift(cell, option));
+        if (hasHardNegative) {
+            return MatchStatus.HARD_NEGATIVE_FALLBACK;
         }
 
         boolean hasExactPositive = dayCells.stream().anyMatch(cell -> isExactPositiveForShift(cell, option));
@@ -944,9 +969,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return MatchStatus.PARTIAL_INTERVAL_FALLBACK;
         }
 
-        boolean hasNegative = dayCells.stream().anyMatch(cell -> isNegativeForShift(cell, option));
-        if (hasNegative) {
-            return MatchStatus.NEGATIVE_FALLBACK;
+        boolean hasSoftNegative = dayCells.stream().anyMatch(cell -> isSoftNegativeForShift(cell, option));
+        if (hasSoftNegative) {
+            return MatchStatus.SOFT_NEGATIVE_FALLBACK;
         }
 
         return MatchStatus.NO_PREFERENCE;
@@ -1002,8 +1027,16 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         );
     }
 
-    private boolean isNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        if (!isNegativeType(cell.getType())) {
+    private boolean isSoftNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
+        return isNegativeForShift(cell, option, SchedulePreferenceType.PREFER_DAY_OFF);
+    }
+
+    private boolean isHardNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
+        return isNegativeForShift(cell, option, SchedulePreferenceType.UNAVAILABLE);
+    }
+
+    private boolean isNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option, SchedulePreferenceType negativeType) {
+        if (cell.getType() != negativeType) {
             return false;
         }
         if (cell.isFullDay()) {
@@ -1061,10 +1094,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private boolean isPositiveType(SchedulePreferenceType type) {
         return type == SchedulePreferenceType.AVAILABLE;
-    }
-
-    private boolean isNegativeType(SchedulePreferenceType type) {
-        return type == SchedulePreferenceType.UNAVAILABLE || type == SchedulePreferenceType.PREFER_DAY_OFF;
     }
 
     private ScheduleBuildShiftOption findExactShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
@@ -1245,7 +1274,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
             AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells);
             assignments.add(assignmentResult.assignment());
-            if (assignmentResult.grade() == PreferenceGrade.NEGATIVE) {
+            if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
             }
             registerAssignment(plannerState, selected, day, option);
@@ -1374,7 +1403,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private enum PreferenceGrade {
         POSITIVE,
         NONE,
-        NEGATIVE
+        FALLBACK,
+        SOFT_NEGATIVE,
+        HARD_NEGATIVE
     }
 
     private enum MatchStatus {
@@ -1383,7 +1414,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         FULL_DAY_POSITIVE,
         NO_PREFERENCE,
         PARTIAL_INTERVAL_FALLBACK,
-        NEGATIVE_FALLBACK
+        SOFT_NEGATIVE_FALLBACK,
+        HARD_NEGATIVE_FALLBACK
     }
 
 
