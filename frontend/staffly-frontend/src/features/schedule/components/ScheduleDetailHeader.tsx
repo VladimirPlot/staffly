@@ -101,7 +101,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             </Button>
             {canViewPreferences && (
               <Button variant="outline" onClick={onOpenPreferences} disabled={deleting}>
-                Пожелания
+                Пожелания сотрудников
               </Button>
             )}
             {isDraftSchedule(schedule.status) && (

@@ -56,29 +56,8 @@ function normalizeRole(role: string | null | undefined): string | null {
     .replace(/^ROLE_/, "");
 }
 
-function isScheduleOwner(params: {
-  owner: ScheduleOwnerDto | null | undefined;
-  currentMemberId: number | null | undefined;
-  currentUserId: number | null | undefined;
-}): boolean {
-  const { owner, currentMemberId, currentUserId } = params;
-  if (!owner) return false;
-
-  const ownerMemberId = owner.memberId;
-  if (ownerMemberId != null && currentMemberId != null && ownerMemberId === currentMemberId) {
-    return true;
-  }
-
-  const ownerUserId = owner.userId;
-  return ownerUserId != null && currentUserId != null && ownerUserId === currentUserId;
-}
-
-function isOwnPreferenceParticipant(params: {
-  summary: ScheduleSummary;
-  currentMember: MemberDto | null;
-  currentUserId: number | null | undefined;
-}): boolean {
-  const { summary, currentMember, currentUserId } = params;
+function isOwnPreferenceParticipant(params: { summary: ScheduleSummary; currentMember: MemberDto | null }): boolean {
+  const { summary, currentMember } = params;
   if (summary.status !== "COLLECTING_PREFERENCES") return false;
   if (!currentMember) return false;
 
@@ -86,25 +65,16 @@ function isOwnPreferenceParticipant(params: {
   const isParticipant = positionId != null && summary.positionIds.includes(positionId);
   if (!isParticipant) return false;
 
-  return !isScheduleOwner({
-    owner: summary.owner,
-    currentMemberId: currentMember.id,
-    currentUserId,
-  });
+  return true;
 }
 
-function canOpenOwnPreferenceFlow(params: {
-  summary: ScheduleSummary;
-  currentMember: MemberDto | null;
-  currentUserId: number | null | undefined;
-}): boolean {
+function canOpenOwnPreferenceFlow(params: { summary: ScheduleSummary; currentMember: MemberDto | null }): boolean {
   return isOwnPreferenceParticipant(params);
 }
 
 function getSavedScheduleOpenButtonLabel(params: {
   summary: ScheduleSummary;
   currentMember: MemberDto | null;
-  currentUserId: number | null | undefined;
 }): string {
   if (!isOwnPreferenceParticipant(params)) return "Открыть";
   return params.summary.myPreferenceSubmitted ? "Пожелания отправлены" : "Оставить пожелания";
@@ -478,7 +448,6 @@ const SchedulePage: React.FC = () => {
         canOpenOwnPreferenceFlow({
           summary: item,
           currentMember: derived.currentMember,
-          currentUserId: user?.id,
         })
       ) {
         savedScheduleActions.closeSavedSchedule();
@@ -489,7 +458,7 @@ const SchedulePage: React.FC = () => {
       preferenceActions.closePreferenceView();
       void savedScheduleActions.openSavedSchedule(id);
     },
-    [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules, user?.id],
+    [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules],
   );
 
   const handleOpenApplyPreferencesDialog = React.useCallback(() => {
@@ -661,7 +630,6 @@ const SchedulePage: React.FC = () => {
               getSavedScheduleOpenButtonLabel({
                 summary: item,
                 currentMember: derived.currentMember,
-                currentUserId: user?.id,
               })
             }
             onEditSavedSchedule={savedScheduleActions.editSavedSchedule}

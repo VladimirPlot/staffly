@@ -233,9 +233,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private RestaurantMember loadEligibleMember(Long restaurantId, Schedule schedule, Long userId) {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
-        if (isScheduleOwner(schedule, member, userId)) {
-            throw new ForbiddenException("Ответственный за график управляет сбором пожеланий через менеджерский режим");
-        }
         if (schedule.getPositionIds() == null
                 || member.getPosition() == null
                 || !schedule.getPositionIds().contains(member.getPosition().getId())) {
@@ -244,14 +241,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return member;
     }
 
-    private boolean isScheduleOwner(Schedule schedule, RestaurantMember member, Long userId) {
-        Long ownerMemberId = schedule.getOwnerMember() != null ? schedule.getOwnerMember().getId() : null;
-        if (ownerMemberId != null && member != null && ownerMemberId.equals(member.getId())) {
-            return true;
-        }
-        Long ownerUserId = schedule.getOwnerUser() != null ? schedule.getOwnerUser().getId() : null;
-        return ownerUserId != null && userId != null && ownerUserId.equals(userId);
-    }
 
     private List<RestaurantMember> loadParticipants(Long restaurantId, Schedule schedule) {
         if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
