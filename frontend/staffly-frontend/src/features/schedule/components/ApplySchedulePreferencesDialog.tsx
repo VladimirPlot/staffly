@@ -119,9 +119,13 @@ const MATCH_STATUS_BADGE: Record<ScheduleAutoBuildCellPreviewDto["matchStatus"],
       label: "Частично вне пожелания",
       className: "border-amber-200 bg-amber-50 text-amber-700",
     },
-    NEGATIVE_FALLBACK: {
-      label: "Спорное",
+    SOFT_NEGATIVE_FALLBACK: {
+      label: "Предпочитает выходной",
       className: "border-amber-300 bg-amber-100 text-amber-800",
+    },
+    HARD_NEGATIVE_FALLBACK: {
+      label: "Не может работать",
+      className: "border-rose-300 bg-rose-100 text-rose-800",
     },
     MANUAL_OVERRIDE: {
       label: "Изменено вручную",
@@ -536,7 +540,8 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                               <div
                                 key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
                                 className={`rounded-lg border px-3 py-2 text-xs ${
-                                  cell.matchStatus === "NEGATIVE_FALLBACK" ||
+                                  cell.matchStatus === "SOFT_NEGATIVE_FALLBACK" ||
+                                  cell.matchStatus === "HARD_NEGATIVE_FALLBACK" ||
                                   cell.matchStatus === "PARTIAL_INTERVAL_FALLBACK"
                                     ? "border-amber-200 bg-amber-50/80"
                                     : "border-subtle bg-white"

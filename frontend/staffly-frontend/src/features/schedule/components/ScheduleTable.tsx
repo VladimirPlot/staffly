@@ -422,9 +422,10 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         })
       : null;
   const conflictLabel =
-    preferenceAssignmentBadge?.status === "NEGATIVE_FALLBACK"
+    preferenceAssignmentBadge?.status === "SOFT_NEGATIVE_FALLBACK" ||
+    preferenceAssignmentBadge?.status === "HARD_NEGATIVE_FALLBACK"
       ? preferenceAssignmentBadge.title
-      : "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
+      : "Заполненная смена конфликтует с пожеланием сотрудника";
 
   const sourceMeta = getScheduleCellSourceMeta(source);
   const sourceEditHint =

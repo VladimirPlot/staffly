@@ -5,7 +5,10 @@ import { hasCompleteRangeValue, parseTimeRangeValue, parseTimeValue } from "./ti
 export type PreferenceHintTone = "positive" | "negative";
 
 export type PreferenceAssignmentBadge = {
-  status: Extract<ScheduleAutoBuildMatchStatus, "NO_PREFERENCE" | "PARTIAL_INTERVAL_FALLBACK" | "NEGATIVE_FALLBACK">;
+  status: Extract<
+    ScheduleAutoBuildMatchStatus,
+    "NO_PREFERENCE" | "PARTIAL_INTERVAL_FALLBACK" | "SOFT_NEGATIVE_FALLBACK" | "HARD_NEGATIVE_FALLBACK"
+  >;
   label: string;
   title: string;
   className: string;
@@ -123,17 +126,18 @@ function coversShift(value: string, hint: SchedulePreferenceCellDto): boolean {
   );
 }
 
-export function hasNegativePreferenceConflict(params: {
+function findNegativePreferenceConflict(params: {
   value: string;
   hints: SchedulePreferenceCellDto[];
   shiftMode: ShiftMode;
+  type: "UNAVAILABLE" | "PREFER_DAY_OFF";
 }): boolean {
-  const { value, hints, shiftMode } = params;
+  const { value, hints, shiftMode, type } = params;
   const trimmedValue = value.trim();
   if (!trimmedValue) return false;
 
   return hints.some((hint) => {
-    if (!isNegativePreference(hint.type)) return false;
+    if (hint.type !== type) return false;
     if (hint.fullDay) return true;
 
     if (shiftMode !== "FULL") return true;
@@ -141,6 +145,17 @@ export function hasNegativePreferenceConflict(params: {
 
     return hasIntervalOverlap(trimmedValue, hint);
   });
+}
+
+export function hasNegativePreferenceConflict(params: {
+  value: string;
+  hints: SchedulePreferenceCellDto[];
+  shiftMode: ShiftMode;
+}): boolean {
+  return (
+    findNegativePreferenceConflict({ ...params, type: "UNAVAILABLE" }) ||
+    findNegativePreferenceConflict({ ...params, type: "PREFER_DAY_OFF" })
+  );
 }
 
 export function getAutoBuildPreferenceAssignmentBadge(params: {
@@ -161,12 +176,32 @@ export function getAutoBuildPreferenceAssignmentBadge(params: {
     };
   }
 
-  const hasNegativeConflict = hasNegativePreferenceConflict({ value: trimmedValue, hints, shiftMode });
-  if (hasNegativeConflict) {
+  const hasHardNegativeConflict = findNegativePreferenceConflict({
+    value: trimmedValue,
+    hints,
+    shiftMode,
+    type: "UNAVAILABLE",
+  });
+  if (hasHardNegativeConflict) {
     return {
-      status: "NEGATIVE_FALLBACK",
-      label: "Конфликт",
-      title: "Заполненная смена конфликтует с отрицательным пожеланием сотрудника",
+      status: "HARD_NEGATIVE_FALLBACK",
+      label: "Не может работать",
+      title: "Сотрудник указал, что не может работать в это время",
+      className: "border-rose-300 bg-rose-100 text-rose-900",
+    };
+  }
+
+  const hasSoftNegativeConflict = findNegativePreferenceConflict({
+    value: trimmedValue,
+    hints,
+    shiftMode,
+    type: "PREFER_DAY_OFF",
+  });
+  if (hasSoftNegativeConflict) {
+    return {
+      status: "SOFT_NEGATIVE_FALLBACK",
+      label: "Предпочитает выходной",
+      title: "Сотрудник предпочитал выходной в это время",
       className: "border-amber-300 bg-amber-100 text-amber-900",
     };
   }
