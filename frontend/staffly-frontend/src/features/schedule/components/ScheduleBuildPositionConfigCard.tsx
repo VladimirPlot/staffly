@@ -18,6 +18,16 @@ const minRestModes: { value: ScheduleBuildMinRestMode; label: string }[] = [
   { value: "STRICT", label: "Строго" },
 ];
 
+const daysOfWeek = [
+  { value: 1, label: "Пн" },
+  { value: 2, label: "Вт" },
+  { value: 3, label: "Ср" },
+  { value: 4, label: "Чт" },
+  { value: 5, label: "Пт" },
+  { value: 6, label: "Сб" },
+  { value: 7, label: "Вс" },
+];
+
 const patterns: { value: ScheduleBuildTargetPattern; label: string }[] = [
   { value: "NONE", label: "Без шаблона" },
   { value: "TWO_TWO", label: "2/2" },
@@ -127,6 +137,58 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
           onChange({ ...config, maxShiftsPerPeriod: e.target.value === "" ? "" : Number(e.target.value) })
         }
       />
+    </div>
+
+    <div className="space-y-2 rounded-xl bg-gray-50 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium">Тяжёлые дни</div>
+          <div className="text-muted text-xs">Учитываются как мягкий баланс при автосборке.</div>
+        </div>
+        <DropdownSelect
+          value=""
+          disabled={saving || config.heavyDaysOfWeek.length >= daysOfWeek.length}
+          onChange={(e) => {
+            const day = Number(e.target.value);
+            if (day && !config.heavyDaysOfWeek.includes(day)) {
+              onChange({ ...config, heavyDaysOfWeek: [...config.heavyDaysOfWeek, day].sort((a, b) => a - b) });
+            }
+          }}
+        >
+          <option value="">Добавить день</option>
+          {daysOfWeek
+            .filter((day) => !config.heavyDaysOfWeek.includes(day.value))
+            .map((day) => (
+              <option key={day.value} value={day.value}>
+                {day.label}
+              </option>
+            ))}
+        </DropdownSelect>
+      </div>
+      {config.heavyDaysOfWeek.length === 0 ? (
+        <div className="text-muted text-sm">Нет</div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {config.heavyDaysOfWeek.map((day) => (
+            <span
+              key={day}
+              className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-sm shadow-sm"
+            >
+              {daysOfWeek.find((item) => item.value === day)?.label ?? day}
+              <button
+                type="button"
+                className="text-muted hover:text-danger"
+                disabled={saving}
+                onClick={() =>
+                  onChange({ ...config, heavyDaysOfWeek: config.heavyDaysOfWeek.filter((item) => item !== day) })
+                }
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
 
     <ScheduleBuildShiftOptionsEditor

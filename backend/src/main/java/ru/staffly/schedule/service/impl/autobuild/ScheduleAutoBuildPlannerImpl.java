@@ -402,7 +402,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option.getStartTime(), option.getEndTime());
         AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells, minRestViolation, config.getMinRestHours());
         assignments.add(assignmentResult.assignment());
-        registerAssignment(plannerState, selected, day, option);
+        registerAssignment(plannerState, selected, day, option, config);
         return assignmentResult;
     }
 
@@ -664,7 +664,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     PreferenceGrade.NONE,
                     shiftsCount,
                     displayName,
-                    fairnessScore(member, day, plannerState, targetShiftsPerCandidate),
+                    fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
                     false,
                     minRestViolation,
                     rejectionReason
@@ -680,7 +680,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 memberGrade,
                 shiftsCount,
                 displayName,
-                fairnessScore(member, day, plannerState, targetShiftsPerCandidate),
+                fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
                 true,
                 minRestViolation,
                 CandidateRejectionReason.NONE
@@ -825,6 +825,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private int fairnessScore(
             RestaurantMember member,
             LocalDate day,
+            ScheduleBuildPositionConfig config,
             PlannerState plannerState,
             double targetShiftsPerCandidate
     ) {
@@ -846,6 +847,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             score += 10;
         }
 
+        if (isHeavyDay(config, day)) {
+            score += plannerState.heavyDaysCount(member.getId(), configKey(config)) * 30;
+        }
+
         return score;
     }
 
@@ -857,6 +862,18 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             cursor = cursor.minusDays(1);
         }
         return count;
+    }
+
+    private boolean isHeavyDay(ScheduleBuildPositionConfig config, LocalDate day) {
+        List<Integer> heavyDaysOfWeek = config.getHeavyDaysOfWeek();
+        return heavyDaysOfWeek != null && heavyDaysOfWeek.contains(day.getDayOfWeek().getValue());
+    }
+
+    private Long configKey(ScheduleBuildPositionConfig config) {
+        if (config.getId() != null) {
+            return config.getId();
+        }
+        return config.getPosition() == null ? null : config.getPosition().getId();
     }
 
     private CandidateEvaluation selectBestCandidate(List<CandidateEvaluation> candidates) {
@@ -891,9 +908,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             PlannerState plannerState,
             RestaurantMember member,
             LocalDate day,
-            ScheduleBuildShiftOption option
+            ScheduleBuildShiftOption option,
+            ScheduleBuildPositionConfig config
     ) {
         plannerState.register(member.getId(), new AssignedInterval(day, option.getStartTime(), option.getEndTime()));
+        if (isHeavyDay(config, day)) {
+            plannerState.registerHeavyDay(member.getId(), configKey(config));
+        }
     }
 
     private String unfilledWarning(
@@ -1258,6 +1279,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         for (ScheduleBuildPositionConfig positionConfig : safePositionConfigs(template)) {
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
 
@@ -1314,7 +1336,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
             }
-            registerAssignment(plannerState, selected, day, option);
+            registerAssignment(plannerState, selected, day, option, config);
         }
 
         return new DayBuildResult(assignments, warnings, List.of(), 0, negativeAssignmentsCount);
@@ -1352,6 +1374,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private static final class PlannerState {
         private final Map<Long, Integer> shiftsCountByMember = new HashMap<>();
         private final Map<Long, List<AssignedInterval>> assignedIntervalsByMember = new HashMap<>();
+        private final Map<Long, Map<Long, Integer>> heavyDaysCountByMemberAndConfig = new HashMap<>();
 
         private int shiftsCount(Long memberId) {
             return shiftsCountByMember.getOrDefault(memberId, 0);
@@ -1361,9 +1384,25 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return assignedIntervalsByMember.getOrDefault(memberId, List.of());
         }
 
+        private int heavyDaysCount(Long memberId, Long configKey) {
+            if (configKey == null) {
+                return 0;
+            }
+            return heavyDaysCountByMemberAndConfig.getOrDefault(memberId, Map.of()).getOrDefault(configKey, 0);
+        }
+
         private void register(Long memberId, AssignedInterval interval) {
             shiftsCountByMember.merge(memberId, 1, Integer::sum);
             assignedIntervalsByMember.computeIfAbsent(memberId, ignored -> new ArrayList<>()).add(interval);
+        }
+
+        private void registerHeavyDay(Long memberId, Long configKey) {
+            if (configKey == null) {
+                return;
+            }
+            heavyDaysCountByMemberAndConfig
+                    .computeIfAbsent(memberId, ignored -> new HashMap<>())
+                    .merge(configKey, 1, Integer::sum);
         }
 
         private PlannerState copy() {
@@ -1371,6 +1410,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             copy.shiftsCountByMember.putAll(shiftsCountByMember);
             assignedIntervalsByMember.forEach((memberId, intervals) ->
                     copy.assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
+            );
+            heavyDaysCountByMemberAndConfig.forEach((memberId, counts) ->
+                    copy.heavyDaysCountByMemberAndConfig.put(memberId, new HashMap<>(counts))
             );
             return copy;
         }
@@ -1381,6 +1423,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             assignedIntervalsByMember.clear();
             other.assignedIntervalsByMember.forEach((memberId, intervals) ->
                     assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
+            );
+            heavyDaysCountByMemberAndConfig.clear();
+            other.heavyDaysCountByMemberAndConfig.forEach((memberId, counts) ->
+                    heavyDaysCountByMemberAndConfig.put(memberId, new HashMap<>(counts))
             );
         }
     }

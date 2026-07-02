@@ -29,6 +29,7 @@ export type ScheduleBuildPositionConfigDraft = {
   minRestHours: number | "";
   minRestMode: ScheduleBuildMinRestMode;
   maxShiftsPerPeriod: number | "";
+  heavyDaysOfWeek: number[];
   sortOrder: number;
   shiftOptions: ScheduleBuildShiftOptionDraft[];
   coverageRules: ScheduleBuildCoverageRuleDraft[];
@@ -81,6 +82,7 @@ export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft =>
   minRestHours: 12,
   minRestMode: "SOFT",
   maxShiftsPerPeriod: 5,
+  heavyDaysOfWeek: [],
   sortOrder: 0,
   shiftOptions: [createShiftOptionDraft()],
   coverageRules: [],
@@ -97,6 +99,9 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
     minRestHours: config.minRestHours ?? "",
     minRestMode: config.minRestMode ?? "SOFT",
     maxShiftsPerPeriod: config.maxShiftsPerPeriod ?? "",
+    heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek ?? [])]
+      .filter((day) => day >= 1 && day <= 7)
+      .sort((a, b) => a - b),
     sortOrder: config.sortOrder,
     shiftOptions: (config.shiftOptions ?? []).map((option) => ({
       startTime: option.startTime,
@@ -126,6 +131,9 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
     minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
     minRestMode: config.minRestMode,
     maxShiftsPerPeriod: config.maxShiftsPerPeriod === "" ? null : Number(config.maxShiftsPerPeriod),
+    heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek ?? [])]
+      .filter((day) => day >= 1 && day <= 7)
+      .sort((a, b) => a - b),
     sortOrder: index,
     shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
       startTime: option.startTime,

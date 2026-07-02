@@ -88,6 +88,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
 
