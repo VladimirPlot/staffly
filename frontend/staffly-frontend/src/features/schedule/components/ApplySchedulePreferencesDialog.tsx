@@ -211,7 +211,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
       if (!member) return;
       setEditableAssignments((current) =>
         current.map((assignment) =>
-          assignment.id === assignmentId
+          assignment.id === assignmentId && member.positionId === assignment.positionId
             ? {
                 ...assignment,
                 memberId,
@@ -236,7 +236,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
     (slot: ScheduleAutoBuildUncoveredSlotDto, memberIdValue: string) => {
       const memberId = Number(memberIdValue);
       const member = members.find((candidate) => candidate.id === memberId);
-      if (!member) return;
+      if (!member || member.positionId !== slot.positionId) return;
       setEditableAssignments((current) => [
         ...current,
         {
