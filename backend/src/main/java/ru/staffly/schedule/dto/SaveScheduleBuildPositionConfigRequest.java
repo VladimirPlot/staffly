@@ -14,6 +14,7 @@ public record SaveScheduleBuildPositionConfigRequest(
         Integer minRestHours,
         ScheduleBuildMinRestMode minRestMode,
         Integer maxShiftsPerPeriod,
+        List<Integer> heavyDaysOfWeek,
         List<SaveScheduleBuildShiftOptionRequest> shiftOptions,
         List<SaveScheduleBuildCoverageRuleRequest> coverageRules,
         Integer sortOrder

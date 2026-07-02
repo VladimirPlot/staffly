@@ -16,6 +16,7 @@ public record ScheduleBuildPositionConfigDto(
         Integer minRestHours,
         ScheduleBuildMinRestMode minRestMode,
         Integer maxShiftsPerPeriod,
+        List<Integer> heavyDaysOfWeek,
         List<ScheduleBuildShiftOptionDto> shiftOptions,
         List<ScheduleBuildCoverageRuleDto> coverageRules,
         Integer sortOrder

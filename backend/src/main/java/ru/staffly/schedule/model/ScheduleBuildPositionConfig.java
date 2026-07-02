@@ -55,6 +55,17 @@ public class ScheduleBuildPositionConfig {
     @Builder.Default
     private Integer sortOrder = 0;
 
+    @ElementCollection
+    @CollectionTable(
+            name = "schedule_build_position_config_heavy_day",
+            joinColumns = @JoinColumn(name = "position_config_id", nullable = false),
+            uniqueConstraints = @UniqueConstraint(name = "uq_sbpc_heavy_day", columnNames = {"position_config_id", "day_of_week"})
+    )
+    @Column(name = "day_of_week", nullable = false)
+    @OrderColumn(name = "sort_order")
+    @Builder.Default
+    private List<Integer> heavyDaysOfWeek = new ArrayList<>();
+
     @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC, id ASC")
     @BatchSize(size = 64)

@@ -123,6 +123,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setMinRestHours(cfg.minRestHours());
             entity.setMinRestMode(cfg.minRestMode() == null ? ScheduleBuildMinRestMode.SOFT : cfg.minRestMode());
             entity.setMaxShiftsPerPeriod(cfg.maxShiftsPerPeriod());
+            entity.getHeavyDaysOfWeek().clear();
+            entity.getHeavyDaysOfWeek().addAll(normalizeHeavyDaysOfWeek(cfg.heavyDaysOfWeek()));
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
 
             entity.getShiftOptions().clear();
@@ -163,6 +165,18 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
         template.getPositionConfigs().removeIf(config -> config.getPosition() == null || !requestedPositionIds.contains(config.getPosition().getId()));
         template.getPositionConfigs().sort(Comparator.comparing(ScheduleBuildPositionConfig::getSortOrder));
+    }
+
+    private List<Integer> normalizeHeavyDaysOfWeek(List<Integer> heavyDaysOfWeek) {
+        return Optional.ofNullable(heavyDaysOfWeek).orElse(List.of()).stream()
+                .peek(day -> {
+                    if (day == null || day < 1 || day > 7) {
+                        throw new BadRequestException("heavyDaysOfWeek values must be 1..7");
+                    }
+                })
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     private void validateInterval(LocalTime start, LocalTime end, String field) {
@@ -223,6 +237,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
 
@@ -231,6 +246,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(
                         pc.getId(), pc.getPosition().getId(), pc.getPosition().getName(), pc.getFullShiftStart(), pc.getFullShiftEnd(),
                         pc.getTargetPattern(), pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(),
+                        pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
                         pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),
                         pc.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
                         pc.getSortOrder())).toList());

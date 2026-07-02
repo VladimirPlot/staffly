@@ -233,6 +233,7 @@ export type ScheduleBuildPositionConfigDto = {
   minRestHours: number | null;
   minRestMode: ScheduleBuildMinRestMode;
   maxShiftsPerPeriod: number | null;
+  heavyDaysOfWeek: number[];
   shiftOptions: ScheduleBuildShiftOptionDto[];
   coverageRules: ScheduleBuildCoverageRuleDto[];
   sortOrder: number;
@@ -275,6 +276,7 @@ export type SaveScheduleBuildPositionConfigRequest = {
   minRestHours?: number | null;
   minRestMode?: ScheduleBuildMinRestMode | null;
   maxShiftsPerPeriod?: number | null;
+  heavyDaysOfWeek?: number[];
   shiftOptions: SaveScheduleBuildShiftOptionRequest[];
   coverageRules: SaveScheduleBuildCoverageRuleRequest[];
   sortOrder: number;

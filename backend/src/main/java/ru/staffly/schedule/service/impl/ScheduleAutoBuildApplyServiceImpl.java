@@ -230,6 +230,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
 
