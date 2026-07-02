@@ -179,7 +179,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         if (start.equals(end)) {
             throw new BadRequestException("Начало и конец смены не должны совпадать: " + assignment.day());
         }
-        boolean allowedShift = config.getShiftOptions().stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
+        boolean allowedShift = safeShiftOptions(config).stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
         if (!allowedShift) {
             throw new BadRequestException("Интервал назначения не входит в варианты смен для должности: " + assignment.day());
         }
@@ -188,6 +188,10 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             throw new BadRequestException("Один сотрудник не может иметь больше одной смены в день: " + assignment.day());
         }
         return member;
+    }
+
+    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config) {
+        return config.getShiftOptions() == null ? List.of() : config.getShiftOptions();
     }
 
     private boolean shiftMatches(ScheduleBuildShiftOption option, LocalTime start, LocalTime end, Long shiftOptionId) {

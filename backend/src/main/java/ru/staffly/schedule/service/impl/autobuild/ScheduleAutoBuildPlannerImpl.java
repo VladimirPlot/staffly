@@ -869,11 +869,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return heavyDaysOfWeek != null && heavyDaysOfWeek.contains(day.getDayOfWeek().getValue());
     }
 
-    private Long configKey(ScheduleBuildPositionConfig config) {
+    private String configKey(ScheduleBuildPositionConfig config) {
         if (config.getId() != null) {
-            return config.getId();
+            return "config:" + config.getId();
         }
-        return config.getPosition() == null ? null : config.getPosition().getId();
+        return config.getPosition() == null ? null : "position:" + config.getPosition().getId();
     }
 
     private CandidateEvaluation selectBestCandidate(List<CandidateEvaluation> candidates) {
@@ -1374,7 +1374,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private static final class PlannerState {
         private final Map<Long, Integer> shiftsCountByMember = new HashMap<>();
         private final Map<Long, List<AssignedInterval>> assignedIntervalsByMember = new HashMap<>();
-        private final Map<Long, Map<Long, Integer>> heavyDaysCountByMemberAndConfig = new HashMap<>();
+        private final Map<Long, Map<String, Integer>> heavyDaysCountByMemberAndConfig = new HashMap<>();
 
         private int shiftsCount(Long memberId) {
             return shiftsCountByMember.getOrDefault(memberId, 0);
@@ -1384,7 +1384,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return assignedIntervalsByMember.getOrDefault(memberId, List.of());
         }
 
-        private int heavyDaysCount(Long memberId, Long configKey) {
+        private int heavyDaysCount(Long memberId, String configKey) {
             if (configKey == null) {
                 return 0;
             }
@@ -1396,7 +1396,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             assignedIntervalsByMember.computeIfAbsent(memberId, ignored -> new ArrayList<>()).add(interval);
         }
 
-        private void registerHeavyDay(Long memberId, Long configKey) {
+        private void registerHeavyDay(Long memberId, String configKey) {
             if (configKey == null) {
                 return;
             }
