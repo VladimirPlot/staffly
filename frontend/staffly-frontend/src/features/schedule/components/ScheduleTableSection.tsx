@@ -27,6 +27,9 @@ type ScheduleTableSectionProps = {
   onSaveDraft: () => void;
   onCellChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  showCellDiagnostics?: boolean;
+  showPublishedDiagnostics?: boolean;
+  onTogglePublishedDiagnostics?: () => void;
 };
 
 const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
@@ -45,10 +48,14 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onSaveDraft,
   onCellChange,
   preferenceHintsByCellKey,
+  showCellDiagnostics = false,
+  showPublishedDiagnostics = false,
+  onTogglePublishedDiagnostics,
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const saveDisabled = saving || savingDraft;
   const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
+  const showPublishedDiagnosticsToggle = canManage && schedule.status === "PUBLISHED" && onTogglePublishedDiagnostics;
   const reviewSummary = React.useMemo(() => {
     if (!showDraftFromPreferencesNotice) {
       return null;
@@ -120,6 +127,14 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
       )}
 
       <Card className="overflow-visible">
+        {showPublishedDiagnosticsToggle && (
+          <div className="mb-3 flex justify-end">
+            <Button type="button" variant="outline" onClick={onTogglePublishedDiagnostics}>
+              {showPublishedDiagnostics ? "Скрыть пожелания и авто-метки" : "Показать пожелания и авто-метки"}
+            </Button>
+          </div>
+        )}
+
         {showDraftFromPreferencesNotice && (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             <p className="font-medium">
@@ -158,7 +173,8 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                 data={schedule}
                 onChange={onCellChange}
                 readOnly={scheduleReadOnly}
-                preferenceHintsByCellKey={preferenceHintsByCellKey}
+                preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
+                showCellDiagnostics={showCellDiagnostics}
               />
             </div>
           </div>

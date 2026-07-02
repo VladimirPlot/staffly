@@ -49,6 +49,7 @@ type Props = {
   onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  showCellDiagnostics?: boolean;
 };
 
 type CellValues = ScheduleData["cellValues"];
@@ -75,6 +76,7 @@ type ScheduleTableRowProps = {
   placeholder: string;
   onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  showCellDiagnostics: boolean;
 };
 
 type ScheduleCellEditorProps = {
@@ -87,6 +89,7 @@ type ScheduleCellEditorProps = {
   readOnly: boolean;
   onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   hints?: SchedulePreferenceCellDto[];
+  showCellDiagnostics: boolean;
 };
 
 type EditableCellProps = {
@@ -117,7 +120,13 @@ type ArrivalSelectorProps = {
   onCommit: (value: string) => void;
 };
 
-const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, preferenceHintsByCellKey }) => {
+const ScheduleTable: React.FC<Props> = ({
+  data,
+  onChange,
+  readOnly = false,
+  preferenceHintsByCellKey,
+  showCellDiagnostics = false,
+}) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
   const days = data?.days ?? EMPTY_DAYS;
   const rows = data?.rows ?? EMPTY_ROWS;
@@ -198,7 +207,8 @@ const ScheduleTable: React.FC<Props> = ({ data, onChange, readOnly = false, pref
             shiftMode={shiftMode}
             placeholder={PLACEHOLDERS[shiftMode]}
             onCellValueChange={handleCellValueChange}
-            preferenceHintsByCellKey={preferenceHintsByCellKey}
+            preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
+            showCellDiagnostics={showCellDiagnostics}
           />
         ))}
 
@@ -310,6 +320,7 @@ const ScheduleTableRow = React.memo(
     placeholder,
     onCellValueChange,
     preferenceHintsByCellKey,
+    showCellDiagnostics,
   }: ScheduleTableRowProps) {
     return (
       <>
@@ -334,12 +345,13 @@ const ScheduleTableRow = React.memo(
               memberId={row.memberId}
               day={day.date}
               value={cellValues[key] ?? ""}
-              source={cellSources[key] ?? "MANUAL"}
+              source={showCellDiagnostics ? (cellSources[key] ?? "MANUAL") : undefined}
               shiftMode={shiftMode}
               placeholder={placeholder}
               readOnly={readOnly}
               onCellValueChange={onCellValueChange}
-              hints={preferenceHintsByCellKey?.[key]}
+              hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
+              showCellDiagnostics={showCellDiagnostics}
             />
           );
         })}
@@ -358,7 +370,8 @@ const ScheduleTableRow = React.memo(
       prev.placeholder !== next.placeholder ||
       prev.onCellValueChange !== next.onCellValueChange ||
       prev.cellSources !== next.cellSources ||
-      prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey
+      prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey ||
+      prev.showCellDiagnostics !== next.showCellDiagnostics
     ) {
       return false;
     }
@@ -383,6 +396,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   readOnly,
   onCellValueChange,
   hints,
+  showCellDiagnostics,
 }: ScheduleCellEditorProps) {
   const handleInputChange = React.useCallback(
     (newValue: string) => onCellValueChange(memberId, day, newValue),
@@ -406,10 +420,11 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   );
 
   const missingEnd = shiftMode === "FULL" && hasStartWithoutEndValue(value);
-  const hasConflict = hints
+  const diagnosticHints = showCellDiagnostics ? hints : undefined;
+  const hasConflict = diagnosticHints
     ? hasNegativePreferenceConflict({
         value,
-        hints,
+        hints: diagnosticHints,
         shiftMode,
       })
     : false;
@@ -417,7 +432,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
     source === "AUTO_BUILD"
       ? getAutoBuildPreferenceAssignmentBadge({
           value,
-          hints: hints ?? [],
+          hints: diagnosticHints ?? [],
           shiftMode,
         })
       : null;
@@ -427,9 +442,11 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
       ? preferenceAssignmentBadge.title
       : "Заполненная смена конфликтует с пожеланием сотрудника";
 
-  const sourceMeta = getScheduleCellSourceMeta(source);
+  const sourceMeta = showCellDiagnostics ? getScheduleCellSourceMeta(source) : null;
   const sourceEditHint =
-    !readOnly && value.trim() && source && source !== "MANUAL" ? getScheduleCellSourceEditHint(source) : null;
+    showCellDiagnostics && !readOnly && value.trim() && source && source !== "MANUAL"
+      ? getScheduleCellSourceEditHint(source)
+      : null;
 
   return (
     <div
@@ -480,9 +497,9 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
           </span>
         </div>
       )}
-      {hints && hints.length > 0 && (
+      {diagnosticHints && diagnosticHints.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
-          {hints.map((cell) => {
+          {diagnosticHints.map((cell) => {
             const label = getPreferenceHintLabel(cell.type);
             const timeLabel = formatPreferenceHintTime(cell);
             const canApply = canApplyPreferenceHint({ readOnly, shiftMode, cell });
