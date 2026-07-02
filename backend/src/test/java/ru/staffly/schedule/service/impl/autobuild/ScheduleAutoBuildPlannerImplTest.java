@@ -179,6 +179,36 @@ class ScheduleAutoBuildPlannerImplTest {
     }
 
     @Test
+    void marksPartialIntervalFallbackWhenPositivePreferenceStartsAfterAssignedShiftStart() {
+        RestaurantMember member = member(1, "A");
+        ScheduleBuildTemplate template = template(1, option(1, T10, T00));
+        Schedule schedule = schedule();
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList())).thenReturn(List.of(member));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(submission(member, available(T14, T00))));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells().get(0).matchStatus()).isEqualTo("PARTIAL_INTERVAL_FALLBACK");
+        assertThat(plan.positions().get(0).cells().get(0).warningMessage())
+                .isEqualTo("Назначение частично выходит за пределы пожелания сотрудника.");
+    }
+
+    @Test
+    void marksPartialIntervalFallbackWhenPositivePreferenceEndsBeforeAssignedShiftEnd() {
+        RestaurantMember member = member(1, "A");
+        ScheduleBuildTemplate template = template(1, option(1, T10, T00));
+        Schedule schedule = schedule();
+        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(eq(1L), anyList())).thenReturn(List.of(member));
+        when(submissions.findWithCellsByScheduleId(schedule.getId())).thenReturn(List.of(submission(member, available(T10, T17))));
+
+        ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan plan = planner.build(1L, schedule, template);
+
+        assertThat(plan.positions().get(0).cells().get(0).matchStatus()).isEqualTo("PARTIAL_INTERVAL_FALLBACK");
+        assertThat(plan.positions().get(0).cells().get(0).warningMessage())
+                .isEqualTo("Назначение частично выходит за пределы пожелания сотрудника.");
+    }
+
+    @Test
     void keepsCoveringIntervalPreferenceWhenPositiveIntervalContainsAssignedShift() {
         RestaurantMember member = member(1, "A");
         ScheduleBuildTemplate template = template(1, option(1, T17, T00));

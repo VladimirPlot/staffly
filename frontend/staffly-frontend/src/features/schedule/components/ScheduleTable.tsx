@@ -1,6 +1,7 @@
 import React from "react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
+import type { SchedulePreferenceCellDto } from "../api";
 import type {
   ScheduleCellChangeOptions,
   ScheduleCellKey,
@@ -15,6 +16,7 @@ import { normalizeCellValue } from "../utils/cellFormatting";
 import {
   canApplyPreferenceHint,
   formatPreferenceHintTime,
+  getAutoBuildPreferenceAssignmentBadge,
   getPreferenceHintLabel,
   getPreferenceHintTone,
   hasNegativePreferenceConflict,
@@ -84,7 +86,7 @@ type ScheduleCellEditorProps = {
   placeholder: string;
   readOnly: boolean;
   onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
-  hints?: import("../api").SchedulePreferenceCellDto[];
+  hints?: SchedulePreferenceCellDto[];
 };
 
 type EditableCellProps = {
@@ -411,7 +413,18 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         shiftMode,
       })
     : false;
-  const conflictLabel = "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
+  const preferenceAssignmentBadge =
+    source === "AUTO_BUILD"
+      ? getAutoBuildPreferenceAssignmentBadge({
+          value,
+          hints: hints ?? [],
+          shiftMode,
+        })
+      : null;
+  const conflictLabel =
+    preferenceAssignmentBadge?.status === "NEGATIVE_FALLBACK"
+      ? preferenceAssignmentBadge.title
+      : "Заполненная смена конфликтует с отрицательным пожеланием сотрудника";
 
   const sourceMeta = getScheduleCellSourceMeta(source);
   const sourceEditHint =
@@ -452,14 +465,17 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
           {sourceEditHint && <span className="text-muted text-center text-[10px] leading-tight">{sourceEditHint}</span>}
         </div>
       )}
-      {hasConflict && (
+      {(hasConflict || preferenceAssignmentBadge) && (
         <div className="mt-1 flex justify-center">
           <span
-            className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900"
-            aria-label={conflictLabel}
-            title={conflictLabel}
+            className={[
+              "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+              preferenceAssignmentBadge?.className ?? "border-amber-300 bg-amber-100 text-amber-900",
+            ].join(" ")}
+            aria-label={preferenceAssignmentBadge?.title ?? conflictLabel}
+            title={preferenceAssignmentBadge?.title ?? conflictLabel}
           >
-            Конфликт
+            {preferenceAssignmentBadge?.label ?? "Конфликт"}
           </span>
         </div>
       )}
