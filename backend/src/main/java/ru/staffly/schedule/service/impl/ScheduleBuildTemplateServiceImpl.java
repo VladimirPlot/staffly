@@ -121,6 +121,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             if (cfg.minRestHours() != null && cfg.minRestHours() < 0) throw new BadRequestException("minRestHours must be >= 0");
             if (cfg.maxShiftsPerPeriod() != null && cfg.maxShiftsPerPeriod() <= 0) throw new BadRequestException("maxShiftsPerPeriod must be > 0");
             entity.setMinRestHours(cfg.minRestHours());
+            entity.setMinRestMode(cfg.minRestMode() == null ? ScheduleBuildMinRestMode.SOFT : cfg.minRestMode());
             entity.setMaxShiftsPerPeriod(cfg.maxShiftsPerPeriod());
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
 
@@ -229,7 +230,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         return new ScheduleBuildTemplateDto(t.getId(), t.getName(), t.getDescription(), t.isActive(), t.getCreatedAt(), t.getUpdatedAt(),
                 t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(
                         pc.getId(), pc.getPosition().getId(), pc.getPosition().getName(), pc.getFullShiftStart(), pc.getFullShiftEnd(),
-                        pc.getTargetPattern(), pc.getMinRestHours(), pc.getMaxShiftsPerPeriod(),
+                        pc.getTargetPattern(), pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(),
                         pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),
                         pc.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
                         pc.getSortOrder())).toList());

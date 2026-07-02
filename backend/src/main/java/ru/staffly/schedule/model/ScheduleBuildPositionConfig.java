@@ -39,6 +39,11 @@ public class ScheduleBuildPositionConfig {
     @Column(name = "min_rest_hours")
     private Integer minRestHours;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "min_rest_mode", nullable = false, length = 10)
+    @Builder.Default
+    private ScheduleBuildMinRestMode minRestMode = ScheduleBuildMinRestMode.SOFT;
+
     @Column(name = "max_shifts_per_period")
     private Integer maxShiftsPerPeriod;
 

@@ -4,7 +4,7 @@ import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
 import type { PositionDto } from "../../dictionaries/api";
-import type { ScheduleBuildTargetPattern } from "../api";
+import type { ScheduleBuildMinRestMode, ScheduleBuildTargetPattern } from "../api";
 import {
   createShiftOptionDraft,
   SCHEDULE_BUILD_TIME_STEP_SECONDS,
@@ -12,6 +12,11 @@ import {
 } from "../utils/buildTemplateDraft";
 import ScheduleBuildCoverageRulesEditor from "./ScheduleBuildCoverageRulesEditor";
 import ScheduleBuildShiftOptionsEditor from "./ScheduleBuildShiftOptionsEditor";
+
+const minRestModes: { value: ScheduleBuildMinRestMode; label: string }[] = [
+  { value: "SOFT", label: "Мягко" },
+  { value: "STRICT", label: "Строго" },
+];
 
 const patterns: { value: ScheduleBuildTargetPattern; label: string }[] = [
   { value: "NONE", label: "Без шаблона" },
@@ -101,6 +106,18 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
         disabled={saving}
         onChange={(e) => onChange({ ...config, minRestHours: e.target.value === "" ? "" : Number(e.target.value) })}
       />
+      <DropdownSelect
+        label="Правило отдыха"
+        value={config.minRestMode}
+        disabled={saving}
+        onChange={(e) => onChange({ ...config, minRestMode: e.target.value as ScheduleBuildMinRestMode })}
+      >
+        {minRestModes.map((mode) => (
+          <option key={mode.value} value={mode.value}>
+            {mode.label}
+          </option>
+        ))}
+      </DropdownSelect>
       <Input
         label="Макс. смен"
         type="number"
