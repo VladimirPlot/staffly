@@ -94,6 +94,7 @@ const SchedulePage: React.FC = () => {
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
   const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
+  const [showPublishedDiagnostics, setShowPublishedDiagnostics] = React.useState(false);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -170,7 +171,12 @@ const SchedulePage: React.FC = () => {
     );
   }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
 
-  const preferenceHintsEnabled = canManage && canShowPreferenceHints(schedule?.status) && Boolean(schedule?.id);
+  const isPublishedSchedule = schedule?.status === "PUBLISHED";
+  const canInspectScheduleDiagnostics = canManage && (!isPublishedSchedule || showPublishedDiagnostics);
+  const preferenceHintsEnabled =
+    canManage &&
+    Boolean(schedule?.id) &&
+    (canShowPreferenceHints(schedule?.status) || (isPublishedSchedule && showPublishedDiagnostics));
   const preferenceHints = useSchedulePreferenceHints({
     restaurantId,
     scheduleId,
@@ -178,6 +184,10 @@ const SchedulePage: React.FC = () => {
   });
 
   const preferenceHintsByCellKey = React.useMemo(() => {
+    if (!canInspectScheduleDiagnostics) {
+      return undefined;
+    }
+
     const map: Record<string, import("../api").SchedulePreferenceCellDto[]> = {};
     const submissions = preferenceHints.submissions?.submissions ?? [];
     submissions.forEach((submission) => {
@@ -191,7 +201,13 @@ const SchedulePage: React.FC = () => {
       });
     });
     return map;
-  }, [preferenceHints.submissions]);
+  }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
+
+  React.useEffect(() => {
+    if (!isPublishedSchedule) {
+      setShowPublishedDiagnostics(false);
+    }
+  }, [isPublishedSchedule, scheduleId]);
 
   const derived = useScheduleDerivedState({
     userId: user?.id,
@@ -738,6 +754,9 @@ const SchedulePage: React.FC = () => {
           {activeTab === "table" && (
             <ScheduleTableSection
               preferenceHintsByCellKey={preferenceHintsByCellKey}
+              showCellDiagnostics={canInspectScheduleDiagnostics}
+              showPublishedDiagnostics={showPublishedDiagnostics}
+              onTogglePublishedDiagnostics={() => setShowPublishedDiagnostics((value) => !value)}
               schedule={schedule}
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}
