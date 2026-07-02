@@ -1,5 +1,6 @@
 package ru.staffly.schedule.dto;
 
+import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
 import ru.staffly.schedule.model.ScheduleBuildPattern;
 
 import java.time.LocalTime;
@@ -11,6 +12,7 @@ public record SaveScheduleBuildPositionConfigRequest(
         LocalTime fullShiftEnd,
         ScheduleBuildPattern targetPattern,
         Integer minRestHours,
+        ScheduleBuildMinRestMode minRestMode,
         Integer maxShiftsPerPeriod,
         List<SaveScheduleBuildShiftOptionRequest> shiftOptions,
         List<SaveScheduleBuildCoverageRuleRequest> coverageRules,

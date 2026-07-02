@@ -1,4 +1,9 @@
-import type { SaveScheduleBuildTemplateRequest, ScheduleBuildTargetPattern, ScheduleBuildTemplateDto } from "../api";
+import type {
+  SaveScheduleBuildTemplateRequest,
+  ScheduleBuildMinRestMode,
+  ScheduleBuildTargetPattern,
+  ScheduleBuildTemplateDto,
+} from "../api";
 
 export type ScheduleBuildShiftOptionDraft = {
   startTime: string;
@@ -22,6 +27,7 @@ export type ScheduleBuildPositionConfigDraft = {
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours: number | "";
+  minRestMode: ScheduleBuildMinRestMode;
   maxShiftsPerPeriod: number | "";
   sortOrder: number;
   shiftOptions: ScheduleBuildShiftOptionDraft[];
@@ -73,6 +79,7 @@ export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft =>
   fullShiftEnd: "",
   targetPattern: "NONE",
   minRestHours: 12,
+  minRestMode: "SOFT",
   maxShiftsPerPeriod: 5,
   sortOrder: 0,
   shiftOptions: [createShiftOptionDraft()],
@@ -88,6 +95,7 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours ?? "",
+    minRestMode: config.minRestMode ?? "SOFT",
     maxShiftsPerPeriod: config.maxShiftsPerPeriod ?? "",
     sortOrder: config.sortOrder,
     shiftOptions: (config.shiftOptions ?? []).map((option) => ({
@@ -116,6 +124,7 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
+    minRestMode: config.minRestMode,
     maxShiftsPerPeriod: config.maxShiftsPerPeriod === "" ? null : Number(config.maxShiftsPerPeriod),
     sortOrder: index,
     shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
