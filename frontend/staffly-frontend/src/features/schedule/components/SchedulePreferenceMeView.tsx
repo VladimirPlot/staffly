@@ -75,6 +75,15 @@ function formatDateTime(value: string | null | undefined): string {
   });
 }
 
+function normalizeTimeForUi(value: string | null | undefined): string {
+  if (!value) return "";
+
+  const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(value);
+  if (!match) return value;
+
+  return `${match[1]}:${match[2]}`;
+}
+
 function parseTimeToMinutes(value: string): number | null {
   const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
   if (!match) return null;
@@ -120,8 +129,8 @@ function getInitialFormState(data: SchedulePreferenceMyResponse): PreferenceForm
     result[cell.day] = {
       type: cell.type,
       fullDay: cell.fullDay,
-      startTime: cell.fullDay ? "" : (cell.startTime ?? ""),
-      endTime: cell.fullDay ? "" : (cell.endTime ?? ""),
+      startTime: cell.fullDay ? "" : normalizeTimeForUi(cell.startTime),
+      endTime: cell.fullDay ? "" : normalizeTimeForUi(cell.endTime),
       note: cell.note ?? "",
     };
   });
@@ -160,7 +169,7 @@ function buildRepeatingPattern(
   days.forEach((day) => {
     const indexInCycle = getPositiveModulo(getDayOffsetFromStart(day.date, startDay), cycleLength);
     result[day.date] = {
-      type: indexInCycle < workCount ? "AVAILABLE" : "PREFER_DAY_OFF",
+      type: indexInCycle < workCount ? "AVAILABLE" : "UNAVAILABLE",
       fullDay: true,
       startTime: "",
       endTime: "",
@@ -235,12 +244,14 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   }, []);
 
   const handleShiftOptionChange = React.useCallback((day: string, value: string) => {
-    const [startTime = "", endTime = ""] = value.split("|");
+    const [rawStartTime = "", rawEndTime = ""] = value.split("|");
+    const startTime = normalizeTimeForUi(rawStartTime);
+    const endTime = normalizeTimeForUi(rawEndTime);
     setFormError(null);
     setFormStateByDay((prev) => ({
       ...prev,
       [day]: {
-        ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "" }),
+        ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "", note: "" }),
         fullDay: false,
         startTime,
         endTime,
@@ -498,15 +509,19 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                       {hasAllowedShiftOptions ? (
                         <DropdownSelect
                           aria-label={`Вариант смены на ${formatDateFromIso(day.date)}`}
-                          value={`${formStateByDay[day.date]?.startTime ?? ""}|${formStateByDay[day.date]?.endTime ?? ""}`}
+                          value={`${normalizeTimeForUi(formStateByDay[day.date]?.startTime)}|${normalizeTimeForUi(
+                            formStateByDay[day.date]?.endTime,
+                          )}`}
                           onChange={(event) => handleShiftOptionChange(day.date, event.target.value)}
                           disabled={!data.canSubmit || saving}
                         >
                           <option value="|">{getIntervalSelectLabel(formStateByDay[day.date]?.type ?? "")}</option>
                           {allowedShiftOptions.map((option) => {
-                            const interval = `${option.startTime}–${option.endTime}`;
+                            const startTime = normalizeTimeForUi(option.startTime);
+                            const endTime = normalizeTimeForUi(option.endTime);
+                            const interval = `${startTime}–${endTime}`;
                             return (
-                              <option key={option.id} value={`${option.startTime}|${option.endTime}`}>
+                              <option key={option.id} value={`${startTime}|${endTime}`}>
                                 {option.label ? `${option.label} ${interval}` : interval}
                               </option>
                             );
