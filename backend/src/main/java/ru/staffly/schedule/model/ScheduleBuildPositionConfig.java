@@ -7,7 +7,9 @@ import ru.staffly.dictionary.model.Position;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "schedule_build_position_config", indexes = @Index(name = "idx_sbpc_template", columnList = "template_id"))
@@ -29,9 +31,8 @@ public class ScheduleBuildPositionConfig {
             inverseJoinColumns = @JoinColumn(name = "position_id", nullable = false),
             uniqueConstraints = @UniqueConstraint(name = "uq_sbpcp_config_position", columnNames = {"position_config_id", "position_id"})
     )
-    @OrderBy("name ASC, id ASC")
     @Builder.Default
-    private List<Position> positions = new ArrayList<>();
+    private Set<Position> positions = new LinkedHashSet<>();
 
     @Column(name = "full_shift_start", nullable = false)
     private LocalTime fullShiftStart;
