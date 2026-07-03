@@ -5,6 +5,7 @@ import java.util.List;
 public record ScheduleAutoBuildPositionPreviewDto(
         Long positionId,
         String positionName,
+        List<Long> positionIds,
         List<ScheduleAutoBuildCellPreviewDto> cells,
         List<String> warnings,
         int totalAssignments,

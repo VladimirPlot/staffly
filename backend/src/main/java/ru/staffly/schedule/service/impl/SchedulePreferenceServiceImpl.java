@@ -323,12 +323,19 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             return false;
         }
         return template.getPositionConfigs().stream()
-                .filter(config -> config.getPosition() != null && positionId.equals(config.getPosition().getId()))
+                .filter(config -> configPositionIds(config).contains(positionId))
                 .findFirst()
                 .map(config -> config.getShiftOptions().stream()
                         .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
                                 && Objects.equals(option.getEndTime(), endTime)))
                 .orElse(false);
+    }
+
+    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream().map(position -> position.getId()).filter(Objects::nonNull).toList();
+        }
+        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
     }
 
     private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {
@@ -359,7 +366,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             return List.of();
         }
         return template.getPositionConfigs().stream()
-                .filter(config -> config.getPosition() != null && positionId.equals(config.getPosition().getId()))
+                .filter(config -> configPositionIds(config).contains(positionId))
                 .findFirst()
                 .map(config -> config.getShiftOptions().stream()
                         .sorted(Comparator.comparing(

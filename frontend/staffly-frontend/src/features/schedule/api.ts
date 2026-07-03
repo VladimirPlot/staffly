@@ -230,6 +230,8 @@ export type ScheduleBuildPositionConfigDto = {
   id: number;
   positionId: number;
   positionName: string;
+  positionIds: number[];
+  positionNames: string[];
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
@@ -272,7 +274,7 @@ export type SaveScheduleBuildCoverageRuleRequest = {
 
 export type SaveScheduleBuildPositionConfigRequest = {
   id?: number;
-  positionId: number;
+  positionIds: number[];
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
@@ -337,6 +339,7 @@ export type ScheduleAutoBuildCellPreviewDto = {
 export type ScheduleAutoBuildPositionPreviewDto = {
   positionId: number;
   positionName: string;
+  positionIds: number[];
   cells: ScheduleAutoBuildCellPreviewDto[];
   warnings: string[];
   totalAssignments: number;
@@ -348,6 +351,8 @@ export type ScheduleAutoBuildPositionPreviewDto = {
 export type ScheduleAutoBuildUncoveredSlotDto = {
   date: string;
   positionId: number;
+  positionIds: number[];
+  positionName: string;
   startTime: string;
   endTime: string;
   requiredCount: number;
@@ -486,6 +491,8 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
     updatedAt: nullableTimestamp(data.updatedAt),
     positionConfigs: (data.positionConfigs ?? []).map((config) => ({
       ...config,
+      positionIds: config.positionIds?.length ? config.positionIds : [config.positionId],
+      positionNames: config.positionNames?.length ? config.positionNames : [config.positionName],
       shiftOptions: config.shiftOptions ?? [],
       coverageRules: config.coverageRules ?? [],
     })),
