@@ -151,6 +151,7 @@ export type SchedulePreferenceMyResponse = {
   allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
   cells: SchedulePreferenceCellDto[];
   comment?: string | null;
+  periodComment?: string | null;
 };
 
 export type SchedulePreferenceParticipantDto = {
@@ -186,6 +187,7 @@ export type SchedulePreferenceSubmissionDto = {
   updatedAt?: string | null;
   revision: number;
   comment?: string | null;
+  periodComment?: string | null;
   cells: SchedulePreferenceCellDto[];
 };
 
@@ -200,6 +202,7 @@ export type SchedulePreferenceSubmissionsResponse = {
 export type UpsertMySchedulePreferenceRequest = {
   cells: SchedulePreferenceCellRequest[];
   comment?: string | null;
+  periodComment?: string | null;
 };
 export type ScheduleBuildTargetPattern = "NONE" | "TWO_TWO" | "THREE_THREE" | "FIVE_TWO";
 

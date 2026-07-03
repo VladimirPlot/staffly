@@ -148,6 +148,7 @@ function EmployeePreferenceAccordionRow({
   onToggle: () => void;
 }) {
   const cells = sortCells(row.submission?.cells ?? []);
+  const periodComment = row.submission?.periodComment ?? row.submission?.comment ?? null;
   const summary = countPreferenceSummary(cells);
   const statusClassName = row.submitted
     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
@@ -164,6 +165,15 @@ function EmployeePreferenceAccordionRow({
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-strong text-sm font-semibold">{formatMemberName(row.displayName)}</span>
+            {periodComment && (
+              <span
+                className="border-subtle bg-surface text-muted inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-semibold"
+                title={periodComment}
+                aria-label="Комментарий к периоду"
+              >
+                i
+              </span>
+            )}
             <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${statusClassName}`}>
               {row.submitted ? "Отправлено" : "Не отправлено"}
             </span>
@@ -174,6 +184,7 @@ function EmployeePreferenceAccordionRow({
             <span>{formatPreferenceSummary(summary)}</span>
             {row.submittedAt && <span>отправлено: {formatDateTime(row.submittedAt)}</span>}
             {row.revision > 0 && <span>ревизия {row.revision}</span>}
+            {periodComment && <span>Есть комментарий</span>}
           </div>
         </div>
         <div className="text-muted flex items-center justify-between gap-2 text-sm font-medium sm:justify-end">
@@ -189,9 +200,9 @@ function EmployeePreferenceAccordionRow({
 
       {expanded && (
         <div className="border-subtle border-t p-4 pt-3">
-          {row.submission?.comment && (
+          {periodComment && (
             <div className="mb-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-              {row.submission.comment}
+              {periodComment}
             </div>
           )}
 
@@ -210,6 +221,15 @@ function EmployeePreferenceAccordionRow({
                       {PREFERENCE_TYPE_LABELS[cell.type]}
                     </span>
                     <span className="text-muted text-xs">{formatCellTime(cell)}</span>
+                    {cell.note && (
+                      <span
+                        className="border-subtle bg-surface text-muted inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-semibold"
+                        title={cell.note}
+                        aria-label="Комментарий к дню"
+                      >
+                        i
+                      </span>
+                    )}
                   </div>
                   {cell.note && <div className="text-muted mt-1 text-xs">{cell.note}</div>}
                 </div>

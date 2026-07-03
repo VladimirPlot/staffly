@@ -20,5 +20,6 @@ public record SchedulePreferenceMyResponse(
         SchedulePreferenceMemberDto member,
         List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions,
         List<SchedulePreferenceCellDto> cells,
-        String comment
+        String comment,
+        String periodComment
 ) {}
