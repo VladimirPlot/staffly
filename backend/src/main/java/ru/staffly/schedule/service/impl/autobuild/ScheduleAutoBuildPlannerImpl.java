@@ -560,6 +560,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         AssignmentPlan assignment = new AssignmentPlan(
                 member.getId(),
                 displayName(member),
+                member.getPosition() == null ? null : member.getPosition().getId(),
                 day.toString(),
                 formatShift(option),
                 option.getId(),

@@ -122,6 +122,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         return new ScheduleAutoBuildCellPreviewDto(
                 a.memberId(),
                 a.memberName(),
+                a.positionId(),
                 a.day(),
                 a.value(),
                 a.shiftOptionId(),

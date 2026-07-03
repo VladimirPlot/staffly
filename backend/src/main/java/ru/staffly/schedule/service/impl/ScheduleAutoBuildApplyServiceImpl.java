@@ -124,6 +124,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                     new ScheduleAutoBuildPlanner.AssignmentPlan(
                             assignment.memberId(),
                             hasText(assignment.memberName()) ? assignment.memberName() : memberDisplayName(member),
+                            member.getPosition().getId(),
                             assignment.day(),
                             resolveAdjustedValue(assignment),
                             assignment.shiftOptionId(),
@@ -142,7 +143,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 .map(entry -> {
                     ScheduleBuildPositionConfig config = configsById.get(entry.getKey());
                     List<ScheduleAutoBuildPlanner.AssignmentPlan> cells = entry.getValue();
-                    return new ScheduleAutoBuildPlanner.PositionPlan(config.getId(), configDisplayName(config), configPositionIds(config), cells, List.of(), cells.size(), 0, 0, 0);
+                    List<Long> effectivePositionIds = effectivePositionIds(config, schedulePositions);
+                    return new ScheduleAutoBuildPlanner.PositionPlan(config.getId(), configDisplayName(config, effectivePositionIds), effectivePositionIds, cells, List.of(), cells.size(), 0, 0, 0);
                 })
                 .toList();
 
@@ -168,8 +170,16 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 .toList();
     }
 
-    private String configDisplayName(ScheduleBuildPositionConfig config) {
+    private List<Long> effectivePositionIds(ScheduleBuildPositionConfig config, Set<Long> schedulePositions) {
+        return configPositionIds(config).stream()
+                .filter(schedulePositions::contains)
+                .toList();
+    }
+
+    private String configDisplayName(ScheduleBuildPositionConfig config, List<Long> effectivePositionIds) {
+        Set<Long> effective = new HashSet<>(effectivePositionIds);
         String name = config.getPositions() == null ? "" : config.getPositions().stream()
+                .filter(position -> position.getId() != null && effective.contains(position.getId()))
                 .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .map(position -> position.getName())
                 .collect(Collectors.joining(" + "));
