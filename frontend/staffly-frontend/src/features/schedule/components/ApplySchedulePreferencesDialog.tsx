@@ -191,13 +191,13 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
             ...cell,
             id: `${position.positionConfigId}-${cell.day}-${cell.memberId ?? "none"}-${cell.startTime ?? ""}-${index}`,
             positionConfigId: position.positionConfigId,
-            positionId: members.find((member) => member.id === cell.memberId)?.positionId ?? position.positionIds[0],
+            positionId: cell.positionId ?? position.positionIds[0],
             positionIds: position.positionIds ?? [],
           })),
       ),
     );
     setManualWarning(null);
-  }, [members, preview]);
+  }, [preview]);
 
   const isMemberBusy = React.useCallback(
     (memberId: number, day: string, exceptAssignmentId?: string) =>
