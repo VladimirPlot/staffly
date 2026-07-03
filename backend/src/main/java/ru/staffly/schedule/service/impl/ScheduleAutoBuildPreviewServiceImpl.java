@@ -95,7 +95,10 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        return config.getPositions() == null ? List.of() : config.getPositions().stream().map(position -> position.getId()).toList();
+        return config.getPositions() == null ? List.of() : config.getPositions().stream().map(position -> position.getId())
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     private void validateRequest(PreviewScheduleAutoBuildRequest request) {

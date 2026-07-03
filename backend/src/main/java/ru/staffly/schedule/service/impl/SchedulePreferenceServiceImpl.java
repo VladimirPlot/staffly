@@ -335,6 +335,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return config.getPositions() == null ? List.of() : config.getPositions().stream()
                 .map(position -> position.getId())
                 .filter(Objects::nonNull)
+                .sorted()
                 .toList();
     }
 
