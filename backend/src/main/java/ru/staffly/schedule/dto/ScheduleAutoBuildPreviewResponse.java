@@ -10,6 +10,7 @@ public record ScheduleAutoBuildPreviewResponse(
         List<ScheduleAutoBuildPositionPreviewDto> positions,
         List<String> warnings,
         List<ScheduleAutoBuildUncoveredSlotDto> uncoveredSlots,
+        List<ScheduleAutoBuildRejectionHintDto> rejectionHints,
         int totalAssignments,
         int warningsCount,
         int unfilledCount,

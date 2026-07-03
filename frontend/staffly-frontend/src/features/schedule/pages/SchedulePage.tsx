@@ -182,6 +182,7 @@ const SchedulePage: React.FC = () => {
     scheduleId,
     enabled: preferenceHintsEnabled,
   });
+  const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
 
   const preferenceHintsByCellKey = React.useMemo(() => {
     if (!canInspectScheduleDiagnostics) {
@@ -202,6 +203,20 @@ const SchedulePage: React.FC = () => {
     });
     return map;
   }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
+
+  const rejectionHintsByCellKey = React.useMemo(() => {
+    if (!canInspectScheduleDiagnostics || !autoBuildPreviewActions.preview) {
+      return undefined;
+    }
+
+    const map: Record<string, import("../api").ScheduleAutoBuildRejectionHintDto[]> = {};
+    autoBuildPreviewActions.preview.rejectionHints.forEach((hint) => {
+      const key = `${hint.memberId}:${hint.date}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(hint);
+    });
+    return map;
+  }, [autoBuildPreviewActions.preview, canInspectScheduleDiagnostics]);
 
   const preferenceCommentsByMemberId = React.useMemo(() => {
     if (!canInspectScheduleDiagnostics) {
@@ -407,7 +422,6 @@ const SchedulePage: React.FC = () => {
     void loadTemplates();
   }, [buildTemplatesLoading, loadTemplates, templatesLoaded]);
 
-  const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
   const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
     restaurantId,
     scheduleId,
@@ -769,6 +783,7 @@ const SchedulePage: React.FC = () => {
             <ScheduleTableSection
               preferenceHintsByCellKey={preferenceHintsByCellKey}
               preferenceCommentsByMemberId={preferenceCommentsByMemberId}
+              rejectionHintsByCellKey={rejectionHintsByCellKey}
               showCellDiagnostics={canInspectScheduleDiagnostics}
               showPublishedDiagnostics={showPublishedDiagnostics}
               onTogglePublishedDiagnostics={() => setShowPublishedDiagnostics((value) => !value)}

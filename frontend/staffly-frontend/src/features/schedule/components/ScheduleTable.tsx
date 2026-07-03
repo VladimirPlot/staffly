@@ -1,7 +1,7 @@
 import React from "react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
-import type { SchedulePreferenceCellDto } from "../api";
+import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } from "../api";
 import type {
   ScheduleCellChangeOptions,
   ScheduleCellKey,
@@ -9,6 +9,7 @@ import type {
   ScheduleData,
   ScheduleDay,
   SchedulePreferenceHintsByCellKey,
+  ScheduleRejectionHintsByCellKey,
   ScheduleRow,
   ShiftMode,
 } from "../types";
@@ -50,6 +51,7 @@ type Props = {
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   preferenceCommentsByMemberId?: Record<number, string>;
+  rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
   showCellDiagnostics?: boolean;
   zoomScale?: number;
 };
@@ -79,6 +81,7 @@ type ScheduleTableRowProps = {
   onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   preferenceCommentsByMemberId?: Record<number, string>;
+  rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
   showCellDiagnostics: boolean;
 };
 
@@ -92,6 +95,7 @@ type ScheduleCellEditorProps = {
   readOnly: boolean;
   onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   hints?: SchedulePreferenceCellDto[];
+  rejectionHints?: ScheduleAutoBuildRejectionHintDto[];
   showCellDiagnostics: boolean;
 };
 
@@ -129,6 +133,7 @@ const ScheduleTable: React.FC<Props> = ({
   readOnly = false,
   preferenceHintsByCellKey,
   preferenceCommentsByMemberId,
+  rejectionHintsByCellKey,
   showCellDiagnostics = false,
   zoomScale = 1,
 }) => {
@@ -221,6 +226,7 @@ const ScheduleTable: React.FC<Props> = ({
             onCellValueChange={handleCellValueChange}
             preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
             preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
+            rejectionHintsByCellKey={showCellDiagnostics ? rejectionHintsByCellKey : undefined}
             showCellDiagnostics={showCellDiagnostics}
           />
         ))}
@@ -334,6 +340,7 @@ const ScheduleTableRow = React.memo(
     onCellValueChange,
     preferenceHintsByCellKey,
     preferenceCommentsByMemberId,
+    rejectionHintsByCellKey,
     showCellDiagnostics,
   }: ScheduleTableRowProps) {
     return (
@@ -376,6 +383,7 @@ const ScheduleTableRow = React.memo(
               readOnly={readOnly}
               onCellValueChange={onCellValueChange}
               hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
+              rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
               showCellDiagnostics={showCellDiagnostics}
             />
           );
@@ -421,6 +429,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   readOnly,
   onCellValueChange,
   hints,
+  rejectionHints,
   showCellDiagnostics,
 }: ScheduleCellEditorProps) {
   const handleInputChange = React.useCallback(
@@ -446,6 +455,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
 
   const missingEnd = shiftMode === "FULL" && hasStartWithoutEndValue(value);
   const diagnosticHints = showCellDiagnostics ? hints : undefined;
+  const maxShiftHints = showCellDiagnostics ? (rejectionHints ?? []) : [];
   const hasConflict = diagnosticHints
     ? hasNegativePreferenceConflict({
         value,
@@ -506,6 +516,16 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
             {sourceMeta.label}
           </span>
           {sourceEditHint && <span className="text-muted text-center text-[10px] leading-tight">{sourceEditHint}</span>}
+        </div>
+      )}
+      {maxShiftHints.length > 0 && diagnosticHints && diagnosticHints.length > 0 && !value.trim() && (
+        <div className="mt-1 flex justify-center">
+          <span
+            className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800"
+            title={maxShiftHints.map((hint) => hint.message).join("; ")}
+          >
+            Лимит смен
+          </span>
         </div>
       )}
       {(hasConflict || preferenceAssignmentBadge) && (
