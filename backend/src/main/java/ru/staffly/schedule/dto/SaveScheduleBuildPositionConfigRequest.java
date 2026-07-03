@@ -8,6 +8,7 @@ import java.util.List;
 
 public record SaveScheduleBuildPositionConfigRequest(
         Long positionId,
+        List<Long> positionIds,
         LocalTime fullShiftStart,
         LocalTime fullShiftEnd,
         ScheduleBuildPattern targetPattern,

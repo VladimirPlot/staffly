@@ -49,13 +49,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
         List<ScheduleBuildPositionConfig> positionConfigs = safePositionConfigs(template);
         Set<Long> templatePositionIds = positionConfigs.stream()
-                .map(config -> config.getPosition().getId())
+                .flatMap(config -> configPositionIds(config).stream())
                 .collect(Collectors.toSet());
 
         for (ScheduleBuildPositionConfig config : positionConfigs) {
-            Long positionId = config.getPosition().getId();
-            if (!schedulePositions.contains(positionId)) {
-                topWarnings.add("В шаблоне есть позиция вне графика: " + config.getPosition().getName());
+            if (disjoint(configPositionIds(config), schedulePositions)) {
+                topWarnings.add("В шаблоне есть блок должностей вне графика: " + configDisplayName(config));
             }
         }
 
@@ -72,7 +71,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<RejectionHintPlan> rejectionHints = new ArrayList<>();
 
         for (ScheduleBuildPositionConfig config : positionConfigs) {
-            if (!schedulePositions.contains(config.getPosition().getId())) {
+            if (disjoint(configPositionIds(config), schedulePositions)) {
                 continue;
             }
             PositionBuildResult positionResult = buildPosition(restaurantId, schedule, config, preferencesByMember, plannerState);
@@ -82,7 +81,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
 
         List<String> distinctTopWarnings = topWarnings.stream().distinct().toList();
-        Set<Long> affected = positions.stream().map(PositionPlan::positionId).collect(Collectors.toSet());
+        Set<Long> affected = positions.stream().flatMap(position -> position.positionIds().stream()).collect(Collectors.toSet());
         int totalAssignments = positions.stream().mapToInt(PositionPlan::totalAssignments).sum();
         int unfilledCount = positions.stream().mapToInt(PositionPlan::unfilledCount).sum();
         int negativeAssignmentsCount = positions.stream().mapToInt(PositionPlan::negativeAssignmentsCount).sum();
@@ -111,7 +110,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
             PlannerState plannerState
     ) {
-        List<RestaurantMember> candidates = loadCandidates(restaurantId, config);
+        List<Long> effectivePositionIds = intersection(configPositionIds(config), schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
+        List<RestaurantMember> candidates = loadCandidates(restaurantId, effectivePositionIds);
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
@@ -141,8 +141,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         PositionCounters counters = buildPositionCounters(assignments, warnings, unfilledCount, negativeAssignmentsCount);
 
         PositionPlan positionPlan = new PositionPlan(
-                config.getPosition().getId(),
-                config.getPosition().getName(),
+                displayPositionId(config),
+                configDisplayName(config),
+                effectivePositionIds,
                 assignments,
                 counters.distinctWarnings(),
                 counters.totalAssignments(),
@@ -153,10 +154,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return new PositionBuildResult(positionPlan, uncoveredSlots, rejectionHints);
     }
 
-    private List<RestaurantMember> loadCandidates(Long restaurantId, ScheduleBuildPositionConfig config) {
+    private List<RestaurantMember> loadCandidates(Long restaurantId, List<Long> positionIds) {
         List<RestaurantMember> foundMembers = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 restaurantId,
-                List.of(config.getPosition().getId())
+                positionIds
         );
 
         return foundMembers.stream()
@@ -369,7 +370,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         .endTime(uncoveredEnd)
                         .build();
                 warnings.add(unfilledWarning(day, warningOption, splitSelection.selection()));
-                uncoveredSlots.add(toUncoveredSlot(day, config.getPosition().getId(), uncoveredStart, uncoveredEnd, 1, 0));
+                uncoveredSlots.add(toUncoveredSlot(day, displayPositionId(config), configPositionIds(config), configDisplayName(config), uncoveredStart, uncoveredEnd, 1, 0));
                 unfilledCount++;
                 cursor = nextBoundary;
                 continue;
@@ -715,8 +716,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 evaluation.member().getId(),
                 evaluation.displayName(),
                 day.toString(),
-                config.getPosition().getId(),
-                config.getPosition().getName(),
+                displayPositionId(config),
+                configDisplayName(config),
+                effectivePositionIds,
                 option.getId(),
                 option.getLabel(),
                 option.getStartTime().toString(),
@@ -919,7 +921,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (config.getId() != null) {
             return "config:" + config.getId();
         }
-        return config.getPosition() == null ? null : "position:" + config.getPosition().getId();
+        return "positions:" + configPositionIds(config).stream().map(String::valueOf).collect(Collectors.joining(","));
     }
 
     private CandidateEvaluation selectBestCandidate(List<CandidateEvaluation> candidates) {
@@ -1250,7 +1252,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<ScheduleBuildShiftOption> shiftOptions
     ) {
         if (shiftOptions.isEmpty()) {
-            return "Для должности " + config.getPosition().getName() + " не настроены варианты смен";
+            return "Для блока должностей " + configDisplayName(config) + " не настроены варианты смен";
         }
 
         return "Не найден shiftOption для правила "
@@ -1330,10 +1332,41 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : safePositionConfigs(template)) {
+            Hibernate.initialize(positionConfig.getPositions());
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
+    }
+
+    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream().map(position -> position.getId()).filter(java.util.Objects::nonNull).sorted().toList();
+        }
+        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
+    }
+
+    private Long displayPositionId(ScheduleBuildPositionConfig config) {
+        return configPositionIds(config).stream().findFirst().orElse(null);
+    }
+
+    private String configDisplayName(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream()
+                    .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                    .map(position -> position.getName())
+                    .collect(Collectors.joining(" + "));
+        }
+        return config.getPosition() == null ? "Блок должностей" : config.getPosition().getName();
+    }
+
+    private List<Long> intersection(List<Long> left, List<Long> right) {
+        Set<Long> rightSet = right == null ? Set.of() : new java.util.HashSet<>(right);
+        return left.stream().filter(rightSet::contains).toList();
+    }
+
+    private boolean disjoint(List<Long> left, List<Long> right) {
+        return intersection(left, right).isEmpty();
     }
 
     private List<ScheduleBuildPositionConfig> safePositionConfigs(ScheduleBuildTemplate template) {
@@ -1400,6 +1433,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private UncoveredSlotPlan toUncoveredSlot(
             LocalDate day,
             Long positionId,
+            List<Long> positionIds,
+            String positionName,
             LocalTime startTime,
             LocalTime endTime,
             int requiredCount,
@@ -1408,6 +1443,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return new UncoveredSlotPlan(
                 day.toString(),
                 positionId,
+                positionIds,
+                positionName,
                 startTime.format(HH_MM),
                 endTime.format(HH_MM),
                 requiredCount,
