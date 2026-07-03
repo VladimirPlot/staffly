@@ -95,18 +95,24 @@ const SummaryCounter: React.FC<{ label: string; value: number; tone?: "default" 
   tone = "default",
 }) => (
   <div
-    className={`rounded-xl border px-3 py-2 ${
+    className={`rounded-xl border px-2.5 py-2 ${
       tone === "warning" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-subtle bg-card text-default"
     }`}
   >
-    <div className="text-muted text-xs">{label}</div>
-    <div className="mt-1 text-lg font-semibold">{value}</div>
+    <div className="text-muted text-[11px] leading-none">{label}</div>
+    <div className="mt-1 text-base leading-none font-semibold">{value}</div>
   </div>
 );
 
 const WarningBox: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{children}</div>
 );
+
+const getUncoveredSlotKey = (slot: ScheduleAutoBuildUncoveredSlotDto, index: number): string =>
+  `${slot.date}-${slot.positionConfigId}-${slot.startTime}-${slot.endTime}-${index}`;
+
+const hasPositionRisks = (position: ScheduleAutoBuildPreviewResponse["positions"][number]): boolean =>
+  position.warningsCount > 0 || position.unfilledCount > 0 || position.negativeAssignmentsCount > 0;
 
 const MATCH_STATUS_BADGE: Record<ScheduleAutoBuildCellPreviewDto["matchStatus"], { label: string; className: string }> =
   {
@@ -449,58 +455,98 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
 
         {preview && (
           <section className="border-subtle bg-app rounded-2xl border p-4">
-            <h3 className="text-default text-sm font-semibold">Предпросмотр автосборки</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-default text-sm font-semibold">Предпросмотр автосборки</h3>
+              <span className="text-muted text-xs">Проверьте изменения перед применением</span>
+            </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
               <SummaryCounter label="Назначений" value={editableAssignments.length} />
               <SummaryCounter label="Незаполнено" value={preview.unfilledCount} tone="warning" />
               <SummaryCounter label="Предупреждений" value={preview.warningsCount} tone="warning" />
               <SummaryCounter label="Вопреки пожеланиям" value={preview.negativeAssignmentsCount} tone="warning" />
             </div>
-            <div className="mt-3 space-y-2">
-              {isEditablePreviewEmpty && <WarningBox>{EMPTY_EDITABLE_PREVIEW_WARNING}</WarningBox>}
-              {preview.unfilledCount > 0 && (
-                <WarningBox>Не все потребности закрыты. После применения проверьте пустые места вручную.</WarningBox>
-              )}
+
+            <div className="mt-3 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+              <div className="space-y-2">
+                {isEditablePreviewEmpty && <WarningBox>{EMPTY_EDITABLE_PREVIEW_WARNING}</WarningBox>}
+                {preview.unfilledCount > 0 && (
+                  <WarningBox>Не все потребности закрыты. После применения проверьте пустые места вручную.</WarningBox>
+                )}
+                {manualWarning && <WarningBox>{manualWarning}</WarningBox>}
+                {preview.negativeAssignmentsCount > 0 && (
+                  <WarningBox>Есть назначения вопреки отрицательным пожеланиям сотрудников.</WarningBox>
+                )}
+                {preview.totalAssignments === 0 && (
+                  <WarningBox>
+                    Автосборка не создала ни одного назначения. Проверьте настройки покрытия и варианты смен.
+                  </WarningBox>
+                )}
+              </div>
+
               {preview.uncoveredSlots.length > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <div className="font-semibold">Не закрыто</div>
-                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                <details
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+                  open
+                >
+                  <summary className="cursor-pointer font-semibold">
+                    Не закрытые потребности: {preview.uncoveredSlots.length} слотов
+                  </summary>
+                  <div className="text-muted mt-1 text-xs">
+                    Показано {preview.uncoveredSlots.length} незакрытых слотов
+                  </div>
+                  <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-1">
                     {preview.uncoveredSlots.map((slot, idx) => {
                       const candidates = members
                         .filter((member) => isMemberInPositionIds(member, slot.positionIds ?? []))
                         .filter((member) => !isMemberBusy(member.id, slot.date));
                       return (
-                        <li key={`${slot.date}-${slot.positionConfigId}-${slot.startTime}-${slot.endTime}-${idx}`}>
-                          <div className="flex flex-wrap items-center gap-2">
+                        <div
+                          key={getUncoveredSlotKey(slot, idx)}
+                          className="rounded-lg border border-amber-200 bg-white/70 px-3 py-2"
+                        >
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="font-medium">{slot.date}</span>
+                            {slot.positionName && <span>{slot.positionName}</span>}
                             <span>
-                              {slot.date}, {slot.startTime}–{slot.endTime}: не хватает{" "}
-                              {Math.max(slot.requiredCount - slot.assignedCount, 0)} из {slot.requiredCount}
+                              {slot.startTime}–{slot.endTime}
                             </span>
-                            <select
-                              className="border-subtle rounded-lg border bg-white px-2 py-1 text-xs"
-                              value=""
-                              onChange={(event) => assignUncoveredSlot(slot, event.target.value)}
-                              disabled={candidates.length === 0 || autoApplying}
-                            >
-                              <option value="">Назначить сотрудника</option>
-                              {candidates.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {memberDisplayName(member, memberNames)}
-                                </option>
-                              ))}
-                            </select>
+                            <span className="text-amber-800">
+                              не хватает {Math.max(slot.requiredCount - slot.assignedCount, 0)} из {slot.requiredCount}
+                            </span>
                           </div>
-                        </li>
+                          <div className="mt-2">
+                            {candidates.length === 0 ? (
+                              <div className="text-xs text-amber-800">Нет доступных сотрудников для этого слота</div>
+                            ) : (
+                              <select
+                                className="border-subtle rounded-lg border bg-white px-2 py-1 text-xs"
+                                value=""
+                                aria-label="Назначить сотрудника"
+                                onChange={(event) => assignUncoveredSlot(slot, event.target.value)}
+                                disabled={autoApplying}
+                              >
+                                <option value="">Назначить сотрудника</option>
+                                {candidates.map((member) => (
+                                  <option key={member.id} value={member.id}>
+                                    {memberDisplayName(member, memberNames)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        </div>
                       );
                     })}
-                  </ul>
-                </div>
+                  </div>
+                </details>
               )}
-              {manualWarning && <WarningBox>{manualWarning}</WarningBox>}
+
               {preview.rejectionHints.length > 0 && (
-                <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-                  <div className="font-semibold">Не выбраны из-за лимита смен</div>
-                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                <details className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                  <summary className="cursor-pointer font-semibold">
+                    Не выбраны из-за лимита смен: {preview.rejectionHints.length}
+                  </summary>
+                  <ul className="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pr-1 pl-5">
                     {preview.rejectionHints.map((hint, idx) => (
                       <li key={`${hint.memberId}-${hint.date}-${hint.positionConfigId}-${hint.startTime ?? ""}-${idx}`}>
                         {hint.date}: {hint.memberName ?? `Сотрудник #${hint.memberId}`}
@@ -512,128 +558,137 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               )}
-              {preview.negativeAssignmentsCount > 0 && (
-                <WarningBox>Есть назначения вопреки отрицательным пожеланиям сотрудников.</WarningBox>
-              )}
-              {preview.totalAssignments === 0 && (
-                <WarningBox>
-                  Автосборка не создала ни одного назначения. Проверьте настройки покрытия и варианты смен.
-                </WarningBox>
-              )}
-            </div>
-            {preview.warnings.length > 0 && (
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-700">
-                {preview.warnings.map((warning, idx) => (
-                  <li key={`top-warning-${idx}`}>{warning}</li>
-                ))}
-              </ul>
-            )}
 
-            <div className="mt-4 space-y-4">
-              {preview.positions.map((position) => {
-                const positionAssignments = editableAssignments.filter(
-                  (assignment) => assignment.positionConfigId === position.positionConfigId,
-                );
-                return (
-                  <div key={position.positionConfigId} className="border-subtle rounded-xl border p-3">
-                    <div className="text-sm font-semibold">{position.positionName}</div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
-                      <SummaryCounter label="Назначений" value={positionAssignments.length} />
-                      <SummaryCounter label="Незаполнено" value={position.unfilledCount} tone="warning" />
-                      <SummaryCounter label="Предупреждений" value={position.warningsCount} tone="warning" />
-                      <SummaryCounter
-                        label="Вопреки пожеланиям"
-                        value={position.negativeAssignmentsCount}
-                        tone="warning"
-                      />
-                    </div>
-                    {position.warnings.length > 0 && (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
-                        {position.warnings.map((warning, idx) => (
-                          <li key={`${position.positionConfigId}-warning-${idx}`}>{warning}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="mt-3 space-y-3">
-                      {groupPreviewCellsByDay(positionAssignments).map((dayGroup) => (
-                        <div
-                          key={`${position.positionConfigId}-${dayGroup.day}`}
-                          className="rounded-xl bg-white/60 p-3"
-                        >
-                          <div className="text-default text-xs font-semibold">{dayGroup.day}</div>
-                          <div className="mt-2 space-y-2">
-                            {dayGroup.cells.map((cell, idx) => (
-                              <div
-                                key={`${position.positionConfigId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
-                                className={`rounded-lg border px-3 py-2 text-xs ${
-                                  cell.matchStatus === "SOFT_NEGATIVE_FALLBACK" ||
-                                  cell.matchStatus === "HARD_NEGATIVE_FALLBACK" ||
-                                  cell.matchStatus === "PARTIAL_INTERVAL_FALLBACK"
-                                    ? "border-amber-200 bg-amber-50/80"
-                                    : "border-subtle bg-white"
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                  <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
-                                  <span className="text-muted">—</span>
-                                  <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
-                                  <span className="text-muted">—</span>
-                                  <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
-                                  <AssignmentMatchBadge cell={cell} />
-                                </div>
-                                {cell.warningMessage && (
-                                  <div className="mt-1 text-amber-700">{cell.warningMessage}</div>
-                                )}
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <select
-                                    className="border-subtle rounded-lg border bg-white px-2 py-1"
-                                    value={cell.memberId ?? ""}
-                                    onChange={(event) =>
-                                      replaceAssignmentMember((cell as EditableAssignment).id, event.target.value)
-                                    }
-                                    disabled={autoApplying}
-                                  >
-                                    {members
-                                      .filter((member) => isMemberInPositionIds(member, position.positionIds ?? []))
-                                      .filter(
-                                        (member) =>
-                                          member.id === cell.memberId ||
-                                          !isMemberBusy(member.id, cell.day, (cell as EditableAssignment).id),
-                                      )
-                                      .map((member) => (
-                                        <option key={member.id} value={member.id}>
-                                          {memberDisplayName(member, memberNames)}
-                                        </option>
+              {preview.warnings.length > 0 && (
+                <details
+                  className="rounded-xl border border-amber-200 bg-white/70 px-3 py-2 text-sm text-amber-800"
+                  open
+                >
+                  <summary className="cursor-pointer font-semibold">Предупреждения: {preview.warnings.length}</summary>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {preview.warnings.map((warning, idx) => (
+                      <li key={`top-warning-${idx}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
+              <div className="space-y-3">
+                {preview.positions.map((position, positionIdx) => {
+                  const positionAssignments = editableAssignments.filter(
+                    (assignment) => assignment.positionConfigId === position.positionConfigId,
+                  );
+                  const openByDefault = positionIdx === 0 || hasPositionRisks(position);
+                  return (
+                    <details
+                      key={position.positionConfigId}
+                      className="border-subtle rounded-xl border bg-white/40 p-3"
+                      open={openByDefault}
+                    >
+                      <summary className="cursor-pointer text-sm font-semibold">
+                        {position.positionName} · назначений: {positionAssignments.length} · незаполнено:{" "}
+                        {position.unfilledCount}
+                      </summary>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+                        <SummaryCounter label="Назначений" value={positionAssignments.length} />
+                        <SummaryCounter label="Незаполнено" value={position.unfilledCount} tone="warning" />
+                        <SummaryCounter label="Предупреждений" value={position.warningsCount} tone="warning" />
+                        <SummaryCounter
+                          label="Вопреки пожеланиям"
+                          value={position.negativeAssignmentsCount}
+                          tone="warning"
+                        />
+                      </div>
+                      {position.warnings.length > 0 && (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
+                          {position.warnings.map((warning, idx) => (
+                            <li key={`${position.positionConfigId}-warning-${idx}`}>{warning}</li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="mt-3 space-y-3">
+                        {groupPreviewCellsByDay(positionAssignments).map((dayGroup) => (
+                          <div
+                            key={`${position.positionConfigId}-${dayGroup.day}`}
+                            className="rounded-xl bg-white/60 p-3"
+                          >
+                            <div className="text-default text-xs font-semibold">{dayGroup.day}</div>
+                            <div className="mt-2 space-y-2">
+                              {dayGroup.cells.map((cell, idx) => (
+                                <div
+                                  key={`${position.positionConfigId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
+                                  className={`rounded-lg border px-3 py-2 text-xs ${
+                                    cell.matchStatus === "SOFT_NEGATIVE_FALLBACK" ||
+                                    cell.matchStatus === "HARD_NEGATIVE_FALLBACK" ||
+                                    cell.matchStatus === "PARTIAL_INTERVAL_FALLBACK"
+                                      ? "border-amber-200 bg-amber-50/80"
+                                      : "border-subtle bg-white"
+                                  }`}
+                                >
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
+                                    <span className="text-muted">—</span>
+                                    <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
+                                    <span className="text-muted">—</span>
+                                    <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
+                                    <AssignmentMatchBadge cell={cell} />
+                                  </div>
+                                  {cell.warningMessage && (
+                                    <div className="mt-1 text-amber-700">{cell.warningMessage}</div>
+                                  )}
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <select
+                                      className="border-subtle rounded-lg border bg-white px-2 py-1"
+                                      value={cell.memberId ?? ""}
+                                      onChange={(event) =>
+                                        replaceAssignmentMember((cell as EditableAssignment).id, event.target.value)
+                                      }
+                                      disabled={autoApplying}
+                                    >
+                                      {members
+                                        .filter((member) => isMemberInPositionIds(member, position.positionIds ?? []))
+                                        .filter(
+                                          (member) =>
+                                            member.id === cell.memberId ||
+                                            !isMemberBusy(member.id, cell.day, (cell as EditableAssignment).id),
+                                        )
+                                        .map((member) => (
+                                          <option key={member.id} value={member.id}>
+                                            {memberDisplayName(member, memberNames)}
+                                          </option>
+                                        ))}
+                                    </select>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => deleteAssignment((cell as EditableAssignment).id)}
+                                      disabled={autoApplying}
+                                    >
+                                      Удалить
+                                    </Button>
+                                  </div>
+                                  {cell.warnings.length > 0 && (
+                                    <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
+                                      {cell.warnings.map((warning, warningIdx) => (
+                                        <li
+                                          key={`${position.positionConfigId}-${cell.day}-${idx}-warning-${warningIdx}`}
+                                        >
+                                          {warning}
+                                        </li>
                                       ))}
-                                  </select>
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => deleteAssignment((cell as EditableAssignment).id)}
-                                    disabled={autoApplying}
-                                  >
-                                    Удалить
-                                  </Button>
+                                    </ul>
+                                  )}
                                 </div>
-                                {cell.warnings.length > 0 && (
-                                  <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
-                                    {cell.warnings.map((warning, warningIdx) => (
-                                      <li key={`${position.positionConfigId}-${cell.day}-${idx}-warning-${warningIdx}`}>
-                                        {warning}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+                        ))}
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
             </div>
           </section>
         )}
