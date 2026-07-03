@@ -36,6 +36,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
     private static final String[] WEEKDAY_LABELS = {"", "пн", "вт", "ср", "чт", "пт", "сб", "вс"};
     private static final int MAX_CELLS_PER_DAY = 8;
+    private static final int MAX_PERIOD_COMMENT_LENGTH = 1000;
+    private static final int MAX_CELL_NOTE_LENGTH = 500;
     private static final LocalTime END_OF_DAY_TIME = LocalTime.MIDNIGHT;
 
     private final ScheduleRepository schedules;
@@ -74,7 +76,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
         RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
         List<SchedulePreferenceCell> cells = buildCells(schedule, member, request == null ? null : request.cells());
-        String comment = trimToNull(request == null ? null : request.comment());
+        String comment = normalizeText(request == null ? null : firstNonBlank(request.periodComment(), request.comment()), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
 
         SchedulePreferenceSubmission submission = submissions.findForUpdateByScheduleIdAndMemberId(scheduleId, member.getId())
                 .orElseGet(() -> SchedulePreferenceSubmission.builder()
@@ -94,7 +96,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         submission.setPositionName(member.getPosition() == null ? null : member.getPosition().getName());
         submission.setSubmittedAt(now);
         submission.setUpdatedAt(now);
-        submission.setComment(comment);
+        submission.setPeriodComment(comment);
         submission.getCells().clear();
         for (SchedulePreferenceCell cell : cells) {
             cell.setSubmission(submission);
@@ -301,7 +303,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                     .fullDay(fullDay)
                     .startTime(startTime)
                     .endTime(endTime)
-                    .note(trimToNull(request.note()))
+                    .note(normalizeText(request.note(), MAX_CELL_NOTE_LENGTH, "cells[" + i + "].note"))
                     .sortOrder(i)
                     .build());
         }
@@ -345,7 +347,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 toMemberDto(member),
                 allowedShiftOptions(schedule, member),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
-                submission == null ? null : submission.getComment()
+                submission == null ? null : submission.getPeriodComment(),
+                submission == null ? null : submission.getPeriodComment()
         );
     }
 
@@ -404,7 +407,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission.getSubmittedAt(),
                 submission.getUpdatedAt(),
                 submission.getRevision(),
-                submission.getComment(),
+                submission.getPeriodComment(),
+                submission.getPeriodComment(),
                 toCellDtos(submission.getCells())
         );
     }
@@ -480,6 +484,18 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         } catch (DateTimeParseException ex) {
             throw new BadRequestException("Invalid " + field + " format, expected HH:mm");
         }
+    }
+
+    private String firstNonBlank(String first, String fallback) {
+        return isBlank(first) ? fallback : first;
+    }
+
+    private String normalizeText(String value, int maxLength, String fieldName) {
+        String normalized = trimToNull(value);
+        if (normalized != null && normalized.length() > maxLength) {
+            throw new BadRequestException(fieldName + " must be at most " + maxLength + " characters");
+        }
+        return normalized;
     }
 
     private String trimToNull(String value) {

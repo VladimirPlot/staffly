@@ -27,6 +27,7 @@ type ScheduleTableSectionProps = {
   onSaveDraft: () => void;
   onCellChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  preferenceCommentsByMemberId?: Record<number, string>;
   showCellDiagnostics?: boolean;
   showPublishedDiagnostics?: boolean;
   onTogglePublishedDiagnostics?: () => void;
@@ -48,6 +49,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onSaveDraft,
   onCellChange,
   preferenceHintsByCellKey,
+  preferenceCommentsByMemberId,
   showCellDiagnostics = false,
   showPublishedDiagnostics = false,
   onTogglePublishedDiagnostics,
@@ -174,6 +176,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                 onChange={onCellChange}
                 readOnly={scheduleReadOnly}
                 preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
+                preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
                 showCellDiagnostics={showCellDiagnostics}
               />
             </div>

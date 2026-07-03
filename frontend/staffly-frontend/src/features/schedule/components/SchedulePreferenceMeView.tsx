@@ -29,6 +29,7 @@ type PreferenceFormValue = {
   fullDay: boolean;
   startTime: string;
   endTime: string;
+  note: string;
 };
 
 type PreferenceFormState = Record<string, PreferenceFormValue>;
@@ -121,6 +122,7 @@ function getInitialFormState(data: SchedulePreferenceMyResponse): PreferenceForm
       fullDay: cell.fullDay,
       startTime: cell.fullDay ? "" : (cell.startTime ?? ""),
       endTime: cell.fullDay ? "" : (cell.endTime ?? ""),
+      note: cell.note ?? "",
     };
   });
 
@@ -162,6 +164,7 @@ function buildRepeatingPattern(
       fullDay: true,
       startTime: "",
       endTime: "",
+      note: "",
     };
   });
 
@@ -174,7 +177,7 @@ function fillAll(
 ): PreferenceFormState {
   const result: PreferenceFormState = {};
   days.forEach((day) => {
-    result[day.date] = { type, fullDay: true, startTime: "", endTime: "" };
+    result[day.date] = { type, fullDay: true, startTime: "", endTime: "", note: "" };
   });
   return result;
 }
@@ -204,7 +207,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 
     setFormStateByDay(getInitialFormState(data));
     setFormError(null);
-    setComment(data.comment ?? "");
+    setComment(data.periodComment ?? data.comment ?? "");
     setQuickPatternStartDay(data.days[0]?.date ?? "");
   }, [data]);
 
@@ -213,7 +216,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
     setFormStateByDay((prev) => ({
       ...prev,
       [day]: {
-        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "" }),
+        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
         type: value as PreferenceSelectValue,
         fullDay: value ? (prev[day]?.fullDay ?? true) : true,
       },
@@ -225,7 +228,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
     setFormStateByDay((prev) => ({
       ...prev,
       [day]: {
-        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "" }),
+        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
         fullDay: !checked,
       },
     }));
@@ -241,6 +244,17 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         fullDay: false,
         startTime,
         endTime,
+      },
+    }));
+  }, []);
+
+  const handleNoteChange = React.useCallback((day: string, note: string) => {
+    setFormError(null);
+    setFormStateByDay((prev) => ({
+      ...prev,
+      [day]: {
+        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
+        note,
       },
     }));
   }, []);
@@ -280,13 +294,14 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         fullDay: value.fullDay,
         startTime: value.fullDay ? null : value.startTime,
         endTime: value.fullDay ? null : value.endTime,
-        note: null,
+        note: value.note.trim().length > 0 ? value.note.trim() : null,
       });
     }
 
     onSubmit({
       cells,
       comment: comment.trim().length > 0 ? comment.trim() : null,
+      periodComment: comment.trim().length > 0 ? comment.trim() : null,
     });
   }, [comment, data, formStateByDay, onSubmit]);
 
@@ -510,6 +525,17 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                       )}
                     </div>
                   )}
+                  <label className="block space-y-1">
+                    <span className="text-muted text-xs font-medium">Комментарий к дню</span>
+                    <textarea
+                      className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-16 w-full rounded-xl border px-3 py-2 text-xs transition outline-none focus:ring-2 disabled:cursor-not-allowed"
+                      value={formStateByDay[day.date]?.note ?? ""}
+                      onChange={(event) => handleNoteChange(day.date, event.target.value)}
+                      disabled={!data.canSubmit || saving}
+                      maxLength={500}
+                      placeholder="Например: только после пары или не ставить закрытие"
+                    />
+                  </label>
                 </div>
               )}
             </div>
@@ -521,13 +547,14 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         )}
 
         <label className="block space-y-2">
-          <span className="text-muted text-sm font-medium">Комментарий</span>
+          <span className="text-muted text-sm font-medium">Комментарий к периоду</span>
           <textarea
             className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-28 w-full rounded-2xl border px-4 py-3 text-sm transition outline-none focus:ring-2 disabled:cursor-not-allowed"
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             disabled={!data.canSubmit || saving}
-            placeholder="Например: могу выйти в любой день, кроме семейных обстоятельств"
+            maxLength={1000}
+            placeholder="Например: могу работать только после 17:00 из-за учёбы"
           />
         </label>
 

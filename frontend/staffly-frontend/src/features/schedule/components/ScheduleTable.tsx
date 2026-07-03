@@ -49,6 +49,7 @@ type Props = {
   onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  preferenceCommentsByMemberId?: Record<number, string>;
   showCellDiagnostics?: boolean;
 };
 
@@ -76,6 +77,7 @@ type ScheduleTableRowProps = {
   placeholder: string;
   onCellValueChange: (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  preferenceCommentsByMemberId?: Record<number, string>;
   showCellDiagnostics: boolean;
 };
 
@@ -125,6 +127,7 @@ const ScheduleTable: React.FC<Props> = ({
   onChange,
   readOnly = false,
   preferenceHintsByCellKey,
+  preferenceCommentsByMemberId,
   showCellDiagnostics = false,
 }) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
@@ -208,6 +211,7 @@ const ScheduleTable: React.FC<Props> = ({
             placeholder={PLACEHOLDERS[shiftMode]}
             onCellValueChange={handleCellValueChange}
             preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
+            preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
             showCellDiagnostics={showCellDiagnostics}
           />
         ))}
@@ -320,6 +324,7 @@ const ScheduleTableRow = React.memo(
     placeholder,
     onCellValueChange,
     preferenceHintsByCellKey,
+    preferenceCommentsByMemberId,
     showCellDiagnostics,
   }: ScheduleTableRowProps) {
     return (
@@ -333,7 +338,18 @@ const ScheduleTableRow = React.memo(
             STICKY_COL_SHADOW,
           ].join(" ")}
         >
-          <span className="truncate">{row.displayName}</span>
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate">{row.displayName}</span>
+            {showCellDiagnostics && preferenceCommentsByMemberId?.[row.memberId] && (
+              <span
+                className="border-subtle bg-surface text-muted inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold"
+                title={preferenceCommentsByMemberId[row.memberId]}
+                aria-label="Комментарий к периоду"
+              >
+                i
+              </span>
+            )}
+          </span>
           {row.positionName && <span className="text-muted truncate text-xs font-normal">{row.positionName}</span>}
         </div>
 
@@ -501,6 +517,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         <div className="mt-1 flex flex-wrap gap-1">
           {diagnosticHints.map((cell) => {
             const label = getPreferenceHintLabel(cell.type);
+            const note = cell.note?.trim() || null;
             const timeLabel = formatPreferenceHintTime(cell);
             const canApply = canApplyPreferenceHint({ readOnly, shiftMode, cell });
             return (
@@ -509,6 +526,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                 className="flex items-center gap-1"
               >
                 <span
+                  title={note ?? undefined}
                   className={[
                     "rounded border px-1.5 py-0.5 text-[10px]",
                     getPreferenceHintTone(cell.type) === "positive"
@@ -517,6 +535,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                   ].join(" ")}
                 >
                   {`${label} ${timeLabel}`.trim()}
+                  {note ? " i" : ""}
                 </span>
                 {canApply && (
                   <button

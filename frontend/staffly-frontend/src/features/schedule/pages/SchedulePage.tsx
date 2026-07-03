@@ -203,11 +203,25 @@ const SchedulePage: React.FC = () => {
     return map;
   }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
 
-  React.useEffect(() => {
-    if (!isPublishedSchedule) {
-      setShowPublishedDiagnostics(false);
+  const preferenceCommentsByMemberId = React.useMemo(() => {
+    if (!canInspectScheduleDiagnostics) {
+      return undefined;
     }
-  }, [isPublishedSchedule, scheduleId]);
+
+    const map: Record<number, string> = {};
+    const submissions = preferenceHints.submissions?.submissions ?? [];
+    submissions.forEach((submission) => {
+      const memberId = submission.member?.memberId;
+      const comment = (submission.periodComment ?? submission.comment ?? "").trim();
+      if (!memberId || !comment) return;
+      map[memberId] = comment;
+    });
+    return map;
+  }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
+
+  React.useEffect(() => {
+    setShowPublishedDiagnostics(false);
+  }, [scheduleId]);
 
   const derived = useScheduleDerivedState({
     userId: user?.id,
@@ -754,6 +768,7 @@ const SchedulePage: React.FC = () => {
           {activeTab === "table" && (
             <ScheduleTableSection
               preferenceHintsByCellKey={preferenceHintsByCellKey}
+              preferenceCommentsByMemberId={preferenceCommentsByMemberId}
               showCellDiagnostics={canInspectScheduleDiagnostics}
               showPublishedDiagnostics={showPublishedDiagnostics}
               onTogglePublishedDiagnostics={() => setShowPublishedDiagnostics((value) => !value)}

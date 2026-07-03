@@ -61,8 +61,8 @@ public class SchedulePreferenceSubmission {
     @Builder.Default
     private int revision = 1;
 
-    @Column(name = "comment", columnDefinition = "text")
-    private String comment;
+    @Column(name = "period_comment", columnDefinition = "text")
+    private String periodComment;
 
     @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("day ASC, sortOrder ASC, id ASC")
