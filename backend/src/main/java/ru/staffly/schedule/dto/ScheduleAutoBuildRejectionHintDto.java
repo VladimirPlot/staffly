@@ -4,7 +4,7 @@ public record ScheduleAutoBuildRejectionHintDto(
         Long memberId,
         String memberName,
         String date,
-        Long positionId,
+        Long positionConfigId,
         String positionName,
         Long shiftOptionId,
         String shiftLabel,

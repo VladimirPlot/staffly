@@ -37,13 +37,18 @@ type ApplySchedulePreferencesDialogProps = {
   ) => Promise<boolean> | void;
 };
 
-type EditableAssignment = ScheduleAutoBuildCellPreviewDto & { id: string; positionId: number; positionIds: number[] };
+type EditableAssignment = ScheduleAutoBuildCellPreviewDto & {
+  id: string;
+  positionConfigId: number;
+  positionId: number;
+  positionIds: number[];
+};
 
 const isMemberInPositionIds = (member: MemberDto, positionIds: number[]): boolean =>
   member.positionId != null && positionIds.includes(member.positionId);
 
 const isMemberInAssignmentGroup = (member: MemberDto, assignment: EditableAssignment): boolean =>
-  isMemberInPositionIds(member, assignment.positionIds?.length ? assignment.positionIds : [assignment.positionId]);
+  isMemberInPositionIds(member, assignment.positionIds);
 
 type PreviewCellsByDay = Array<{
   day: string;
@@ -184,14 +189,15 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
           .filter((cell) => cell.memberId != null && cell.startTime && cell.endTime)
           .map((cell, index) => ({
             ...cell,
-            id: `${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${cell.startTime ?? ""}-${index}`,
-            positionId: position.positionId,
-            positionIds: position.positionIds?.length ? position.positionIds : [position.positionId],
+            id: `${position.positionConfigId}-${cell.day}-${cell.memberId ?? "none"}-${cell.startTime ?? ""}-${index}`,
+            positionConfigId: position.positionConfigId,
+            positionId: members.find((member) => member.id === cell.memberId)?.positionId ?? position.positionIds[0],
+            positionIds: position.positionIds ?? [],
           })),
       ),
     );
     setManualWarning(null);
-  }, [preview]);
+  }, [members, preview]);
 
   const isMemberBusy = React.useCallback(
     (memberId: number, day: string, exceptAssignmentId?: string) =>
@@ -235,14 +241,14 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
     (slot: ScheduleAutoBuildUncoveredSlotDto, memberIdValue: string) => {
       const memberId = Number(memberIdValue);
       const member = members.find((candidate) => candidate.id === memberId);
-      if (!member || !isMemberInPositionIds(member, slot.positionIds?.length ? slot.positionIds : [slot.positionId]))
-        return;
+      if (!member || !isMemberInPositionIds(member, slot.positionIds ?? [])) return;
       setEditableAssignments((current) => [
         ...current,
         {
-          id: `manual-${slot.positionId}-${slot.date}-${slot.startTime}-${memberId}-${Date.now()}`,
-          positionId: member.positionId ?? slot.positionId,
-          positionIds: slot.positionIds?.length ? slot.positionIds : [slot.positionId],
+          id: `manual-${slot.positionConfigId}-${slot.date}-${slot.startTime}-${memberId}-${Date.now()}`,
+          positionConfigId: slot.positionConfigId,
+          positionId: member.positionId as number,
+          positionIds: slot.positionIds ?? [],
           memberId,
           memberName: memberDisplayName(member, memberNames),
           day: slot.date,
@@ -269,6 +275,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
         .map((assignment) => ({
           memberId: assignment.memberId as number,
           memberName: assignment.memberName,
+          positionConfigId: assignment.positionConfigId,
           positionId: assignment.positionId,
           day: assignment.day,
           value: assignment.value,
@@ -460,15 +467,10 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {preview.uncoveredSlots.map((slot, idx) => {
                       const candidates = members
-                        .filter((member) =>
-                          isMemberInPositionIds(
-                            member,
-                            slot.positionIds?.length ? slot.positionIds : [slot.positionId],
-                          ),
-                        )
+                        .filter((member) => isMemberInPositionIds(member, slot.positionIds ?? []))
                         .filter((member) => !isMemberBusy(member.id, slot.date));
                       return (
-                        <li key={`${slot.date}-${slot.positionId}-${slot.startTime}-${slot.endTime}-${idx}`}>
+                        <li key={`${slot.date}-${slot.positionConfigId}-${slot.startTime}-${slot.endTime}-${idx}`}>
                           <div className="flex flex-wrap items-center gap-2">
                             <span>
                               {slot.date}, {slot.startTime}–{slot.endTime}: не хватает{" "}
@@ -500,7 +502,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                   <div className="font-semibold">Не выбраны из-за лимита смен</div>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {preview.rejectionHints.map((hint, idx) => (
-                      <li key={`${hint.memberId}-${hint.date}-${hint.positionId}-${hint.startTime ?? ""}-${idx}`}>
+                      <li key={`${hint.memberId}-${hint.date}-${hint.positionConfigId}-${hint.startTime ?? ""}-${idx}`}>
                         {hint.date}: {hint.memberName ?? `Сотрудник #${hint.memberId}`}
                         {hint.positionName ? `, ${hint.positionName}` : ""}
                         {hint.shiftLabel ??
@@ -532,10 +534,10 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
             <div className="mt-4 space-y-4">
               {preview.positions.map((position) => {
                 const positionAssignments = editableAssignments.filter(
-                  (assignment) => assignment.positionId === position.positionId,
+                  (assignment) => assignment.positionConfigId === position.positionConfigId,
                 );
                 return (
-                  <div key={position.positionId} className="border-subtle rounded-xl border p-3">
+                  <div key={position.positionConfigId} className="border-subtle rounded-xl border p-3">
                     <div className="text-sm font-semibold">{position.positionName}</div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                       <SummaryCounter label="Назначений" value={positionAssignments.length} />
@@ -550,18 +552,21 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                     {position.warnings.length > 0 && (
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
                         {position.warnings.map((warning, idx) => (
-                          <li key={`${position.positionId}-warning-${idx}`}>{warning}</li>
+                          <li key={`${position.positionConfigId}-warning-${idx}`}>{warning}</li>
                         ))}
                       </ul>
                     )}
                     <div className="mt-3 space-y-3">
                       {groupPreviewCellsByDay(positionAssignments).map((dayGroup) => (
-                        <div key={`${position.positionId}-${dayGroup.day}`} className="rounded-xl bg-white/60 p-3">
+                        <div
+                          key={`${position.positionConfigId}-${dayGroup.day}`}
+                          className="rounded-xl bg-white/60 p-3"
+                        >
                           <div className="text-default text-xs font-semibold">{dayGroup.day}</div>
                           <div className="mt-2 space-y-2">
                             {dayGroup.cells.map((cell, idx) => (
                               <div
-                                key={`${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
+                                key={`${position.positionConfigId}-${cell.day}-${cell.memberId ?? "none"}-${idx}`}
                                 className={`rounded-lg border px-3 py-2 text-xs ${
                                   cell.matchStatus === "SOFT_NEGATIVE_FALLBACK" ||
                                   cell.matchStatus === "HARD_NEGATIVE_FALLBACK" ||
@@ -591,12 +596,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                                     disabled={autoApplying}
                                   >
                                     {members
-                                      .filter((member) =>
-                                        isMemberInPositionIds(
-                                          member,
-                                          position.positionIds?.length ? position.positionIds : [position.positionId],
-                                        ),
-                                      )
+                                      .filter((member) => isMemberInPositionIds(member, position.positionIds ?? []))
                                       .filter(
                                         (member) =>
                                           member.id === cell.memberId ||
@@ -619,7 +619,7 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                                 {cell.warnings.length > 0 && (
                                   <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-700">
                                     {cell.warnings.map((warning, warningIdx) => (
-                                      <li key={`${position.positionId}-${cell.day}-${idx}-warning-${warningIdx}`}>
+                                      <li key={`${position.positionConfigId}-${cell.day}-${idx}-warning-${warningIdx}`}>
                                         {warning}
                                       </li>
                                     ))}

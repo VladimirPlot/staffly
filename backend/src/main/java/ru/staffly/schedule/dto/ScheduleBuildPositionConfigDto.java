@@ -8,8 +8,6 @@ import java.util.List;
 
 public record ScheduleBuildPositionConfigDto(
         Long id,
-        Long positionId,
-        String positionName,
         List<Long> positionIds,
         List<String> positionNames,
         LocalTime fullShiftStart,
