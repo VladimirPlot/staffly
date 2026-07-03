@@ -18,6 +18,7 @@ import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.Assignment
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.PositionPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.UncoveredSlotPlan;
+import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.RejectionHintPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 
 import java.time.LocalDate;
@@ -68,6 +69,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         PlannerState plannerState = new PlannerState();
         List<PositionPlan> positions = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
 
         for (ScheduleBuildPositionConfig config : positionConfigs) {
             if (!schedulePositions.contains(config.getPosition().getId())) {
@@ -76,6 +78,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             PositionBuildResult positionResult = buildPosition(restaurantId, schedule, config, preferencesByMember, plannerState);
             positions.add(positionResult.positionPlan());
             uncoveredSlots.addAll(positionResult.uncoveredSlots());
+            rejectionHints.addAll(positionResult.rejectionHints());
         }
 
         List<String> distinctTopWarnings = topWarnings.stream().distinct().toList();
@@ -93,6 +96,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 positions,
                 distinctTopWarnings,
                 uncoveredSlots,
+                rejectionHints.stream().distinct().toList(),
                 totalAssignments,
                 warningsCount,
                 unfilledCount,
@@ -111,6 +115,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
 
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
@@ -128,6 +133,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             assignments.addAll(dayResult.assignments());
             warnings.addAll(dayResult.warnings());
             uncoveredSlots.addAll(dayResult.uncoveredSlots());
+            rejectionHints.addAll(dayResult.rejectionHints());
             unfilledCount += dayResult.unfilledCount();
             negativeAssignmentsCount += dayResult.negativeAssignmentsCount();
         }
@@ -144,7 +150,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 counters.unfilledCount(),
                 counters.negativeAssignmentsCount()
         );
-        return new PositionBuildResult(positionPlan, uncoveredSlots);
+        return new PositionBuildResult(positionPlan, uncoveredSlots, rejectionHints);
     }
 
     private List<RestaurantMember> loadCandidates(Long restaurantId, ScheduleBuildPositionConfig config) {
@@ -169,6 +175,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
@@ -196,11 +203,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             assignments.addAll(ruleResult.assignments());
             warnings.addAll(ruleResult.warnings());
             uncoveredSlots.addAll(ruleResult.uncoveredSlots());
+            rejectionHints.addAll(ruleResult.rejectionHints());
             unfilledCount += ruleResult.unfilledCount();
             negativeAssignmentsCount += ruleResult.negativeAssignmentsCount();
         }
 
-        return new DayBuildResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
+        return new DayBuildResult(assignments, warnings, uncoveredSlots, rejectionHints, unfilledCount, negativeAssignmentsCount);
     }
 
     private CoverageRuleResult buildAssignmentForCoverageRule(
@@ -215,6 +223,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
@@ -233,6 +242,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         plannerState,
                         targetShiftsPerCandidate
                 );
+                rejectionHints.addAll(singleSelection.rejectionHints());
                 if (singleSelection.selected() != null) {
                     if (!isNegativeGrade(singleSelection.selected().grade())) {
                         AssignmentBuildResult assignmentResult = assignSelected(
@@ -266,6 +276,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         assignments.addAll(positiveSplitResult.assignments());
                         warnings.addAll(positiveSplitResult.warnings());
                         uncoveredSlots.addAll(positiveSplitResult.uncoveredSlots());
+                        rejectionHints.addAll(positiveSplitResult.rejectionHints());
                         unfilledCount += positiveSplitResult.unfilledCount();
                         negativeAssignmentsCount += positiveSplitResult.negativeAssignmentsCount();
                         continue;
@@ -302,11 +313,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             assignments.addAll(layerResult.assignments());
             warnings.addAll(layerResult.warnings());
             uncoveredSlots.addAll(layerResult.uncoveredSlots());
+            rejectionHints.addAll(layerResult.rejectionHints());
             unfilledCount += layerResult.unfilledCount();
             negativeAssignmentsCount += layerResult.negativeAssignmentsCount();
         }
 
-        return new CoverageRuleResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount);
+        return new CoverageRuleResult(assignments, warnings, uncoveredSlots, rejectionHints, unfilledCount, negativeAssignmentsCount);
     }
 
     private CoverageLayerResult buildFallbackCoverageLayer(
@@ -324,6 +336,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
         int negativeAssignmentsCount = 0;
         int unfilledCount = 0;
 
@@ -346,6 +359,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     targetShiftsPerCandidate
             );
 
+            rejectionHints.addAll(splitSelection.selection().rejectionHints());
             if (splitSelection.option() == null || splitSelection.selection().selected() == null) {
                 int nextBoundary = nextCoverageBoundary(shiftOptions, rule, cursor, ruleEnd);
                 LocalTime uncoveredStart = minuteToTime(cursor);
@@ -380,13 +394,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         boolean complete = uncoveredSlots.isEmpty() && cursor >= ruleEnd;
         if (requireComplete && !complete) {
-            return new CoverageLayerResult(List.of(), List.of(), List.of(), 0, 0, false);
+            return new CoverageLayerResult(List.of(), List.of(), List.of(), List.of(), 0, 0, false);
         }
         if (requireComplete) {
             plannerState.replaceWith(workingState);
         }
 
-        return new CoverageLayerResult(assignments, warnings, uncoveredSlots, unfilledCount, negativeAssignmentsCount, complete);
+        return new CoverageLayerResult(assignments, warnings, uncoveredSlots, rejectionHints, unfilledCount, negativeAssignmentsCount, complete);
     }
 
     private AssignmentBuildResult assignSelected(
@@ -434,7 +448,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         null,
                         selection.maxShiftsRejectedCount(),
                         selection.minRestRejectedCount(),
-                        selection.overlapRejectedCount()
+                        selection.overlapRejectedCount(),
+                        selection.rejectionHints()
                 );
             }
             if (selection.selected() == null) {
@@ -591,6 +606,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int maxShiftsRejectedCount = 0;
         int minRestRejectedCount = 0;
         int overlapRejectedCount = 0;
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
 
         for (RestaurantMember member : candidates) {
             CandidateEvaluation evaluation = evaluateCandidate(
@@ -605,6 +621,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (!evaluation.eligible()) {
                 if (evaluation.rejectionReason() == CandidateRejectionReason.MAX_SHIFTS) {
                     maxShiftsRejectedCount++;
+                    toMaxShiftsRejectionHint(evaluation, preferencesByMember, day, option, config)
+                            .ifPresent(rejectionHints::add);
                 } else if (evaluation.rejectionReason() == CandidateRejectionReason.MIN_REST) {
                     minRestRejectedCount++;
                 } else if (evaluation.rejectionReason() == CandidateRejectionReason.OVERLAP) {
@@ -622,7 +640,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 selected,
                 maxShiftsRejectedCount,
                 minRestRejectedCount,
-                overlapRejectedCount
+                overlapRejectedCount,
+                rejectionHints
         );
     }
 
@@ -638,6 +657,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int shiftsCount = plannerState.shiftsCount(member.getId());
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option.getStartTime(), option.getEndTime());
+        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(member.getId(), List.of());
+        MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
+        PreferenceGrade memberGrade = grade(matchStatus);
         CandidateRejectionReason rejectionReason = hardConstraintRejectionReason(
                 member,
                 day,
@@ -650,8 +672,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (rejectionReason != CandidateRejectionReason.NONE) {
             return new CandidateEvaluation(
                     member,
-                    MatchStatus.NO_PREFERENCE,
-                    PreferenceGrade.NONE,
+                    matchStatus,
+                    memberGrade,
                     shiftsCount,
                     displayName,
                     fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
@@ -661,9 +683,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             );
         }
 
-        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(member.getId(), List.of());
-        MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
-        PreferenceGrade memberGrade = grade(matchStatus);
         return new CandidateEvaluation(
                 member,
                 matchStatus,
@@ -675,6 +694,43 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 minRestViolation,
                 CandidateRejectionReason.NONE
         );
+    }
+
+    private Optional<RejectionHintPlan> toMaxShiftsRejectionHint(
+            CandidateEvaluation evaluation,
+            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            LocalDate day,
+            ScheduleBuildShiftOption option,
+            ScheduleBuildPositionConfig config
+    ) {
+        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(evaluation.member().getId(), List.of());
+        if (hasNegativePreferenceOnDay(memberCells, day)) {
+            return Optional.empty();
+        }
+        if (evaluation.grade() != PreferenceGrade.POSITIVE && evaluation.grade() != PreferenceGrade.NONE) {
+            return Optional.empty();
+        }
+
+        return Optional.of(new RejectionHintPlan(
+                evaluation.member().getId(),
+                evaluation.displayName(),
+                day.toString(),
+                config.getPosition().getId(),
+                config.getPosition().getName(),
+                option.getId(),
+                option.getLabel(),
+                option.getStartTime().toString(),
+                option.getEndTime().toString(),
+                "MAX_SHIFTS_LIMIT",
+                "Достигнут лимит смен за период"
+        ));
+    }
+
+    private boolean hasNegativePreferenceOnDay(List<SchedulePreferenceCell> cells, LocalDate day) {
+        return cells.stream().anyMatch(cell -> cell != null
+                && day.equals(cell.getDay())
+                && (cell.getType() == SchedulePreferenceType.UNAVAILABLE
+                || cell.getType() == SchedulePreferenceType.PREFER_DAY_OFF));
     }
 
     private CandidateRejectionReason hardConstraintRejectionReason(
@@ -1318,10 +1374,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<RejectionHintPlan> rejectionHints = new ArrayList<>();
         int negativeAssignmentsCount = 0;
 
         for (ScheduleBuildShiftOption option : safeShiftOptions(config)) {
             CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState, 0);
+            rejectionHints.addAll(selection.rejectionHints());
             if (selection.selected() == null) {
                 continue;
             }
@@ -1336,7 +1394,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             registerAssignment(plannerState, selected, day, option, config);
         }
 
-        return new DayBuildResult(assignments, warnings, List.of(), 0, negativeAssignmentsCount);
+        return new DayBuildResult(assignments, warnings, List.of(), rejectionHints, 0, negativeAssignmentsCount);
     }
 
     private UncoveredSlotPlan toUncoveredSlot(
@@ -1516,10 +1574,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CandidateEvaluation selected,
             int maxShiftsRejectedCount,
             int minRestRejectedCount,
-            int overlapRejectedCount
+            int overlapRejectedCount,
+            List<RejectionHintPlan> rejectionHints
     ) {
         private static CandidateSelectionResult empty() {
-            return new CandidateSelectionResult(null, 0, 0, 0);
+            return new CandidateSelectionResult(null, 0, 0, 0, List.of());
         }
 
         private boolean hasHardConstraintRejections() {
@@ -1537,6 +1596,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<AssignmentPlan> assignments,
             List<String> warnings,
             List<UncoveredSlotPlan> uncoveredSlots,
+            List<RejectionHintPlan> rejectionHints,
             int unfilledCount,
             int negativeAssignmentsCount,
             boolean isComplete
@@ -1547,6 +1607,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<AssignmentPlan> assignments,
             List<String> warnings,
             List<UncoveredSlotPlan> uncoveredSlots,
+            List<RejectionHintPlan> rejectionHints,
             int unfilledCount,
             int negativeAssignmentsCount
     ) {
@@ -1556,12 +1617,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<AssignmentPlan> assignments,
             List<String> warnings,
             List<UncoveredSlotPlan> uncoveredSlots,
+            List<RejectionHintPlan> rejectionHints,
             int unfilledCount,
             int negativeAssignmentsCount
     ) {
     }
 
-    private record PositionBuildResult(PositionPlan positionPlan, List<UncoveredSlotPlan> uncoveredSlots) {
+    private record PositionBuildResult(PositionPlan positionPlan, List<UncoveredSlotPlan> uncoveredSlots, List<RejectionHintPlan> rejectionHints) {
     }
 
     private record AssignmentBuildResult(AssignmentPlan assignment, PreferenceGrade grade) {

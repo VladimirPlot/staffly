@@ -145,7 +145,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 })
                 .toList();
 
-        return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), affectedPositionIds, positions, List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
+        return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), affectedPositionIds, positions, List.of(), List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
     }
 
     private RestaurantMember validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsByPosition,

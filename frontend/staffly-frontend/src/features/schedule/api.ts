@@ -354,6 +354,20 @@ export type ScheduleAutoBuildUncoveredSlotDto = {
   assignedCount: number;
 };
 
+export type ScheduleAutoBuildRejectionHintDto = {
+  memberId: number;
+  memberName?: string | null;
+  date: string;
+  positionId: number;
+  positionName?: string | null;
+  shiftOptionId?: number | null;
+  shiftLabel?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  reason: "MAX_SHIFTS_LIMIT";
+  message: string;
+};
+
 export type ScheduleAutoBuildPreviewResponse = {
   scheduleId: number;
   templateId: number;
@@ -362,6 +376,7 @@ export type ScheduleAutoBuildPreviewResponse = {
   positions: ScheduleAutoBuildPositionPreviewDto[];
   warnings: string[];
   uncoveredSlots: ScheduleAutoBuildUncoveredSlotDto[];
+  rejectionHints: ScheduleAutoBuildRejectionHintDto[];
   totalAssignments: number;
   warningsCount: number;
   unfilledCount: number;
@@ -567,6 +582,7 @@ export async function previewScheduleAutoBuild(
     })),
     warnings: data.warnings ?? [],
     uncoveredSlots: data.uncoveredSlots ?? [],
+    rejectionHints: data.rejectionHints ?? [],
     totalAssignments: data.totalAssignments ?? 0,
     warningsCount: data.warningsCount ?? 0,
     unfilledCount: data.unfilledCount ?? 0,
