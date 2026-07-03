@@ -366,14 +366,19 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .orElseThrow(() -> new BadRequestException("Активный шаблон сборки не найден"));
         List<Long> schedulePositionIds = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
         boolean hasSchedulePositionConfig = template.getPositionConfigs().stream()
-                .map(ScheduleBuildPositionConfig::getPosition)
-                .filter(Objects::nonNull)
-                .map(position -> position.getId())
+                .flatMap(config -> buildConfigPositionIds(config).stream())
                 .anyMatch(schedulePositionIds::contains);
         if (!hasSchedulePositionConfig) {
             throw new BadRequestException("Шаблон сборки не содержит настроек для позиций графика");
         }
         return template;
+    }
+
+    private List<Long> buildConfigPositionIds(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream().map(position -> position.getId()).filter(Objects::nonNull).toList();
+        }
+        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
     }
 
     @Override

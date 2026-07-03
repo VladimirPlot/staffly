@@ -108,8 +108,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         Map<Long, RestaurantMember> membersById = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
-        Map<Long, ScheduleBuildPositionConfig> configsByPosition = template.getPositionConfigs().stream()
-                .collect(Collectors.toMap(config -> config.getPosition().getId(), config -> config));
+        Map<Long, ScheduleBuildPositionConfig> configsByPosition = configsByPosition(template);
         Set<Long> schedulePositions = new HashSet<>(schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
         Set<Long> affectedPositionIds = configsByPosition.keySet().stream()
                 .filter(schedulePositions::contains)
@@ -119,7 +118,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         for (AdjustedScheduleAutoBuildAssignmentDto assignment : adjustedAssignments) {
             RestaurantMember member = validateAdjustedAssignment(schedule, configsByPosition, schedulePositions, memberDays, membersById, assignment);
-            byPosition.computeIfAbsent(assignment.positionId(), ignored -> new java.util.ArrayList<>()).add(
+            Long realPositionId = member.getPosition().getId();
+            byPosition.computeIfAbsent(realPositionId, ignored -> new java.util.ArrayList<>()).add(
                     new ScheduleAutoBuildPlanner.AssignmentPlan(
                             assignment.memberId(),
                             hasText(assignment.memberName()) ? assignment.memberName() : memberDisplayName(member),
@@ -141,11 +141,40 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 .map(entry -> {
                     ScheduleBuildPositionConfig config = configsByPosition.get(entry.getKey());
                     List<ScheduleAutoBuildPlanner.AssignmentPlan> cells = entry.getValue();
-                    return new ScheduleAutoBuildPlanner.PositionPlan(entry.getKey(), config.getPosition().getName(), cells, List.of(), cells.size(), 0, 0, 0);
+                    return new ScheduleAutoBuildPlanner.PositionPlan(entry.getKey(), configDisplayName(config), configPositionIds(config), cells, List.of(), cells.size(), 0, 0, 0);
                 })
                 .toList();
 
         return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), affectedPositionIds, positions, List.of(), List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
+    }
+
+    private Map<Long, ScheduleBuildPositionConfig> configsByPosition(ScheduleBuildTemplate template) {
+        Map<Long, ScheduleBuildPositionConfig> result = new HashMap<>();
+        for (ScheduleBuildPositionConfig config : template.getPositionConfigs()) {
+            for (Long positionId : configPositionIds(config)) {
+                if (result.put(positionId, config) != null) {
+                    throw new BadRequestException("Position is used by multiple build configs: " + positionId);
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream().map(position -> position.getId()).filter(java.util.Objects::nonNull).sorted().toList();
+        }
+        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
+    }
+
+    private String configDisplayName(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream()
+                    .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                    .map(position -> position.getName())
+                    .collect(Collectors.joining(" + "));
+        }
+        return config.getPosition() == null ? "Блок должностей" : config.getPosition().getName();
     }
 
     private RestaurantMember validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsByPosition,
@@ -166,8 +195,12 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         if (member == null) {
             throw new BadRequestException("Сотрудник не принадлежит ресторану: " + assignment.memberId());
         }
-        if (member.getPosition() == null || !assignment.positionId().equals(member.getPosition().getId())) {
-            throw new BadRequestException("Сотрудник не соответствует должности назначения: " + assignment.memberId());
+        Long memberPositionId = member.getPosition() == null ? null : member.getPosition().getId();
+        if (memberPositionId == null || !schedulePositions.contains(memberPositionId)) {
+            throw new BadRequestException("Должность сотрудника не входит в график: " + assignment.memberId());
+        }
+        if (!configPositionIds(config).contains(memberPositionId)) {
+            throw new BadRequestException("Сотрудник не входит в блок должностей назначения: " + assignment.memberId());
         }
 
         LocalDate day = parseDay(assignment.day());
@@ -232,6 +265,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getPositions());
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
@@ -254,7 +288,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private void validateTemplateHasSchedulePositions(Schedule schedule, ScheduleBuildTemplate template) {
         List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
         Set<Long> templatePositionIds = template.getPositionConfigs().stream()
-                .map(config -> config.getPosition().getId())
+                .flatMap(config -> configPositionIds(config).stream())
                 .collect(Collectors.toSet());
 
         if (Collections.disjoint(templatePositionIds, schedulePositions)) {

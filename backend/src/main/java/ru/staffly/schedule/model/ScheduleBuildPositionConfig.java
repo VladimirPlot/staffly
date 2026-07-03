@@ -14,8 +14,7 @@ import java.util.List;
         indexes = {
                 @Index(name = "idx_sbpc_template", columnList = "template_id"),
                 @Index(name = "idx_sbpc_position", columnList = "position_id")
-        },
-        uniqueConstraints = @UniqueConstraint(name = "uq_sbpc_template_position", columnNames = {"template_id", "position_id"}))
+        })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ScheduleBuildPositionConfig {
     @Id
@@ -26,9 +25,20 @@ public class ScheduleBuildPositionConfig {
     @JoinColumn(name = "template_id", nullable = false)
     private ScheduleBuildTemplate template;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "position_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "position_id")
     private Position position;
+
+    @ManyToMany
+    @JoinTable(
+            name = "schedule_build_position_config_position",
+            joinColumns = @JoinColumn(name = "position_config_id", nullable = false),
+            inverseJoinColumns = @JoinColumn(name = "position_id", nullable = false),
+            uniqueConstraints = @UniqueConstraint(name = "uq_sbpcp_config_position", columnNames = {"position_config_id", "position_id"})
+    )
+    @OrderBy("name ASC, id ASC")
+    @Builder.Default
+    private List<Position> positions = new ArrayList<>();
 
     @Column(name = "full_shift_start", nullable = false)
     private LocalTime fullShiftStart;

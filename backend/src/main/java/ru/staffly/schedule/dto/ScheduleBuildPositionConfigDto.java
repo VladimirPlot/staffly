@@ -10,6 +10,8 @@ public record ScheduleBuildPositionConfigDto(
         Long id,
         Long positionId,
         String positionName,
+        List<Long> positionIds,
+        List<String> positionNames,
         LocalTime fullShiftStart,
         LocalTime fullShiftEnd,
         ScheduleBuildPattern targetPattern,

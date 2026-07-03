@@ -37,7 +37,13 @@ type ApplySchedulePreferencesDialogProps = {
   ) => Promise<boolean> | void;
 };
 
-type EditableAssignment = ScheduleAutoBuildCellPreviewDto & { id: string; positionId: number };
+type EditableAssignment = ScheduleAutoBuildCellPreviewDto & { id: string; positionId: number; positionIds: number[] };
+
+const isMemberInPositionIds = (member: MemberDto, positionIds: number[]): boolean =>
+  member.positionId != null && positionIds.includes(member.positionId);
+
+const isMemberInAssignmentGroup = (member: MemberDto, assignment: EditableAssignment): boolean =>
+  isMemberInPositionIds(member, assignment.positionIds?.length ? assignment.positionIds : [assignment.positionId]);
 
 type PreviewCellsByDay = Array<{
   day: string;
@@ -180,20 +186,12 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
             ...cell,
             id: `${position.positionId}-${cell.day}-${cell.memberId ?? "none"}-${cell.startTime ?? ""}-${index}`,
             positionId: position.positionId,
+            positionIds: position.positionIds?.length ? position.positionIds : [position.positionId],
           })),
       ),
     );
     setManualWarning(null);
   }, [preview]);
-
-  const membersByPosition = React.useMemo(() => {
-    const grouped = new Map<number, MemberDto[]>();
-    members.forEach((member) => {
-      if (member.positionId == null) return;
-      grouped.set(member.positionId, [...(grouped.get(member.positionId) ?? []), member]);
-    });
-    return grouped;
-  }, [members]);
 
   const isMemberBusy = React.useCallback(
     (memberId: number, day: string, exceptAssignmentId?: string) =>
@@ -211,10 +209,11 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
       if (!member) return;
       setEditableAssignments((current) =>
         current.map((assignment) =>
-          assignment.id === assignmentId && member.positionId === assignment.positionId
+          assignment.id === assignmentId && isMemberInAssignmentGroup(member, assignment)
             ? {
                 ...assignment,
                 memberId,
+                positionId: member.positionId ?? assignment.positionId,
                 memberName: memberDisplayName(member, memberNames),
                 matchStatus: "MANUAL_OVERRIDE",
                 reason: "Изменено вручную",
@@ -236,12 +235,14 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
     (slot: ScheduleAutoBuildUncoveredSlotDto, memberIdValue: string) => {
       const memberId = Number(memberIdValue);
       const member = members.find((candidate) => candidate.id === memberId);
-      if (!member || member.positionId !== slot.positionId) return;
+      if (!member || !isMemberInPositionIds(member, slot.positionIds?.length ? slot.positionIds : [slot.positionId]))
+        return;
       setEditableAssignments((current) => [
         ...current,
         {
           id: `manual-${slot.positionId}-${slot.date}-${slot.startTime}-${memberId}-${Date.now()}`,
-          positionId: slot.positionId,
+          positionId: member.positionId ?? slot.positionId,
+          positionIds: slot.positionIds?.length ? slot.positionIds : [slot.positionId],
           memberId,
           memberName: memberDisplayName(member, memberNames),
           day: slot.date,
@@ -458,9 +459,14 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                   <div className="font-semibold">Не закрыто</div>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {preview.uncoveredSlots.map((slot, idx) => {
-                      const candidates = (membersByPosition.get(slot.positionId) ?? []).filter(
-                        (member) => !isMemberBusy(member.id, slot.date),
-                      );
+                      const candidates = members
+                        .filter((member) =>
+                          isMemberInPositionIds(
+                            member,
+                            slot.positionIds?.length ? slot.positionIds : [slot.positionId],
+                          ),
+                        )
+                        .filter((member) => !isMemberBusy(member.id, slot.date));
                       return (
                         <li key={`${slot.date}-${slot.positionId}-${slot.startTime}-${slot.endTime}-${idx}`}>
                           <div className="flex flex-wrap items-center gap-2">
@@ -584,7 +590,13 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                                     }
                                     disabled={autoApplying}
                                   >
-                                    {(membersByPosition.get(position.positionId) ?? [])
+                                    {members
+                                      .filter((member) =>
+                                        isMemberInPositionIds(
+                                          member,
+                                          position.positionIds?.length ? position.positionIds : [position.positionId],
+                                        ),
+                                      )
                                       .filter(
                                         (member) =>
                                           member.id === cell.memberId ||

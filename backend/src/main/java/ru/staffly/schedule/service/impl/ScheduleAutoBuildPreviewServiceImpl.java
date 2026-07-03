@@ -47,7 +47,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         ScheduleBuildTemplate template = resolveEffectiveTemplate(restaurantId, schedule, request.templateId());
         initializeTemplateCollections(template);
 
-        Set<Long> templatePositions = template.getPositionConfigs().stream().map(pc -> pc.getPosition().getId()).collect(java.util.stream.Collectors.toSet());
+        Set<Long> templatePositions = template.getPositionConfigs().stream().flatMap(pc -> configPositionIds(pc).stream()).collect(java.util.stream.Collectors.toSet());
         List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
         if (Collections.disjoint(templatePositions, schedulePositions)) {
             throw new BadRequestException("Шаблон не содержит конфигураций для позиций графика");
@@ -87,10 +87,18 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getPositions());
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
+    }
+
+    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
+        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
+            return config.getPositions().stream().map(position -> position.getId()).toList();
+        }
+        return config.getPosition() == null ? List.of() : List.of(config.getPosition().getId());
     }
 
     private void validateRequest(PreviewScheduleAutoBuildRequest request) {
@@ -103,6 +111,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         return new ScheduleAutoBuildPositionPreviewDto(
                 plan.positionId(),
                 plan.positionName(),
+                plan.positionIds(),
                 plan.cells().stream().map(this::toCellDto).toList(),
                 plan.warnings(),
                 plan.totalAssignments(),
@@ -149,6 +158,8 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         return new ScheduleAutoBuildUncoveredSlotDto(
                 slot.date(),
                 slot.positionId(),
+                slot.positionIds(),
+                slot.positionName(),
                 slot.startTime(),
                 slot.endTime(),
                 slot.requiredCount(),

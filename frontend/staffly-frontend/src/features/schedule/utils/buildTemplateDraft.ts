@@ -22,7 +22,7 @@ export type ScheduleBuildCoverageRuleDraft = {
 };
 
 export type ScheduleBuildPositionConfigDraft = {
-  positionId: number | "";
+  positionIds: number[];
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
@@ -75,7 +75,7 @@ export const createCoverageRuleDraft = (): ScheduleBuildCoverageRuleDraft => ({
 });
 
 export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft => ({
-  positionId: "",
+  positionIds: [],
   fullShiftStart: "",
   fullShiftEnd: "",
   targetPattern: "NONE",
@@ -92,7 +92,7 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
   name: template?.name ?? "",
   description: template?.description ?? "",
   positionConfigs: template?.positionConfigs?.map((config) => ({
-    positionId: config.positionId,
+    positionIds: config.positionIds?.length ? config.positionIds : config.positionId ? [config.positionId] : [],
     fullShiftStart: config.fullShiftStart,
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,
@@ -124,7 +124,7 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
   name: draft.name.trim(),
   description: draft.description.trim() ? draft.description.trim() : null,
   positionConfigs: draft.positionConfigs.map((config, index) => ({
-    positionId: Number(config.positionId),
+    positionIds: [...new Set(config.positionIds)].sort((a, b) => a - b),
     fullShiftStart: config.fullShiftStart,
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,
@@ -156,9 +156,17 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
   if (!draft.name.trim()) return "Укажите название шаблона";
   if (draft.positionConfigs.length === 0) return "Добавьте хотя бы одну должность";
 
+  const usedPositionIds = new Set<number>();
+  for (let i = 0; i < draft.positionConfigs.length; i++) {
+    for (const positionId of draft.positionConfigs[i].positionIds) {
+      if (usedPositionIds.has(positionId)) return "Одна должность не может входить в два блока шаблона";
+      usedPositionIds.add(positionId);
+    }
+  }
+
   for (let i = 0; i < draft.positionConfigs.length; i++) {
     const config = draft.positionConfigs[i];
-    if (!config.positionId) return `Укажите должность #${i + 1}`;
+    if (config.positionIds.length === 0) return `Укажите хотя бы одну должность #${i + 1}`;
     if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите рабочий диапазон для должности #${i + 1}`;
     if (!isTimeMultipleOf15Minutes(config.fullShiftStart) || !isTimeMultipleOf15Minutes(config.fullShiftEnd)) {
       return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
