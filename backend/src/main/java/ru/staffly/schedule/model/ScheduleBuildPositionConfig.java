@@ -10,11 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "schedule_build_position_config",
-        indexes = {
-                @Index(name = "idx_sbpc_template", columnList = "template_id"),
-                @Index(name = "idx_sbpc_position", columnList = "position_id")
-        })
+@Table(name = "schedule_build_position_config", indexes = @Index(name = "idx_sbpc_template", columnList = "template_id"))
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ScheduleBuildPositionConfig {
     @Id
@@ -25,9 +21,6 @@ public class ScheduleBuildPositionConfig {
     @JoinColumn(name = "template_id", nullable = false)
     private ScheduleBuildTemplate template;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "position_id")
-    private Position position;
 
     @ManyToMany
     @JoinTable(

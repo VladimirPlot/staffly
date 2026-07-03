@@ -122,7 +122,6 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setTemplate(template);
             entity.getPositions().clear();
             cfgPositionIds.stream().map(positionMap::get).forEach(entity.getPositions()::add);
-            entity.setPosition(entity.getPositions().isEmpty() ? null : entity.getPositions().get(0));
             entity.setFullShiftStart(cfg.fullShiftStart());
             entity.setFullShiftEnd(cfg.fullShiftEnd());
             entity.setTargetPattern(cfg.targetPattern() == null ? ScheduleBuildPattern.NONE : cfg.targetPattern());
@@ -253,7 +252,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private ScheduleBuildTemplateDto toDto(ScheduleBuildTemplate t) {
         return new ScheduleBuildTemplateDto(t.getId(), t.getName(), t.getDescription(), t.isActive(), t.getCreatedAt(), t.getUpdatedAt(),
                 t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(
-                        pc.getId(), displayPosition(pc).getId(), displayPosition(pc).getName(), configPositionIds(pc), configPositionNames(pc), pc.getFullShiftStart(), pc.getFullShiftEnd(),
+                        pc.getId(), configPositionIds(pc), configPositionNames(pc), pc.getFullShiftStart(), pc.getFullShiftEnd(),
                         pc.getTargetPattern(), pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(),
                         pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
                         pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),
@@ -262,7 +261,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     }
 
     private List<Long> normalizePositionIds(SaveScheduleBuildPositionConfigRequest cfg) {
-        List<Long> raw = cfg.positionIds() != null ? cfg.positionIds() : (cfg.positionId() == null ? List.of() : List.of(cfg.positionId()));
+        List<Long> raw = cfg.positionIds() == null ? List.of() : cfg.positionIds();
         if (raw.isEmpty()) throw new BadRequestException("positionIds must contain at least one position");
         if (raw.stream().anyMatch(Objects::isNull)) throw new BadRequestException("positionIds must not contain null");
         List<Long> normalized = raw.stream().distinct().sorted().toList();
@@ -271,30 +270,18 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream().map(Position::getId).filter(Objects::nonNull).sorted().toList();
-        }
-        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(Position::getId)
+                .filter(Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     private List<String> configPositionNames(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream()
-                    .sorted(Comparator.comparing(Position::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)).thenComparing(Position::getId))
-                    .map(Position::getName)
-                    .toList();
-        }
-        return config.getPosition() == null ? List.of() : List.of(config.getPosition().getName());
-    }
-
-    private Position displayPosition(ScheduleBuildPositionConfig config) {
-        if (config.getPosition() != null) {
-            return config.getPosition();
-        }
-        if (config.getPositions() == null || config.getPositions().isEmpty()) {
-            throw new BadRequestException("positionConfig has no positions");
-        }
-        return config.getPositions().get(0);
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .sorted(Comparator.comparing(Position::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)).thenComparing(Position::getId))
+                .map(Position::getName)
+                .toList();
     }
 
     private String positionKey(List<Long> ids) {

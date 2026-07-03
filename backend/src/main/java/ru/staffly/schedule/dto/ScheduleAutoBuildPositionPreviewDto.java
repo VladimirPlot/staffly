@@ -3,7 +3,7 @@ package ru.staffly.schedule.dto;
 import java.util.List;
 
 public record ScheduleAutoBuildPositionPreviewDto(
-        Long positionId,
+        Long positionConfigId,
         String positionName,
         List<Long> positionIds,
         List<ScheduleAutoBuildCellPreviewDto> cells,

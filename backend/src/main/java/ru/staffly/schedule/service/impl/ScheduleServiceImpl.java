@@ -375,10 +375,10 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private List<Long> buildConfigPositionIds(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream().map(position -> position.getId()).filter(Objects::nonNull).toList();
-        }
-        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(position -> position.getId())
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     @Override

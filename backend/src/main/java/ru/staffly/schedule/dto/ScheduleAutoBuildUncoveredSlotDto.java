@@ -4,7 +4,7 @@ import java.util.List;
 
 public record ScheduleAutoBuildUncoveredSlotDto(
         String date,
-        Long positionId,
+        Long positionConfigId,
         List<Long> positionIds,
         String positionName,
         String startTime,

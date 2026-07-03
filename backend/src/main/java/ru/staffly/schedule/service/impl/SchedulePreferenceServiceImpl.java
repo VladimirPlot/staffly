@@ -332,10 +332,10 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream().map(position -> position.getId()).filter(Objects::nonNull).toList();
-        }
-        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(position -> position.getId())
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {

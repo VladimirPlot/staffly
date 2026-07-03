@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 public record AdjustedScheduleAutoBuildAssignmentDto(
         @NotNull Long memberId,
         String memberName,
+        @NotNull Long positionConfigId,
         @NotNull Long positionId,
         @NotNull String day,
         String value,
