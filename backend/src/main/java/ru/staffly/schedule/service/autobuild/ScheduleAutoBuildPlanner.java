@@ -25,7 +25,7 @@ public interface ScheduleAutoBuildPlanner {
     ) {}
 
     record PositionPlan(
-            Long positionId,
+            Long positionConfigId,
             String positionName,
             java.util.List<Long> positionIds,
             java.util.List<AssignmentPlan> cells,
@@ -38,7 +38,7 @@ public interface ScheduleAutoBuildPlanner {
 
     record UncoveredSlotPlan(
             String date,
-            Long positionId,
+            Long positionConfigId,
             java.util.List<Long> positionIds,
             String positionName,
             String startTime,
@@ -51,7 +51,7 @@ public interface ScheduleAutoBuildPlanner {
             Long memberId,
             String memberName,
             String date,
-            Long positionId,
+            Long positionConfigId,
             String positionName,
             Long shiftOptionId,
             String shiftLabel,

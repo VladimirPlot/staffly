@@ -228,8 +228,6 @@ export type ScheduleBuildMinRestMode = "SOFT" | "STRICT";
 
 export type ScheduleBuildPositionConfigDto = {
   id: number;
-  positionId: number;
-  positionName: string;
   positionIds: number[];
   positionNames: string[];
   fullShiftStart: string;
@@ -294,6 +292,7 @@ export type PreviewScheduleAutoBuildRequest = {
 export type AdjustedScheduleAutoBuildAssignment = {
   memberId: number;
   memberName?: string | null;
+  positionConfigId: number;
   positionId: number;
   day: string;
   value?: string | null;
@@ -337,7 +336,7 @@ export type ScheduleAutoBuildCellPreviewDto = {
 };
 
 export type ScheduleAutoBuildPositionPreviewDto = {
-  positionId: number;
+  positionConfigId: number;
   positionName: string;
   positionIds: number[];
   cells: ScheduleAutoBuildCellPreviewDto[];
@@ -350,7 +349,7 @@ export type ScheduleAutoBuildPositionPreviewDto = {
 
 export type ScheduleAutoBuildUncoveredSlotDto = {
   date: string;
-  positionId: number;
+  positionConfigId: number;
   positionIds: number[];
   positionName: string;
   startTime: string;
@@ -363,7 +362,7 @@ export type ScheduleAutoBuildRejectionHintDto = {
   memberId: number;
   memberName?: string | null;
   date: string;
-  positionId: number;
+  positionConfigId: number;
   positionName?: string | null;
   shiftOptionId?: number | null;
   shiftLabel?: string | null;
@@ -491,8 +490,8 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
     updatedAt: nullableTimestamp(data.updatedAt),
     positionConfigs: (data.positionConfigs ?? []).map((config) => ({
       ...config,
-      positionIds: config.positionIds?.length ? config.positionIds : [config.positionId],
-      positionNames: config.positionNames?.length ? config.positionNames : [config.positionName],
+      positionIds: config.positionIds ?? [],
+      positionNames: config.positionNames ?? [],
       shiftOptions: config.shiftOptions ?? [],
       coverageRules: config.coverageRules ?? [],
     })),

@@ -92,7 +92,7 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
   name: template?.name ?? "",
   description: template?.description ?? "",
   positionConfigs: template?.positionConfigs?.map((config) => ({
-    positionIds: config.positionIds?.length ? config.positionIds : config.positionId ? [config.positionId] : [],
+    positionIds: config.positionIds ?? [],
     fullShiftStart: config.fullShiftStart,
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,

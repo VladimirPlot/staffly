@@ -141,8 +141,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         PositionCounters counters = buildPositionCounters(assignments, warnings, unfilledCount, negativeAssignmentsCount);
 
         PositionPlan positionPlan = new PositionPlan(
-                displayPositionId(config),
-                configDisplayName(config),
+                config.getId(),
+                effectiveConfigDisplayName(config, effectivePositionIds),
                 effectivePositionIds,
                 assignments,
                 counters.distinctWarnings(),
@@ -370,7 +370,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         .endTime(uncoveredEnd)
                         .build();
                 warnings.add(unfilledWarning(day, warningOption, splitSelection.selection()));
-                uncoveredSlots.add(toUncoveredSlot(day, displayPositionId(config), configPositionIds(config), configDisplayName(config), uncoveredStart, uncoveredEnd, 1, 0));
+                uncoveredSlots.add(toUncoveredSlot(day, config.getId(), configPositionIds(config), configDisplayName(config), uncoveredStart, uncoveredEnd, 1, 0));
                 unfilledCount++;
                 cursor = nextBoundary;
                 continue;
@@ -716,9 +716,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 evaluation.member().getId(),
                 evaluation.displayName(),
                 day.toString(),
-                displayPositionId(config),
+                config.getId(),
                 configDisplayName(config),
-                effectivePositionIds,
                 option.getId(),
                 option.getLabel(),
                 option.getStartTime().toString(),
@@ -1340,24 +1339,25 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream().map(position -> position.getId()).filter(java.util.Objects::nonNull).sorted().toList();
-        }
-        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
-    }
-
-    private Long displayPositionId(ScheduleBuildPositionConfig config) {
-        return configPositionIds(config).stream().findFirst().orElse(null);
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(position -> position.getId())
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     private String configDisplayName(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream()
-                    .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
-                    .map(position -> position.getName())
-                    .collect(Collectors.joining(" + "));
-        }
-        return config.getPosition() == null ? "Блок должностей" : config.getPosition().getName();
+        return effectiveConfigDisplayName(config, configPositionIds(config));
+    }
+
+    private String effectiveConfigDisplayName(ScheduleBuildPositionConfig config, List<Long> effectivePositionIds) {
+        Set<Long> effective = new java.util.HashSet<>(effectivePositionIds == null ? List.of() : effectivePositionIds);
+        String name = config.getPositions() == null ? "" : config.getPositions().stream()
+                .filter(position -> position.getId() != null && effective.contains(position.getId()))
+                .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .map(position -> position.getName())
+                .collect(Collectors.joining(" + "));
+        return name.isBlank() ? "Блок должностей" : name;
     }
 
     private List<Long> intersection(List<Long> left, List<Long> right) {

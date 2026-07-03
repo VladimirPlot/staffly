@@ -61,7 +61,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
               <div className="text-muted mt-1 text-xs">
                 {(item.positionConfigs ?? [])
                   .slice(0, 3)
-                  .map((p) => p.positionName)
+                  .map((p) => p.positionNames.join(" + "))
                   .join(", ") || "—"}
               </div>
               <div className="mt-3 flex gap-2">

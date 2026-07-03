@@ -10,9 +10,15 @@ insert into schedule_build_position_config_position (position_config_id, positio
 select id, position_id
 from schedule_build_position_config
 where position_id is not null
-on conflict do nothing;
+on conflict on constraint uq_sbpcp_config_position do nothing;
+
+alter table schedule_build_position_config_position drop column if exists sort_order;
 
 drop index if exists idx_sbpc_position;
-alter table schedule_build_position_config drop constraint if exists uq_sbpc_template_position;
-create index if not exists idx_sbpcp_config on schedule_build_position_config_position(position_config_id);
+
+alter table schedule_build_position_config
+    drop constraint if exists uq_sbpc_template_position,
+    drop constraint if exists fk_sbpc_position,
+    drop column if exists position_id;
+
 create index if not exists idx_sbpcp_position on schedule_build_position_config_position(position_id);

@@ -108,18 +108,19 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         Map<Long, RestaurantMember> membersById = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
-        Map<Long, ScheduleBuildPositionConfig> configsByPosition = configsByPosition(template);
+        Map<Long, ScheduleBuildPositionConfig> configsById = configsById(template);
         Set<Long> schedulePositions = new HashSet<>(schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
-        Set<Long> affectedPositionIds = configsByPosition.keySet().stream()
+        Set<Long> affectedPositionIds = configsById.values().stream()
+                .flatMap(config -> configPositionIds(config).stream())
                 .filter(schedulePositions::contains)
                 .collect(Collectors.toSet());
         Set<String> memberDays = new HashSet<>();
-        Map<Long, List<ScheduleAutoBuildPlanner.AssignmentPlan>> byPosition = new HashMap<>();
+        Map<Long, List<ScheduleAutoBuildPlanner.AssignmentPlan>> byConfig = new HashMap<>();
 
         for (AdjustedScheduleAutoBuildAssignmentDto assignment : adjustedAssignments) {
-            RestaurantMember member = validateAdjustedAssignment(schedule, configsByPosition, schedulePositions, memberDays, membersById, assignment);
-            Long realPositionId = member.getPosition().getId();
-            byPosition.computeIfAbsent(realPositionId, ignored -> new java.util.ArrayList<>()).add(
+            ValidAdjustedAssignment valid = validateAdjustedAssignment(schedule, configsById, schedulePositions, memberDays, membersById, assignment);
+            RestaurantMember member = valid.member();
+            byConfig.computeIfAbsent(valid.config().getId(), ignored -> new java.util.ArrayList<>()).add(
                     new ScheduleAutoBuildPlanner.AssignmentPlan(
                             assignment.memberId(),
                             hasText(assignment.memberName()) ? assignment.memberName() : memberDisplayName(member),
@@ -137,59 +138,54 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             );
         }
 
-        List<ScheduleAutoBuildPlanner.PositionPlan> positions = byPosition.entrySet().stream()
+        List<ScheduleAutoBuildPlanner.PositionPlan> positions = byConfig.entrySet().stream()
                 .map(entry -> {
-                    ScheduleBuildPositionConfig config = configsByPosition.get(entry.getKey());
+                    ScheduleBuildPositionConfig config = configsById.get(entry.getKey());
                     List<ScheduleAutoBuildPlanner.AssignmentPlan> cells = entry.getValue();
-                    return new ScheduleAutoBuildPlanner.PositionPlan(entry.getKey(), configDisplayName(config), configPositionIds(config), cells, List.of(), cells.size(), 0, 0, 0);
+                    return new ScheduleAutoBuildPlanner.PositionPlan(config.getId(), configDisplayName(config), configPositionIds(config), cells, List.of(), cells.size(), 0, 0, 0);
                 })
                 .toList();
 
         return new ScheduleAutoBuildPlan(schedule.getId(), template.getId(), template.getName(), affectedPositionIds, positions, List.of(), List.of(), List.of(), adjustedAssignments.size(), 0, 0, 0);
     }
 
-    private Map<Long, ScheduleBuildPositionConfig> configsByPosition(ScheduleBuildTemplate template) {
+    private Map<Long, ScheduleBuildPositionConfig> configsById(ScheduleBuildTemplate template) {
         Map<Long, ScheduleBuildPositionConfig> result = new HashMap<>();
         for (ScheduleBuildPositionConfig config : template.getPositionConfigs()) {
-            for (Long positionId : configPositionIds(config)) {
-                if (result.put(positionId, config) != null) {
-                    throw new BadRequestException("Position is used by multiple build configs: " + positionId);
-                }
+            if (config.getId() == null) {
+                throw new BadRequestException("Position config id is required");
             }
+            result.put(config.getId(), config);
         }
         return result;
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream().map(position -> position.getId()).filter(java.util.Objects::nonNull).sorted().toList();
-        }
-        return config.getPosition() == null || config.getPosition().getId() == null ? List.of() : List.of(config.getPosition().getId());
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(position -> position.getId())
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     private String configDisplayName(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream()
-                    .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
-                    .map(position -> position.getName())
-                    .collect(Collectors.joining(" + "));
-        }
-        return config.getPosition() == null ? "Блок должностей" : config.getPosition().getName();
+        String name = config.getPositions() == null ? "" : config.getPositions().stream()
+                .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .map(position -> position.getName())
+                .collect(Collectors.joining(" + "));
+        return name.isBlank() ? "Блок должностей" : name;
     }
 
-    private RestaurantMember validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsByPosition,
+    private ValidAdjustedAssignment validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsById,
                                                         Set<Long> schedulePositions, Set<String> memberDays,
                                                         Map<Long, RestaurantMember> membersById,
                                                         AdjustedScheduleAutoBuildAssignmentDto assignment) {
-        if (assignment.memberId() == null || assignment.positionId() == null) {
-            throw new BadRequestException("Переданное назначение должно содержать memberId и positionId");
+        if (assignment.memberId() == null || assignment.positionConfigId() == null || assignment.positionId() == null) {
+            throw new BadRequestException("Переданное назначение должно содержать memberId, positionConfigId и positionId");
         }
-        if (!schedulePositions.contains(assignment.positionId())) {
-            throw new BadRequestException("Позиция назначения не входит в график: " + assignment.positionId());
-        }
-        ScheduleBuildPositionConfig config = configsByPosition.get(assignment.positionId());
+        ScheduleBuildPositionConfig config = configsById.get(assignment.positionConfigId());
         if (config == null) {
-            throw new BadRequestException("Шаблон не содержит позицию назначения: " + assignment.positionId());
+            throw new BadRequestException("Шаблон не содержит блок должностей назначения: " + assignment.positionConfigId());
         }
         RestaurantMember member = membersById.get(assignment.memberId());
         if (member == null) {
@@ -201,6 +197,9 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         }
         if (!configPositionIds(config).contains(memberPositionId)) {
             throw new BadRequestException("Сотрудник не входит в блок должностей назначения: " + assignment.memberId());
+        }
+        if (!memberPositionId.equals(assignment.positionId())) {
+            throw new BadRequestException("positionId назначения должен совпадать с должностью сотрудника: " + assignment.memberId());
         }
 
         LocalDate day = parseDay(assignment.day());
@@ -220,8 +219,10 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         if (!memberDays.add(key)) {
             throw new BadRequestException("Один сотрудник не может иметь больше одной смены в день: " + assignment.day());
         }
-        return member;
+        return new ValidAdjustedAssignment(member, config);
     }
+
+    private record ValidAdjustedAssignment(RestaurantMember member, ScheduleBuildPositionConfig config) {}
 
     private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config) {
         return config.getShiftOptions() == null ? List.of() : config.getShiftOptions();

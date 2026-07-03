@@ -95,10 +95,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        if (config.getPositions() != null && !config.getPositions().isEmpty()) {
-            return config.getPositions().stream().map(position -> position.getId()).toList();
-        }
-        return config.getPosition() == null ? List.of() : List.of(config.getPosition().getId());
+        return config.getPositions() == null ? List.of() : config.getPositions().stream().map(position -> position.getId()).toList();
     }
 
     private void validateRequest(PreviewScheduleAutoBuildRequest request) {
@@ -109,7 +106,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
     private ScheduleAutoBuildPositionPreviewDto toPositionDto(ScheduleAutoBuildPlanner.PositionPlan plan) {
         return new ScheduleAutoBuildPositionPreviewDto(
-                plan.positionId(),
+                plan.positionConfigId(),
                 plan.positionName(),
                 plan.positionIds(),
                 plan.cells().stream().map(this::toCellDto).toList(),
@@ -143,7 +140,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 hint.memberId(),
                 hint.memberName(),
                 hint.date(),
-                hint.positionId(),
+                hint.positionConfigId(),
                 hint.positionName(),
                 hint.shiftOptionId(),
                 hint.shiftLabel(),
@@ -157,7 +154,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     private ScheduleAutoBuildUncoveredSlotDto toUncoveredSlotDto(ScheduleAutoBuildPlanner.UncoveredSlotPlan slot) {
         return new ScheduleAutoBuildUncoveredSlotDto(
                 slot.date(),
-                slot.positionId(),
+                slot.positionConfigId(),
                 slot.positionIds(),
                 slot.positionName(),
                 slot.startTime(),
