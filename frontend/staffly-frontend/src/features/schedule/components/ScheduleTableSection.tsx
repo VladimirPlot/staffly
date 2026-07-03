@@ -3,6 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
+import { useScheduleTableZoom } from "../hooks/useScheduleTableZoom";
 import {
   type ScheduleData,
   type ScheduleCellChangeOptions,
@@ -55,6 +56,8 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onTogglePublishedDiagnostics,
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
+  const showTableZoomControls = schedule.rows.length > 0 && !loading && !error && !scheduleLoading;
+  const { zoom, zoomScale, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } = useScheduleTableZoom();
   const saveDisabled = saving || savingDraft;
   const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
   const showPublishedDiagnosticsToggle = canManage && schedule.status === "PUBLISHED" && onTogglePublishedDiagnostics;
@@ -164,6 +167,41 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
           </div>
         )}
 
+        {showTableZoomControls && (
+          <div className="border-subtle bg-app mb-3 rounded-2xl border px-3 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-strong text-sm font-medium">Масштаб</div>
+                <div className="text-muted mt-1 text-xs">Редактировать большой график удобнее на компьютере.</div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={showFullPeriod}>
+                    Показать весь период
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={resetZoom} disabled={zoom === 100}>
+                    Обычный вид
+                  </Button>
+                </div>
+                <label className="text-muted flex min-w-[14rem] items-center gap-2 text-xs">
+                  <span className="shrink-0">Масштаб</span>
+                  <input
+                    type="range"
+                    min={minZoom}
+                    max={maxZoom}
+                    step={zoomStep}
+                    value={zoom}
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                    className="accent-[var(--staffly-text-strong)]"
+                    aria-label="Масштаб таблицы графика"
+                  />
+                  <span className="text-strong w-10 text-right tabular-nums">{zoom}%</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
         {schedule.rows.length === 0 ? (
           <div className="text-muted text-sm">
             В выбранных должностях пока нет сотрудников. Попробуйте выбрать другие должности.
@@ -178,6 +216,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                 preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
                 preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
                 showCellDiagnostics={showCellDiagnostics}
+                zoomScale={zoomScale}
               />
             </div>
           </div>

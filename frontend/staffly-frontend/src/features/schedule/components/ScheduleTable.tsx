@@ -51,6 +51,7 @@ type Props = {
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   preferenceCommentsByMemberId?: Record<number, string>;
   showCellDiagnostics?: boolean;
+  zoomScale?: number;
 };
 
 type CellValues = ScheduleData["cellValues"];
@@ -129,6 +130,7 @@ const ScheduleTable: React.FC<Props> = ({
   preferenceHintsByCellKey,
   preferenceCommentsByMemberId,
   showCellDiagnostics = false,
+  zoomScale = 1,
 }) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
   const days = data?.days ?? EMPTY_DAYS;
@@ -168,30 +170,37 @@ const ScheduleTable: React.FC<Props> = ({
 
   const gridTemplateColumns = React.useMemo(() => {
     // первый столбец фиксируем в адекватных рамках (чтобы телефон не умирал)
-    const firstCol = "minmax(8.5rem, 9rem)";
+    const firstColWidth = Math.max(7.25, 9 * zoomScale);
+    const dayColWidth = Math.max(readOnly ? 2.75 : 2.9, 3.5 * zoomScale);
+    const readonlyDayColWidth = Math.max(2.6, 3.75 * zoomScale);
+    const regularReadonlyDayColWidth = Math.max(3.25, 4.75 * zoomScale);
+    const shiftsColWidth = Math.max(readOnly ? 2.75 : 3.5, 5.5 * zoomScale);
+    const firstCol = `minmax(${Math.max(7, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
     const shouldCompact = readOnly && days.length >= 20;
     const dayCols = days
       .map(() => {
         if (readOnly) {
-          return shouldCompact ? "minmax(3.25rem, 3.75rem)" : "minmax(4rem, 1fr)";
+          return shouldCompact
+            ? `minmax(${Math.max(2.5, readonlyDayColWidth - 0.5).toFixed(2)}rem, ${readonlyDayColWidth.toFixed(2)}rem)`
+            : `minmax(${Math.max(3, regularReadonlyDayColWidth - 0.75).toFixed(2)}rem, ${regularReadonlyDayColWidth.toFixed(2)}rem)`;
         }
 
-        return "minmax(3.5rem, 1fr)";
+        return `minmax(${Math.max(2.6, dayColWidth - 0.4).toFixed(2)}rem, ${dayColWidth.toFixed(2)}rem)`;
       })
       .join(" ");
     const shiftsCol = readOnly
       ? shouldCompact
-        ? "minmax(3.25rem, 3.75rem)"
-        : "minmax(4rem, 4.75rem)"
-      : "minmax(4.5rem, 5.5rem)";
+        ? `minmax(${Math.max(2.5, readonlyDayColWidth - 0.5).toFixed(2)}rem, ${readonlyDayColWidth.toFixed(2)}rem)`
+        : `minmax(${Math.max(3, regularReadonlyDayColWidth - 0.75).toFixed(2)}rem, ${regularReadonlyDayColWidth.toFixed(2)}rem)`
+      : `minmax(${Math.max(3.25, shiftsColWidth - 0.75).toFixed(2)}rem, ${shiftsColWidth.toFixed(2)}rem)`;
     return `${firstCol} ${dayCols} ${shiftsCol}`;
-  }, [days, readOnly]);
+  }, [days, readOnly, zoomScale]);
 
   if (!data) return null;
 
   return (
     // ❗️скролл только в ScheduleTableSection (overflow-auto)
-    <div className="inline-block min-w-full align-top">
+    <div className="inline-block min-w-full align-top" data-schedule-table-zoom={Math.round(zoomScale * 100)}>
       <div
         className="border-subtle bg-surface grid border"
         style={{ gridTemplateColumns, width: "max-content", minWidth: "100%" }}
