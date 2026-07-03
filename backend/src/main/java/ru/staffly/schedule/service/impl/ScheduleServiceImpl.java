@@ -836,9 +836,14 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private ScheduleDto toDto(Schedule schedule, List<LocalDate> days) {
+        Set<Long> activeScheduleMemberIds = resolveActiveScheduleMemberIds(schedule);
+        List<ScheduleRow> visibleRows = schedule.getRows().stream()
+                .filter(row -> row.getMemberId() != null && activeScheduleMemberIds.contains(row.getMemberId()))
+                .toList();
+
         Map<String, String> cellValues = new HashMap<>();
         Map<String, ScheduleCellSource> cellSources = new HashMap<>();
-        schedule.getRows().forEach(row -> row.getCells().forEach(cell -> {
+        visibleRows.forEach(row -> row.getCells().forEach(cell -> {
             if (cell.getValue() == null || cell.getValue().isBlank()) {
                 return;
             }
@@ -851,7 +856,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .map(this::toDayDto)
                 .toList();
 
-        List<ScheduleRowDto> rowDtos = schedule.getRows().stream()
+        List<ScheduleRowDto> rowDtos = visibleRows.stream()
                 .sorted(Comparator.comparingInt(ScheduleRow::getSortOrder))
                 .map(row -> new ScheduleRowDto(
                         row.getId(),
@@ -888,6 +893,27 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceAppliedAt(),
                 schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );
+    }
+
+    private Set<Long> resolveActiveScheduleMemberIds(Schedule schedule) {
+        if (schedule.getRestaurant() == null || schedule.getRestaurant().getId() == null) {
+            return Set.of();
+        }
+        List<Long> positionIds = schedule.getPositionIds() == null
+                ? List.of()
+                : schedule.getPositionIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (positionIds.isEmpty()) {
+            return Set.of();
+        }
+        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                        schedule.getRestaurant().getId(),
+                        positionIds
+                ).stream()
+                .map(RestaurantMember::getId)
+                .collect(Collectors.toSet());
     }
 
     private ScheduleDayDto toDayDto(LocalDate day) {
