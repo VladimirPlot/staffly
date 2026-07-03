@@ -480,17 +480,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
 
     private int candidateRank(CandidateEvaluation candidate) {
-        int baseRank = matchStatusRank(candidate.matchStatus());
-        if (!candidate.minRestViolation()) {
-            return baseRank;
-        }
-        return switch (candidate.matchStatus()) {
-            case EXACT_INTERVAL_PREFERENCE, COVERING_INTERVAL_PREFERENCE, FULL_DAY_POSITIVE -> 3;
-            case NO_PREFERENCE -> 4;
-            case PARTIAL_INTERVAL_FALLBACK -> 5;
-            case SOFT_NEGATIVE_FALLBACK -> 6;
-            case HARD_NEGATIVE_FALLBACK -> 7;
-        };
+        return matchStatusRank(candidate.matchStatus());
     }
 
     private int matchStatusRank(MatchStatus matchStatus) {
@@ -882,6 +872,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     int byMatchStatus = Integer.compare(candidateRank(left), candidateRank(right));
                     if (byMatchStatus != 0) {
                         return byMatchStatus;
+                    }
+
+                    // Keep conflict severity as the primary boundary: min-rest and fairness
+                    // only break ties within the same match status priority group.
+                    int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
+                    if (byMinRestViolation != 0) {
+                        return byMinRestViolation;
                     }
 
                     int byFairnessScore = Integer.compare(left.fairnessScore(), right.fairnessScore());
