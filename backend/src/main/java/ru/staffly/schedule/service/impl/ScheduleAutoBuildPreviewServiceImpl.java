@@ -62,6 +62,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 plan.positions().stream().map(this::toPositionDto).toList(),
                 plan.warnings(),
                 plan.uncoveredSlots().stream().map(this::toUncoveredSlotDto).toList(),
+                plan.rejectionHints().stream().map(this::toRejectionHintDto).toList(),
                 plan.totalAssignments(),
                 plan.warningsCount(),
                 plan.unfilledCount(),
@@ -125,6 +126,22 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 a.matchStatus(),
                 a.warningMessage(),
                 a.warnings()
+        );
+    }
+
+    private ScheduleAutoBuildRejectionHintDto toRejectionHintDto(ScheduleAutoBuildPlanner.RejectionHintPlan hint) {
+        return new ScheduleAutoBuildRejectionHintDto(
+                hint.memberId(),
+                hint.memberName(),
+                hint.date(),
+                hint.positionId(),
+                hint.positionName(),
+                hint.shiftOptionId(),
+                hint.shiftLabel(),
+                hint.startTime(),
+                hint.endTime(),
+                hint.reason(),
+                hint.message()
         );
     }
 

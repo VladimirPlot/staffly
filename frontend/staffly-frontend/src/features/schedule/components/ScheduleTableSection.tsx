@@ -9,6 +9,7 @@ import {
   type ScheduleCellChangeOptions,
   type ScheduleCellKey,
   type SchedulePreferenceHintsByCellKey,
+  type ScheduleRejectionHintsByCellKey,
 } from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 
@@ -29,6 +30,7 @@ type ScheduleTableSectionProps = {
   onCellChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   preferenceCommentsByMemberId?: Record<number, string>;
+  rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
   showCellDiagnostics?: boolean;
   showPublishedDiagnostics?: boolean;
   onTogglePublishedDiagnostics?: () => void;
@@ -51,6 +53,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onCellChange,
   preferenceHintsByCellKey,
   preferenceCommentsByMemberId,
+  rejectionHintsByCellKey,
   showCellDiagnostics = false,
   showPublishedDiagnostics = false,
   onTogglePublishedDiagnostics,
@@ -215,6 +218,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                 readOnly={scheduleReadOnly}
                 preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
                 preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
+                rejectionHintsByCellKey={showCellDiagnostics ? rejectionHintsByCellKey : undefined}
                 showCellDiagnostics={showCellDiagnostics}
                 zoomScale={zoomScale}
               />

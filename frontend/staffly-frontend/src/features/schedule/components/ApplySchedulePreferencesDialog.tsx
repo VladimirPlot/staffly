@@ -489,6 +489,23 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 </div>
               )}
               {manualWarning && <WarningBox>{manualWarning}</WarningBox>}
+              {preview.rejectionHints.length > 0 && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                  <div className="font-semibold">Не выбраны из-за лимита смен</div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {preview.rejectionHints.map((hint, idx) => (
+                      <li key={`${hint.memberId}-${hint.date}-${hint.positionId}-${hint.startTime ?? ""}-${idx}`}>
+                        {hint.date}: {hint.memberName ?? `Сотрудник #${hint.memberId}`}
+                        {hint.positionName ? `, ${hint.positionName}` : ""}
+                        {hint.shiftLabel ??
+                          (hint.startTime && hint.endTime ? `, ${hint.startTime}–${hint.endTime}` : "")}
+                        {" — "}
+                        {hint.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {preview.negativeAssignmentsCount > 0 && (
                 <WarningBox>Есть назначения вопреки отрицательным пожеланиям сотрудников.</WarningBox>
               )}
