@@ -234,8 +234,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         ScheduleBuildShiftOption singleOption = findExactShiftOption(shiftOptions, rule);
 
         for (int index = 0; index < requiredCount; index++) {
+            CandidateSelectionResult singleSelection = CandidateSelectionResult.empty();
             if (singleOption != null) {
-                CandidateSelectionResult singleSelection = pickMember(
+                singleSelection = pickMember(
                         candidates,
                         preferencesByMember,
                         day,
@@ -245,49 +246,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         targetShiftsPerCandidate
                 );
                 rejectionHints.addAll(singleSelection.rejectionHints());
-                if (singleSelection.selected() != null) {
-                    if (!isNegativeGrade(singleSelection.selected().grade())) {
-                        AssignmentBuildResult assignmentResult = assignSelected(
-                                assignments,
-                                plannerState,
-                                singleSelection.selected().member(),
-                                day,
-                                singleOption,
-                                preferencesByMember,
-                                config
-                        );
-                        if (isNegativeGrade(assignmentResult.grade())) {
-                            negativeAssignmentsCount++;
-                        }
-                        continue;
-                    }
 
-                    CoverageLayerResult positiveSplitResult = buildFallbackCoverageLayer(
-                            day,
-                            config,
-                            rule,
-                            candidates,
-                            preferencesByMember,
-                            plannerState,
-                            shiftOptions,
-                            false,
-                            true,
-                            targetShiftsPerCandidate
-                    );
-                    if (positiveSplitResult.isComplete()) {
-                        assignments.addAll(positiveSplitResult.assignments());
-                        warnings.addAll(positiveSplitResult.warnings());
-                        uncoveredSlots.addAll(positiveSplitResult.uncoveredSlots());
-                        rejectionHints.addAll(positiveSplitResult.rejectionHints());
-                        unfilledCount += positiveSplitResult.unfilledCount();
-                        negativeAssignmentsCount += positiveSplitResult.negativeAssignmentsCount();
-                        continue;
-                    }
-
+                CandidateEvaluation selectedSingle = singleSelection.selected();
+                if (selectedSingle != null && isGoodSingleMatch(selectedSingle.matchStatus())) {
                     AssignmentBuildResult assignmentResult = assignSelected(
                             assignments,
                             plannerState,
-                            singleSelection.selected().member(),
+                            selectedSingle.member(),
                             day,
                             singleOption,
                             preferencesByMember,
@@ -298,6 +263,44 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     }
                     continue;
                 }
+            }
+
+            CoverageLayerResult positiveSplitResult = buildFallbackCoverageLayer(
+                    day,
+                    config,
+                    rule,
+                    candidates,
+                    preferencesByMember,
+                    plannerState,
+                    shiftOptions,
+                    false,
+                    true,
+                    targetShiftsPerCandidate
+            );
+            if (positiveSplitResult.isComplete()) {
+                assignments.addAll(positiveSplitResult.assignments());
+                warnings.addAll(positiveSplitResult.warnings());
+                uncoveredSlots.addAll(positiveSplitResult.uncoveredSlots());
+                rejectionHints.addAll(positiveSplitResult.rejectionHints());
+                unfilledCount += positiveSplitResult.unfilledCount();
+                negativeAssignmentsCount += positiveSplitResult.negativeAssignmentsCount();
+                continue;
+            }
+
+            if (singleOption != null && singleSelection.selected() != null) {
+                AssignmentBuildResult assignmentResult = assignSelected(
+                        assignments,
+                        plannerState,
+                        singleSelection.selected().member(),
+                        day,
+                        singleOption,
+                        preferencesByMember,
+                        config
+                );
+                if (isNegativeGrade(assignmentResult.grade())) {
+                    negativeAssignmentsCount++;
+                }
+                continue;
             }
 
             CoverageLayerResult layerResult = buildFallbackCoverageLayer(
@@ -519,6 +522,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             case SOFT_NEGATIVE -> 3;
             case HARD_NEGATIVE -> 4;
         };
+    }
+
+    private boolean isGoodSingleMatch(MatchStatus matchStatus) {
+        return matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE
+                || matchStatus == MatchStatus.FULL_DAY_POSITIVE
+                || matchStatus == MatchStatus.NO_PREFERENCE;
     }
 
     private boolean isNegativeGrade(PreferenceGrade grade) {
