@@ -279,7 +279,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
     private List<String> configPositionNames(ScheduleBuildPositionConfig config) {
         return config.getPositions() == null ? List.of() : config.getPositions().stream()
-                .sorted(Comparator.comparing(Position::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)).thenComparing(Position::getId))
+                .sorted(Comparator.comparing(Position::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(Position::getId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(Position::getName)
                 .toList();
     }

@@ -180,7 +180,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         Set<Long> effective = new HashSet<>(effectivePositionIds);
         String name = config.getPositions() == null ? "" : config.getPositions().stream()
                 .filter(position -> position.getId() != null && effective.contains(position.getId()))
-                .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .sorted(java.util.Comparator.comparing(position -> position.getName(), java.util.Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(position -> position.getId(), java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
                 .map(position -> position.getName())
                 .collect(Collectors.joining(" + "));
         return name.isBlank() ? "Блок должностей" : name;

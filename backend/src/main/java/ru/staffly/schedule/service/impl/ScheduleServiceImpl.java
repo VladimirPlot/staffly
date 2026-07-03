@@ -378,6 +378,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         return config.getPositions() == null ? List.of() : config.getPositions().stream()
                 .map(position -> position.getId())
                 .filter(Objects::nonNull)
+                .sorted()
                 .toList();
     }
 
