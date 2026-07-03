@@ -405,7 +405,12 @@ const SchedulePage: React.FC = () => {
 
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
   const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
-  const { loading: buildTemplatesLoading, loadTemplates, templatesLoaded } = buildTemplatesActions;
+  const {
+    loading: buildTemplatesLoading,
+    loadTemplates,
+    templatesLoaded,
+    templatesLoadAttempted,
+  } = buildTemplatesActions;
 
   const showPageTabs = !schedule && !preferenceActions.preferenceViewScheduleId;
   const showSchedulesTabContent = showPageTabs && activePageTab === "schedules";
@@ -418,9 +423,9 @@ const SchedulePage: React.FC = () => {
   }, [activePageTab, canManage]);
 
   const loadBuildTemplatesIfNeeded = React.useCallback(() => {
-    if (templatesLoaded || buildTemplatesLoading) return;
+    if (templatesLoaded || buildTemplatesLoading || templatesLoadAttempted) return;
     void loadTemplates();
-  }, [buildTemplatesLoading, loadTemplates, templatesLoaded]);
+  }, [buildTemplatesLoading, loadTemplates, templatesLoaded, templatesLoadAttempted]);
 
   const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
     restaurantId,
@@ -700,6 +705,7 @@ const SchedulePage: React.FC = () => {
           deletingId={buildTemplatesActions.deletingId}
           positions={positions}
           onLoad={loadBuildTemplatesIfNeeded}
+          onRetry={() => void buildTemplatesActions.loadTemplates()}
           onCreate={(request) => buildTemplatesActions.createTemplate(request)}
           onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
           onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
