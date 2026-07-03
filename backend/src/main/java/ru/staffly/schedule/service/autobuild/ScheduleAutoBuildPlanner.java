@@ -64,6 +64,7 @@ public interface ScheduleAutoBuildPlanner {
     record AssignmentPlan(
             Long memberId,
             String memberName,
+            Long positionId,
             String day,
             String value,
             Long shiftOptionId,

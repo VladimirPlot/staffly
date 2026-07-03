@@ -5,6 +5,7 @@ import java.util.List;
 public record ScheduleAutoBuildCellPreviewDto(
         Long memberId,
         String memberName,
+        Long positionId,
         String day,
         String value,
         Long shiftOptionId,

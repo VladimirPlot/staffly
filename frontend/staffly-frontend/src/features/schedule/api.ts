@@ -323,6 +323,7 @@ export type ScheduleAutoBuildMatchStatus =
 export type ScheduleAutoBuildCellPreviewDto = {
   memberId: number | null;
   memberName: string | null;
+  positionId: number | null;
   day: string;
   value: string | null;
   shiftOptionId: number | null;
