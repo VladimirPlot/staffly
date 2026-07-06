@@ -1,5 +1,7 @@
 package ru.staffly.schedule.service.impl;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
@@ -55,7 +57,11 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private final ScheduleAuditService scheduleAuditService;
     private final ScheduleService scheduleService;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Override
+    @Transactional
     public ScheduleDto apply(Long restaurantId, Long scheduleId, Long actorUserId, ApplyScheduleAutoBuildRequest request) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
@@ -324,6 +330,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         int skippedAssignments = 0;
 
         Set<String> appliedMemberDays = new HashSet<>();
+        Map<Long, Map<LocalDate, ScheduleCell>> cellsByRowAndDay = indexCellsByRowAndDay(rowsByMember);
 
         for (var position : plan.positions()) {
             for (var assignment : position.cells()) {
@@ -340,25 +347,38 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 }
 
                 LocalDate day = parseDay(assignment.day());
-                ScheduleCell existing = row.getCells().stream()
-                        .filter(cell -> cell.getDay().equals(day))
-                        .findFirst()
-                        .orElse(null);
+                Map<LocalDate, ScheduleCell> rowCellsByDay = cellsByRowAndDay.computeIfAbsent(row.getId(), ignored -> new HashMap<>());
+                ScheduleCell existing = rowCellsByDay.get(day);
                 if (existing != null) {
                     existing.setValue(resolveCellValue(assignment));
                     existing.setSource(ScheduleCellSource.AUTO_BUILD);
                 } else {
-                    row.getCells().add(ScheduleCell.builder()
+                    ScheduleCell created = ScheduleCell.builder()
                             .row(row)
                             .day(day)
                             .value(resolveCellValue(assignment))
                             .source(ScheduleCellSource.AUTO_BUILD)
-                            .build());
+                            .build();
+                    row.getCells().add(created);
+                    rowCellsByDay.put(day, created);
                 }
             }
         }
 
         return skippedAssignments;
+    }
+
+    private Map<Long, Map<LocalDate, ScheduleCell>> indexCellsByRowAndDay(Map<Long, ScheduleRow> rowsByMember) {
+        Map<Long, Map<LocalDate, ScheduleCell>> result = new HashMap<>();
+        for (ScheduleRow row : rowsByMember.values()) {
+            if (row.getId() == null) {
+                continue;
+            }
+            result.put(row.getId(), row.getCells().stream()
+                    .filter(cell -> cell.getDay() != null)
+                    .collect(Collectors.toMap(ScheduleCell::getDay, cell -> cell, (first, second) -> first)));
+        }
+        return result;
     }
 
 
@@ -445,5 +465,6 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             }
             row.getCells().removeIf(cell -> !cell.getDay().isBefore(start) && !cell.getDay().isAfter(end));
         }
+        entityManager.flush();
     }
 }
