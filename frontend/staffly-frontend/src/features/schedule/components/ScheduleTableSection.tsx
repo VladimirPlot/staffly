@@ -60,7 +60,9 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const showTableZoomControls = schedule.rows.length > 0 && !loading && !error && !scheduleLoading;
-  const { zoom, zoomScale, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } = useScheduleTableZoom();
+  const { zoom, zoomScale, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } = useScheduleTableZoom({
+    readOnly: scheduleReadOnly,
+  });
   const saveDisabled = saving || savingDraft;
   const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
   const showPublishedDiagnosticsToggle = canManage && schedule.status === "PUBLISHED" && onTogglePublishedDiagnostics;
@@ -128,9 +130,11 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
               {savingDraft ? "Сохранение…" : "Сохранить черновик"}
             </Button>
           )}
-          <Button onClick={onSave} disabled={saveDisabled} className={saving ? "cursor-wait opacity-70" : ""}>
-            {saving ? "Сохранение…" : scheduleId ? "Сохранить изменения" : "Сохранить график"}
-          </Button>
+          {scheduleId && (
+            <Button onClick={onSave} disabled={saveDisabled} className={saving ? "cursor-wait opacity-70" : ""}>
+              {saving ? "Сохранение…" : "Сохранить изменения"}
+            </Button>
+          )}
         </div>
       )}
 
@@ -175,7 +179,11 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="text-strong text-sm font-medium">Масштаб</div>
-                <div className="text-muted mt-1 text-xs">Редактировать большой график удобнее на компьютере.</div>
+                <div className="text-muted mt-1 text-xs">
+                  {scheduleReadOnly
+                    ? "Компактный режим помогает быстро просмотреть длинный период."
+                    : `Минимальный масштаб в редактировании — ${minZoom}%, чтобы поля не накладывались.`}
+                </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                 <div className="flex gap-2">
