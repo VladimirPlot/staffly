@@ -45,6 +45,32 @@ const PLACEHOLDERS: Record<ShiftMode, string> = {
 const STICKY_COL_SHADOW = "shadow-[8px_0_10px_-10px_rgba(0,0,0,0.45)]"; // справа тень у липкого столбца
 const STICKY_ROW_SHADOW = "shadow-[0_8px_10px_-10px_rgba(0,0,0,0.35)]"; // снизу тень у липких строк
 
+type ScheduleTableZoomStyle = React.CSSProperties & {
+  "--schedule-zoom": number;
+};
+
+const scheduleZoomCss = {
+  cellPadding:
+    "px-[max(0.25rem,calc(0.375rem*var(--schedule-zoom)))] py-[max(0.2rem,calc(0.25rem*var(--schedule-zoom)))]",
+  headerHeight: "h-[max(2rem,calc(2.5rem*var(--schedule-zoom)))]",
+  headerPaddingX: "px-[max(0.4rem,calc(0.75rem*var(--schedule-zoom)))]",
+  dayPaddingX: "px-[max(0.25rem,calc(0.5rem*var(--schedule-zoom)))]",
+  headerText: "text-[max(0.65rem,calc(0.75rem*var(--schedule-zoom)))]",
+  titleText: "text-[max(0.8rem,calc(1rem*var(--schedule-zoom)))]",
+  memberText: "text-[max(0.72rem,calc(0.875rem*var(--schedule-zoom)))]",
+  metaText: "text-[max(0.62rem,calc(0.75rem*var(--schedule-zoom)))]",
+  badgeText: "text-[max(0.55rem,calc(0.625rem*var(--schedule-zoom)))]",
+  badgePadding:
+    "px-[max(0.25rem,calc(0.5rem*var(--schedule-zoom)))] py-[max(0.08rem,calc(0.125rem*var(--schedule-zoom)))]",
+  editableShell:
+    "min-h-[max(1.8rem,calc(2.75rem*var(--schedule-zoom)))] gap-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))] rounded-[max(0.5rem,calc(0.75rem*var(--schedule-zoom)))] px-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))] text-[max(0.62rem,calc(0.6875rem*var(--schedule-zoom)))]",
+  readonlyShell:
+    "min-h-[max(1.45rem,calc(2.25rem*var(--schedule-zoom)))] rounded-[max(0.5rem,calc(0.75rem*var(--schedule-zoom)))] px-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))] text-[max(0.62rem,calc(0.75rem*var(--schedule-zoom)))]",
+  select:
+    "h-[max(1.45rem,calc(2rem*var(--schedule-zoom)))] min-w-[max(2.15rem,calc(3.25rem*var(--schedule-zoom)))] rounded-[max(0.35rem,calc(0.5rem*var(--schedule-zoom)))] px-[max(0.1rem,calc(0.25rem*var(--schedule-zoom)))] text-[max(0.65rem,calc(1rem*var(--schedule-zoom)))]",
+  timeSelectorGap: "gap-[max(0.12rem,calc(0.25rem*var(--schedule-zoom)))]",
+};
+
 type Props = {
   data: ScheduleData | null | undefined;
   onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
@@ -174,17 +200,18 @@ const ScheduleTable: React.FC<Props> = ({
   );
 
   const gridTemplateColumns = React.useMemo(() => {
-    // В editable режиме колонкам нужно место под две пары селектов времени.
+    // В editable режиме колонкам нужно место под две пары селектов времени,
+    // но внутренние controls теперь тоже пропорционально уменьшаются через --schedule-zoom.
     // В readOnly режиме оставляем таблицу компактнее, особенно для длинных периодов.
-    const firstColWidth = Math.max(7.5, 9 * zoomScale);
+    const firstColWidth = Math.max(6.25, 9 * zoomScale);
     const shouldCompact = readOnly && days.length >= 20;
     const dayColWidth = readOnly
       ? shouldCompact
         ? Math.max(2.6, 3.75 * zoomScale)
         : Math.max(3.25, 4.75 * zoomScale)
-      : Math.max(8, 8.5 * zoomScale);
-    const shiftsColWidth = readOnly ? dayColWidth : Math.max(4.75, 5.75 * zoomScale);
-    const firstCol = `minmax(${Math.max(7, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
+      : Math.max(5.5, 8.5 * zoomScale);
+    const shiftsColWidth = readOnly ? dayColWidth : Math.max(3.75, 5.75 * zoomScale);
+    const firstCol = `minmax(${Math.max(6, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
     const dayCols = days.map(() => `minmax(${dayColWidth.toFixed(2)}rem, 1fr)`).join(" ");
     const shiftsCol = `minmax(${shiftsColWidth.toFixed(2)}rem, ${readOnly ? "1fr" : `${shiftsColWidth.toFixed(2)}rem`})`;
     return `${firstCol} ${dayCols} ${shiftsCol}`;
@@ -194,7 +221,11 @@ const ScheduleTable: React.FC<Props> = ({
 
   return (
     // ❗️скролл только в ScheduleTableSection (overflow-auto)
-    <div className="inline-block min-w-full align-top" data-schedule-table-zoom={Math.round(zoomScale * 100)}>
+    <div
+      className="inline-block min-w-full align-top"
+      data-schedule-table-zoom={Math.round(zoomScale * 100)}
+      style={{ "--schedule-zoom": zoomScale } as ScheduleTableZoomStyle}
+    >
       <div
         className="border-subtle bg-surface grid border"
         style={{ gridTemplateColumns, width: "100%", minWidth: "max-content" }}
@@ -231,7 +262,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
     <>
       {/* Заголовок таблицы (НЕ sticky) */}
       <div
-        className="border-subtle flex items-center justify-center border-b px-3 py-3 text-center font-semibold"
+        className={[
+          "border-subtle flex items-center justify-center border-b text-center font-semibold",
+          scheduleZoomCss.headerPaddingX,
+          "py-[max(0.5rem,calc(0.75rem*var(--schedule-zoom)))]",
+          scheduleZoomCss.titleText,
+        ].join(" ")}
         style={{ gridColumn: `1 / span ${days.length + 2}` }}
       >
         {title}
@@ -240,9 +276,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
       {/* ====== Линия 1: День недели (sticky top-0) ====== */}
       <div
         className={[
-          "sticky top-0 left-0 z-50 flex h-10 items-center justify-start",
-          "border-subtle bg-surface border-r border-b px-3",
-          "text-default text-xs font-semibold",
+          "sticky top-0 left-0 z-50 flex items-center justify-start",
+          scheduleZoomCss.headerHeight,
+          "border-subtle bg-surface border-r border-b",
+          scheduleZoomCss.headerPaddingX,
+          "text-default font-semibold",
+          scheduleZoomCss.headerText,
           STICKY_COL_SHADOW,
           STICKY_ROW_SHADOW,
         ].join(" ")}
@@ -254,9 +293,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
         <div
           key={`weekday-${day.date}`}
           className={[
-            "sticky top-0 z-40 flex h-10 items-center justify-center",
-            "border-subtle bg-surface border-b border-l px-2",
-            "text-muted text-xs font-medium",
+            "sticky top-0 z-40 flex items-center justify-center",
+            scheduleZoomCss.headerHeight,
+            "border-subtle bg-surface border-b border-l",
+            scheduleZoomCss.dayPaddingX,
+            "text-muted font-medium",
+            scheduleZoomCss.headerText,
             STICKY_ROW_SHADOW,
           ].join(" ")}
         >
@@ -266,9 +308,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
 
       <div
         className={[
-          "sticky top-0 z-40 flex h-10 items-center justify-center",
-          "border-subtle bg-surface border-b border-l px-2 text-center",
-          "text-default text-xs font-semibold",
+          "sticky top-0 z-40 flex items-center justify-center",
+          scheduleZoomCss.headerHeight,
+          "border-subtle bg-surface border-b border-l text-center",
+          scheduleZoomCss.dayPaddingX,
+          "text-default font-semibold",
+          scheduleZoomCss.headerText,
           STICKY_ROW_SHADOW,
         ].join(" ")}
       >
@@ -278,9 +323,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
       {/* ====== Линия 2: День месяца (sticky top-10) ====== */}
       <div
         className={[
-          "sticky top-10 left-0 z-50 flex h-10 items-center justify-start",
-          "border-subtle bg-surface border-r border-b px-3",
-          "text-default text-xs font-semibold",
+          "sticky top-[max(2rem,calc(2.5rem*var(--schedule-zoom)))] left-0 z-50 flex items-center justify-start",
+          scheduleZoomCss.headerHeight,
+          "border-subtle bg-surface border-r border-b",
+          scheduleZoomCss.headerPaddingX,
+          "text-default font-semibold",
+          scheduleZoomCss.headerText,
           STICKY_COL_SHADOW,
           STICKY_ROW_SHADOW,
         ].join(" ")}
@@ -292,9 +340,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
         <div
           key={`day-${day.date}`}
           className={[
-            "sticky top-10 z-40 flex h-10 items-center justify-center",
-            "border-subtle bg-surface border-b border-l px-2",
-            "text-default text-xs",
+            "sticky top-[max(2rem,calc(2.5rem*var(--schedule-zoom)))] z-40 flex items-center justify-center",
+            scheduleZoomCss.headerHeight,
+            "border-subtle bg-surface border-b border-l",
+            scheduleZoomCss.dayPaddingX,
+            "text-default",
+            scheduleZoomCss.headerText,
             STICKY_ROW_SHADOW,
           ].join(" ")}
         >
@@ -304,9 +355,12 @@ const ScheduleTableHeader = React.memo(function ScheduleTableHeader({ title, day
 
       <div
         className={[
-          "sticky top-10 z-40 flex h-10 items-center justify-center",
-          "border-subtle bg-surface border-b border-l px-2 text-center",
-          "text-default text-xs font-medium",
+          "sticky top-[max(2rem,calc(2.5rem*var(--schedule-zoom)))] z-40 flex items-center justify-center",
+          scheduleZoomCss.headerHeight,
+          "border-subtle bg-surface border-b border-l text-center",
+          scheduleZoomCss.dayPaddingX,
+          "text-default font-medium",
+          scheduleZoomCss.headerText,
           STICKY_ROW_SHADOW,
         ].join(" ")}
       >
@@ -338,16 +392,19 @@ const ScheduleTableRow = React.memo(
         <div
           className={[
             "sticky left-0 z-30 flex flex-col justify-center",
-            "border-subtle bg-surface border-r border-b px-3 py-3",
-            "text-strong text-sm font-medium",
+            "border-subtle bg-surface border-r border-b",
+            scheduleZoomCss.headerPaddingX,
+            "py-[max(0.45rem,calc(0.75rem*var(--schedule-zoom)))]",
+            "text-strong font-medium",
+            scheduleZoomCss.memberText,
             STICKY_COL_SHADOW,
           ].join(" ")}
         >
-          <span className="flex min-w-0 items-center gap-1">
+          <span className="flex min-w-0 items-center gap-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))]">
             <span className="truncate">{row.displayName}</span>
             {showCellDiagnostics && preferenceCommentsByMemberId?.[row.memberId] && (
               <span
-                className="border-subtle bg-surface text-muted inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold"
+                className="border-subtle bg-surface text-muted inline-flex h-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] shrink-0 items-center justify-center rounded-full border text-[max(0.5rem,calc(0.625rem*var(--schedule-zoom)))] font-semibold"
                 title={preferenceCommentsByMemberId[row.memberId]}
                 aria-label="Комментарий к периоду"
               >
@@ -355,7 +412,11 @@ const ScheduleTableRow = React.memo(
               </span>
             )}
           </span>
-          {row.positionName && <span className="text-muted truncate text-xs font-normal">{row.positionName}</span>}
+          {row.positionName && (
+            <span className={["text-muted truncate font-normal", scheduleZoomCss.metaText].join(" ")}>
+              {row.positionName}
+            </span>
+          )}
         </div>
 
         {days.map((day) => {
@@ -475,7 +536,9 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   return (
     <div
       className={[
-        "border-subtle border-b border-l px-1.5 py-1 text-sm",
+        "border-subtle border-b border-l",
+        scheduleZoomCss.cellPadding,
+        "text-[max(0.7rem,calc(0.875rem*var(--schedule-zoom)))]",
         hasConflict ? "bg-amber-50/80 ring-1 ring-amber-200 ring-inset" : "",
       ].join(" ")}
       title={hasConflict ? conflictLabel : undefined}
@@ -498,19 +561,32 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
       {value.trim() && sourceMeta && (
         <div className="mt-1 flex flex-col items-center gap-0.5">
           <span
-            className={["rounded-full border px-1.5 py-0.5 text-[10px] font-semibold", sourceMeta.className].join(" ")}
+            className={[
+              "rounded-full border font-semibold",
+              scheduleZoomCss.badgePadding,
+              scheduleZoomCss.badgeText,
+              sourceMeta.className,
+            ].join(" ")}
             aria-label={sourceMeta.title}
             title={sourceMeta.title}
           >
             {sourceMeta.label}
           </span>
-          {sourceEditHint && <span className="text-muted text-center text-[10px] leading-tight">{sourceEditHint}</span>}
+          {sourceEditHint && (
+            <span className={["text-muted text-center leading-tight", scheduleZoomCss.badgeText].join(" ")}>
+              {sourceEditHint}
+            </span>
+          )}
         </div>
       )}
       {maxShiftHints.length > 0 && diagnosticHints && diagnosticHints.length > 0 && !value.trim() && (
         <div className="mt-1 flex justify-center">
           <span
-            className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800"
+            className={[
+              "rounded-full border border-sky-200 bg-sky-50 font-semibold text-sky-800",
+              scheduleZoomCss.badgePadding,
+              scheduleZoomCss.badgeText,
+            ].join(" ")}
             title={maxShiftHints.map((hint) => hint.message).join("; ")}
           >
             Лимит смен
@@ -521,7 +597,9 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         <div className="mt-1 flex justify-center">
           <span
             className={[
-              "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+              "rounded-full border font-semibold",
+              scheduleZoomCss.badgePadding,
+              scheduleZoomCss.badgeText,
               preferenceAssignmentBadge?.className ?? "border-amber-300 bg-amber-100 text-amber-900",
             ].join(" ")}
             aria-label={preferenceAssignmentBadge?.title ?? conflictLabel}
@@ -532,7 +610,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         </div>
       )}
       {diagnosticHints && diagnosticHints.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
+        <div className="mt-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))] flex flex-wrap gap-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))]">
           {diagnosticHints.map((cell) => {
             const label = getPreferenceHintLabel(cell.type);
             const note = cell.note?.trim() || null;
@@ -541,12 +619,14 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
             return (
               <div
                 key={`${cell.id ?? `${cell.day}:${cell.sortOrder}`}:${cell.type}`}
-                className="flex items-center gap-1"
+                className="flex items-center gap-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))]"
               >
                 <span
                   title={note ?? undefined}
                   className={[
-                    "rounded border px-1.5 py-0.5 text-[10px]",
+                    "rounded border",
+                    scheduleZoomCss.badgePadding,
+                    scheduleZoomCss.badgeText,
                     getPreferenceHintTone(cell.type) === "positive"
                       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                       : "border-amber-200 bg-amber-50 text-amber-800",
@@ -558,7 +638,11 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                 {canApply && (
                   <button
                     type="button"
-                    className="border-subtle bg-surface text-muted hover:bg-app rounded border px-1 py-0.5 text-[10px]"
+                    className={[
+                      "border-subtle bg-surface text-muted hover:bg-app rounded border",
+                      scheduleZoomCss.badgePadding,
+                      scheduleZoomCss.badgeText,
+                    ].join(" ")}
                     aria-label={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     title={`${value.trim() ? "Заменить смену на пожелание" : "Применить пожелание"} ${timeLabel}`}
                     onClick={() =>
@@ -628,8 +712,11 @@ const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
       <div
         className={[
           "sticky left-0 z-20 flex flex-col justify-center",
-          "border-subtle bg-surface border-r border-b px-3 py-3",
-          "text-strong text-sm font-semibold",
+          "border-subtle bg-surface border-r border-b",
+          scheduleZoomCss.headerPaddingX,
+          "py-[max(0.45rem,calc(0.75rem*var(--schedule-zoom)))]",
+          "text-strong font-semibold",
+          scheduleZoomCss.memberText,
           STICKY_COL_SHADOW,
         ].join(" ")}
       >
@@ -647,8 +734,13 @@ const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
 
 const ShiftCountCell = React.memo(function ShiftCountCell({ value }: { value: number }) {
   return (
-    <div className="border-subtle border-b border-l px-1.5 py-1 text-sm">
-      <div className="bg-surface text-strong flex min-h-[2.25rem] items-center justify-center rounded-xl px-1 text-center text-xs leading-tight font-semibold">
+    <div className={["border-subtle border-b border-l", scheduleZoomCss.cellPadding].join(" ")}>
+      <div
+        className={[
+          "bg-surface text-strong flex items-center justify-center text-center leading-tight font-semibold",
+          scheduleZoomCss.readonlyShell,
+        ].join(" ")}
+      >
         {value}
       </div>
     </div>
@@ -677,7 +769,7 @@ function EditableCell({
           onChange={(event) => onInputChange(event.target.value)}
           onBlur={(event) => onBlur(event.target.value)}
           placeholder={placeholder}
-          className="bg-app text-strong focus:bg-surface ring-default h-10 w-full rounded-lg border border-transparent px-2 text-center text-base focus:ring-2 focus:outline-none"
+          className="bg-app text-strong focus:bg-surface ring-default h-[max(1.8rem,calc(2.5rem*var(--schedule-zoom)))] w-full rounded-[max(0.4rem,calc(0.5rem*var(--schedule-zoom)))] border border-transparent px-[max(0.25rem,calc(0.5rem*var(--schedule-zoom)))] text-center text-[max(0.75rem,calc(1rem*var(--schedule-zoom)))] focus:ring-2 focus:outline-none"
         />
       );
   }
@@ -686,7 +778,12 @@ function EditableCell({
 function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMode }) {
   if (!value) {
     return (
-      <div className="bg-surface text-muted flex min-h-[2.25rem] items-center justify-center rounded-xl px-1 text-center text-xs leading-tight">
+      <div
+        className={[
+          "bg-surface text-muted flex items-center justify-center text-center leading-tight",
+          scheduleZoomCss.readonlyShell,
+        ].join(" ")}
+      >
         —
       </div>
     );
@@ -699,7 +796,12 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
       .filter(Boolean);
 
     return (
-      <div className="bg-surface text-strong flex min-h-[2.25rem] flex-col items-center justify-center rounded-xl px-1 text-center text-xs leading-tight">
+      <div
+        className={[
+          "bg-surface text-strong flex flex-col items-center justify-center text-center leading-tight",
+          scheduleZoomCss.readonlyShell,
+        ].join(" ")}
+      >
         <span>{from}</span>
         {to && <span>{to}</span>}
       </div>
@@ -707,7 +809,12 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
   }
 
   return (
-    <div className="bg-surface text-strong flex min-h-[2.25rem] items-center justify-center rounded-xl px-1 text-center text-xs leading-tight">
+    <div
+      className={[
+        "bg-surface text-strong flex items-center justify-center text-center leading-tight",
+        scheduleZoomCss.readonlyShell,
+      ].join(" ")}
+    >
       {value}
     </div>
   );
@@ -731,7 +838,12 @@ function ArrivalSelector({ value, onCommit }: ArrivalSelectorProps) {
   };
 
   return (
-    <div className="bg-surface text-strong flex min-h-[2.25rem] flex-col items-center justify-center gap-1 rounded-xl px-1 text-xs">
+    <div
+      className={[
+        "bg-surface text-strong flex flex-col items-center justify-center",
+        scheduleZoomCss.editableShell,
+      ].join(" ")}
+    >
       <TimeSelector value={time} onHourChange={handleHourChange} onMinuteChange={handleMinuteChange} />
     </div>
   );
@@ -749,7 +861,12 @@ function IntervalSelector({ value, onCommit, highlightEnd }: IntervalSelectorPro
   const showHighlight = Boolean(highlightEnd && from.hour !== null && to.hour === null);
 
   return (
-    <div className="bg-surface text-strong flex min-h-[2.75rem] flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px]">
+    <div
+      className={[
+        "bg-surface text-strong flex flex-col items-center justify-center",
+        scheduleZoomCss.editableShell,
+      ].join(" ")}
+    >
       <TimeSelector
         value={from}
         onHourChange={(hour) => updateRange("from", hour, hour === null ? null : (from.minute ?? 0))}
@@ -761,7 +878,9 @@ function IntervalSelector({ value, onCommit, highlightEnd }: IntervalSelectorPro
         onHourChange={(hour) => updateRange("to", hour, hour === null ? null : (to.minute ?? 0))}
         onMinuteChange={(minute) => updateRange("to", to.hour, minute)}
       />
-      {showHighlight && <span className="text-[10px] font-medium text-amber-600">Укажите время ухода</span>}
+      {showHighlight && (
+        <span className={["font-medium text-amber-600", scheduleZoomCss.badgeText].join(" ")}>Укажите время ухода</span>
+      )}
     </div>
   );
 }
@@ -771,11 +890,12 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
   const selectedMinute = value.hour === null ? "" : normalizeMinuteValue(value.hour, value.minute ?? 0);
 
   const baseClasses =
-    "h-8 w-full min-w-[3.25rem] rounded-lg border border-subtle bg-surface px-1 text-center text-base focus:outline-none focus:ring-2 ring-default";
+    "w-full border border-subtle bg-surface text-center focus:outline-none focus:ring-2 ring-default " +
+    scheduleZoomCss.select;
   const highlightClasses = highlight ? "border-amber-400 bg-amber-50 ring-1 ring-amber-200" : "";
 
   return (
-    <div className="flex w-full items-center justify-center gap-1">
+    <div className={["flex w-full items-center justify-center", scheduleZoomCss.timeSelectorGap].join(" ")}>
       <DropdownSelect
         aria-label="Часы"
         value={selectedHour}
