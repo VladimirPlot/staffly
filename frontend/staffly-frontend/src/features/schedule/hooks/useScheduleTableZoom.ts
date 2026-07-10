@@ -3,7 +3,7 @@ import React from "react";
 const DEFAULT_ZOOM = 100;
 const FIT_ZOOM = 65;
 const MIN_ZOOM = 50;
-const EDITABLE_MIN_ZOOM = 85;
+const EDITABLE_MIN_ZOOM = 65;
 const MAX_ZOOM = 120;
 const STEP = 5;
 
