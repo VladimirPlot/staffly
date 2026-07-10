@@ -174,30 +174,19 @@ const ScheduleTable: React.FC<Props> = ({
   );
 
   const gridTemplateColumns = React.useMemo(() => {
-    // первый столбец фиксируем в адекватных рамках (чтобы телефон не умирал)
-    const firstColWidth = Math.max(7.25, 9 * zoomScale);
-    const dayColWidth = Math.max(readOnly ? 2.75 : 2.9, 3.5 * zoomScale);
-    const readonlyDayColWidth = Math.max(2.6, 3.75 * zoomScale);
-    const regularReadonlyDayColWidth = Math.max(3.25, 4.75 * zoomScale);
-    const shiftsColWidth = Math.max(readOnly ? 2.75 : 3.5, 5.5 * zoomScale);
-    const firstCol = `minmax(${Math.max(7, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
+    // В editable режиме колонкам нужно место под две пары селектов времени.
+    // В readOnly режиме оставляем таблицу компактнее, особенно для длинных периодов.
+    const firstColWidth = Math.max(7.5, 9 * zoomScale);
     const shouldCompact = readOnly && days.length >= 20;
-    const dayCols = days
-      .map(() => {
-        if (readOnly) {
-          return shouldCompact
-            ? `minmax(${Math.max(2.5, readonlyDayColWidth - 0.5).toFixed(2)}rem, ${readonlyDayColWidth.toFixed(2)}rem)`
-            : `minmax(${Math.max(3, regularReadonlyDayColWidth - 0.75).toFixed(2)}rem, ${regularReadonlyDayColWidth.toFixed(2)}rem)`;
-        }
-
-        return `minmax(${Math.max(2.6, dayColWidth - 0.4).toFixed(2)}rem, ${dayColWidth.toFixed(2)}rem)`;
-      })
-      .join(" ");
-    const shiftsCol = readOnly
+    const dayColWidth = readOnly
       ? shouldCompact
-        ? `minmax(${Math.max(2.5, readonlyDayColWidth - 0.5).toFixed(2)}rem, ${readonlyDayColWidth.toFixed(2)}rem)`
-        : `minmax(${Math.max(3, regularReadonlyDayColWidth - 0.75).toFixed(2)}rem, ${regularReadonlyDayColWidth.toFixed(2)}rem)`
-      : `minmax(${Math.max(3.25, shiftsColWidth - 0.75).toFixed(2)}rem, ${shiftsColWidth.toFixed(2)}rem)`;
+        ? Math.max(2.6, 3.75 * zoomScale)
+        : Math.max(3.25, 4.75 * zoomScale)
+      : Math.max(8, 8.5 * zoomScale);
+    const shiftsColWidth = readOnly ? dayColWidth : Math.max(4.75, 5.75 * zoomScale);
+    const firstCol = `minmax(${Math.max(7, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
+    const dayCols = days.map(() => `minmax(${dayColWidth.toFixed(2)}rem, 1fr)`).join(" ");
+    const shiftsCol = `minmax(${shiftsColWidth.toFixed(2)}rem, ${readOnly ? "1fr" : `${shiftsColWidth.toFixed(2)}rem`})`;
     return `${firstCol} ${dayCols} ${shiftsCol}`;
   }, [days, readOnly, zoomScale]);
 
@@ -208,7 +197,7 @@ const ScheduleTable: React.FC<Props> = ({
     <div className="inline-block min-w-full align-top" data-schedule-table-zoom={Math.round(zoomScale * 100)}>
       <div
         className="border-subtle bg-surface grid border"
-        style={{ gridTemplateColumns, width: "max-content", minWidth: "100%" }}
+        style={{ gridTemplateColumns, width: "100%", minWidth: "max-content" }}
       >
         <ScheduleTableHeader title={data.title} days={days} />
 
