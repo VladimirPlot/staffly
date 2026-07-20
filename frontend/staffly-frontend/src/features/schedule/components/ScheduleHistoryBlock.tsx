@@ -39,35 +39,62 @@ function formatDateTime(value: string): string {
   });
 }
 
+function getCreatedAtTime(value: string): number {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function ScheduleHistoryEntry({ entry }: { entry: ScheduleAuditLogDto }) {
+  const label = formatScheduleAuditAction(entry.action);
+  const mainText = entry.details?.trim() || label;
+  const actor = entry.actorDisplayName?.trim() || "Система";
+
+  return (
+    <div className="border-subtle rounded-2xl border px-3 py-2 text-sm">
+      <div className="text-strong font-medium">{mainText}</div>
+      {entry.details?.trim() && <div className="text-muted mt-1 text-xs">{label}</div>}
+      <div className="text-muted mt-1 text-xs">
+        {actor} · {formatDateTime(entry.createdAt)}
+      </div>
+    </div>
+  );
+}
+
 const ScheduleHistoryBlock: React.FC<ScheduleHistoryBlockProps> = ({ history }) => {
-  const entries = history ?? [];
+  const [showFullHistory, setShowFullHistory] = React.useState(false);
+  const entries = React.useMemo(
+    () => [...(history ?? [])].sort((a, b) => getCreatedAtTime(b.createdAt) - getCreatedAtTime(a.createdAt)),
+    [history],
+  );
 
   if (entries.length === 0) {
     return null;
   }
 
+  const visibleEntries = showFullHistory ? entries : entries.slice(0, 1);
+  const canToggleHistory = entries.length > 1;
+
   return (
     <Card className="border-subtle">
-      <details className="group" open>
-        <summary className="text-strong cursor-pointer list-none text-lg font-semibold">История изменений</summary>
-        <div className="mt-3 space-y-3">
-          {entries.map((entry) => {
-            const label = formatScheduleAuditAction(entry.action);
-            const mainText = entry.details?.trim() || label;
-            const actor = entry.actorDisplayName?.trim() || "Система";
-
-            return (
-              <div key={entry.id} className="border-subtle rounded-2xl border px-3 py-2 text-sm">
-                <div className="text-strong font-medium">{mainText}</div>
-                {entry.details?.trim() && <div className="text-muted mt-1 text-xs">{label}</div>}
-                <div className="text-muted mt-1 text-xs">
-                  {actor} · {formatDateTime(entry.createdAt)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </details>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-strong text-lg font-semibold">История изменений</h2>
+        {canToggleHistory && (
+          <button
+            type="button"
+            className="text-brand hover:text-brand-dark inline-flex items-center gap-1 text-sm font-medium"
+            aria-expanded={showFullHistory}
+            onClick={() => setShowFullHistory((value) => !value)}
+          >
+            <span aria-hidden="true">{showFullHistory ? "⌃" : "⌄"}</span>
+            {showFullHistory ? "Скрыть историю" : "Показать всю историю"}
+          </button>
+        )}
+      </div>
+      <div className="mt-3 space-y-3">
+        {visibleEntries.map((entry) => (
+          <ScheduleHistoryEntry key={entry.id} entry={entry} />
+        ))}
+      </div>
     </Card>
   );
 };
