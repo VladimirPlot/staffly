@@ -63,9 +63,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onOpenSwap,
 }) => {
   const ownerName = schedule.owner?.displayName?.trim();
-  const ownerMeta = [schedule.owner?.role, schedule.owner?.positionName]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean);
+  const ownerMeta = [schedule.owner?.positionName].map((value) => String(value ?? "").trim()).filter(Boolean);
   const createdByName = schedule.createdBy?.displayName?.trim();
   const lifecycleDisabled = deleting || lifecycleAction != null;
   const canEditContent = canEditScheduleContent(schedule.status);
