@@ -527,12 +527,6 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
       ? preferenceAssignmentBadge.title
       : "Заполненная смена конфликтует с пожеланием сотрудника";
 
-  const sourceMeta = showCellDiagnostics ? getScheduleCellSourceMeta(source) : null;
-  const sourceEditHint =
-    showCellDiagnostics && !readOnly && value.trim() && source && source !== "MANUAL"
-      ? getScheduleCellSourceEditHint(source)
-      : null;
-
   return (
     <div
       className={[
@@ -545,7 +539,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
       aria-label={hasConflict ? conflictLabel : undefined}
     >
       {readOnly ? (
-        <ReadonlyCell value={value} shiftMode={shiftMode} />
+        <ReadonlyCell value={value} shiftMode={shiftMode} showCellDiagnostics={showCellDiagnostics} />
       ) : (
         <EditableCell
           value={value}
@@ -558,27 +552,6 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
         />
       )}
 
-      {value.trim() && sourceMeta && (
-        <div className="mt-1 flex flex-col items-center gap-0.5">
-          <span
-            className={[
-              "rounded-full border font-semibold",
-              scheduleZoomCss.badgePadding,
-              scheduleZoomCss.badgeText,
-              sourceMeta.className,
-            ].join(" ")}
-            aria-label={sourceMeta.title}
-            title={sourceMeta.title}
-          >
-            {sourceMeta.label}
-          </span>
-          {sourceEditHint && (
-            <span className={["text-muted text-center leading-tight", scheduleZoomCss.badgeText].join(" ")}>
-              {sourceEditHint}
-            </span>
-          )}
-        </div>
-      )}
       {maxShiftHints.length > 0 && diagnosticHints && diagnosticHints.length > 0 && !value.trim() && (
         <div className="mt-1 flex justify-center">
           <span
@@ -633,8 +606,20 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                   ].join(" ")}
                 >
                   {`${label} ${timeLabel}`.trim()}
-                  {note ? " i" : ""}
                 </span>
+                {note && (
+                  <span
+                    className={[
+                      "inline-flex items-center justify-center rounded-full border border-sky-200 bg-sky-50 font-semibold text-sky-700",
+                      "h-[max(0.9rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.9rem,calc(1rem*var(--schedule-zoom)))]",
+                      scheduleZoomCss.badgeText,
+                    ].join(" ")}
+                    aria-label="Комментарий к пожеланию"
+                    title={note}
+                  >
+                    i
+                  </span>
+                )}
                 {canApply && (
                   <button
                     type="button"
@@ -663,39 +648,6 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
     </div>
   );
 });
-
-function getScheduleCellSourceMeta(
-  source?: ScheduleCellSource,
-): { label: string; title: string; className: string } | null {
-  switch (source) {
-    case "AUTO_BUILD":
-      return {
-        label: "Авто",
-        title: "Смена создана автосборкой",
-        className: "border-sky-200 bg-sky-50 text-sky-700",
-      };
-    case "PREFERENCE_HINT":
-      return {
-        label: "Пожелание",
-        title: "Смена применена из пожелания сотрудника",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      };
-    case "MANUAL":
-    default:
-      return null;
-  }
-}
-
-function getScheduleCellSourceEditHint(source?: ScheduleCellSource): string | null {
-  switch (source) {
-    case "AUTO_BUILD":
-    case "PREFERENCE_HINT":
-      return "Измените — станет ручной";
-    case "MANUAL":
-    default:
-      return null;
-  }
-}
 
 const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
   days,
@@ -775,7 +727,15 @@ function EditableCell({
   }
 }
 
-function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMode }) {
+function ReadonlyCell({
+  value,
+  shiftMode,
+  showCellDiagnostics,
+}: {
+  value: string;
+  shiftMode: ShiftMode;
+  showCellDiagnostics: boolean;
+}) {
   if (!value) {
     return (
       <div
@@ -789,11 +749,24 @@ function ReadonlyCell({ value, shiftMode }: { value: string; shiftMode: ShiftMod
     );
   }
 
-  if (shiftMode === "FULL" && value.includes("-")) {
+  if (shiftMode === "FULL" && /[-–—]/.test(value)) {
     const [from, to] = value
       .split(/[-–—]/)
       .map((item) => item.trim())
       .filter(Boolean);
+
+    if (showCellDiagnostics && from && to) {
+      return (
+        <div
+          className={[
+            "bg-surface text-strong flex items-center justify-center text-center leading-tight",
+            scheduleZoomCss.readonlyShell,
+          ].join(" ")}
+        >
+          {from}–{to}
+        </div>
+      );
+    }
 
     return (
       <div
