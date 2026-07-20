@@ -1,4 +1,5 @@
 import React from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import type { ScheduleAuditLogDto } from "../types";
@@ -85,7 +86,11 @@ const ScheduleHistoryBlock: React.FC<ScheduleHistoryBlockProps> = ({ history }) 
             aria-expanded={showFullHistory}
             onClick={() => setShowFullHistory((value) => !value)}
           >
-            <span aria-hidden="true">{showFullHistory ? "⌃" : "⌄"}</span>
+            {showFullHistory ? (
+              <ChevronUp className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            )}
             {showFullHistory ? "Скрыть историю" : "Показать всю историю"}
           </button>
         )}
