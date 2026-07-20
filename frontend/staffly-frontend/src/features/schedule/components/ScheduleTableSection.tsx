@@ -177,14 +177,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
         {showTableZoomControls && (
           <div className="border-subtle bg-app mb-3 rounded-2xl border px-3 py-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="text-strong text-sm font-medium">Масштаб</div>
-                <div className="text-muted mt-1 text-xs">
-                  {scheduleReadOnly
-                    ? "Компактный режим помогает быстро просмотреть длинный период."
-                    : `Минимальный масштаб в редактировании — ${minZoom}%, чтобы поля не накладывались.`}
-                </div>
-              </div>
+              <div className="text-strong text-sm font-medium">Масштаб</div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={showFullPeriod}>
