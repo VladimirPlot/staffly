@@ -1,4 +1,5 @@
 import React from "react";
+import { Info } from "lucide-react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } from "../api";
@@ -408,7 +409,10 @@ const ScheduleTableRow = React.memo(
                 title={preferenceCommentsByMemberId[row.memberId]}
                 aria-label="Комментарий к периоду"
               >
-                i
+                <Info
+                  className="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
+                  aria-hidden="true"
+                />
               </span>
             )}
           </span>
@@ -617,7 +621,10 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                     aria-label="Комментарий к пожеланию"
                     title={note}
                   >
-                    i
+                    <Info
+                      className="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
+                      aria-hidden="true"
+                    />
                   </span>
                 )}
                 {canApply && (
