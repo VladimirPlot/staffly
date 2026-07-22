@@ -21,6 +21,7 @@ type Props = {
   mobileSheetSubtitle?: React.ReactNode;
   mobileSheetClassName?: string;
   mobileBackdropClassName?: string;
+  modalBackdrop?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
@@ -52,6 +53,7 @@ export default function DropdownMenu({
   mobileSheetSubtitle,
   mobileSheetClassName = "",
   mobileBackdropClassName = "",
+  modalBackdrop = false,
   open: openProp,
   onOpenChange,
 }: Props) {
@@ -70,21 +72,25 @@ export default function DropdownMenu({
 
   const [desktopPos, setDesktopPos] = useState<{ top: number; left: number } | null>(null);
   const [triggerWidth, setTriggerWidth] = useState<number | null>(null);
+  const shouldRenderBackdrop = open && (isMobile || modalBackdrop);
 
   const portalTarget = useMemo(() => {
     if (typeof document === "undefined") return null;
     return document.body;
   }, []);
 
-  const setOpen = useCallback((nextOpen: boolean | ((current: boolean) => boolean)) => {
-    const resolved = typeof nextOpen === "function" ? nextOpen(open) : nextOpen;
+  const setOpen = useCallback(
+    (nextOpen: boolean | ((current: boolean) => boolean)) => {
+      const resolved = typeof nextOpen === "function" ? nextOpen(open) : nextOpen;
 
-    if (openProp == null) {
-      setInternalOpen(resolved);
-    }
+      if (openProp == null) {
+        setInternalOpen(resolved);
+      }
 
-    onOpenChange?.(resolved);
-  }, [onOpenChange, open, openProp]);
+      onOpenChange?.(resolved);
+    },
+    [onOpenChange, open, openProp],
+  );
 
   const close = useCallback(() => setOpen(false), [setOpen]);
 
@@ -111,16 +117,16 @@ export default function DropdownMenu({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, setOpen]);
 
-  // ✅ Lock app interactions ONLY for mobile overlay (prevents click-through on iOS)
+  // ✅ Lock app interactions for overlays that render a backdrop (prevents click-through on iOS)
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    const shouldLock = open && isMobile;
+    const shouldLock = open && (isMobile || modalBackdrop);
     if (shouldLock) document.body.classList.add("staffly-overlay-open");
     else document.body.classList.remove("staffly-overlay-open");
 
     return () => document.body.classList.remove("staffly-overlay-open");
-  }, [close, open, isMobile]);
+  }, [close, open, isMobile, modalBackdrop]);
 
   // ✅ iOS passive listener fix: attach non-passive touch listeners ONLY for mobile overlay
   useEffect(() => {
@@ -184,10 +190,7 @@ export default function DropdownMenu({
       let top = t.bottom + GAP_Y;
 
       // clamp into viewport
-      left = Math.max(
-        VIEWPORT_PADDING,
-        Math.min(left, window.innerWidth - VIEWPORT_PADDING - menuW),
-      );
+      left = Math.max(VIEWPORT_PADDING, Math.min(left, window.innerWidth - VIEWPORT_PADDING - menuW));
 
       // if bottom overflow, try placing above
       const menuH = m.height;
@@ -230,7 +233,7 @@ export default function DropdownMenu({
 
   // ✅ Desktop: close on outside click (capture)
   useEffect(() => {
-    if (!open || isMobile) return;
+    if (!open || isMobile || modalBackdrop) return;
 
     const onPointerDownCapture = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -246,34 +249,38 @@ export default function DropdownMenu({
 
     document.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => document.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [close, open, isMobile]);
+  }, [close, open, isMobile, modalBackdrop]);
+
+  const backdrop = !shouldRenderBackdrop ? null : (
+    <div
+      ref={backdropRef}
+      className={`fixed inset-0 ${Z_BACKDROP} bg-black/20 backdrop-blur-[1px] ${mobileBackdropClassName}`}
+      aria-hidden
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }}
+    />
+  );
 
   const overlay = !isMobile ? null : (
     <div data-overlay-root="true">
-      <div
-        ref={backdropRef}
-        className={`fixed inset-0 ${Z_BACKDROP} bg-black/20 backdrop-blur-[1px] ${mobileBackdropClassName}`}
-        aria-hidden
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        onPointerUp={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          close();
-        }}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          close();
-        }}
-      />
+      {backdrop}
 
       <div
         id={mobileMenuId}
         role="menu"
-        className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} flex max-h-[min(82vh,560px)] flex-col overflow-hidden rounded-t-[1.75rem] border-t border-subtle shadow-[0_-12px_40px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out motion-reduce:transition-none ${mobileSheetClassName} ${
+        className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} border-subtle flex max-h-[min(82vh,560px)] flex-col overflow-hidden rounded-t-[1.75rem] border-t shadow-[0_-12px_40px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out motion-reduce:transition-none ${mobileSheetClassName} ${
           sheetVisible ? "translate-y-0" : "translate-y-full"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
@@ -284,8 +291,8 @@ export default function DropdownMenu({
 
           {(mobileSheetTitle || mobileSheetSubtitle) && (
             <div className="mb-3 px-1 text-center">
-              {mobileSheetTitle && <div className="text-base font-semibold text-default">{mobileSheetTitle}</div>}
-              {mobileSheetSubtitle && <div className="mt-1 text-sm leading-5 text-muted">{mobileSheetSubtitle}</div>}
+              {mobileSheetTitle && <div className="text-default text-base font-semibold">{mobileSheetTitle}</div>}
+              {mobileSheetSubtitle && <div className="text-muted mt-1 text-sm leading-5">{mobileSheetSubtitle}</div>}
             </div>
           )}
         </div>
@@ -297,30 +304,31 @@ export default function DropdownMenu({
     </div>
   );
 
-  const desktopMenu = !open || isMobile ? null : (
-    <div
-      id={desktopMenuId}
-      ref={desktopMenuRef}
-      role="menu"
-      className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto overscroll-contain ${menuClassName}`}
-      style={
-        desktopPos
-          ? {
-              top: desktopPos.top,
-              left: desktopPos.left,
-              width: matchTriggerWidth && triggerWidth ? triggerWidth : undefined,
-              maxHeight: DESKTOP_MENU_MAX_HEIGHT,
-            }
-          : { top: -9999, left: -9999, maxHeight: DESKTOP_MENU_MAX_HEIGHT }
-      }
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <div className="border-subtle bg-surface w-full rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-        {children({ close, open, isMobile })}
+  const desktopMenu =
+    !open || isMobile ? null : (
+      <div
+        id={desktopMenuId}
+        ref={desktopMenuRef}
+        role="menu"
+        className={`fixed ${Z_MENU} max-w-[calc(100vw-16px)] overflow-x-hidden overflow-y-auto overscroll-contain ${menuClassName}`}
+        style={
+          desktopPos
+            ? {
+                top: desktopPos.top,
+                left: desktopPos.left,
+                width: matchTriggerWidth && triggerWidth ? triggerWidth : undefined,
+                maxHeight: DESKTOP_MENU_MAX_HEIGHT,
+              }
+            : { top: -9999, left: -9999, maxHeight: DESKTOP_MENU_MAX_HEIGHT }
+        }
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-subtle bg-surface w-full rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
+          {children({ close, open, isMobile })}
+        </div>
       </div>
-    </div>
-  );
+    );
 
   return (
     <span ref={triggerWrapRef} className={triggerWrapperClassName}>
@@ -337,6 +345,7 @@ export default function DropdownMenu({
 
       {open && (
         <>
+          {!isMobile && backdrop ? (portalTarget ? createPortal(backdrop, portalTarget) : backdrop) : null}
           {desktopMenu ? (portalTarget ? createPortal(desktopMenu, portalTarget) : desktopMenu) : null}
           {overlay ? (portalTarget ? createPortal(overlay, portalTarget) : overlay) : null}
         </>
