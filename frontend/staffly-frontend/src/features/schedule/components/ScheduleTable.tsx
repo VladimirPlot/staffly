@@ -172,7 +172,6 @@ function ScheduleInfoButton({ label, comment, className, iconClassName }: Schedu
       modalBackdrop
       menuClassName="w-[min(22rem,calc(100vw-16px))]"
       triggerWrapperClassName="inline-flex"
-      mobileSheetTitle="Комментарий"
       mobileSheetClassName="max-h-[min(78vh,480px)]"
       trigger={(triggerProps) => (
         <button type="button" className={className} aria-label={label} title={trimmedComment} {...triggerProps}>
@@ -180,33 +179,21 @@ function ScheduleInfoButton({ label, comment, className, iconClassName }: Schedu
         </button>
       )}
     >
-      {({ close, isMobile }) => (
+      {({ close }) => (
         <div className="p-4 text-sm">
-          {!isMobile && (
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <h2 className="text-strong font-semibold">Комментарий</h2>
-              <button
-                type="button"
-                className="text-muted hover:text-strong rounded-full p-1 transition"
-                aria-label="Закрыть комментарий"
-                onClick={close}
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-          )}
-
-          <p className="text-default leading-relaxed whitespace-pre-wrap">{trimmedComment}</p>
-
-          <div className="mt-4 flex justify-end">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <h2 className="text-strong font-semibold">Комментарий</h2>
             <button
               type="button"
-              className="border-subtle bg-app text-default hover:bg-surface rounded-xl border px-3 py-1.5 font-medium transition"
+              className="text-muted hover:text-strong hover:bg-app -mt-1 -mr-1 inline-flex h-9 w-9 items-center justify-center rounded-full transition"
+              aria-label="Закрыть комментарий"
               onClick={close}
             >
-              Закрыть
+              <X className="h-5 w-5" aria-hidden="true" />
             </button>
           </div>
+
+          <p className="text-default leading-relaxed whitespace-pre-wrap">{trimmedComment}</p>
         </div>
       )}
     </DropdownMenu>
