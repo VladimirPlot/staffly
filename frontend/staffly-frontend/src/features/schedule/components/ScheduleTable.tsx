@@ -1,7 +1,7 @@
 import React from "react";
-import { createPortal } from "react-dom";
 import { Info, X } from "lucide-react";
 
+import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } from "../api";
 import type {
@@ -163,109 +163,53 @@ type ScheduleInfoButtonProps = {
 };
 
 function ScheduleInfoButton({ label, comment, className, iconClassName }: ScheduleInfoButtonProps) {
-  const [open, setOpen] = React.useState(false);
-  const dialogRef = React.useRef<HTMLDivElement | null>(null);
-  const dialogTitleId = React.useId();
-  const dialogDescriptionId = React.useId();
   const trimmedComment = comment.trim();
-
-  React.useEffect(() => {
-    if (!open) return undefined;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
 
   if (!trimmedComment) return null;
 
   return (
-    <>
-      <button
-        type="button"
-        className={className}
-        aria-label={label}
-        aria-expanded={open}
-        title={trimmedComment}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Info className={iconClassName} aria-hidden="true" />
-      </button>
+    <DropdownMenu
+      modalBackdrop
+      menuClassName="w-[min(22rem,calc(100vw-16px))]"
+      triggerWrapperClassName="inline-flex"
+      mobileSheetTitle="Комментарий"
+      mobileSheetClassName="max-h-[min(78vh,480px)]"
+      trigger={(triggerProps) => (
+        <button type="button" className={className} aria-label={label} title={trimmedComment} {...triggerProps}>
+          <Info className={iconClassName} aria-hidden="true" />
+        </button>
+      )}
+    >
+      {({ close, isMobile }) => (
+        <div className="p-4 text-sm">
+          {!isMobile && (
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <h2 className="text-strong font-semibold">Комментарий</h2>
+              <button
+                type="button"
+                className="text-muted hover:text-strong rounded-full p-1 transition"
+                aria-label="Закрыть комментарий"
+                onClick={close}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
 
-      {open &&
-        createPortal(
-          <div data-overlay-root="true">
+          <p className="text-default leading-relaxed whitespace-pre-wrap">{trimmedComment}</p>
+
+          <div className="mt-4 flex justify-end">
             <button
               type="button"
-              className="fixed inset-0 z-[1000] cursor-default bg-black/30"
-              aria-label="Закрыть комментарий"
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onPointerUp={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setOpen(false);
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setOpen(false);
-              }}
-            />
-            <div
-              className="pointer-events-none fixed inset-0 z-[1010] flex items-center justify-center p-4"
-              role="presentation"
+              className="border-subtle bg-app text-default hover:bg-surface rounded-xl border px-3 py-1.5 font-medium transition"
+              onClick={close}
             >
-              <div
-                ref={dialogRef}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={dialogTitleId}
-                aria-describedby={dialogDescriptionId}
-                className="border-subtle bg-surface text-default pointer-events-auto w-full max-w-sm rounded-2xl border p-4 text-sm shadow-xl"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <h2 id={dialogTitleId} className="text-strong font-semibold">
-                    Комментарий
-                  </h2>
-                  <button
-                    type="button"
-                    className="text-muted hover:text-strong rounded-full p-1 transition"
-                    aria-label="Закрыть комментарий"
-                    onClick={() => setOpen(false)}
-                  >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-                <p id={dialogDescriptionId} className="mt-3 leading-relaxed whitespace-pre-wrap">
-                  {trimmedComment}
-                </p>
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="button"
-                    className="border-subtle bg-app text-default hover:bg-surface rounded-xl border px-3 py-1.5 font-medium transition"
-                    onClick={() => setOpen(false)}
-                  >
-                    Закрыть
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+    </DropdownMenu>
   );
 }
 
