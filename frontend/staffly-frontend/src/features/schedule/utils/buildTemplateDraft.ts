@@ -6,11 +6,18 @@ import type {
 } from "../api";
 
 export type ScheduleBuildShiftOptionDraft = {
+  id?: number;
   startTime: string;
   endTime: string;
   label: string;
   isFullShift: boolean;
   sortOrder: number;
+};
+
+export type ScheduleBuildCoverageDateOverrideDraft = {
+  date: string;
+  shiftOptionId: number;
+  requiredCount: number;
 };
 
 export type ScheduleBuildCoverageRuleDraft = {
@@ -33,6 +40,7 @@ export type ScheduleBuildPositionConfigDraft = {
   sortOrder: number;
   shiftOptions: ScheduleBuildShiftOptionDraft[];
   coverageRules: ScheduleBuildCoverageRuleDraft[];
+  coverageDateOverrides: ScheduleBuildCoverageDateOverrideDraft[];
 };
 
 export type ScheduleBuildTemplateDraft = {
@@ -86,6 +94,7 @@ export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft =>
   sortOrder: 0,
   shiftOptions: [createShiftOptionDraft()],
   coverageRules: [],
+  coverageDateOverrides: [],
 });
 
 export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): ScheduleBuildTemplateDraft => ({
@@ -104,6 +113,7 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       .sort((a, b) => a - b),
     sortOrder: config.sortOrder,
     shiftOptions: (config.shiftOptions ?? []).map((option) => ({
+      id: option.id,
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label ?? "",
@@ -116,6 +126,11 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       endTime: rule.endTime,
       requiredCount: rule.requiredCount,
       sortOrder: rule.sortOrder,
+    })),
+    coverageDateOverrides: (config.coverageDateOverrides ?? []).map((override) => ({
+      date: override.date,
+      shiftOptionId: override.shiftOptionId,
+      requiredCount: override.requiredCount,
     })),
   })) ?? [createPositionConfigDraft()],
 });
@@ -136,6 +151,7 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       .sort((a, b) => a - b),
     sortOrder: index,
     shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
+      id: option.id,
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label?.trim() ? option.label.trim() : null,
@@ -149,6 +165,16 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       requiredCount: Number(rule.requiredCount) || 0,
       sortOrder: ruleIndex,
     })),
+    coverageDateOverrides: config.coverageDateOverrides
+      .filter(
+        (override) =>
+          override.date && override.shiftOptionId >= 0 && override.shiftOptionId < config.shiftOptions.length,
+      )
+      .map((override) => ({
+        date: override.date,
+        shiftOptionId: config.shiftOptions[override.shiftOptionId]?.id ?? override.shiftOptionId,
+        requiredCount: Number(override.requiredCount) || 0,
+      })),
   })),
 });
 
@@ -177,6 +203,10 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
       if (!isTimeMultipleOf15Minutes(option.startTime) || !isTimeMultipleOf15Minutes(option.endTime)) {
         return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
       }
+    }
+    for (const override of config.coverageDateOverrides) {
+      if (!override.date) return `Укажите дату исключения для должности #${i + 1}`;
+      if (override.requiredCount < 0) return `Количество в исключении не может быть меньше 0 для должности #${i + 1}`;
     }
     for (const rule of config.coverageRules) {
       if (!rule.startTime || !rule.endTime) return `Заполните время правила покрытия для должности #${i + 1}`;
