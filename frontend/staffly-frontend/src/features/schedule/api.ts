@@ -229,7 +229,7 @@ export type ScheduleBuildMinRestMode = "SOFT" | "STRICT";
 export type ScheduleBuildCoverageDateOverrideDto = {
   id: number;
   date: string;
-  shiftOptionId: number;
+  shiftOptionIndex: number;
   requiredCount: number;
 };
 
@@ -261,7 +261,6 @@ export type ScheduleBuildTemplateDto = {
 };
 
 export type SaveScheduleBuildShiftOptionRequest = {
-  id?: number;
   startTime: string;
   endTime: string;
   label?: string | null;
@@ -280,7 +279,7 @@ export type SaveScheduleBuildCoverageRuleRequest = {
 
 export type SaveScheduleBuildCoverageDateOverrideRequest = {
   date: string;
-  shiftOptionId: number;
+  shiftOptionIndex: number;
   requiredCount: number;
 };
 
