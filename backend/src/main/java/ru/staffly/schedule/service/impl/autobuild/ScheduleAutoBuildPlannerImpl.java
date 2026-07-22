@@ -484,9 +484,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (byExactStart != 0) {
             return byExactStart;
         }
-        int byGrade = Integer.compare(gradeRank(leftCandidate.grade()), gradeRank(rightCandidate.grade()));
-        if (byGrade != 0) {
-            return byGrade;
+        int byMatchStatus = Integer.compare(candidateRank(leftCandidate), candidateRank(rightCandidate));
+        if (byMatchStatus != 0) {
+            return byMatchStatus;
         }
         int byEnd = Integer.compare(toMinute(left.option().getEndTime(), true), toMinute(right.option().getEndTime(), true));
         if (byEnd != 0) {
@@ -504,23 +504,16 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private int matchStatusRank(MatchStatus matchStatus) {
+        // FULL_DAY_POSITIVE and NO_PREFERENCE intentionally share one
+        // availability priority group: fairness, not the status itself, chooses
+        // between "can work all day" and "no preference" candidates.
         return switch (matchStatus) {
             case EXACT_INTERVAL_PREFERENCE -> 0;
             case COVERING_INTERVAL_PREFERENCE -> 1;
             case FULL_DAY_POSITIVE, NO_PREFERENCE -> 2;
-            case PARTIAL_INTERVAL_FALLBACK -> 4;
-            case SOFT_NEGATIVE_FALLBACK -> 5;
-            case HARD_NEGATIVE_FALLBACK -> 6;
-        };
-    }
-
-    private int gradeRank(PreferenceGrade grade) {
-        return switch (grade) {
-            case POSITIVE -> 0;
-            case NONE -> 1;
-            case FALLBACK -> 2;
-            case SOFT_NEGATIVE -> 3;
-            case HARD_NEGATIVE -> 4;
+            case PARTIAL_INTERVAL_FALLBACK -> 3;
+            case SOFT_NEGATIVE_FALLBACK -> 4;
+            case HARD_NEGATIVE_FALLBACK -> 5;
         };
     }
 
