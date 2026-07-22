@@ -6,7 +6,6 @@ import type {
 } from "../api";
 
 export type ScheduleBuildShiftOptionDraft = {
-  id?: number;
   startTime: string;
   endTime: string;
   label: string;
@@ -16,7 +15,7 @@ export type ScheduleBuildShiftOptionDraft = {
 
 export type ScheduleBuildCoverageDateOverrideDraft = {
   date: string;
-  shiftOptionId: number;
+  shiftOptionIndex: number;
   requiredCount: number;
 };
 
@@ -113,7 +112,6 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       .sort((a, b) => a - b),
     sortOrder: config.sortOrder,
     shiftOptions: (config.shiftOptions ?? []).map((option) => ({
-      id: option.id,
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label ?? "",
@@ -129,7 +127,7 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
     })),
     coverageDateOverrides: (config.coverageDateOverrides ?? []).map((override) => ({
       date: override.date,
-      shiftOptionId: override.shiftOptionId,
+      shiftOptionIndex: override.shiftOptionIndex,
       requiredCount: override.requiredCount,
     })),
   })) ?? [createPositionConfigDraft()],
@@ -151,7 +149,6 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       .sort((a, b) => a - b),
     sortOrder: index,
     shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
-      id: option.id,
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label?.trim() ? option.label.trim() : null,
@@ -168,11 +165,11 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
     coverageDateOverrides: config.coverageDateOverrides
       .filter(
         (override) =>
-          override.date && override.shiftOptionId >= 0 && override.shiftOptionId < config.shiftOptions.length,
+          override.date && override.shiftOptionIndex >= 0 && override.shiftOptionIndex < config.shiftOptions.length,
       )
       .map((override) => ({
         date: override.date,
-        shiftOptionId: config.shiftOptions[override.shiftOptionId]?.id ?? override.shiftOptionId,
+        shiftOptionIndex: override.shiftOptionIndex,
         requiredCount: Number(override.requiredCount) || 0,
       })),
   })),

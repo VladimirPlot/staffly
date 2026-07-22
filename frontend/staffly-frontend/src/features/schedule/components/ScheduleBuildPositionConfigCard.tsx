@@ -248,11 +248,13 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
                 )
               : config.coverageRules,
             coverageDateOverrides: config.coverageDateOverrides
-              .filter((override) => override.shiftOptionId !== shiftOptionIndex)
+              .filter((override) => override.shiftOptionIndex !== shiftOptionIndex)
               .map((override) => ({
                 ...override,
-                shiftOptionId:
-                  override.shiftOptionId > shiftOptionIndex ? override.shiftOptionId - 1 : override.shiftOptionId,
+                shiftOptionIndex:
+                  override.shiftOptionIndex > shiftOptionIndex
+                    ? override.shiftOptionIndex - 1
+                    : override.shiftOptionIndex,
               })),
           });
         }}

@@ -23,9 +23,9 @@ const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, sav
 
   const upsertOverride = (date: string, shiftOptionIndex: number, requiredCount: number) => {
     const existingIndex = config.coverageDateOverrides.findIndex(
-      (override) => override.date === date && override.shiftOptionId === shiftOptionIndex,
+      (override) => override.date === date && override.shiftOptionIndex === shiftOptionIndex,
     );
-    const nextOverride = { date, shiftOptionId: shiftOptionIndex, requiredCount };
+    const nextOverride = { date, shiftOptionIndex: shiftOptionIndex, requiredCount };
     onChange({
       ...config,
       coverageDateOverrides:
@@ -57,7 +57,7 @@ const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, sav
                 ...config.coverageDateOverrides,
                 ...config.shiftOptions.map((_, shiftOptionIndex) => ({
                   date: nextDate,
-                  shiftOptionId: shiftOptionIndex,
+                  shiftOptionIndex: shiftOptionIndex,
                   requiredCount: 0,
                 })),
               ],
@@ -108,7 +108,7 @@ const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, sav
                 <tbody>
                   {config.shiftOptions.map((shiftOption, shiftOptionIndex) => {
                     const override = config.coverageDateOverrides.find(
-                      (item) => item.date === date && item.shiftOptionId === shiftOptionIndex,
+                      (item) => item.date === date && item.shiftOptionIndex === shiftOptionIndex,
                     );
                     return (
                       <tr key={shiftOptionIndex} className="border-subtle border-t first:border-t-0">
