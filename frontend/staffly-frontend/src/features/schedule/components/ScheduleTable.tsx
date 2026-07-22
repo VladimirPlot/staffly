@@ -164,7 +164,6 @@ type ScheduleInfoButtonProps = {
 
 function ScheduleInfoButton({ label, comment, className, iconClassName }: ScheduleInfoButtonProps) {
   const [open, setOpen] = React.useState(false);
-  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
   const dialogRef = React.useRef<HTMLDivElement | null>(null);
   const dialogTitleId = React.useId();
   const dialogDescriptionId = React.useId();
@@ -179,19 +178,9 @@ function ScheduleInfoButton({ label, comment, className, iconClassName }: Schedu
       }
     };
 
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (buttonRef.current?.contains(target) || dialogRef.current?.contains(target)) return;
-
-      setOpen(false);
-    };
-
     document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("pointerdown", handlePointerDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, [open]);
 
@@ -200,7 +189,6 @@ function ScheduleInfoButton({ label, comment, className, iconClassName }: Schedu
   return (
     <>
       <button
-        ref={buttonRef}
         type="button"
         className={className}
         aria-label={label}
@@ -213,42 +201,65 @@ function ScheduleInfoButton({ label, comment, className, iconClassName }: Schedu
 
       {open &&
         createPortal(
-          <div
-            className="pointer-events-none fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-4"
-            role="presentation"
-          >
+          <div data-overlay-root="true">
+            <button
+              type="button"
+              className="fixed inset-0 z-[1000] cursor-default bg-black/30"
+              aria-label="Закрыть комментарий"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onPointerUp={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+              }}
+            />
             <div
-              ref={dialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={dialogTitleId}
-              aria-describedby={dialogDescriptionId}
-              className="border-subtle bg-surface text-default pointer-events-auto w-full max-w-sm rounded-2xl border p-4 text-sm shadow-xl"
+              className="pointer-events-none fixed inset-0 z-[1010] flex items-center justify-center p-4"
+              role="presentation"
             >
-              <div className="flex items-start justify-between gap-3">
-                <h2 id={dialogTitleId} className="text-strong font-semibold">
-                  Комментарий
-                </h2>
-                <button
-                  type="button"
-                  className="text-muted hover:text-strong rounded-full p-1 transition"
-                  aria-label="Закрыть комментарий"
-                  onClick={() => setOpen(false)}
-                >
-                  <X className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </div>
-              <p id={dialogDescriptionId} className="mt-3 leading-relaxed whitespace-pre-wrap">
-                {trimmedComment}
-              </p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  className="border-subtle bg-app text-default hover:bg-surface rounded-xl border px-3 py-1.5 font-medium transition"
-                  onClick={() => setOpen(false)}
-                >
-                  Закрыть
-                </button>
+              <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={dialogTitleId}
+                aria-describedby={dialogDescriptionId}
+                className="border-subtle bg-surface text-default pointer-events-auto w-full max-w-sm rounded-2xl border p-4 text-sm shadow-xl"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <h2 id={dialogTitleId} className="text-strong font-semibold">
+                    Комментарий
+                  </h2>
+                  <button
+                    type="button"
+                    className="text-muted hover:text-strong rounded-full p-1 transition"
+                    aria-label="Закрыть комментарий"
+                    onClick={() => setOpen(false)}
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+                <p id={dialogDescriptionId} className="mt-3 leading-relaxed whitespace-pre-wrap">
+                  {trimmedComment}
+                </p>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    className="border-subtle bg-app text-default hover:bg-surface rounded-xl border px-3 py-1.5 font-medium transition"
+                    onClick={() => setOpen(false)}
+                  >
+                    Закрыть
+                  </button>
+                </div>
               </div>
             </div>
           </div>,
