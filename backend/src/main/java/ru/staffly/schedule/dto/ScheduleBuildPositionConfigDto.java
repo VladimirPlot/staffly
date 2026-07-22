@@ -19,5 +19,6 @@ public record ScheduleBuildPositionConfigDto(
         List<Integer> heavyDaysOfWeek,
         List<ScheduleBuildShiftOptionDto> shiftOptions,
         List<ScheduleBuildCoverageRuleDto> coverageRules,
+        List<ScheduleBuildCoverageDateOverrideDto> coverageDateOverrides,
         Integer sortOrder
 ) {}

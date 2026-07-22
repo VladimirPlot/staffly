@@ -81,4 +81,10 @@ public class ScheduleBuildPositionConfig {
     @BatchSize(size = 64)
     @Builder.Default
     private List<ScheduleBuildCoverageRule> coverageRules = new ArrayList<>();
+
+    @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("date ASC, id ASC")
+    @BatchSize(size = 64)
+    @Builder.Default
+    private List<ScheduleBuildCoverageDateOverride> coverageDateOverrides = new ArrayList<>();
 }

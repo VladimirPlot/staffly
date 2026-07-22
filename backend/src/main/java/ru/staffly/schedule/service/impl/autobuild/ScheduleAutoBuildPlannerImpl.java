@@ -7,6 +7,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleBuildCoverageDateOverride;
 import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
 import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
@@ -181,15 +182,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
-        int dayOfWeek = day.getDayOfWeek().getValue();
         List<ScheduleBuildCoverageRule> allCoverageRules = safeCoverageRules(config);
-        if (allCoverageRules.isEmpty()) {
+        List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(config, day);
+        if (allCoverageRules.isEmpty() && coverageRules.isEmpty() && !hasDateOverride(config, day)) {
             return buildLegacyAssignmentsForDay(day, config, candidates, preferencesByMember, plannerState);
         }
-
-        List<ScheduleBuildCoverageRule> coverageRules = allCoverageRules.stream()
-                .filter(rule -> rule.getDayOfWeek() == dayOfWeek)
-                .toList();
 
         for (ScheduleBuildCoverageRule rule : coverageRules) {
             CoverageRuleResult ruleResult = buildAssignmentForCoverageRule(
@@ -1388,6 +1385,40 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return List.of();
         }
         return config.getShiftOptions();
+    }
+
+    private List<ScheduleBuildCoverageRule> effectiveCoverageRulesForDate(ScheduleBuildPositionConfig config, LocalDate day) {
+        List<ScheduleBuildCoverageDateOverride> dateOverrides = safeCoverageDateOverrides(config).stream()
+                .filter(override -> day.equals(override.getDate()))
+                .toList();
+        if (!dateOverrides.isEmpty()) {
+            return dateOverrides.stream()
+                    .filter(override -> override.getShiftOption() != null)
+                    .map(override -> ScheduleBuildCoverageRule.builder()
+                            .positionConfig(config)
+                            .dayOfWeek(day.getDayOfWeek().getValue())
+                            .startTime(override.getShiftOption().getStartTime())
+                            .endTime(override.getShiftOption().getEndTime())
+                            .requiredCount(override.getRequiredCount())
+                            .sortOrder(0)
+                            .build())
+                    .toList();
+        }
+        int dayOfWeek = day.getDayOfWeek().getValue();
+        return safeCoverageRules(config).stream()
+                .filter(rule -> rule.getDayOfWeek() == dayOfWeek)
+                .toList();
+    }
+
+    private boolean hasDateOverride(ScheduleBuildPositionConfig config, LocalDate day) {
+        return safeCoverageDateOverrides(config).stream().anyMatch(override -> day.equals(override.getDate()));
+    }
+
+    private List<ScheduleBuildCoverageDateOverride> safeCoverageDateOverrides(ScheduleBuildPositionConfig config) {
+        if (config.getCoverageDateOverrides() == null) {
+            return List.of();
+        }
+        return config.getCoverageDateOverrides();
     }
 
     private List<ScheduleBuildCoverageRule> safeCoverageRules(ScheduleBuildPositionConfig config) {

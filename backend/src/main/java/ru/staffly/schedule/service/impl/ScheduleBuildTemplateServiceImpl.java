@@ -134,6 +134,11 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.getHeavyDaysOfWeek().addAll(normalizeHeavyDaysOfWeek(cfg.heavyDaysOfWeek()));
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
 
+            Map<Long, ScheduleBuildShiftOption> oldShiftOptionsById = entity.getShiftOptions().stream()
+                    .filter(option -> option.getId() != null)
+                    .collect(Collectors.toMap(ScheduleBuildShiftOption::getId, Function.identity(), (left, right) -> left));
+            Map<Long, ScheduleBuildShiftOption> requestedShiftOptionsById = new HashMap<>();
+
             entity.getShiftOptions().clear();
             int so = 0;
             for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
@@ -147,6 +152,9 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 o.setFullShift(Boolean.TRUE.equals(option.isFullShift()));
                 o.setSortOrder(option.sortOrder() != null ? option.sortOrder() : so++);
                 entity.getShiftOptions().add(o);
+                if (option.id() != null && oldShiftOptionsById.containsKey(option.id())) {
+                    requestedShiftOptionsById.put(option.id(), o);
+                }
             }
 
             entity.getCoverageRules().clear();
@@ -165,6 +173,31 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 r.setRequiredCount(rule.requiredCount());
                 r.setSortOrder(rule.sortOrder() != null ? rule.sortOrder() : cro++);
                 entity.getCoverageRules().add(r);
+            }
+
+            entity.getCoverageDateOverrides().clear();
+            Set<String> dateOverrideKeys = new HashSet<>();
+            for (SaveScheduleBuildCoverageDateOverrideRequest override : Optional.ofNullable(cfg.coverageDateOverrides()).orElse(List.of())) {
+                if (override == null) throw new BadRequestException("coverageDateOverride is required");
+                if (override.date() == null) throw new BadRequestException("coverageDateOverride.date is required");
+                if (override.shiftOptionId() == null) throw new BadRequestException("coverageDateOverride.shiftOptionId is required");
+                if (override.requiredCount() == null || override.requiredCount() < 0) throw new BadRequestException("coverageDateOverride.requiredCount must be >= 0");
+                ScheduleBuildShiftOption shiftOption = requestedShiftOptionsById.get(override.shiftOptionId());
+                if (shiftOption == null) {
+                    int optionIndex = Math.toIntExact(override.shiftOptionId());
+                    if (optionIndex >= 0 && optionIndex < entity.getShiftOptions().size()) {
+                        shiftOption = entity.getShiftOptions().get(optionIndex);
+                    }
+                }
+                if (shiftOption == null) throw new BadRequestException("coverageDateOverride.shiftOptionId must reference a shiftOption from this positionConfig");
+                String key = override.date() + ":" + entity.getShiftOptions().indexOf(shiftOption);
+                if (!dateOverrideKeys.add(key)) throw new BadRequestException("Duplicate coverageDateOverride for date and shiftOption");
+                ScheduleBuildCoverageDateOverride dateOverride = new ScheduleBuildCoverageDateOverride();
+                dateOverride.setPositionConfig(entity);
+                dateOverride.setDate(override.date());
+                dateOverride.setShiftOption(shiftOption);
+                dateOverride.setRequiredCount(override.requiredCount());
+                entity.getCoverageDateOverrides().add(dateOverride);
             }
 
             idx++;
@@ -245,6 +278,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             Hibernate.initialize(positionConfig.getPositions());
             Hibernate.initialize(positionConfig.getShiftOptions());
             Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getCoverageDateOverrides());
+            positionConfig.getCoverageDateOverrides().forEach(override -> Hibernate.initialize(override.getShiftOption()));
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
@@ -257,6 +292,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                         pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
                         pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),
                         pc.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
+                        pc.getCoverageDateOverrides().stream().map(o -> new ScheduleBuildCoverageDateOverrideDto(o.getId(), o.getDate(), shiftOptionIndex(pc, o.getShiftOption()), o.getRequiredCount())).toList(),
                         pc.getSortOrder())).toList());
     }
 
@@ -283,6 +319,11 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                         .thenComparing(Position::getId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(Position::getName)
                 .toList();
+    }
+
+    private Long shiftOptionIndex(ScheduleBuildPositionConfig config, ScheduleBuildShiftOption shiftOption) {
+        int index = config.getShiftOptions().indexOf(shiftOption);
+        return index < 0 ? null : (long) index;
     }
 
     private String positionKey(List<Long> ids) {

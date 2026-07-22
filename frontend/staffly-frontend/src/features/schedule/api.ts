@@ -226,6 +226,13 @@ export type ScheduleBuildCoverageRuleDto = {
 
 export type ScheduleBuildMinRestMode = "SOFT" | "STRICT";
 
+export type ScheduleBuildCoverageDateOverrideDto = {
+  id: number;
+  date: string;
+  shiftOptionId: number;
+  requiredCount: number;
+};
+
 export type ScheduleBuildPositionConfigDto = {
   id: number;
   positionIds: number[];
@@ -239,6 +246,7 @@ export type ScheduleBuildPositionConfigDto = {
   heavyDaysOfWeek: number[];
   shiftOptions: ScheduleBuildShiftOptionDto[];
   coverageRules: ScheduleBuildCoverageRuleDto[];
+  coverageDateOverrides: ScheduleBuildCoverageDateOverrideDto[];
   sortOrder: number;
 };
 
@@ -270,6 +278,12 @@ export type SaveScheduleBuildCoverageRuleRequest = {
   sortOrder: number;
 };
 
+export type SaveScheduleBuildCoverageDateOverrideRequest = {
+  date: string;
+  shiftOptionId: number;
+  requiredCount: number;
+};
+
 export type SaveScheduleBuildPositionConfigRequest = {
   id?: number;
   positionIds: number[];
@@ -282,6 +296,7 @@ export type SaveScheduleBuildPositionConfigRequest = {
   heavyDaysOfWeek?: number[];
   shiftOptions: SaveScheduleBuildShiftOptionRequest[];
   coverageRules: SaveScheduleBuildCoverageRuleRequest[];
+  coverageDateOverrides: SaveScheduleBuildCoverageDateOverrideRequest[];
   sortOrder: number;
 };
 
@@ -495,6 +510,7 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
       positionNames: config.positionNames ?? [],
       shiftOptions: config.shiftOptions ?? [],
       coverageRules: config.coverageRules ?? [],
+      coverageDateOverrides: config.coverageDateOverrides ?? [],
     })),
   };
 }
