@@ -1,5 +1,6 @@
 import React from "react";
-import { Info } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Info, X } from "lucide-react";
 
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } from "../api";
@@ -153,6 +154,109 @@ type ArrivalSelectorProps = {
   value: string;
   onCommit: (value: string) => void;
 };
+
+type ScheduleInfoButtonProps = {
+  label: string;
+  comment: string;
+  className?: string;
+  iconClassName?: string;
+};
+
+function ScheduleInfoButton({ label, comment, className, iconClassName }: ScheduleInfoButtonProps) {
+  const [open, setOpen] = React.useState(false);
+  const buttonRef = React.useRef<HTMLButtonElement | null>(null);
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const dialogTitleId = React.useId();
+  const dialogDescriptionId = React.useId();
+  const trimmedComment = comment.trim();
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (buttonRef.current?.contains(target) || dialogRef.current?.contains(target)) return;
+
+      setOpen(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [open]);
+
+  if (!trimmedComment) return null;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={className}
+        aria-label={label}
+        aria-expanded={open}
+        title={trimmedComment}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Info className={iconClassName} aria-hidden="true" />
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-4"
+            role="presentation"
+          >
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={dialogTitleId}
+              aria-describedby={dialogDescriptionId}
+              className="border-subtle bg-surface text-default pointer-events-auto w-full max-w-sm rounded-2xl border p-4 text-sm shadow-xl"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h2 id={dialogTitleId} className="text-strong font-semibold">
+                  Комментарий
+                </h2>
+                <button
+                  type="button"
+                  className="text-muted hover:text-strong rounded-full p-1 transition"
+                  aria-label="Закрыть комментарий"
+                  onClick={() => setOpen(false)}
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+              <p id={dialogDescriptionId} className="mt-3 leading-relaxed whitespace-pre-wrap">
+                {trimmedComment}
+              </p>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  className="border-subtle bg-app text-default hover:bg-surface rounded-xl border px-3 py-1.5 font-medium transition"
+                  onClick={() => setOpen(false)}
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
 
 const ScheduleTable: React.FC<Props> = ({
   data,
@@ -404,16 +508,12 @@ const ScheduleTableRow = React.memo(
           <span className="flex min-w-0 items-center gap-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))]">
             <span className="truncate">{row.displayName}</span>
             {showCellDiagnostics && preferenceCommentsByMemberId?.[row.memberId] && (
-              <span
-                className="border-subtle bg-surface text-muted inline-flex h-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] shrink-0 items-center justify-center rounded-full border text-[max(0.5rem,calc(0.625rem*var(--schedule-zoom)))] font-semibold"
-                title={preferenceCommentsByMemberId[row.memberId]}
-                aria-label="Комментарий к периоду"
-              >
-                <Info
-                  className="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
-                  aria-hidden="true"
-                />
-              </span>
+              <ScheduleInfoButton
+                label="Комментарий к периоду"
+                comment={preferenceCommentsByMemberId[row.memberId]}
+                className="border-subtle bg-surface text-muted hover:bg-app inline-flex h-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] shrink-0 items-center justify-center rounded-full border text-[max(0.5rem,calc(0.625rem*var(--schedule-zoom)))] font-semibold transition"
+                iconClassName="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
+              />
             )}
           </span>
           {row.positionName && (
@@ -458,6 +558,7 @@ const ScheduleTableRow = React.memo(
       prev.onCellValueChange !== next.onCellValueChange ||
       prev.cellSources !== next.cellSources ||
       prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey ||
+      prev.preferenceCommentsByMemberId !== next.preferenceCommentsByMemberId ||
       prev.showCellDiagnostics !== next.showCellDiagnostics
     ) {
       return false;
@@ -612,20 +713,16 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                   {`${label} ${timeLabel}`.trim()}
                 </span>
                 {note && (
-                  <span
+                  <ScheduleInfoButton
+                    label="Комментарий к пожеланию"
+                    comment={note}
                     className={[
-                      "inline-flex items-center justify-center rounded-full border border-sky-200 bg-sky-50 font-semibold text-sky-700",
+                      "inline-flex items-center justify-center rounded-full border border-sky-200 bg-sky-50 font-semibold text-sky-700 transition hover:bg-sky-100",
                       "h-[max(0.9rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.9rem,calc(1rem*var(--schedule-zoom)))]",
                       scheduleZoomCss.badgeText,
                     ].join(" ")}
-                    aria-label="Комментарий к пожеланию"
-                    title={note}
-                  >
-                    <Info
-                      className="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
-                      aria-hidden="true"
-                    />
-                  </span>
+                    iconClassName="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
+                  />
                 )}
                 {canApply && (
                   <button
