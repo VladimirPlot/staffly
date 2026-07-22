@@ -10,6 +10,7 @@ import {
   SCHEDULE_BUILD_TIME_STEP_SECONDS,
   type ScheduleBuildPositionConfigDraft,
 } from "../utils/buildTemplateDraft";
+import ScheduleBuildCoverageDateOverridesEditor from "./ScheduleBuildCoverageDateOverridesEditor";
 import ScheduleBuildCoverageRulesEditor from "./ScheduleBuildCoverageRulesEditor";
 import ScheduleBuildShiftOptionsEditor from "./ScheduleBuildShiftOptionsEditor";
 
@@ -246,11 +247,19 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
                   (rule) => rule.startTime !== shiftOption.startTime || rule.endTime !== shiftOption.endTime,
                 )
               : config.coverageRules,
+            coverageDateOverrides: config.coverageDateOverrides
+              .filter((override) => override.shiftOptionId !== shiftOptionIndex)
+              .map((override) => ({
+                ...override,
+                shiftOptionId:
+                  override.shiftOptionId > shiftOptionIndex ? override.shiftOptionId - 1 : override.shiftOptionId,
+              })),
           });
         }}
       />
 
       <ScheduleBuildCoverageRulesEditor config={config} saving={saving} onChange={onChange} />
+      <ScheduleBuildCoverageDateOverridesEditor config={config} saving={saving} onChange={onChange} />
     </div>
   );
 };

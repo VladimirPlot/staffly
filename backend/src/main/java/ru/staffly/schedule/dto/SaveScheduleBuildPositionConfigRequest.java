@@ -17,5 +17,6 @@ public record SaveScheduleBuildPositionConfigRequest(
         List<Integer> heavyDaysOfWeek,
         List<SaveScheduleBuildShiftOptionRequest> shiftOptions,
         List<SaveScheduleBuildCoverageRuleRequest> coverageRules,
+        List<SaveScheduleBuildCoverageDateOverrideRequest> coverageDateOverrides,
         Integer sortOrder
 ) {}
