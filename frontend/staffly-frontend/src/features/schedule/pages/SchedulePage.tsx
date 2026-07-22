@@ -172,6 +172,7 @@ const SchedulePage: React.FC = () => {
   }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
 
   const isPublishedSchedule = schedule?.status === "PUBLISHED";
+  const showPublishedDiagnosticsToggle = canManage && isPublishedSchedule && activeTab === "table";
   const canInspectScheduleDiagnostics = canManage && (!isPublishedSchedule || showPublishedDiagnostics);
   const preferenceHintsEnabled =
     canManage &&
@@ -762,6 +763,9 @@ const SchedulePage: React.FC = () => {
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
             onOpenOwnerDialog={ownerDialog.openDialog}
+            showPublishedDiagnosticsToggle={showPublishedDiagnosticsToggle}
+            showPublishedDiagnostics={showPublishedDiagnostics}
+            onTogglePublishedDiagnostics={() => setShowPublishedDiagnostics((value) => !value)}
             canViewPreferences={canManage && canViewSchedulePreferences(schedule.status)}
             onOpenPreferences={() => scheduleId && void preferenceManagerActions.openDialog(scheduleId)}
             lifecycleAction={lifecycleActions.pendingAction}
@@ -791,8 +795,6 @@ const SchedulePage: React.FC = () => {
               preferenceCommentsByMemberId={preferenceCommentsByMemberId}
               rejectionHintsByCellKey={rejectionHintsByCellKey}
               showCellDiagnostics={canInspectScheduleDiagnostics}
-              showPublishedDiagnostics={showPublishedDiagnostics}
-              onTogglePublishedDiagnostics={() => setShowPublishedDiagnostics((value) => !value)}
               schedule={schedule}
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}

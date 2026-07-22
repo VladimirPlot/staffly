@@ -20,6 +20,9 @@ type ScheduleDetailHeaderProps = {
   onEnterEditMode: () => void;
   onDelete: () => void;
   onOpenOwnerDialog: () => void;
+  showPublishedDiagnosticsToggle: boolean;
+  showPublishedDiagnostics: boolean;
+  onTogglePublishedDiagnostics: () => void;
   onOpenPreferences: () => void;
   canViewPreferences: boolean;
   lifecycleAction: "startPreferences" | "closePreferences" | "applyPreferences" | "publish" | null;
@@ -46,6 +49,9 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onEnterEditMode,
   onDelete,
   onOpenOwnerDialog,
+  showPublishedDiagnosticsToggle,
+  showPublishedDiagnostics,
+  onTogglePublishedDiagnostics,
   onOpenPreferences,
   canViewPreferences,
   lifecycleAction,
@@ -94,6 +100,11 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
       <div className="flex flex-wrap items-center gap-2">
         {canManage && scheduleReadOnly && scheduleId && (
           <>
+            {showPublishedDiagnosticsToggle && (
+              <Button type="button" variant="outline" onClick={onTogglePublishedDiagnostics} disabled={deleting}>
+                {showPublishedDiagnostics ? "Скрыть пожелания" : "Показать пожелания"}
+              </Button>
+            )}
             <Button variant="outline" onClick={onOpenOwnerDialog} disabled={deleting}>
               Сменить ответственного
             </Button>
