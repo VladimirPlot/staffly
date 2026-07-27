@@ -1,8 +1,6 @@
 import React from "react";
-import { Info, X } from "lucide-react";
-
-import DropdownMenu from "../../../shared/ui/DropdownMenu";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
+import ScheduleInfoButton from "./ScheduleInfoButton";
 import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } from "../api";
 import type {
   ScheduleCellChangeOptions,
@@ -154,51 +152,6 @@ type ArrivalSelectorProps = {
   value: string;
   onCommit: (value: string) => void;
 };
-
-type ScheduleInfoButtonProps = {
-  label: string;
-  comment: string;
-  className?: string;
-  iconClassName?: string;
-};
-
-function ScheduleInfoButton({ label, comment, className, iconClassName }: ScheduleInfoButtonProps) {
-  const trimmedComment = comment.trim();
-
-  if (!trimmedComment) return null;
-
-  return (
-    <DropdownMenu
-      modalBackdrop
-      menuClassName="w-[min(22rem,calc(100vw-16px))]"
-      triggerWrapperClassName="inline-flex"
-      mobileSheetClassName="max-h-[min(78vh,480px)]"
-      trigger={(triggerProps) => (
-        <button type="button" className={className} aria-label={label} title={trimmedComment} {...triggerProps}>
-          <Info className={iconClassName} aria-hidden="true" />
-        </button>
-      )}
-    >
-      {({ close }) => (
-        <div className="p-4 text-sm">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <h2 className="text-strong font-semibold">Комментарий</h2>
-            <button
-              type="button"
-              className="text-muted hover:text-strong hover:bg-app -mt-1 -mr-1 inline-flex h-9 w-9 items-center justify-center rounded-full transition"
-              aria-label="Закрыть комментарий"
-              onClick={close}
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
-          </div>
-
-          <p className="text-default leading-relaxed whitespace-pre-wrap">{trimmedComment}</p>
-        </div>
-      )}
-    </DropdownMenu>
-  );
-}
 
 const ScheduleTable: React.FC<Props> = ({
   data,
@@ -452,7 +405,7 @@ const ScheduleTableRow = React.memo(
             {showCellDiagnostics && preferenceCommentsByMemberId?.[row.memberId] && (
               <ScheduleInfoButton
                 label="Комментарий к периоду"
-                comment={preferenceCommentsByMemberId[row.memberId]}
+                content={preferenceCommentsByMemberId[row.memberId]}
                 className="border-subtle bg-surface text-muted hover:bg-app inline-flex h-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.8rem,calc(1rem*var(--schedule-zoom)))] shrink-0 items-center justify-center rounded-full border text-[max(0.5rem,calc(0.625rem*var(--schedule-zoom)))] font-semibold transition"
                 iconClassName="h-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))] w-[max(0.55rem,calc(0.7rem*var(--schedule-zoom)))]"
               />
@@ -657,7 +610,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
                 {note && (
                   <ScheduleInfoButton
                     label="Комментарий к пожеланию"
-                    comment={note}
+                    content={note}
                     className={[
                       "inline-flex items-center justify-center rounded-full border border-sky-200 bg-sky-50 font-semibold text-sky-700 transition hover:bg-sky-100",
                       "h-[max(0.9rem,calc(1rem*var(--schedule-zoom)))] w-[max(0.9rem,calc(1rem*var(--schedule-zoom)))]",
