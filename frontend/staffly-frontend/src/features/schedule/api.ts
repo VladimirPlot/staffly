@@ -78,6 +78,13 @@ export type ScheduleDto = Omit<ScheduleData, "id" | "status"> &
     id: number;
   };
 
+export type AddableScheduleMember = {
+  memberId: number;
+  displayName: string;
+  positionId: number;
+  positionName: string;
+};
+
 export type SaveSchedulePayload = {
   title: string;
   config: ScheduleConfig;
@@ -525,6 +532,27 @@ export async function updateSchedule(
   payload: SaveSchedulePayload,
 ): Promise<ScheduleData> {
   const { data } = await api.put<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, payload);
+  return mapSchedule(data);
+}
+
+export async function getAddableScheduleMembers(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<AddableScheduleMember[]> {
+  const { data } = await api.get<AddableScheduleMember[]>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/addable-members`,
+  );
+  return data ?? [];
+}
+
+export async function addScheduleMember(
+  restaurantId: number,
+  scheduleId: number,
+  memberId: number,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/rows`, {
+    memberId,
+  });
   return mapSchedule(data);
 }
 

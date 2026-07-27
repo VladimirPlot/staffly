@@ -27,6 +27,9 @@ type ScheduleTableSectionProps = {
   onCancelEdit: () => void;
   onSave: () => void;
   onSaveDraft: () => void;
+  showAddMember: boolean;
+  addMemberLoading: boolean;
+  onOpenAddMember: () => void;
   onCellChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   preferenceCommentsByMemberId?: Record<number, string>;
@@ -48,6 +51,9 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onCancelEdit,
   onSave,
   onSaveDraft,
+  showAddMember,
+  addMemberLoading,
+  onOpenAddMember,
   onCellChange,
   preferenceHintsByCellKey,
   preferenceCommentsByMemberId,
@@ -105,6 +111,16 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
     <>
       {showControls && (
         <div className="flex flex-wrap justify-end gap-2">
+          {scheduleId && showAddMember && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onOpenAddMember}
+              disabled={saveDisabled || addMemberLoading}
+            >
+              {addMemberLoading ? "Загрузка…" : "Добавить сотрудника"}
+            </Button>
+          )}
           {scheduleId && (
             <Button
               variant="ghost"
