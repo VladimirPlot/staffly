@@ -321,6 +321,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .collect(Collectors.toSet());
 
         return findEligibleMembers(schedule).stream()
+                .filter(member -> member.getUser() != null && member.getPosition() != null)
                 .filter(member -> !existingMemberIds.contains(member.getId()))
                 .map(this::toAddableMemberDto)
                 .sorted(Comparator.comparing(AddableScheduleMemberDto::displayName, String.CASE_INSENSITIVE_ORDER)
@@ -329,6 +330,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
+    @Transactional
     public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long memberId) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
@@ -383,7 +385,9 @@ public class ScheduleServiceImpl implements ScheduleService {
     private AddableScheduleMemberDto toAddableMemberDto(RestaurantMember member) {
         return new AddableScheduleMemberDto(
                 member.getId(),
-                Optional.ofNullable(member.getUser().getFullName()).orElse(""),
+                member.getUser() == null
+                        ? ""
+                        : Optional.ofNullable(member.getUser().getFullName()).orElse(""),
                 member.getPosition().getId(),
                 member.getPosition().getName()
         );
