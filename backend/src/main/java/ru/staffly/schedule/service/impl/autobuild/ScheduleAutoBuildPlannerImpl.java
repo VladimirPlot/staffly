@@ -27,6 +27,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -459,14 +460,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 continue;
             }
             SplitOptionSelection current = new SplitOptionSelection(option, selection);
-            if (best == null || compareSplitOption(current, best, cursor) < 0) {
+            if (best == null || compareSplitOption(current, best, cursor, toMinute(rule.getEndTime(), true)) < 0) {
                 best = current;
             }
         }
         return best == null ? new SplitOptionSelection(null, CandidateSelectionResult.empty()) : best;
     }
 
-    private int compareSplitOption(SplitOptionSelection left, SplitOptionSelection right, int cursor) {
+    private int compareSplitOption(SplitOptionSelection left, SplitOptionSelection right, int cursor, int ruleEnd) {
         CandidateEvaluation leftCandidate = left.selection().selected();
         CandidateEvaluation rightCandidate = right.selection().selected();
         if (leftCandidate == null && rightCandidate != null) {
@@ -485,14 +486,26 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (byMatchStatus != 0) {
             return byMatchStatus;
         }
-        int byEnd = Integer.compare(toMinute(left.option().getEndTime(), true), toMinute(right.option().getEndTime(), true));
-        if (byEnd != 0) {
-            return byEnd;
+        int leftEnd = toMinute(left.option().getEndTime(), true);
+        int rightEnd = toMinute(right.option().getEndTime(), true);
+        int leftExtraCoverage = Math.max(0, cursor - leftStart) + Math.max(0, leftEnd - ruleEnd);
+        int rightExtraCoverage = Math.max(0, cursor - rightStart) + Math.max(0, rightEnd - ruleEnd);
+        int byExtraCoverage = Integer.compare(leftExtraCoverage, rightExtraCoverage);
+        if (byExtraCoverage != 0) {
+            return byExtraCoverage;
         }
-        return Integer.compare(
+        int byEndFit = Integer.compare(Math.abs(ruleEnd - leftEnd), Math.abs(ruleEnd - rightEnd));
+        if (byEndFit != 0) {
+            return byEndFit;
+        }
+        int bySortOrder = Integer.compare(
                 Optional.ofNullable(left.option().getSortOrder()).orElse(0),
                 Optional.ofNullable(right.option().getSortOrder()).orElse(0)
         );
+        if (bySortOrder != 0) {
+            return bySortOrder;
+        }
+        return Comparator.nullsLast(Long::compareTo).compare(left.option().getId(), right.option().getId());
     }
 
 
