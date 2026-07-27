@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
@@ -302,6 +303,90 @@ public class ScheduleServiceImpl implements ScheduleService {
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "График изменён");
         saved.getRows().forEach(row -> row.getCells().size());
         return toDto(saved, days);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AddableScheduleMemberDto> getAddableMembers(Long restaurantId, Long scheduleId, Long userId) {
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
+        scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
+
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertCanUpdateScheduleContent(schedule);
+
+        Set<Long> existingMemberIds = schedule.getRows().stream()
+                .map(ScheduleRow::getMemberId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        return findEligibleMembers(schedule).stream()
+                .filter(member -> !existingMemberIds.contains(member.getId()))
+                .map(this::toAddableMemberDto)
+                .sorted(Comparator.comparing(AddableScheduleMemberDto::displayName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(AddableScheduleMemberDto::memberId))
+                .toList();
+    }
+
+    @Override
+    public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long memberId) {
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
+        scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
+
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertCanUpdateScheduleContent(schedule);
+
+        RestaurantMember member = members.findById(memberId)
+                .filter(candidate -> Objects.equals(candidate.getRestaurant().getId(), restaurantId))
+                .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + memberId));
+        if (member.getUser() == null || member.getPosition() == null
+                || schedule.getPositionIds() == null
+                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
+            throw new BadRequestException("Сотрудник не подходит по должности для этого графика");
+        }
+        if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId))) {
+            throw new ConflictException("Сотрудник уже есть в графике");
+        }
+
+        int nextSortOrder = schedule.getRows().stream()
+                .mapToInt(ScheduleRow::getSortOrder)
+                .max()
+                .orElse(-1) + 1;
+        schedule.getRows().add(ScheduleRow.builder()
+                .schedule(schedule)
+                .memberId(member.getId())
+                .displayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""))
+                .positionId(member.getPosition().getId())
+                .positionName(member.getPosition().getName())
+                .sortOrder(nextSortOrder)
+                .build());
+
+        Schedule saved = schedules.save(schedule);
+        scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "Сотрудник добавлен в график");
+        return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
+    }
+
+    private List<RestaurantMember> findEligibleMembers(Schedule schedule) {
+        List<Long> allowedPositionIds = Optional.ofNullable(schedule.getPositionIds()).orElse(List.of()).stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (allowedPositionIds.isEmpty()) {
+            return List.of();
+        }
+        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(), allowedPositionIds
+        );
+    }
+
+    private AddableScheduleMemberDto toAddableMemberDto(RestaurantMember member) {
+        return new AddableScheduleMemberDto(
+                member.getId(),
+                Optional.ofNullable(member.getUser().getFullName()).orElse(""),
+                member.getPosition().getId(),
+                member.getPosition().getName()
+        );
     }
 
     private void assertCanUpdateScheduleContent(Schedule schedule) {
