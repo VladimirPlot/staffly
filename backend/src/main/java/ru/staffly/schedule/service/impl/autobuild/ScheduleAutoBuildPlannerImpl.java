@@ -29,6 +29,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -98,7 +99,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 positions,
                 distinctTopWarnings,
                 uncoveredSlots,
-                rejectionHints.stream().distinct().toList(),
+                deduplicateRejectionHints(rejectionHints),
                 totalAssignments,
                 warningsCount,
                 unfilledCount,
@@ -243,8 +244,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         plannerState,
                         targetShiftsPerCandidate
                 );
-                rejectionHints.addAll(singleSelection.rejectionHints());
-
                 CandidateEvaluation selectedSingle = singleSelection.selected();
                 if (selectedSingle != null && isGoodSingleMatch(selectedSingle.matchStatus())) {
                     AssignmentBuildResult assignmentResult = assignSelected(
@@ -279,7 +278,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 assignments.addAll(positiveSplitResult.assignments());
                 warnings.addAll(positiveSplitResult.warnings());
                 uncoveredSlots.addAll(positiveSplitResult.uncoveredSlots());
-                rejectionHints.addAll(positiveSplitResult.rejectionHints());
                 unfilledCount += positiveSplitResult.unfilledCount();
                 negativeAssignmentsCount += positiveSplitResult.negativeAssignmentsCount();
                 continue;
@@ -362,8 +360,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     targetShiftsPerCandidate
             );
 
-            rejectionHints.addAll(splitSelection.selection().rejectionHints());
             if (splitSelection.option() == null || splitSelection.selection().selected() == null) {
+                rejectionHints.addAll(splitSelection.selection().rejectionHints());
                 int nextBoundary = nextCoverageBoundary(shiftOptions, rule, cursor, ruleEnd);
                 LocalTime uncoveredStart = minuteToTime(cursor);
                 LocalTime uncoveredEnd = minuteToTime(nextBoundary);
@@ -1460,8 +1458,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         for (ScheduleBuildShiftOption option : safeShiftOptions(config)) {
             CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState, 0);
-            rejectionHints.addAll(selection.rejectionHints());
             if (selection.selected() == null) {
+                rejectionHints.addAll(selection.rejectionHints());
                 continue;
             }
 
@@ -1476,6 +1474,22 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
 
         return new DayBuildResult(assignments, warnings, List.of(), rejectionHints, 0, negativeAssignmentsCount);
+    }
+
+    private List<RejectionHintPlan> deduplicateRejectionHints(List<RejectionHintPlan> rejectionHints) {
+        Map<RejectionHintKey, RejectionHintPlan> distinctHints = new LinkedHashMap<>();
+        for (RejectionHintPlan hint : rejectionHints) {
+            RejectionHintKey key = new RejectionHintKey(
+                    hint.memberId(),
+                    hint.date(),
+                    hint.positionConfigId(),
+                    hint.startTime(),
+                    hint.endTime(),
+                    hint.reason()
+            );
+            distinctHints.putIfAbsent(key, hint);
+        }
+        return List.copyOf(distinctHints.values());
     }
 
     private UncoveredSlotPlan toUncoveredSlot(
@@ -1674,6 +1688,16 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private record SplitOptionSelection(
             ScheduleBuildShiftOption option,
             CandidateSelectionResult selection
+    ) {
+    }
+
+    private record RejectionHintKey(
+            Long memberId,
+            String date,
+            Long positionConfigId,
+            String startTime,
+            String endTime,
+            String reason
     ) {
     }
 
