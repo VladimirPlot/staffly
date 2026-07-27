@@ -551,7 +551,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<String> cellWarnings = new ArrayList<>();
         MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
         PreferenceGrade grade = grade(matchStatus);
-        String reason = reasonFor(cellWarnings, matchStatus);
+        String reason = reasonFor(cellWarnings, matchStatus, formatShift(option));
         String warningMessage = warningMessageFor(matchStatus);
         if (minRestViolation) {
             cellWarnings.add("Мало отдыха");
@@ -993,29 +993,26 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return "Недостаточно сотрудников для покрытия " + day + " " + formatShift(option);
     }
 
-    private String reasonFor(List<String> warnings, MatchStatus matchStatus) {
-        if (matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE
-                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE
-                || matchStatus == MatchStatus.FULL_DAY_POSITIVE) {
-            return "Подходит по пожеланию";
-        }
-
-        if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
-            warnings.add("Назначение частично выходит за пределы пожелания сотрудника");
-            return "Частично совпадает с пожеланием";
-        }
-
-        if (matchStatus == MatchStatus.SOFT_NEGATIVE_FALLBACK) {
-            warnings.add("Сотрудник предпочитал выходной в это время");
-            return "Поставлен несмотря на предпочтение выходного";
-        }
-
-        if (matchStatus == MatchStatus.HARD_NEGATIVE_FALLBACK) {
-            warnings.add("Сотрудник указал, что не может работать в это время");
-            return "Поставлен вопреки недоступности";
-        }
-
-        return "Нет пожелания, выбран по доступности";
+    private String reasonFor(List<String> warnings, MatchStatus matchStatus, String interval) {
+        return switch (matchStatus) {
+            case EXACT_INTERVAL_PREFERENCE -> "Точное совпадение с пожеланием " + interval + ".";
+            case COVERING_INTERVAL_PREFERENCE -> "Пожелание сотрудника покрывает смену " + interval + ".";
+            case FULL_DAY_POSITIVE -> "Может работать весь день, выбран по балансу смен.";
+            case NO_PREFERENCE -> "Без пожеланий, выбран по балансу смен.";
+            case PARTIAL_INTERVAL_FALLBACK -> {
+                warnings.add("Назначение частично выходит за пределы пожелания сотрудника");
+                yield "Частично вне пожелания сотрудника.";
+            }
+            case SOFT_NEGATIVE_FALLBACK -> {
+                warnings.add("Сотрудник предпочитал выходной в это время");
+                yield "Поставлен несмотря на пожелание выходного — не хватило сотрудников.";
+            }
+            case HARD_NEGATIVE_FALLBACK -> {
+                warnings.add("Сотрудник указал, что не может работать в это время");
+                yield "Поставлен несмотря на недоступность — не хватило сотрудников.";
+            }
+            default -> "Выбран автоматически.";
+        };
     }
 
     private String warningMessageFor(MatchStatus matchStatus) {
