@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 
 import ApplySchedulePreferencesDialog from "../components/ApplySchedulePreferencesDialog";
+import AddScheduleMemberDialog from "../components/AddScheduleMemberDialog";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
@@ -43,10 +44,12 @@ import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
 import type { AdjustedScheduleAutoBuildAssignment, ScheduleSummary } from "../api";
+import { addScheduleMember, getAddableScheduleMembers, type AddableScheduleMember } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
+import { getErrorMessage } from "../../../shared/utils/errors";
 
 function normalizeRole(role: string | null | undefined): string | null {
   if (!role) return null;
@@ -95,6 +98,11 @@ const SchedulePage: React.FC = () => {
   const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
   const [showPublishedDiagnostics, setShowPublishedDiagnostics] = React.useState(false);
+  const [addableMembers, setAddableMembers] = React.useState<AddableScheduleMember[]>([]);
+  const [addableMembersLoading, setAddableMembersLoading] = React.useState(false);
+  const [addMemberDialogOpen, setAddMemberDialogOpen] = React.useState(false);
+  const [addingMemberId, setAddingMemberId] = React.useState<number | null>(null);
+  const [addMemberError, setAddMemberError] = React.useState<string | null>(null);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -170,6 +178,32 @@ const SchedulePage: React.FC = () => {
       access.normalizedRestaurantRole != null && allowedRoles.some((role) => role === access.normalizedRestaurantRole)
     );
   }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
+
+  React.useEffect(() => {
+    if (!restaurantId || !scheduleId || scheduleReadOnly || !canManage) {
+      setAddableMembers([]);
+      setAddMemberDialogOpen(false);
+      setAddMemberError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAddableMembersLoading(true);
+    getAddableScheduleMembers(restaurantId, scheduleId)
+      .then((items) => {
+        if (!cancelled) setAddableMembers(items);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setScheduleError(getErrorMessage(requestError, "Не удалось загрузить сотрудников"));
+      })
+      .finally(() => {
+        if (!cancelled) setAddableMembersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManage, restaurantId, scheduleId, scheduleReadOnly]);
 
   const isPublishedSchedule = schedule?.status === "PUBLISHED";
   const showPublishedDiagnosticsToggle = canManage && isPublishedSchedule && activeTab === "table";
@@ -279,6 +313,33 @@ const SchedulePage: React.FC = () => {
       };
     },
     [members],
+  );
+
+  const handleAddScheduleMember = React.useCallback(
+    async (memberId: number) => {
+      if (!restaurantId || !scheduleId) return;
+      setAddingMemberId(memberId);
+      setAddMemberError(null);
+      try {
+        const updated = prepareSchedule(await addScheduleMember(restaurantId, scheduleId, memberId));
+        const addedRow = updated.rows.find((row) => row.memberId === memberId);
+        if (addedRow) {
+          setSchedule((current) =>
+            current && !current.rows.some((row) => row.memberId === memberId)
+              ? { ...current, rows: [...current.rows, addedRow] }
+              : current,
+          );
+        }
+        setAddableMembers((current) => current.filter((member) => member.memberId !== memberId));
+        setAddMemberDialogOpen(false);
+        setScheduleMessage("Сотрудник добавлен в график");
+      } catch (requestError) {
+        setAddMemberError(getErrorMessage(requestError, "Не удалось добавить сотрудника"));
+      } finally {
+        setAddingMemberId(null);
+      }
+    },
+    [prepareSchedule, restaurantId, scheduleId],
   );
 
   const handleScheduleOwnerUpdated = React.useCallback((updatedSchedule: ScheduleData) => {
@@ -808,6 +869,12 @@ const SchedulePage: React.FC = () => {
               onCancelEdit={handleCancelEdit}
               onSave={draftActions.saveSchedule}
               onSaveDraft={draftActions.saveDraftSchedule}
+              showAddMember={addableMembers.length > 0}
+              addMemberLoading={addableMembersLoading || addingMemberId != null}
+              onOpenAddMember={() => {
+                setAddMemberError(null);
+                setAddMemberDialogOpen(true);
+              }}
               onCellChange={cellEditing.changeCell}
             />
           )}
@@ -862,6 +929,17 @@ const SchedulePage: React.FC = () => {
         onSelect={ownerDialog.setSelectedOwnerUserId}
         onClose={ownerDialog.closeDialog}
         onSubmit={() => void ownerDialog.submit()}
+      />
+
+      <AddScheduleMemberDialog
+        open={addMemberDialogOpen}
+        members={addableMembers}
+        addingMemberId={addingMemberId}
+        error={addMemberError}
+        onClose={() => {
+          if (addingMemberId == null) setAddMemberDialogOpen(false);
+        }}
+        onAdd={(memberId) => void handleAddScheduleMember(memberId)}
       />
 
       <SchedulePreferenceManagerDialog

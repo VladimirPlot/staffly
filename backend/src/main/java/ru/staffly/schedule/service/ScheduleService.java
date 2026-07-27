@@ -1,6 +1,7 @@
 package ru.staffly.schedule.service;
 
 import ru.staffly.schedule.dto.SaveScheduleRequest;
+import ru.staffly.schedule.dto.AddableScheduleMemberDto;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
 import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
@@ -18,6 +19,10 @@ public interface ScheduleService {
     ScheduleDto get(Long restaurantId, Long scheduleId, Long userId);
 
     ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, SaveScheduleRequest request);
+
+    List<AddableScheduleMemberDto> getAddableMembers(Long restaurantId, Long scheduleId, Long userId);
+
+    ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long memberId);
 
     ScheduleDto startPreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId, StartPreferenceCollectionRequest request);
 
