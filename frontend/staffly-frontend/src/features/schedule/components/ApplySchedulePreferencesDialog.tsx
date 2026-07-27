@@ -3,6 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Modal from "../../../shared/ui/Modal";
+import ScheduleInfoButton from "./ScheduleInfoButton";
 import type {
   AdjustedScheduleAutoBuildAssignment,
   ScheduleAutoBuildCellPreviewDto,
@@ -631,9 +632,16 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                                     <span className="font-medium">{cell.memberName ?? "Не назначено"}</span>
                                     <span className="text-muted">—</span>
                                     <span>{cell.shiftLabel ?? cell.value ?? "Смена не указана"}</span>
-                                    <span className="text-muted">—</span>
-                                    <span className="text-muted">{cell.reason ?? "Причина не указана"}</span>
                                     <AssignmentMatchBadge cell={cell} />
+                                    {cell.reason && (
+                                      <ScheduleInfoButton
+                                        label={`Почему выбран ${cell.memberName ?? "сотрудник"}`}
+                                        title="Почему выбран"
+                                        content={cell.reason}
+                                        className="text-muted hover:text-strong inline-flex h-6 w-6 items-center justify-center rounded-full transition"
+                                        iconClassName="h-3.5 w-3.5"
+                                      />
+                                    )}
                                   </div>
                                   {cell.warningMessage && (
                                     <div className="mt-1 text-amber-700">{cell.warningMessage}</div>
