@@ -62,9 +62,10 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const showTableZoomControls = schedule.rows.length > 0 && !loading && !error && !scheduleLoading;
-  const { zoom, zoomScale, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } = useScheduleTableZoom({
-    readOnly: scheduleReadOnly,
-  });
+  const { zoom, zoomScale, isDefaultZoom, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } =
+    useScheduleTableZoom({
+      readOnly: scheduleReadOnly,
+    });
   const saveDisabled = saving || savingDraft;
   const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
   const reviewSummary = React.useMemo(() => {
@@ -177,11 +178,8 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
               <div className="text-strong text-sm font-medium">Масштаб</div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={showFullPeriod}>
-                    Показать весь период
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={resetZoom} disabled={zoom === 100}>
-                    Обычный вид
+                  <Button type="button" variant="outline" onClick={isDefaultZoom ? showFullPeriod : resetZoom}>
+                    {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
                   </Button>
                 </div>
                 <label className="text-muted flex min-w-[14rem] items-center gap-2 text-xs">
