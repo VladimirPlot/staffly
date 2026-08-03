@@ -473,9 +473,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               key={day.date}
               className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] sm:items-center"
             >
-              <div>
-                <div className="text-default text-sm font-medium">{formatDateFromIso(day.date)}</div>
-                <div className="text-muted text-xs">{day.weekdayLabel}</div>
+              <div className="flex items-baseline gap-1.5 whitespace-nowrap">
+                <span className="text-default text-sm font-medium">{formatDateFromIso(day.date)}</span>
+                <span className="text-muted text-xs">· {day.weekdayLabel}</span>
               </div>
               <DropdownSelect
                 aria-label={`Пожелание на ${formatDateFromIso(day.date)}`}
