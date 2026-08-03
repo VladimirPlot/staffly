@@ -174,25 +174,25 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 
         {showTableZoomControls && (
           <div className="border-subtle bg-app mb-3 rounded-2xl border px-3 py-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="text-strong text-sm font-medium">Масштаб</span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-strong shrink-0 text-sm font-medium">Масштаб</span>
+              <div className="flex flex-wrap items-center justify-end gap-3">
                 <Button type="button" variant="outline" onClick={isDefaultZoom ? showFullPeriod : resetZoom}>
                   {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
                 </Button>
-              </div>
-              <div className="flex w-full max-w-[18rem] min-w-[12rem] items-center gap-2 sm:w-[16rem] lg:w-[18rem]">
-                <input
-                  type="range"
-                  min={minZoom}
-                  max={maxZoom}
-                  step={zoomStep}
-                  value={zoom}
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                  className="min-w-0 flex-1 accent-[var(--staffly-text-strong)]"
-                  aria-label="Масштаб таблицы"
-                />
-                <span className="text-strong w-10 shrink-0 text-right text-xs tabular-nums">{zoom}%</span>
+                <div className="flex w-full max-w-[18rem] min-w-[12rem] items-center gap-2 sm:w-[16rem] lg:w-[18rem]">
+                  <input
+                    type="range"
+                    min={minZoom}
+                    max={maxZoom}
+                    step={zoomStep}
+                    value={zoom}
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                    className="min-w-0 flex-1 accent-[var(--staffly-text-strong)]"
+                    aria-label="Масштаб таблицы"
+                  />
+                  <span className="text-strong w-10 shrink-0 text-right text-xs tabular-nums">{zoom}%</span>
+                </div>
               </div>
             </div>
           </div>
