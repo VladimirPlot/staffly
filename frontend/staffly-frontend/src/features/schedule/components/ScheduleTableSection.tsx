@@ -181,7 +181,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                   {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
                 </Button>
               </div>
-              <div className="flex min-w-0 flex-1 basis-56 items-center gap-2">
+              <div className="flex w-full max-w-[18rem] min-w-[12rem] items-center gap-2 sm:w-[16rem] lg:w-[18rem]">
                 <input
                   type="range"
                   min={minZoom}
