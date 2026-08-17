@@ -194,6 +194,9 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        boolean wasActive = exam.isActive();
+        boolean willBeActive = request.active() == null ? wasActive : request.active();
+        var currentKnowledgeFolderId = exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId();
 
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
@@ -203,6 +206,11 @@ public class ExamServiceImpl implements ExamService {
         // For certification exams null/empty means "clear visibility", which is invalid.
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
+        boolean knowledgeFolderChanged = !Objects.equals(currentKnowledgeFolderId, request.knowledgeFolderId());
+        Integer targetPracticeSortOrder = request.mode() == TrainingExamMode.PRACTICE
+                && (knowledgeFolderChanged || (!wasActive && willBeActive))
+                        ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
+                        : null;
 
         exam.setTitle(request.title());
         exam.setDescription(request.description());
@@ -210,8 +218,11 @@ public class ExamServiceImpl implements ExamService {
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
         exam.setKnowledgeFolder(knowledgeFolder);
+        if (targetPracticeSortOrder != null) {
+            exam.setSortOrder(targetPracticeSortOrder);
+        }
         exam.setAttemptLimit(request.attemptLimit());
-        exam.setActive(request.active() == null ? exam.isActive() : request.active());
+        exam.setActive(willBeActive);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
@@ -232,7 +243,12 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
-        exam.setActive(true);
+        if (!exam.isActive()) {
+            if (exam.getMode() == TrainingExamMode.PRACTICE) {
+                exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getKnowledgeFolder().getId()));
+            }
+            exam.setActive(true);
+        }
         certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam, null);
     }
@@ -821,7 +837,7 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private int nextPracticeExamSortOrder(Long restaurantId, Long knowledgeFolderId) {
-        return Optional.ofNullable(exams.maxPracticeSortOrderInKnowledgeFolder(restaurantId, knowledgeFolderId)).orElse(-1) + 1;
+        return Optional.ofNullable(exams.maxActivePracticeSortOrderInKnowledgeFolder(restaurantId, knowledgeFolderId)).orElse(-1) + 1;
     }
 
     private int normalizeSortOrder(Integer value) {

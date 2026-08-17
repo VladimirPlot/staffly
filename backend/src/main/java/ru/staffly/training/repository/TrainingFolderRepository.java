@@ -17,14 +17,26 @@ public interface TrainingFolderRepository extends JpaRepository<TrainingFolder, 
     List<TrainingFolder> findByRestaurantIdAndParentId(Long restaurantId, Long parentId);
 
     @Query("""
+            select f from TrainingFolder f
+            where f.restaurant.id = :restaurantId
+              and f.type = :type
+              and f.active = true
+              and ((:parentId is null and f.parent is null) or f.parent.id = :parentId)
+            """)
+    List<TrainingFolder> findActiveInParent(@Param("restaurantId") Long restaurantId,
+                                            @Param("type") TrainingFolderType type,
+                                            @Param("parentId") Long parentId);
+
+    @Query("""
             select max(f.sortOrder) from TrainingFolder f
             where f.restaurant.id = :restaurantId
               and f.type = :type
+              and f.active = true
               and ((:parentId is null and f.parent is null) or f.parent.id = :parentId)
             """)
-    Integer maxSortOrderInParent(@Param("restaurantId") Long restaurantId,
-                                 @Param("type") TrainingFolderType type,
-                                 @Param("parentId") Long parentId);
+    Integer maxActiveSortOrderInParent(@Param("restaurantId") Long restaurantId,
+                                       @Param("type") TrainingFolderType type,
+                                       @Param("parentId") Long parentId);
 
     @Query("""
             select distinct f from TrainingFolder f

@@ -455,14 +455,11 @@ export type MoveTrainingPracticeExamPayload = {
   sortOrder?: number | null;
 };
 
-export type ReorderTrainingObjectKind = "folder" | "knowledgeItem" | "question" | "practiceExam";
+export type ReorderTrainingObjectKind = "FOLDER" | "KNOWLEDGE_ITEM" | "QUESTION" | "PRACTICE_EXAM";
 
 export type ReorderTrainingObjectsPayload = {
   type: TrainingFolderType;
   folderId?: number | null;
-  objects: Array<{
-    kind: ReorderTrainingObjectKind;
-    id: number;
-    sortOrder: number;
-  }>;
+  kind: ReorderTrainingObjectKind;
+  orderedIds: number[];
 };

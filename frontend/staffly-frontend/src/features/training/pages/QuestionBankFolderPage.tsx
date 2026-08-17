@@ -52,7 +52,7 @@ import type {
   TrainingMoveTarget,
   TrainingPermanentDeleteTarget,
 } from "../trainingFolderObjects";
-import { trainingObjectTitle } from "../trainingFolderObjects";
+import { trainingObjectActive, trainingObjectTitle } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { buildQuestionDeleteDialogModel, type QuestionDeleteDialogModel } from "../utils/questionDeleteUx";
 import { parseTrainingApiError } from "../utils/trainingApiError";
@@ -309,12 +309,22 @@ export default function QuestionBankFolderPage() {
       const newIndex = currentObjectIds.indexOf(overId);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
 
-      const nextObjects = arrayMove(currentObjects, oldIndex, newIndex);
+      const overObject = currentObjects[newIndex];
+      if (!overObject || overObject.kind !== active.kind) return;
+
+      const sameKindObjects = currentObjects.filter(
+        (object) => object.kind === active.kind && trainingObjectActive(object),
+      );
+      const sameKindOldIndex = sameKindObjects.findIndex((object) => object.id === active.id);
+      const sameKindNewIndex = sameKindObjects.findIndex((object) => object.id === overObject.id);
+      if (sameKindOldIndex === -1 || sameKindNewIndex === -1) return;
+      const nextObjects = arrayMove(sameKindObjects, sameKindOldIndex, sameKindNewIndex);
       try {
         await reorderTrainingObjects(restaurantId, {
           type: "QUESTION_BANK",
           folderId: currentFolderId,
-          objects: nextObjects.map((object, index) => ({ kind: object.kind, id: object.id, sortOrder: index })),
+          kind: active.kind === "folder" ? "FOLDER" : "QUESTION",
+          orderedIds: nextObjects.map((object) => object.id),
         });
         await reloadVisible();
       } catch (reorderError) {

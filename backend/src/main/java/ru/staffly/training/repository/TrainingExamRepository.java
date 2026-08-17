@@ -91,8 +91,20 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
               and e.knowledgeFolder.id = :folderId
+              and e.active = true
             """)
-    Integer maxPracticeSortOrderInKnowledgeFolder(@Param("restaurantId") Long restaurantId, @Param("folderId") Long folderId);
+    Integer maxActivePracticeSortOrderInKnowledgeFolder(@Param("restaurantId") Long restaurantId,
+                                                         @Param("folderId") Long folderId);
+
+    @Query("""
+            select e from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
+              and e.knowledgeFolder.id = :folderId
+              and e.active = true
+            """)
+    List<TrainingExam> findActivePracticeInKnowledgeFolder(@Param("restaurantId") Long restaurantId,
+                                                            @Param("folderId") Long folderId);
 
     @Query("""
             select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)
