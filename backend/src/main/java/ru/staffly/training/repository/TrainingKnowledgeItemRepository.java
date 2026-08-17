@@ -20,9 +20,10 @@ public interface TrainingKnowledgeItemRepository extends JpaRepository<TrainingK
     @Query("""
             select max(i.sortOrder) from TrainingKnowledgeItem i
             where i.restaurant.id = :restaurantId
+              and i.active = true
               and ((:folderId is null and i.folder is null) or i.folder.id = :folderId)
             """)
-    Integer maxSortOrderInFolder(@Param("restaurantId") Long restaurantId, @Param("folderId") Long folderId);
+    Integer maxActiveSortOrderInFolder(@Param("restaurantId") Long restaurantId, @Param("folderId") Long folderId);
 
     @Modifying(flushAutomatically = true)
     @Query("update TrainingKnowledgeItem i set i.active = :active where i.restaurant.id = :restaurantId and i.folder.id in :folderIds")
