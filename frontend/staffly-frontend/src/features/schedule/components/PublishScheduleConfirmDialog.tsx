@@ -2,6 +2,7 @@ import React from "react";
 
 import Button from "../../../shared/ui/Button";
 import Modal from "../../../shared/ui/Modal";
+import type { ScheduleBuildTemplateDto } from "../api";
 import type { ScheduleCellKey, ScheduleData, SchedulePreferenceHintsByCellKey } from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 import { hasStartWithoutEndValue } from "../utils/timeValues";
@@ -9,6 +10,7 @@ import { hasStartWithoutEndValue } from "../utils/timeValues";
 type PublishScheduleConfirmDialogProps = {
   open: boolean;
   schedule: ScheduleData | null;
+  buildTemplate?: ScheduleBuildTemplateDto | null;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   publishing: boolean;
   onClose: () => void;
@@ -19,10 +21,8 @@ type PublishSummary = {
   totalRows: number;
   totalDays: number;
   filledCellsCount: number;
-  emptyCellsCount: number;
-  manualCount: number;
-  preferenceHintCount: number;
-  autoBuildCount: number;
+  plannedShiftsCount: number;
+  unfilledByPlan: number;
   incompleteFullShiftCount: number;
   negativeConflictCount: number;
 };
@@ -31,10 +31,8 @@ const EMPTY_SUMMARY: PublishSummary = {
   totalRows: 0,
   totalDays: 0,
   filledCellsCount: 0,
-  emptyCellsCount: 0,
-  manualCount: 0,
-  preferenceHintCount: 0,
-  autoBuildCount: 0,
+  plannedShiftsCount: 0,
+  unfilledByPlan: 0,
   incompleteFullShiftCount: 0,
   negativeConflictCount: 0,
 };
@@ -66,17 +64,14 @@ const WarningBox: React.FC<{ children: React.ReactNode; high?: boolean }> = ({ c
 
 function getPublishSummary(
   schedule: ScheduleData | null,
+  buildTemplate?: ScheduleBuildTemplateDto | null,
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey,
 ): PublishSummary {
   if (!schedule) return EMPTY_SUMMARY;
 
   const totalRows = schedule.rows.length;
   const totalDays = schedule.days.length;
-  const totalCellsCount = totalRows * totalDays;
   let filledCellsCount = 0;
-  let manualCount = 0;
-  let preferenceHintCount = 0;
-  let autoBuildCount = 0;
   let incompleteFullShiftCount = 0;
   let negativeConflictCount = 0;
 
@@ -88,15 +83,6 @@ function getPublishSummary(
       if (!trimmedValue) return;
 
       filledCellsCount += 1;
-
-      const source = schedule.cellSources?.[key];
-      if (source === "PREFERENCE_HINT") {
-        preferenceHintCount += 1;
-      } else if (source === "AUTO_BUILD") {
-        autoBuildCount += 1;
-      } else {
-        manualCount += 1;
-      }
 
       if (schedule.config.shiftMode === "FULL" && hasStartWithoutEndValue(value)) {
         incompleteFullShiftCount += 1;
@@ -116,14 +102,39 @@ function getPublishSummary(
     });
   });
 
+  const schedulePositionIds = new Set(schedule.config.positionIds);
+  const relevantPositionConfigs =
+    buildTemplate?.positionConfigs.filter((config) =>
+      config.positionIds.some((positionId) => schedulePositionIds.has(positionId)),
+    ) ?? [];
+  const hasReliablePlan = buildTemplate != null;
+  const plannedShiftsCount = hasReliablePlan
+    ? schedule.days.reduce((total, day) => {
+        const jsDayOfWeek = new Date(`${day.date}T00:00:00Z`).getUTCDay();
+        const dayOfWeek = jsDayOfWeek === 0 ? 7 : jsDayOfWeek;
+
+        return (
+          total +
+          relevantPositionConfigs.reduce((dateTotal, config) => {
+            const dateOverrides = config.coverageDateOverrides.filter((override) => override.date === day.date);
+            const requiredCounts =
+              dateOverrides.length > 0
+                ? dateOverrides.map((override) => override.requiredCount)
+                : config.coverageRules.filter((rule) => rule.dayOfWeek === dayOfWeek).map((rule) => rule.requiredCount);
+
+            return dateTotal + requiredCounts.reduce((sum, count) => sum + Math.max(0, count), 0);
+          }, 0)
+        );
+      }, 0)
+    : filledCellsCount;
+  const unfilledByPlan = hasReliablePlan ? Math.max(0, plannedShiftsCount - filledCellsCount) : 0;
+
   return {
     totalRows,
     totalDays,
     filledCellsCount,
-    emptyCellsCount: totalCellsCount - filledCellsCount,
-    manualCount,
-    preferenceHintCount,
-    autoBuildCount,
+    plannedShiftsCount,
+    unfilledByPlan,
     incompleteFullShiftCount,
     negativeConflictCount,
   };
@@ -132,14 +143,15 @@ function getPublishSummary(
 const PublishScheduleConfirmDialog: React.FC<PublishScheduleConfirmDialogProps> = ({
   open,
   schedule,
+  buildTemplate,
   preferenceHintsByCellKey,
   publishing,
   onClose,
   onConfirm,
 }) => {
   const summary = React.useMemo(
-    () => getPublishSummary(schedule, preferenceHintsByCellKey),
-    [preferenceHintsByCellKey, schedule],
+    () => getPublishSummary(schedule, buildTemplate, preferenceHintsByCellKey),
+    [buildTemplate, preferenceHintsByCellKey, schedule],
   );
 
   const handleClose = React.useCallback(() => {
@@ -176,18 +188,17 @@ const PublishScheduleConfirmDialog: React.FC<PublishScheduleConfirmDialogProps> 
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
             <SummaryCounter label="Сотрудников" value={summary.totalRows} />
             <SummaryCounter label="Дней" value={summary.totalDays} />
+            <SummaryCounter label="Планировали смен" value={summary.plannedShiftsCount} />
             <SummaryCounter label="Заполнено смен" value={summary.filledCellsCount} />
-            <SummaryCounter label="Пустых ячеек" value={summary.emptyCellsCount} tone="warning" />
-            <SummaryCounter label="Автосборка" value={summary.autoBuildCount} />
-            <SummaryCounter label="Из пожеланий" value={summary.preferenceHintCount} />
-            <SummaryCounter label="Ручные правки" value={summary.manualCount} />
+            <SummaryCounter
+              label="Не закрыто"
+              value={summary.unfilledByPlan}
+              tone={summary.unfilledByPlan > 0 ? "warning" : "default"}
+            />
           </div>
         </section>
 
-        {(summary.incompleteFullShiftCount > 0 ||
-          summary.negativeConflictCount > 0 ||
-          summary.emptyCellsCount > 0 ||
-          summary.filledCellsCount === 0) && (
+        {(summary.incompleteFullShiftCount > 0 || summary.negativeConflictCount > 0 || summary.unfilledByPlan > 0) && (
           <section className="space-y-2">
             <h3 className="text-default text-sm font-semibold">Предупреждения</h3>
             {summary.incompleteFullShiftCount > 0 && (
@@ -195,16 +206,18 @@ const PublishScheduleConfirmDialog: React.FC<PublishScheduleConfirmDialogProps> 
                 Есть незавершённые смены: {summary.incompleteFullShiftCount}. Например, указано начало без окончания.
               </WarningBox>
             )}
-            {summary.negativeConflictCount > 0 && (
-              <WarningBox>Есть конфликты с отрицательными пожеланиями: {summary.negativeConflictCount}.</WarningBox>
-            )}
-            {summary.emptyCellsCount > 0 && (
+            {summary.unfilledByPlan > 0 && (
               <WarningBox>
-                Есть пустые ячейки: {summary.emptyCellsCount}. Это нормально, если сотрудник не должен работать в эти
-                дни.
+                Не закрыто смен по плану: {summary.unfilledByPlan}. Проверьте, это осознанное решение или пропущенное
+                назначение.
               </WarningBox>
             )}
-            {summary.filledCellsCount === 0 && <WarningBox>В графике нет заполненных смен.</WarningBox>}
+            {summary.negativeConflictCount > 0 && (
+              <WarningBox>
+                {summary.negativeConflictCount} смен конфликтуют с отрицательными пожеланиями сотрудников. Проверьте эти
+                смены перед публикацией.
+              </WarningBox>
+            )}
           </section>
         )}
       </div>
