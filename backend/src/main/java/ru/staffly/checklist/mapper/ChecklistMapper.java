@@ -1,5 +1,6 @@
 package ru.staffly.checklist.mapper;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistItemDto;
@@ -9,7 +10,9 @@ import ru.staffly.checklist.model.Checklist;
 import ru.staffly.checklist.model.ChecklistItem;
 import ru.staffly.checklist.model.ChecklistKind;
 import ru.staffly.checklist.model.ChecklistPeriodicity;
+import ru.staffly.checklist.model.ChecklistPhotoMode;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.media.ChecklistImageStorage;
 import ru.staffly.member.model.RestaurantMember;
 
 import java.time.DayOfWeek;
@@ -19,7 +22,10 @@ import java.util.List;
 import java.util.Set;
 
 @Component
+@RequiredArgsConstructor
 public class ChecklistMapper {
+
+    private final ChecklistImageStorage imageStorage;
 
     public ChecklistDto toDto(Checklist entity) {
         List<ChecklistPositionDto> positions = entity.getPositions() == null
@@ -32,15 +38,24 @@ public class ChecklistMapper {
                 ? List.of()
                 : entity.getItems().stream()
                 .sorted(Comparator.comparing(ChecklistItem::getItemOrder))
-                .map(item -> new ChecklistItemDto(
-                        item.getId(),
-                        item.getText(),
-                        item.isDone(),
-                        toMemberShort(item.getDoneBy()),
-                        item.getDoneAt() != null ? item.getDoneAt().toString() : null,
-                        toMemberShort(item.getReservedBy()),
-                        item.getReservedAt() != null ? item.getReservedAt().toString() : null
-                ))
+                .map(item -> {
+                    ChecklistPhotoMode mode = photoMode(item);
+                    return new ChecklistItemDto(
+                            item.getId(),
+                            item.getText(),
+                            item.isDone(),
+                            toMemberShort(item.getDoneBy()),
+                            item.getDoneAt() != null ? item.getDoneAt().toString() : null,
+                            toMemberShort(item.getReservedBy()),
+                            item.getReservedAt() != null ? item.getReservedAt().toString() : null,
+                            mode == ChecklistPhotoMode.NONE ? null : item.getExamplePhotoUrl(),
+                            imageStorage.toCompletionPhotoUrl(item.getCompletionPhotoUrl()),
+                            mode.name(),
+                            mode == ChecklistPhotoMode.REQUIRED,
+                            toMemberShort(item.getCompletionPhotoUploadedBy()),
+                            item.getCompletionPhotoUploadedAt() != null ? item.getCompletionPhotoUploadedAt().toString() : null
+                    );
+                })
                 .toList();
         return new ChecklistDto(
                 entity.getId(),
@@ -70,6 +85,13 @@ public class ChecklistMapper {
         }
         String name = member.getUser() != null ? member.getUser().getFullName() : null;
         return new ChecklistMemberShortDto(member.getId(), name);
+    }
+
+    private ChecklistPhotoMode photoMode(ChecklistItem item) {
+        if (item.getCompletionPhotoMode() != null) {
+            return item.getCompletionPhotoMode();
+        }
+        return item.isCompletionPhotoRequired() ? ChecklistPhotoMode.REQUIRED : ChecklistPhotoMode.NONE;
     }
 
     private String buildPeriodLabel(Checklist entity) {

@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import Icon from "../../../shared/ui/Icon";
 
 import ApplySchedulePreferencesDialog from "../components/ApplySchedulePreferencesDialog";
+import AddScheduleMemberDialog from "../components/AddScheduleMemberDialog";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
@@ -42,11 +43,13 @@ import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { ScheduleData, ScheduleOwnerDto } from "../types";
-import type { ScheduleSummary } from "../api";
+import type { AdjustedScheduleAutoBuildAssignment, ScheduleSummary } from "../api";
+import { addScheduleMember, getAddableScheduleMembers, type AddableScheduleMember } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
+import { getErrorMessage } from "../../../shared/utils/errors";
 
 function normalizeRole(role: string | null | undefined): string | null {
   if (!role) return null;
@@ -56,29 +59,8 @@ function normalizeRole(role: string | null | undefined): string | null {
     .replace(/^ROLE_/, "");
 }
 
-function isScheduleOwner(params: {
-  owner: ScheduleOwnerDto | null | undefined;
-  currentMemberId: number | null | undefined;
-  currentUserId: number | null | undefined;
-}): boolean {
-  const { owner, currentMemberId, currentUserId } = params;
-  if (!owner) return false;
-
-  const ownerMemberId = owner.memberId;
-  if (ownerMemberId != null && currentMemberId != null && ownerMemberId === currentMemberId) {
-    return true;
-  }
-
-  const ownerUserId = owner.userId;
-  return ownerUserId != null && currentUserId != null && ownerUserId === currentUserId;
-}
-
-function canOpenOwnPreferenceFlow(params: {
-  summary: ScheduleSummary;
-  currentMember: MemberDto | null;
-  currentUserId: number | null | undefined;
-}): boolean {
-  const { summary, currentMember, currentUserId } = params;
+function isOwnPreferenceParticipant(params: { summary: ScheduleSummary; currentMember: MemberDto | null }): boolean {
+  const { summary, currentMember } = params;
   if (summary.status !== "COLLECTING_PREFERENCES") return false;
   if (!currentMember) return false;
 
@@ -86,11 +68,19 @@ function canOpenOwnPreferenceFlow(params: {
   const isParticipant = positionId != null && summary.positionIds.includes(positionId);
   if (!isParticipant) return false;
 
-  return !isScheduleOwner({
-    owner: summary.owner,
-    currentMemberId: currentMember.id,
-    currentUserId,
-  });
+  return true;
+}
+
+function canOpenOwnPreferenceFlow(params: { summary: ScheduleSummary; currentMember: MemberDto | null }): boolean {
+  return isOwnPreferenceParticipant(params);
+}
+
+function getSavedScheduleOpenButtonLabel(params: {
+  summary: ScheduleSummary;
+  currentMember: MemberDto | null;
+}): string {
+  if (!isOwnPreferenceParticipant(params)) return "Открыть";
+  return params.summary.myPreferenceSubmitted ? "Пожелания отправлены" : "Оставить пожелания";
 }
 const SchedulePage: React.FC = () => {
   const { user } = useAuth();
@@ -102,10 +92,17 @@ const SchedulePage: React.FC = () => {
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
+  const [activePageTab, setActivePageTab] = React.useState<"schedules" | "templates">("schedules");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
   const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = React.useState(false);
+  const [showPublishedDiagnostics, setShowPublishedDiagnostics] = React.useState(false);
+  const [addableMembers, setAddableMembers] = React.useState<AddableScheduleMember[]>([]);
+  const [addableMembersLoading, setAddableMembersLoading] = React.useState(false);
+  const [addMemberDialogOpen, setAddMemberDialogOpen] = React.useState(false);
+  const [addingMemberId, setAddingMemberId] = React.useState<number | null>(null);
+  const [addMemberError, setAddMemberError] = React.useState<string | null>(null);
 
   const autoTabDoneRef = React.useRef(false);
 
@@ -127,12 +124,13 @@ const SchedulePage: React.FC = () => {
     clearScheduleNotices();
   }, [clearScheduleNotices]);
 
-  const { loading, error, myRole, positions, members, savedSchedules, setSavedSchedules } = useScheduleInitialData({
-    restaurantId,
-    userRoles: user?.roles,
-    onRestaurantMissing: handleRestaurantMissing,
-    onBeforeLoad: handleBeforeInitialLoad,
-  });
+  const { loading, error, myRole, positions, members, savedSchedules, setSavedSchedules, reloadSavedSchedules } =
+    useScheduleInitialData({
+      restaurantId,
+      userRoles: user?.roles,
+      onRestaurantMissing: handleRestaurantMissing,
+      onBeforeLoad: handleBeforeInitialLoad,
+    });
 
   const access = React.useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
@@ -181,14 +179,51 @@ const SchedulePage: React.FC = () => {
     );
   }, [access.isCreator, access.normalizedRestaurantRole, normalizedMembershipRole, normalizedUserRoles]);
 
-  const preferenceHintsEnabled = canManage && canShowPreferenceHints(schedule?.status) && Boolean(schedule?.id);
+  React.useEffect(() => {
+    if (!restaurantId || !scheduleId || scheduleReadOnly || !canManage) {
+      setAddableMembers([]);
+      setAddMemberDialogOpen(false);
+      setAddMemberError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAddableMembersLoading(true);
+    getAddableScheduleMembers(restaurantId, scheduleId)
+      .then((items) => {
+        if (!cancelled) setAddableMembers(items);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setScheduleError(getErrorMessage(requestError, "Не удалось загрузить сотрудников"));
+      })
+      .finally(() => {
+        if (!cancelled) setAddableMembersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManage, restaurantId, scheduleId, scheduleReadOnly]);
+
+  const isPublishedSchedule = schedule?.status === "PUBLISHED";
+  const showPublishedDiagnosticsToggle = canManage && isPublishedSchedule && activeTab === "table";
+  const canInspectScheduleDiagnostics = canManage && (!isPublishedSchedule || showPublishedDiagnostics);
+  const preferenceHintsEnabled =
+    canManage &&
+    Boolean(schedule?.id) &&
+    (canShowPreferenceHints(schedule?.status) || (isPublishedSchedule && showPublishedDiagnostics));
   const preferenceHints = useSchedulePreferenceHints({
     restaurantId,
     scheduleId,
     enabled: preferenceHintsEnabled,
   });
+  const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
 
   const preferenceHintsByCellKey = React.useMemo(() => {
+    if (!canInspectScheduleDiagnostics) {
+      return undefined;
+    }
+
     const map: Record<string, import("../api").SchedulePreferenceCellDto[]> = {};
     const submissions = preferenceHints.submissions?.submissions ?? [];
     submissions.forEach((submission) => {
@@ -202,7 +237,41 @@ const SchedulePage: React.FC = () => {
       });
     });
     return map;
-  }, [preferenceHints.submissions]);
+  }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
+
+  const rejectionHintsByCellKey = React.useMemo(() => {
+    if (!canInspectScheduleDiagnostics || !autoBuildPreviewActions.preview) {
+      return undefined;
+    }
+
+    const map: Record<string, import("../api").ScheduleAutoBuildRejectionHintDto[]> = {};
+    autoBuildPreviewActions.preview.rejectionHints.forEach((hint) => {
+      const key = `${hint.memberId}:${hint.date}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(hint);
+    });
+    return map;
+  }, [autoBuildPreviewActions.preview, canInspectScheduleDiagnostics]);
+
+  const preferenceCommentsByMemberId = React.useMemo(() => {
+    if (!canInspectScheduleDiagnostics) {
+      return undefined;
+    }
+
+    const map: Record<number, string> = {};
+    const submissions = preferenceHints.submissions?.submissions ?? [];
+    submissions.forEach((submission) => {
+      const memberId = submission.member?.memberId;
+      const comment = (submission.periodComment ?? submission.comment ?? "").trim();
+      if (!memberId || !comment) return;
+      map[memberId] = comment;
+    });
+    return map;
+  }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
+
+  React.useEffect(() => {
+    setShowPublishedDiagnostics(false);
+  }, [scheduleId]);
 
   const derived = useScheduleDerivedState({
     userId: user?.id,
@@ -244,6 +313,33 @@ const SchedulePage: React.FC = () => {
       };
     },
     [members],
+  );
+
+  const handleAddScheduleMember = React.useCallback(
+    async (memberId: number) => {
+      if (!restaurantId || !scheduleId) return;
+      setAddingMemberId(memberId);
+      setAddMemberError(null);
+      try {
+        const updated = prepareSchedule(await addScheduleMember(restaurantId, scheduleId, memberId));
+        const addedRow = updated.rows.find((row) => row.memberId === memberId);
+        if (addedRow) {
+          setSchedule((current) =>
+            current && !current.rows.some((row) => row.memberId === memberId)
+              ? { ...current, rows: [...current.rows, addedRow] }
+              : current,
+          );
+        }
+        setAddableMembers((current) => current.filter((member) => member.memberId !== memberId));
+        setAddMemberDialogOpen(false);
+        setScheduleMessage("Сотрудник добавлен в график");
+      } catch (requestError) {
+        setAddMemberError(getErrorMessage(requestError, "Не удалось добавить сотрудника"));
+      } finally {
+        setAddingMemberId(null);
+      }
+    },
+    [prepareSchedule, restaurantId, scheduleId],
   );
 
   const handleScheduleOwnerUpdated = React.useCallback((updatedSchedule: ScheduleData) => {
@@ -366,12 +462,33 @@ const SchedulePage: React.FC = () => {
     restaurantId,
     onScheduleChanged: setSchedule,
     onClearScheduleNotices: clearScheduleNotices,
+    onPreferenceSubmitted: reloadSavedSchedules,
   });
 
   const preferenceManagerActions = useSchedulePreferenceManagerActions({ restaurantId });
   const buildTemplatesActions = useScheduleBuildTemplatesActions(restaurantId);
+  const {
+    loading: buildTemplatesLoading,
+    loadTemplates,
+    templatesLoaded,
+    templatesLoadAttempted,
+  } = buildTemplatesActions;
 
-  const autoBuildPreviewActions = useScheduleAutoBuildPreviewActions(restaurantId, scheduleId);
+  const showPageTabs = !schedule && !preferenceActions.preferenceViewScheduleId;
+  const showSchedulesTabContent = showPageTabs && activePageTab === "schedules";
+  const showTemplatesTabContent = showPageTabs && canManage && activePageTab === "templates";
+
+  React.useEffect(() => {
+    if (!canManage && activePageTab === "templates") {
+      setActivePageTab("schedules");
+    }
+  }, [activePageTab, canManage]);
+
+  const loadBuildTemplatesIfNeeded = React.useCallback(() => {
+    if (templatesLoaded || buildTemplatesLoading || templatesLoadAttempted) return;
+    void loadTemplates();
+  }, [buildTemplatesLoading, loadTemplates, templatesLoaded, templatesLoadAttempted]);
+
   const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
     restaurantId,
     scheduleId,
@@ -442,7 +559,6 @@ const SchedulePage: React.FC = () => {
         canOpenOwnPreferenceFlow({
           summary: item,
           currentMember: derived.currentMember,
-          currentUserId: user?.id,
         })
       ) {
         savedScheduleActions.closeSavedSchedule();
@@ -453,7 +569,7 @@ const SchedulePage: React.FC = () => {
       preferenceActions.closePreferenceView();
       void savedScheduleActions.openSavedSchedule(id);
     },
-    [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules, user?.id],
+    [derived.currentMember, preferenceActions, savedScheduleActions, savedSchedules],
   );
 
   const handleOpenApplyPreferencesDialog = React.useCallback(() => {
@@ -472,7 +588,8 @@ const SchedulePage: React.FC = () => {
       return;
     }
     setApplyPreferencesDialogOpen(false);
-  }, [autoBuildApplyActions.applying, autoBuildPreviewActions.loading, lifecycleActions.pendingAction]);
+    autoBuildPreviewActions.clearPreview();
+  }, [autoBuildApplyActions.applying, autoBuildPreviewActions, lifecycleActions.pendingAction]);
 
   const handleApplyPreferencesManual = React.useCallback(async () => {
     const success = await lifecycleActions.applyPreferencesSimple();
@@ -488,8 +605,8 @@ const SchedulePage: React.FC = () => {
   );
 
   const handleApplyAutoBuild = React.useCallback(
-    async (templateId: number): Promise<boolean> => {
-      const ok = await autoBuildApplyActions.applyAutoBuild(templateId);
+    async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
+      const ok = await autoBuildApplyActions.applyAutoBuild(templateId, adjustedAssignments);
       if (ok) {
         setApplyPreferencesDialogOpen(false);
         autoBuildPreviewActions.clearPreview();
@@ -500,8 +617,11 @@ const SchedulePage: React.FC = () => {
   );
 
   const openPublishDialog = React.useCallback(() => {
+    if (schedule?.preferenceBuildTemplateId != null) {
+      loadBuildTemplatesIfNeeded();
+    }
     setPublishDialogOpen(true);
-  }, []);
+  }, [loadBuildTemplatesIfNeeded, schedule?.preferenceBuildTemplateId]);
 
   const closePublishDialog = React.useCallback(() => {
     if (lifecycleActions.pendingAction === "publish") return;
@@ -556,11 +676,48 @@ const SchedulePage: React.FC = () => {
           <div className="min-w-0 flex-1">
             <h1 className="text-strong text-2xl font-semibold">Графики</h1>
           </div>
-          {derived.showCreateScheduleButton && (
+          {derived.showCreateScheduleButton && showPageTabs && activePageTab === "schedules" && (
             <Button onClick={draftActions.openDialog} disabled={loading} className="shrink-0">
               Создать график
             </Button>
           )}
+        </div>
+      )}
+
+      {showPageTabs && canManage && (
+        <div
+          className="border-subtle bg-surface inline-flex rounded-2xl border p-1 shadow-[var(--staffly-shadow)]"
+          role="tablist"
+          aria-label="Разделы графиков"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activePageTab === "schedules"}
+            onClick={() => setActivePageTab("schedules")}
+            className={
+              "rounded-xl px-4 py-2 text-sm font-medium transition " +
+              (activePageTab === "schedules"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-muted hover:bg-app hover:text-default")
+            }
+          >
+            Графики
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activePageTab === "templates"}
+            onClick={() => setActivePageTab("templates")}
+            className={
+              "rounded-xl px-4 py-2 text-sm font-medium transition " +
+              (activePageTab === "templates"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-muted hover:bg-app hover:text-default")
+            }
+          >
+            Шаблоны
+          </button>
         </div>
       )}
 
@@ -574,7 +731,7 @@ const SchedulePage: React.FC = () => {
         <Card className="border-emerald-200 bg-emerald-50 text-emerald-700">{scheduleMessage}</Card>
       )}
 
-      {!loading && !error && !schedule && !preferenceActions.preferenceViewScheduleId && (
+      {!loading && !error && showSchedulesTabContent && (
         <>
           <SavedSchedulesSection
             canManage={canManage}
@@ -584,13 +741,10 @@ const SchedulePage: React.FC = () => {
             onPositionFilterChange={setPositionFilter}
             onOpenSavedSchedule={handleOpenSavedSchedule}
             getOpenButtonLabel={(item) =>
-              canOpenOwnPreferenceFlow({
+              getSavedScheduleOpenButtonLabel({
                 summary: item,
                 currentMember: derived.currentMember,
-                currentUserId: user?.id,
               })
-                ? "Оставить пожелания"
-                : "Открыть"
             }
             onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
             onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
@@ -604,29 +758,30 @@ const SchedulePage: React.FC = () => {
             hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
             deletingId={savedScheduleActions.deletingId}
           />
-          {canManage && (
-            <ScheduleBuildTemplatesSection
-              templates={buildTemplatesActions.templates}
-              loading={buildTemplatesActions.loading}
-              error={buildTemplatesActions.error}
-              saving={buildTemplatesActions.saving}
-              deletingId={buildTemplatesActions.deletingId}
-              positions={positions}
-              onLoad={buildTemplatesActions.loadTemplates}
-              onCreate={(request) => buildTemplatesActions.createTemplate(request)}
-              onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
-              onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
-            />
-          )}
         </>
+      )}
+
+      {!loading && !error && showTemplatesTabContent && (
+        <ScheduleBuildTemplatesSection
+          templates={buildTemplatesActions.templates}
+          loading={buildTemplatesActions.loading}
+          error={buildTemplatesActions.error}
+          saving={buildTemplatesActions.saving}
+          deletingId={buildTemplatesActions.deletingId}
+          positions={positions}
+          onLoad={loadBuildTemplatesIfNeeded}
+          onRetry={() => void buildTemplatesActions.loadTemplates()}
+          onCreate={(request) => buildTemplatesActions.createTemplate(request)}
+          onUpdate={(templateId, request) => buildTemplatesActions.updateTemplate(templateId, request)}
+          onArchive={(templateId) => void buildTemplatesActions.archiveTemplate(templateId)}
+        />
       )}
 
       {!loading &&
         !error &&
         !canManage &&
         derived.filteredSavedSchedules.length === 0 &&
-        !schedule &&
-        !preferenceActions.preferenceViewScheduleId &&
+        showSchedulesTabContent &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
             <div className="text-muted text-sm">
@@ -639,8 +794,7 @@ const SchedulePage: React.FC = () => {
         !error &&
         canManage &&
         derived.filteredSavedSchedules.length === 0 &&
-        !schedule &&
-        !preferenceActions.preferenceViewScheduleId &&
+        showSchedulesTabContent &&
         !savedScheduleActions.scheduleLoading && (
           <Card>
             <div className="text-muted space-y-2 text-sm">
@@ -673,6 +827,9 @@ const SchedulePage: React.FC = () => {
             onEnterEditMode={handleEnterEditMode}
             onDelete={handleDeleteSchedule}
             onOpenOwnerDialog={ownerDialog.openDialog}
+            showPublishedDiagnosticsToggle={showPublishedDiagnosticsToggle}
+            showPublishedDiagnostics={showPublishedDiagnostics}
+            onTogglePublishedDiagnostics={() => setShowPublishedDiagnostics((value) => !value)}
             canViewPreferences={canManage && canViewSchedulePreferences(schedule.status)}
             onOpenPreferences={() => scheduleId && void preferenceManagerActions.openDialog(scheduleId)}
             lifecycleAction={lifecycleActions.pendingAction}
@@ -699,6 +856,9 @@ const SchedulePage: React.FC = () => {
           {activeTab === "table" && (
             <ScheduleTableSection
               preferenceHintsByCellKey={preferenceHintsByCellKey}
+              preferenceCommentsByMemberId={preferenceCommentsByMemberId}
+              rejectionHintsByCellKey={rejectionHintsByCellKey}
+              showCellDiagnostics={canInspectScheduleDiagnostics}
               schedule={schedule}
               scheduleReadOnly={scheduleReadOnly}
               scheduleId={scheduleId}
@@ -712,6 +872,12 @@ const SchedulePage: React.FC = () => {
               onCancelEdit={handleCancelEdit}
               onSave={draftActions.saveSchedule}
               onSaveDraft={draftActions.saveDraftSchedule}
+              showAddMember={addableMembers.length > 0}
+              addMemberLoading={addableMembersLoading || addingMemberId != null}
+              onOpenAddMember={() => {
+                setAddMemberError(null);
+                setAddMemberDialogOpen(true);
+              }}
               onCellChange={cellEditing.changeCell}
             />
           )}
@@ -768,6 +934,17 @@ const SchedulePage: React.FC = () => {
         onSubmit={() => void ownerDialog.submit()}
       />
 
+      <AddScheduleMemberDialog
+        open={addMemberDialogOpen}
+        members={addableMembers}
+        addingMemberId={addingMemberId}
+        error={addMemberError}
+        onClose={() => {
+          if (addingMemberId == null) setAddMemberDialogOpen(false);
+        }}
+        onAdd={(memberId) => void handleAddScheduleMember(memberId)}
+      />
+
       <SchedulePreferenceManagerDialog
         open={preferenceManagerActions.open}
         loading={preferenceManagerActions.loading}
@@ -781,9 +958,14 @@ const SchedulePage: React.FC = () => {
       <StartPreferenceCollectionDialog
         open={lifecycleActions.preferenceDialogOpen}
         deadline={lifecycleActions.preferenceDeadline}
+        buildTemplateId={lifecycleActions.preferenceBuildTemplateId}
+        buildTemplates={buildTemplatesActions.templates}
+        templatesLoading={buildTemplatesActions.loading}
         error={lifecycleActions.preferenceDeadlineError}
         saving={lifecycleActions.pendingAction === "startPreferences"}
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
+        onBuildTemplateChange={lifecycleActions.setPreferenceBuildTemplateId}
+        onLoadTemplates={loadBuildTemplatesIfNeeded}
         onClose={lifecycleActions.closePreferenceDialog}
         onSubmit={() => void lifecycleActions.submitPreferenceCollection()}
       />
@@ -791,6 +973,9 @@ const SchedulePage: React.FC = () => {
       <PublishScheduleConfirmDialog
         open={publishDialogOpen}
         schedule={schedule}
+        buildTemplate={buildTemplatesActions.templates.find(
+          (template) => template.id === schedule?.preferenceBuildTemplateId,
+        )}
         preferenceHintsByCellKey={preferenceHintsByCellKey}
         publishing={lifecycleActions.pendingAction === "publish"}
         onClose={closePublishDialog}
@@ -799,11 +984,14 @@ const SchedulePage: React.FC = () => {
 
       <ApplySchedulePreferencesDialog
         open={applyPreferencesDialogOpen}
+        scheduleStatus={schedule?.status}
+        preferenceBuildTemplateId={schedule?.preferenceBuildTemplateId ?? null}
         applying={lifecycleActions.pendingAction === "applyPreferences"}
         autoApplying={autoBuildApplyActions.applying}
         templates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
         templatesError={buildTemplatesActions.error}
+        members={members}
         preview={autoBuildPreviewActions.preview}
         previewLoading={autoBuildPreviewActions.loading}
         previewError={autoBuildPreviewActions.error}

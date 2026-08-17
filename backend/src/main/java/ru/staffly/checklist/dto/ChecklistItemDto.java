@@ -7,6 +7,12 @@ public record ChecklistItemDto(
         ChecklistMemberShortDto doneBy,
         String doneAt,
         ChecklistMemberShortDto reservedBy,
-        String reservedAt
+        String reservedAt,
+        String examplePhotoUrl,
+        String completionPhotoUrl,
+        String completionPhotoMode,
+        boolean completionPhotoRequired,
+        ChecklistMemberShortDto completionPhotoUploadedBy,
+        String completionPhotoUploadedAt
 ) {
 }

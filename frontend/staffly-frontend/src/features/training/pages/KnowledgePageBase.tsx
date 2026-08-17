@@ -1,6 +1,6 @@
 import { DndContext, DragOverlay, MeasuringStrategy, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { arrayMove, rectSortingStrategy, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
@@ -12,6 +12,7 @@ import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components
 import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingObjectList, { TrainingDragOverlayCard } from "../components/TrainingObjectList";
+import KnowledgeItemsSortableGrid from "../components/KnowledgeItemsSortableGrid";
 import TrainingSelectionToolbar from "../components/TrainingSelectionToolbar";
 import { useSortableDnd } from "../../../shared/hooks/useSortableDnd";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
@@ -46,10 +47,11 @@ import {
 } from "../trainingFolderDnd";
 import type {
   TrainingFolderListObject,
+  TrainingKnowledgeItemObject,
   TrainingMoveTarget,
   TrainingPermanentDeleteTarget,
 } from "../trainingFolderObjects";
-import { trainingObjectTitle } from "../trainingFolderObjects";
+import { trainingObjectActive, trainingObjectTitle } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { getPracticeExamStatus } from "../utils/practiceExamStatus";
 import { trainingRoutes } from "../utils/trainingRoutes";
@@ -60,6 +62,39 @@ import { useKnowledgePageState } from "./knowledge/useKnowledgePageState";
 type Props = {
   currentFolderId: number | null;
 };
+
+function SectionHeading({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-[var(--staffly-border)] pb-2">
+      <h3 id={id} className="text-muted text-sm font-semibold tracking-wide uppercase">
+        {children}
+      </h3>
+    </div>
+  );
+}
+
+function TrainingObjectsSection({
+  title,
+  objects,
+  children,
+}: {
+  title: string;
+  objects: TrainingFolderListObject[];
+  children: ReactNode;
+}) {
+  const sectionId = `knowledge-section-${objects[0].kind}`;
+  return (
+    <section aria-labelledby={sectionId} className="space-y-3">
+      <SectionHeading id={sectionId}>{title}</SectionHeading>
+      <SortableContext
+        items={objects.map((object) => trainingObjectId(object.kind, object.id))}
+        strategy={verticalListSortingStrategy}
+      >
+        {children}
+      </SortableContext>
+    </section>
+  );
+}
 
 export default function KnowledgePageBase({ currentFolderId }: Props) {
   const { restaurantId, canManage } = useTrainingAccess();
@@ -89,29 +124,47 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TrainingPermanentDeleteTarget | null>(null);
 
-  const currentObjects = useMemo<TrainingFolderListObject[]>(
+  const folderObjects = useMemo<TrainingFolderListObject[]>(
     () =>
-      [
-        ...state.childFolders.map((folder) => ({
+      state.childFolders
+        .map((folder) => ({
           kind: "folder" as const,
           id: folder.id,
           sortOrder: folder.sortOrder ?? 0,
           folder,
-        })),
-        ...state.items.map((item) => ({
+        }))
+        .sort(sortTrainingObjects),
+    [state.childFolders],
+  );
+  const knowledgeItemObjects = useMemo<TrainingKnowledgeItemObject[]>(
+    () =>
+      state.items
+        .map((item) => ({
           kind: "knowledgeItem" as const,
           id: item.id,
           sortOrder: item.sortOrder ?? 0,
           item,
-        })),
-        ...state.practiceExams.map((exam) => ({
+        }))
+        .sort(sortTrainingObjects),
+    [state.items],
+  );
+  const practiceExamObjects = useMemo<TrainingFolderListObject[]>(
+    () =>
+      state.practiceExams
+        .map((exam) => ({
           kind: "practiceExam" as const,
           id: exam.id,
           sortOrder: exam.sortOrder ?? 0,
           exam,
-        })),
-      ].sort(sortTrainingObjects),
-    [state.childFolders, state.items, state.practiceExams],
+        }))
+        .sort(sortTrainingObjects),
+    [state.practiceExams],
+  );
+  // This combined collection is only an object lookup for shared selection, actions,
+  // moves, and the drag overlay. It does not control layout or reorder order.
+  const currentObjects = useMemo<TrainingFolderListObject[]>(
+    () => [...folderObjects, ...knowledgeItemObjects, ...practiceExamObjects],
+    [folderObjects, knowledgeItemObjects, practiceExamObjects],
   );
   const currentObjectIds = useMemo(
     () => currentObjects.map((object) => trainingObjectId(object.kind, object.id)),
@@ -289,24 +342,27 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         return;
       }
 
-      const oldIndex = currentObjectIds.indexOf(trainingObjectId(active.kind, active.id));
-      const newIndex = currentObjectIds.indexOf(overId);
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      const over = parseTrainingObjectId(overId);
+      if (!over || over.kind !== active.kind || over.id === active.id) return;
 
-      const nextObjects = arrayMove(currentObjects, oldIndex, newIndex).map((object, index) => ({
-        ...object,
-        sortOrder: index,
-      }));
+      const overObject = currentObjects.find((object) => object.kind === over.kind && object.id === over.id);
+      if (!overObject || overObject.kind !== active.kind) return;
+
+      const sameKindObjects = currentObjects.filter(
+        (object) => object.kind === active.kind && trainingObjectActive(object),
+      );
+      const sameKindOldIndex = sameKindObjects.findIndex((object) => object.id === active.id);
+      const sameKindNewIndex = sameKindObjects.findIndex((object) => object.id === overObject.id);
+      if (sameKindOldIndex === -1 || sameKindNewIndex === -1) return;
+      const nextObjects = arrayMove(sameKindObjects, sameKindOldIndex, sameKindNewIndex);
 
       try {
         await reorderTrainingObjects(restaurantId, {
           type: "KNOWLEDGE",
           folderId: currentFolderId,
-          objects: nextObjects.map((object, index) => ({
-            kind: object.kind,
-            id: object.id,
-            sortOrder: index,
-          })),
+          kind:
+            active.kind === "folder" ? "FOLDER" : active.kind === "knowledgeItem" ? "KNOWLEDGE_ITEM" : "PRACTICE_EXAM",
+          orderedIds: nextObjects.map((object) => object.id),
         });
         await reloadVisible();
       } catch (error) {
@@ -317,7 +373,6 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     [
       blockedDropFolderIds,
       currentFolderId,
-      currentObjectIds,
       currentObjects,
       finishDrag,
       moveObjectToFolder,
@@ -332,8 +387,6 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
       if (object.kind === "folder") state.navigate(trainingRoutes.knowledgeFolder(object.id));
       else if (object.kind === "practiceExam" && currentFolderId != null) {
         state.navigate(trainingRoutes.knowledgeExamRun(currentFolderId, object.id));
-      } else if (object.kind === "knowledgeItem") {
-        state.openEditItemModal(object.item);
       }
     },
     [currentFolderId, state],
@@ -516,30 +569,79 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         {(state.itemsLoading || state.examsLoading) && <LoadingState label="Загрузка материалов…" />}
 
         {!state.foldersState.loading && !state.itemsLoading && !state.examsLoading && currentObjects.length > 0 ? (
-          <div ref={scrollContainerRef}>
-            <SortableContext items={currentObjectIds} strategy={verticalListSortingStrategy}>
-              <TrainingObjectList
-                objects={currentObjects}
-                activeObjectId={sortableDnd.activeId}
-                selectedObjectId={selectedObjectId}
-                blockedFolderIds={blockedDropFolderIds}
-                actionLoading={actionLoading}
-                canManage={canManage}
-                progressByExamId={state.progressByExamId}
-                practiceStatusByExamId={practiceStatusByExamId}
-                runRouteByExamId={runRouteByExamId}
-                onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
-                onClearSelection={() => setSelectedObjectId(null)}
-                onOpenObject={openObject}
-                onEditObject={editObject}
-                onMoveObject={startMove}
-                onArchiveObject={(object) => void archiveObject(object)}
-                onRunPracticeExam={(exam) => {
-                  if (currentFolderId != null)
-                    state.navigate(trainingRoutes.knowledgeExamRun(currentFolderId, exam.id));
-                }}
-              />
-            </SortableContext>
+          <div ref={scrollContainerRef} className="space-y-7">
+            {folderObjects.length > 0 ? (
+              <TrainingObjectsSection title="Папки" objects={folderObjects}>
+                <TrainingObjectList
+                  objects={folderObjects}
+                  activeObjectId={sortableDnd.activeId}
+                  selectedObjectId={selectedObjectId}
+                  blockedFolderIds={blockedDropFolderIds}
+                  actionLoading={actionLoading}
+                  canManage={canManage}
+                  progressByExamId={state.progressByExamId}
+                  practiceStatusByExamId={practiceStatusByExamId}
+                  runRouteByExamId={runRouteByExamId}
+                  onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
+                  onClearSelection={() => setSelectedObjectId(null)}
+                  onOpenObject={openObject}
+                  onEditObject={editObject}
+                  onMoveObject={startMove}
+                  onArchiveObject={(object) => void archiveObject(object)}
+                  onRunPracticeExam={(exam) => {
+                    if (currentFolderId != null)
+                      state.navigate(trainingRoutes.knowledgeExamRun(currentFolderId, exam.id));
+                  }}
+                />
+              </TrainingObjectsSection>
+            ) : null}
+
+            {knowledgeItemObjects.length > 0 ? (
+              <section aria-labelledby="knowledge-section-knowledgeItem" className="space-y-3">
+                <SectionHeading id="knowledge-section-knowledgeItem">Карточки</SectionHeading>
+                <SortableContext
+                  items={knowledgeItemObjects.map((object) => trainingObjectId(object.kind, object.id))}
+                  strategy={rectSortingStrategy}
+                >
+                  <KnowledgeItemsSortableGrid
+                    objects={knowledgeItemObjects}
+                    selectedObjectId={selectedObjectId}
+                    actionLoading={actionLoading}
+                    canManage={canManage}
+                    onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
+                    onEditObject={editObject}
+                    onMoveObject={startMove}
+                    onArchiveObject={(object) => void archiveObject(object)}
+                  />
+                </SortableContext>
+              </section>
+            ) : null}
+
+            {practiceExamObjects.length > 0 ? (
+              <TrainingObjectsSection title="Учебные тесты" objects={practiceExamObjects}>
+                <TrainingObjectList
+                  objects={practiceExamObjects}
+                  activeObjectId={sortableDnd.activeId}
+                  selectedObjectId={selectedObjectId}
+                  blockedFolderIds={blockedDropFolderIds}
+                  actionLoading={actionLoading}
+                  canManage={canManage}
+                  progressByExamId={state.progressByExamId}
+                  practiceStatusByExamId={practiceStatusByExamId}
+                  runRouteByExamId={runRouteByExamId}
+                  onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
+                  onClearSelection={() => setSelectedObjectId(null)}
+                  onOpenObject={openObject}
+                  onEditObject={editObject}
+                  onMoveObject={startMove}
+                  onArchiveObject={(object) => void archiveObject(object)}
+                  onRunPracticeExam={(exam) => {
+                    if (currentFolderId != null)
+                      state.navigate(trainingRoutes.knowledgeExamRun(currentFolderId, exam.id));
+                  }}
+                />
+              </TrainingObjectsSection>
+            ) : null}
           </div>
         ) : null}
 

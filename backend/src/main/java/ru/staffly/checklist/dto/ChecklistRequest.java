@@ -24,6 +24,8 @@ public record ChecklistRequest(
 
         List<String> items,
 
+        List<ChecklistItemRequest> itemDetails,
+
         List<Long> positionIds
 ) {
 }

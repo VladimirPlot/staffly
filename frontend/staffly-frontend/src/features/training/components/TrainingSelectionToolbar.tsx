@@ -106,23 +106,61 @@ export default function TrainingSelectionToolbar({
           </div>
 
           <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
-            <Button size="sm" variant="ghost" className={toolbarButtonClassName} title="Открыть" leftIcon={<Icon icon={ExternalLink} size="sm" decorative />} onClick={() => onOpen(object)}>
-              Открыть
-            </Button>
+            {object.kind !== "knowledgeItem" ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className={toolbarButtonClassName}
+                title="Открыть"
+                leftIcon={<Icon icon={ExternalLink} size="sm" decorative />}
+                onClick={() => onOpen(object)}
+              >
+                Открыть
+              </Button>
+            ) : null}
             {canManage ? (
               <>
-                <Button size="sm" variant="ghost" className={toolbarButtonClassName} title="Изменить" leftIcon={<Icon icon={Edit3} size="sm" decorative />} onClick={edit}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={toolbarButtonClassName}
+                  title="Изменить"
+                  leftIcon={<Icon icon={Edit3} size="sm" decorative />}
+                  onClick={edit}
+                >
                   Изменить
                 </Button>
-                <Button size="sm" variant="ghost" className={toolbarButtonClassName} title="Переместить" leftIcon={<Icon icon={MoveRight} size="sm" decorative />} onClick={() => onMove(object)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={toolbarButtonClassName}
+                  title="Переместить"
+                  leftIcon={<Icon icon={MoveRight} size="sm" decorative />}
+                  onClick={() => onMove(object)}
+                >
                   Переместить
                 </Button>
-                <Button size="sm" variant="ghost" className={cn(toolbarButtonClassName, "text-red-600")} title="В корзину" isLoading={isArchiving} leftIcon={<Icon icon={Trash2} size="sm" decorative />} onClick={() => onArchive(object)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={cn(toolbarButtonClassName, "text-red-600")}
+                  title="В корзину"
+                  isLoading={isArchiving}
+                  leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                  onClick={() => onArchive(object)}
+                >
                   В корзину
                 </Button>
               </>
             ) : null}
-            <Button size="sm" variant="ghost" className={toolbarButtonClassName} title="Снять выбор" leftIcon={<Icon icon={X} size="sm" decorative />} onClick={onClear}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className={toolbarButtonClassName}
+              title="Снять выбор"
+              leftIcon={<Icon icon={X} size="sm" decorative />}
+              onClick={onClear}
+            >
               Снять выбор
             </Button>
           </div>

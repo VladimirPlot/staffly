@@ -36,6 +36,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
     private static final String[] WEEKDAY_LABELS = {"", "пн", "вт", "ср", "чт", "пт", "сб", "вс"};
     private static final int MAX_CELLS_PER_DAY = 8;
+    private static final int MAX_PERIOD_COMMENT_LENGTH = 1000;
+    private static final int MAX_CELL_NOTE_LENGTH = 500;
     private static final LocalTime END_OF_DAY_TIME = LocalTime.MIDNIGHT;
 
     private final ScheduleRepository schedules;
@@ -73,8 +75,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             throw new BadRequestException("Срок отправки пожеланий истёк");
         }
         RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
-        List<SchedulePreferenceCell> cells = buildCells(schedule, request == null ? null : request.cells());
-        String comment = trimToNull(request == null ? null : request.comment());
+        List<SchedulePreferenceCell> cells = buildCells(schedule, member, request == null ? null : request.cells());
+        String comment = normalizeText(request == null ? null : firstNonBlank(request.periodComment(), request.comment()), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
 
         SchedulePreferenceSubmission submission = submissions.findForUpdateByScheduleIdAndMemberId(scheduleId, member.getId())
                 .orElseGet(() -> SchedulePreferenceSubmission.builder()
@@ -94,7 +96,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         submission.setPositionName(member.getPosition() == null ? null : member.getPosition().getName());
         submission.setSubmittedAt(now);
         submission.setUpdatedAt(now);
-        submission.setComment(comment);
+        submission.setPeriodComment(comment);
         submission.getCells().clear();
         for (SchedulePreferenceCell cell : cells) {
             cell.setSubmission(submission);
@@ -139,7 +141,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
         }
-        List<RestaurantMember> managerTargets = members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds);
+        List<RestaurantMember> managerTargets = deduplicateMembersByUserId(
+                members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds)
+        );
         if (managerTargets.isEmpty()) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
@@ -157,6 +161,21 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 schedule.getEndDate()
         );
         schedule.setPreferenceAllSubmittedNotifiedAt(now);
+    }
+
+
+    private List<RestaurantMember> deduplicateMembersByUserId(List<RestaurantMember> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, RestaurantMember> byUserId = new LinkedHashMap<>();
+        for (RestaurantMember member : source) {
+            if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            byUserId.putIfAbsent(member.getUser().getId(), member);
+        }
+        return new ArrayList<>(byUserId.values());
     }
 
     @Override
@@ -216,11 +235,14 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private RestaurantMember loadEligibleMember(Long restaurantId, Schedule schedule, Long userId) {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
-        if (member.getPosition() == null || !schedule.getPositionIds().contains(member.getPosition().getId())) {
+        if (schedule.getPositionIds() == null
+                || member.getPosition() == null
+                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
             throw new ForbiddenException("Должность сотрудника не входит в позиции графика");
         }
         return member;
     }
+
 
     private List<RestaurantMember> loadParticipants(Long restaurantId, Schedule schedule) {
         if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
@@ -229,7 +251,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, schedule.getPositionIds());
     }
 
-    private List<SchedulePreferenceCell> buildCells(Schedule schedule, List<SchedulePreferenceCellRequest> requests) {
+    private List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {
         List<SchedulePreferenceCellRequest> safeRequests = requests == null ? List.of() : requests;
         long daysCount = schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).count();
         int maxCells = Math.toIntExact(daysCount * MAX_CELLS_PER_DAY);
@@ -267,6 +289,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 if (!isValidPreferenceInterval(startTime, endTime)) {
                     throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
                 }
+                if (!isAllowedShiftOption(schedule, member, startTime, endTime)) {
+                    throw new BadRequestException("cells[" + i + "] interval is not available for member position");
+                }
             }
             CellKey key = new CellKey(day, request.type(), fullDay, startTime, endTime);
             if (!seen.add(key)) {
@@ -278,11 +303,40 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                     .fullDay(fullDay)
                     .startTime(startTime)
                     .endTime(endTime)
-                    .note(trimToNull(request.note()))
+                    .note(normalizeText(request.note(), MAX_CELL_NOTE_LENGTH, "cells[" + i + "].note"))
                     .sortOrder(i)
                     .build());
         }
         return cells;
+    }
+
+    private boolean isAllowedShiftOption(Schedule schedule,
+                                         RestaurantMember member,
+                                         LocalTime startTime,
+                                         LocalTime endTime) {
+        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
+        if (template == null) {
+            return true;
+        }
+        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
+        if (positionId == null) {
+            return false;
+        }
+        return template.getPositionConfigs().stream()
+                .filter(config -> configPositionIds(config).contains(positionId))
+                .findFirst()
+                .map(config -> config.getShiftOptions().stream()
+                        .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
+                                && Objects.equals(option.getEndTime(), endTime)))
+                .orElse(false);
+    }
+
+    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(position -> position.getId())
+                .filter(Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {
@@ -299,9 +353,36 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission == null ? null : submission.getUpdatedAt(),
                 submission == null ? 0 : submission.getRevision(),
                 toMemberDto(member),
+                allowedShiftOptions(schedule, member),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
-                submission == null ? null : submission.getComment()
+                submission == null ? null : submission.getPeriodComment(),
+                submission == null ? null : submission.getPeriodComment()
         );
+    }
+
+    private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, RestaurantMember member) {
+        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
+        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
+        if (template == null || positionId == null) {
+            return List.of();
+        }
+        return template.getPositionConfigs().stream()
+                .filter(config -> configPositionIds(config).contains(positionId))
+                .findFirst()
+                .map(config -> config.getShiftOptions().stream()
+                        .sorted(Comparator.comparing(
+                                        ScheduleBuildShiftOption::getSortOrder,
+                                        Comparator.nullsLast(Integer::compareTo)
+                                )
+                                .thenComparing(option -> option.getId() == null ? Long.MAX_VALUE : option.getId()))
+                        .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
+                                option.getId(),
+                                option.getLabel(),
+                                option.getStartTime(),
+                                option.getEndTime()
+                        ))
+                        .toList())
+                .orElseGet(List::of);
     }
 
     private boolean canSubmit(Schedule schedule) {
@@ -334,7 +415,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission.getSubmittedAt(),
                 submission.getUpdatedAt(),
                 submission.getRevision(),
-                submission.getComment(),
+                submission.getPeriodComment(),
+                submission.getPeriodComment(),
                 toCellDtos(submission.getCells())
         );
     }
@@ -410,6 +492,18 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         } catch (DateTimeParseException ex) {
             throw new BadRequestException("Invalid " + field + " format, expected HH:mm");
         }
+    }
+
+    private String firstNonBlank(String first, String fallback) {
+        return isBlank(first) ? fallback : first;
+    }
+
+    private String normalizeText(String value, int maxLength, String fieldName) {
+        String normalized = trimToNull(value);
+        if (normalized != null && normalized.length() > maxLength) {
+            throw new BadRequestException(fieldName + " must be at most " + maxLength + " characters");
+        }
+        return normalized;
     }
 
     private String trimToNull(String value) {

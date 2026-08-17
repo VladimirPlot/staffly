@@ -13,6 +13,7 @@ type Props = {
   deletingId: number | null;
   positions: PositionDto[];
   onLoad: () => void;
+  onRetry: () => void;
   onCreate: (request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
   onUpdate: (templateId: number, request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
   onArchive: (templateId: number) => void;
@@ -26,6 +27,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
   deletingId,
   positions,
   onLoad,
+  onRetry,
   onCreate,
   onUpdate,
   onArchive,
@@ -50,8 +52,17 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
           </Button>
         </div>
         {loading && <div className="text-muted text-sm">Загрузка шаблонов...</div>}
-        {error && <div className="text-sm text-red-600">{error}</div>}
-        {!loading && templates.length === 0 && <div className="text-muted text-sm">Пока нет шаблонов сборки.</div>}
+        {error && (
+          <div className="space-y-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div>{error}</div>
+            <Button variant="outline" disabled={loading} onClick={onRetry}>
+              Повторить
+            </Button>
+          </div>
+        )}
+        {!loading && !error && templates.length === 0 && (
+          <div className="text-muted text-sm">Пока нет шаблонов сборки.</div>
+        )}
         <div className="space-y-3">
           {templates.map((item) => (
             <div key={item.id} className="border-subtle rounded-2xl border p-3">
@@ -61,7 +72,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
               <div className="text-muted mt-1 text-xs">
                 {(item.positionConfigs ?? [])
                   .slice(0, 3)
-                  .map((p) => p.positionName)
+                  .map((p) => p.positionNames.join(" + "))
                   .join(", ") || "—"}
               </div>
               <div className="mt-3 flex gap-2">

@@ -41,7 +41,7 @@ import type {
   TrainingMoveTarget,
   TrainingPermanentDeleteTarget,
 } from "../trainingFolderObjects";
-import { trainingObjectTitle } from "../trainingFolderObjects";
+import { trainingObjectActive, trainingObjectTitle } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
@@ -170,12 +170,18 @@ export default function QuestionBankRootPage() {
       const newIndex = objectIds.indexOf(overId);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
 
-      const nextObjects = arrayMove(rootObjects, oldIndex, newIndex);
+      const activeFolders = rootObjects.filter(trainingObjectActive);
+      const activeOldIndex = activeFolders.findIndex((object) => object.id === active.id);
+      const over = parseTrainingObjectId(overId);
+      const activeNewIndex = activeFolders.findIndex((object) => object.id === over?.id);
+      if (activeOldIndex === -1 || activeNewIndex === -1) return;
+      const nextObjects = arrayMove(activeFolders, activeOldIndex, activeNewIndex);
       try {
         await reorderTrainingObjects(restaurantId, {
           type: "QUESTION_BANK",
           folderId: null,
-          objects: nextObjects.map((object, index) => ({ kind: object.kind, id: object.id, sortOrder: index })),
+          kind: "FOLDER",
+          orderedIds: nextObjects.map((object) => object.id),
         });
         await reload();
       } catch (reorderError) {

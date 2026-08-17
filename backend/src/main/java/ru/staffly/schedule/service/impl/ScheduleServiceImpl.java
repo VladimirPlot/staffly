@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
@@ -18,6 +19,7 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -41,6 +43,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private static final int HISTORY_LIMIT = 20;
 
     private final ScheduleRepository schedules;
+    private final ScheduleBuildTemplateRepository buildTemplates;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleShiftRequestRepository shiftRequests;
@@ -302,6 +305,94 @@ public class ScheduleServiceImpl implements ScheduleService {
         return toDto(saved, days);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<AddableScheduleMemberDto> getAddableMembers(Long restaurantId, Long scheduleId, Long userId) {
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
+        scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
+
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertCanUpdateScheduleContent(schedule);
+
+        Set<Long> existingMemberIds = schedule.getRows().stream()
+                .map(ScheduleRow::getMemberId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        return findEligibleMembers(schedule).stream()
+                .filter(member -> member.getUser() != null && member.getPosition() != null)
+                .filter(member -> !existingMemberIds.contains(member.getId()))
+                .map(this::toAddableMemberDto)
+                .sorted(Comparator.comparing(AddableScheduleMemberDto::displayName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(AddableScheduleMemberDto::memberId))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long memberId) {
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
+        scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
+
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertCanUpdateScheduleContent(schedule);
+
+        RestaurantMember member = members.findById(memberId)
+                .filter(candidate -> Objects.equals(candidate.getRestaurant().getId(), restaurantId))
+                .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + memberId));
+        if (member.getUser() == null || member.getPosition() == null
+                || schedule.getPositionIds() == null
+                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
+            throw new BadRequestException("Сотрудник не подходит по должности для этого графика");
+        }
+        if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId))) {
+            throw new ConflictException("Сотрудник уже есть в графике");
+        }
+
+        int nextSortOrder = schedule.getRows().stream()
+                .mapToInt(ScheduleRow::getSortOrder)
+                .max()
+                .orElse(-1) + 1;
+        schedule.getRows().add(ScheduleRow.builder()
+                .schedule(schedule)
+                .memberId(member.getId())
+                .displayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""))
+                .positionId(member.getPosition().getId())
+                .positionName(member.getPosition().getName())
+                .sortOrder(nextSortOrder)
+                .build());
+
+        Schedule saved = schedules.save(schedule);
+        scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "Сотрудник добавлен в график");
+        return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
+    }
+
+    private List<RestaurantMember> findEligibleMembers(Schedule schedule) {
+        List<Long> allowedPositionIds = Optional.ofNullable(schedule.getPositionIds()).orElse(List.of()).stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (allowedPositionIds.isEmpty()) {
+            return List.of();
+        }
+        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                schedule.getRestaurant().getId(), allowedPositionIds
+        );
+    }
+
+    private AddableScheduleMemberDto toAddableMemberDto(RestaurantMember member) {
+        return new AddableScheduleMemberDto(
+                member.getId(),
+                member.getUser() == null
+                        ? ""
+                        : Optional.ofNullable(member.getUser().getFullName()).orElse(""),
+                member.getPosition().getId(),
+                member.getPosition().getName()
+        );
+    }
+
     private void assertCanUpdateScheduleContent(Schedule schedule) {
         if (schedule.getStatus() == ScheduleStatus.COLLECTING_PREFERENCES
                 || schedule.getStatus() == ScheduleStatus.PREFERENCES_CLOSED) {
@@ -331,7 +422,14 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
 
+        ScheduleBuildTemplate preferenceBuildTemplate = resolvePreferenceBuildTemplate(
+                restaurantId,
+                schedule,
+                request == null ? null : request.buildTemplateId()
+        );
+
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
+        schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
         schedule.setPreferenceCollectionStartedAt(now);
         schedule.setPreferenceDeadline(deadline);
         schedule.setPreferenceClosedAt(null);
@@ -347,6 +445,30 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
         notifyPreferenceCollectionStarted(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
+    }
+
+    private ScheduleBuildTemplate resolvePreferenceBuildTemplate(Long restaurantId, Schedule schedule, Long buildTemplateId) {
+        if (buildTemplateId == null) {
+            return null;
+        }
+        ScheduleBuildTemplate template = buildTemplates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(buildTemplateId, restaurantId)
+                .orElseThrow(() -> new BadRequestException("Активный шаблон сборки не найден"));
+        List<Long> schedulePositionIds = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        boolean hasSchedulePositionConfig = template.getPositionConfigs().stream()
+                .flatMap(config -> buildConfigPositionIds(config).stream())
+                .anyMatch(schedulePositionIds::contains);
+        if (!hasSchedulePositionConfig) {
+            throw new BadRequestException("Шаблон сборки не содержит настроек для позиций графика");
+        }
+        return template;
+    }
+
+    private List<Long> buildConfigPositionIds(ScheduleBuildPositionConfig config) {
+        return config.getPositions() == null ? List.of() : config.getPositions().stream()
+                .map(position -> position.getId())
+                .filter(Objects::nonNull)
+                .sorted()
+                .toList();
     }
 
     @Override
@@ -381,6 +503,9 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            return toDto(schedule, collectDays(schedule.getStartDate(), schedule.getEndDate()));
+        }
         if (schedule.getStatus() != ScheduleStatus.PREFERENCES_CLOSED) {
             throw new BadRequestException("Внести пожелания можно только после закрытия сбора пожеланий");
         }
@@ -700,13 +825,30 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
     }
 
+
+    private List<RestaurantMember> deduplicateMembersByUserId(List<RestaurantMember> source) {
+        if (source == null || source.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, RestaurantMember> byUserId = new LinkedHashMap<>();
+        for (RestaurantMember member : source) {
+            if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            byUserId.putIfAbsent(member.getUser().getId(), member);
+        }
+        return new ArrayList<>(byUserId.values());
+    }
+
     private void notifyPreferenceCollectionStarted(Schedule schedule, Long actorUserId) {
         if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
             return;
         }
-        List<RestaurantMember> targets = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                schedule.getRestaurant().getId(),
-                schedule.getPositionIds()
+        List<RestaurantMember> targets = deduplicateMembersByUserId(
+                members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                        schedule.getRestaurant().getId(),
+                        schedule.getPositionIds()
+                )
         );
         if (targets.isEmpty()) {
             return;
@@ -789,9 +931,14 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private ScheduleDto toDto(Schedule schedule, List<LocalDate> days) {
+        Set<Long> activeScheduleMemberIds = resolveActiveScheduleMemberIds(schedule);
+        List<ScheduleRow> visibleRows = schedule.getRows().stream()
+                .filter(row -> row.getMemberId() != null && activeScheduleMemberIds.contains(row.getMemberId()))
+                .toList();
+
         Map<String, String> cellValues = new HashMap<>();
         Map<String, ScheduleCellSource> cellSources = new HashMap<>();
-        schedule.getRows().forEach(row -> row.getCells().forEach(cell -> {
+        visibleRows.forEach(row -> row.getCells().forEach(cell -> {
             if (cell.getValue() == null || cell.getValue().isBlank()) {
                 return;
             }
@@ -804,7 +951,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .map(this::toDayDto)
                 .toList();
 
-        List<ScheduleRowDto> rowDtos = schedule.getRows().stream()
+        List<ScheduleRowDto> rowDtos = visibleRows.stream()
                 .sorted(Comparator.comparingInt(ScheduleRow::getSortOrder))
                 .map(row -> new ScheduleRowDto(
                         row.getId(),
@@ -838,8 +985,30 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceCollectionStartedAt(),
                 schedule.getPreferenceDeadline(),
                 schedule.getPreferenceClosedAt(),
-                schedule.getPreferenceAppliedAt()
+                schedule.getPreferenceAppliedAt(),
+                schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );
+    }
+
+    private Set<Long> resolveActiveScheduleMemberIds(Schedule schedule) {
+        if (schedule.getRestaurant() == null || schedule.getRestaurant().getId() == null) {
+            return Set.of();
+        }
+        List<Long> positionIds = schedule.getPositionIds() == null
+                ? List.of()
+                : schedule.getPositionIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (positionIds.isEmpty()) {
+            return Set.of();
+        }
+        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                        schedule.getRestaurant().getId(),
+                        positionIds
+                ).stream()
+                .map(RestaurantMember::getId)
+                .collect(Collectors.toSet());
     }
 
     private ScheduleDayDto toDayDto(LocalDate day) {

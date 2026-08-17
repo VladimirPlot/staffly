@@ -78,6 +78,13 @@ export type ScheduleDto = Omit<ScheduleData, "id" | "status"> &
     id: number;
   };
 
+export type AddableScheduleMember = {
+  memberId: number;
+  displayName: string;
+  positionId: number;
+  positionName: string;
+};
+
 export type SaveSchedulePayload = {
   title: string;
   config: ScheduleConfig;
@@ -95,9 +102,10 @@ export type CreateDraftScheduleRequest = SaveSchedulePayload;
 
 export type StartPreferenceCollectionRequest = {
   preferenceDeadline: string;
+  buildTemplateId?: number | null;
 };
 
-export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF" | "PREFER_WORK";
+export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF";
 
 export type SchedulePreferenceCellDto = {
   id: number | null;
@@ -127,6 +135,13 @@ export type SchedulePreferenceMemberDto = {
   positionName?: string | null;
 };
 
+export type SchedulePreferenceAllowedShiftOptionDto = {
+  id: number;
+  label?: string | null;
+  startTime: string;
+  endTime: string;
+};
+
 export type SchedulePreferenceMyResponse = {
   scheduleId: number;
   title: string;
@@ -140,8 +155,10 @@ export type SchedulePreferenceMyResponse = {
   updatedAt?: string | null;
   revision: number;
   member: SchedulePreferenceMemberDto;
+  allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
   cells: SchedulePreferenceCellDto[];
   comment?: string | null;
+  periodComment?: string | null;
 };
 
 export type SchedulePreferenceParticipantDto = {
@@ -177,6 +194,7 @@ export type SchedulePreferenceSubmissionDto = {
   updatedAt?: string | null;
   revision: number;
   comment?: string | null;
+  periodComment?: string | null;
   cells: SchedulePreferenceCellDto[];
 };
 
@@ -191,6 +209,7 @@ export type SchedulePreferenceSubmissionsResponse = {
 export type UpsertMySchedulePreferenceRequest = {
   cells: SchedulePreferenceCellRequest[];
   comment?: string | null;
+  periodComment?: string | null;
 };
 export type ScheduleBuildTargetPattern = "NONE" | "TWO_TWO" | "THREE_THREE" | "FIVE_TWO";
 
@@ -212,17 +231,29 @@ export type ScheduleBuildCoverageRuleDto = {
   sortOrder: number;
 };
 
+export type ScheduleBuildMinRestMode = "SOFT" | "STRICT";
+
+export type ScheduleBuildCoverageDateOverrideDto = {
+  id: number;
+  date: string;
+  shiftOptionIndex: number;
+  requiredCount: number;
+};
+
 export type ScheduleBuildPositionConfigDto = {
   id: number;
-  positionId: number;
-  positionName: string;
+  positionIds: number[];
+  positionNames: string[];
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours: number | null;
+  minRestMode: ScheduleBuildMinRestMode;
   maxShiftsPerPeriod: number | null;
+  heavyDaysOfWeek: number[];
   shiftOptions: ScheduleBuildShiftOptionDto[];
   coverageRules: ScheduleBuildCoverageRuleDto[];
+  coverageDateOverrides: ScheduleBuildCoverageDateOverrideDto[];
   sortOrder: number;
 };
 
@@ -237,7 +268,6 @@ export type ScheduleBuildTemplateDto = {
 };
 
 export type SaveScheduleBuildShiftOptionRequest = {
-  id?: number;
   startTime: string;
   endTime: string;
   label?: string | null;
@@ -254,16 +284,25 @@ export type SaveScheduleBuildCoverageRuleRequest = {
   sortOrder: number;
 };
 
+export type SaveScheduleBuildCoverageDateOverrideRequest = {
+  date: string;
+  shiftOptionIndex: number;
+  requiredCount: number;
+};
+
 export type SaveScheduleBuildPositionConfigRequest = {
   id?: number;
-  positionId: number;
+  positionIds: number[];
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours?: number | null;
+  minRestMode?: ScheduleBuildMinRestMode | null;
   maxShiftsPerPeriod?: number | null;
+  heavyDaysOfWeek?: number[];
   shiftOptions: SaveScheduleBuildShiftOptionRequest[];
   coverageRules: SaveScheduleBuildCoverageRuleRequest[];
+  coverageDateOverrides: SaveScheduleBuildCoverageDateOverrideRequest[];
   sortOrder: number;
 };
 
@@ -271,24 +310,57 @@ export type PreviewScheduleAutoBuildRequest = {
   templateId: number;
 };
 
+export type AdjustedScheduleAutoBuildAssignment = {
+  memberId: number;
+  memberName?: string | null;
+  positionConfigId: number;
+  positionId: number;
+  day: string;
+  value?: string | null;
+  shiftOptionId?: number | null;
+  shiftLabel?: string | null;
+  startTime: string;
+  endTime: string;
+  reason?: string | null;
+  matchStatus?: ScheduleAutoBuildMatchStatus;
+  warningMessage?: string | null;
+};
+
 export type ApplyScheduleAutoBuildRequest = {
   templateId: number;
+  adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[];
 };
+
+export type ScheduleAutoBuildMatchStatus =
+  | "EXACT_INTERVAL_PREFERENCE"
+  | "COVERING_INTERVAL_PREFERENCE"
+  | "FULL_DAY_POSITIVE"
+  | "NO_PREFERENCE"
+  | "PARTIAL_INTERVAL_FALLBACK"
+  | "SOFT_NEGATIVE_FALLBACK"
+  | "HARD_NEGATIVE_FALLBACK"
+  | "MANUAL_OVERRIDE";
 
 export type ScheduleAutoBuildCellPreviewDto = {
   memberId: number | null;
   memberName: string | null;
+  positionId: number | null;
   day: string;
   value: string | null;
   shiftOptionId: number | null;
   shiftLabel: string | null;
+  startTime: string | null;
+  endTime: string | null;
   reason: string | null;
+  matchStatus: ScheduleAutoBuildMatchStatus;
+  warningMessage: string | null;
   warnings: string[];
 };
 
 export type ScheduleAutoBuildPositionPreviewDto = {
-  positionId: number;
+  positionConfigId: number;
   positionName: string;
+  positionIds: number[];
   cells: ScheduleAutoBuildCellPreviewDto[];
   warnings: string[];
   totalAssignments: number;
@@ -297,12 +369,40 @@ export type ScheduleAutoBuildPositionPreviewDto = {
   negativeAssignmentsCount: number;
 };
 
+export type ScheduleAutoBuildUncoveredSlotDto = {
+  date: string;
+  positionConfigId: number;
+  positionIds: number[];
+  positionName: string;
+  startTime: string;
+  endTime: string;
+  requiredCount: number;
+  assignedCount: number;
+};
+
+export type ScheduleAutoBuildRejectionHintDto = {
+  memberId: number;
+  memberName?: string | null;
+  date: string;
+  positionConfigId: number;
+  positionName?: string | null;
+  shiftOptionId?: number | null;
+  shiftLabel?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  reason: "MAX_SHIFTS_LIMIT";
+  message: string;
+};
+
 export type ScheduleAutoBuildPreviewResponse = {
   scheduleId: number;
   templateId: number;
+  effectiveBuildTemplateId?: number | null;
   templateName: string;
   positions: ScheduleAutoBuildPositionPreviewDto[];
   warnings: string[];
+  uncoveredSlots: ScheduleAutoBuildUncoveredSlotDto[];
+  rejectionHints: ScheduleAutoBuildRejectionHintDto[];
   totalAssignments: number;
   warningsCount: number;
   unfilledCount: number;
@@ -326,6 +426,7 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
     preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
     preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
     preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+    preferenceBuildTemplateId: data.preferenceBuildTemplateId ?? null,
   };
 }
 
@@ -411,8 +512,11 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
     updatedAt: nullableTimestamp(data.updatedAt),
     positionConfigs: (data.positionConfigs ?? []).map((config) => ({
       ...config,
+      positionIds: config.positionIds ?? [],
+      positionNames: config.positionNames ?? [],
       shiftOptions: config.shiftOptions ?? [],
       coverageRules: config.coverageRules ?? [],
+      coverageDateOverrides: config.coverageDateOverrides ?? [],
     })),
   };
 }
@@ -428,6 +532,27 @@ export async function updateSchedule(
   payload: SaveSchedulePayload,
 ): Promise<ScheduleData> {
   const { data } = await api.put<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, payload);
+  return mapSchedule(data);
+}
+
+export async function getAddableScheduleMembers(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<AddableScheduleMember[]> {
+  const { data } = await api.get<AddableScheduleMember[]>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/addable-members`,
+  );
+  return data ?? [];
+}
+
+export async function addScheduleMember(
+  restaurantId: number,
+  scheduleId: number,
+  memberId: number,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/rows`, {
+    memberId,
+  });
   return mapSchedule(data);
 }
 
@@ -487,11 +612,16 @@ export async function previewScheduleAutoBuild(
   return {
     scheduleId: data.scheduleId,
     templateId: data.templateId,
+    effectiveBuildTemplateId: data.effectiveBuildTemplateId ?? data.templateId ?? null,
     templateName: data.templateName,
     positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
       ...position,
       cells: (position.cells ?? []).map((cell) => ({
         ...cell,
+        startTime: cell.startTime ?? null,
+        endTime: cell.endTime ?? null,
+        matchStatus: cell.matchStatus ?? "NO_PREFERENCE",
+        warningMessage: cell.warningMessage ?? null,
         warnings: cell.warnings ?? [],
       })),
       warnings: position.warnings ?? [],
@@ -501,6 +631,8 @@ export async function previewScheduleAutoBuild(
       negativeAssignmentsCount: position.negativeAssignmentsCount ?? 0,
     })),
     warnings: data.warnings ?? [],
+    uncoveredSlots: data.uncoveredSlots ?? [],
+    rejectionHints: data.rejectionHints ?? [],
     totalAssignments: data.totalAssignments ?? 0,
     warningsCount: data.warningsCount ?? 0,
     unfilledCount: data.unfilledCount ?? 0,

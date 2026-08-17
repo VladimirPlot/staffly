@@ -20,6 +20,9 @@ type ScheduleDetailHeaderProps = {
   onEnterEditMode: () => void;
   onDelete: () => void;
   onOpenOwnerDialog: () => void;
+  showPublishedDiagnosticsToggle: boolean;
+  showPublishedDiagnostics: boolean;
+  onTogglePublishedDiagnostics: () => void;
   onOpenPreferences: () => void;
   canViewPreferences: boolean;
   lifecycleAction: "startPreferences" | "closePreferences" | "applyPreferences" | "publish" | null;
@@ -46,6 +49,9 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onEnterEditMode,
   onDelete,
   onOpenOwnerDialog,
+  showPublishedDiagnosticsToggle,
+  showPublishedDiagnostics,
+  onTogglePublishedDiagnostics,
   onOpenPreferences,
   canViewPreferences,
   lifecycleAction,
@@ -63,12 +69,12 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
   onOpenSwap,
 }) => {
   const ownerName = schedule.owner?.displayName?.trim();
-  const ownerMeta = [schedule.owner?.role, schedule.owner?.positionName]
-    .map((value) => String(value ?? "").trim())
-    .filter(Boolean);
+  const ownerMeta = [schedule.owner?.positionName].map((value) => String(value ?? "").trim()).filter(Boolean);
   const createdByName = schedule.createdBy?.displayName?.trim();
   const lifecycleDisabled = deleting || lifecycleAction != null;
   const canEditContent = canEditScheduleContent(schedule.status);
+  const applyPreferencesLabel =
+    schedule.status === "DRAFT_FROM_PREFERENCES" ? "Сборка по пожеланиям" : "Перейти к сборке";
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -94,12 +100,17 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
       <div className="flex flex-wrap items-center gap-2">
         {canManage && scheduleReadOnly && scheduleId && (
           <>
+            {showPublishedDiagnosticsToggle && (
+              <Button type="button" variant="outline" onClick={onTogglePublishedDiagnostics} disabled={deleting}>
+                {showPublishedDiagnostics ? "Скрыть пожелания" : "Показать пожелания"}
+              </Button>
+            )}
             <Button variant="outline" onClick={onOpenOwnerDialog} disabled={deleting}>
               Сменить ответственного
             </Button>
             {canViewPreferences && (
               <Button variant="outline" onClick={onOpenPreferences} disabled={deleting}>
-                Пожелания
+                Пожелания сотрудников
               </Button>
             )}
             {isDraftSchedule(schedule.status) && (
@@ -114,7 +125,7 @@ const ScheduleDetailHeader: React.FC<ScheduleDetailHeaderProps> = ({
             )}
             {canApplySchedulePreferences(schedule.status) && (
               <Button variant="outline" onClick={onOpenApplyPreferencesDialog} disabled={lifecycleDisabled}>
-                {lifecycleAction === "applyPreferences" ? "Подготовка…" : "Перейти к сборке"}
+                {lifecycleAction === "applyPreferences" ? "Подготовка…" : applyPreferencesLabel}
               </Button>
             )}
             {canPublishSchedule(schedule.status) && (

@@ -8,6 +8,7 @@ type ConfirmDialogProps = {
   description?: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
+  tone?: "default" | "danger";
   confirming?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -19,6 +20,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   description,
   confirmText = "Подтвердить",
   cancelText = "Отмена",
+  tone = "default",
   confirming = false,
   onConfirm,
   onCancel,
@@ -46,8 +48,10 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             {cancelText}
           </Button>
           <Button
+            variant={tone === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
             disabled={confirming}
+            isLoading={confirming}
             className="w-full"
           >
             {confirming ? "Подождите…" : confirmText}

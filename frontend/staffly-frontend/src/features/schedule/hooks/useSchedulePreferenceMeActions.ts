@@ -12,12 +12,14 @@ type UseSchedulePreferenceMeActionsParams = {
   restaurantId: number | null;
   onScheduleChanged: (schedule: null) => void;
   onClearScheduleNotices: () => void;
+  onPreferenceSubmitted?: () => void | Promise<void>;
 };
 
 export default function useSchedulePreferenceMeActions({
   restaurantId,
   onScheduleChanged,
   onClearScheduleNotices,
+  onPreferenceSubmitted,
 }: UseSchedulePreferenceMeActionsParams) {
   const [preferenceViewScheduleId, setPreferenceViewScheduleId] = React.useState<number | null>(null);
   const [preferenceData, setPreferenceData] = React.useState<SchedulePreferenceMyResponse | null>(null);
@@ -88,13 +90,23 @@ export default function useSchedulePreferenceMeActions({
         const data = await upsertMySchedulePreference(restaurantId, preferenceViewScheduleId, request);
         setPreferenceData(data);
         setMessage("Пожелания отправлены");
+        try {
+          await onPreferenceSubmitted?.();
+        } catch (reloadError: unknown) {
+          setError(
+            getFriendlyScheduleErrorMessage(
+              reloadError,
+              "Пожелания отправлены, но не удалось обновить список графиков",
+            ),
+          );
+        }
       } catch (e: unknown) {
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось отправить пожелания"));
       } finally {
         setSaving(false);
       }
     },
-    [preferenceViewScheduleId, restaurantId],
+    [onPreferenceSubmitted, preferenceViewScheduleId, restaurantId],
   );
 
   return React.useMemo(

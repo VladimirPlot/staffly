@@ -1,12 +1,14 @@
 package ru.staffly.schedule.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
@@ -34,6 +36,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     public ScheduleAutoBuildPreviewResponse preview(Long restaurantId, Long scheduleId, Long actorUserId, PreviewScheduleAutoBuildRequest request) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
+        validateRequest(request);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
@@ -41,10 +44,10 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
             throw new BadRequestException("Preview автосборки доступен только для статусов PREFERENCES_CLOSED или DRAFT_FROM_PREFERENCES");
         }
 
-        ScheduleBuildTemplate template = templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(request.templateId(), restaurantId)
-                .orElseThrow(() -> new NotFoundException("Active template not found: " + request.templateId()));
+        ScheduleBuildTemplate template = resolveEffectiveTemplate(restaurantId, schedule, request.templateId());
+        initializeTemplateCollections(template);
 
-        Set<Long> templatePositions = template.getPositionConfigs().stream().map(pc -> pc.getPosition().getId()).collect(java.util.stream.Collectors.toSet());
+        Set<Long> templatePositions = template.getPositionConfigs().stream().flatMap(pc -> configPositionIds(pc).stream()).collect(java.util.stream.Collectors.toSet());
         List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
         if (Collections.disjoint(templatePositions, schedulePositions)) {
             throw new BadRequestException("Шаблон не содержит конфигураций для позиций графика");
@@ -54,9 +57,12 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         return new ScheduleAutoBuildPreviewResponse(
                 plan.scheduleId(),
                 plan.templateId(),
+                plan.templateId(),
                 plan.templateName(),
                 plan.positions().stream().map(this::toPositionDto).toList(),
                 plan.warnings(),
+                plan.uncoveredSlots().stream().map(this::toUncoveredSlotDto).toList(),
+                plan.rejectionHints().stream().map(this::toRejectionHintDto).toList(),
                 plan.totalAssignments(),
                 plan.warningsCount(),
                 plan.unfilledCount(),
@@ -64,10 +70,48 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         );
     }
 
+    private ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
+        ScheduleBuildTemplate preferenceTemplate = schedule.getPreferenceBuildTemplate();
+        if (preferenceTemplate != null) {
+            Long preferenceTemplateId = preferenceTemplate.getId();
+            if (requestedTemplateId != null && !preferenceTemplateId.equals(requestedTemplateId)) {
+                throw new BadRequestException("Автосборка использует шаблон, выбранный при сборе пожеланий. Передан другой templateId: " + requestedTemplateId);
+            }
+            return templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(preferenceTemplateId, restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Active preference template not found: " + preferenceTemplateId));
+        }
+
+        return templates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(requestedTemplateId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Active template not found: " + requestedTemplateId));
+    }
+
+    private void initializeTemplateCollections(ScheduleBuildTemplate template) {
+        for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
+            Hibernate.initialize(positionConfig.getPositions());
+            Hibernate.initialize(positionConfig.getShiftOptions());
+            Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
+        }
+    }
+
+    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
+        return config.getPositions() == null ? List.of() : config.getPositions().stream().map(position -> position.getId())
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
+    }
+
+    private void validateRequest(PreviewScheduleAutoBuildRequest request) {
+        if (request == null || request.templateId() == null) {
+            throw new BadRequestException("templateId is required");
+        }
+    }
+
     private ScheduleAutoBuildPositionPreviewDto toPositionDto(ScheduleAutoBuildPlanner.PositionPlan plan) {
         return new ScheduleAutoBuildPositionPreviewDto(
-                plan.positionId(),
+                plan.positionConfigId(),
                 plan.positionName(),
+                plan.positionIds(),
                 plan.cells().stream().map(this::toCellDto).toList(),
                 plan.warnings(),
                 plan.totalAssignments(),
@@ -78,6 +122,49 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     }
 
     private ScheduleAutoBuildCellPreviewDto toCellDto(ScheduleAutoBuildPlanner.AssignmentPlan a) {
-        return new ScheduleAutoBuildCellPreviewDto(a.memberId(), a.memberName(), a.day(), a.value(), a.shiftOptionId(), a.shiftLabel(), a.reason(), a.warnings());
+        return new ScheduleAutoBuildCellPreviewDto(
+                a.memberId(),
+                a.memberName(),
+                a.positionId(),
+                a.day(),
+                a.value(),
+                a.shiftOptionId(),
+                a.shiftLabel(),
+                a.startTime(),
+                a.endTime(),
+                a.reason(),
+                a.matchStatus(),
+                a.warningMessage(),
+                a.warnings()
+        );
+    }
+
+    private ScheduleAutoBuildRejectionHintDto toRejectionHintDto(ScheduleAutoBuildPlanner.RejectionHintPlan hint) {
+        return new ScheduleAutoBuildRejectionHintDto(
+                hint.memberId(),
+                hint.memberName(),
+                hint.date(),
+                hint.positionConfigId(),
+                hint.positionName(),
+                hint.shiftOptionId(),
+                hint.shiftLabel(),
+                hint.startTime(),
+                hint.endTime(),
+                hint.reason(),
+                hint.message()
+        );
+    }
+
+    private ScheduleAutoBuildUncoveredSlotDto toUncoveredSlotDto(ScheduleAutoBuildPlanner.UncoveredSlotPlan slot) {
+        return new ScheduleAutoBuildUncoveredSlotDto(
+                slot.date(),
+                slot.positionConfigId(),
+                slot.positionIds(),
+                slot.positionName(),
+                slot.startTime(),
+                slot.endTime(),
+                slot.requiredCount(),
+                slot.assignedCount()
+        );
     }
 }

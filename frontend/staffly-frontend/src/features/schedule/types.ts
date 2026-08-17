@@ -23,6 +23,7 @@ export type ScheduleLifecycleFields = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  preferenceBuildTemplateId?: number | null;
 };
 
 export type ScheduleConfig = {
@@ -77,6 +78,7 @@ export type ScheduleData = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  preferenceBuildTemplateId?: number | null;
   title: string;
   config: ScheduleConfig;
   days: ScheduleDay[];
@@ -91,3 +93,5 @@ export type ScheduleData = {
 export type ScheduleCellKey = `${number}:${string}`;
 
 export type SchedulePreferenceHintsByCellKey = Record<string, import("./api").SchedulePreferenceCellDto[]>;
+
+export type ScheduleRejectionHintsByCellKey = Record<string, import("./api").ScheduleAutoBuildRejectionHintDto[]>;

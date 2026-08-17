@@ -3,11 +3,13 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
+import { useScheduleTableZoom } from "../hooks/useScheduleTableZoom";
 import {
   type ScheduleData,
   type ScheduleCellChangeOptions,
   type ScheduleCellKey,
   type SchedulePreferenceHintsByCellKey,
+  type ScheduleRejectionHintsByCellKey,
 } from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 
@@ -25,8 +27,14 @@ type ScheduleTableSectionProps = {
   onCancelEdit: () => void;
   onSave: () => void;
   onSaveDraft: () => void;
+  showAddMember: boolean;
+  addMemberLoading: boolean;
+  onOpenAddMember: () => void;
   onCellChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
+  preferenceCommentsByMemberId?: Record<number, string>;
+  rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
+  showCellDiagnostics?: boolean;
 };
 
 const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
@@ -43,10 +51,21 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   onCancelEdit,
   onSave,
   onSaveDraft,
+  showAddMember,
+  addMemberLoading,
+  onOpenAddMember,
   onCellChange,
   preferenceHintsByCellKey,
+  preferenceCommentsByMemberId,
+  rejectionHintsByCellKey,
+  showCellDiagnostics = false,
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
+  const showTableZoomControls = schedule.rows.length > 0 && !loading && !error && !scheduleLoading;
+  const { zoom, zoomScale, isDefaultZoom, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } =
+    useScheduleTableZoom({
+      readOnly: scheduleReadOnly,
+    });
   const saveDisabled = saving || savingDraft;
   const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
   const reviewSummary = React.useMemo(() => {
@@ -93,6 +112,16 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
     <>
       {showControls && (
         <div className="flex flex-wrap justify-end gap-2">
+          {scheduleId && showAddMember && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onOpenAddMember}
+              disabled={saveDisabled || addMemberLoading}
+            >
+              {addMemberLoading ? "Загрузка…" : "Добавить сотрудника"}
+            </Button>
+          )}
           {scheduleId && (
             <Button
               variant="ghost"
@@ -113,9 +142,11 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
               {savingDraft ? "Сохранение…" : "Сохранить черновик"}
             </Button>
           )}
-          <Button onClick={onSave} disabled={saveDisabled} className={saving ? "cursor-wait opacity-70" : ""}>
-            {saving ? "Сохранение…" : scheduleId ? "Сохранить изменения" : "Сохранить график"}
-          </Button>
+          {scheduleId && (
+            <Button onClick={onSave} disabled={saveDisabled} className={saving ? "cursor-wait opacity-70" : ""}>
+              {saving ? "Сохранение…" : "Сохранить изменения"}
+            </Button>
+          )}
         </div>
       )}
 
@@ -141,9 +172,36 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
           </div>
         )}
 
-        {scheduleReadOnly && (
-          <div className="text-muted mb-3 text-xs font-medium tracking-wide uppercase">
-            Просмотр сохранённого графика
+        {showTableZoomControls && (
+          <div className="border-subtle bg-app mb-3 rounded-2xl border px-3 py-3">
+            <div className="grid grid-cols-[auto_auto] items-center gap-3 lg:grid-cols-[auto_1fr_auto_auto]">
+              <span className="text-strong shrink-0 text-sm font-medium">Масштаб</span>
+
+              <div className="justify-self-end lg:col-start-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={isDefaultZoom ? showFullPeriod : resetZoom}
+                >
+                  {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
+                </Button>
+              </div>
+
+              <div className="col-span-2 flex w-full items-center gap-2 lg:col-span-1 lg:col-start-4 lg:w-[16rem]">
+                <input
+                  type="range"
+                  min={minZoom}
+                  max={maxZoom}
+                  step={zoomStep}
+                  value={zoom}
+                  onChange={(event) => setZoom(Number(event.target.value))}
+                  className="min-w-0 flex-1 accent-[var(--staffly-text-strong)]"
+                  aria-label="Масштаб таблицы"
+                />
+                <span className="text-strong w-10 shrink-0 text-right text-xs tabular-nums">{zoom}%</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -158,7 +216,11 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                 data={schedule}
                 onChange={onCellChange}
                 readOnly={scheduleReadOnly}
-                preferenceHintsByCellKey={preferenceHintsByCellKey}
+                preferenceHintsByCellKey={showCellDiagnostics ? preferenceHintsByCellKey : undefined}
+                preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
+                rejectionHintsByCellKey={showCellDiagnostics ? rejectionHintsByCellKey : undefined}
+                showCellDiagnostics={showCellDiagnostics}
+                zoomScale={zoomScale}
               />
             </div>
           </div>

@@ -6,6 +6,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.schedule.dto.ChangeScheduleOwnerRequest;
+import ru.staffly.schedule.dto.AddScheduleMemberRequest;
+import ru.staffly.schedule.dto.AddableScheduleMemberDto;
 import ru.staffly.schedule.dto.SaveScheduleRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
@@ -63,6 +65,23 @@ public class ScheduleController {
                               @AuthenticationPrincipal UserPrincipal principal,
                               @Valid @RequestBody SaveScheduleRequest request) {
         return schedules.update(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/schedules/{scheduleId}/addable-members")
+    public List<AddableScheduleMemberDto> getAddableMembers(@PathVariable Long restaurantId,
+                                                             @PathVariable Long scheduleId,
+                                                             @AuthenticationPrincipal UserPrincipal principal) {
+        return schedules.getAddableMembers(restaurantId, scheduleId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/schedules/{scheduleId}/rows")
+    public ScheduleDto addMember(@PathVariable Long restaurantId,
+                                 @PathVariable Long scheduleId,
+                                 @AuthenticationPrincipal UserPrincipal principal,
+                                 @Valid @RequestBody AddScheduleMemberRequest request) {
+        return schedules.addMember(restaurantId, scheduleId, principal.userId(), request.memberId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

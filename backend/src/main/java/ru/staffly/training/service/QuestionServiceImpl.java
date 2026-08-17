@@ -55,7 +55,9 @@ public class QuestionServiceImpl implements QuestionService {
                 .title(request.title().trim())
                 .prompt(request.prompt().trim())
                 .explanation(request.explanation())
-                .sortOrder(request.sortOrder() == null ? 0 : request.sortOrder())
+                .sortOrder(request.sortOrder() == null
+                        ? nextQuestionSortOrder(restaurantId, folder.getId())
+                        : normalizeSortOrder(request.sortOrder()))
                 .active(true)
                 .build());
 
@@ -71,17 +73,28 @@ public class QuestionServiceImpl implements QuestionService {
         var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
         assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
 
+        boolean wasActive = entity.isActive();
+        boolean willBeActive = request.active() == null ? wasActive : request.active();
+        var currentFolder = entity.getFolder();
+        boolean folderChanged = request.folderId() != null
+                && !Objects.equals(request.folderId(), currentFolder.getId());
+        var targetFolder = folderChanged
+                ? requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId())
+                : currentFolder;
+        int targetSortOrder = request.sortOrder() != null
+                ? normalizeSortOrder(request.sortOrder())
+                : folderChanged || (!wasActive && willBeActive)
+                        ? nextQuestionSortOrder(restaurantId, targetFolder.getId())
+                        : entity.getSortOrder();
+
         entity.setTitle(request.title().trim());
         entity.setPrompt(request.prompt().trim());
         entity.setExplanation(request.explanation());
         entity.setType(request.type());
         entity.setQuestionGroup(request.questionGroup());
-        entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : request.sortOrder());
-        entity.setActive(request.active() == null ? entity.isActive() : request.active());
-
-        if (request.folderId() != null && !Objects.equals(request.folderId(), entity.getFolder().getId())) {
-            entity.setFolder(requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId()));
-        }
+        entity.setFolder(targetFolder);
+        entity.setSortOrder(targetSortOrder);
+        entity.setActive(willBeActive);
 
         nestedPersistence.replaceNested(entity, request.options(), request.matchPairs(), request.blanks());
         return toDtos(List.of(entity)).get(0);
@@ -102,7 +115,7 @@ public class QuestionServiceImpl implements QuestionService {
         }
         entity.setFolder(folder);
         entity.setSortOrder(request.sortOrder() == null
-                ? nextSortOrder(restaurantId, folder.getId())
+                ? nextQuestionSortOrder(restaurantId, folder.getId())
                 : normalizeSortOrder(request.sortOrder()));
         return toDtos(List.of(entity)).get(0);
     }
@@ -119,7 +132,10 @@ public class QuestionServiceImpl implements QuestionService {
     @Transactional
     public TrainingQuestionDto restoreQuestion(Long restaurantId, Long userId, Long questionId) {
         var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
-        entity.setActive(true);
+        if (!entity.isActive()) {
+            entity.setSortOrder(nextQuestionSortOrder(restaurantId, entity.getFolder().getId()));
+            entity.setActive(true);
+        }
         return toDtos(List.of(entity)).get(0);
     }
 
@@ -157,8 +173,8 @@ public class QuestionServiceImpl implements QuestionService {
         return folder;
     }
 
-    private int nextSortOrder(Long restaurantId, Long folderId) {
-        return java.util.Optional.ofNullable(questions.maxSortOrderInFolder(restaurantId, folderId)).orElse(-1) + 1;
+    private int nextQuestionSortOrder(Long restaurantId, Long folderId) {
+        return java.util.Optional.ofNullable(questions.maxActiveSortOrderInFolder(restaurantId, folderId)).orElse(-1) + 1;
     }
 
     private int normalizeSortOrder(Integer value) {

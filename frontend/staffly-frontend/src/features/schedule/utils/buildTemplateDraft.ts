@@ -1,4 +1,9 @@
-import type { SaveScheduleBuildTemplateRequest, ScheduleBuildTargetPattern, ScheduleBuildTemplateDto } from "../api";
+import type {
+  SaveScheduleBuildTemplateRequest,
+  ScheduleBuildMinRestMode,
+  ScheduleBuildTargetPattern,
+  ScheduleBuildTemplateDto,
+} from "../api";
 
 export type ScheduleBuildShiftOptionDraft = {
   startTime: string;
@@ -6,6 +11,12 @@ export type ScheduleBuildShiftOptionDraft = {
   label: string;
   isFullShift: boolean;
   sortOrder: number;
+};
+
+export type ScheduleBuildCoverageDateOverrideDraft = {
+  date: string;
+  shiftOptionIndex: number;
+  requiredCount: number;
 };
 
 export type ScheduleBuildCoverageRuleDraft = {
@@ -17,21 +28,41 @@ export type ScheduleBuildCoverageRuleDraft = {
 };
 
 export type ScheduleBuildPositionConfigDraft = {
-  positionId: number | "";
+  positionIds: number[];
   fullShiftStart: string;
   fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours: number | "";
+  minRestMode: ScheduleBuildMinRestMode;
   maxShiftsPerPeriod: number | "";
+  heavyDaysOfWeek: number[];
   sortOrder: number;
   shiftOptions: ScheduleBuildShiftOptionDraft[];
   coverageRules: ScheduleBuildCoverageRuleDraft[];
+  coverageDateOverrides: ScheduleBuildCoverageDateOverrideDraft[];
 };
 
 export type ScheduleBuildTemplateDraft = {
   name: string;
   description: string;
   positionConfigs: ScheduleBuildPositionConfigDraft[];
+};
+
+export const SCHEDULE_BUILD_TIME_STEP_SECONDS = 15 * 60;
+
+const TIME_MULTIPLE_OF_15_MINUTES_ERROR = "Время должно быть кратно 15 минутам.";
+
+export const isTimeMultipleOf15Minutes = (time: string): boolean => {
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+  if (!match) return false;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = match[3] ? Number(match[3]) : 0;
+
+  if (hours > 23 || minutes > 59 || seconds > 59) return false;
+
+  return (hours * 60 * 60 + minutes * 60 + seconds) % SCHEDULE_BUILD_TIME_STEP_SECONDS === 0;
 };
 
 export const createShiftOptionDraft = (): ScheduleBuildShiftOptionDraft => ({
@@ -51,27 +82,34 @@ export const createCoverageRuleDraft = (): ScheduleBuildCoverageRuleDraft => ({
 });
 
 export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft => ({
-  positionId: "",
+  positionIds: [],
   fullShiftStart: "",
   fullShiftEnd: "",
   targetPattern: "NONE",
   minRestHours: 12,
+  minRestMode: "SOFT",
   maxShiftsPerPeriod: 5,
+  heavyDaysOfWeek: [],
   sortOrder: 0,
   shiftOptions: [createShiftOptionDraft()],
   coverageRules: [],
+  coverageDateOverrides: [],
 });
 
 export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): ScheduleBuildTemplateDraft => ({
   name: template?.name ?? "",
   description: template?.description ?? "",
   positionConfigs: template?.positionConfigs?.map((config) => ({
-    positionId: config.positionId,
+    positionIds: config.positionIds ?? [],
     fullShiftStart: config.fullShiftStart,
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours ?? "",
+    minRestMode: config.minRestMode ?? "SOFT",
     maxShiftsPerPeriod: config.maxShiftsPerPeriod ?? "",
+    heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek ?? [])]
+      .filter((day) => day >= 1 && day <= 7)
+      .sort((a, b) => a - b),
     sortOrder: config.sortOrder,
     shiftOptions: (config.shiftOptions ?? []).map((option) => ({
       startTime: option.startTime,
@@ -87,6 +125,11 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       requiredCount: rule.requiredCount,
       sortOrder: rule.sortOrder,
     })),
+    coverageDateOverrides: (config.coverageDateOverrides ?? []).map((override) => ({
+      date: override.date,
+      shiftOptionIndex: override.shiftOptionIndex,
+      requiredCount: override.requiredCount,
+    })),
   })) ?? [createPositionConfigDraft()],
 });
 
@@ -94,12 +137,16 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
   name: draft.name.trim(),
   description: draft.description.trim() ? draft.description.trim() : null,
   positionConfigs: draft.positionConfigs.map((config, index) => ({
-    positionId: Number(config.positionId),
+    positionIds: [...new Set(config.positionIds)].sort((a, b) => a - b),
     fullShiftStart: config.fullShiftStart,
     fullShiftEnd: config.fullShiftEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
+    minRestMode: config.minRestMode,
     maxShiftsPerPeriod: config.maxShiftsPerPeriod === "" ? null : Number(config.maxShiftsPerPeriod),
+    heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek ?? [])]
+      .filter((day) => day >= 1 && day <= 7)
+      .sort((a, b) => a - b),
     sortOrder: index,
     shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
       startTime: option.startTime,
@@ -115,6 +162,16 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       requiredCount: Number(rule.requiredCount) || 0,
       sortOrder: ruleIndex,
     })),
+    coverageDateOverrides: config.coverageDateOverrides
+      .filter(
+        (override) =>
+          override.date && override.shiftOptionIndex >= 0 && override.shiftOptionIndex < config.shiftOptions.length,
+      )
+      .map((override) => ({
+        date: override.date,
+        shiftOptionIndex: override.shiftOptionIndex,
+        requiredCount: Number(override.requiredCount) || 0,
+      })),
   })),
 });
 
@@ -122,13 +179,37 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
   if (!draft.name.trim()) return "Укажите название шаблона";
   if (draft.positionConfigs.length === 0) return "Добавьте хотя бы одну должность";
 
+  const usedPositionIds = new Set<number>();
+  for (let i = 0; i < draft.positionConfigs.length; i++) {
+    for (const positionId of draft.positionConfigs[i].positionIds) {
+      if (usedPositionIds.has(positionId)) return "Одна должность не может входить в два блока шаблона";
+      usedPositionIds.add(positionId);
+    }
+  }
+
   for (let i = 0; i < draft.positionConfigs.length; i++) {
     const config = draft.positionConfigs[i];
-    if (!config.positionId) return `Укажите должность #${i + 1}`;
-    if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите полную смену для должности #${i + 1}`;
+    if (config.positionIds.length === 0) return `Укажите хотя бы одну должность #${i + 1}`;
+    if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите рабочий диапазон для должности #${i + 1}`;
+    if (!isTimeMultipleOf15Minutes(config.fullShiftStart) || !isTimeMultipleOf15Minutes(config.fullShiftEnd)) {
+      return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
+    }
     if ((config.shiftOptions ?? []).length === 0) return `Добавьте хотя бы одну смену для должности #${i + 1}`;
     for (const option of config.shiftOptions) {
       if (!option.startTime || !option.endTime) return `Заполните время смены для должности #${i + 1}`;
+      if (!isTimeMultipleOf15Minutes(option.startTime) || !isTimeMultipleOf15Minutes(option.endTime)) {
+        return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
+      }
+    }
+    for (const override of config.coverageDateOverrides) {
+      if (!override.date) return `Укажите дату исключения для должности #${i + 1}`;
+      if (override.requiredCount < 0) return `Количество в исключении не может быть меньше 0 для должности #${i + 1}`;
+    }
+    for (const rule of config.coverageRules) {
+      if (!rule.startTime || !rule.endTime) return `Заполните время правила покрытия для должности #${i + 1}`;
+      if (!isTimeMultipleOf15Minutes(rule.startTime) || !isTimeMultipleOf15Minutes(rule.endTime)) {
+        return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
+      }
     }
   }
 

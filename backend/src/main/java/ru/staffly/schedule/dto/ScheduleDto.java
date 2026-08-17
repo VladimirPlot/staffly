@@ -22,5 +22,6 @@ public record ScheduleDto(
         Instant preferenceCollectionStartedAt,
         Instant preferenceDeadline,
         Instant preferenceClosedAt,
-        Instant preferenceAppliedAt
+        Instant preferenceAppliedAt,
+        Long preferenceBuildTemplateId
 ) {}

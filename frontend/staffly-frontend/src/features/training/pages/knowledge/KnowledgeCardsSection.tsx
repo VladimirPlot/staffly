@@ -27,16 +27,7 @@ export default function KnowledgeCardsSection(props: Props) {
       {props.itemsLoading && <LoadingState label="Загрузка карточек…" />}
       {props.itemsError && <ErrorState message={props.itemsError} onRetry={props.onRetry} />}
       {!props.itemsLoading && !props.itemsError && props.items.length > 0 && (
-        <KnowledgeItemsGrid
-          items={props.items}
-          canManage={props.canManage}
-          actionLoadingId={props.actionLoadingId}
-          actionLoadingType={props.actionLoadingType}
-          onEdit={props.onEdit}
-          onHide={props.onHide}
-          onRestore={props.onRestore}
-          onDelete={props.onDelete}
-        />
+        <KnowledgeItemsGrid items={props.items} canManage={props.canManage} />
       )}
     </Card>
   );

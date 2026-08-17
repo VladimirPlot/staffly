@@ -13,23 +13,27 @@ import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 export default function useScheduleBuildTemplatesActions(restaurantId: number | null) {
   const [templates, setTemplates] = React.useState<ScheduleBuildTemplateDto[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [templatesLoaded, setTemplatesLoaded] = React.useState(false);
+  const [templatesLoadAttempted, setTemplatesLoadAttempted] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   const loadTemplates = React.useCallback(async () => {
-    if (!restaurantId) return;
+    if (!restaurantId || loading) return;
+    setTemplatesLoadAttempted(true);
     setLoading(true);
     setError(null);
     try {
       const data = await listScheduleBuildTemplates(restaurantId);
       setTemplates(data);
+      setTemplatesLoaded(true);
     } catch (e: unknown) {
       setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить шаблоны сборки"));
     } finally {
       setLoading(false);
     }
-  }, [restaurantId]);
+  }, [loading, restaurantId]);
 
   const createTemplate = React.useCallback(
     async (request: SaveScheduleBuildTemplateRequest): Promise<ScheduleBuildTemplateDto | null> => {
@@ -42,7 +46,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
         return created;
       } catch (e: unknown) {
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось создать шаблон"));
-        return null;
+        throw e;
       } finally {
         setSaving(false);
       }
@@ -61,7 +65,7 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
         return updated;
       } catch (e: unknown) {
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось обновить шаблон"));
-        return null;
+        throw e;
       } finally {
         setSaving(false);
       }
@@ -91,6 +95,8 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
   React.useEffect(() => {
     setTemplates([]);
     setLoading(false);
+    setTemplatesLoaded(false);
+    setTemplatesLoadAttempted(false);
     setSaving(false);
     setDeletingId(null);
     setError(null);
@@ -99,6 +105,8 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
   return {
     templates,
     loading,
+    templatesLoaded,
+    templatesLoadAttempted,
     error,
     saving,
     deletingId,

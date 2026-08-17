@@ -1,11 +1,21 @@
-import type { SchedulePreferenceCellDto } from "../api";
+import type { ScheduleAutoBuildMatchStatus, SchedulePreferenceCellDto } from "../api";
 import type { ShiftMode } from "../types";
 import { hasCompleteRangeValue, parseTimeRangeValue, parseTimeValue } from "./timeValues";
 
 export type PreferenceHintTone = "positive" | "negative";
 
+export type PreferenceAssignmentBadge = {
+  status: Extract<
+    ScheduleAutoBuildMatchStatus,
+    "NO_PREFERENCE" | "PARTIAL_INTERVAL_FALLBACK" | "SOFT_NEGATIVE_FALLBACK" | "HARD_NEGATIVE_FALLBACK"
+  >;
+  label: string;
+  title: string;
+  className: string;
+};
+
 export function isPositivePreference(type: SchedulePreferenceCellDto["type"]): boolean {
-  return type === "AVAILABLE" || type === "PREFER_WORK";
+  return type === "AVAILABLE";
 }
 
 export function isNegativePreference(type: SchedulePreferenceCellDto["type"]): boolean {
@@ -13,10 +23,9 @@ export function isNegativePreference(type: SchedulePreferenceCellDto["type"]): b
 }
 
 export function getPreferenceHintLabel(type: SchedulePreferenceCellDto["type"]): string {
-  if (type === "AVAILABLE") return "Может";
-  if (type === "PREFER_WORK") return "Хочет";
-  if (type === "UNAVAILABLE") return "Не может";
-  return "Хочет выходной";
+  if (type === "AVAILABLE") return "Может работать";
+  if (type === "UNAVAILABLE") return "Не может работать";
+  return "Предпочитает выходной";
 }
 
 export function getPreferenceHintTone(type: SchedulePreferenceCellDto["type"]): PreferenceHintTone {
@@ -90,17 +99,45 @@ function hasIntervalOverlap(value: string, hint: SchedulePreferenceCellDto): boo
   return shiftStart < hintEnd && hintStart < shiftEnd;
 }
 
-export function hasNegativePreferenceConflict(params: {
+function coversShift(value: string, hint: SchedulePreferenceCellDto): boolean {
+  if (hint.fullDay) return true;
+  if (!hint.startTime || !hint.endTime) return false;
+  if (!hasCompleteRangeValue(value)) return false;
+
+  const shiftRange = parseTimeRangeValue(value);
+  const hintStart = parseTimeValue(hint.startTime);
+  const hintEnd = parseTimeValue(hint.endTime);
+  if (
+    shiftRange.from.hour === null ||
+    shiftRange.from.minute === null ||
+    shiftRange.to.hour === null ||
+    shiftRange.to.minute === null ||
+    hintStart.hour === null ||
+    hintStart.minute === null ||
+    hintEnd.hour === null ||
+    hintEnd.minute === null
+  ) {
+    return false;
+  }
+
+  return (
+    toMinutes(hintStart.hour, hintStart.minute) <= toMinutes(shiftRange.from.hour, shiftRange.from.minute) &&
+    toMinutes(hintEnd.hour, hintEnd.minute) >= toMinutes(shiftRange.to.hour, shiftRange.to.minute)
+  );
+}
+
+function findNegativePreferenceConflict(params: {
   value: string;
   hints: SchedulePreferenceCellDto[];
   shiftMode: ShiftMode;
+  type: "UNAVAILABLE" | "PREFER_DAY_OFF";
 }): boolean {
-  const { value, hints, shiftMode } = params;
+  const { value, hints, shiftMode, type } = params;
   const trimmedValue = value.trim();
   if (!trimmedValue) return false;
 
   return hints.some((hint) => {
-    if (!isNegativePreference(hint.type)) return false;
+    if (hint.type !== type) return false;
     if (hint.fullDay) return true;
 
     if (shiftMode !== "FULL") return true;
@@ -108,4 +145,82 @@ export function hasNegativePreferenceConflict(params: {
 
     return hasIntervalOverlap(trimmedValue, hint);
   });
+}
+
+export function hasNegativePreferenceConflict(params: {
+  value: string;
+  hints: SchedulePreferenceCellDto[];
+  shiftMode: ShiftMode;
+}): boolean {
+  return (
+    findNegativePreferenceConflict({ ...params, type: "UNAVAILABLE" }) ||
+    findNegativePreferenceConflict({ ...params, type: "PREFER_DAY_OFF" })
+  );
+}
+
+export function getAutoBuildPreferenceAssignmentBadge(params: {
+  value: string;
+  hints: SchedulePreferenceCellDto[];
+  shiftMode: ShiftMode;
+}): PreferenceAssignmentBadge | null {
+  const { value, hints, shiftMode } = params;
+  const trimmedValue = value.trim();
+  if (!trimmedValue || shiftMode !== "FULL" || !hasCompleteRangeValue(trimmedValue)) return null;
+
+  if (hints.length === 0) {
+    return {
+      status: "NO_PREFERENCE",
+      label: "Без пожелания",
+      title: "Смена назначена автосборкой, но сотрудник не оставил пожелание на этот день",
+      className: "border-slate-200 bg-slate-50 text-slate-600",
+    };
+  }
+
+  const hasHardNegativeConflict = findNegativePreferenceConflict({
+    value: trimmedValue,
+    hints,
+    shiftMode,
+    type: "UNAVAILABLE",
+  });
+  if (hasHardNegativeConflict) {
+    return {
+      status: "HARD_NEGATIVE_FALLBACK",
+      label: "Не может работать",
+      title: "Сотрудник указал, что не может работать в это время",
+      className: "border-rose-300 bg-rose-100 text-rose-900",
+    };
+  }
+
+  const hasSoftNegativeConflict = findNegativePreferenceConflict({
+    value: trimmedValue,
+    hints,
+    shiftMode,
+    type: "PREFER_DAY_OFF",
+  });
+  if (hasSoftNegativeConflict) {
+    return {
+      status: "SOFT_NEGATIVE_FALLBACK",
+      label: "Предпочитает выходной",
+      title: "Сотрудник предпочитал выходной в это время",
+      className: "border-amber-300 bg-amber-100 text-amber-900",
+    };
+  }
+
+  const hasPartialPositive = hints.some(
+    (hint) =>
+      isPositivePreference(hint.type) &&
+      !hint.fullDay &&
+      hasIntervalOverlap(trimmedValue, hint) &&
+      !coversShift(trimmedValue, hint),
+  );
+  if (hasPartialPositive) {
+    return {
+      status: "PARTIAL_INTERVAL_FALLBACK",
+      label: "Частично вне пожелания",
+      title: "Смена частично выходит за пределы положительного пожелания сотрудника",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+    };
+  }
+
+  return null;
 }

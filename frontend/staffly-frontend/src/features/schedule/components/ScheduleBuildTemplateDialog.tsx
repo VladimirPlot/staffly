@@ -13,6 +13,7 @@ import {
   type ScheduleBuildTemplateDraft,
   validateBuildTemplateDraft,
 } from "../utils/buildTemplateDraft";
+import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 import ScheduleBuildPositionConfigCard from "./ScheduleBuildPositionConfigCard";
 
 type Props = {
@@ -46,9 +47,15 @@ const ScheduleBuildTemplateDialog: React.FC<Props> = ({ open, template, position
     }
 
     setError(null);
-    const result = await onSubmit(draftToSaveRequest(draft), template?.id);
-    if (result !== null) {
-      onClose();
+    try {
+      const result = await onSubmit(draftToSaveRequest(draft), template?.id);
+      if (result !== null) {
+        onClose();
+      } else {
+        setError("Не удалось сохранить шаблон");
+      }
+    } catch (e: unknown) {
+      setError(getFriendlyScheduleErrorMessage(e, "Не удалось сохранить шаблон"));
     }
   };
 

@@ -49,4 +49,26 @@ public class ChecklistItem {
 
     @Column(name = "reserved_at")
     private Instant reservedAt;
+
+    @Column(name = "example_photo_url", columnDefinition = "TEXT")
+    private String examplePhotoUrl;
+
+    @Column(name = "completion_photo_url", columnDefinition = "TEXT")
+    private String completionPhotoUrl;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "completion_photo_mode", nullable = false, length = 20)
+    private ChecklistPhotoMode completionPhotoMode = ChecklistPhotoMode.NONE;
+
+    @Builder.Default
+    @Column(name = "completion_photo_required", nullable = false)
+    private boolean completionPhotoRequired = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "completion_photo_uploaded_by_member_id")
+    private RestaurantMember completionPhotoUploadedBy;
+
+    @Column(name = "completion_photo_uploaded_at")
+    private Instant completionPhotoUploadedAt;
 }

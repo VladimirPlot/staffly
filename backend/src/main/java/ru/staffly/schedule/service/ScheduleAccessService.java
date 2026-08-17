@@ -53,6 +53,9 @@ public class ScheduleAccessService {
     }
 
     private boolean staffCanViewScheduleWithStatuses(Long userId, Schedule schedule, ScheduleStatus... allowedStatuses) {
+        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+            return false;
+        }
         return members.findByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
                 .map(member -> member.getRole() == RestaurantRole.STAFF
                         && matchesAnyStatus(schedule.getStatus(), allowedStatuses)
