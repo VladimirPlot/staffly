@@ -617,8 +617,11 @@ const SchedulePage: React.FC = () => {
   );
 
   const openPublishDialog = React.useCallback(() => {
+    if (schedule?.preferenceBuildTemplateId != null) {
+      loadBuildTemplatesIfNeeded();
+    }
     setPublishDialogOpen(true);
-  }, []);
+  }, [loadBuildTemplatesIfNeeded, schedule?.preferenceBuildTemplateId]);
 
   const closePublishDialog = React.useCallback(() => {
     if (lifecycleActions.pendingAction === "publish") return;
@@ -970,6 +973,9 @@ const SchedulePage: React.FC = () => {
       <PublishScheduleConfirmDialog
         open={publishDialogOpen}
         schedule={schedule}
+        buildTemplate={buildTemplatesActions.templates.find(
+          (template) => template.id === schedule?.preferenceBuildTemplateId,
+        )}
         preferenceHintsByCellKey={preferenceHintsByCellKey}
         publishing={lifecycleActions.pendingAction === "publish"}
         onClose={closePublishDialog}
