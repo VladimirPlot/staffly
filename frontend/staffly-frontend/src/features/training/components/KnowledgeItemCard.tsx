@@ -1,217 +1,91 @@
-import { Image, Pencil } from "lucide-react";
-import { type MouseEvent, useMemo, useState } from "react";
-import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
-import DropdownMenu from "../../../shared/ui/DropdownMenu";
-import Icon from "../../../shared/ui/Icon";
-import IconButton from "../../../shared/ui/IconButton";
-import Button from "../../../shared/ui/Button";
-import type { TrainingKnowledgeItemDto } from "../api/types";
+import { Image } from "lucide-react";
+import type { KeyboardEvent, ReactNode } from "react";
 
-type BusyAction = "hide" | "restore" | "delete" | "save" | null;
+import { cn } from "../../../shared/lib/cn";
+import Icon from "../../../shared/ui/Icon";
+import type { TrainingKnowledgeItemDto } from "../api/types";
 
 type Props = {
   item: TrainingKnowledgeItemDto;
   canManage: boolean;
-  busyAction: BusyAction;
-  onEdit: (item: TrainingKnowledgeItemDto) => void;
-  onHide: (itemId: number) => void;
-  onRestore: (itemId: number) => void;
-  onDelete: (itemId: number) => void;
+  selected?: boolean;
+  dragging?: boolean;
+  managementControls?: ReactNode;
+  onSelect?: () => void;
 };
 
 export default function KnowledgeItemCard({
   item,
   canManage,
-  busyAction,
-  onEdit,
-  onHide,
-  onRestore,
-  onDelete,
+  selected = false,
+  dragging = false,
+  managementControls,
+  onSelect,
 }: Props) {
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  const isBusy = busyAction !== null;
-  const hasImage = Boolean(item.imageUrl);
-
-  const stopAnd = (event: MouseEvent<HTMLElement>, callback: () => void) => {
-    event.stopPropagation();
-    callback();
-  };
-
-  const deleteFlow = useMemo(() => {
-    if (item.active) {
-      return {
-        title: "Удалить карточку?",
-        description: "Карточка будет перемещена в скрытые. Удалить навсегда можно будет из скрытых.",
-        confirmText: "Удалить",
-        confirming: busyAction === "hide",
-        action: () => onHide(item.id),
-      };
-    }
-
-    return {
-      title: "Удалить карточку навсегда?",
-      description: "Действие необратимо. Карточка будет удалена из базы данных, а фото — из хранилища.",
-      confirmText: "Удалить",
-      confirming: busyAction === "delete",
-      action: () => onDelete(item.id),
-    };
-  }, [item.active, item.id, onDelete, onHide, busyAction]);
-
   const description = item.description?.trim() ?? "";
   const composition = item.composition?.trim() ?? "";
   const allergens = item.allergens?.trim() ?? "";
 
-  const hasMeta = Boolean(description || composition || allergens);
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    onSelect();
+  };
 
   return (
-    <>
-      <article className="border-subtle bg-surface overflow-hidden rounded-3xl border shadow-[var(--staffly-shadow)]">
-        <div className="relative aspect-[16/10] w-full bg-app">
-          {hasImage ? (
-            <img
-              src={item.imageUrl!}
-              alt={item.title}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="border-subtle bg-app flex h-full w-full flex-col items-center justify-center gap-2 rounded-2xl border p-4 text-center">
-              <Icon icon={Image} size="lg" className="text-icon" decorative />
-              <p className="text-sm font-medium text-default">Фото не добавлено</p>
-              <p className="text-xs text-muted">Нажмите карандаш, чтобы добавить</p>
-            </div>
-          )}
+    <article
+      data-training-object-card="true"
+      role={onSelect ? "option" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      aria-selected={onSelect ? selected : undefined}
+      className={cn(
+        "border-subtle bg-surface h-full min-w-0 overflow-hidden rounded-3xl border shadow-[var(--staffly-shadow)] transition-[border-color,box-shadow,opacity] outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)]",
+        selected && "border-[var(--staffly-divider)] ring-2 ring-[var(--staffly-ring)]",
+        dragging && "opacity-0",
+      )}
+      onClick={onSelect}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="bg-app relative aspect-[16/10] w-full">
+        {item.imageUrl ? (
+          <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
+            <Icon icon={Image} size="lg" className="text-icon" decorative />
+            <p className="text-default text-sm font-medium">Фото не добавлено</p>
+            {canManage ? <p className="text-muted text-xs">Нажмите карандаш, чтобы добавить</p> : null}
+          </div>
+        )}
+      </div>
 
-          {canManage && (
-            <div className="absolute right-1 top-1">
-              <DropdownMenu
-                disabled={isBusy}
-                menuClassName="w-72"
-                trigger={(triggerProps) => (
-                  <IconButton
-                    aria-label="Действия с карточкой"
-                    title="Действия"
-                    disabled={isBusy}
-                    variant="unstyled"
-                    className={
-                      hasImage
-                        ? "h-10 w-10 border border-white/20 bg-black/25 px-0 py-0 text-white shadow-sm backdrop-blur-md transition hover:bg-black/35 active:bg-black/40"
-                        : "h-10 w-10 border border-subtle bg-surface/95 px-0 py-0 text-default shadow-sm backdrop-blur-sm transition hover:bg-app active:bg-app"
-                    }
-                    {...triggerProps}
-                  >
-                    <Icon
-                      icon={Pencil}
-                      size="sm"
-                      className={hasImage ? "text-white" : "text-default"}
-                    />
-                  </IconButton>
-                )}
-              >
-                {({ close }) => (
-                  <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-center"
-                      disabled={isBusy}
-                      onClick={(event) =>
-                        stopAnd(event, () => {
-                          close();
-                          onEdit(item);
-                        })
-                      }
-                    >
-                      Редактировать
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="w-full justify-center"
-                      disabled={isBusy}
-                      onClick={(event) =>
-                        stopAnd(event, () => {
-                          close();
-                          if (item.active) onHide(item.id);
-                          else onRestore(item.id);
-                        })
-                      }
-                    >
-                      {item.active ? "Скрыть" : "Восстановить"}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="w-full justify-center"
-                      disabled={isBusy}
-                      onClick={(event) =>
-                        stopAnd(event, () => {
-                          close();
-                          setConfirmOpen(true);
-                        })
-                      }
-                    >
-                      Удалить
-                    </Button>
-                  </div>
-                )}
-              </DropdownMenu>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-3 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className="line-clamp-2 text-base font-semibold text-strong">{item.title}</h4>
-            {!item.active && (
+      <div className="flex min-w-0 items-start gap-3 p-4">
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap items-start gap-2">
+            <h4 className="text-strong min-w-0 flex-1 text-base font-semibold [overflow-wrap:anywhere]">
+              {item.title}
+            </h4>
+            {!item.active ? (
               <span className="shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
                 Скрыто
               </span>
-            )}
+            ) : null}
           </div>
 
-          {hasMeta && (
-            <div className="space-y-2">
-              {description && (
-                <div>
-                  <div className="text-xs font-medium text-muted">Описание</div>
-                  <p className="text-sm text-default [overflow-wrap:anywhere]">{description}</p>
-                </div>
-              )}
-
-              {composition && (
-                <div>
-                  <div className="text-xs font-medium text-muted">Состав</div>
-                  <p className="text-sm text-default [overflow-wrap:anywhere]">{composition}</p>
-                </div>
-              )}
-
-              {allergens && (
-                <div>
-                  <div className="text-xs font-medium text-muted">Аллергены</div>
-                  <p className="text-sm text-default [overflow-wrap:anywhere]">{allergens}</p>
-                </div>
-              )}
-            </div>
-          )}
+          {description ? <KnowledgeField label="Описание" value={description} /> : null}
+          {composition ? <KnowledgeField label="Состав" value={composition} /> : null}
+          {allergens ? <KnowledgeField label="Аллергены" value={allergens} /> : null}
         </div>
-      </article>
+        {managementControls}
+      </div>
+    </article>
+  );
+}
 
-      <ConfirmDialog
-        open={confirmOpen}
-        title={deleteFlow.title}
-        description={deleteFlow.description}
-        confirmText={deleteFlow.confirmText}
-        confirming={deleteFlow.confirming}
-        onCancel={() => {
-          if (isBusy) return;
-          setConfirmOpen(false);
-        }}
-        onConfirm={() => {
-          deleteFlow.action();
-          setConfirmOpen(false);
-        }}
-      />
-    </>
+function KnowledgeField({ label, value }: { label: string; value: string }) {
+  return (
+    <section className="min-w-0">
+      <h5 className="text-muted text-xs font-medium">{label}</h5>
+      <p className="text-default text-sm [overflow-wrap:anywhere] whitespace-pre-wrap">{value}</p>
+    </section>
   );
 }
