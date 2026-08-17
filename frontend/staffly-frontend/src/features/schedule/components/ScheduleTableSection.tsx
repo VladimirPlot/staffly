@@ -175,30 +175,41 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
         {showTableZoomControls && (
           <div className="border-subtle bg-app mb-3 rounded-2xl border px-3 py-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center justify-between gap-3 lg:contents">
+              <div className="flex items-center justify-between gap-3 lg:block">
                 <span className="text-strong shrink-0 text-sm font-medium">Масштаб</span>
                 <Button
                   type="button"
                   variant="outline"
-                  className="shrink-0 whitespace-nowrap lg:ml-auto"
+                  className="shrink-0 whitespace-nowrap lg:hidden"
                   onClick={isDefaultZoom ? showFullPeriod : resetZoom}
                 >
                   {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
                 </Button>
               </div>
 
-              <div className="ml-auto flex w-full max-w-[16rem] items-center gap-2 sm:w-[14rem] md:w-[16rem]">
-                <input
-                  type="range"
-                  min={minZoom}
-                  max={maxZoom}
-                  step={zoomStep}
-                  value={zoom}
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                  className="min-w-0 flex-1 accent-[var(--staffly-text-strong)]"
-                  aria-label="Масштаб таблицы"
-                />
-                <span className="text-strong w-10 shrink-0 text-right text-xs tabular-nums">{zoom}%</span>
+              <div className="flex flex-col gap-3 lg:ml-auto lg:flex-row lg:items-center lg:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="hidden shrink-0 whitespace-nowrap lg:inline-flex"
+                  onClick={isDefaultZoom ? showFullPeriod : resetZoom}
+                >
+                  {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
+                </Button>
+
+                <div className="flex w-full items-center gap-2 lg:w-[16rem]">
+                  <input
+                    type="range"
+                    min={minZoom}
+                    max={maxZoom}
+                    step={zoomStep}
+                    value={zoom}
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                    className="min-w-0 flex-1 accent-[var(--staffly-text-strong)]"
+                    aria-label="Масштаб таблицы"
+                  />
+                  <span className="text-strong w-10 shrink-0 text-right text-xs tabular-nums">{zoom}%</span>
+                </div>
               </div>
             </div>
           </div>
