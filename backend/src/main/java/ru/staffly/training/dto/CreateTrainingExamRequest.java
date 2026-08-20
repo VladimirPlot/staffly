@@ -16,6 +16,7 @@ public record CreateTrainingExamRequest(
         @Min(1) Integer timeLimitSec,
         @NotNull TrainingExamMode mode,
         Long knowledgeFolderId,
+        Long folderId,
         @Min(1) Integer attemptLimit,
         List<Long> visibilityPositionIds,
         List<ExamSourceFolderDto> sourcesFolders,

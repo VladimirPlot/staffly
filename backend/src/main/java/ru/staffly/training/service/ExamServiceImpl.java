@@ -125,7 +125,7 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
+        var examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
         var examEntity = TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .title(request.title())
@@ -134,9 +134,11 @@ public class ExamServiceImpl implements ExamService {
                 .passPercent(request.passPercent())
                 .timeLimitSec(request.timeLimitSec())
                 .mode(request.mode())
-                .folder(knowledgeFolder)
+                .folder(examFolder)
                 .attemptLimit(request.attemptLimit())
-                .sortOrder(knowledgeFolder == null ? 0 : nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId()))
+                .sortOrder(request.mode() == TrainingExamMode.PRACTICE
+                        ? nextPracticeExamSortOrder(restaurantId, examFolder.getId())
+                        : nextCertificationExamSortOrder(restaurantId, examFolder == null ? null : examFolder.getId()))
                 .active(true)
                 .version(1)
                 .build();
@@ -173,6 +175,21 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     @Transactional
+    public TrainingExamDto moveCertificationExam(Long restaurantId, Long userId, Long examId, MoveTrainingCertificationExamRequest request) {
+        var exam = requireManageableCertificationExam(restaurantId, userId, examId);
+        if (!exam.isActive()) {
+            throw new BadRequestException("Скрытый тест нельзя перемещать.");
+        }
+        var targetFolder = resolveCertificationFolder(restaurantId, userId, request.folderId());
+        exam.setFolder(targetFolder);
+        exam.setSortOrder(request.sortOrder() == null
+                ? nextCertificationExamSortOrder(restaurantId, request.folderId())
+                : normalizeSortOrder(request.sortOrder()));
+        return toDtoWithSourcesAndVisibility(exam, null);
+    }
+
+    @Override
+    @Transactional
     public TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         var normalized = new CreateTrainingExamRequest(
                 request.title(),
@@ -182,6 +199,7 @@ public class ExamServiceImpl implements ExamService {
                 request.timeLimitSec(),
                 TrainingExamMode.PRACTICE,
                 request.knowledgeFolderId(),
+                null,
                 request.attemptLimit(),
                 request.visibilityPositionIds(),
                 request.sourcesFolders(),
@@ -196,7 +214,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         boolean wasActive = exam.isActive();
         boolean willBeActive = request.active() == null ? wasActive : request.active();
-        var currentKnowledgeFolderId = exam.getFolder() == null ? null : exam.getFolder().getId();
+        var currentFolderId = exam.getFolder() == null ? null : exam.getFolder().getId();
 
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
@@ -205,11 +223,16 @@ public class ExamServiceImpl implements ExamService {
         // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
         // For certification exams null/empty means "clear visibility", which is invalid.
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
-        boolean knowledgeFolderChanged = !Objects.equals(currentKnowledgeFolderId, request.knowledgeFolderId());
+        var examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
+        Long targetFolderId = examFolder == null ? null : examFolder.getId();
+        boolean folderChanged = !Objects.equals(currentFolderId, targetFolderId);
         Integer targetPracticeSortOrder = request.mode() == TrainingExamMode.PRACTICE
-                && (knowledgeFolderChanged || (!wasActive && willBeActive))
-                        ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
+                && (folderChanged || (!wasActive && willBeActive))
+                        ? nextPracticeExamSortOrder(restaurantId, examFolder.getId())
+                        : null;
+        Integer targetCertificationSortOrder = request.mode() == TrainingExamMode.CERTIFICATION
+                && (folderChanged || (!wasActive && willBeActive))
+                        ? nextCertificationExamSortOrder(restaurantId, targetFolderId)
                         : null;
 
         exam.setTitle(request.title());
@@ -217,9 +240,12 @@ public class ExamServiceImpl implements ExamService {
         exam.setQuestionCount(request.questionCount());
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
-        exam.setFolder(knowledgeFolder);
+        exam.setFolder(examFolder);
         if (targetPracticeSortOrder != null) {
             exam.setSortOrder(targetPracticeSortOrder);
+        }
+        if (targetCertificationSortOrder != null) {
+            exam.setSortOrder(targetCertificationSortOrder);
         }
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(willBeActive);
@@ -246,6 +272,11 @@ public class ExamServiceImpl implements ExamService {
         if (!exam.isActive()) {
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
                 exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
+            } else {
+                exam.setSortOrder(nextCertificationExamSortOrder(
+                        restaurantId,
+                        exam.getFolder() == null ? null : exam.getFolder().getId()
+                ));
             }
             exam.setActive(true);
         }
@@ -741,6 +772,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getPassPercent(),
                 exam.getTimeLimitSec(),
                 exam.getMode(),
+                exam.getMode() == TrainingExamMode.PRACTICE && exam.getFolder() != null ? exam.getFolder().getId() : null,
                 exam.getFolder() == null ? null : exam.getFolder().getId(),
                 exam.getAttemptLimit(),
                 exam.getVersion(),
@@ -812,6 +844,40 @@ public class ExamServiceImpl implements ExamService {
         return null;
     }
 
+    private TrainingFolder resolveExamFolder(Long restaurantId, Long userId, TrainingExamMode mode,
+                                             Long knowledgeFolderId, Long folderId) {
+        if (mode == TrainingExamMode.PRACTICE) {
+            if (folderId != null) {
+                throw new BadRequestException("Для учебного теста используйте knowledgeFolderId.");
+            }
+            return resolveKnowledgeFolder(restaurantId, userId, mode, knowledgeFolderId);
+        }
+        if (knowledgeFolderId != null) {
+            throw new BadRequestException("Для аттестации используйте folderId.");
+        }
+        return resolveCertificationFolder(restaurantId, userId, folderId);
+    }
+
+    private TrainingFolder resolveCertificationFolder(Long restaurantId, Long userId, Long folderId) {
+        if (folderId == null) {
+            return null;
+        }
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
+                .orElseThrow(() -> new BadRequestException("Папка аттестации не найдена."));
+        if (folder.getType() != TrainingFolderType.CERTIFICATION) {
+            throw new BadRequestException("Для аттестации нужна папка аттестаций.");
+        }
+        if (!folder.isActive()) {
+            throw new BadRequestException("Нельзя выбрать скрытую папку.");
+        }
+        trainingPolicyService.assertCanAccessCertificationByVisibility(
+                userId,
+                restaurantId,
+                folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+        );
+        return folder;
+    }
+
     private TrainingQuestionGroup questionGroupForMode(TrainingExamMode mode) {
         return mode == TrainingExamMode.PRACTICE
                 ? TrainingQuestionGroup.PRACTICE
@@ -820,6 +886,13 @@ public class ExamServiceImpl implements ExamService {
 
     private int nextPracticeExamSortOrder(Long restaurantId, Long knowledgeFolderId) {
         return Optional.ofNullable(exams.maxActivePracticeSortOrderInKnowledgeFolder(restaurantId, knowledgeFolderId)).orElse(-1) + 1;
+    }
+
+    private int nextCertificationExamSortOrder(Long restaurantId, Long folderId) {
+        Integer maxSortOrder = folderId == null
+                ? exams.maxActiveCertificationRootSortOrder(restaurantId)
+                : exams.maxActiveCertificationSortOrderInFolder(restaurantId, folderId);
+        return Optional.ofNullable(maxSortOrder).orElse(-1) + 1;
     }
 
     private int normalizeSortOrder(Integer value) {

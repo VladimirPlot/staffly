@@ -20,6 +20,7 @@ import type {
   ExamSubmitResultDto,
   MoveTrainingFolderPayload,
   MoveTrainingKnowledgeItemPayload,
+  MoveTrainingCertificationExamPayload,
   MoveTrainingPracticeExamPayload,
   MoveTrainingQuestionPayload,
   QuestionBankTreeNodeDto,
@@ -115,6 +116,7 @@ export async function createKnowledgeExam(restaurantId: number, payload: UpsertE
 }
 export async function updateExam(restaurantId: number, examId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/exams/${examId}`, payload); return data as TrainingExamDto; }
 export async function movePracticeExam(restaurantId: number, examId: number, payload: MoveTrainingPracticeExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/move-knowledge-folder`, payload); return data as TrainingExamDto; }
+export async function moveCertificationExam(restaurantId: number, examId: number, payload: MoveTrainingCertificationExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/move-certification-folder`, payload); return data as TrainingExamDto; }
 export async function hideExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/hide`); return data as TrainingExamDto; }
 export async function restoreExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/restore`); return data as TrainingExamDto; }
 export async function deleteExam(restaurantId: number, examId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/exams/${examId}`); }

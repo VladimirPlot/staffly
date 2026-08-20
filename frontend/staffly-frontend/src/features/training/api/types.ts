@@ -142,6 +142,7 @@ export type TrainingExamDto = {
   timeLimitSec?: number | null;
   mode: TrainingExamMode;
   knowledgeFolderId: number | null;
+  folderId: number | null;
   attemptLimit?: number | null;
   version: number;
   sortOrder: number;
@@ -235,6 +236,7 @@ export type UpsertExamPayload = {
   description?: string | null;
   mode: TrainingExamMode;
   knowledgeFolderId?: number | null;
+  folderId?: number | null;
   questionCount: number;
   passPercent: number;
   timeLimitSec?: number | null;
@@ -431,6 +433,11 @@ export type MoveTrainingQuestionPayload = {
 
 export type MoveTrainingPracticeExamPayload = {
   knowledgeFolderId: number;
+  sortOrder?: number | null;
+};
+
+export type MoveTrainingCertificationExamPayload = {
+  folderId?: number | null;
   sortOrder?: number | null;
 };
 
