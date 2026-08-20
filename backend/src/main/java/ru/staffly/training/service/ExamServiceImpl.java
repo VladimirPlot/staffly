@@ -219,6 +219,9 @@ public class ExamServiceImpl implements ExamService {
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
         }
+        if (request.mode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
+            ensureCertificationFolderActive(exam);
+        }
 
         // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
         // For certification exams null/empty means "clear visibility", which is invalid.
@@ -279,6 +282,9 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            ensureCertificationFolderActive(exam);
+        }
         if (!exam.isActive()) {
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
                 exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
@@ -294,6 +300,12 @@ public class ExamServiceImpl implements ExamService {
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
+    private void ensureCertificationFolderActive(TrainingExam exam) {
+        if (exam.getFolder() != null && !exam.getFolder().isActive()) {
+            throw new BadRequestException("Аттестация находится в скрытой папке. Сначала восстановите папку.");
+        }
+    }
+
     @Override
     @Transactional
     public void deleteExam(Long restaurantId, Long userId, Long examId) {
@@ -302,6 +314,9 @@ public class ExamServiceImpl implements ExamService {
         if (exam.isActive()) {
             throw new ConflictException("Сначала скройте экзамен, затем удаляйте.");
         }
+        // Attempts and their immutable snapshots are history. Detach them before the
+        // exam delete cascades through the current-cycle assignments.
+        attempts.detachAssignmentsForExam(exam.getId());
         exams.delete(exam);
     }
 
