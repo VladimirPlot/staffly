@@ -76,7 +76,7 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             left join fetch e.owner ow
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id = :folderId
+              and e.folder.id = :folderId
               and (:includeInactive = true or e.active = true)
               and (:positionId is null or vp.id is null or vp.id = :positionId)
             order by e.sortOrder asc, e.createdAt desc
@@ -90,7 +90,7 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             select max(e.sortOrder) from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id = :folderId
+              and e.folder.id = :folderId
               and e.active = true
             """)
     Integer maxActivePracticeSortOrderInKnowledgeFolder(@Param("restaurantId") Long restaurantId,
@@ -100,7 +100,7 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             select e from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id = :folderId
+              and e.folder.id = :folderId
               and e.active = true
             """)
     List<TrainingExam> findActivePracticeInKnowledgeFolder(@Param("restaurantId") Long restaurantId,
@@ -111,7 +111,7 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id in :folderIds
+              and e.folder.id in :folderIds
             """)
     List<ru.staffly.training.dto.ExamUsageDto> findPracticeExamUsagesByKnowledgeFolderIds(@Param("restaurantId") Long restaurantId,
                                                                                           @Param("folderIds") List<Long> folderIds);
