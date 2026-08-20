@@ -39,6 +39,7 @@ export function useExamEditorState({
   mode,
   exam,
   knowledgeFolderId,
+  initialFolderId,
   onClose,
   onSaved,
 }: ExamEditorProps) {
@@ -279,7 +280,12 @@ export function useExamEditorState({
         mode,
         knowledgeFolderId:
           mode === "PRACTICE" ? knowledgeFolderId ?? exam?.knowledgeFolderId ?? null : null,
-        folderId: mode === "CERTIFICATION" ? exam?.folderId ?? null : null,
+        folderId:
+          mode === "CERTIFICATION"
+            ? exam
+              ? exam.folderId ?? null
+              : initialFolderId ?? null
+            : null,
         questionCount: totalQuestions,
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),

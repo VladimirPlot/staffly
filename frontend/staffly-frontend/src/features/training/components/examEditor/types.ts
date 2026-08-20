@@ -13,6 +13,7 @@ export type ExamEditorProps = {
   mode: TrainingExamMode;
   exam?: TrainingExamDto | null;
   knowledgeFolderId?: number | null;
+  initialFolderId?: number | null;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 };

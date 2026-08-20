@@ -1,17 +1,20 @@
-import { Folder } from "lucide-react";
+import { Folder, FolderPlus, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import Card from "../../../shared/ui/Card";
+import Button from "../../../shared/ui/Button";
 import Icon from "../../../shared/ui/Icon";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { listExams } from "../api/trainingApi";
 import type { TrainingExamDto } from "../api/types";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
+import ExamEditorModal from "../components/ExamEditorModal";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
+import TrainingFolderModal from "../components/TrainingFolderModal";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { buildTrainingFolderChain } from "../trainingFolderDnd";
@@ -31,6 +34,8 @@ export default function CertificationFolderPage() {
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [examModalOpen, setExamModalOpen] = useState(false);
 
   const loadContent = useCallback(async () => {
     if (!restaurantId || !canManage) return;
@@ -108,7 +113,29 @@ export default function CertificationFolderPage() {
         onOpenFolder={openFolder}
       />
 
-      {currentFolder && <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>}
+      {currentFolder && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
+          {canManage && (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                leftIcon={<FolderPlus className="h-4 w-4" />}
+                onClick={() => setFolderModalOpen(true)}
+              >
+                Создать папку
+              </Button>
+              <Button
+                variant="outline"
+                leftIcon={<Plus className="h-4 w-4" />}
+                onClick={() => setExamModalOpen(true)}
+              >
+                Создать аттестацию
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       {loading && <LoadingState label="Загрузка папки..." />}
       {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
       {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
@@ -165,6 +192,32 @@ export default function CertificationFolderPage() {
             <EmptyState title="Папка пуста" description="В этой папке пока нет папок и аттестационных тестов." />
           )}
         </>
+      )}
+
+      {restaurantId && currentFolder && (
+        <TrainingFolderModal
+          open={folderModalOpen}
+          mode="create"
+          restaurantId={restaurantId}
+          type="CERTIFICATION"
+          parentFolder={currentFolder}
+          onClose={() => setFolderModalOpen(false)}
+          onSaved={foldersState.reload}
+        />
+      )}
+
+      {restaurantId && currentFolder && (
+        <ExamEditorModal
+          open={examModalOpen}
+          restaurantId={restaurantId}
+          mode="CERTIFICATION"
+          initialFolderId={currentFolderId}
+          onClose={() => setExamModalOpen(false)}
+          onSaved={async () => {
+            setExamModalOpen(false);
+            await loadContent();
+          }}
+        />
       )}
     </div>
   );
