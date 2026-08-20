@@ -39,7 +39,7 @@ export default function TrainingMoveModal({
   );
   const folderMap = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
   const options = folders.filter((folder) => folder.type === type && folder.active && !blocked.has(folder.id));
-  const allowRoot = target?.kind === "folder" || target?.kind === "knowledgeItem";
+  const allowRoot = target?.kind === "folder" || target?.kind === "knowledgeItem" || target?.kind === "certificationExam";
 
   return (
     <Modal
