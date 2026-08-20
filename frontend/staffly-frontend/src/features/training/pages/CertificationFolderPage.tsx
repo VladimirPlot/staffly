@@ -1,14 +1,17 @@
-import { Folder, FolderPlus, Plus } from "lucide-react";
+import { Eye, Folder, FolderPlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Icon from "../../../shared/ui/Icon";
+import IconButton from "../../../shared/ui/IconButton";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
-import { listExams } from "../api/trainingApi";
-import type { TrainingExamDto } from "../api/types";
+import { deleteExam, deleteFolder, hideExam, listExams, restoreExam } from "../api/trainingApi";
+import type { TrainingExamDto, TrainingFolderDto } from "../api/types";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
+import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
 import ExamEditorModal from "../components/ExamEditorModal";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -36,6 +39,13 @@ export default function CertificationFolderPage() {
   const [contentError, setContentError] = useState<string | null>(null);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [examModalOpen, setExamModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<TrainingFolderDto | null>(null);
+  const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
+  const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<TrainingFolderDto | null>(null);
+  const [folderActionLoadingId, setFolderActionLoadingId] = useState<number | null>(null);
+  const [examActionLoadingId, setExamActionLoadingId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadContent = useCallback(async () => {
     if (!restaurantId || !canManage) return;
@@ -89,6 +99,54 @@ export default function CertificationFolderPage() {
     }
   };
 
+  const reloadFolderContents = async () => {
+    await Promise.all([foldersState.reload(), loadContent()]);
+  };
+
+  const handleHideFolder = async (folder: TrainingFolderDto) => {
+    setFolderActionLoadingId(folder.id);
+    setActionError(null);
+    try {
+      await foldersState.hide(folder.id);
+      await loadContent();
+    } catch (error) {
+      setActionError(getTrainingErrorMessage(error, "Не удалось скрыть папку."));
+    } finally {
+      setFolderActionLoadingId(null);
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!restaurantId || !deleteFolderTarget) return;
+    setFolderActionLoadingId(deleteFolderTarget.id);
+    setActionError(null);
+    try {
+      await deleteFolder(restaurantId, deleteFolderTarget.id);
+      setDeleteFolderTarget(null);
+      await reloadFolderContents();
+    } catch (error) {
+      setActionError(getTrainingErrorMessage(error, "Не удалось удалить папку."));
+    } finally {
+      setFolderActionLoadingId(null);
+    }
+  };
+
+  const runExamAction = async (examId: number, action: "hide" | "restore" | "delete") => {
+    if (!restaurantId) return;
+    setExamActionLoadingId(examId);
+    setActionError(null);
+    try {
+      if (action === "hide") await hideExam(restaurantId, examId);
+      else if (action === "restore") await restoreExam(restaurantId, examId);
+      else await deleteExam(restaurantId, examId);
+      await loadContent();
+    } catch (error) {
+      setActionError(getTrainingErrorMessage(error, "Не удалось выполнить действие с аттестацией."));
+    } finally {
+      setExamActionLoadingId(null);
+    }
+  };
+
   if (accessLoading) {
     return <LoadingState label="Проверка доступа..." />;
   }
@@ -139,6 +197,7 @@ export default function CertificationFolderPage() {
       {loading && <LoadingState label="Загрузка папки..." />}
       {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
       {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
+      {actionError && <ErrorState message={actionError} />}
 
       {!loading && !foldersState.error && !contentError && currentFolder && (
         <>
@@ -160,9 +219,44 @@ export default function CertificationFolderPage() {
                       <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
                         <Icon icon={Folder} size="sm" decorative />
                       </span>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
                         {folder.description && <div className="text-muted mt-1 text-sm">{folder.description}</div>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <IconButton
+                          aria-label="Редактировать папку"
+                          title="Редактировать"
+                          disabled={folderActionLoadingId === folder.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingFolder(folder);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </IconButton>
+                        <IconButton
+                          aria-label="Скрыть папку"
+                          title="Скрыть"
+                          disabled={folderActionLoadingId === folder.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleHideFolder(folder);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </IconButton>
+                        <IconButton
+                          aria-label="Удалить папку"
+                          title="Удалить"
+                          disabled={folderActionLoadingId === folder.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDeleteFolderTarget(folder);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </IconButton>
                       </div>
                     </div>
                   </Card>
@@ -180,8 +274,14 @@ export default function CertificationFolderPage() {
                     key={exam.id}
                     exam={exam}
                     analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), returnTo)}
-                    loading={false}
+                    loading={examActionLoadingId === exam.id}
                     positionsById={positionsById}
+                    onEdit={(value) => {
+                      setEditingExam(value);
+                      setExamModalOpen(true);
+                    }}
+                    onChangeOwner={setChangeOwnerExam}
+                    onAction={runExamAction}
                   />
                 ))}
               </div>
@@ -206,19 +306,58 @@ export default function CertificationFolderPage() {
         />
       )}
 
+      {restaurantId && editingFolder && (
+        <TrainingFolderModal
+          open
+          mode="edit"
+          restaurantId={restaurantId}
+          type="CERTIFICATION"
+          parentFolder={editingFolder.parentId ? (folderMap.get(editingFolder.parentId) ?? null) : null}
+          initialFolder={editingFolder}
+          onClose={() => setEditingFolder(null)}
+          onSaved={foldersState.reload}
+        />
+      )}
+
       {restaurantId && currentFolder && (
         <ExamEditorModal
           open={examModalOpen}
+          exam={editingExam}
           restaurantId={restaurantId}
           mode="CERTIFICATION"
           initialFolderId={currentFolderId}
-          onClose={() => setExamModalOpen(false)}
+          onClose={() => {
+            setExamModalOpen(false);
+            setEditingExam(null);
+          }}
           onSaved={async () => {
             setExamModalOpen(false);
+            setEditingExam(null);
             await loadContent();
           }}
         />
       )}
+
+      {restaurantId && (
+        <ChangeCertificationOwnerModal
+          open={Boolean(changeOwnerExam)}
+          exam={changeOwnerExam}
+          restaurantId={restaurantId}
+          onClose={() => setChangeOwnerExam(null)}
+          onSaved={loadContent}
+        />
+      )}
+
+      <ConfirmDialog
+        open={Boolean(deleteFolderTarget)}
+        title="Удалить папку навсегда"
+        description="Папка, все вложенные папки и все аттестации внутри будут удалены безвозвратно. Активную папку необходимо сначала скрыть."
+        confirmText="Удалить навсегда"
+        tone="danger"
+        confirming={Boolean(deleteFolderTarget && folderActionLoadingId === deleteFolderTarget.id)}
+        onCancel={() => setDeleteFolderTarget(null)}
+        onConfirm={() => void handleDeleteFolder()}
+      />
     </div>
   );
 }
