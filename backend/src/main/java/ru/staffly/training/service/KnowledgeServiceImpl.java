@@ -562,8 +562,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 restaurantId,
                 exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
         );
-        if (exam.getKnowledgeFolder() != null) {
-            requireAccessibleKnowledgeFolder(restaurantId, userId, exam.getKnowledgeFolder().getId());
+        if (exam.getFolder() != null) {
+            requireAccessibleKnowledgeFolder(restaurantId, userId, exam.getFolder().getId());
         }
         return exam;
     }
