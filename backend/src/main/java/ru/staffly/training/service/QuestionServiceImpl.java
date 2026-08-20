@@ -56,7 +56,7 @@ public class QuestionServiceImpl implements QuestionService {
                 .prompt(request.prompt().trim())
                 .explanation(request.explanation())
                 .sortOrder(request.sortOrder() == null
-                        ? nextQuestionSortOrder(restaurantId, folder.getId())
+                        ? nextQuestionSortOrder(restaurantId, folder.getId(), request.questionGroup())
                         : normalizeSortOrder(request.sortOrder()))
                 .active(true)
                 .build());
@@ -74,6 +74,7 @@ public class QuestionServiceImpl implements QuestionService {
         assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
 
         boolean wasActive = entity.isActive();
+        var oldGroup = entity.getQuestionGroup();
         boolean willBeActive = request.active() == null ? wasActive : request.active();
         var currentFolder = entity.getFolder();
         boolean folderChanged = request.folderId() != null
@@ -81,17 +82,19 @@ public class QuestionServiceImpl implements QuestionService {
         var targetFolder = folderChanged
                 ? requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId())
                 : currentFolder;
+        var targetGroup = request.questionGroup();
+        boolean questionGroupChanged = targetGroup != oldGroup;
         int targetSortOrder = request.sortOrder() != null
                 ? normalizeSortOrder(request.sortOrder())
-                : folderChanged || (!wasActive && willBeActive)
-                        ? nextQuestionSortOrder(restaurantId, targetFolder.getId())
+                : folderChanged || questionGroupChanged || (!wasActive && willBeActive)
+                        ? nextQuestionSortOrder(restaurantId, targetFolder.getId(), targetGroup)
                         : entity.getSortOrder();
 
         entity.setTitle(request.title().trim());
         entity.setPrompt(request.prompt().trim());
         entity.setExplanation(request.explanation());
         entity.setType(request.type());
-        entity.setQuestionGroup(request.questionGroup());
+        entity.setQuestionGroup(targetGroup);
         entity.setFolder(targetFolder);
         entity.setSortOrder(targetSortOrder);
         entity.setActive(willBeActive);
@@ -115,7 +118,7 @@ public class QuestionServiceImpl implements QuestionService {
         }
         entity.setFolder(folder);
         entity.setSortOrder(request.sortOrder() == null
-                ? nextQuestionSortOrder(restaurantId, folder.getId())
+                ? nextQuestionSortOrder(restaurantId, folder.getId(), entity.getQuestionGroup())
                 : normalizeSortOrder(request.sortOrder()));
         return toDtos(List.of(entity)).get(0);
     }
@@ -133,7 +136,11 @@ public class QuestionServiceImpl implements QuestionService {
     public TrainingQuestionDto restoreQuestion(Long restaurantId, Long userId, Long questionId) {
         var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
         if (!entity.isActive()) {
-            entity.setSortOrder(nextQuestionSortOrder(restaurantId, entity.getFolder().getId()));
+            entity.setSortOrder(nextQuestionSortOrder(
+                    restaurantId,
+                    entity.getFolder().getId(),
+                    entity.getQuestionGroup()
+            ));
             entity.setActive(true);
         }
         return toDtos(List.of(entity)).get(0);
@@ -173,8 +180,10 @@ public class QuestionServiceImpl implements QuestionService {
         return folder;
     }
 
-    private int nextQuestionSortOrder(Long restaurantId, Long folderId) {
-        return java.util.Optional.ofNullable(questions.maxActiveSortOrderInFolder(restaurantId, folderId)).orElse(-1) + 1;
+    private int nextQuestionSortOrder(Long restaurantId, Long folderId, ru.staffly.training.model.TrainingQuestionGroup questionGroup) {
+        return java.util.Optional.ofNullable(
+                questions.maxActiveSortOrderInFolderAndQuestionGroup(restaurantId, folderId, questionGroup)
+        ).orElse(-1) + 1;
     }
 
     private int normalizeSortOrder(Integer value) {

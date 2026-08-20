@@ -305,6 +305,10 @@ export default function QuestionBankFolderPage() {
         return;
       }
 
+      // The current list mixes both question groups, while question ordering is group-scoped.
+      // Keep folder moves available, but defer question reordering until the groups have separate UI sections.
+      if (active.kind === "question") return;
+
       const oldIndex = currentObjectIds.indexOf(trainingObjectId(active.kind, active.id));
       const newIndex = currentObjectIds.indexOf(overId);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
