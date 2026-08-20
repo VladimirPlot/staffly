@@ -12,7 +12,7 @@ import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import QuestionDeleteGuardModal from "../components/QuestionDeleteGuardModal";
-import QuestionEditorModal from "../components/QuestionEditorModal";
+import QuestionEditorModal from "../components/questionEditor/QuestionEditorModal";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
 import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingFolderModal from "../components/TrainingFolderModal";
