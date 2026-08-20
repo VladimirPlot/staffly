@@ -10,7 +10,7 @@ type Props = {
   canManage: boolean;
   selected?: boolean;
   dragging?: boolean;
-  managementControls?: ReactNode;
+  mediaControls?: ReactNode;
   onSelect?: () => void;
 };
 
@@ -19,7 +19,7 @@ export default function KnowledgeItemCard({
   canManage,
   selected = false,
   dragging = false,
-  managementControls,
+  mediaControls,
   onSelect,
 }: Props) {
   const description = item.description?.trim() ?? "";
@@ -56,6 +56,9 @@ export default function KnowledgeItemCard({
             {canManage ? <p className="text-muted text-xs">Нажмите карандаш, чтобы добавить</p> : null}
           </div>
         )}
+        {mediaControls ? (
+          <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between p-3">{mediaControls}</div>
+        ) : null}
       </div>
 
       <div className="flex min-w-0 items-start gap-3 p-4">
@@ -75,7 +78,6 @@ export default function KnowledgeItemCard({
           {composition ? <KnowledgeField label="Состав" value={composition} /> : null}
           {allergens ? <KnowledgeField label="Аллергены" value={allergens} /> : null}
         </div>
-        {managementControls}
       </div>
     </article>
   );
