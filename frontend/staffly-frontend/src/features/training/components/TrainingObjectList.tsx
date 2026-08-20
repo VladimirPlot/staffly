@@ -4,14 +4,11 @@ import { CSS, useCombinedRefs } from "@dnd-kit/utilities";
 import {
   BookOpen,
   ClipboardCheck,
-  Edit3,
   ExternalLink,
   Folder,
   FolderOpen,
   HelpCircle,
-  MoveRight,
   Play,
-  Trash2,
 } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 
@@ -26,6 +23,7 @@ import { QUESTION_GROUP_LABELS, QUESTION_TYPE_LABELS } from "../utils/questionLa
 import type { PracticeExamStatus } from "../utils/practiceExamStatus";
 import PracticeExamStatusBadge from "./PracticeExamStatusBadge";
 import TrainingObjectActionsMenu, { type TrainingObjectAction } from "./TrainingObjectActionsMenu";
+import { buildTrainingObjectManagementActions, trainingObjectArchiveActionKey } from "./trainingObjectManagementActions";
 
 const objectCardClassName =
   "group hover:bg-app relative touch-manipulation select-none overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
@@ -129,30 +127,21 @@ function TrainingObjectCard({
   };
   const title = trainingObjectTitle(object);
   const IconComponent = objectIcon(object, isOver);
-  const archiveActionKey = `archive-${object.kind}-${object.id}`;
+  const managementActions = buildTrainingObjectManagementActions({
+    archiveActionKey: trainingObjectArchiveActionKey(object.kind, object.id),
+    actionLoading,
+    onEdit,
+    onMove,
+    onArchive,
+  });
   const showUnavailableDrop = object.kind === "folder" && isDragActive && !canDropInto && !isDragging;
   const actions: TrainingObjectAction[] = [
     { label: "Открыть", icon: ExternalLink, onSelect: onOpen },
-    ...(canManage
-      ? [
-          { label: "Изменить", icon: Edit3, onSelect: onEdit },
-          { label: "Переместить", icon: MoveRight, onSelect: onMove },
-        ]
-      : []),
+    ...(canManage ? [managementActions.edit, managementActions.move] : []),
     ...(object.kind === "practiceExam" && runRoute
       ? [{ label: "Пройти", icon: Play, onSelect: onRunPracticeExam ?? onOpen } satisfies TrainingObjectAction]
       : []),
-    ...(canManage
-      ? [
-          {
-            label: actionLoading === archiveActionKey ? "Перемещаем в корзину..." : "В корзину",
-            icon: Trash2,
-            tone: "danger",
-            disabled: actionLoading === archiveActionKey,
-            onSelect: onArchive,
-          } satisfies TrainingObjectAction,
-        ]
-      : []),
+    ...(canManage ? [managementActions.archive] : []),
   ];
 
   return (
