@@ -1,4 +1,4 @@
-export type TrainingFolderType = "KNOWLEDGE" | "QUESTION_BANK";
+export type TrainingFolderType = "KNOWLEDGE" | "QUESTION_BANK" | "CERTIFICATION";
 
 export type TrainingFolderDto = {
   id: number;

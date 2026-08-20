@@ -448,6 +448,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.canAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
             case QUESTION_BANK -> trainingPolicyService.canAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
+            case CERTIFICATION -> trainingPolicyService.canAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
         };
     }
 
@@ -459,6 +460,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         switch (type) {
             case KNOWLEDGE -> trainingPolicyService.assertCanUseKnowledgePositions(userId, restaurantId, requested);
             case QUESTION_BANK -> trainingPolicyService.assertCanUseQuestionBankPositions(userId, restaurantId, requested);
+            case CERTIFICATION -> trainingPolicyService.assertCanUseCertificationPositions(userId, restaurantId, requested);
         }
     }
 
@@ -500,6 +502,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.assertCanAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
             case QUESTION_BANK -> trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
+            case CERTIFICATION -> trainingPolicyService.assertCanAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
         }
     }
 
