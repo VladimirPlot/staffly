@@ -18,7 +18,7 @@ public interface TrainingExamSourceFolderRepository extends JpaRepository<Traini
     List<ExamUsageDto> findExamUsagesByRestaurantIdAndFolderIds(@Param("restaurantId") Long restaurantId, @Param("folderIds") List<Long> folderIds);
 
     @Query("""
-            select distinct e.id as id, e.title as title, e.mode as mode, e.knowledgeFolder.id as knowledgeFolderId
+            select distinct e.id as id, e.title as title, e.mode as mode, e.folder.id as knowledgeFolderId
             from TrainingExamSourceFolder s
             join s.exam e, TrainingQuestion q
             where q.id = :questionId

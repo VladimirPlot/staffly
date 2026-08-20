@@ -134,7 +134,7 @@ public class ExamServiceImpl implements ExamService {
                 .passPercent(request.passPercent())
                 .timeLimitSec(request.timeLimitSec())
                 .mode(request.mode())
-                .knowledgeFolder(knowledgeFolder)
+                .folder(knowledgeFolder)
                 .attemptLimit(request.attemptLimit())
                 .sortOrder(knowledgeFolder == null ? 0 : nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId()))
                 .active(true)
@@ -164,7 +164,7 @@ public class ExamServiceImpl implements ExamService {
         if (!knowledgeFolder.isActive()) {
             throw new BadRequestException("Нельзя выбрать скрытую папку.");
         }
-        exam.setKnowledgeFolder(knowledgeFolder);
+        exam.setFolder(knowledgeFolder);
         exam.setSortOrder(request.sortOrder() == null
                 ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
                 : normalizeSortOrder(request.sortOrder()));
@@ -196,7 +196,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         boolean wasActive = exam.isActive();
         boolean willBeActive = request.active() == null ? wasActive : request.active();
-        var currentKnowledgeFolderId = exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId();
+        var currentKnowledgeFolderId = exam.getFolder() == null ? null : exam.getFolder().getId();
 
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
@@ -217,7 +217,7 @@ public class ExamServiceImpl implements ExamService {
         exam.setQuestionCount(request.questionCount());
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
-        exam.setKnowledgeFolder(knowledgeFolder);
+        exam.setFolder(knowledgeFolder);
         if (targetPracticeSortOrder != null) {
             exam.setSortOrder(targetPracticeSortOrder);
         }
@@ -245,7 +245,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         if (!exam.isActive()) {
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
-                exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getKnowledgeFolder().getId()));
+                exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
             }
             exam.setActive(true);
         }
@@ -741,7 +741,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getPassPercent(),
                 exam.getTimeLimitSec(),
                 exam.getMode(),
-                exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId(),
+                exam.getFolder() == null ? null : exam.getFolder().getId(),
                 exam.getAttemptLimit(),
                 exam.getVersion(),
                 exam.getSortOrder(),
