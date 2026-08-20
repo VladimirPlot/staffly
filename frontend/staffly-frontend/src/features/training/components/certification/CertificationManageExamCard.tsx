@@ -1,4 +1,4 @@
-import { Eye, Pencil, Trash2, UserRoundCog } from "lucide-react";
+import { Eye, MoveRight, Pencil, Trash2, UserRoundCog } from "lucide-react";
 import { Link } from "react-router-dom";
 import IconButton from "../../../../shared/ui/IconButton";
 import type { PositionDto } from "../../../dictionaries/api";
@@ -12,6 +12,7 @@ type Props = {
   loading: boolean;
   positionsById: Map<number, PositionDto>;
   onEdit?: (exam: TrainingExamDto) => void;
+  onMove?: (exam: TrainingExamDto) => void;
   onChangeOwner?: (exam: TrainingExamDto) => void;
   onAction?: (examId: number, action: "hide" | "restore" | "delete") => void;
   showDeleteAction?: boolean;
@@ -23,6 +24,7 @@ export default function CertificationManageExamCard({
   loading,
   positionsById,
   onEdit,
+  onMove,
   onChangeOwner,
   onAction,
   showDeleteAction = true,
@@ -54,6 +56,19 @@ export default function CertificationManageExamCard({
           >
             <Pencil className="h-4 w-4" />
           </IconButton>
+
+          {onMove && <IconButton
+            aria-label="Переместить аттестацию"
+            title="Переместить"
+            disabled={loading}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onMove(exam);
+            }}
+          >
+            <MoveRight className="h-4 w-4" />
+          </IconButton>}
 
           <IconButton
             aria-label={exam.active ? "Скрыть аттестацию" : "Восстановить аттестацию"}
