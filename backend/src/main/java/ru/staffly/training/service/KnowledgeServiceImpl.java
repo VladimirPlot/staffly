@@ -265,6 +265,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             case KNOWLEDGE_ITEM -> reorderKnowledgeItems(restaurantId, userId, request);
             case QUESTION -> reorderQuestions(restaurantId, userId, request);
             case PRACTICE_EXAM -> reorderPracticeExams(restaurantId, userId, request);
+            case CERTIFICATION_EXAM -> reorderCertificationExams(restaurantId, userId, request);
         }
     }
 
@@ -311,6 +312,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         requireCompleteOrder(request.orderedIds(), actual.stream().map(TrainingExam::getId).collect(Collectors.toSet()));
         var byId = actual.stream().collect(Collectors.toMap(TrainingExam::getId, Function.identity()));
         request.orderedIds().forEach(id -> requireManageablePracticeExam(restaurantId, userId, id));
+        applyOrder(request.orderedIds(), byId, TrainingExam::setSortOrder);
+    }
+
+    private void reorderCertificationExams(Long restaurantId, Long userId, ReorderTrainingObjectsRequest request) {
+        if (request.type() != TrainingFolderType.CERTIFICATION) {
+            throw new BadRequestException("Аттестационные тесты доступны только в разделе аттестаций");
+        }
+        var actual = request.folderId() == null
+                ? exams.findActiveCertificationInRoot(restaurantId)
+                : exams.findActiveCertificationInFolder(restaurantId, request.folderId());
+        requireCompleteOrder(request.orderedIds(), actual.stream().map(TrainingExam::getId).collect(Collectors.toSet()));
+        var byId = actual.stream().collect(Collectors.toMap(TrainingExam::getId, Function.identity()));
+        request.orderedIds().forEach(id -> requireManageableCertificationExam(restaurantId, userId, id));
         applyOrder(request.orderedIds(), byId, TrainingExam::setSortOrder);
     }
 
@@ -626,6 +640,20 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (exam.getFolder() != null) {
             requireAccessibleKnowledgeFolder(restaurantId, userId, exam.getFolder().getId());
         }
+        return exam;
+    }
+
+    private TrainingExam requireManageableCertificationExam(Long restaurantId, Long userId, Long examId) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Операция доступна только для аттестационного теста.");
+        }
+        trainingPolicyService.assertCanAccessExamTargetByVisibility(
+                userId,
+                restaurantId,
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+        );
         return exam;
     }
 

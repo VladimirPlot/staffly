@@ -441,7 +441,7 @@ export type MoveTrainingCertificationExamPayload = {
   sortOrder?: number | null;
 };
 
-export type ReorderTrainingObjectKind = "FOLDER" | "KNOWLEDGE_ITEM" | "QUESTION" | "PRACTICE_EXAM";
+export type ReorderTrainingObjectKind = "FOLDER" | "KNOWLEDGE_ITEM" | "QUESTION" | "PRACTICE_EXAM" | "CERTIFICATION_EXAM";
 
 export type ReorderTrainingObjectsPayload = {
   type: TrainingFolderType;
