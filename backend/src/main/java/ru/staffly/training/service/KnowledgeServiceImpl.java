@@ -230,7 +230,12 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     private void reorderQuestions(Long restaurantId, Long userId, ReorderTrainingObjectsRequest request) {
         if (request.type() != TrainingFolderType.QUESTION_BANK || request.folderId() == null) throw new BadRequestException("Вопросы доступны только в папках банка вопросов");
-        var actual = questions.findByRestaurantIdAndFolderIdAndActiveTrue(restaurantId, request.folderId());
+        if (request.questionGroup() == null) throw new BadRequestException("Для сортировки вопросов требуется группа вопросов");
+        var actual = questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                restaurantId,
+                request.folderId(),
+                request.questionGroup()
+        );
         requireCompleteOrder(request.orderedIds(), actual.stream().map(TrainingQuestion::getId).collect(Collectors.toSet()));
         var byId = actual.stream().collect(Collectors.toMap(TrainingQuestion::getId, Function.identity()));
         for (Long id : request.orderedIds()) {
