@@ -5,6 +5,7 @@ export const trainingRoutes = {
   questionBank: "/training/question-bank",
   questionBankFolder: (folderId: number) => `/training/question-bank/${folderId}`,
   exams: "/training/exams",
+  certificationFolder: (folderId: number) => `/training/exams/folders/${folderId}`,
   examRun: (examId: number) => `/training/exams/${examId}/run`,
   examResult: (examId: number) => `/training/exams/${examId}/result`,
   examAnalytics: (examId: number) => `/training/exams/${examId}/analytics`,

@@ -11,9 +11,9 @@ type Props = {
   analyticsHref: string;
   loading: boolean;
   positionsById: Map<number, PositionDto>;
-  onEdit: (exam: TrainingExamDto) => void;
-  onChangeOwner: (exam: TrainingExamDto) => void;
-  onAction: (examId: number, action: "hide" | "restore" | "delete") => void;
+  onEdit?: (exam: TrainingExamDto) => void;
+  onChangeOwner?: (exam: TrainingExamDto) => void;
+  onAction?: (examId: number, action: "hide" | "restore" | "delete") => void;
 };
 
 export default function CertificationManageExamCard({
@@ -39,7 +39,7 @@ export default function CertificationManageExamCard({
   return (
     <div className="group relative rounded-2xl border border-subtle bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--staffly-border)] hover:shadow-md sm:p-5">
       <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-2">
-        <div className="flex items-center gap-1">
+        {onEdit && onAction && <div className="flex items-center gap-1">
           <IconButton
             aria-label="Редактировать аттестацию"
             title="Редактировать"
@@ -78,7 +78,7 @@ export default function CertificationManageExamCard({
           >
             <Trash2 className="h-4 w-4" />
           </IconButton>
-        </div>
+        </div>}
 
         <CertificationResultMetrics
           passedCount={passed}
@@ -129,7 +129,7 @@ export default function CertificationManageExamCard({
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="text-xs text-muted">{ownerLabel}</div>
-        <button
+        {onChangeOwner && <button
           type="button"
           className="inline-flex items-center gap-1 rounded-md border border-subtle px-2 py-1 text-xs text-muted transition-colors hover:bg-white/70 hover:text-default disabled:cursor-not-allowed disabled:opacity-60"
           disabled={loading}
@@ -141,7 +141,7 @@ export default function CertificationManageExamCard({
         >
           <UserRoundCog className="h-3.5 w-3.5" />
           Сменить ответственного
-        </button>
+        </button>}
       </div>
     </div>
   );
