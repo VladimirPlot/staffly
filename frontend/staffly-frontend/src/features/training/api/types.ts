@@ -440,5 +440,6 @@ export type ReorderTrainingObjectsPayload = {
   type: TrainingFolderType;
   folderId?: number | null;
   kind: ReorderTrainingObjectKind;
+  questionGroup?: TrainingQuestionGroup;
   orderedIds: number[];
 };

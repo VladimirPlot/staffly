@@ -65,11 +65,12 @@ public interface TrainingQuestionRepository extends JpaRepository<TrainingQuesti
             select max(q.sortOrder) from TrainingQuestion q
             where q.restaurant.id = :restaurantId
               and q.folder.id = :folderId
+              and q.questionGroup = :group
               and q.active = true
             """)
-    Integer maxActiveSortOrderInFolder(@Param("restaurantId") Long restaurantId, @Param("folderId") Long folderId);
-
-    List<TrainingQuestion> findByRestaurantIdAndFolderIdAndActiveTrue(Long restaurantId, Long folderId);
+    Integer maxActiveSortOrderInFolderAndQuestionGroup(@Param("restaurantId") Long restaurantId,
+                                                        @Param("folderId") Long folderId,
+                                                        @Param("group") TrainingQuestionGroup group);
 
     @Query("""
             select distinct q from TrainingQuestion q
