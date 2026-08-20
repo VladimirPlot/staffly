@@ -35,6 +35,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final EntityManager entityManager;
     private final PositionRepository positions;
     private final TrainingPolicyService trainingPolicyService;
+    private final ExamService examService;
 
     @Transactional(readOnly = true)
     @Override
@@ -155,7 +156,15 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var root = requireManageableFolder(restaurantId, userId, folderId);
 
         ensureKnowledgeFolderHasNoPracticeExams(restaurantId, root);
-        setFolderTreeActive(restaurantId, root, false);
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+            for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, folderIds)) {
+                examService.hideExam(restaurantId, userId, exam.getId());
+            }
+            setCertificationFoldersActiveInHierarchy(restaurantId, folderIds, false);
+        } else {
+            setFolderTreeActive(restaurantId, root, false);
+        }
 
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found")));
@@ -166,8 +175,17 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public TrainingFolderDto restoreFolder(Long restaurantId, Long userId, Long folderId) {
         var root = requireManageableFolder(restaurantId, userId, folderId);
 
-        prepareFolderTreeRestore(restaurantId, root);
-        setFolderTreeActive(restaurantId, root, true);
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+            prepareFolderTreeRestore(restaurantId, root);
+            setCertificationFoldersActiveInHierarchy(restaurantId, folderIds, true);
+            for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, folderIds)) {
+                examService.restoreExam(restaurantId, userId, exam.getId());
+            }
+        } else {
+            prepareFolderTreeRestore(restaurantId, root);
+            setFolderTreeActive(restaurantId, root, true);
+        }
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found")));
     }
@@ -181,6 +199,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         }
 
         var allFolderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds)) {
+                examService.deleteExam(restaurantId, userId, exam.getId());
+            }
+            deleteFoldersBottomUp(restaurantId, allFolderIds);
+            return;
+        }
+
         ensureFolderDeletionAllowed(restaurantId, root, allFolderIds);
 
         var relatedItems = items.findByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds);
@@ -189,6 +215,39 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             storage.deleteItemFolder(item.getId());
         }
         folders.delete(root);
+    }
+
+    private void setCertificationFoldersActiveInHierarchy(Long restaurantId, List<Long> folderIds, boolean active) {
+        var byId = folders.findAllById(folderIds).stream()
+                .filter(folder -> Objects.equals(folder.getRestaurant().getId(), restaurantId))
+                .collect(Collectors.toMap(TrainingFolder::getId, Function.identity()));
+        var orderedIds = active ? folderIds : new ArrayList<>(folderIds);
+        if (!active) {
+            Collections.reverse(orderedIds);
+        }
+        for (Long id : orderedIds) {
+            var folder = byId.get(id);
+            if (folder != null) {
+                folder.setActive(active);
+                folders.save(folder);
+                folders.flush();
+            }
+        }
+    }
+
+    private void deleteFoldersBottomUp(Long restaurantId, List<Long> folderIds) {
+        var byId = folders.findAllById(folderIds).stream()
+                .filter(folder -> Objects.equals(folder.getRestaurant().getId(), restaurantId))
+                .collect(Collectors.toMap(TrainingFolder::getId, Function.identity()));
+        var bottomUpIds = new ArrayList<>(folderIds);
+        Collections.reverse(bottomUpIds);
+        for (Long id : bottomUpIds) {
+            var folder = byId.get(id);
+            if (folder != null) {
+                folders.delete(folder);
+                folders.flush();
+            }
+        }
     }
 
     @Override
@@ -542,16 +601,6 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             return;
         }
 
-        if (root.getType() == TrainingFolderType.CERTIFICATION) {
-            var usages = exams.findCertificationExamUsagesByFolderIds(restaurantId, allFolderIds);
-            if (!usages.isEmpty()) {
-                var titles = usages.stream().map(ExamUsageDto::title).distinct().toList();
-                throw new ConflictException(
-                        "Папка содержит аттестации: " + String.join(", ", titles) + ". Переместите/удалите аттестации и повторите.",
-                        Map.of("exams", usages)
-                );
-            }
-        }
     }
 
     private void ensureNotMovingIntoSelfOrDescendant(Long restaurantId, Long folderId, Long candidateParentId, TrainingFolderType type) {

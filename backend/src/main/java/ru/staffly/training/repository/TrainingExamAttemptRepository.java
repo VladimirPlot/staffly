@@ -1,6 +1,7 @@
 package ru.staffly.training.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExamAttempt;
@@ -10,6 +11,13 @@ import java.util.Optional;
 
 public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExamAttempt, Long> {
     Optional<TrainingExamAttempt> findByIdAndRestaurantId(Long id, Long restaurantId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update TrainingExamAttempt a set a.assignment = null
+            where a.assignment.exam.id = :examId
+            """)
+    int detachAssignmentsForExam(@Param("examId") Long examId);
 
     @Query(value = """
         select x.exam_id as examId,
