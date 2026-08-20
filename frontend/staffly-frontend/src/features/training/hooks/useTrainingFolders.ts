@@ -8,10 +8,11 @@ type Params = {
   restaurantId: number | null;
   type: TrainingFolderType;
   canManage: boolean;
+  initialIncludeInactive?: boolean;
 };
 
-export function useTrainingFolders({ restaurantId, type, canManage }: Params) {
-  const [includeInactive, setIncludeInactive] = useState(false);
+export function useTrainingFolders({ restaurantId, type, canManage, initialIncludeInactive = false }: Params) {
+  const [includeInactive, setIncludeInactive] = useState(initialIncludeInactive);
   const [folders, setFolders] = useState<TrainingFolderDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

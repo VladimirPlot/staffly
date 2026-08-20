@@ -1,19 +1,16 @@
 import { BookOpen, ClipboardCheck, Folder, HelpCircle } from "lucide-react";
+import type { ReactElement } from "react";
 
 import TrashModal, { type TrashModalItem } from "../../../shared/ui/TrashModal";
-import type {
-  TrainingExamDto,
-  TrainingFolderDto,
-  TrainingKnowledgeItemDto,
-  TrainingQuestionDto,
-} from "../api/types";
+import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto, TrainingQuestionDto } from "../api/types";
 import { bySortOrderAndName } from "../utils/sort";
 
 export type ArchivedTrainingObject =
   | { kind: "folder"; id: number; title: string; description?: string | null; value: TrainingFolderDto }
   | { kind: "knowledgeItem"; id: number; title: string; description?: string | null; value: TrainingKnowledgeItemDto }
   | { kind: "question"; id: number; title: string; description?: string | null; value: TrainingQuestionDto }
-  | { kind: "practiceExam"; id: number; title: string; description?: string | null; value: TrainingExamDto };
+  | { kind: "practiceExam"; id: number; title: string; description?: string | null; value: TrainingExamDto }
+  | { kind: "certificationExam"; id: number; title: string; description?: string | null; value: TrainingExamDto };
 
 function iconForKind(kind: ArchivedTrainingObject["kind"]) {
   switch (kind) {
@@ -24,27 +21,14 @@ function iconForKind(kind: ArchivedTrainingObject["kind"]) {
     case "question":
       return HelpCircle;
     case "practiceExam":
+    case "certificationExam":
       return ClipboardCheck;
   }
 }
 
-export default function TrainingArchiveModal({
-  open,
-  title = "Архив",
-  loadingText = "Загружаем архив...",
-  emptyText = "Архив пуст.",
-  folders,
-  knowledgeItems = [],
-  questions = [],
-  practiceExams = [],
-  loading,
-  error,
-  actionLoading,
-  onClose,
-  onRestore,
-  onDelete,
-  onDeleteAll,
-}: {
+type NonCertificationArchivedObject = Exclude<ArchivedTrainingObject, { kind: "certificationExam" }>;
+
+type TrainingArchiveModalCommonProps<TObject extends ArchivedTrainingObject> = {
   open: boolean;
   title?: string;
   loadingText?: string;
@@ -57,10 +41,41 @@ export default function TrainingArchiveModal({
   error: string | null;
   actionLoading: string | null;
   onClose: () => void;
-  onRestore: (object: ArchivedTrainingObject) => void;
-  onDelete: (object: ArchivedTrainingObject) => void;
+  onRestore: (object: TObject) => void;
+  onDelete: (object: TObject) => void;
   onDeleteAll: () => void;
-}) {
+  showDeleteAll?: boolean;
+};
+
+type TrainingArchiveModalProps =
+  | (TrainingArchiveModalCommonProps<ArchivedTrainingObject> & { certificationExams: TrainingExamDto[] })
+  | (TrainingArchiveModalCommonProps<NonCertificationArchivedObject> & { certificationExams?: never });
+
+function TrainingArchiveModal(
+  props: TrainingArchiveModalCommonProps<ArchivedTrainingObject> & { certificationExams: TrainingExamDto[] },
+): ReactElement;
+function TrainingArchiveModal(
+  props: TrainingArchiveModalCommonProps<NonCertificationArchivedObject> & { certificationExams?: never },
+): ReactElement;
+function TrainingArchiveModal({
+  open,
+  title = "Архив",
+  loadingText = "Загружаем архив...",
+  emptyText = "Архив пуст.",
+  folders,
+  knowledgeItems = [],
+  questions = [],
+  practiceExams = [],
+  certificationExams = [],
+  loading,
+  error,
+  actionLoading,
+  onClose,
+  onRestore,
+  onDelete,
+  onDeleteAll,
+  showDeleteAll = true,
+}: TrainingArchiveModalProps) {
   const archivedObjects = [
     ...folders
       .filter((folder) => !folder.active)
@@ -102,6 +117,16 @@ export default function TrainingArchiveModal({
         description: exam.description,
         value: exam,
       })),
+    ...certificationExams
+      .filter((exam) => !exam.active)
+      .sort(bySortOrderAndName)
+      .map((exam) => ({
+        kind: "certificationExam" as const,
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        value: exam,
+      })),
   ];
 
   const items: Array<TrashModalItem<ArchivedTrainingObject["kind"], ArchivedTrainingObject>> = archivedObjects.map(
@@ -131,12 +156,15 @@ export default function TrainingArchiveModal({
       actionLoading={actionLoading}
       searchPlaceholder="Поиск по архиву"
       onClose={onClose}
-      onRestore={(item) => onRestore(item.value)}
-      onDelete={(item) => onDelete(item.value)}
+      onRestore={(item) => (onRestore as (object: ArchivedTrainingObject) => void)(item.value)}
+      onDelete={(item) => (onDelete as (object: ArchivedTrainingObject) => void)(item.value)}
       onDeleteAll={onDeleteAll}
+      showDeleteAll={showDeleteAll}
     />
   );
 }
+
+export default TrainingArchiveModal;
 
 function typeLabelForKind(kind: ArchivedTrainingObject["kind"]) {
   switch (kind) {
@@ -148,6 +176,8 @@ function typeLabelForKind(kind: ArchivedTrainingObject["kind"]) {
       return "Вопрос";
     case "practiceExam":
       return "Тест";
+    case "certificationExam":
+      return "Аттестация";
   }
 }
 
@@ -161,5 +191,7 @@ function typePluralLabelForKind(kind: ArchivedTrainingObject["kind"]) {
       return "Вопросы";
     case "practiceExam":
       return "Тесты";
+    case "certificationExam":
+      return "Аттестации";
   }
 }
