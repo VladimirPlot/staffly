@@ -40,7 +40,7 @@ export type TrainingFolderListObject =
   | TrainingPracticeExamObject;
 
 export type TrainingMoveTarget = {
-  kind: TrainingFolderListObject["kind"];
+  kind: TrainingFolderListObject["kind"] | "certificationExam";
   id: number;
   title: string;
 };

@@ -1,4 +1,4 @@
-import { Archive, Eye, Folder, FolderPlus, Pencil, Plus } from "lucide-react";
+import { Archive, Eye, Folder, FolderPlus, MoveRight, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -8,7 +8,7 @@ import Icon from "../../../shared/ui/Icon";
 import IconButton from "../../../shared/ui/IconButton";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
-import { deleteExam, deleteFolder, hideExam, listExams, restoreExam } from "../api/trainingApi";
+import { deleteExam, deleteFolder, hideExam, listExams, moveCertificationExam, moveFolder, restoreExam } from "../api/trainingApi";
 import type { TrainingExamDto, TrainingFolderDto } from "../api/types";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
@@ -18,10 +18,12 @@ import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingFolderModal from "../components/TrainingFolderModal";
+import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { buildTrainingFolderChain } from "../trainingFolderDnd";
+import type { TrainingMoveTarget } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { bySortOrderAndName } from "../utils/sort";
@@ -48,6 +50,9 @@ export default function CertificationFolderPage() {
   const [editingFolder, setEditingFolder] = useState<TrainingFolderDto | null>(null);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
+  const [moveTarget, setMoveTarget] = useState<TrainingMoveTarget | null>(null);
+  const [moveSubmitting, setMoveSubmitting] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveDeleteTarget, setArchiveDeleteTarget] = useState<ArchivedTrainingObject | null>(null);
   const [archiveActionLoading, setArchiveActionLoading] = useState<string | null>(null);
@@ -145,6 +150,26 @@ export default function CertificationFolderPage() {
       setActionError(getTrainingErrorMessage(error, "Не удалось выполнить действие с аттестацией."));
     } finally {
       setExamActionLoadingId(null);
+    }
+  };
+
+  const submitMove = async (targetFolderId: number | null) => {
+    if (!restaurantId || !moveTarget) return;
+    setMoveSubmitting(true);
+    setMoveError(null);
+    try {
+      if (moveTarget.kind === "folder") {
+        await moveFolder(restaurantId, moveTarget.id, { parentId: targetFolderId });
+        await reloadFolderContents();
+      } else if (moveTarget.kind === "certificationExam") {
+        await moveCertificationExam(restaurantId, moveTarget.id, { folderId: targetFolderId });
+        await loadContent();
+      }
+      setMoveTarget(null);
+    } catch (error) {
+      setMoveError(getTrainingErrorMessage(error, "Не удалось переместить."));
+    } finally {
+      setMoveSubmitting(false);
     }
   };
 
@@ -277,6 +302,18 @@ export default function CertificationFolderPage() {
                           <Pencil className="h-4 w-4" />
                         </IconButton>
                         <IconButton
+                          aria-label="Переместить папку"
+                          title="Переместить"
+                          disabled={folderActionLoadingId === folder.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setMoveError(null);
+                            setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                          }}
+                        >
+                          <MoveRight className="h-4 w-4" />
+                        </IconButton>
+                        <IconButton
                           aria-label="Скрыть папку"
                           title="Скрыть"
                           disabled={folderActionLoadingId === folder.id}
@@ -311,6 +348,10 @@ export default function CertificationFolderPage() {
                       setExamModalOpen(true);
                     }}
                     onChangeOwner={setChangeOwnerExam}
+                    onMove={(value) => {
+                      setMoveError(null);
+                      setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
+                    }}
                     onAction={runExamAction}
                     showDeleteAction={false}
                   />
@@ -378,6 +419,21 @@ export default function CertificationFolderPage() {
           onSaved={loadContent}
         />
       )}
+
+      <TrainingMoveModal
+        target={moveTarget}
+        type="CERTIFICATION"
+        folders={foldersState.folders}
+        currentFolderId={currentFolderId}
+        submitting={moveSubmitting}
+        error={moveError}
+        onClose={() => {
+          if (moveSubmitting) return;
+          setMoveTarget(null);
+          setMoveError(null);
+        }}
+        onSubmit={(targetFolderId) => void submitMove(targetFolderId)}
+      />
 
       <TrainingArchiveModal
         open={archiveOpen}
