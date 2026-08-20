@@ -36,6 +36,7 @@ type TrashModalProps<TKind extends string = string, TValue = unknown> = {
   onRestore: (item: TrashModalItem<TKind, TValue>) => void;
   onDelete: (item: TrashModalItem<TKind, TValue>) => void;
   onDeleteAll: () => void;
+  showDeleteAll?: boolean;
 };
 
 export default function TrashModal<TKind extends string = string, TValue = unknown>({
@@ -53,6 +54,7 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
   onRestore,
   onDelete,
   onDeleteAll,
+  showDeleteAll = true,
 }: TrashModalProps<TKind, TValue>) {
   const [query, setQuery] = React.useState("");
   const [activeKind, setActiveKind] = React.useState<TKind | "all">("all");
@@ -139,7 +141,7 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
                 {items.length} в корзине
                 {visibleItems.length !== items.length ? ` · показано ${visibleItems.length}` : ""}
               </div>
-              <Button
+              {showDeleteAll && <Button
                 size="sm"
                 variant="outline"
                 className="w-full text-red-600 sm:w-auto"
@@ -147,7 +149,7 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
                 onClick={onDeleteAll}
               >
                 Удалить все
-              </Button>
+              </Button>}
             </div>
 
             <SearchBar

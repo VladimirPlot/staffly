@@ -1,4 +1,4 @@
-import { Eye, Folder, FolderPlus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Archive, Eye, Folder, FolderPlus, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -18,6 +18,7 @@ import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingFolderModal from "../components/TrainingFolderModal";
+import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { buildTrainingFolderChain } from "../trainingFolderDnd";
@@ -32,7 +33,12 @@ export default function CertificationFolderPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { restaurantId, canManage, loading: accessLoading } = useTrainingAccess();
-  const foldersState = useTrainingFolders({ restaurantId, type: "CERTIFICATION", canManage });
+  const foldersState = useTrainingFolders({
+    restaurantId,
+    type: "CERTIFICATION",
+    canManage,
+    initialIncludeInactive: true,
+  });
   const [exams, setExams] = useState<TrainingExamDto[]>([]);
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
@@ -42,7 +48,9 @@ export default function CertificationFolderPage() {
   const [editingFolder, setEditingFolder] = useState<TrainingFolderDto | null>(null);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
-  const [deleteFolderTarget, setDeleteFolderTarget] = useState<TrainingFolderDto | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveDeleteTarget, setArchiveDeleteTarget] = useState<ArchivedTrainingObject | null>(null);
+  const [archiveActionLoading, setArchiveActionLoading] = useState<string | null>(null);
   const [folderActionLoadingId, setFolderActionLoadingId] = useState<number | null>(null);
   const [examActionLoadingId, setExamActionLoadingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -53,7 +61,7 @@ export default function CertificationFolderPage() {
     setContentError(null);
     try {
       const [examResponse, positionResponse] = await Promise.all([
-        listExams(restaurantId, false, true),
+        listExams(restaurantId, true, true),
         listPositions(restaurantId, { includeInactive: false }),
       ]);
       setExams(examResponse);
@@ -76,14 +84,22 @@ export default function CertificationFolderPage() {
   const currentFolder = folderMap.get(currentFolderId) ?? null;
   const folderChain = useMemo(() => buildTrainingFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
   const childFolders = useMemo(
-    () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId).sort(bySortOrderAndName),
+    () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId && folder.active).sort(bySortOrderAndName),
     [currentFolderId, foldersState.folders],
   );
   const currentExams = useMemo(
     () =>
       exams
-        .filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId === currentFolderId)
+        .filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId === currentFolderId && exam.active)
         .sort(bySortOrderAndName),
+    [currentFolderId, exams],
+  );
+  const hiddenChildFolders = useMemo(
+    () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId && !folder.active),
+    [currentFolderId, foldersState.folders],
+  );
+  const hiddenCurrentExams = useMemo(
+    () => exams.filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId === currentFolderId && !exam.active),
     [currentFolderId, exams],
   );
   const positionsById = useMemo(() => new Map(positions.map((position) => [position.id, position])), [positions]);
@@ -116,21 +132,6 @@ export default function CertificationFolderPage() {
     }
   };
 
-  const handleDeleteFolder = async () => {
-    if (!restaurantId || !deleteFolderTarget) return;
-    setFolderActionLoadingId(deleteFolderTarget.id);
-    setActionError(null);
-    try {
-      await deleteFolder(restaurantId, deleteFolderTarget.id);
-      setDeleteFolderTarget(null);
-      await reloadFolderContents();
-    } catch (error) {
-      setActionError(getTrainingErrorMessage(error, "Не удалось удалить папку."));
-    } finally {
-      setFolderActionLoadingId(null);
-    }
-  };
-
   const runExamAction = async (examId: number, action: "hide" | "restore" | "delete") => {
     if (!restaurantId) return;
     setExamActionLoadingId(examId);
@@ -144,6 +145,39 @@ export default function CertificationFolderPage() {
       setActionError(getTrainingErrorMessage(error, "Не удалось выполнить действие с аттестацией."));
     } finally {
       setExamActionLoadingId(null);
+    }
+  };
+
+  const restoreArchivedObject = async (object: ArchivedTrainingObject) => {
+    if (!restaurantId) return;
+    const actionKey = `restore-${object.kind}-${object.id}`;
+    setArchiveActionLoading(actionKey);
+    setActionError(null);
+    try {
+      if (object.kind === "folder") await foldersState.restore(object.id);
+      else if (object.kind === "certificationExam") await restoreExam(restaurantId, object.id);
+      await reloadFolderContents();
+    } catch (error) {
+      setActionError(getTrainingErrorMessage(error, "Не удалось восстановить объект."));
+    } finally {
+      setArchiveActionLoading(null);
+    }
+  };
+
+  const deleteArchivedObject = async () => {
+    if (!restaurantId || !archiveDeleteTarget) return;
+    const target = archiveDeleteTarget;
+    setArchiveActionLoading(`delete-${target.kind}-${target.id}`);
+    setActionError(null);
+    try {
+      if (target.kind === "folder") await deleteFolder(restaurantId, target.id);
+      else if (target.kind === "certificationExam") await deleteExam(restaurantId, target.id);
+      setArchiveDeleteTarget(null);
+      await reloadFolderContents();
+    } catch (error) {
+      setActionError(getTrainingErrorMessage(error, "Не удалось удалить объект."));
+    } finally {
+      setArchiveActionLoading(null);
     }
   };
 
@@ -176,6 +210,13 @@ export default function CertificationFolderPage() {
           <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
           {canManage && (
             <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                leftIcon={<Archive className="h-4 w-4" />}
+                onClick={() => setArchiveOpen(true)}
+              >
+                Скрытые
+              </Button>
               <Button
                 variant="outline"
                 leftIcon={<FolderPlus className="h-4 w-4" />}
@@ -246,17 +287,6 @@ export default function CertificationFolderPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </IconButton>
-                        <IconButton
-                          aria-label="Удалить папку"
-                          title="Удалить"
-                          disabled={folderActionLoadingId === folder.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDeleteFolderTarget(folder);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </IconButton>
                       </div>
                     </div>
                   </Card>
@@ -282,6 +312,7 @@ export default function CertificationFolderPage() {
                     }}
                     onChangeOwner={setChangeOwnerExam}
                     onAction={runExamAction}
+                    showDeleteAction={false}
                   />
                 ))}
               </div>
@@ -348,15 +379,32 @@ export default function CertificationFolderPage() {
         />
       )}
 
+      <TrainingArchiveModal
+        open={archiveOpen}
+        title="Скрытые"
+        emptyText="В этой папке нет скрытых объектов."
+        folders={hiddenChildFolders}
+        certificationExams={hiddenCurrentExams}
+        loading={loading}
+        error={foldersState.error ?? contentError}
+        actionLoading={archiveActionLoading}
+        onClose={() => setArchiveOpen(false)}
+        onRestore={(object) => void restoreArchivedObject(object)}
+        onDelete={setArchiveDeleteTarget}
+        onDeleteAll={() => undefined}
+        showDeleteAll={false}
+      />
       <ConfirmDialog
-        open={Boolean(deleteFolderTarget)}
-        title="Удалить папку навсегда"
-        description="Папка, все вложенные папки и все аттестации внутри будут удалены безвозвратно. Активную папку необходимо сначала скрыть."
+        open={Boolean(archiveDeleteTarget)}
+        title="Удалить навсегда"
+        description={archiveDeleteTarget?.kind === "folder"
+          ? "Папка, все вложенные папки и все аттестации внутри будут удалены безвозвратно."
+          : "Аттестация будет удалена безвозвратно."}
         confirmText="Удалить навсегда"
         tone="danger"
-        confirming={Boolean(deleteFolderTarget && folderActionLoadingId === deleteFolderTarget.id)}
-        onCancel={() => setDeleteFolderTarget(null)}
-        onConfirm={() => void handleDeleteFolder()}
+        confirming={Boolean(archiveActionLoading?.startsWith("delete-"))}
+        onCancel={() => setArchiveDeleteTarget(null)}
+        onConfirm={() => void deleteArchivedObject()}
       />
     </div>
   );
