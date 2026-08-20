@@ -223,7 +223,15 @@ public class ExamServiceImpl implements ExamService {
         // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
         // For certification exams null/empty means "clear visibility", which is invalid.
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
+        TrainingFolder examFolder;
+        if (request.mode() == TrainingExamMode.CERTIFICATION) {
+            if (request.folderId() != null && !Objects.equals(currentFolderId, request.folderId())) {
+                throw new BadRequestException("Для перемещения аттестации используйте операцию перемещения.");
+            }
+            examFolder = exam.getFolder();
+        } else {
+            examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
+        }
         Long targetFolderId = examFolder == null ? null : examFolder.getId();
         boolean folderChanged = !Objects.equals(currentFolderId, targetFolderId);
         Integer targetPracticeSortOrder = request.mode() == TrainingExamMode.PRACTICE
@@ -240,7 +248,9 @@ public class ExamServiceImpl implements ExamService {
         exam.setQuestionCount(request.questionCount());
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
-        exam.setFolder(examFolder);
+        if (request.mode() == TrainingExamMode.PRACTICE) {
+            exam.setFolder(examFolder);
+        }
         if (targetPracticeSortOrder != null) {
             exam.setSortOrder(targetPracticeSortOrder);
         }
