@@ -164,33 +164,12 @@ export type CertificationOwnerCandidateDto = {
   positionName?: string | null;
 };
 
-export type OwnedCertificationExamDto = {
-  examId: number;
-  title: string;
-  visibilityPositionIds: number[];
-  visibilityPositionNames: string[];
-  candidates: CertificationOwnerCandidateDto[];
-};
-
-export type CertificationOwnerReassignmentOptionsDto = {
-  userId: number;
-  fullName?: string | null;
-  ownedExams: OwnedCertificationExamDto[];
-};
-
 export type CertificationOwnerCandidatesDto = {
   examId: number;
   title: string;
   currentOwnerUserId?: number | null;
   currentOwnerFullName?: string | null;
   candidates: CertificationOwnerCandidateDto[];
-};
-
-export type CertificationOwnerBatchReassignmentRequest = {
-  items: Array<{
-    examId: number;
-    newOwnerUserId: number;
-  }>;
 };
 
 export type CertificationExamSummaryPreviewDto = {
