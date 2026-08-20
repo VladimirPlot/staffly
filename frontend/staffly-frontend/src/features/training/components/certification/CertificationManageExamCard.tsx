@@ -14,6 +14,7 @@ type Props = {
   onEdit?: (exam: TrainingExamDto) => void;
   onChangeOwner?: (exam: TrainingExamDto) => void;
   onAction?: (examId: number, action: "hide" | "restore" | "delete") => void;
+  showDeleteAction?: boolean;
 };
 
 export default function CertificationManageExamCard({
@@ -24,6 +25,7 @@ export default function CertificationManageExamCard({
   onEdit,
   onChangeOwner,
   onAction,
+  showDeleteAction = true,
 }: Props) {
   const targets = exam.visibilityPositionIds
     .map((id) => positionsById.get(id)?.name)
@@ -66,7 +68,7 @@ export default function CertificationManageExamCard({
             <Eye className="h-4 w-4" />
           </IconButton>
 
-          <IconButton
+          {showDeleteAction && <IconButton
             aria-label="Удалить аттестацию"
             title="Удалить"
             disabled={loading}
@@ -77,7 +79,7 @@ export default function CertificationManageExamCard({
             }}
           >
             <Trash2 className="h-4 w-4" />
-          </IconButton>
+          </IconButton>}
         </div>}
 
         <CertificationResultMetrics
