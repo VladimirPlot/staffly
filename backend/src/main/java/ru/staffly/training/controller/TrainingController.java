@@ -314,6 +314,15 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/move-certification-folder")
+    public TrainingExamDto moveCertificationExam(@PathVariable Long restaurantId,
+                                                 @PathVariable Long examId,
+                                                 @AuthenticationPrincipal UserPrincipal principal,
+                                                 @RequestBody MoveTrainingCertificationExamRequest request) {
+        return examService.moveCertificationExam(restaurantId, principal.userId(), examId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/owner")
     public TrainingExamDto changeCertificationExamOwner(@PathVariable Long restaurantId,
                                                         @PathVariable Long examId,

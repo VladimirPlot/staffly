@@ -14,6 +14,7 @@ public record TrainingExamDto(
         Integer timeLimitSec,
         TrainingExamMode mode,
         Long knowledgeFolderId,
+        Long folderId,
         Integer attemptLimit,
         Integer version,
         Integer sortOrder,
