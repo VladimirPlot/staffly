@@ -1,34 +1,33 @@
-import { Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { Folder, FolderPlus, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
+import Card from "../../../shared/ui/Card";
+import Icon from "../../../shared/ui/Icon";
 import SelectField from "../../../shared/ui/SelectField";
 import Switch from "../../../shared/ui/Switch";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import ExamEditorModal from "../components/ExamEditorModal";
 import LoadingState from "../components/LoadingState";
+import TrainingFolderModal from "../components/TrainingFolderModal";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
 import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
-import {
-  deleteExam,
-  hideExam,
-  listExams,
-  listMyCertificationExams,
-  restoreExam,
-} from "../api/trainingApi";
+import { deleteExam, hideExam, listExams, listMyCertificationExams, restoreExam } from "../api/trainingApi";
 import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
+import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
+import { bySortOrderAndName } from "../utils/sort";
 import {
   examTargetsAllowedAudience,
   getManageableAudienceRoles,
@@ -40,7 +39,9 @@ export default function ExamsPage() {
   const { user } = useAuth();
   const { restaurantId, canManage, myRole, isTrainingExaminer } = useTrainingAccess();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const foldersState = useTrainingFolders({ restaurantId, type: "CERTIFICATION", canManage });
 
   const [manageExams, setManageExams] = useState<TrainingExamDto[]>([]);
   const [myExams, setMyExams] = useState<CurrentUserCertificationExamDto[]>([]);
@@ -55,6 +56,7 @@ export default function ExamsPage() {
   const [positionsError, setPositionsError] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [loadingExamActionId, setLoadingExamActionId] = useState<number | null>(null);
   const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
@@ -166,11 +168,30 @@ export default function ExamsPage() {
   const manageableExams = useMemo(() => {
     if (!showManageSection) return [];
 
-    const byAudience = manageExams.filter((exam) => examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles));
-    const byPosition = positionFilter == null ? byAudience : byAudience.filter((exam) => exam.visibilityPositionIds.includes(positionFilter));
+    const rootCertificationExams = manageExams.filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId == null);
+    const byAudience = rootCertificationExams.filter((exam) =>
+      examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles),
+    );
+    const byPosition =
+      positionFilter == null
+        ? byAudience
+        : byAudience.filter((exam) => exam.visibilityPositionIds.includes(positionFilter));
 
     return sortManageExams(byPosition, positionById);
   }, [showManageSection, manageExams, positionById, allowedAudienceRoles, positionFilter]);
+
+  const rootFolders = useMemo(
+    () => foldersState.folders.filter((folder) => folder.parentId == null && folder.active).sort(bySortOrderAndName),
+    [foldersState.folders],
+  );
+
+  const openFolder = (folderId: number) => navigate(trainingRoutes.certificationFolder(folderId));
+  const handleFolderKeyDown = (event: KeyboardEvent<HTMLElement>, folderId: number) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      openFolder(folderId);
+    }
+  };
 
   const updateQuery = (next: { includeInactive?: boolean; position?: number | null }) => {
     const updated = new URLSearchParams(searchParams);
@@ -212,45 +233,58 @@ export default function ExamsPage() {
       <h2 className="text-2xl font-semibold">Аттестации</h2>
 
       {showMySection && (
-        <section className="space-y-3 rounded-2xl border border-subtle bg-surface p-4">
+        <section className="border-subtle bg-surface space-y-3 rounded-2xl border p-4">
           <h3 className="text-lg font-semibold">Мои аттестации</h3>
           {loadingMyExams && <LoadingState label="Загрузка моих аттестаций..." />}
           {myExamsError && <ErrorState message={myExamsError} onRetry={loadMyExams} />}
 
-          {!loadingMyExams && !myExamsError && (myExams.length === 0 ? (
-            <div className="text-sm text-muted">Пока для вас аттестаций нет</div>
-          ) : (
-            <div className="space-y-3">
-              {myExams.map((exam) => (
-                <CertificationMyExamCard key={exam.assignmentId} exam={exam} />
-              ))}
-            </div>
-          ))}
+          {!loadingMyExams &&
+            !myExamsError &&
+            (myExams.length === 0 ? (
+              <div className="text-muted text-sm">Пока для вас аттестаций нет</div>
+            ) : (
+              <div className="space-y-3">
+                {myExams.map((exam) => (
+                  <CertificationMyExamCard key={exam.assignmentId} exam={exam} />
+                ))}
+              </div>
+            ))}
         </section>
       )}
 
       {showManageSection && (
-        <section className="space-y-4 rounded-2xl border border-subtle bg-surface p-4">
+        <section className="border-subtle bg-surface space-y-4 rounded-2xl border p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <h3 className="text-balance text-lg font-semibold">Управление аттестациями</h3>
-            <Button
-              variant="outline"
-              leftIcon={<Plus className="h-4 w-4" />}
-              onClick={() => {
-                setEditingExam(null);
-                setModalOpen(true);
-              }}
-            >
-              Создать аттестацию
-            </Button>
+            <h3 className="text-lg font-semibold text-balance">Управление аттестациями</h3>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                leftIcon={<FolderPlus className="h-4 w-4" />}
+                onClick={() => setFolderModalOpen(true)}
+              >
+                Создать папку
+              </Button>
+              <Button
+                variant="outline"
+                leftIcon={<Plus className="h-4 w-4" />}
+                onClick={() => {
+                  setEditingExam(null);
+                  setModalOpen(true);
+                }}
+              >
+                Создать аттестацию
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div className="min-w-0 md:flex-1 md:max-w-xl">
+            <div className="min-w-0 md:max-w-xl md:flex-1">
               <SelectField
                 label="Должность"
                 value={positionFilter ?? ""}
-                onChange={(event) => updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })}
+                onChange={(event) =>
+                  updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })
+                }
               >
                 <option value="">Все должности</option>
                 {manageablePositions.map((position) => (
@@ -270,33 +304,81 @@ export default function ExamsPage() {
           </div>
 
           {loadingManageExams && <LoadingState label="Загрузка управляемых аттестаций..." />}
+          {foldersState.loading && <LoadingState label="Загрузка папок..." />}
           {manageExamsError && <ErrorState message={manageExamsError} onRetry={loadManageExams} />}
+          {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
           {positionsError && <ErrorState message={positionsError} onRetry={loadPositions} />}
           {loadingPositions && <LoadingState label="Загрузка должностей..." />}
 
-          {!loadingManageExams && !loadingPositions && !manageExamsError && !positionsError && (manageableExams.length === 0 ? (
-            <EmptyState title="Нет управляемых аттестаций" description="Создайте первую аттестацию или измените фильтры." />
-          ) : (
-            <div className="space-y-3">
-              {manageableExams.map((exam) => (
-                <CertificationManageExamCard
-                  key={exam.id}
-                  exam={exam}
-                  analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
-                  loading={loadingExamActionId === exam.id}
-                  positionsById={positionById}
-                  onEdit={(value) => {
-                    setEditingExam(value);
-                    setModalOpen(true);
-                  }}
-                  onChangeOwner={(value) => {
-                    setChangeOwnerExam(value);
-                  }}
-                  onAction={runExamAction}
-                />
-              ))}
-            </div>
-          ))}
+          {!loadingManageExams &&
+            !foldersState.loading &&
+            !loadingPositions &&
+            !manageExamsError &&
+            !foldersState.error &&
+            !positionsError &&
+            (rootFolders.length === 0 && manageableExams.length === 0 ? (
+              <EmptyState
+                title="Нет управляемых аттестаций"
+                description="Создайте первую аттестацию или измените фильтры."
+              />
+            ) : (
+              <div className="space-y-6">
+                {rootFolders.length > 0 && (
+                  <section className="space-y-3">
+                    <h4 className="text-lg font-semibold">Папки</h4>
+                    <div className="space-y-3" role="list">
+                      {rootFolders.map((folder) => (
+                        <Card
+                          key={folder.id}
+                          role="link"
+                          tabIndex={0}
+                          className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
+                          onClick={() => openFolder(folder.id)}
+                          onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
+                              <Icon icon={Folder} size="sm" decorative />
+                            </span>
+                            <div className="min-w-0">
+                              <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
+                              {folder.description && (
+                                <div className="text-muted mt-1 text-sm">{folder.description}</div>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {manageableExams.length > 0 && (
+                  <section className="space-y-3">
+                    <h4 className="text-lg font-semibold">Аттестационные тесты</h4>
+                    <div className="space-y-3">
+                      {manageableExams.map((exam) => (
+                        <CertificationManageExamCard
+                          key={exam.id}
+                          exam={exam}
+                          analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
+                          loading={loadingExamActionId === exam.id}
+                          positionsById={positionById}
+                          onEdit={(value) => {
+                            setEditingExam(value);
+                            setModalOpen(true);
+                          }}
+                          onChangeOwner={(value) => {
+                            setChangeOwnerExam(value);
+                          }}
+                          onAction={runExamAction}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            ))}
         </section>
       )}
 
@@ -317,6 +399,18 @@ export default function ExamsPage() {
           onSearchChange={setEmployeeSearch}
           onRetry={() => void employeeSearchState.reload()}
           onRetryPositions={loadPositions}
+        />
+      )}
+
+      {restaurantId && (
+        <TrainingFolderModal
+          open={folderModalOpen}
+          mode="create"
+          restaurantId={restaurantId}
+          type="CERTIFICATION"
+          parentFolder={null}
+          onClose={() => setFolderModalOpen(false)}
+          onSaved={foldersState.reload}
         />
       )}
 
