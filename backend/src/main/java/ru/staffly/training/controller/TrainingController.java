@@ -40,8 +40,9 @@ public class TrainingController {
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @RequestParam TrainingFolderType type,
                                                @RequestParam(defaultValue = "false") boolean includeInactive) {
-        if (type == TrainingFolderType.QUESTION_BANK && !trainingPolicyService.canManageTraining(principal.userId(), restaurantId)) {
-            throw new ForbiddenException("Only managers can access question bank");
+        if ((type == TrainingFolderType.QUESTION_BANK || type == TrainingFolderType.CERTIFICATION)
+                && !trainingPolicyService.canManageTraining(principal.userId(), restaurantId)) {
+            throw new ForbiddenException("Only training managers can access these folders");
         }
         return knowledgeService.listFolders(restaurantId, principal.userId(), type, includeInactive);
     }

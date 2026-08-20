@@ -44,6 +44,10 @@ public class TrainingPolicyService {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.QUESTION_BANK);
     }
 
+    public boolean canAccessCertificationByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.CERTIFICATION);
+    }
+
     public boolean canAccessExamTargetByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET);
     }
@@ -70,6 +74,11 @@ public class TrainingPolicyService {
                 "Training question-bank policy does not allow access to this visibility scope.");
     }
 
+    public void assertCanAccessCertificationByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.CERTIFICATION,
+                "Training certification policy does not allow access to this visibility scope.");
+    }
+
     public void assertCanAccessExamTargetByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET,
                 "Training exam-target policy does not allow access to this visibility scope.");
@@ -81,6 +90,10 @@ public class TrainingPolicyService {
 
     public void assertCanUseQuestionBankPositions(Long userId, Long restaurantId, Set<Long> positionIds) {
         assertCanUsePositions(userId, restaurantId, positionIds, PolicyContext.QUESTION_BANK);
+    }
+
+    public void assertCanUseCertificationPositions(Long userId, Long restaurantId, Set<Long> positionIds) {
+        assertCanUsePositions(userId, restaurantId, positionIds, PolicyContext.CERTIFICATION);
     }
 
     public void assertCanUseExamTargetPositions(Long userId, Long restaurantId, Set<Long> positionIds) {
@@ -133,7 +146,7 @@ public class TrainingPolicyService {
                 case MANAGER -> EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER);
                 case STAFF -> EnumSet.of(RestaurantRole.STAFF);
             };
-            case QUESTION_BANK, EXAM_TARGET -> switch (context.baseRole()) {
+            case QUESTION_BANK, CERTIFICATION, EXAM_TARGET -> switch (context.baseRole()) {
                 case ADMIN -> EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER);
                 case MANAGER, STAFF -> EnumSet.of(RestaurantRole.STAFF);
             };
@@ -163,6 +176,7 @@ public class TrainingPolicyService {
     private enum PolicyContext {
         KNOWLEDGE("knowledge"),
         QUESTION_BANK("question-bank"),
+        CERTIFICATION("certification"),
         EXAM_TARGET("exam-target");
 
         private final String code;
