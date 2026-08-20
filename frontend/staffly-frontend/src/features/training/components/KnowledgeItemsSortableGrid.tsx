@@ -1,12 +1,16 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Edit3, GripVertical, MoveRight, Pencil, Trash2 } from "lucide-react";
+import { GripVertical, Pencil } from "lucide-react";
 
 import Icon from "../../../shared/ui/Icon";
 import type { TrainingKnowledgeItemObject } from "../trainingFolderObjects";
 import { trainingObjectId } from "../trainingFolderDnd";
 import KnowledgeItemCard from "./KnowledgeItemCard";
-import TrainingObjectActionsMenu, { type TrainingObjectAction } from "./TrainingObjectActionsMenu";
+import TrainingObjectActionsMenu from "./TrainingObjectActionsMenu";
+import {
+  buildTrainingObjectManagementActions,
+  trainingObjectArchiveActionKey,
+} from "./trainingObjectManagementActions";
 
 type Props = {
   objects: TrainingKnowledgeItemObject[];
@@ -46,18 +50,14 @@ function SortableKnowledgeItemCard({
     id: sortableId,
     disabled: !canManage,
   });
-  const archiveActionKey = `archive-${object.kind}-${object.id}`;
-  const actions: TrainingObjectAction[] = [
-    { label: "Изменить", icon: Edit3, onSelect: onEdit },
-    { label: "Переместить", icon: MoveRight, onSelect: onMove },
-    {
-      label: actionLoading === archiveActionKey ? "Перемещаем в корзину..." : "В корзину",
-      icon: Trash2,
-      tone: "danger",
-      disabled: actionLoading === archiveActionKey,
-      onSelect: onArchive,
-    },
-  ];
+  const managementActions = buildTrainingObjectManagementActions({
+    archiveActionKey: trainingObjectArchiveActionKey(object.kind, object.id),
+    actionLoading,
+    onEdit,
+    onMove,
+    onArchive,
+  });
+  const actions = [managementActions.edit, managementActions.move, managementActions.archive];
 
   return (
     <div
