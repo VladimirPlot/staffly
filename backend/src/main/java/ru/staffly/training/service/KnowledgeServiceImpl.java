@@ -539,6 +539,18 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         if (root.getType() == TrainingFolderType.KNOWLEDGE) {
             ensureKnowledgeFolderHasNoPracticeExams(restaurantId, allFolderIds);
+            return;
+        }
+
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            var usages = exams.findCertificationExamUsagesByFolderIds(restaurantId, allFolderIds);
+            if (!usages.isEmpty()) {
+                var titles = usages.stream().map(ExamUsageDto::title).distinct().toList();
+                throw new ConflictException(
+                        "Папка содержит аттестации: " + String.join(", ", titles) + ". Переместите/удалите аттестации и повторите.",
+                        Map.of("exams", usages)
+                );
+            }
         }
     }
 

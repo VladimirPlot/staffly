@@ -97,6 +97,25 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
                                                          @Param("folderId") Long folderId);
 
     @Query("""
+            select max(e.sortOrder) from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder is null
+              and e.active = true
+            """)
+    Integer maxActiveCertificationRootSortOrder(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select max(e.sortOrder) from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id = :folderId
+              and e.active = true
+            """)
+    Integer maxActiveCertificationSortOrderInFolder(@Param("restaurantId") Long restaurantId,
+                                                     @Param("folderId") Long folderId);
+
+    @Query("""
             select e from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
@@ -115,6 +134,16 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             """)
     List<ru.staffly.training.dto.ExamUsageDto> findPracticeExamUsagesByKnowledgeFolderIds(@Param("restaurantId") Long restaurantId,
                                                                                           @Param("folderIds") List<Long> folderIds);
+
+    @Query("""
+            select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)
+            from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id in :folderIds
+            """)
+    List<ru.staffly.training.dto.ExamUsageDto> findCertificationExamUsagesByFolderIds(@Param("restaurantId") Long restaurantId,
+                                                                                      @Param("folderIds") List<Long> folderIds);
 
     @Query("""
             select distinct e from TrainingExam e
