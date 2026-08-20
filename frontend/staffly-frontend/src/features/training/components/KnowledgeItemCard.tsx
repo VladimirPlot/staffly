@@ -57,7 +57,7 @@ export default function KnowledgeItemCard({
           </div>
         )}
         {mediaControls ? (
-          <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between p-3">{mediaControls}</div>
+          <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between p-1.5">{mediaControls}</div>
         ) : null}
       </div>
 
