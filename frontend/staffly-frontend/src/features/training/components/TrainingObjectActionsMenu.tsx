@@ -50,10 +50,14 @@ export default function TrainingObjectActionsMenu({
   title,
   description,
   actions,
+  triggerIcon = MoreVertical,
+  triggerClassName,
 }: {
   title: string;
   description: ReactNode;
   actions: TrainingObjectAction[];
+  triggerIcon?: LucideIcon;
+  triggerClassName?: string;
 }) {
   return (
     <DropdownMenu
@@ -66,13 +70,16 @@ export default function TrainingObjectActionsMenu({
           aria-label={`Действия: ${title}`}
           title="Действия"
           variant="unstyled"
-          className="border-subtle bg-surface/95 text-default hover:bg-app active:bg-app h-11 w-11 border px-0 py-0 shadow-sm backdrop-blur-sm transition active:scale-[0.98]"
+          className={
+            triggerClassName ??
+            "border-subtle bg-surface/95 text-default hover:bg-app active:bg-app h-11 w-11 border px-0 py-0 shadow-sm backdrop-blur-sm transition active:scale-[0.98]"
+          }
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
           onTouchStart={(event) => event.stopPropagation()}
           {...triggerProps}
         >
-          <Icon icon={MoreVertical} size="sm" decorative />
+          <Icon icon={triggerIcon} size="sm" decorative />
         </IconButton>
       )}
     >
