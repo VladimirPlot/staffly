@@ -32,9 +32,4 @@ public interface ExamService {
 
     TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId);
     CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(Long restaurantId, Long actorUserId, Long examId);
-    CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId);
-    CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
-                                                                             Long actorUserId,
-                                                                             Long userId,
-                                                                             CertificationOwnerBatchReassignmentRequest request);
 }

@@ -1,9 +1,7 @@
 import apiClient from "../../../shared/api/apiClient";
 import { mapExamsForUi } from "./mappers";
 import type {
-  CertificationOwnerBatchReassignmentRequest,
   CertificationOwnerCandidatesDto,
-  CertificationOwnerReassignmentOptionsDto,
   CertificationExamAttemptHistoryDto,
   CertificationEmployeeExamDto,
   CertificationEmployeeSummaryDto,
@@ -137,21 +135,6 @@ export async function getCertificationExamOwnerCandidates(
 ): Promise<CertificationOwnerCandidatesDto> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/owner-candidates`);
   return data as CertificationOwnerCandidatesDto;
-}
-export async function getCertificationOwnerReassignmentOptions(
-  restaurantId: number,
-  userId: number,
-): Promise<CertificationOwnerReassignmentOptionsDto> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/owners/${userId}/reassignment-options`);
-  return data as CertificationOwnerReassignmentOptionsDto;
-}
-export async function reassignCertificationOwnerBatch(
-  restaurantId: number,
-  userId: number,
-  payload: CertificationOwnerBatchReassignmentRequest,
-): Promise<CertificationOwnerReassignmentOptionsDto> {
-  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/certification/owners/${userId}/reassign`, payload);
-  return data as CertificationOwnerReassignmentOptionsDto;
 }
 export async function resetCertificationEmployeeAttempts(restaurantId: number, examId: number, userId: number): Promise<void> {
   await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/assignments/${userId}/reset-attempts`);

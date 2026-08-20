@@ -452,24 +452,6 @@ public class ExamServiceImpl implements ExamService {
         return trainingExamOwnershipService.getOwnerCandidates(restaurantId, actorUserId, examId);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId) {
-        return trainingExamOwnershipService.buildReassignmentOptions(restaurantId, actorUserId, userId);
-    }
-
-    @Override
-    @Transactional
-    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
-                                                                                    Long actorUserId,
-                                                                                    Long userId,
-                                                                                    CertificationOwnerBatchReassignmentRequest request) {
-        var entries = request.items().stream()
-                .map(item -> Map.entry(item.examId(), item.newOwnerUserId()))
-                .toList();
-        return trainingExamOwnershipService.batchReassign(restaurantId, actorUserId, userId, entries);
-    }
-
     private void startNewCertificationCycle(TrainingExam exam) {
         // certification reset-cycle открывает новый глобальный assignment cycle.
         // Это не per-user reset: все новые попытки пишутся под новой версией экзамена.
