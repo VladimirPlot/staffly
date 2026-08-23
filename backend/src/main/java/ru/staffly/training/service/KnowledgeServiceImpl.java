@@ -663,6 +663,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 restaurantId,
                 exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
         );
+        if (exam.getFolder() != null) {
+            certificationFolderManagementService.assertSubtreeManageable(
+                    restaurantId, userId, exam.getFolder().getId());
+        }
         return exam;
     }
 

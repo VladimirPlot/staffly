@@ -187,7 +187,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto moveCertificationExam(Long restaurantId, Long userId, Long examId, MoveTrainingCertificationExamRequest request) {
-        var exam = requireManageableCertificationExam(restaurantId, userId, examId);
+        var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
         if (!exam.isActive()) {
             throw new BadRequestException("Скрытый тест нельзя перемещать.");
         }
@@ -334,7 +334,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableCertificationExam(restaurantId, userId, examId);
+        var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
         certificationAudienceSyncService.syncExamAudience(exam);
         startNewCertificationCycle(exam);
         certificationAssignmentService.resetAssignmentsForNewCycle(exam);
@@ -466,13 +466,13 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId) {
-        requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        requireManageableCertificationExamMutation(restaurantId, actorUserId, examId);
         certificationManagerActionService.resetAttemptsForEmployee(restaurantId, examId, userId);
     }
 
     @Override
     public void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount) {
-        requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        requireManageableCertificationExamMutation(restaurantId, actorUserId, examId);
         certificationManagerActionService.grantExtraAttemptForEmployee(restaurantId, examId, userId, amount);
     }
 
@@ -945,6 +945,7 @@ public class ExamServiceImpl implements ExamService {
         var targetPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             trainingPolicyService.assertCanManageCertificationTargets(userId, restaurantId, targetPositionIds);
+            assertCertificationCurrentContainerManageable(restaurantId, userId, exam);
         } else {
             trainingPolicyService.assertCanAccessExamTargetByVisibility(userId, restaurantId, targetPositionIds);
         }
@@ -963,6 +964,19 @@ public class ExamServiceImpl implements ExamService {
                 exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
         );
         return exam;
+    }
+
+    private TrainingExam requireManageableCertificationExamMutation(Long restaurantId, Long userId, Long examId) {
+        var exam = requireManageableCertificationExam(restaurantId, userId, examId);
+        assertCertificationCurrentContainerManageable(restaurantId, userId, exam);
+        return exam;
+    }
+
+    private void assertCertificationCurrentContainerManageable(Long restaurantId, Long userId, TrainingExam exam) {
+        if (exam.getFolder() != null) {
+            certificationFolderManagementService.assertSubtreeManageable(
+                    restaurantId, userId, exam.getFolder().getId());
+        }
     }
 
     private record QuestionRelations(

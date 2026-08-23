@@ -374,16 +374,24 @@ export default function CertificationFolderPage() {
                     analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), returnTo)}
                     loading={examActionLoadingId === exam.id}
                     positionsById={positionsById}
-                    onEdit={(value) => {
-                      setEditingExam(value);
-                      setExamModalOpen(true);
-                    }}
-                    onChangeOwner={setChangeOwnerExam}
-                    onMove={(value) => {
-                      setMoveError(null);
-                      setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
-                    }}
-                    onAction={runExamAction}
+                    onEdit={
+                      currentFolder.manageable
+                        ? (value) => {
+                            setEditingExam(value);
+                            setExamModalOpen(true);
+                          }
+                        : undefined
+                    }
+                    onChangeOwner={currentFolder.manageable ? setChangeOwnerExam : undefined}
+                    onMove={
+                      currentFolder.manageable
+                        ? (value) => {
+                            setMoveError(null);
+                            setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
+                          }
+                        : undefined
+                    }
+                    onAction={currentFolder.manageable ? runExamAction : undefined}
                     showDeleteAction={false}
                   />
                 ))}
