@@ -137,6 +137,18 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
                                                         @Param("folderId") Long folderId);
 
     @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id = :folderId
+              and e.active = true
+            order by e.sortOrder, e.id
+            """)
+    List<TrainingExam> findActiveCertificationInFolderWithVisibility(@Param("restaurantId") Long restaurantId,
+                                                                      @Param("folderId") Long folderId);
+
+    @Query("""
             select e from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
@@ -145,6 +157,17 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             order by e.sortOrder, e.id
             """)
     List<TrainingExam> findActiveCertificationInRoot(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder is null
+              and e.active = true
+            order by e.sortOrder, e.id
+            """)
+    List<TrainingExam> findActiveCertificationInRootWithVisibility(@Param("restaurantId") Long restaurantId);
 
     @Query("""
             select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)

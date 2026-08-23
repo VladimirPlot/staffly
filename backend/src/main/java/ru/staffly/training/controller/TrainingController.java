@@ -16,6 +16,7 @@ import ru.staffly.training.model.TrainingFolderType;
 import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.service.ExamService;
 import ru.staffly.training.service.CertificationEmployeeAnalyticsService;
+import ru.staffly.training.service.CertificationFolderManagementService;
 import ru.staffly.training.service.KnowledgeService;
 import ru.staffly.training.service.QuestionService;
 import ru.staffly.training.service.TrainingPolicyService;
@@ -31,8 +32,19 @@ public class TrainingController {
     private final QuestionService questionService;
     private final ExamService examService;
     private final CertificationEmployeeAnalyticsService certificationEmployeeAnalyticsService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
     private final SecurityService securityService;
     private final TrainingPolicyService trainingPolicyService;
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/container-capabilities")
+    public CertificationContainerCapabilitiesDto getCertificationContainerCapabilities(
+            @PathVariable Long restaurantId,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Long folderId) {
+        return certificationFolderManagementService.containerCapabilities(
+                restaurantId, principal.userId(), folderId);
+    }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @GetMapping("/folders")
