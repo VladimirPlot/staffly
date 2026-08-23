@@ -1,4 +1,4 @@
-import { Folder, FolderPlus, Plus } from "lucide-react";
+import { Archive, Eye, Folder, FolderPlus, MoveRight, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
@@ -8,19 +8,31 @@ import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import Icon from "../../../shared/ui/Icon";
+import IconButton from "../../../shared/ui/IconButton";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import SelectField from "../../../shared/ui/SelectField";
-import Switch from "../../../shared/ui/Switch";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import ExamEditorModal from "../components/ExamEditorModal";
 import LoadingState from "../components/LoadingState";
 import TrainingFolderModal from "../components/TrainingFolderModal";
+import TrainingMoveModal from "../components/TrainingMoveModal";
+import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
 import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
-import { deleteExam, hideExam, listExams, listMyCertificationExams, restoreExam } from "../api/trainingApi";
-import type { CurrentUserCertificationExamDto, TrainingExamDto } from "../api/types";
+import {
+  deleteExam,
+  deleteFolder,
+  hideExam,
+  listExams,
+  listMyCertificationExams,
+  moveCertificationExam,
+  moveFolder,
+  restoreExam,
+} from "../api/trainingApi";
+import type { CurrentUserCertificationExamDto, TrainingExamDto, TrainingFolderDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
@@ -28,6 +40,7 @@ import { getTrainingErrorMessage } from "../utils/errors";
 import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
 import { bySortOrderAndName } from "../utils/sort";
+import type { TrainingMoveTarget } from "../trainingFolderObjects";
 import {
   examTargetsAllowedAudience,
   getManageableAudienceRoles,
@@ -41,7 +54,12 @@ export default function ExamsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const foldersState = useTrainingFolders({ restaurantId, type: "CERTIFICATION", canManage });
+  const foldersState = useTrainingFolders({
+    restaurantId,
+    type: "CERTIFICATION",
+    canManage,
+    initialIncludeInactive: true,
+  });
 
   const [manageExams, setManageExams] = useState<TrainingExamDto[]>([]);
   const [myExams, setMyExams] = useState<CurrentUserCertificationExamDto[]>([]);
@@ -57,15 +75,29 @@ export default function ExamsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<TrainingFolderDto | null>(null);
   const [editingExam, setEditingExam] = useState<TrainingExamDto | null>(null);
   const [loadingExamActionId, setLoadingExamActionId] = useState<number | null>(null);
   const [changeOwnerExam, setChangeOwnerExam] = useState<TrainingExamDto | null>(null);
+  const [moveTarget, setMoveTarget] = useState<TrainingMoveTarget | null>(null);
+  const [moveSubmitting, setMoveSubmitting] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveDeleteTarget, setArchiveDeleteTarget] = useState<ArchivedTrainingObject | null>(null);
+  const [archiveActionLoading, setArchiveActionLoading] = useState<string | null>(null);
+  const [folderActionLoadingId, setFolderActionLoadingId] = useState<number | null>(null);
   const [employeePositionFilter, setEmployeePositionFilter] = useState<number | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState("");
 
-  const includeInactive = searchParams.get("includeInactive") === "1";
   const positionFilter = Number(searchParams.get("position") ?? "0") || null;
+
+  useEffect(() => {
+    if (!searchParams.has("includeInactive")) return;
+    const updated = new URLSearchParams(searchParams);
+    updated.delete("includeInactive");
+    setSearchParams(updated, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const restaurantAccess = resolveRestaurantAccess(user?.roles, myRole ?? undefined);
   const allowedAudienceRoles = useMemo(
@@ -99,14 +131,14 @@ export default function ExamsPage() {
     setLoadingManageExams(true);
     setManageExamsError(null);
     try {
-      const response = await listExams(restaurantId, includeInactive, true);
+      const response = await listExams(restaurantId, true, true);
       setManageExams(response);
     } catch (error) {
       setManageExamsError(getTrainingErrorMessage(error, "Не удалось загрузить управляемые аттестации."));
     } finally {
       setLoadingManageExams(false);
     }
-  }, [restaurantId, showManageSection, includeInactive]);
+  }, [restaurantId, showManageSection]);
 
   const loadMyExams = useCallback(async () => {
     if (!restaurantId || !showMySection) {
@@ -172,7 +204,9 @@ export default function ExamsPage() {
   const manageableExams = useMemo(() => {
     if (!showManageSection) return [];
 
-    const rootCertificationExams = manageExams.filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId == null);
+    const rootCertificationExams = manageExams.filter(
+      (exam) => exam.mode === "CERTIFICATION" && exam.folderId == null && exam.active,
+    );
     const byAudience = rootCertificationExams.filter((exam) =>
       examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles),
     );
@@ -184,8 +218,27 @@ export default function ExamsPage() {
     return sortManageExams(byPosition, positionById);
   }, [showManageSection, manageExams, positionById, allowedAudienceRoles, positionFilter]);
 
-  const rootFolders = useMemo(
-    () => foldersState.folders.filter((folder) => folder.parentId == null && folder.active).sort(bySortOrderAndName),
+  const rootFolders = useMemo(() => {
+    const activeRootFolders = foldersState.folders.filter((folder) => folder.parentId == null && folder.active);
+    const filtered =
+      positionFilter == null
+        ? activeRootFolders
+        : activeRootFolders.filter(
+            (folder) =>
+              folder.visibilityPositionIds.length === 0 || folder.visibilityPositionIds.includes(positionFilter),
+          );
+    return filtered.sort(bySortOrderAndName);
+  }, [foldersState.folders, positionFilter]);
+  const hiddenRootFolders = useMemo(
+    () => foldersState.folders.filter((folder) => folder.parentId == null && !folder.active),
+    [foldersState.folders],
+  );
+  const hiddenRootExams = useMemo(
+    () => manageExams.filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId == null && !exam.active),
+    [manageExams],
+  );
+  const folderMap = useMemo(
+    () => new Map(foldersState.folders.map((folder) => [folder.id, folder])),
     [foldersState.folders],
   );
 
@@ -197,13 +250,8 @@ export default function ExamsPage() {
     }
   };
 
-  const updateQuery = (next: { includeInactive?: boolean; position?: number | null }) => {
+  const updateQuery = (next: { position?: number | null }) => {
     const updated = new URLSearchParams(searchParams);
-
-    if (typeof next.includeInactive === "boolean") {
-      if (next.includeInactive) updated.set("includeInactive", "1");
-      else updated.delete("includeInactive");
-    }
 
     if (next.position !== undefined) {
       if (next.position == null) updated.delete("position");
@@ -211,6 +259,73 @@ export default function ExamsPage() {
     }
 
     setSearchParams(updated, { replace: true });
+  };
+
+  const reloadRootContents = async () => {
+    await Promise.all([foldersState.reload(), loadManageExams()]);
+  };
+
+  const handleHideFolder = async (folder: TrainingFolderDto) => {
+    setFolderActionLoadingId(folder.id);
+    setManageExamsError(null);
+    try {
+      await foldersState.hide(folder.id);
+      await loadManageExams();
+    } catch (error) {
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось скрыть папку."));
+    } finally {
+      setFolderActionLoadingId(null);
+    }
+  };
+
+  const submitMove = async (targetFolderId: number | null) => {
+    if (!restaurantId || !moveTarget) return;
+    setMoveSubmitting(true);
+    setMoveError(null);
+    try {
+      if (moveTarget.kind === "folder") await moveFolder(restaurantId, moveTarget.id, { parentId: targetFolderId });
+      else if (moveTarget.kind === "certificationExam") {
+        await moveCertificationExam(restaurantId, moveTarget.id, { folderId: targetFolderId });
+      }
+      setMoveTarget(null);
+      await reloadRootContents();
+    } catch (error) {
+      setMoveError(getTrainingErrorMessage(error, "Не удалось переместить."));
+    } finally {
+      setMoveSubmitting(false);
+    }
+  };
+
+  const restoreArchivedObject = async (object: ArchivedTrainingObject) => {
+    if (!restaurantId) return;
+    setArchiveActionLoading(`restore-${object.kind}-${object.id}`);
+    setManageExamsError(null);
+    try {
+      if (object.kind === "folder") await foldersState.restore(object.id);
+      else if (object.kind === "certificationExam") await restoreExam(restaurantId, object.id);
+      await reloadRootContents();
+    } catch (error) {
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось восстановить объект."));
+    } finally {
+      setArchiveActionLoading(null);
+    }
+  };
+
+  const deleteArchivedObject = async () => {
+    if (!restaurantId || !archiveDeleteTarget) return;
+    const target = archiveDeleteTarget;
+    setArchiveActionLoading(`delete-${target.kind}-${target.id}`);
+    setManageExamsError(null);
+    try {
+      if (target.kind === "folder") await deleteFolder(restaurantId, target.id);
+      else if (target.kind === "certificationExam") await deleteExam(restaurantId, target.id);
+      setArchiveDeleteTarget(null);
+      await reloadRootContents();
+    } catch (error) {
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось удалить объект."));
+    } finally {
+      setArchiveActionLoading(null);
+    }
   };
 
   const runExamAction = async (examId: number, action: "hide" | "restore" | "delete") => {
@@ -261,6 +376,9 @@ export default function ExamsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <h3 className="text-lg font-semibold text-balance">Управление аттестациями</h3>
             <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" leftIcon={<Archive className="h-4 w-4" />} onClick={() => setArchiveOpen(true)}>
+                Скрытые
+              </Button>
               <Button
                 variant="outline"
                 leftIcon={<FolderPlus className="h-4 w-4" />}
@@ -281,30 +399,21 @@ export default function ExamsPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div className="min-w-0 md:max-w-xl md:flex-1">
-              <SelectField
-                label="Должность"
-                value={positionFilter ?? ""}
-                onChange={(event) =>
-                  updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })
-                }
-              >
-                <option value="">Все должности</option>
-                {manageablePositions.map((position) => (
-                  <option key={position.id} value={position.id}>
-                    {position.name}
-                  </option>
-                ))}
-              </SelectField>
-            </div>
-            <div className="md:shrink-0">
-              <Switch
-                label="Показать скрытые"
-                checked={includeInactive}
-                onChange={(event) => updateQuery({ includeInactive: event.target.checked })}
-              />
-            </div>
+          <div className="min-w-0 md:max-w-xl">
+            <SelectField
+              label="Должность"
+              value={positionFilter ?? ""}
+              onChange={(event) =>
+                updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })
+              }
+            >
+              <option value="">Все должности</option>
+              {manageablePositions.map((position) => (
+                <option key={position.id} value={position.id}>
+                  {position.name}
+                </option>
+              ))}
+            </SelectField>
           </div>
 
           {loadingManageExams && <LoadingState label="Загрузка управляемых аттестаций..." />}
@@ -319,17 +428,11 @@ export default function ExamsPage() {
             !loadingPositions &&
             !manageExamsError &&
             !foldersState.error &&
-            !positionsError &&
-            (rootFolders.length === 0 && manageableExams.length === 0 ? (
-              <EmptyState
-                title="Нет управляемых аттестаций"
-                description="Создайте первую аттестацию или измените фильтры."
-              />
-            ) : (
+            !positionsError && (
               <div className="space-y-6">
-                {rootFolders.length > 0 && (
-                  <section className="space-y-3">
-                    <h4 className="text-lg font-semibold">Папки</h4>
+                <section className="space-y-3">
+                  <h4 className="text-lg font-semibold">Папки</h4>
+                  {rootFolders.length > 0 && (
                     <div className="space-y-3" role="list">
                       {rootFolders.map((folder) => (
                         <Card
@@ -344,22 +447,61 @@ export default function ExamsPage() {
                             <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
                               <Icon icon={Folder} size="sm" decorative />
                             </span>
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
                               {folder.description && (
                                 <div className="text-muted mt-1 text-sm">{folder.description}</div>
                               )}
                             </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <IconButton
+                                aria-label="Редактировать папку"
+                                title="Редактировать"
+                                disabled={folderActionLoadingId === folder.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setEditingFolder(folder);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Переместить папку"
+                                title="Переместить"
+                                disabled={folderActionLoadingId === folder.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setMoveError(null);
+                                  setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                                }}
+                              >
+                                <MoveRight className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Скрыть папку"
+                                title="Скрыть"
+                                disabled={folderActionLoadingId === folder.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleHideFolder(folder);
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </IconButton>
+                            </div>
                           </div>
                         </Card>
                       ))}
                     </div>
-                  </section>
-                )}
+                  )}
+                  {rootFolders.length === 0 && (
+                    <EmptyState title="Нет папок" description="Создайте папку или измените фильтр должности." />
+                  )}
+                </section>
 
-                {manageableExams.length > 0 && (
-                  <section className="space-y-3">
-                    <h4 className="text-lg font-semibold">Аттестационные тесты</h4>
+                <section className="space-y-3">
+                  <h4 className="text-lg font-semibold">Аттестационные тесты</h4>
+                  {manageableExams.length > 0 && (
                     <div className="space-y-3">
                       {manageableExams.map((exam) => (
                         <CertificationManageExamCard
@@ -375,14 +517,25 @@ export default function ExamsPage() {
                           onChangeOwner={(value) => {
                             setChangeOwnerExam(value);
                           }}
+                          onMove={(value) => {
+                            setMoveError(null);
+                            setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
+                          }}
                           onAction={runExamAction}
+                          showDeleteAction={false}
                         />
                       ))}
                     </div>
-                  </section>
-                )}
+                  )}
+                  {manageableExams.length === 0 && (
+                    <EmptyState
+                      title="Нет аттестационных тестов"
+                      description="Создайте аттестацию или измените фильтр должности."
+                    />
+                  )}
+                </section>
               </div>
-            ))}
+            )}
         </section>
       )}
 
@@ -418,6 +571,19 @@ export default function ExamsPage() {
         />
       )}
 
+      {restaurantId && editingFolder && (
+        <TrainingFolderModal
+          open
+          mode="edit"
+          restaurantId={restaurantId}
+          type="CERTIFICATION"
+          parentFolder={editingFolder.parentId ? (folderMap.get(editingFolder.parentId) ?? null) : null}
+          initialFolder={editingFolder}
+          onClose={() => setEditingFolder(null)}
+          onSaved={foldersState.reload}
+        />
+      )}
+
       {restaurantId && (
         <ExamEditorModal
           open={modalOpen}
@@ -446,6 +612,51 @@ export default function ExamsPage() {
           onSaved={loadManageExams}
         />
       )}
+
+      <TrainingMoveModal
+        target={moveTarget}
+        type="CERTIFICATION"
+        folders={foldersState.folders}
+        currentFolderId={null}
+        submitting={moveSubmitting}
+        error={moveError}
+        onClose={() => {
+          if (moveSubmitting) return;
+          setMoveTarget(null);
+          setMoveError(null);
+        }}
+        onSubmit={(targetFolderId) => void submitMove(targetFolderId)}
+      />
+
+      <TrainingArchiveModal
+        open={archiveOpen}
+        title="Скрытые"
+        emptyText="В корне нет скрытых объектов."
+        folders={hiddenRootFolders}
+        certificationExams={hiddenRootExams}
+        loading={loadingManageExams || foldersState.loading}
+        error={foldersState.error ?? manageExamsError}
+        actionLoading={archiveActionLoading}
+        onClose={() => setArchiveOpen(false)}
+        onRestore={(object) => void restoreArchivedObject(object)}
+        onDelete={setArchiveDeleteTarget}
+        onDeleteAll={() => undefined}
+        showDeleteAll={false}
+      />
+      <ConfirmDialog
+        open={Boolean(archiveDeleteTarget)}
+        title="Удалить навсегда"
+        description={
+          archiveDeleteTarget?.kind === "folder"
+            ? "Папка, все вложенные папки и все аттестации внутри будут удалены безвозвратно. История прохождений сотрудников сохранится."
+            : "Аттестация будет удалена безвозвратно. История прохождений сотрудников сохранится."
+        }
+        confirmText="Удалить навсегда"
+        tone="danger"
+        confirming={Boolean(archiveActionLoading?.startsWith("delete-"))}
+        onCancel={() => setArchiveDeleteTarget(null)}
+        onConfirm={() => void deleteArchivedObject()}
+      />
     </div>
   );
 }
