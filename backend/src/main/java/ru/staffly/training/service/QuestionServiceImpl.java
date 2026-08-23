@@ -33,6 +33,7 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionValidator validator;
     private final TrainingQuestionNestedPersistence nestedPersistence;
     private final TrainingPolicyService trainingPolicyService;
+    private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Override
     @Transactional(readOnly = true)
@@ -47,6 +48,7 @@ public class QuestionServiceImpl implements QuestionService {
         validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
         var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
+        activeContainerValidator.requireActiveChain(folder);
         var entity = questions.save(TrainingQuestion.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .folder(folder)
@@ -82,6 +84,9 @@ public class QuestionServiceImpl implements QuestionService {
         var targetFolder = folderChanged
                 ? requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId())
                 : currentFolder;
+        if (willBeActive) {
+            activeContainerValidator.requireActiveChain(targetFolder);
+        }
         var targetGroup = request.questionGroup();
         boolean questionGroupChanged = targetGroup != oldGroup;
         int targetSortOrder = request.sortOrder() != null
@@ -113,9 +118,7 @@ public class QuestionServiceImpl implements QuestionService {
         assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
 
         var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
-        if (!folder.isActive()) {
-            throw new BadRequestException("Нельзя выбрать скрытую папку.");
-        }
+        activeContainerValidator.requireActiveChain(folder);
         entity.setFolder(folder);
         entity.setSortOrder(request.sortOrder() == null
                 ? nextQuestionSortOrder(restaurantId, folder.getId(), entity.getQuestionGroup())
@@ -135,6 +138,7 @@ public class QuestionServiceImpl implements QuestionService {
     @Transactional
     public TrainingQuestionDto restoreQuestion(Long restaurantId, Long userId, Long questionId) {
         var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        activeContainerValidator.requireActiveChain(entity.getFolder());
         if (!entity.isActive()) {
             entity.setSortOrder(nextQuestionSortOrder(
                     restaurantId,

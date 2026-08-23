@@ -55,6 +55,7 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationFolderManagementService certificationFolderManagementService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
     private final TrainingCertificationNotificationService trainingCertificationNotificationService;
+    private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Override
     @Transactional(readOnly = true)
@@ -232,7 +233,7 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
         }
         if (request.mode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
-            ensureCertificationFolderActive(exam);
+            activeContainerValidator.requireActiveChain(exam.getFolder());
         }
 
         // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
@@ -294,9 +295,7 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
-        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
-            ensureCertificationFolderActive(exam);
-        }
+        activeContainerValidator.requireActiveChain(exam.getFolder());
         if (!exam.isActive()) {
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
                 exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
@@ -310,12 +309,6 @@ public class ExamServiceImpl implements ExamService {
         }
         certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam, null);
-    }
-
-    private void ensureCertificationFolderActive(TrainingExam exam) {
-        if (exam.getFolder() != null && !exam.getFolder().isActive()) {
-            throw new BadRequestException("Аттестация находится в скрытой папке. Сначала восстановите папку.");
-        }
     }
 
     @Override
@@ -921,6 +914,7 @@ public class ExamServiceImpl implements ExamService {
                     restaurantId,
                     folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
             );
+            activeContainerValidator.requireActiveChain(folder);
             return folder;
         }
 
@@ -953,9 +947,7 @@ public class ExamServiceImpl implements ExamService {
         if (folder.getType() != TrainingFolderType.CERTIFICATION) {
             throw new BadRequestException("Для аттестации нужна папка аттестаций.");
         }
-        if (!folder.isActive()) {
-            throw new BadRequestException("Нельзя выбрать скрытую папку.");
-        }
+        activeContainerValidator.requireActiveChain(folder);
         // A readable certification folder may only be a navigation container. Creating or
         // moving an exam into it is a structural mutation and therefore needs subtree authority.
         certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);

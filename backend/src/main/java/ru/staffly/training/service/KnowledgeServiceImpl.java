@@ -37,6 +37,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingPolicyService trainingPolicyService;
     private final CertificationFolderManagementService certificationFolderManagementService;
     private final ExamService examService;
+    private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Transactional(readOnly = true)
     @Override
@@ -180,6 +181,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public TrainingFolderDto restoreFolder(Long restaurantId, Long userId, Long folderId) {
         var root = requireManageableFolder(restaurantId, userId, folderId);
+        activeContainerValidator.requireActiveChain(root.getParent());
 
         if (root.getType() == TrainingFolderType.CERTIFICATION) {
             var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
@@ -431,6 +433,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public TrainingKnowledgeItemDto restoreKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
         var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
+        activeContainerValidator.requireActiveChain(entity.getFolder());
         if (!entity.isActive()) {
             var folderId = entity.getFolder() == null ? null : entity.getFolder().getId();
             entity.setSortOrder(nextKnowledgeItemSortOrder(restaurantId, folderId));
@@ -499,9 +502,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void requireActiveParent(TrainingFolder parent) {
-        if (parent != null && !parent.isActive()) {
-            throw new BadRequestException("Нельзя выбрать скрытую папку.");
-        }
+        activeContainerValidator.requireActiveChain(parent);
     }
 
     private int normalizeSortOrder(Integer value) {
