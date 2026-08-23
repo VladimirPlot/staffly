@@ -300,6 +300,14 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/sources/preflight")
+    public ExamSourcesPreflightDto preflightExamSources(@PathVariable Long restaurantId,
+                                                        @AuthenticationPrincipal UserPrincipal principal,
+                                                        @Valid @RequestBody ExamSourcesPreflightRequest request) {
+        return examService.preflightSources(restaurantId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/knowledge-exams")
     public TrainingExamDto createKnowledgeExam(@PathVariable Long restaurantId,
                                                @AuthenticationPrincipal UserPrincipal principal,

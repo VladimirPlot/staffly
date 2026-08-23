@@ -5,6 +5,7 @@ import {
   createKnowledgeExam,
   listQuestionBankTree,
   listQuestions,
+  preflightExamSources,
   updateExam,
 } from "../../api/trainingApi";
 import type { QuestionBankTreeNodeDto } from "../../api/types";
@@ -13,7 +14,6 @@ import { getManageablePositions } from "../../utils/certificationRoleScope";
 import type { ExamEditorProps, ExamEditorFormState } from "./types";
 import {
   buildAvailabilityLabel,
-  calculateTotalQuestions,
   createTreeHelpers,
   flattenTree,
   normalizeVisibilityForSubmit,
@@ -53,6 +53,9 @@ export function useExamEditorState({
   const [saving, setSaving] = useState(false);
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [totalQuestions, setTotalQuestions] = useState(0);
+  const [sourceIssues, setSourceIssues] = useState<string[]>([]);
+  const [sourcePreflightLoading, setSourcePreflightLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -147,10 +150,38 @@ export function useExamEditorState({
   const flatTree = useMemo(() => flattenTree(tree), [tree]);
   const { folderMetaMap, getAncestorIds, getDescendantIds } = useMemo(() => createTreeHelpers(flatTree), [flatTree]);
 
-  const totalQuestions = useMemo(
-    () => calculateTotalQuestions(form.sourcesFolders, form.sourceQuestionIds, folderMetaMap),
-    [folderMetaMap, form.sourceQuestionIds, form.sourcesFolders],
-  );
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setSourcePreflightLoading(true);
+    setTotalQuestions(0);
+
+    const timer = window.setTimeout(() => {
+      void preflightExamSources(restaurantId, {
+        mode,
+        sourcesFolders: form.sourcesFolders,
+        sourceQuestionIds: form.sourceQuestionIds,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setTotalQuestions(result.availableQuestionCount);
+          setSourceIssues(result.issues);
+        })
+        .catch((preflightError) => {
+          if (cancelled) return;
+          setTotalQuestions(0);
+          setSourceIssues([getTrainingErrorMessage(preflightError, "Не удалось проверить источники вопросов.")]);
+        })
+        .finally(() => {
+          if (!cancelled) setSourcePreflightLoading(false);
+        });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [form.sourceQuestionIds, form.sourcesFolders, mode, open, restaurantId]);
 
   const availabilityLabel = useMemo(
     () => buildAvailabilityLabel(mode, form.visibilityPositionIds, positions, isDesktop),
@@ -294,22 +325,28 @@ export function useExamEditorState({
       return;
     }
 
-    if (totalQuestions <= 0) {
-      setError("В тесте должен быть хотя бы один вопрос.");
-      return;
-    }
-
     setSaving(true);
     setError(null);
 
     try {
+      const preflight = await preflightExamSources(restaurantId, {
+        mode,
+        sourcesFolders: form.sourcesFolders,
+        sourceQuestionIds: form.sourceQuestionIds,
+      });
+      if (!preflight.valid || preflight.availableQuestionCount <= 0) {
+        setSourceIssues(preflight.issues);
+        setError(preflight.issues[0] ?? "В тесте должен быть хотя бы один доступный вопрос.");
+        return;
+      }
+      const authoritativeQuestionCount = preflight.availableQuestionCount;
       const payload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
         mode,
         knowledgeFolderId: mode === "PRACTICE" ? (knowledgeFolderId ?? exam?.knowledgeFolderId ?? null) : null,
         folderId: mode === "CERTIFICATION" ? (exam ? (exam.folderId ?? null) : (initialFolderId ?? null)) : null,
-        questionCount: totalQuestions,
+        questionCount: authoritativeQuestionCount,
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
         attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
@@ -348,6 +385,8 @@ export function useExamEditorState({
     folderSourceMap,
     folderMetaMap,
     totalQuestions,
+    sourceIssues,
+    sourcePreflightLoading,
     availabilityLabel,
     setTitle: (title: string) => setForm((current) => ({ ...current, title })),
     setDescription: (description: string) => setForm((current) => ({ ...current, description })),

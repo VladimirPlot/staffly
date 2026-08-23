@@ -10,6 +10,7 @@ public interface ExamService {
     CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager);
     List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive);
     TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
+    ExamSourcesPreflightDto preflightSources(Long restaurantId, Long userId, ExamSourcesPreflightRequest request);
     TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request);
     TrainingExamDto movePracticeExam(Long restaurantId, Long userId, Long examId, MoveTrainingPracticeExamRequest request);
