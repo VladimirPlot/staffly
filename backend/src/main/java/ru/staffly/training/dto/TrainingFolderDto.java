@@ -13,5 +13,6 @@ public record TrainingFolderDto(
         TrainingFolderType type,
         Integer sortOrder,
         Boolean active,
-        List<Long> visibilityPositionIds
+        List<Long> visibilityPositionIds,
+        Boolean manageable
 ) {}
