@@ -65,6 +65,11 @@ public class TrainingPolicyService {
         if (context.isCreator()) {
             return true;
         }
+        if (context.hasExaminerAuthority()) {
+            return targetRole == RestaurantRole.STAFF
+                    || targetRole == RestaurantRole.MANAGER
+                    || targetRole == RestaurantRole.ADMIN;
+        }
         return switch (context.baseRole()) {
             case MANAGER -> targetRole == RestaurantRole.STAFF;
             case ADMIN -> targetRole == RestaurantRole.STAFF || targetRole == RestaurantRole.MANAGER;

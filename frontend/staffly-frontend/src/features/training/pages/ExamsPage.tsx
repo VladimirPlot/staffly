@@ -74,7 +74,7 @@ export default function ExamsPage() {
     membershipRole: myRole,
   });
 
-  const showMySection = !restaurantAccess.isCreator && !isTrainingExaminer;
+  const showMySection = !restaurantAccess.isCreator;
   const showManageSection = canManage;
   const showEmployeeStatsSection = canManage;
 
