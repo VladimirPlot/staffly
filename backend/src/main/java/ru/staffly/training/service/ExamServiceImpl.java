@@ -62,6 +62,16 @@ public class ExamServiceImpl implements ExamService {
                 : (certificationOnly ? TrainingExamMode.CERTIFICATION : TrainingExamMode.PRACTICE);
 
         var visibleExams = examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter);
+        if (isManager) {
+            visibleExams = visibleExams.stream()
+                    .filter(exam -> exam.getMode() != TrainingExamMode.CERTIFICATION
+                            || trainingPolicyService.canManageCertificationTargets(
+                                    userId,
+                                    restaurantId,
+                                    exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+                            ))
+                    .toList();
+        }
         var certificationExamIds = visibleExams.stream()
                 .filter(exam -> exam.getMode() == TrainingExamMode.CERTIFICATION)
                 .map(TrainingExam::getId)
@@ -933,19 +943,26 @@ public class ExamServiceImpl implements ExamService {
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-        trainingPolicyService.assertCanAccessExamTargetByVisibility(
-                userId,
-                restaurantId,
-                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
-        );
+        var targetPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            trainingPolicyService.assertCanManageCertificationTargets(userId, restaurantId, targetPositionIds);
+        } else {
+            trainingPolicyService.assertCanAccessExamTargetByVisibility(userId, restaurantId, targetPositionIds);
+        }
         return exam;
     }
 
     private TrainingExam requireManageableCertificationExam(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableExam(restaurantId, userId, examId);
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Операция доступна только для аттестационного теста.");
         }
+        trainingPolicyService.assertCanManageCertificationTargets(
+                userId,
+                restaurantId,
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+        );
         return exam;
     }
 

@@ -52,6 +52,14 @@ public class TrainingPolicyService {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET);
     }
 
+    public boolean canManageCertificationTargets(Long userId, Long restaurantId, Set<Long> targetPositionIds) {
+        if (targetPositionIds == null || targetPositionIds.isEmpty()) {
+            return false;
+        }
+        var allowed = allowedPositionIdsByContext(userId, restaurantId, PolicyContext.EXAM_TARGET);
+        return allowed.containsAll(targetPositionIds);
+    }
+
     public boolean canAccessCertificationEmployeeAnalyticsTargetRole(Long userId, Long restaurantId, RestaurantRole targetRole) {
         var context = resolveContext(userId, restaurantId);
         if (context.isCreator()) {
@@ -82,6 +90,12 @@ public class TrainingPolicyService {
     public void assertCanAccessExamTargetByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET,
                 "Training exam-target policy does not allow access to this visibility scope.");
+    }
+
+    public void assertCanManageCertificationTargets(Long userId, Long restaurantId, Set<Long> targetPositionIds) {
+        if (!canManageCertificationTargets(userId, restaurantId, targetPositionIds)) {
+            throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
+        }
     }
 
     public void assertCanUseKnowledgePositions(Long userId, Long restaurantId, Set<Long> positionIds) {
