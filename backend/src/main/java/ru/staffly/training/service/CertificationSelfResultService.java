@@ -64,8 +64,7 @@ class CertificationSelfResultService {
         boolean passed = attemptForDetails.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
                 || assignmentForResult.getPassedAt() != null
                 || assignmentForResult.getStatus() == TrainingExamAssignmentStatus.PASSED;
-        boolean attemptsRemain = attemptsAllowed == null || assignmentForResult.getAttemptsUsed() < attemptsAllowed;
-        boolean revealCorrectAnswers = !attemptsRemain || passed;
+        boolean revealCorrectAnswers = certificationAssignmentService.shouldRevealCorrectAnswers(assignmentForResult, passed);
 
         var questions = attemptForDetails
                 .map(attempt -> attemptQuestions.findByAttemptId(attempt.getId()).stream()
@@ -76,9 +75,9 @@ class CertificationSelfResultService {
                                     snapshot.type(),
                                     snapshot.prompt(),
                                     item.getChosenAnswerJson(),
-                                    item.isCorrect(),
+                                    revealCorrectAnswers ? item.isCorrect() : null,
                                     revealCorrectAnswers ? item.getCorrectKeyJson() : null,
-                                    snapshot.explanation()
+                                    revealCorrectAnswers ? snapshot.explanation() : null
                             );
                         })
                         .toList())

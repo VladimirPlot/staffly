@@ -48,7 +48,6 @@ export default function ExamRunLayout({
           <span>Вопрос {Math.min(currentIndex + 1, attempt.questions.length)} / {attempt.questions.length}</span>
           {remainingSec != null && <span>Осталось: {formatRemainingTime(remainingSec)}</span>}
         </div>
-        {attempt.exam.description && <div className="mt-1 text-sm text-muted">{attempt.exam.description}</div>}
       </div>
 
       {!result && questionContent}

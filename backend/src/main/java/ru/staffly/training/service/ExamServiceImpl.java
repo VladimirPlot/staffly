@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -430,8 +431,8 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getId(),
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam, null),
-                snapshots
+                toRuntimeExamDto(attempt),
+                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getId())
         );
     }
 
@@ -534,14 +535,52 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getId(),
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam, null),
-                snapshots
+                toRuntimeExamDto(existingAttempt),
+                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getId())
         );
+    }
+
+    private RuntimeExamDto toRuntimeExamDto(TrainingExamAttempt attempt) {
+        return new RuntimeExamDto(
+                attempt.getExam().getId(),
+                attempt.getTitleSnapshot(),
+                attempt.getQuestionCountSnapshot(),
+                attempt.getTimeLimitSecSnapshot(),
+                attempt.getExam().getMode()
+        );
+    }
+
+    private List<RuntimeQuestionDto> toRuntimeQuestions(List<AttemptQuestionSnapshotDto> snapshots,
+                                                         TrainingExamMode mode,
+                                                         Long attemptId) {
+        return snapshots.stream().map(snapshot -> {
+            var leftItems = snapshot.matchPairs().stream()
+                    .map(pair -> new RuntimeQuestionItemDto(pair.sortOrder(), pair.leftText()))
+                    .toList();
+            var shuffledRightTexts = new ArrayList<>(snapshot.matchPairs().stream()
+                    .map(TrainingQuestionMatchPairViewDto::rightText)
+                    .toList());
+            Collections.shuffle(shuffledRightTexts, new Random(Objects.hash(attemptId, snapshot.questionId())));
+            var rightOptions = IntStream.range(0, shuffledRightTexts.size())
+                    .mapToObj(index -> new RuntimeQuestionItemDto(index, shuffledRightTexts.get(index)))
+                    .toList();
+            return new RuntimeQuestionDto(
+                    snapshot.questionId(),
+                    snapshot.type(),
+                    snapshot.prompt(),
+                    mode == TrainingExamMode.CERTIFICATION ? null : snapshot.explanation(),
+                    snapshot.options(),
+                    leftItems,
+                    rightOptions,
+                    snapshot.blanks()
+            );
+        }).toList();
     }
 
     private AttemptResultDto toAttemptResultDto(CertificationAttemptFinalizationService.FinalizedAttemptPayload finalizedAttempt) {
         var attempt = finalizedAttempt.attempt();
         var existingQuestions = finalizedAttempt.questions();
+        boolean includeQuestionResults = shouldIncludeQuestionResults(attempt);
         return new AttemptResultDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
@@ -551,18 +590,19 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
-                existingQuestions.stream()
+                includeQuestionResults ? existingQuestions.stream()
                         .map(question -> new AttemptResultQuestionDto(
                                 snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
                                 question.getChosenAnswerJson(),
                                 question.isCorrect()
                         ))
-                        .toList()
+                        .toList() : List.of()
         );
     }
 
     private AttemptResultDto toExistingAttemptResultDto(TrainingExamAttempt attempt) {
         var existingQuestions = attemptQuestions.findByAttemptId(attempt.getId());
+        boolean includeQuestionResults = shouldIncludeQuestionResults(attempt);
         return new AttemptResultDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
@@ -572,13 +612,23 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
-                existingQuestions.stream()
+                includeQuestionResults ? existingQuestions.stream()
                         .map(question -> new AttemptResultQuestionDto(
                                 snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
                                 question.getChosenAnswerJson(),
                                 question.isCorrect()
                         ))
-                        .toList()
+                        .toList() : List.of()
+        );
+    }
+
+    private boolean shouldIncludeQuestionResults(TrainingExamAttempt attempt) {
+        if (attempt.getExam() == null || attempt.getExam().getMode() == TrainingExamMode.PRACTICE) {
+            return true;
+        }
+        return certificationAssignmentService.shouldRevealCorrectAnswers(
+                attempt.getAssignment(),
+                Boolean.TRUE.equals(attempt.getPassed())
         );
     }
 

@@ -6,7 +6,7 @@ type ReviewQuestion = {
   questionId: number;
   prompt: string;
   chosenAnswerJson?: string | null;
-  correct: boolean;
+  correct?: boolean | null;
   correctAnswerJson?: string | null;
   explanation?: string | null;
 };
@@ -35,10 +35,12 @@ export default function CertificationQuestionReviewSection({ questions, revealCo
     <Card className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="font-medium text-default">Разбор вопросов</div>
-        <label className="inline-flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={onlyWrong} onChange={(event) => setOnlyWrong(event.target.checked)} />
-          Показать только ошибки
-        </label>
+        {revealCorrectAnswers && (
+          <label className="inline-flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={onlyWrong} onChange={(event) => setOnlyWrong(event.target.checked)} />
+            Показать только ошибки
+          </label>
+        )}
       </div>
       {!revealCorrectAnswers && hiddenCorrectAnswersHint && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -47,13 +49,15 @@ export default function CertificationQuestionReviewSection({ questions, revealCo
       )}
       <div className="space-y-3">
         {visibleQuestions.map((question) => (
-          <div key={`${question.questionId}-${question.displayIndex}`} className={`rounded-xl border p-3 ${question.correct ? "border-emerald-200" : "border-rose-200 bg-rose-50/40"}`}>
+          <div key={`${question.questionId}-${question.displayIndex}`} className={`rounded-xl border p-3 ${question.correct == null ? "border-subtle" : question.correct ? "border-emerald-200" : "border-rose-200 bg-rose-50/40"}`}>
             <div className="text-sm font-medium">#{question.displayIndex}. {question.prompt}</div>
             <div className="mt-1 text-sm text-muted">Ваш ответ: {renderAnswer(question.chosenAnswerJson)}</div>
             {revealCorrectAnswers && (
               <div className="mt-1 text-sm text-muted">Правильный ответ: {renderAnswer(question.correctAnswerJson, "—")}</div>
             )}
-            <div className={`mt-1 text-sm ${question.correct ? "text-emerald-700" : "text-rose-700"}`}>{question.correct ? "Верно" : "Ошибка"}</div>
+            {question.correct != null && (
+              <div className={`mt-1 text-sm ${question.correct ? "text-emerald-700" : "text-rose-700"}`}>{question.correct ? "Верно" : "Ошибка"}</div>
+            )}
             {question.explanation && <div className="mt-2 text-sm text-muted">Пояснение: {question.explanation}</div>}
           </div>
         ))}
