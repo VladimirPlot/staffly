@@ -9,6 +9,7 @@ import {
 } from "../../api/trainingApi";
 import type { QuestionBankTreeNodeDto } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
+import { getManageablePositions } from "../../utils/certificationRoleScope";
 import type { ExamEditorProps, ExamEditorFormState } from "./types";
 import {
   buildAvailabilityLabel,
@@ -40,6 +41,7 @@ export function useExamEditorState({
   exam,
   knowledgeFolderId,
   initialFolderId,
+  certificationAllowedAudienceRoles,
   onClose,
   onSaved,
 }: ExamEditorProps) {
@@ -104,24 +106,22 @@ export function useExamEditorState({
       .catch(() => setTree([]));
 
     void listPositions(restaurantId, { includeInactive: false })
-      .then(setPositions)
+      .then((restaurantPositions) =>
+        setPositions(
+          mode === "CERTIFICATION"
+            ? getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? [])
+            : restaurantPositions,
+        ),
+      )
       .catch(() => setPositions([]));
-  }, [open, restaurantId, mode]);
+  }, [certificationAllowedAudienceRoles, open, restaurantId, mode]);
 
   useEffect(() => {
     if (!open || !form.selectedFolderId) return;
     const group = mode === "PRACTICE" ? "PRACTICE" : "CERTIFICATION";
 
-    void listQuestions(
-      restaurantId,
-      form.selectedFolderId,
-      false,
-      form.query || undefined,
-      group,
-    )
-      .then((folderQuestions) =>
-        setForm((current) => ({ ...current, folderQuestions })),
-      )
+    void listQuestions(restaurantId, form.selectedFolderId, false, form.query || undefined, group)
+      .then((folderQuestions) => setForm((current) => ({ ...current, folderQuestions })))
       .catch(() => setForm((current) => ({ ...current, folderQuestions: [] })));
   }, [form.query, form.selectedFolderId, mode, open, restaurantId]);
 
@@ -131,10 +131,7 @@ export function useExamEditorState({
   );
 
   const flatTree = useMemo(() => flattenTree(tree), [tree]);
-  const { folderMetaMap, getAncestorIds, getDescendantIds } = useMemo(
-    () => createTreeHelpers(flatTree),
-    [flatTree],
-  );
+  const { folderMetaMap, getAncestorIds, getDescendantIds } = useMemo(() => createTreeHelpers(flatTree), [flatTree]);
 
   const totalQuestions = useMemo(
     () => calculateTotalQuestions(form.sourcesFolders, form.sourceQuestionIds, folderMetaMap),
@@ -158,8 +155,7 @@ export function useExamEditorState({
   const handleSelectAllPositions = () => {
     setForm((current) => ({
       ...current,
-      visibilityPositionIds:
-        mode === "CERTIFICATION" ? positions.map((position) => position.id) : [],
+      visibilityPositionIds: mode === "CERTIFICATION" ? positions.map((position) => position.id) : [],
     }));
   };
 
@@ -278,14 +274,8 @@ export function useExamEditorState({
         title: form.title.trim(),
         description: form.description.trim() || null,
         mode,
-        knowledgeFolderId:
-          mode === "PRACTICE" ? knowledgeFolderId ?? exam?.knowledgeFolderId ?? null : null,
-        folderId:
-          mode === "CERTIFICATION"
-            ? exam
-              ? exam.folderId ?? null
-              : initialFolderId ?? null
-            : null,
+        knowledgeFolderId: mode === "PRACTICE" ? (knowledgeFolderId ?? exam?.knowledgeFolderId ?? null) : null,
+        folderId: mode === "CERTIFICATION" ? (exam ? (exam.folderId ?? null) : (initialFolderId ?? null)) : null,
         questionCount: totalQuestions,
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),

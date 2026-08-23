@@ -2,13 +2,23 @@ import { Archive, Eye, Folder, FolderPlus, MoveRight, Pencil, Plus } from "lucid
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
+import { useAuth } from "../../../shared/providers/AuthProvider";
+import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import Card from "../../../shared/ui/Card";
 import Button from "../../../shared/ui/Button";
 import Icon from "../../../shared/ui/Icon";
 import IconButton from "../../../shared/ui/IconButton";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
-import { deleteExam, deleteFolder, hideExam, listExams, moveCertificationExam, moveFolder, restoreExam } from "../api/trainingApi";
+import {
+  deleteExam,
+  deleteFolder,
+  hideExam,
+  listExams,
+  moveCertificationExam,
+  moveFolder,
+  restoreExam,
+} from "../api/trainingApi";
 import type { TrainingExamDto, TrainingFolderDto } from "../api/types";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
@@ -28,13 +38,25 @@ import { getTrainingErrorMessage } from "../utils/errors";
 import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { bySortOrderAndName } from "../utils/sort";
 import { trainingRoutes } from "../utils/trainingRoutes";
+import { examTargetsAllowedAudience, getManageableAudienceRoles } from "../utils/certificationRoleScope";
 
 export default function CertificationFolderPage() {
   const { folderId } = useParams();
   const currentFolderId = Number(folderId);
   const navigate = useNavigate();
   const location = useLocation();
-  const { restaurantId, canManage, loading: accessLoading } = useTrainingAccess();
+  const { user } = useAuth();
+  const { restaurantId, canManage, myRole, isTrainingExaminer, loading: accessLoading } = useTrainingAccess();
+  const restaurantAccess = resolveRestaurantAccess(user?.roles, myRole ?? undefined);
+  const allowedAudienceRoles = useMemo(
+    () =>
+      getManageableAudienceRoles({
+        isCreator: restaurantAccess.isCreator,
+        isExaminer: isTrainingExaminer,
+        membershipRole: myRole,
+      }),
+    [isTrainingExaminer, myRole, restaurantAccess.isCreator],
+  );
   const foldersState = useTrainingFolders({
     restaurantId,
     type: "CERTIFICATION",
@@ -89,15 +111,25 @@ export default function CertificationFolderPage() {
   const currentFolder = folderMap.get(currentFolderId) ?? null;
   const folderChain = useMemo(() => buildTrainingFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
   const childFolders = useMemo(
-    () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId && folder.active).sort(bySortOrderAndName),
+    () =>
+      foldersState.folders
+        .filter((folder) => folder.parentId === currentFolderId && folder.active)
+        .sort(bySortOrderAndName),
     [currentFolderId, foldersState.folders],
   );
+  const positionsById = useMemo(() => new Map(positions.map((position) => [position.id, position])), [positions]);
   const currentExams = useMemo(
     () =>
       exams
-        .filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId === currentFolderId && exam.active)
+        .filter(
+          (exam) =>
+            exam.mode === "CERTIFICATION" &&
+            exam.folderId === currentFolderId &&
+            exam.active &&
+            examTargetsAllowedAudience(exam, positionsById, allowedAudienceRoles),
+        )
         .sort(bySortOrderAndName),
-    [currentFolderId, exams],
+    [allowedAudienceRoles, currentFolderId, exams, positionsById],
   );
   const hiddenChildFolders = useMemo(
     () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId && !folder.active),
@@ -107,7 +139,6 @@ export default function CertificationFolderPage() {
     () => exams.filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId === currentFolderId && !exam.active),
     [currentFolderId, exams],
   );
-  const positionsById = useMemo(() => new Map(positions.map((position) => [position.id, position])), [positions]);
   const returnTo = buildTrainingExamsReturnTo(location.pathname, location.search);
   const invalidFolderId = !folderId || !Number.isInteger(currentFolderId) || currentFolderId <= 0;
   const loading = foldersState.loading || contentLoading;
@@ -235,11 +266,7 @@ export default function CertificationFolderPage() {
           <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
           {canManage && (
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                variant="outline"
-                leftIcon={<Archive className="h-4 w-4" />}
-                onClick={() => setArchiveOpen(true)}
-              >
+              <Button variant="outline" leftIcon={<Archive className="h-4 w-4" />} onClick={() => setArchiveOpen(true)}>
                 Скрытые
               </Button>
               <Button
@@ -249,11 +276,7 @@ export default function CertificationFolderPage() {
               >
                 Создать папку
               </Button>
-              <Button
-                variant="outline"
-                leftIcon={<Plus className="h-4 w-4" />}
-                onClick={() => setExamModalOpen(true)}
-              >
+              <Button variant="outline" leftIcon={<Plus className="h-4 w-4" />} onClick={() => setExamModalOpen(true)}>
                 Создать аттестацию
               </Button>
             </div>
@@ -397,6 +420,7 @@ export default function CertificationFolderPage() {
           exam={editingExam}
           restaurantId={restaurantId}
           mode="CERTIFICATION"
+          certificationAllowedAudienceRoles={allowedAudienceRoles}
           initialFolderId={currentFolderId}
           onClose={() => {
             setExamModalOpen(false);
@@ -453,9 +477,11 @@ export default function CertificationFolderPage() {
       <ConfirmDialog
         open={Boolean(archiveDeleteTarget)}
         title="Удалить навсегда"
-        description={archiveDeleteTarget?.kind === "folder"
-          ? "Папка, все вложенные папки и все аттестации внутри будут удалены безвозвратно."
-          : "Аттестация будет удалена безвозвратно."}
+        description={
+          archiveDeleteTarget?.kind === "folder"
+            ? "Папка, все вложенные папки и все аттестации внутри будут удалены безвозвратно."
+            : "Аттестация будет удалена безвозвратно."
+        }
         confirmText="Удалить навсегда"
         tone="danger"
         confirming={Boolean(archiveActionLoading?.startsWith("delete-"))}

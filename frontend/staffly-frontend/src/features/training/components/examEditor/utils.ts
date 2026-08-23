@@ -3,10 +3,7 @@ import type { ExamSourceFolderDto, QuestionBankTreeNodeDto } from "../../api/typ
 import type { FlatTreeNode } from "./types";
 import type { TrainingExamMode } from "../../api/types";
 
-export function flattenTree(
-  nodes: QuestionBankTreeNodeDto[],
-  parentId: number | null = null,
-): FlatTreeNode[] {
+export function flattenTree(nodes: QuestionBankTreeNodeDto[], parentId: number | null = null): FlatTreeNode[] {
   return nodes.flatMap((node) => [
     {
       id: node.id,
@@ -84,11 +81,7 @@ export function buildAvailabilityLabel(
 ) {
   if (mode === "PRACTICE" && visibilityPositionIds.length === 0) return "Всем сотрудникам";
   if (mode === "CERTIFICATION" && visibilityPositionIds.length === 0) return "Должности не выбраны";
-  if (
-    mode === "CERTIFICATION"
-    && positions.length > 0
-    && visibilityPositionIds.length === positions.length
-  ) {
+  if (mode === "CERTIFICATION" && positions.length > 0 && visibilityPositionIds.length === positions.length) {
     return "Всем сотрудникам";
   }
 
@@ -117,16 +110,14 @@ export function resolveInitialVisibilityPositionIds(
   }
 
   if ((examVisibilityPositionIds ?? []).length > 0) {
-    return examVisibilityPositionIds ?? [];
+    const selectablePositionIds = new Set(allPositionIds);
+    return (examVisibilityPositionIds ?? []).filter((positionId) => selectablePositionIds.has(positionId));
   }
 
   return allPositionIds;
 }
 
-export function normalizeVisibilityForSubmit(
-  mode: TrainingExamMode,
-  visibilityPositionIds: number[],
-) {
+export function normalizeVisibilityForSubmit(mode: TrainingExamMode, visibilityPositionIds: number[]) {
   if (mode === "CERTIFICATION") {
     return Array.from(new Set(visibilityPositionIds));
   }
