@@ -68,11 +68,15 @@ export default function ExamsPage() {
   const positionFilter = Number(searchParams.get("position") ?? "0") || null;
 
   const restaurantAccess = resolveRestaurantAccess(user?.roles, myRole ?? undefined);
-  const allowedAudienceRoles = getManageableAudienceRoles({
-    isCreator: restaurantAccess.isCreator,
-    isExaminer: isTrainingExaminer,
-    membershipRole: myRole,
-  });
+  const allowedAudienceRoles = useMemo(
+    () =>
+      getManageableAudienceRoles({
+        isCreator: restaurantAccess.isCreator,
+        isExaminer: isTrainingExaminer,
+        membershipRole: myRole,
+      }),
+    [isTrainingExaminer, myRole, restaurantAccess.isCreator],
+  );
 
   const showMySection = !restaurantAccess.isCreator;
   const showManageSection = canManage;
@@ -420,6 +424,7 @@ export default function ExamsPage() {
           exam={editingExam}
           restaurantId={restaurantId}
           mode="CERTIFICATION"
+          certificationAllowedAudienceRoles={allowedAudienceRoles}
           onClose={() => {
             setModalOpen(false);
             setEditingExam(null);
