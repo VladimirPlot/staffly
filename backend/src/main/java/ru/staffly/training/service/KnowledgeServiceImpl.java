@@ -35,6 +35,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final EntityManager entityManager;
     private final PositionRepository positions;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
     private final ExamService examService;
 
     @Transactional(readOnly = true)
@@ -45,9 +46,13 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type)
                 : folders.findByRestaurantIdAndTypeAndActiveTrueWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type);
 
+        Set<Long> manageableCertificationFolderIds = type == TrainingFolderType.CERTIFICATION
+                ? certificationFolderManagementService.manageableFolderIds(restaurantId, userId)
+                : Set.of();
         return entities.stream()
                 .filter(folder -> canAccessFolderByType(userId, restaurantId, folder))
-                .map(this::toDto)
+                .map(folder -> toDto(folder, type != TrainingFolderType.CERTIFICATION
+                        || manageableCertificationFolderIds.contains(folder.getId())))
                 .toList();
     }
 
@@ -111,7 +116,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .active(true)
                 .visibilityPositions(visibilityPositions)
                 .build();
-        return toDto(folders.save(entity));
+        return toDto(folders.save(entity), request.type() != TrainingFolderType.CERTIFICATION
+                || certificationFolderManagementService.manageableFolderIds(restaurantId, userId).contains(entity.getId()));
     }
 
     @Override
@@ -125,7 +131,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             assertCanUseVisibilityPositions(userId, restaurantId, entity.getType(), request.visibilityPositionIds());
             applyUpdatedVisibility(restaurantId, entity, request.visibilityPositionIds());
         }
-        return toDto(folders.save(entity));
+        return toDto(folders.save(entity), true);
     }
 
     @Override
@@ -147,7 +153,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         entity.setSortOrder(request.sortOrder() == null
                 ? nextFolderSortOrder(restaurantId, entity.getType(), request.parentId())
                 : normalizeSortOrder(request.sortOrder()));
-        return toDto(folders.save(entity));
+        return toDto(folders.save(entity), true);
     }
 
     @Override
@@ -167,7 +173,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         }
 
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found")));
+                .orElseThrow(() -> new NotFoundException("Folder not found")), true);
     }
 
     @Override
@@ -187,7 +193,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             setFolderTreeActive(restaurantId, root, true);
         }
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found")));
+                .orElseThrow(() -> new NotFoundException("Folder not found")), true);
     }
 
     @Override
@@ -549,6 +555,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
         assertFolderAccessByType(userId, restaurantId, folder);
+        if (folder.getType() == TrainingFolderType.CERTIFICATION) {
+            certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
+        }
         return folder;
     }
 
@@ -766,7 +775,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return result;
     }
 
-    private TrainingFolderDto toDto(TrainingFolder entity) {
+    private TrainingFolderDto toDto(TrainingFolder entity, boolean manageable) {
         var visibilityPositionIds = entity.getVisibilityPositions().stream().map(Position::getId).sorted().toList();
         return new TrainingFolderDto(
                 entity.getId(),
@@ -777,7 +786,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 entity.getType(),
                 entity.getSortOrder(),
                 entity.isActive(),
-                visibilityPositionIds
+                visibilityPositionIds,
+                manageable
         );
     }
 

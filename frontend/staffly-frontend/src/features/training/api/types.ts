@@ -10,6 +10,7 @@ export type TrainingFolderDto = {
   sortOrder: number;
   active: boolean;
   visibilityPositionIds: number[];
+  manageable: boolean;
 };
 
 export type CreateTrainingFolderPayload = {
@@ -279,13 +280,7 @@ export type CertificationExamPositionBreakdownDto = {
 
 export type CertificationAnalyticsStatus = "NOT_STARTED" | "IN_PROGRESS" | "PASSED" | "FAILED";
 
-export type CertificationAssignmentStatus =
-  | "ASSIGNED"
-  | "IN_PROGRESS"
-  | "PASSED"
-  | "FAILED"
-  | "EXHAUSTED"
-  | "ARCHIVED";
+export type CertificationAssignmentStatus = "ASSIGNED" | "IN_PROGRESS" | "PASSED" | "FAILED" | "EXHAUSTED" | "ARCHIVED";
 
 export type CertificationExamEmployeeRowDto = {
   assignmentId: number;
@@ -441,7 +436,12 @@ export type MoveTrainingCertificationExamPayload = {
   sortOrder?: number | null;
 };
 
-export type ReorderTrainingObjectKind = "FOLDER" | "KNOWLEDGE_ITEM" | "QUESTION" | "PRACTICE_EXAM" | "CERTIFICATION_EXAM";
+export type ReorderTrainingObjectKind =
+  | "FOLDER"
+  | "KNOWLEDGE_ITEM"
+  | "QUESTION"
+  | "PRACTICE_EXAM"
+  | "CERTIFICATION_EXAM";
 
 export type ReorderTrainingObjectsPayload = {
   type: TrainingFolderType;

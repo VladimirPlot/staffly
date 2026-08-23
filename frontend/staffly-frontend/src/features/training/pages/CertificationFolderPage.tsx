@@ -1,4 +1,4 @@
-import { Archive, Eye, Folder, FolderPlus, MoveRight, Pencil, Plus } from "lucide-react";
+import { Archive, Eye, Folder, FolderPlus, Lock, MoveRight, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -264,7 +264,7 @@ export default function CertificationFolderPage() {
       {currentFolder && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
-          {canManage && (
+          {canManage && currentFolder.manageable && (
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button variant="outline" leftIcon={<Archive className="h-4 w-4" />} onClick={() => setArchiveOpen(true)}>
                 Скрытые
@@ -287,6 +287,12 @@ export default function CertificationFolderPage() {
       {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
       {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
       {actionError && <ErrorState message={actionError} />}
+      {currentFolder && !currentFolder.manageable && (
+        <div className="text-muted flex items-center gap-2 rounded-xl border border-[var(--staffly-border)] p-3 text-sm">
+          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+          Внутри есть папки или аттестации, которыми вы не можете управлять.
+        </div>
+      )}
 
       {!loading && !foldersState.error && !contentError && currentFolder && (
         <>
@@ -312,42 +318,44 @@ export default function CertificationFolderPage() {
                         <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
                         {folder.description && <div className="text-muted mt-1 text-sm">{folder.description}</div>}
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <IconButton
-                          aria-label="Редактировать папку"
-                          title="Редактировать"
-                          disabled={folderActionLoadingId === folder.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditingFolder(folder);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </IconButton>
-                        <IconButton
-                          aria-label="Переместить папку"
-                          title="Переместить"
-                          disabled={folderActionLoadingId === folder.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setMoveError(null);
-                            setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-                          }}
-                        >
-                          <MoveRight className="h-4 w-4" />
-                        </IconButton>
-                        <IconButton
-                          aria-label="Скрыть папку"
-                          title="Скрыть"
-                          disabled={folderActionLoadingId === folder.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleHideFolder(folder);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </IconButton>
-                      </div>
+                      {folder.manageable && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <IconButton
+                            aria-label="Редактировать папку"
+                            title="Редактировать"
+                            disabled={folderActionLoadingId === folder.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditingFolder(folder);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton
+                            aria-label="Переместить папку"
+                            title="Переместить"
+                            disabled={folderActionLoadingId === folder.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMoveError(null);
+                              setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                            }}
+                          >
+                            <MoveRight className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton
+                            aria-label="Скрыть папку"
+                            title="Скрыть"
+                            disabled={folderActionLoadingId === folder.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleHideFolder(folder);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+                      )}
                     </div>
                   </Card>
                 ))}
@@ -389,7 +397,7 @@ export default function CertificationFolderPage() {
         </>
       )}
 
-      {restaurantId && currentFolder && (
+      {restaurantId && currentFolder?.manageable && (
         <TrainingFolderModal
           open={folderModalOpen}
           mode="create"
@@ -414,7 +422,7 @@ export default function CertificationFolderPage() {
         />
       )}
 
-      {restaurantId && currentFolder && (
+      {restaurantId && currentFolder?.manageable && (
         <ExamEditorModal
           open={examModalOpen}
           exam={editingExam}
@@ -463,7 +471,7 @@ export default function CertificationFolderPage() {
         open={archiveOpen}
         title="Скрытые"
         emptyText="В этой папке нет скрытых объектов."
-        folders={hiddenChildFolders}
+        folders={hiddenChildFolders.filter((folder) => folder.manageable)}
         certificationExams={hiddenCurrentExams}
         loading={loading}
         error={foldersState.error ?? contentError}
