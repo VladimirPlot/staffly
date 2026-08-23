@@ -109,10 +109,9 @@ export function resolveInitialVisibilityPositionIds(
     return examVisibilityPositionIds ?? [];
   }
 
-  if ((examVisibilityPositionIds ?? []).length > 0) {
-    const selectablePositionIds = new Set(allPositionIds);
-    return (examVisibilityPositionIds ?? []).filter((positionId) => selectablePositionIds.has(positionId));
-  }
+  // Existing certification visibility is a full-replace collection. Keep every
+  // referenced id even when it is absent from the active positions dictionary.
+  if ((examVisibilityPositionIds ?? []).length > 0) return examVisibilityPositionIds ?? [];
 
   return allPositionIds;
 }

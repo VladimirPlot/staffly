@@ -7,11 +7,7 @@ import type { ExamEditorProps } from "./examEditor/types";
 export default function ExamEditorModal(props: ExamEditorProps) {
   const state = useExamEditorState(props);
   const title = props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
-  const submitLabel = props.exam
-    ? "Сохранить"
-    : props.mode === "PRACTICE"
-      ? "Создать тест"
-      : "Создать аттестацию";
+  const submitLabel = props.exam ? "Сохранить" : props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
 
   return (
     <Modal
@@ -37,6 +33,7 @@ export default function ExamEditorModal(props: ExamEditorProps) {
         timeLimitSec={state.form.timeLimitSec}
         attemptLimit={state.form.attemptLimit}
         positions={state.positions}
+        manageablePositionIds={state.manageablePositionIds}
         visibilityPositionIds={state.form.visibilityPositionIds}
         availabilityLabel={state.availabilityLabel}
         positionMenuOpen={state.positionMenuOpen}
