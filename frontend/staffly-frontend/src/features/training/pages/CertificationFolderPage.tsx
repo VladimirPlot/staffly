@@ -22,6 +22,7 @@ import {
 import type { TrainingExamDto, TrainingFolderDto } from "../api/types";
 import CertificationManageExamCard from "../components/certification/CertificationManageExamCard";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
+import { TrainingDraggableSource, TrainingMoveDndContext } from "../components/TrainingMoveDnd";
 import ExamEditorModal from "../components/ExamEditorModal";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -32,7 +33,7 @@ import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
-import { buildTrainingFolderChain } from "../trainingFolderDnd";
+import { buildTrainingFolderChain, trainingDescendantIds, type TrainingDndObject } from "../trainingFolderDnd";
 import type { TrainingMoveTarget } from "../trainingFolderObjects";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
@@ -81,6 +82,7 @@ export default function CertificationFolderPage() {
   const [folderActionLoadingId, setFolderActionLoadingId] = useState<number | null>(null);
   const [examActionLoadingId, setExamActionLoadingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeDndObjectId, setActiveDndObjectId] = useState<string | null>(null);
 
   const loadContent = useCallback(async () => {
     if (!restaurantId || !canManage) return;
@@ -109,6 +111,7 @@ export default function CertificationFolderPage() {
     [foldersState.folders],
   );
   const currentFolder = folderMap.get(currentFolderId) ?? null;
+  const managementDndEnabled = Boolean(currentFolder?.manageable);
   const folderChain = useMemo(() => buildTrainingFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
   const childFolders = useMemo(
     () =>
@@ -142,6 +145,18 @@ export default function CertificationFolderPage() {
   const returnTo = buildTrainingExamsReturnTo(location.pathname, location.search);
   const invalidFolderId = !folderId || !Number.isInteger(currentFolderId) || currentFolderId <= 0;
   const loading = foldersState.loading || contentLoading;
+  const blockedDropFolderIds = useMemo(
+    () => new Set(foldersState.folders.filter((folder) => !folder.manageable).map((folder) => folder.id)),
+    [foldersState.folders],
+  );
+  const blockedDndFolderIds = useMemo(() => {
+    const blocked = new Set(blockedDropFolderIds);
+    const [kind, rawId] = activeDndObjectId?.split(":") ?? [];
+    if (kind === "folder") {
+      trainingDescendantIds(Number(rawId), foldersState.folders).forEach((id) => blocked.add(id));
+    }
+    return blocked;
+  }, [activeDndObjectId, blockedDropFolderIds, foldersState.folders]);
 
   const openFolder = (id: number) => navigate(trainingRoutes.certificationFolder(id));
   const handleFolderKeyDown = (event: KeyboardEvent<HTMLElement>, id: number) => {
@@ -204,6 +219,21 @@ export default function CertificationFolderPage() {
     }
   };
 
+  const handleDndMove = async (source: TrainingDndObject, targetFolderId: number | null) => {
+    if (!restaurantId || targetFolderId === currentFolderId) return;
+    setActionError(null);
+    try {
+      if (source.kind === "folder") await moveFolder(restaurantId, source.id, { parentId: targetFolderId });
+      else if (source.kind === "certificationExam") {
+        await moveCertificationExam(restaurantId, source.id, { folderId: targetFolderId });
+      }
+    } catch (error) {
+      setActionError(getTrainingErrorMessage(error, "Не удалось переместить."));
+    } finally {
+      await reloadFolderContents();
+    }
+  };
+
   const restoreArchivedObject = async (object: ArchivedTrainingObject) => {
     if (!restaurantId) return;
     const actionKey = `restore-${object.kind}-${object.id}`;
@@ -251,159 +281,188 @@ export default function CertificationFolderPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <TrainingBreadcrumbs
-        rootLabel="Аттестации"
-        currentFolderId={currentFolderId}
-        folderChain={folderChain}
-        activeObjectId={null}
-        blockedFolderIds={new Set<number>()}
-        onOpenRoot={() => navigate(trainingRoutes.exams)}
-        onOpenFolder={openFolder}
-      />
+      <TrainingMoveDndContext
+        enabled={managementDndEnabled}
+        canMove={(source) => source.kind === "folder" || source.kind === "certificationExam"}
+        onMove={handleDndMove}
+        onActiveIdChange={setActiveDndObjectId}
+      >
+        <TrainingBreadcrumbs
+          rootLabel="Аттестации"
+          currentFolderId={currentFolderId}
+          folderChain={folderChain}
+          activeObjectId={activeDndObjectId}
+          blockedFolderIds={blockedDndFolderIds}
+          rootDropDisabledObjectKinds={[]}
+          onOpenRoot={() => navigate(trainingRoutes.exams)}
+          onOpenFolder={openFolder}
+        />
 
-      {currentFolder && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
-          {canManage && currentFolder.manageable && (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="outline" leftIcon={<Archive className="h-4 w-4" />} onClick={() => setArchiveOpen(true)}>
-                Скрытые
-              </Button>
-              <Button
-                variant="outline"
-                leftIcon={<FolderPlus className="h-4 w-4" />}
-                onClick={() => setFolderModalOpen(true)}
-              >
-                Создать папку
-              </Button>
-              <Button variant="outline" leftIcon={<Plus className="h-4 w-4" />} onClick={() => setExamModalOpen(true)}>
-                Создать аттестацию
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-      {loading && <LoadingState label="Загрузка папки..." />}
-      {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
-      {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
-      {actionError && <ErrorState message={actionError} />}
-      {currentFolder && !currentFolder.manageable && (
-        <div className="text-muted flex items-center gap-2 rounded-xl border border-[var(--staffly-border)] p-3 text-sm">
-          <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Внутри есть папки или аттестации, которыми вы не можете управлять.
-        </div>
-      )}
+        {currentFolder && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
+            {canManage && currentFolder.manageable && (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="outline"
+                  leftIcon={<Archive className="h-4 w-4" />}
+                  onClick={() => setArchiveOpen(true)}
+                >
+                  Скрытые
+                </Button>
+                <Button
+                  variant="outline"
+                  leftIcon={<FolderPlus className="h-4 w-4" />}
+                  onClick={() => setFolderModalOpen(true)}
+                >
+                  Создать папку
+                </Button>
+                <Button
+                  variant="outline"
+                  leftIcon={<Plus className="h-4 w-4" />}
+                  onClick={() => setExamModalOpen(true)}
+                >
+                  Создать аттестацию
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+        {loading && <LoadingState label="Загрузка папки..." />}
+        {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
+        {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
+        {actionError && <ErrorState message={actionError} />}
+        {currentFolder && !currentFolder.manageable && (
+          <div className="text-muted flex items-center gap-2 rounded-xl border border-[var(--staffly-border)] p-3 text-sm">
+            <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Внутри есть папки или аттестации, которыми вы не можете управлять.
+          </div>
+        )}
 
-      {!loading && !foldersState.error && !contentError && currentFolder && (
-        <>
-          {childFolders.length > 0 && (
-            <section className="space-y-3">
-              <h3 className="text-lg font-semibold">Папки</h3>
-              <div className="space-y-3" role="list">
-                {childFolders.map((folder) => (
-                  <Card
-                    key={folder.id}
-                    role="link"
-                    tabIndex={0}
-                    className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
-                    onClick={() => openFolder(folder.id)}
-                    onDoubleClick={() => openFolder(folder.id)}
-                    onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
-                        <Icon icon={Folder} size="sm" decorative />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
-                        {folder.description && <div className="text-muted mt-1 text-sm">{folder.description}</div>}
-                      </div>
-                      {folder.manageable && (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <IconButton
-                            aria-label="Редактировать папку"
-                            title="Редактировать"
-                            disabled={folderActionLoadingId === folder.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setEditingFolder(folder);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </IconButton>
-                          <IconButton
-                            aria-label="Переместить папку"
-                            title="Переместить"
-                            disabled={folderActionLoadingId === folder.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMoveError(null);
-                              setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-                            }}
-                          >
-                            <MoveRight className="h-4 w-4" />
-                          </IconButton>
-                          <IconButton
-                            aria-label="Скрыть папку"
-                            title="Скрыть"
-                            disabled={folderActionLoadingId === folder.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleHideFolder(folder);
-                            }}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </IconButton>
+        {!loading && !foldersState.error && !contentError && currentFolder && (
+          <>
+            {childFolders.length > 0 && (
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold">Папки</h3>
+                <div className="space-y-3" role="list">
+                  {childFolders.map((folder) => (
+                    <TrainingDraggableSource
+                      key={folder.id}
+                      kind="folder"
+                      id={folder.id}
+                      draggable={managementDndEnabled && folder.manageable}
+                      droppableFolder={managementDndEnabled && folder.manageable}
+                    >
+                      <Card
+                        role="link"
+                        tabIndex={0}
+                        className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
+                        onClick={() => openFolder(folder.id)}
+                        onDoubleClick={() => openFolder(folder.id)}
+                        onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
+                            <Icon icon={Folder} size="sm" decorative />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
+                            {folder.description && <div className="text-muted mt-1 text-sm">{folder.description}</div>}
+                          </div>
+                          {folder.manageable && (
+                            <div className="flex shrink-0 items-center gap-1">
+                              <IconButton
+                                aria-label="Редактировать папку"
+                                title="Редактировать"
+                                disabled={folderActionLoadingId === folder.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setEditingFolder(folder);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Переместить папку"
+                                title="Переместить"
+                                disabled={folderActionLoadingId === folder.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setMoveError(null);
+                                  setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                                }}
+                              >
+                                <MoveRight className="h-4 w-4" />
+                              </IconButton>
+                              <IconButton
+                                aria-label="Скрыть папку"
+                                title="Скрыть"
+                                disabled={folderActionLoadingId === folder.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleHideFolder(folder);
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </IconButton>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          )}
+                      </Card>
+                    </TrainingDraggableSource>
+                  ))}
+                </div>
+              </section>
+            )}
 
-          {currentExams.length > 0 && (
-            <section className="space-y-3">
-              <h3 className="text-lg font-semibold">Аттестационные тесты</h3>
-              <div className="space-y-3">
-                {currentExams.map((exam) => (
-                  <CertificationManageExamCard
-                    key={exam.id}
-                    exam={exam}
-                    analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), returnTo)}
-                    loading={examActionLoadingId === exam.id}
-                    positionsById={positionsById}
-                    onEdit={
-                      currentFolder.manageable
-                        ? (value) => {
-                            setEditingExam(value);
-                            setExamModalOpen(true);
-                          }
-                        : undefined
-                    }
-                    onChangeOwner={currentFolder.manageable ? setChangeOwnerExam : undefined}
-                    onMove={
-                      currentFolder.manageable
-                        ? (value) => {
-                            setMoveError(null);
-                            setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
-                          }
-                        : undefined
-                    }
-                    onAction={currentFolder.manageable ? runExamAction : undefined}
-                    showDeleteAction={false}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+            {currentExams.length > 0 && (
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold">Аттестационные тесты</h3>
+                <div className="space-y-3">
+                  {currentExams.map((exam) => (
+                    <TrainingDraggableSource
+                      key={exam.id}
+                      kind="certificationExam"
+                      id={exam.id}
+                      draggable={managementDndEnabled}
+                    >
+                      <CertificationManageExamCard
+                        exam={exam}
+                        analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), returnTo)}
+                        loading={examActionLoadingId === exam.id}
+                        positionsById={positionsById}
+                        onEdit={
+                          currentFolder.manageable
+                            ? (value) => {
+                                setEditingExam(value);
+                                setExamModalOpen(true);
+                              }
+                            : undefined
+                        }
+                        onChangeOwner={currentFolder.manageable ? setChangeOwnerExam : undefined}
+                        onMove={
+                          currentFolder.manageable
+                            ? (value) => {
+                                setMoveError(null);
+                                setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
+                              }
+                            : undefined
+                        }
+                        onAction={currentFolder.manageable ? runExamAction : undefined}
+                        showDeleteAction={false}
+                      />
+                    </TrainingDraggableSource>
+                  ))}
+                </div>
+              </section>
+            )}
 
-          {childFolders.length === 0 && currentExams.length === 0 && (
-            <EmptyState title="Папка пуста" description="В этой папке пока нет папок и аттестационных тестов." />
-          )}
-        </>
-      )}
+            {childFolders.length === 0 && currentExams.length === 0 && (
+              <EmptyState title="Папка пуста" description="В этой папке пока нет папок и аттестационных тестов." />
+            )}
+          </>
+        )}
+      </TrainingMoveDndContext>
 
       {restaurantId && currentFolder?.manageable && (
         <TrainingFolderModal
