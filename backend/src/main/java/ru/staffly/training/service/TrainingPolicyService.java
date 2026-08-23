@@ -64,6 +64,15 @@ public class TrainingPolicyService {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.QUESTION_BANK);
     }
 
+    /** Reading is intersection-based; managing a question-bank object requires authority over its full scope. */
+    public boolean canManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
+            return true;
+        }
+        return allowedPositionIdsByContext(userId, restaurantId, PolicyContext.QUESTION_BANK)
+                .containsAll(visibilityPositionIds);
+    }
+
     public boolean canAccessCertificationByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.CERTIFICATION);
     }
@@ -114,6 +123,12 @@ public class TrainingPolicyService {
     public void assertCanAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.QUESTION_BANK,
                 "Training question-bank policy does not allow access to this visibility scope.");
+    }
+
+    public void assertCanManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (!canManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds)) {
+            throw new ForbiddenException("Training question-bank policy does not allow managing this visibility scope.");
+        }
     }
 
     public void assertCanAccessCertificationByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {

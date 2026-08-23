@@ -52,8 +52,11 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 : Set.of();
         return entities.stream()
                 .filter(folder -> canAccessFolderByType(userId, restaurantId, folder))
-                .map(folder -> toDto(folder, type != TrainingFolderType.CERTIFICATION
-                        || manageableCertificationFolderIds.contains(folder.getId())))
+                .map(folder -> toDto(folder, switch (type) {
+                    case QUESTION_BANK -> canManageQuestionBankFolder(userId, restaurantId, folder);
+                    case CERTIFICATION -> manageableCertificationFolderIds.contains(folder.getId());
+                    case KNOWLEDGE -> true;
+                }))
                 .toList();
     }
 
@@ -309,7 +312,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         for (Long id : request.orderedIds()) {
             var question = questions.findByIdAndRestaurantIdWithFolderVisibility(id, restaurantId)
                     .orElseThrow(() -> new NotFoundException("Question not found"));
-            assertFolderAccessByType(userId, restaurantId, question.getFolder());
+            trainingPolicyService.assertCanManageQuestionBankByVisibility(
+                    userId, restaurantId, visibilityPositionIds(question.getFolder()));
         }
         applyOrder(request.orderedIds(), byId, TrainingQuestion::setSortOrder);
     }
@@ -555,9 +559,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private TrainingFolder requireManageableFolder(Long restaurantId, Long userId, Long folderId) {
         var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
-        assertFolderAccessByType(userId, restaurantId, folder);
-        if (folder.getType() == TrainingFolderType.CERTIFICATION) {
-            certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
+        if (folder.getType() == TrainingFolderType.QUESTION_BANK) {
+            trainingPolicyService.assertCanManageQuestionBankByVisibility(
+                    userId, restaurantId, visibilityPositionIds(folder));
+        } else {
+            assertFolderAccessByType(userId, restaurantId, folder);
+            if (folder.getType() == TrainingFolderType.CERTIFICATION) {
+                certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
+            }
         }
         return folder;
     }
@@ -581,12 +590,21 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void assertFolderAccessByType(Long userId, Long restaurantId, TrainingFolder folder) {
-        var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        var visibilityIds = visibilityPositionIds(folder);
         switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.assertCanAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
             case QUESTION_BANK -> trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
             case CERTIFICATION -> trainingPolicyService.assertCanAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
         }
+    }
+
+    private boolean canManageQuestionBankFolder(Long userId, Long restaurantId, TrainingFolder folder) {
+        return trainingPolicyService.canManageQuestionBankByVisibility(
+                userId, restaurantId, visibilityPositionIds(folder));
+    }
+
+    private Set<Long> visibilityPositionIds(TrainingFolder folder) {
+        return folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
     }
 
     private TrainingKnowledgeItem requireManageableKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
