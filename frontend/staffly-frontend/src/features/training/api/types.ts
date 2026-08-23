@@ -133,6 +133,19 @@ export type ExamSourceFolderDto = {
   randomCount?: number | null;
 };
 
+export type ExamSourcesPreflightDto = {
+  availableQuestionCount: number;
+  valid: boolean;
+  issues: string[];
+};
+
+export type ExamSourcesPreflightPayload = {
+  mode: TrainingExamMode;
+  questionCount?: number | null;
+  sourcesFolders: ExamSourceFolderDto[];
+  sourceQuestionIds: number[];
+};
+
 export type TrainingExamDto = {
   id: number;
   restaurantId: number;

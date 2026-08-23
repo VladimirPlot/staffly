@@ -17,6 +17,8 @@ import type {
   CreateTrainingFolderPayload,
   ExamAttemptDto,
   ExamProgressDto,
+  ExamSourcesPreflightDto,
+  ExamSourcesPreflightPayload,
   ExamSubmitPayload,
   ExamSubmitResultDto,
   MoveTrainingFolderPayload,
@@ -115,6 +117,13 @@ export async function listKnowledgeExams(restaurantId: number, folderId: number,
   return mapExamsForUi(data as TrainingExamDto[]);
 }
 export async function createExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams`, payload); return data as TrainingExamDto; }
+export async function preflightExamSources(
+  restaurantId: number,
+  payload: ExamSourcesPreflightPayload,
+): Promise<ExamSourcesPreflightDto> {
+  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/sources/preflight`, payload);
+  return data as ExamSourcesPreflightDto;
+}
 export async function createKnowledgeExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> {
   const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-exams`, payload);
   return data as TrainingExamDto;

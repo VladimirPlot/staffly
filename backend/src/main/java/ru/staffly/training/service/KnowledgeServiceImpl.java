@@ -30,6 +30,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingKnowledgeItemRepository items;
     private final TrainingImageStorage storage;
     private final TrainingExamSourceFolderRepository folderSources;
+    private final TrainingExamSourceQuestionRepository questionSources;
     private final TrainingExamRepository exams;
     private final TrainingQuestionRepository questions;
     private final EntityManager entityManager;
@@ -166,6 +167,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var root = requireManageableFolder(restaurantId, userId, folderId);
 
         ensureKnowledgeFolderHasNoPracticeExams(restaurantId, root);
+        if (root.getType() == TrainingFolderType.QUESTION_BANK) {
+            assertQuestionBankTreeNotUsedByActiveExams(
+                    restaurantId, collectFolderIds(restaurantId, root.getId(), root.getType()));
+        }
         if (root.getType() == TrainingFolderType.CERTIFICATION) {
             var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
             for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, folderIds)) {
@@ -629,10 +634,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private void ensureFolderDeletionAllowed(Long restaurantId, TrainingFolder root, List<Long> allFolderIds) {
         if (root.getType() == TrainingFolderType.QUESTION_BANK) {
             var usages = folderSources.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
-            if (!usages.isEmpty()) {
+            var explicitUsages = questionSources.findExamUsagesByRestaurantIdAndQuestionFolderIds(
+                    restaurantId, allFolderIds);
+            if (!usages.isEmpty() || !explicitUsages.isEmpty()) {
+                var allUsages = new ArrayList<Object>(usages);
+                allUsages.addAll(explicitUsages);
                 throw new ConflictException(
-                        "Нельзя удалить папку: она используется в экзаменах. Уберите папку из области экзаменов и повторите.",
-                        Map.of("exams", usages)
+                        "Нельзя удалить папку: внутри неё есть источники тестов. Сначала уберите их из тестов.",
+                        Map.of("exams", allUsages)
                 );
             }
             return;
@@ -643,6 +652,22 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             return;
         }
 
+    }
+
+    private void assertQuestionBankTreeNotUsedByActiveExams(Long restaurantId, List<Long> folderIds) {
+        var folderUsages = folderSources.findActiveExamUsagesByRestaurantIdAndFolderIds(restaurantId, folderIds);
+        var explicitUsages = questionSources.findActiveExamUsagesByRestaurantIdAndQuestionFolderIds(
+                restaurantId, folderIds);
+        if (folderUsages.isEmpty() && explicitUsages.isEmpty()) {
+            return;
+        }
+        var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
+        folderUsages.forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+        explicitUsages.forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+        throw new ConflictException(
+                "Внутри скрываемой папки есть источник активного теста. Сначала уберите его из источников теста.",
+                Map.of("exams", List.copyOf(usagesByExamId.values()))
+        );
     }
 
     private void ensureNotMovingIntoSelfOrDescendant(Long restaurantId, Long folderId, Long candidateParentId, TrainingFolderType type) {

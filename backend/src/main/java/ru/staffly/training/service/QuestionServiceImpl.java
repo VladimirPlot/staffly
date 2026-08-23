@@ -9,7 +9,10 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingFolderType;
+import ru.staffly.training.model.TrainingExamMode;
+import ru.staffly.training.model.TrainingExamSourcePickMode;
 import ru.staffly.training.model.TrainingQuestion;
+import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.model.TrainingQuestionBlank;
 import ru.staffly.training.repository.*;
 
@@ -49,6 +52,8 @@ public class QuestionServiceImpl implements QuestionService {
 
         var folder = requireManageableQuestionBankFolder(restaurantId, userId, request.folderId());
         activeContainerValidator.requireActiveChain(folder);
+        assertQuestionDoesNotGrowActiveAllSource(
+                restaurantId, folder.getId(), request.questionGroup());
         var entity = questions.save(TrainingQuestion.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .folder(folder)
@@ -73,7 +78,9 @@ public class QuestionServiceImpl implements QuestionService {
         validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
         var entity = requireManageableQuestion(restaurantId, userId, questionId);
-        assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
+        if (entity.isActive()) {
+            assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
+        }
 
         boolean wasActive = entity.isActive();
         var oldGroup = entity.getQuestionGroup();
@@ -89,6 +96,10 @@ public class QuestionServiceImpl implements QuestionService {
         }
         var targetGroup = request.questionGroup();
         boolean questionGroupChanged = targetGroup != oldGroup;
+        if (willBeActive && (!wasActive || folderChanged || questionGroupChanged)) {
+            assertQuestionDoesNotGrowActiveAllSource(
+                    restaurantId, targetFolder.getId(), targetGroup);
+        }
         int targetSortOrder = request.sortOrder() != null
                 ? normalizeSortOrder(request.sortOrder())
                 : folderChanged || questionGroupChanged || (!wasActive && willBeActive)
@@ -119,6 +130,10 @@ public class QuestionServiceImpl implements QuestionService {
 
         var folder = requireManageableQuestionBankFolder(restaurantId, userId, request.folderId());
         activeContainerValidator.requireActiveChain(folder);
+        if (!Objects.equals(entity.getFolder().getId(), folder.getId())) {
+            assertQuestionDoesNotGrowActiveAllSource(
+                    restaurantId, folder.getId(), entity.getQuestionGroup());
+        }
         entity.setFolder(folder);
         entity.setSortOrder(request.sortOrder() == null
                 ? nextQuestionSortOrder(restaurantId, folder.getId(), entity.getQuestionGroup())
@@ -130,6 +145,7 @@ public class QuestionServiceImpl implements QuestionService {
     @Transactional
     public TrainingQuestionDto hideQuestion(Long restaurantId, Long userId, Long questionId) {
         var entity = requireManageableQuestion(restaurantId, userId, questionId);
+        assertQuestionNotUsedInActiveExamsForMutation(restaurantId, entity);
         entity.setActive(false);
         return toDtos(List.of(entity)).get(0);
     }
@@ -140,6 +156,8 @@ public class QuestionServiceImpl implements QuestionService {
         var entity = requireManageableQuestion(restaurantId, userId, questionId);
         activeContainerValidator.requireActiveChain(entity.getFolder());
         if (!entity.isActive()) {
+            assertQuestionDoesNotGrowActiveAllSource(
+                    restaurantId, entity.getFolder().getId(), entity.getQuestionGroup());
             entity.setSortOrder(nextQuestionSortOrder(
                     restaurantId,
                     entity.getFolder().getId(),
@@ -232,10 +250,33 @@ public class QuestionServiceImpl implements QuestionService {
     }
 
     private void assertQuestionNotUsedInExamsForMutation(Long restaurantId, TrainingQuestion question) {
+        assertQuestionNotUsedInActiveExamsForMutation(restaurantId, question);
+    }
+
+    private void assertQuestionDoesNotGrowActiveAllSource(Long restaurantId,
+                                                           Long folderId,
+                                                           TrainingQuestionGroup questionGroup) {
+        var usages = folderSources.findActiveExamUsagesByFolderAndPickModeAndExamMode(
+                restaurantId,
+                folderId,
+                TrainingExamSourcePickMode.ALL,
+                TrainingExamMode.valueOf(questionGroup.name())
+        );
+        if (usages.isEmpty()) {
+            return;
+        }
+        var message = usages.size() == 1
+                ? "Папка используется в активном тесте \"" + usages.get(0).getTitle()
+                        + "\" в режиме «Все вопросы». Сначала измените источники теста."
+                : "Папка используется в активных тестах в режиме «Все вопросы». Сначала измените источники тестов.";
+        throw new ConflictException(message, Map.of("exams", usages));
+    }
+
+    private void assertQuestionNotUsedInActiveExamsForMutation(Long restaurantId, TrainingQuestion question) {
         var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
-        questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
+        questionSources.findActiveExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
                 .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
-        folderSources.findExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
+        folderSources.findActiveExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
                 .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
 
         var usages = List.copyOf(usagesByExamId.values());
@@ -244,8 +285,9 @@ public class QuestionServiceImpl implements QuestionService {
         }
 
         var message = usages.size() == 1
-                ? "Данный вопрос используется в тесте \"" + usages.get(0).getTitle() + "\", чтобы изменить его, нужно удалить тест или убрать данный вопрос из теста."
-                : "Данный вопрос используется в нескольких тестах. Чтобы изменить его, нужно удалить эти тесты или убрать из них данный вопрос.";
+                ? "Вопрос используется в активном тесте \"" + usages.get(0).getTitle()
+                        + "\". Сначала уберите его из источников теста."
+                : "Вопрос используется в нескольких активных тестах. Сначала уберите его из их источников.";
         throw new ConflictException(
                 message,
                 Map.of("exams", usages)

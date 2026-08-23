@@ -30,6 +30,8 @@ type Props = {
   query: string;
   sourceQuestionIds: number[];
   totalQuestions: number;
+  sourceIssues: string[];
+  sourcePreflightLoading: boolean;
   onTitleChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onPassPercentChange: (value: number) => void;
@@ -99,6 +101,8 @@ export default function ExamEditorForm(props: Props) {
         sourcesFolderCount={props.folderSourceMap.size}
         sourceQuestionCount={props.sourceQuestionIds.length}
         totalQuestions={props.totalQuestions}
+        issues={props.sourceIssues}
+        loading={props.sourcePreflightLoading}
       />
     </div>
   );
