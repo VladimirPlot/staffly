@@ -450,3 +450,8 @@ export type ReorderTrainingObjectsPayload = {
   questionGroup?: TrainingQuestionGroup;
   orderedIds: number[];
 };
+
+export type CertificationContainerCapabilitiesDto = {
+  folderReorderAllowed: boolean;
+  certificationExamReorderAllowed: boolean;
+};
