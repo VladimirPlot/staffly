@@ -8,10 +8,7 @@ import ExamVisibilitySection from "./sections/ExamVisibilitySection";
 import type { FlatTreeNode } from "./types";
 import type { QuestionBankTreeNodeDto, TrainingQuestionDto } from "../../api/types";
 
-type FolderSourceMap = Map<
-  number,
-  { folderId: number; pickMode: "ALL" | "RANDOM"; randomCount?: number | null }
->;
+type FolderSourceMap = Map<number, { folderId: number; pickMode: "ALL" | "RANDOM"; randomCount?: number | null }>;
 
 type Props = {
   mode: TrainingExamMode;
@@ -21,6 +18,7 @@ type Props = {
   timeLimitSec: number | "";
   attemptLimit: number | "";
   positions: PositionDto[];
+  manageablePositionIds: Set<number>;
   visibilityPositionIds: number[];
   availabilityLabel: string;
   positionMenuOpen: boolean;
@@ -70,6 +68,7 @@ export default function ExamEditorForm(props: Props) {
       <ExamVisibilitySection
         mode={props.mode}
         positions={props.positions}
+        manageablePositionIds={props.manageablePositionIds}
         visibilityPositionIds={props.visibilityPositionIds}
         availabilityLabel={props.availabilityLabel}
         positionMenuOpen={props.positionMenuOpen}
