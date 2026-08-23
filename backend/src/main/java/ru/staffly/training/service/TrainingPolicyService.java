@@ -36,6 +36,26 @@ public class TrainingPolicyService {
         return allowedPositionIdsByContext(userId, restaurantId, PolicyContext.EXAM_TARGET);
     }
 
+    /** Resolves the actor and restaurant positions once for certification tree authority calculations. */
+    public CertificationManagementScopes certificationManagementScopes(Long userId, Long restaurantId) {
+        var context = resolveContext(userId, restaurantId);
+        var folderLevels = allowedLevelsByContext(context, PolicyContext.CERTIFICATION);
+        var targetLevels = allowedLevelsByContext(context, PolicyContext.EXAM_TARGET);
+        var restaurantPositions = positions.findByRestaurantId(restaurantId);
+        var folderPositionIds = restaurantPositions.stream()
+                .filter(position -> folderLevels.contains(position.getLevel()))
+                .map(position -> position.getId())
+                .collect(Collectors.toUnmodifiableSet());
+        var targetPositionIds = restaurantPositions.stream()
+                .filter(position -> targetLevels.contains(position.getLevel()))
+                .map(position -> position.getId())
+                .collect(Collectors.toUnmodifiableSet());
+        return new CertificationManagementScopes(folderPositionIds, targetPositionIds);
+    }
+
+    public record CertificationManagementScopes(Set<Long> folderPositionIds, Set<Long> targetPositionIds) {
+    }
+
     public boolean canAccessKnowledgeByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.KNOWLEDGE);
     }
