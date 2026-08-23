@@ -110,6 +110,15 @@ class CertificationAssignmentService {
         }
     }
 
+    public boolean shouldRevealCorrectAnswers(TrainingExamAssignment assignment, boolean passed) {
+        if (assignment == null) {
+            return false;
+        }
+        Integer allowed = calculateAttemptsAllowed(assignment);
+        boolean attemptsRemain = allowed == null || assignment.getAttemptsUsed() < allowed;
+        return passed || assignment.getPassedAt() != null || !attemptsRemain;
+    }
+
     public void markStarted(TrainingExamAssignment assignment) {
         if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
             return;

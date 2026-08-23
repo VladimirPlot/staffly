@@ -209,7 +209,7 @@ export type CertificationMyResultQuestionDto = {
   questionType: TrainingQuestionType;
   prompt: string;
   chosenAnswerJson?: string | null;
-  correct: boolean;
+  correct?: boolean | null;
   correctAnswerJson?: string | null;
   explanation?: string | null;
 };
@@ -361,7 +361,7 @@ export type CertificationAttemptDetailsDto = {
 };
 
 export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };
-export type ExamStartQuestionMatchPairViewDto = { sortOrder: number; leftText: string; rightText: string };
+export type ExamRuntimeQuestionItemDto = { sortOrder: number; text: string };
 
 export type ExamStartQuestionBlankOptionViewDto = { sortOrder: number; text: string };
 export type ExamStartQuestionBlankViewDto = { blankIndex: number; options: ExamStartQuestionBlankOptionViewDto[] };
@@ -372,15 +372,24 @@ export type AttemptQuestionSnapshotDto = {
   prompt: string;
   explanation?: string | null;
   options: ExamStartQuestionOptionViewDto[];
-  matchPairs: ExamStartQuestionMatchPairViewDto[];
+  matchLeftItems: ExamRuntimeQuestionItemDto[];
+  matchRightOptions: ExamRuntimeQuestionItemDto[];
   blanks: ExamStartQuestionBlankViewDto[];
+};
+
+export type RuntimeExamDto = {
+  id: number;
+  title: string;
+  questionCount: number;
+  timeLimitSec?: number | null;
+  mode: TrainingExamMode;
 };
 
 export type ExamAttemptDto = {
   attemptId: number;
   startedAt: string;
   examVersion: number;
-  exam: TrainingExamDto;
+  exam: RuntimeExamDto;
   questions: AttemptQuestionSnapshotDto[];
 };
 
