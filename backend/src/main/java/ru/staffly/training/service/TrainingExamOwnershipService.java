@@ -233,7 +233,7 @@ public class TrainingExamOwnershipService {
 
     private boolean canActorManageExam(Long actorUserId, Long restaurantId, TrainingExam exam) {
         try {
-            trainingPolicyService.assertCanAccessExamTargetByVisibility(
+            trainingPolicyService.assertCanManageCertificationTargets(
                     actorUserId,
                     restaurantId,
                     exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
