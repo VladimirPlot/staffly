@@ -51,6 +51,7 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationAnalyticsService certificationAnalyticsService;
     private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
     private final TrainingCertificationNotificationService trainingCertificationNotificationService;
 
@@ -905,11 +906,9 @@ public class ExamServiceImpl implements ExamService {
         if (!folder.isActive()) {
             throw new BadRequestException("Нельзя выбрать скрытую папку.");
         }
-        trainingPolicyService.assertCanAccessCertificationByVisibility(
-                userId,
-                restaurantId,
-                folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
-        );
+        // A readable certification folder may only be a navigation container. Creating or
+        // moving an exam into it is a structural mutation and therefore needs subtree authority.
+        certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
         return folder;
     }
 

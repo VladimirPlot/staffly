@@ -179,6 +179,15 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
+            left join fetch e.folder f
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+            """)
+    List<TrainingExam> findCertificationByRestaurantIdWithFolderAndVisibility(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions vp
             left join fetch e.createdBy cb
             left join fetch e.owner ow
             where e.restaurant.id = :restaurantId

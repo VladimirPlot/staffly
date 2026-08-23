@@ -60,6 +60,15 @@ public class TrainingPolicyService {
         return allowed.containsAll(targetPositionIds);
     }
 
+    /** Folder navigation is intersection-based, but changing a folder requires its entire scope. */
+    public boolean canManageCertificationFolderOwnScope(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
+            return true;
+        }
+        return allowedPositionIdsByContext(userId, restaurantId, PolicyContext.CERTIFICATION)
+                .containsAll(visibilityPositionIds);
+    }
+
     public boolean canAccessCertificationEmployeeAnalyticsTargetRole(Long userId, Long restaurantId, RestaurantRole targetRole) {
         var context = resolveContext(userId, restaurantId);
         if (context.isCreator()) {
