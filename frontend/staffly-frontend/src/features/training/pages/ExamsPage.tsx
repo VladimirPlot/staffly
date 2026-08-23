@@ -22,6 +22,8 @@ import CertificationManageExamCard from "../components/certification/Certificati
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
 import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
+import { TrainingDraggableSource, TrainingMoveDndContext } from "../components/TrainingMoveDnd";
+import type { TrainingDndObject } from "../trainingFolderDnd";
 import {
   deleteExam,
   deleteFolder,
@@ -91,6 +93,7 @@ export default function ExamsPage() {
   const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState("");
 
   const positionFilter = Number(searchParams.get("position") ?? "0") || null;
+  const managementDndEnabled = positionFilter == null;
 
   useEffect(() => {
     if (!searchParams.has("includeInactive")) return;
@@ -345,6 +348,20 @@ export default function ExamsPage() {
   };
 
   const examsReturnTo = buildTrainingExamsReturnTo(trainingRoutes.exams, location.search);
+  const handleDndMove = async (source: TrainingDndObject, targetFolderId: number | null) => {
+    if (!restaurantId || targetFolderId == null) return;
+    setManageExamsError(null);
+    try {
+      if (source.kind === "folder") await moveFolder(restaurantId, source.id, { parentId: targetFolderId });
+      else if (source.kind === "certificationExam") {
+        await moveCertificationExam(restaurantId, source.id, { folderId: targetFolderId });
+      }
+    } catch (error) {
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось переместить."));
+    } finally {
+      await reloadRootContents();
+    }
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -373,169 +390,201 @@ export default function ExamsPage() {
 
       {showManageSection && (
         <section className="border-subtle bg-surface space-y-4 rounded-2xl border p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <h3 className="text-lg font-semibold text-balance">Управление аттестациями</h3>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="outline" leftIcon={<Archive className="h-4 w-4" />} onClick={() => setArchiveOpen(true)}>
-                Скрытые
-              </Button>
-              <Button
-                variant="outline"
-                leftIcon={<FolderPlus className="h-4 w-4" />}
-                onClick={() => setFolderModalOpen(true)}
-              >
-                Создать папку
-              </Button>
-              <Button
-                variant="outline"
-                leftIcon={<Plus className="h-4 w-4" />}
-                onClick={() => {
-                  setEditingExam(null);
-                  setModalOpen(true);
-                }}
-              >
-                Создать аттестацию
-              </Button>
-            </div>
-          </div>
-
-          <div className="min-w-0 md:max-w-xl">
-            <SelectField
-              label="Должность"
-              value={positionFilter ?? ""}
-              onChange={(event) =>
-                updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })
-              }
-            >
-              <option value="">Все должности</option>
-              {manageablePositions.map((position) => (
-                <option key={position.id} value={position.id}>
-                  {position.name}
-                </option>
-              ))}
-            </SelectField>
-          </div>
-
-          {loadingManageExams && <LoadingState label="Загрузка управляемых аттестаций..." />}
-          {foldersState.loading && <LoadingState label="Загрузка папок..." />}
-          {manageExamsError && <ErrorState message={manageExamsError} onRetry={loadManageExams} />}
-          {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
-          {positionsError && <ErrorState message={positionsError} onRetry={loadPositions} />}
-          {loadingPositions && <LoadingState label="Загрузка должностей..." />}
-
-          {!loadingManageExams &&
-            !foldersState.loading &&
-            !loadingPositions &&
-            !manageExamsError &&
-            !foldersState.error &&
-            !positionsError && (
-              <div className="space-y-6">
-                <section className="space-y-3">
-                  <h4 className="text-lg font-semibold">Папки</h4>
-                  {rootFolders.length > 0 && (
-                    <div className="space-y-3" role="list">
-                      {rootFolders.map((folder) => (
-                        <Card
-                          key={folder.id}
-                          role="link"
-                          tabIndex={0}
-                          className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
-                          onClick={() => openFolder(folder.id)}
-                          onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
-                              <Icon icon={Folder} size="sm" decorative />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
-                              {folder.description && (
-                                <div className="text-muted mt-1 text-sm">{folder.description}</div>
-                              )}
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                              <IconButton
-                                aria-label="Редактировать папку"
-                                title="Редактировать"
-                                disabled={folderActionLoadingId === folder.id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setEditingFolder(folder);
-                                }}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </IconButton>
-                              <IconButton
-                                aria-label="Переместить папку"
-                                title="Переместить"
-                                disabled={folderActionLoadingId === folder.id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setMoveError(null);
-                                  setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-                                }}
-                              >
-                                <MoveRight className="h-4 w-4" />
-                              </IconButton>
-                              <IconButton
-                                aria-label="Скрыть папку"
-                                title="Скрыть"
-                                disabled={folderActionLoadingId === folder.id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleHideFolder(folder);
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </IconButton>
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                  {rootFolders.length === 0 && (
-                    <EmptyState title="Нет папок" description="Создайте папку или измените фильтр должности." />
-                  )}
-                </section>
-
-                <section className="space-y-3">
-                  <h4 className="text-lg font-semibold">Аттестационные тесты</h4>
-                  {manageableExams.length > 0 && (
-                    <div className="space-y-3">
-                      {manageableExams.map((exam) => (
-                        <CertificationManageExamCard
-                          key={exam.id}
-                          exam={exam}
-                          analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
-                          loading={loadingExamActionId === exam.id}
-                          positionsById={positionById}
-                          onEdit={(value) => {
-                            setEditingExam(value);
-                            setModalOpen(true);
-                          }}
-                          onChangeOwner={(value) => {
-                            setChangeOwnerExam(value);
-                          }}
-                          onMove={(value) => {
-                            setMoveError(null);
-                            setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
-                          }}
-                          onAction={runExamAction}
-                          showDeleteAction={false}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {manageableExams.length === 0 && (
-                    <EmptyState
-                      title="Нет аттестационных тестов"
-                      description="Создайте аттестацию или измените фильтр должности."
-                    />
-                  )}
-                </section>
+          <TrainingMoveDndContext
+            enabled={managementDndEnabled}
+            canMove={(source) => source.kind === "folder" || source.kind === "certificationExam"}
+            onMove={handleDndMove}
+          >
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <h3 className="text-lg font-semibold text-balance">Управление аттестациями</h3>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    leftIcon={<Archive className="h-4 w-4" />}
+                    onClick={() => setArchiveOpen(true)}
+                  >
+                    Скрытые
+                  </Button>
+                  <Button
+                    variant="outline"
+                    leftIcon={<FolderPlus className="h-4 w-4" />}
+                    onClick={() => setFolderModalOpen(true)}
+                  >
+                    Создать папку
+                  </Button>
+                  <Button
+                    variant="outline"
+                    leftIcon={<Plus className="h-4 w-4" />}
+                    onClick={() => {
+                      setEditingExam(null);
+                      setModalOpen(true);
+                    }}
+                  >
+                    Создать аттестацию
+                  </Button>
+                </div>
               </div>
-            )}
+
+              <div className="min-w-0 md:max-w-xl">
+                <SelectField
+                  label="Должность"
+                  value={positionFilter ?? ""}
+                  onChange={(event) =>
+                    updateQuery({ position: event.target.value === "" ? null : Number(event.target.value) })
+                  }
+                >
+                  <option value="">Все должности</option>
+                  {manageablePositions.map((position) => (
+                    <option key={position.id} value={position.id}>
+                      {position.name}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+              {positionFilter != null && (
+                <p className="text-muted text-sm">
+                  Чтобы изменять порядок и перемещать объекты, сбросьте фильтр должности.
+                </p>
+              )}
+
+              {loadingManageExams && <LoadingState label="Загрузка управляемых аттестаций..." />}
+              {foldersState.loading && <LoadingState label="Загрузка папок..." />}
+              {manageExamsError && <ErrorState message={manageExamsError} onRetry={loadManageExams} />}
+              {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
+              {positionsError && <ErrorState message={positionsError} onRetry={loadPositions} />}
+              {loadingPositions && <LoadingState label="Загрузка должностей..." />}
+
+              {!loadingManageExams &&
+                !foldersState.loading &&
+                !loadingPositions &&
+                !manageExamsError &&
+                !foldersState.error &&
+                !positionsError && (
+                  <div className="space-y-6">
+                    <section className="space-y-3">
+                      <h4 className="text-lg font-semibold">Папки</h4>
+                      {rootFolders.length > 0 && (
+                        <div className="space-y-3" role="list">
+                          {rootFolders.map((folder) => (
+                            <TrainingDraggableSource
+                              key={folder.id}
+                              kind="folder"
+                              id={folder.id}
+                              draggable={managementDndEnabled && folder.manageable}
+                              droppableFolder={managementDndEnabled && folder.manageable}
+                            >
+                              <Card
+                                role="link"
+                                tabIndex={0}
+                                className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
+                                onClick={() => openFolder(folder.id)}
+                                onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
+                                    <Icon icon={Folder} size="sm" decorative />
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
+                                    {folder.description && (
+                                      <div className="text-muted mt-1 text-sm">{folder.description}</div>
+                                    )}
+                                  </div>
+                                  {folder.manageable && (
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      <IconButton
+                                        aria-label="Редактировать папку"
+                                        title="Редактировать"
+                                        disabled={folderActionLoadingId === folder.id}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setEditingFolder(folder);
+                                        }}
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </IconButton>
+                                      <IconButton
+                                        aria-label="Переместить папку"
+                                        title="Переместить"
+                                        disabled={folderActionLoadingId === folder.id}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setMoveError(null);
+                                          setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                                        }}
+                                      >
+                                        <MoveRight className="h-4 w-4" />
+                                      </IconButton>
+                                      <IconButton
+                                        aria-label="Скрыть папку"
+                                        title="Скрыть"
+                                        disabled={folderActionLoadingId === folder.id}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void handleHideFolder(folder);
+                                        }}
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </IconButton>
+                                    </div>
+                                  )}
+                                </div>
+                              </Card>
+                            </TrainingDraggableSource>
+                          ))}
+                        </div>
+                      )}
+                      {rootFolders.length === 0 && (
+                        <EmptyState title="Нет папок" description="Создайте папку или измените фильтр должности." />
+                      )}
+                    </section>
+
+                    <section className="space-y-3">
+                      <h4 className="text-lg font-semibold">Аттестационные тесты</h4>
+                      {manageableExams.length > 0 && (
+                        <div className="space-y-3">
+                          {manageableExams.map((exam) => (
+                            <TrainingDraggableSource
+                              key={exam.id}
+                              kind="certificationExam"
+                              id={exam.id}
+                              draggable={managementDndEnabled}
+                            >
+                              <CertificationManageExamCard
+                                exam={exam}
+                                analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
+                                loading={loadingExamActionId === exam.id}
+                                positionsById={positionById}
+                                onEdit={(value) => {
+                                  setEditingExam(value);
+                                  setModalOpen(true);
+                                }}
+                                onChangeOwner={(value) => {
+                                  setChangeOwnerExam(value);
+                                }}
+                                onMove={(value) => {
+                                  setMoveError(null);
+                                  setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
+                                }}
+                                onAction={runExamAction}
+                                showDeleteAction={false}
+                              />
+                            </TrainingDraggableSource>
+                          ))}
+                        </div>
+                      )}
+                      {manageableExams.length === 0 && (
+                        <EmptyState
+                          title="Нет аттестационных тестов"
+                          description="Создайте аттестацию или измените фильтр должности."
+                        />
+                      )}
+                    </section>
+                  </div>
+                )}
+            </div>
+          </TrainingMoveDndContext>
         </section>
       )}
 

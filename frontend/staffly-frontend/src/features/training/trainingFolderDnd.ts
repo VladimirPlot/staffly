@@ -4,19 +4,23 @@ import { getEventCoordinates } from "@dnd-kit/utilities";
 import type { TrainingFolderDto } from "./api/types";
 import type { TrainingFolderListObject } from "./trainingFolderObjects";
 
-export function trainingObjectId(kind: TrainingFolderListObject["kind"], id: number): string {
+export type TrainingDndObjectKind = TrainingFolderListObject["kind"] | "certificationExam";
+export type TrainingDndObject = { kind: TrainingDndObjectKind; id: number };
+
+export function trainingObjectId(kind: TrainingDndObjectKind, id: number): string {
   return `${kind}:${id}`;
 }
 
-export function parseTrainingObjectId(value: string):
-  | { kind: TrainingFolderListObject["kind"]; id: number }
-  | null {
+export function parseTrainingObjectId(value: string): TrainingDndObject | null {
   const [kind, rawId] = value.split(":");
   const id = Number(rawId);
-  if (!["folder", "knowledgeItem", "question", "practiceExam"].includes(kind) || !Number.isFinite(id)) {
+  if (
+    !["folder", "knowledgeItem", "question", "practiceExam", "certificationExam"].includes(kind) ||
+    !Number.isFinite(id)
+  ) {
     return null;
   }
-  return { kind: kind as TrainingFolderListObject["kind"], id };
+  return { kind: kind as TrainingDndObjectKind, id };
 }
 
 export function trainingFolderDropId(folderId: number | null): string {
