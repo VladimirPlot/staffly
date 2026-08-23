@@ -48,6 +48,7 @@ export function useExamEditorState({
   const [form, setForm] = useState<ExamEditorFormState>(initialFormState);
   const [tree, setTree] = useState<QuestionBankTreeNodeDto[]>([]);
   const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [manageablePositionIds, setManageablePositionIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
@@ -105,16 +106,29 @@ export function useExamEditorState({
       .then(setTree)
       .catch(() => setTree([]));
 
-    void listPositions(restaurantId, { includeInactive: false })
-      .then((restaurantPositions) =>
+    void listPositions(restaurantId, { includeInactive: mode === "CERTIFICATION" && exam != null })
+      .then((restaurantPositions) => {
+        if (mode !== "CERTIFICATION") {
+          setPositions(restaurantPositions);
+          setManageablePositionIds(new Set(restaurantPositions.map(({ id }) => id)));
+          return;
+        }
+
+        const manageable = getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? []);
+        const manageableIds = new Set(manageable.map(({ id }) => id));
+        const referencedIds = new Set(exam?.visibilityPositionIds ?? []);
+        setManageablePositionIds(manageableIds);
         setPositions(
-          mode === "CERTIFICATION"
-            ? getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? [])
-            : restaurantPositions,
-        ),
-      )
-      .catch(() => setPositions([]));
-  }, [certificationAllowedAudienceRoles, open, restaurantId, mode]);
+          restaurantPositions.filter(
+            (position) => (position.active && manageableIds.has(position.id)) || referencedIds.has(position.id),
+          ),
+        );
+      })
+      .catch(() => {
+        setPositions([]);
+        setManageablePositionIds(new Set());
+      });
+  }, [certificationAllowedAudienceRoles, exam, open, restaurantId, mode]);
 
   useEffect(() => {
     if (!open || !form.selectedFolderId) return;
@@ -147,15 +161,34 @@ export function useExamEditorState({
     setForm((current) => ({
       ...current,
       visibilityPositionIds: current.visibilityPositionIds.includes(positionId)
-        ? current.visibilityPositionIds.filter((id) => id !== positionId)
-        : [...current.visibilityPositionIds, positionId],
+        ? manageablePositionIds.has(positionId)
+          ? current.visibilityPositionIds.filter((id) => id !== positionId)
+          : current.visibilityPositionIds
+        : positions.some((position) => position.id === positionId && position.active) &&
+            manageablePositionIds.has(positionId)
+          ? [...current.visibilityPositionIds, positionId]
+          : current.visibilityPositionIds,
     }));
   };
 
   const handleSelectAllPositions = () => {
     setForm((current) => ({
       ...current,
-      visibilityPositionIds: mode === "CERTIFICATION" ? positions.map((position) => position.id) : [],
+      visibilityPositionIds:
+        mode === "CERTIFICATION"
+          ? Array.from(
+              new Set([
+                ...current.visibilityPositionIds.filter((id) =>
+                  positions.some(
+                    (position) => position.id === id && (!position.active || !manageablePositionIds.has(position.id)),
+                  ),
+                ),
+                ...positions
+                  .filter((position) => position.active && manageablePositionIds.has(position.id))
+                  .map((position) => position.id),
+              ]),
+            )
+          : [],
     }));
   };
 
@@ -306,6 +339,7 @@ export function useExamEditorState({
     form,
     tree,
     positions,
+    manageablePositionIds,
     error,
     saving,
     positionMenuOpen,

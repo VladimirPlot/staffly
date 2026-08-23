@@ -225,6 +225,9 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        var previousVisibilityPositionIds = exam.getVisibilityPositions().stream()
+                .map(Position::getId)
+                .collect(Collectors.toSet());
         boolean wasActive = exam.isActive();
         boolean willBeActive = request.active() == null ? wasActive : request.active();
         var currentFolderId = exam.getFolder() == null ? null : exam.getFolder().getId();
@@ -278,7 +281,12 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        certificationAudienceSyncService.syncExamAudience(exam);
+        var visibilityPositionIds = exam.getVisibilityPositions().stream()
+                .map(Position::getId)
+                .collect(Collectors.toSet());
+        if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
+            certificationAudienceSyncService.syncExamAudience(exam);
+        }
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
