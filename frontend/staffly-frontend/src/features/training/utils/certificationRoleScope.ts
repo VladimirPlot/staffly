@@ -33,10 +33,7 @@ export function getManageablePositions(positions: PositionDto[], allowedRoles: R
   return positions.filter((position) => allowed.has(position.level));
 }
 
-export function sortManageExams(
-  exams: TrainingExamDto[],
-  positionById: Map<number, PositionDto>,
-): TrainingExamDto[] {
+export function sortManageExams(exams: TrainingExamDto[], positionById: Map<number, PositionDto>): TrainingExamDto[] {
   return [...exams].sort((left, right) => {
     const leftPositions = left.visibilityPositionIds
       .map((id) => positionById.get(id))
@@ -69,13 +66,12 @@ export function examTargetsAllowedAudience(
   if (allowedRoles.length === 0) return false;
 
   const allowed = new Set(allowedRoles);
-  const targetLevels = exam.visibilityPositionIds
-    .map((positionId) => positionById.get(positionId)?.level)
-    .filter((level): level is RestaurantRole => level != null);
-
-  if (targetLevels.length === 0) {
+  if (exam.visibilityPositionIds.length === 0) {
     return false;
   }
 
-  return targetLevels.some((level) => allowed.has(level));
+  return exam.visibilityPositionIds.every((positionId) => {
+    const targetLevel = positionById.get(positionId)?.level;
+    return targetLevel != null && allowed.has(targetLevel);
+  });
 }
