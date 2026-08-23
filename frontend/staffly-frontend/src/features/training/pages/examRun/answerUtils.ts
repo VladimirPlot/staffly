@@ -48,8 +48,8 @@ export function getQuestionValidationError(
     const values = parseJson<MatchPairAnswer[]>(raw);
     if (!Array.isArray(values)) return "Заполните все соответствия.";
 
-    const lefts = new Set(question.matchPairs.map((pair) => pair.leftText));
-    const allowedRight = new Set(question.matchPairs.map((pair) => pair.rightText));
+    const lefts = new Set(question.matchLeftItems.map((item) => item.text));
+    const allowedRight = new Set(question.matchRightOptions.map((item) => item.text));
     const usedRight = new Set<string>();
 
     if (values.length !== lefts.size) return "Заполните все соответствия.";
@@ -69,8 +69,8 @@ export function getQuestionValidationError(
 }
 
 export function createEmptyMatchPayload(question: AttemptQuestionSnapshotDto) {
-  const pairs = [...question.matchPairs].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  const payload: MatchPairAnswer[] = pairs.map((pair) => ({ left: pair.leftText, right: "" }));
+  const leftItems = [...question.matchLeftItems].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const payload: MatchPairAnswer[] = leftItems.map((item) => ({ left: item.text, right: "" }));
   return JSON.stringify(payload);
 }
 
