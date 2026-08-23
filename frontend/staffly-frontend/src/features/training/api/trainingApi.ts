@@ -2,6 +2,7 @@ import apiClient from "../../../shared/api/apiClient";
 import { mapExamsForUi } from "./mappers";
 import type {
   CertificationOwnerCandidatesDto,
+  CertificationContainerCapabilitiesDto,
   CertificationExamAttemptHistoryDto,
   CertificationEmployeeExamDto,
   CertificationEmployeeSummaryDto,
@@ -60,6 +61,10 @@ export async function restoreFolder(restaurantId: number, folderId: number): Pro
 export async function updateFolder(restaurantId: number, folderId: number, payload: UpdateTrainingFolderPayload): Promise<TrainingFolderDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/folders/${folderId}`, payload); return data as TrainingFolderDto; }
 export async function deleteFolder(restaurantId: number, folderId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/folders/${folderId}`); }
 export async function reorderTrainingObjects(restaurantId: number, payload: ReorderTrainingObjectsPayload): Promise<void> { await apiClient.put(`/api/restaurants/${restaurantId}/training/order`, payload); }
+export async function getCertificationContainerCapabilities(restaurantId: number, folderId: number | null): Promise<CertificationContainerCapabilitiesDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/container-capabilities`, { params: folderId == null ? undefined : { folderId } });
+  return data as CertificationContainerCapabilitiesDto;
+}
 
 export async function listKnowledgeItems(restaurantId: number, folderId?: number, includeInactive = false): Promise<TrainingKnowledgeItemDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-items`, { params: { folderId, includeInactive } });
