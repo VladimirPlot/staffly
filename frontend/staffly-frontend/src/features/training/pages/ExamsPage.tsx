@@ -1,4 +1,5 @@
 import { Archive, Eye, Folder, FolderPlus, MoveRight, Pencil, Plus } from "lucide-react";
+import { arrayMove } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
@@ -22,7 +23,9 @@ import CertificationManageExamCard from "../components/certification/Certificati
 import CertificationMyExamCard from "../components/certification/CertificationMyExamCard";
 import CertificationEmployeeStatisticsSection from "../components/certification/CertificationEmployeeStatisticsSection";
 import ChangeCertificationOwnerModal from "../components/certification/ChangeCertificationOwnerModal";
-import { TrainingDraggableSource, TrainingMoveDndContext } from "../components/TrainingMoveDnd";
+import { TrainingDraggableSource } from "../components/TrainingMoveDnd";
+import { TrainingSortableBlock, TrainingSortableSource } from "../components/TrainingSortableDnd";
+import { CertificationManagementDnd } from "../components/certification/CertificationManagementDnd";
 import type { TrainingDndObject } from "../trainingFolderDnd";
 import {
   deleteExam,
@@ -33,11 +36,13 @@ import {
   moveCertificationExam,
   moveFolder,
   restoreExam,
+  reorderTrainingObjects,
 } from "../api/trainingApi";
 import type { CurrentUserCertificationExamDto, TrainingExamDto, TrainingFolderDto } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import { useCertificationEmployeeSearch } from "../hooks/certification/useCertificationEmployeeSearch";
+import { useCertificationContainerCapabilities } from "../hooks/certification/useCertificationContainerCapabilities";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { buildTrainingExamsReturnTo, withReturnToParam } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
@@ -116,6 +121,11 @@ export default function ExamsPage() {
   const showMySection = !restaurantAccess.isCreator;
   const showManageSection = canManage;
   const showEmployeeStatsSection = canManage;
+  const capabilityState = useCertificationContainerCapabilities({
+    restaurantId,
+    folderId: null,
+    enabled: showManageSection,
+  });
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -204,22 +214,22 @@ export default function ExamsPage() {
     debouncedEmployeeSearch,
   );
 
-  const manageableExams = useMemo(() => {
+  const rootStructuralExams = useMemo(() => {
     if (!showManageSection) return [];
+    return manageExams
+      .filter((exam) => exam.mode === "CERTIFICATION" && exam.folderId == null && exam.active)
+      .sort(bySortOrderAndName);
+  }, [showManageSection, manageExams]);
 
-    const rootCertificationExams = manageExams.filter(
-      (exam) => exam.mode === "CERTIFICATION" && exam.folderId == null && exam.active,
+  const presentedManageExams = useMemo(() => {
+    if (positionFilter == null) return rootStructuralExams;
+    const filtered = rootStructuralExams.filter(
+      (exam) =>
+        examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles) &&
+        exam.visibilityPositionIds.includes(positionFilter),
     );
-    const byAudience = rootCertificationExams.filter((exam) =>
-      examTargetsAllowedAudience(exam, positionById, allowedAudienceRoles),
-    );
-    const byPosition =
-      positionFilter == null
-        ? byAudience
-        : byAudience.filter((exam) => exam.visibilityPositionIds.includes(positionFilter));
-
-    return sortManageExams(byPosition, positionById);
-  }, [showManageSection, manageExams, positionById, allowedAudienceRoles, positionFilter]);
+    return sortManageExams(filtered, positionById);
+  }, [allowedAudienceRoles, positionById, positionFilter, rootStructuralExams]);
 
   const rootFolders = useMemo(() => {
     const activeRootFolders = foldersState.folders.filter((folder) => folder.parentId == null && folder.active);
@@ -232,6 +242,14 @@ export default function ExamsPage() {
           );
     return filtered.sort(bySortOrderAndName);
   }, [foldersState.folders, positionFilter]);
+  const folderReorderEnabled = Boolean(
+    capabilityState.capabilities?.folderReorderAllowed && positionFilter == null && rootFolders.length > 1,
+  );
+  const examReorderEnabled = Boolean(
+    capabilityState.capabilities?.certificationExamReorderAllowed &&
+      positionFilter == null &&
+      rootStructuralExams.length > 1,
+  );
   const hiddenRootFolders = useMemo(
     () => foldersState.folders.filter((folder) => folder.parentId == null && !folder.active),
     [foldersState.folders],
@@ -265,7 +283,7 @@ export default function ExamsPage() {
   };
 
   const reloadRootContents = async () => {
-    await Promise.all([foldersState.reload(), loadManageExams()]);
+    await Promise.all([foldersState.reload(), loadManageExams(), capabilityState.reload()]);
   };
 
   const handleHideFolder = async (folder: TrainingFolderDto) => {
@@ -273,7 +291,7 @@ export default function ExamsPage() {
     setManageExamsError(null);
     try {
       await foldersState.hide(folder.id);
-      await loadManageExams();
+      await reloadRootContents();
     } catch (error) {
       setManageExamsError(getTrainingErrorMessage(error, "Не удалось скрыть папку."));
     } finally {
@@ -339,7 +357,7 @@ export default function ExamsPage() {
       if (action === "hide") await hideExam(restaurantId, examId);
       else if (action === "restore") await restoreExam(restaurantId, examId);
       else await deleteExam(restaurantId, examId);
-      await loadManageExams();
+      await reloadRootContents();
     } catch (error) {
       setManageExamsError(getTrainingErrorMessage(error, "Не удалось выполнить действие с аттестацией."));
     } finally {
@@ -358,6 +376,34 @@ export default function ExamsPage() {
       }
     } catch (error) {
       setManageExamsError(getTrainingErrorMessage(error, "Не удалось переместить."));
+    } finally {
+      await reloadRootContents();
+    }
+  };
+
+  const handleDndReorder = async (source: TrainingDndObject, target: TrainingDndObject) => {
+    if (!restaurantId || source.kind !== target.kind) return;
+    const block =
+      source.kind === "folder" ? rootFolders : source.kind === "certificationExam" ? rootStructuralExams : null;
+    const enabled = source.kind === "folder" ? folderReorderEnabled : examReorderEnabled;
+    if (!block || !enabled) return;
+    const oldIndex = block.findIndex((item) => item.id === source.id);
+    const newIndex = block.findIndex((item) => item.id === target.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    setManageExamsError(null);
+    try {
+      await reorderTrainingObjects(restaurantId, {
+        type: "CERTIFICATION",
+        folderId: null,
+        kind: source.kind === "folder" ? "FOLDER" : "CERTIFICATION_EXAM",
+        orderedIds: arrayMove(
+          block.map((item) => item.id),
+          oldIndex,
+          newIndex,
+        ),
+      });
+    } catch (error) {
+      setManageExamsError(getTrainingErrorMessage(error, "Не удалось изменить порядок."));
     } finally {
       await reloadRootContents();
     }
@@ -390,10 +436,11 @@ export default function ExamsPage() {
 
       {showManageSection && (
         <section className="border-subtle bg-surface space-y-4 rounded-2xl border p-4">
-          <TrainingMoveDndContext
+          <CertificationManagementDnd
             enabled={managementDndEnabled}
             canMove={(source) => source.kind === "folder" || source.kind === "certificationExam"}
             onMove={handleDndMove}
+            onReorder={handleDndReorder}
           >
             <div className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -453,6 +500,7 @@ export default function ExamsPage() {
               {manageExamsError && <ErrorState message={manageExamsError} onRetry={loadManageExams} />}
               {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
               {positionsError && <ErrorState message={positionsError} onRetry={loadPositions} />}
+              {capabilityState.error && <ErrorState message={capabilityState.error} onRetry={capabilityState.reload} />}
               {loadingPositions && <LoadingState label="Загрузка должностей..." />}
 
               {!loadingManageExams &&
@@ -466,73 +514,81 @@ export default function ExamsPage() {
                       <h4 className="text-lg font-semibold">Папки</h4>
                       {rootFolders.length > 0 && (
                         <div className="space-y-3" role="list">
-                          {rootFolders.map((folder) => (
-                            <TrainingDraggableSource
-                              key={folder.id}
-                              kind="folder"
-                              id={folder.id}
-                              draggable={managementDndEnabled && folder.manageable}
-                              droppableFolder={managementDndEnabled && folder.manageable}
-                            >
-                              <Card
-                                role="link"
-                                tabIndex={0}
-                                className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
-                                onClick={() => openFolder(folder.id)}
-                                onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
-                                    <Icon icon={Folder} size="sm" decorative />
-                                  </span>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
-                                    {folder.description && (
-                                      <div className="text-muted mt-1 text-sm">{folder.description}</div>
-                                    )}
-                                  </div>
-                                  {folder.manageable && (
-                                    <div className="flex shrink-0 items-center gap-1">
-                                      <IconButton
-                                        aria-label="Редактировать папку"
-                                        title="Редактировать"
-                                        disabled={folderActionLoadingId === folder.id}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setEditingFolder(folder);
-                                        }}
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </IconButton>
-                                      <IconButton
-                                        aria-label="Переместить папку"
-                                        title="Переместить"
-                                        disabled={folderActionLoadingId === folder.id}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          setMoveError(null);
-                                          setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
-                                        }}
-                                      >
-                                        <MoveRight className="h-4 w-4" />
-                                      </IconButton>
-                                      <IconButton
-                                        aria-label="Скрыть папку"
-                                        title="Скрыть"
-                                        disabled={folderActionLoadingId === folder.id}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          void handleHideFolder(folder);
-                                        }}
-                                      >
-                                        <Eye className="h-4 w-4" />
-                                      </IconButton>
+                          <TrainingSortableBlock
+                            enabled={folderReorderEnabled}
+                            items={rootFolders.map((folder) => `folder:${folder.id}`)}
+                          >
+                            {rootFolders.map((folder) => {
+                              const Source = folderReorderEnabled ? TrainingSortableSource : TrainingDraggableSource;
+                              return (
+                                <Source
+                                  key={folder.id}
+                                  kind="folder"
+                                  id={folder.id}
+                                  draggable={managementDndEnabled && folder.manageable}
+                                  droppableFolder={managementDndEnabled && folder.manageable}
+                                >
+                                  <Card
+                                    role="link"
+                                    tabIndex={0}
+                                    className="cursor-pointer rounded-2xl p-4 transition hover:bg-[var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] focus-visible:outline-none"
+                                    onClick={() => openFolder(folder.id)}
+                                    onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color:var(--staffly-control)]">
+                                        <Icon icon={Folder} size="sm" decorative />
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
+                                        {folder.description && (
+                                          <div className="text-muted mt-1 text-sm">{folder.description}</div>
+                                        )}
+                                      </div>
+                                      {folder.manageable && (
+                                        <div className="flex shrink-0 items-center gap-1">
+                                          <IconButton
+                                            aria-label="Редактировать папку"
+                                            title="Редактировать"
+                                            disabled={folderActionLoadingId === folder.id}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setEditingFolder(folder);
+                                            }}
+                                          >
+                                            <Pencil className="h-4 w-4" />
+                                          </IconButton>
+                                          <IconButton
+                                            aria-label="Переместить папку"
+                                            title="Переместить"
+                                            disabled={folderActionLoadingId === folder.id}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setMoveError(null);
+                                              setMoveTarget({ kind: "folder", id: folder.id, title: folder.name });
+                                            }}
+                                          >
+                                            <MoveRight className="h-4 w-4" />
+                                          </IconButton>
+                                          <IconButton
+                                            aria-label="Скрыть папку"
+                                            title="Скрыть"
+                                            disabled={folderActionLoadingId === folder.id}
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              void handleHideFolder(folder);
+                                            }}
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                          </IconButton>
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                              </Card>
-                            </TrainingDraggableSource>
-                          ))}
+                                  </Card>
+                                </Source>
+                              );
+                            })}
+                          </TrainingSortableBlock>
                         </div>
                       )}
                       {rootFolders.length === 0 && (
@@ -542,39 +598,50 @@ export default function ExamsPage() {
 
                     <section className="space-y-3">
                       <h4 className="text-lg font-semibold">Аттестационные тесты</h4>
-                      {manageableExams.length > 0 && (
+                      {presentedManageExams.length > 0 && (
                         <div className="space-y-3">
-                          {manageableExams.map((exam) => (
-                            <TrainingDraggableSource
-                              key={exam.id}
-                              kind="certificationExam"
-                              id={exam.id}
-                              draggable={managementDndEnabled}
-                            >
-                              <CertificationManageExamCard
-                                exam={exam}
-                                analyticsHref={withReturnToParam(trainingRoutes.examAnalytics(exam.id), examsReturnTo)}
-                                loading={loadingExamActionId === exam.id}
-                                positionsById={positionById}
-                                onEdit={(value) => {
-                                  setEditingExam(value);
-                                  setModalOpen(true);
-                                }}
-                                onChangeOwner={(value) => {
-                                  setChangeOwnerExam(value);
-                                }}
-                                onMove={(value) => {
-                                  setMoveError(null);
-                                  setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
-                                }}
-                                onAction={runExamAction}
-                                showDeleteAction={false}
-                              />
-                            </TrainingDraggableSource>
-                          ))}
+                          <TrainingSortableBlock
+                            enabled={examReorderEnabled}
+                            items={rootStructuralExams.map((exam) => `certificationExam:${exam.id}`)}
+                          >
+                            {presentedManageExams.map((exam) => {
+                              const Source = examReorderEnabled ? TrainingSortableSource : TrainingDraggableSource;
+                              return (
+                                <Source
+                                  key={exam.id}
+                                  kind="certificationExam"
+                                  id={exam.id}
+                                  draggable={managementDndEnabled}
+                                >
+                                  <CertificationManageExamCard
+                                    exam={exam}
+                                    analyticsHref={withReturnToParam(
+                                      trainingRoutes.examAnalytics(exam.id),
+                                      examsReturnTo,
+                                    )}
+                                    loading={loadingExamActionId === exam.id}
+                                    positionsById={positionById}
+                                    onEdit={(value) => {
+                                      setEditingExam(value);
+                                      setModalOpen(true);
+                                    }}
+                                    onChangeOwner={(value) => {
+                                      setChangeOwnerExam(value);
+                                    }}
+                                    onMove={(value) => {
+                                      setMoveError(null);
+                                      setMoveTarget({ kind: "certificationExam", id: value.id, title: value.title });
+                                    }}
+                                    onAction={runExamAction}
+                                    showDeleteAction={false}
+                                  />
+                                </Source>
+                              );
+                            })}
+                          </TrainingSortableBlock>
                         </div>
                       )}
-                      {manageableExams.length === 0 && (
+                      {presentedManageExams.length === 0 && (
                         <EmptyState
                           title="Нет аттестационных тестов"
                           description="Создайте аттестацию или измените фильтр должности."
@@ -584,7 +651,7 @@ export default function ExamsPage() {
                   </div>
                 )}
             </div>
-          </TrainingMoveDndContext>
+          </CertificationManagementDnd>
         </section>
       )}
 
@@ -616,7 +683,7 @@ export default function ExamsPage() {
           type="CERTIFICATION"
           parentFolder={null}
           onClose={() => setFolderModalOpen(false)}
-          onSaved={foldersState.reload}
+          onSaved={reloadRootContents}
         />
       )}
 
@@ -629,7 +696,7 @@ export default function ExamsPage() {
           parentFolder={editingFolder.parentId ? (folderMap.get(editingFolder.parentId) ?? null) : null}
           initialFolder={editingFolder}
           onClose={() => setEditingFolder(null)}
-          onSaved={foldersState.reload}
+          onSaved={reloadRootContents}
         />
       )}
 
@@ -647,7 +714,7 @@ export default function ExamsPage() {
           onSaved={async () => {
             setModalOpen(false);
             setEditingExam(null);
-            await loadManageExams();
+            await reloadRootContents();
           }}
         />
       )}

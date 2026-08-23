@@ -1,11 +1,4 @@
-import {
-  DndContext,
-  MeasuringStrategy,
-  useDraggable,
-  useDroppable,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
+import { useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS, useCombinedRefs } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import type { ReactNode } from "react";
@@ -21,6 +14,7 @@ import {
   type TrainingDndObject,
   type TrainingDndObjectKind,
 } from "../trainingFolderDnd";
+import { TrainingDndContext } from "./TrainingDndContext";
 
 /** Shared move-only DnD mechanics. Domain code owns source policy and API actions. */
 export function TrainingMoveDndContext({
@@ -50,15 +44,15 @@ export function TrainingMoveDndContext({
   };
 
   return (
-    <DndContext
+    <TrainingDndContext
+      enabled
       collisionDetection={trainingCollisionDetection}
-      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={handleDragStart}
       onDragCancel={finishDrag}
       onDragEnd={(event) => void handleDragEnd(event)}
     >
       {children}
-    </DndContext>
+    </TrainingDndContext>
   );
 }
 
