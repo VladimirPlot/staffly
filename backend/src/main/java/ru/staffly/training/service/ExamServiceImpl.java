@@ -138,6 +138,8 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
+        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
+                request.sourceQuestionIds(), request.questionCount());
         var examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
         var examEntity = TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
@@ -225,6 +227,8 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
+                request.sourceQuestionIds(), request.questionCount());
         var previousVisibilityPositionIds = exam.getVisibilityPositions().stream()
                 .map(Position::getId)
                 .collect(Collectors.toSet());
@@ -305,6 +309,19 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         activeContainerValidator.requireActiveChain(exam.getFolder());
         if (!exam.isActive()) {
+            validateSourceCapacity(
+                    restaurantId,
+                    userId,
+                    exam.getMode(),
+                    sourceFolders.findByExamId(exam.getId()).stream()
+                            .map(source -> new ExamSourceFolderDto(
+                                    source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                            .toList(),
+                    sourceQuestions.findByExamId(exam.getId()).stream()
+                            .map(source -> source.getQuestion().getId())
+                            .toList(),
+                    exam.getQuestionCount()
+            );
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
                 exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
             } else {
@@ -411,7 +428,7 @@ public class ExamServiceImpl implements ExamService {
         }
 
         var pool = questionPoolResolver.buildQuestionPool(restaurantId, exam);
-        if (pool.isEmpty()) {
+        if (pool.questions().isEmpty()) {
             throw new BadRequestException("No questions in exam scope");
         }
 
@@ -649,11 +666,65 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private List<TrainingQuestion> pickQuestionsForAttempt(List<TrainingQuestion> pool, Integer requestedCount) {
-        var mutablePool = new ArrayList<>(pool);
-        Collections.shuffle(mutablePool);
-        int count = Math.min(requestedCount, mutablePool.size());
-        return mutablePool.subList(0, count);
+    private List<TrainingQuestion> pickQuestionsForAttempt(ExamQuestionPoolResolver.ResolvedQuestionPool pool,
+                                                            Integer requestedCount) {
+        var allQuestions = new ArrayList<>(pool.questions());
+        if (requestedCount >= allQuestions.size()) {
+            Collections.shuffle(allQuestions);
+            return allQuestions;
+        }
+
+        // Defensive legacy fallback. New and updated exams store the exact resolved
+        // cardinality, while older rows may request less. Explicit sources remain
+        // mandatory; only the optional remainder is randomly truncated.
+        var mandatory = allQuestions.stream()
+                .filter(question -> pool.mandatoryQuestionIds().contains(question.getId()))
+                .toList();
+        var optional = allQuestions.stream()
+                .filter(question -> !pool.mandatoryQuestionIds().contains(question.getId()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        Collections.shuffle(optional);
+        int optionalCount = Math.min(Math.max(0, requestedCount - mandatory.size()), optional.size());
+        var selected = new ArrayList<>(mandatory);
+        selected.addAll(optional.subList(0, optionalCount));
+        Collections.shuffle(selected);
+        return selected;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExamSourcesPreflightDto preflightSources(Long restaurantId,
+                                                    Long userId,
+                                                    ExamSourcesPreflightRequest request) {
+        try {
+            int available = questionPoolResolver.resolveAvailableQuestionCount(
+                    restaurantId, userId, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
+            if (request.questionCount() != null && request.questionCount() != available) {
+                return new ExamSourcesPreflightDto(available, false, List.of(
+                        "Количество вопросов в попытке должно совпадать с доступным пулом (" + available + ")."));
+            }
+            return new ExamSourcesPreflightDto(available, true, List.of());
+        } catch (BadRequestException | NotFoundException validationError) {
+            return new ExamSourcesPreflightDto(0, false, List.of(validationError.getMessage()));
+        }
+    }
+
+    private int validateSourceCapacity(Long restaurantId,
+                                       Long userId,
+                                       TrainingExamMode mode,
+                                       List<ExamSourceFolderDto> folderSources,
+                                       List<Long> explicitQuestionIds,
+                                       Integer questionCount) {
+        int available = questionPoolResolver.resolveAvailableQuestionCount(
+                restaurantId, userId, mode, folderSources, explicitQuestionIds);
+        if (questionCount == null || questionCount < 1) {
+            throw new BadRequestException("Количество вопросов в попытке должно быть больше нуля.");
+        }
+        if (questionCount != available) {
+            throw new BadRequestException(
+                    "Количество вопросов в попытке должно совпадать с доступным пулом (" + available + ").");
+        }
+        return available;
     }
 
     private QuestionRelations loadQuestionRelations(List<TrainingQuestion> selectedQuestions) {

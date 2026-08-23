@@ -45,6 +45,8 @@ export default function ExamEditorModal(props: ExamEditorProps) {
         query={state.form.query}
         sourceQuestionIds={state.form.sourceQuestionIds}
         totalQuestions={state.totalQuestions}
+        sourceIssues={state.sourceIssues}
+        sourcePreflightLoading={state.sourcePreflightLoading}
         onTitleChange={state.setTitle}
         onDescriptionChange={state.setDescription}
         onPassPercentChange={state.setPassPercent}
