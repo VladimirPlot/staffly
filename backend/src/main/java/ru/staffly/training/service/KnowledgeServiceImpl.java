@@ -649,7 +649,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Операция доступна только для аттестационного теста.");
         }
-        trainingPolicyService.assertCanAccessExamTargetByVisibility(
+        trainingPolicyService.assertCanManageCertificationTargets(
                 userId,
                 restaurantId,
                 exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
