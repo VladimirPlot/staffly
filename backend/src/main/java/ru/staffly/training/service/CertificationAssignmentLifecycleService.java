@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamAssignment;
-import ru.staffly.training.model.TrainingExamAssignmentStatus;
 import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 
@@ -53,7 +52,8 @@ class CertificationAssignmentLifecycleService {
             );
         }
         var assignment = unfinished.getAssignment();
-        if (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
+        assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
+        if (assignment.getPassedAt() != null) {
             attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished, now);
             return Optional.empty();
         }
@@ -83,7 +83,8 @@ class CertificationAssignmentLifecycleService {
         }
 
         Optional<TrainingExamAttempt> unfinished = unfinishedAttempts.stream().findFirst();
-        if (unfinished.isPresent() && (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED)) {
+        assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
+        if (unfinished.isPresent() && assignment.getPassedAt() != null) {
             attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished.get(), now);
             unfinished = Optional.empty();
         }

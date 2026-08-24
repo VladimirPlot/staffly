@@ -80,6 +80,17 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
                                                                                    Long restaurantId,
                                                                                    int examVersionSnapshot);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId
+              and a.examVersionSnapshot = :examVersion
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findCurrentVersionForLifecycleUpdate(@Param("examId") Long examId,
+                                                                      @Param("restaurantId") Long restaurantId,
+                                                                      @Param("examVersion") int examVersion);
+
     List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndExamVersionSnapshotAndActiveTrue(
             Long examId,
             Long restaurantId,
@@ -101,11 +112,13 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             Long userId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select a from TrainingExamAssignment a
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
+            order by a.id
             """)
     List<TrainingExamAssignment> findAllActiveAssignmentsForCycleTransition(@Param("examId") Long examId,
                                                                              @Param("restaurantId") Long restaurantId);

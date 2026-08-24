@@ -29,7 +29,10 @@ public class CertificationAudienceSyncService {
     @Transactional
     public void syncRestaurantAudience(Long restaurantId) {
         var activeCertificationExams = exams.findActiveCertificationByRestaurantIdWithVisibility(restaurantId);
-        for (var exam : activeCertificationExams) {
+        for (var candidate : activeCertificationExams) {
+            // Membership-wide sync joins the same exam -> ordered assignments lock order.
+            var exam = exams.findByIdAndRestaurantIdForUpdate(candidate.getId(), restaurantId)
+                    .orElseThrow();
             var createdAssignments = assignmentService.syncAudienceAssignments(exam);
             try {
                 trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
