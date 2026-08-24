@@ -10,6 +10,7 @@ import {
 } from "../../api/trainingApi";
 import type { QuestionBankTreeNodeDto } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
+import { parseTrainingApiError } from "../../utils/trainingApiError";
 import { getManageablePositions } from "../../utils/certificationRoleScope";
 import type { ExamEditorProps, ExamEditorFormState } from "./types";
 import {
@@ -51,6 +52,7 @@ export function useExamEditorState({
   const [manageablePositionIds, setManageablePositionIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [staleConflict, setStaleConflict] = useState(false);
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [totalQuestions, setTotalQuestions] = useState(0);
@@ -74,6 +76,7 @@ export function useExamEditorState({
       query: "",
     });
     setError(null);
+    setStaleConflict(false);
     setPositionMenuOpen(false);
   }, [open, exam]);
 
@@ -356,7 +359,11 @@ export function useExamEditorState({
       };
 
       if (exam) {
-        await updateExam(restaurantId, exam.id, { ...payload, active: exam.active });
+        await updateExam(restaurantId, exam.id, {
+          ...payload,
+          active: exam.active,
+          expectedEditorRevision: exam.editorRevision,
+        });
       } else if (mode === "PRACTICE") {
         await createKnowledgeExam(restaurantId, payload);
       } else {
@@ -366,7 +373,13 @@ export function useExamEditorState({
       await onSaved();
       onClose();
     } catch (submitError) {
-      setError(getTrainingErrorMessage(submitError, "Не удалось сохранить тест."));
+      const parsedError = parseTrainingApiError(submitError);
+      if (exam && parsedError.payload?.error === "STALE_EXAM_REVISION") {
+        setStaleConflict(true);
+        setError("Тест уже изменён другим пользователем. Обновите данные перед сохранением.");
+      } else {
+        setError(getTrainingErrorMessage(submitError, "Не удалось сохранить тест."));
+      }
     } finally {
       setSaving(false);
     }
@@ -379,6 +392,11 @@ export function useExamEditorState({
     manageablePositionIds,
     error,
     saving,
+    staleConflict,
+    refreshAfterConflict: async () => {
+      await onSaved();
+      onClose();
+    },
     positionMenuOpen,
     setPositionMenuOpen,
     isDesktop,

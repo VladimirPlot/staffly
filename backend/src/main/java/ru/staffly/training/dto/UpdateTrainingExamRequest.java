@@ -15,6 +15,7 @@ import java.util.List;
  * are treated as the final state provided by client.
  */
 public record UpdateTrainingExamRequest(
+        @NotNull Long expectedEditorRevision,
         @NotBlank String title,
         String description,
         @NotNull @Min(1) Integer questionCount,

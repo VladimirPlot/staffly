@@ -159,6 +159,7 @@ export type TrainingExamDto = {
   folderId: number | null;
   attemptLimit?: number | null;
   version: number;
+  editorRevision: number;
   sortOrder: number;
   active: boolean;
   sourcesFolders: ExamSourceFolderDto[];
@@ -246,6 +247,7 @@ export type CertificationMyResultDto = {
 };
 
 export type UpsertExamPayload = {
+  expectedEditorRevision?: number;
   title: string;
   description?: string | null;
   mode: TrainingExamMode;
