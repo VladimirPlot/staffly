@@ -55,14 +55,10 @@ class CertificationAssignmentLifecycleService {
         var assignment = unfinished.getAssignment();
         if (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
             attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished, now);
-            assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
-            assignmentService.refreshStatus(assignment, false);
             return Optional.empty();
         }
         if (isExpiredUnfinishedAttempt(unfinished, now)) {
             attemptFinalizationService.finalizeExpiredUnfinishedAttempt(unfinished, now);
-            assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
-            assignmentService.refreshStatus(assignment, false);
             return Optional.empty();
         }
         return Optional.of(unfinished);

@@ -1,10 +1,13 @@
 package ru.staffly.training.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExamAttempt;
+
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +24,16 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
     );
 
     Optional<TrainingExamAttempt> findByIdAndRestaurantId(Long id, Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAttempt a
+            where a.id = :attemptId and a.restaurant.id = :restaurantId
+            """)
+    Optional<TrainingExamAttempt> findByIdAndRestaurantIdForFinalizationUpdate(
+            @Param("attemptId") Long attemptId,
+            @Param("restaurantId") Long restaurantId
+    );
 
     @Modifying(flushAutomatically = true)
     @Query("""
