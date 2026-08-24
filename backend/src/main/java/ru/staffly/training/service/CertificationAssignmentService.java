@@ -70,7 +70,7 @@ class CertificationAssignmentService {
             var existing = cycleByUserId.get(member.getUser().getId());
             if (existing == null) {
                 var specification = specificationService.requireCurrent(exam);
-                var cycle = requirePublicationCycle(exam, specification);
+                var cycle = requireCurrentAssignmentCycle(exam, specification);
                 var inactive = assignments.findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
                         exam.getId(), exam.getRestaurant().getId(), member.getUser().getId()).orElse(null);
                 if (isCurrentAudienceRemoval(inactive, specification, cycle)) {
@@ -151,24 +151,44 @@ class CertificationAssignmentService {
         }
     }
 
+    /** Starts a fresh obligation for every member without touching attempts or historical results. */
     @Transactional
-    public List<TrainingExamAssignment> createAssignmentsForNewCycle(TrainingExam exam) {
-        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            return List.of();
+    public List<TrainingExamAssignment> launchRecertificationCycle(
+            TrainingExam exam,
+            CertificationAssessmentSpecification specification,
+            CertificationAssignmentCycle recertificationCycle) {
+        var audience = resolveAudienceMembers(exam);
+        if (audience.isEmpty()) {
+            throw new ConflictException("Нет сотрудников для повторной аттестации.");
         }
-
-        var specification = specificationService.requireCurrent(exam);
-        var activeAssignments = assignments.findAllActiveAssignmentsForCycleTransition(
+        var membersByUser = audience.stream()
+                .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
+        var active = assignments.findAllActiveAssignmentsForCycleTransition(
                 exam.getId(), exam.getRestaurant().getId());
-        for (var assignment : activeAssignments) {
-            assignment.setActive(false);
+        var predecessorByUser = new java.util.HashMap<Long, TrainingExamAssignment>();
+        for (var old : active) {
+            var member = membersByUser.get(old.getUser().getId());
+            old.setActive(false);
+            if (member == null) {
+                old.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
+                old.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
+            } else {
+                old.setDeactivationReason(TrainingExamAssignmentDeactivationReason.RE_CERTIFICATION_CYCLE);
+                predecessorByUser.put(old.getUser().getId(), old);
+            }
         }
-        if (!exam.isActive()) {
-            return List.of();
+        assignments.flush();
+
+        var successors = new java.util.ArrayList<TrainingExamAssignment>();
+        for (var member : audience) {
+            var successor = assignments.save(createAssignment(exam, member, specification, recertificationCycle));
+            var predecessor = predecessorByUser.get(member.getUser().getId());
+            if (predecessor != null) {
+                predecessor.setReplacedByAssignment(successor);
+            }
+            successors.add(successor);
         }
-        return resolveAudienceMembers(exam).stream()
-                .map(member -> assignments.save(createAssignment(exam, member, specification)))
-                .toList();
+        return successors;
     }
 
     /** Publication runs under the exam lock and only migrates idle incomplete obligations. */
@@ -412,8 +432,9 @@ class CertificationAssignmentService {
         boolean exactCurrent = assignment.isActive()
                 && specification.getVersion() == assignment.getExamVersionSnapshot()
                 && specification.getExam().getId().equals(exam.getId());
-        int maxGeneration = assignments.findMaxResetGeneration(
-                examId, userId, assignment.getExamVersionSnapshot());
+        int maxGeneration = assignment.getAssignmentCycle() == null
+                ? assignments.findMaxResetGeneration(examId, userId, assignment.getExamVersionSnapshot())
+                : assignments.findMaxResetGenerationInCycle(assignment.getAssignmentCycle().getId(), userId);
         if (!exactCurrent || maxGeneration != assignment.getResetGeneration()) {
             throw new ConflictException("Назначение уже изменилось, обновите данные.");
         }
@@ -457,16 +478,6 @@ class CertificationAssignmentService {
                 .toList();
     }
 
-    private TrainingExamAssignment createAssignment(TrainingExam exam, RestaurantMember member) {
-        return createAssignment(exam, member, specificationService.requireCurrent(exam));
-    }
-
-    private TrainingExamAssignment createAssignment(TrainingExam exam,
-                                                    RestaurantMember member,
-                                                    CertificationAssessmentSpecification specification) {
-        return createAssignment(exam, member, specification, requirePublicationCycle(exam, specification));
-    }
-
     private TrainingExamAssignment createAssignment(TrainingExam exam, RestaurantMember member,
                                                      CertificationAssessmentSpecification specification,
                                                      CertificationAssignmentCycle cycle) {
@@ -489,6 +500,13 @@ class CertificationAssignmentService {
         return cycles.findTopByExamIdAndAssessmentSpecificationIdAndKindOrderByCycleSequenceDesc(
                         exam.getId(), specification.getId(), CertificationAssignmentCycleKind.VERSION_PUBLICATION)
                 .orElseThrow(() -> new ConflictException("Для текущей версии аттестации отсутствует цикл публикации."));
+    }
+
+    private CertificationAssignmentCycle requireCurrentAssignmentCycle(
+            TrainingExam exam, CertificationAssessmentSpecification specification) {
+        return cycles.findTopByExamIdAndAssessmentSpecificationIdOrderByCycleSequenceDesc(
+                        exam.getId(), specification.getId())
+                .orElseThrow(() -> new ConflictException("Для текущей версии аттестации отсутствует цикл назначения."));
     }
 
     private boolean isCurrentAudienceRemoval(TrainingExamAssignment assignment,

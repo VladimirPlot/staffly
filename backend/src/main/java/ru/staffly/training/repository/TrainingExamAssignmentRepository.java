@@ -98,6 +98,13 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
                                @Param("userId") Long userId,
                                @Param("examVersion") int examVersion);
 
+    @Query("""
+            select coalesce(max(a.resetGeneration), -1) from TrainingExamAssignment a
+            where a.assignmentCycle.id = :cycleId and a.user.id = :userId
+            """)
+    int findMaxResetGenerationInCycle(@Param("cycleId") Long cycleId,
+                                      @Param("userId") Long userId);
+
     Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
             Long examId,
             Long restaurantId,
@@ -223,4 +230,9 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     long countCurrentActiveByStatusIn(@Param("examId") Long examId,
                                       @Param("restaurantId") Long restaurantId,
                                       @Param("statuses") Collection<TrainingExamAssignmentStatus> statuses);
+
+    long countByAssignmentCycleIdAndActiveTrue(Long assignmentCycleId);
+
+    long countByAssignmentCycleIdAndActiveTrueAndStatusIn(Long assignmentCycleId,
+                                                          Collection<TrainingExamAssignmentStatus> statuses);
 }
