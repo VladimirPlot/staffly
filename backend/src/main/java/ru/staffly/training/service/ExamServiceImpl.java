@@ -1057,19 +1057,26 @@ public class ExamServiceImpl implements ExamService {
 
     private CurrentUserCertificationExamDto toCurrentUserCertificationExamDto(TrainingExamAssignment assignment) {
         var exam = assignment.getExam();
+        var specification = assignment.getAssessmentSpecification();
+        var cycle = assignment.getAssignmentCycle();
         return new CurrentUserCertificationExamDto(
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
-                exam.getQuestionCount(),
-                exam.getPassPercent(),
-                exam.getTimeLimitSec(),
+                specification.getQuestionCount(),
+                specification.getPassPercent(),
+                specification.getTimeLimitSec(),
                 assignment.getAttemptsLimitSnapshot(),
                 exam.isActive(),
                 assignment.getId(),
                 assignment.getStatus(),
                 assignment.getAssignedAt(),
                 assignment.getExamVersionSnapshot(),
+                exam.getVersion(),
+                cycle == null ? null : cycle.getId(),
+                cycle == null ? null : cycle.getCycleSequence(),
+                cycle == null ? null : cycle.getKind(),
+                assignment.getResetGeneration(),
                 assignment.getAttemptsUsed(),
                 certificationAssignmentService.calculateAttemptsAllowed(assignment),
                 assignment.getExtraAttempts(),

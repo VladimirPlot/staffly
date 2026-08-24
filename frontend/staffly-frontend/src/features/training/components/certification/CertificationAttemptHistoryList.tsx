@@ -46,6 +46,9 @@ export default function CertificationAttemptHistoryList({
           <div>Окончание: {formatDateTime(attempt.finishedAt)}</div>
           <div>Балл: {attempt.scorePercent ?? "—"}%</div>
           <div>Версия экзамена: {attempt.assignmentExamVersionSnapshot ?? attempt.examVersion ?? "—"}</div>
+          <div>Проходной балл: {attempt.passPercentSnapshot}%</div>
+          <div>Цикл: {attempt.assignmentCycleSequence ?? "—"} · Сброс: {attempt.resetGeneration ?? "—"}</div>
+          {attempt.deactivationReason && <div>Причина деактивации назначения: {attempt.deactivationReason}</div>}
           <div>Статус: {attempt.passed == null ? "—" : attempt.passed ? "Сдано" : "Не сдано"}</div>
           <div className="mt-2">
             <Link

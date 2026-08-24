@@ -2,6 +2,7 @@ package ru.staffly.training.service;
 
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.ConflictException;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 class CertificationAssignmentService {
     private final TrainingExamAssignmentRepository assignments;
     private final TrainingExamAttemptRepository attempts;
@@ -461,6 +463,11 @@ class CertificationAssignmentService {
     }
 
     public Integer calculateAttemptsAllowed(TrainingExamAssignment assignment) {
+        var specificationLimit = assignment.getAssessmentSpecification().getAttemptLimit();
+        if (!java.util.Objects.equals(assignment.getAttemptsLimitSnapshot(), specificationLimit)) {
+            log.warn("Legacy Certification attempt-limit mismatch for assignmentId={}: snapshot={}, specification={}; preserving snapshot",
+                    assignment.getId(), assignment.getAttemptsLimitSnapshot(), specificationLimit);
+        }
         if (assignment.getAttemptsLimitSnapshot() == null) {
             return null;
         }

@@ -111,6 +111,9 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             Long userId
     );
 
+    Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
+            Long examId, Long restaurantId, Long userId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select a from TrainingExamAssignment a
@@ -161,12 +164,11 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             join fetch a.exam e
             where a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = e.version
               and e.id in :examIds
               and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
             order by a.id
             """)
-    List<TrainingExamAssignment> findCurrentAnalyticsScopeForUpdate(
+    List<TrainingExamAssignment> findActiveCertificationObligationsForAnalyticsUpdate(
             @Param("restaurantId") Long restaurantId,
             @Param("examIds") Collection<Long> examIds
     );
@@ -214,9 +216,8 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = a.exam.version
             """)
-    long countCurrentActive(@Param("examId") Long examId,
+    long countActiveObligations(@Param("examId") Long examId,
                             @Param("restaurantId") Long restaurantId);
 
     @Query("""
@@ -224,10 +225,9 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = a.exam.version
               and a.status in :statuses
             """)
-    long countCurrentActiveByStatusIn(@Param("examId") Long examId,
+    long countActiveObligationsByStatusIn(@Param("examId") Long examId,
                                       @Param("restaurantId") Long restaurantId,
                                       @Param("statuses") Collection<TrainingExamAssignmentStatus> statuses);
 

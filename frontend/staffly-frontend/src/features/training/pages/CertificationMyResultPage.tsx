@@ -13,17 +13,16 @@ import { formatDateTime } from "../utils/certificationResultFormatting";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
-function getAttemptPeriodText(data: CertificationMyResultDto): string {
-  if (!data.lastAttemptStartedAt && !data.lastAttemptFinishedAt) {
-    return "—";
+function currentStatusLabel(status?: CertificationMyResultDto["currentAssignmentStatus"]): string {
+  switch (status) {
+    case "ASSIGNED": return "Не начато";
+    case "IN_PROGRESS": return "В процессе";
+    case "PASSED": return "Пройдено";
+    case "FAILED": return "Не сдано";
+    case "EXHAUSTED": return "Попытки исчерпаны";
+    case "ARCHIVED": return "Архивировано";
+    default: return "Нет активного назначения";
   }
-  return `Начало попытки: ${formatDateTime(data.lastAttemptStartedAt)} · Завершение: ${formatDateTime(data.lastAttemptFinishedAt)}`;
-}
-
-
-function isPassedResult(data: CertificationMyResultDto): boolean {
-  if (data.passedAt) return true;
-  return data.assignmentStatus === "PASSED";
 }
 
 export default function CertificationMyResultPage() {
@@ -55,7 +54,21 @@ export default function CertificationMyResultPage() {
   }, [load]);
 
   const attemptsLeft = data == null || data.attemptsAllowed == null ? null : data.attemptsAllowed - data.attemptsUsed;
-  const canRestart = data != null && !isPassedResult(data) && (attemptsLeft == null || attemptsLeft > 0);
+  const hasPreviousUnfinished = data != null && data.unfinishedAttemptId != null
+    && data.unfinishedAssignmentId !== data.currentAssignmentId;
+  const canActOnCurrent = data != null && data.currentAssignmentId != null && (
+    data.currentAssignmentStatus === "ASSIGNED"
+    || data.currentAssignmentStatus === "IN_PROGRESS"
+    || (data.currentAssignmentStatus === "FAILED" && (attemptsLeft == null || attemptsLeft > 0))
+  );
+  const canOpenRuntime = data != null && (data.unfinishedAttemptId != null || canActOnCurrent);
+  const actionLabel = hasPreviousUnfinished
+    ? "Продолжить предыдущую попытку"
+    : data?.currentAssignmentStatus === "IN_PROGRESS" || data?.unfinishedAttemptId != null
+      ? "Продолжить аттестацию"
+      : data?.currentAssignmentStatus === "FAILED"
+        ? "Повторить попытку"
+        : "Начать аттестацию";
   const restart = async () => {
     if (!data || restarting) return;
     setRestarting(true);
@@ -80,29 +93,62 @@ export default function CertificationMyResultPage() {
             <div className="text-lg font-semibold">{data.title}</div>
             {data.description && <div className="text-sm text-muted">{data.description}</div>}
             <div className="text-sm text-muted">
-              Статус: {data.scorePercent == null ? "нет завершённой попытки" : isPassedResult(data) ? "сдано" : "не сдано"} ·
-              Итог: {data.scorePercent == null ? "—" : `${data.scorePercent}%`} ·
-              Лучший результат: {data.bestScore == null ? "—" : `${data.bestScore}%`} ·
-              Попыток: {data.attemptsAllowed == null ? `${data.attemptsUsed}/∞` : `${data.attemptsUsed}/${data.attemptsAllowed}`}
+              Опубликована версия {data.latestPublishedVersion}
             </div>
-            <div className="text-sm text-muted">
-              {getAttemptPeriodText(data)}
-              {data.passedAt && ` · Дата сдачи: ${formatDateTime(data.passedAt)}`}
-            </div>
+
+            {data.currentAssignmentId != null && (
+              <div className="rounded-2xl border border-subtle bg-app p-3">
+                <div className="font-medium text-default">Текущее назначение</div>
+                <div className="mt-1 text-sm text-muted">
+                  Версия {data.currentAssignmentVersion ?? "—"} · {currentStatusLabel(data.currentAssignmentStatus)}
+                  {data.currentAssignmentCycleSequence != null && ` · цикл ${data.currentAssignmentCycleSequence}`}
+                </div>
+                <div className="mt-1 text-sm text-muted">
+                  Попыток: {data.attemptsAllowed == null ? `${data.attemptsUsed}/∞` : `${data.attemptsUsed}/${data.attemptsAllowed}`}
+                </div>
+                {data.currentAssignmentStatus === "PASSED" && (
+                  <div className="mt-1 text-sm text-emerald-700">
+                    Результат: {data.validResultScorePercent == null ? "—" : `${data.validResultScorePercent}%`}
+                    {data.validResultPassedAt && ` · ${formatDateTime(data.validResultPassedAt)}`}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {data.validResultAssignmentId != null && data.validResultAssignmentId !== data.currentAssignmentId && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="font-medium text-emerald-900">Предыдущая аттестация</div>
+                <div className="mt-1 text-sm text-emerald-800">
+                  Версия {data.validResultVersion ?? "—"} · Пройдено · {data.validResultScorePercent == null ? "—" : `${data.validResultScorePercent}%`}
+                  {data.validResultPassedAt && ` · ${formatDateTime(data.validResultPassedAt)}`}
+                </div>
+              </div>
+            )}
+            {data.unfinishedAttemptId != null && (
+              <div className="text-sm text-amber-700">
+                Есть незавершённая попытка версии {data.unfinishedAttemptVersion ?? "—"}.
+                {data.hasPendingNewerObligation && " После неё потребуется пройти текущее назначение."}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Link to={trainingRoutes.exams}><Button variant="outline">К аттестациям</Button></Link>
-              {canRestart && <Button onClick={restart} isLoading={restarting}>Перезапустить</Button>}
+              {canOpenRuntime && <Button onClick={restart} isLoading={restarting}>{actionLabel}</Button>}
             </div>
           </Card>
 
           {data.questions.length === 0 && <Card className="text-sm text-muted">Завершённой попытки пока нет — сначала пройдите аттестацию.</Card>}
 
           {data.questions.length > 0 && (
-            <CertificationQuestionReviewSection
-              questions={data.questions}
-              revealCorrectAnswers={data.revealCorrectAnswers}
-              hiddenCorrectAnswersHint="Правильные ответы будут доступны после завершения всех попыток."
-            />
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-default">
+                Разбор завершённого результата версии {data.validResultVersion ?? data.currentAssignmentVersion ?? "—"}
+              </div>
+              <CertificationQuestionReviewSection
+                questions={data.questions}
+                revealCorrectAnswers={data.revealCorrectAnswers}
+                hiddenCorrectAnswersHint="Правильные ответы будут доступны после завершения всех попыток."
+              />
+            </div>
           )}
         </>
       )}
