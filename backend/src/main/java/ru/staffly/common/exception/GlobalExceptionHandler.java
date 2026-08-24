@@ -16,6 +16,8 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.persistence.OptimisticLockException;
+import ru.staffly.training.exception.StaleExamRevisionException;
+import ru.staffly.training.model.TrainingExam;
 
 import java.util.stream.Collectors;
 
@@ -83,9 +85,31 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("CONFLICT", ex.getMessage(), ex.getMeta()));
     }
 
+    @ExceptionHandler(StaleExamRevisionException.class)
+    public ResponseEntity<ErrorResponse> handleStaleExamRevision(StaleExamRevisionException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(StaleExamRevisionException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
     @ExceptionHandler({ OptimisticLockException.class, ObjectOptimisticLockingFailureException.class })
     public ResponseEntity<ErrorResponse> handleOptimisticLock(Exception ex) {
+        if (isTrainingExamOptimisticLock(ex)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                    StaleExamRevisionException.ERROR_CODE,
+                    "Аттестация была изменена другим пользователем. Обновите данные и повторите изменения.",
+                    null
+            ));
+        }
         return buildResponse("Задача была изменена другим пользователем. Обновите страницу.", HttpStatus.CONFLICT);
+    }
+
+    private boolean isTrainingExamOptimisticLock(Exception ex) {
+        if (ex instanceof ObjectOptimisticLockingFailureException lockingFailure) {
+            return lockingFailure.getPersistentClass() != null
+                    && TrainingExam.class.isAssignableFrom(lockingFailure.getPersistentClass());
+        }
+        return ex instanceof OptimisticLockException lockingFailure
+                && lockingFailure.getEntity() instanceof TrainingExam;
     }
 
     @ExceptionHandler(Exception.class)
