@@ -55,7 +55,8 @@ class CertificationAssignmentService {
         var audience = resolveAudienceMembers(exam);
         var audienceUserIds = audience.stream().map(member -> member.getUser().getId()).collect(Collectors.toSet());
 
-        var cycleAssignments = assignments.findByExamIdAndRestaurantIdAndExamVersionSnapshot(
+        // One ordered lock query makes archive/reactivation a mutation-safe batch.
+        var cycleAssignments = assignments.findCurrentVersionForLifecycleUpdate(
                 exam.getId(), exam.getRestaurant().getId(), exam.getVersion());
         var cycleByUserId = cycleAssignments.stream()
                 .collect(Collectors.toMap(
@@ -70,13 +71,7 @@ class CertificationAssignmentService {
                 createdAssignments.add(assignments.save(createAssignment(exam, member)));
                 continue;
             }
-            existing.setAssignedPosition(member.getPosition());
-            existing.setActive(true);
-            if (existing.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
-                reconcileDerivedStateFromFinishedAttempts(existing);
-                existing.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
-                refreshStatus(existing, attempts.existsByAssignmentIdAndFinishedAtIsNull(existing.getId()));
-            }
+            reactivateLatestCurrentGeneration(exam, existing, member);
         }
 
         for (var assignment : cycleByUserId.values()) {
@@ -89,9 +84,16 @@ class CertificationAssignmentService {
     }
 
     private void archiveAllActiveAssignments(TrainingExam exam) {
-        var currentAssignments = assignments.findByExamIdAndRestaurantIdAndExamVersionSnapshotAndActiveTrue(
+        var currentAssignments = assignments.findCurrentVersionForLifecycleUpdate(
                 exam.getId(), exam.getRestaurant().getId(), exam.getVersion());
-        for (var assignment : currentAssignments) {
+        var latestByUser = currentAssignments.stream().collect(Collectors.toMap(
+                assignment -> assignment.getUser().getId(),
+                Function.identity(),
+                this::preferCurrentGeneration));
+        for (var assignment : latestByUser.values()) {
+            if (!assignment.isActive()) {
+                continue;
+            }
             assignment.setActive(false);
             assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
         }
@@ -149,6 +151,7 @@ class CertificationAssignmentService {
             return;
         }
 
+        boolean archived = assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED;
         assignment.setAttemptsUsed(assignment.getAttemptsUsed() + 1);
         assignment.setLastAttemptAt(attempt.getFinishedAt());
 
@@ -160,15 +163,15 @@ class CertificationAssignmentService {
             if (assignment.getPassedAt() == null) {
                 assignment.setPassedAt(attempt.getFinishedAt());
             }
-            assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
+            if (!archived) assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
             return;
         }
 
         Integer allowed = calculateAttemptsAllowed(assignment);
         if (allowed != null && assignment.getAttemptsUsed() >= allowed) {
-            assignment.setStatus(TrainingExamAssignmentStatus.EXHAUSTED);
+            if (!archived) assignment.setStatus(TrainingExamAssignmentStatus.EXHAUSTED);
         } else {
-            assignment.setStatus(TrainingExamAssignmentStatus.FAILED);
+            if (!archived) assignment.setStatus(TrainingExamAssignmentStatus.FAILED);
         }
     }
 
@@ -202,11 +205,15 @@ class CertificationAssignmentService {
                 .orElse(null));
     }
 
+    /**
+     * Derives status from canonical assignment fields after finished-attempt reconciliation.
+     * ARCHIVED is the only persisted enum value with independent lifecycle meaning.
+     */
     public void refreshStatus(TrainingExamAssignment assignment, boolean hasActiveUnfinishedAttempt) {
         if (assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
             return;
         }
-        if (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
+        if (assignment.getPassedAt() != null) {
             assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
             return;
         }
@@ -229,6 +236,7 @@ class CertificationAssignmentService {
     @Transactional
     public void fullResetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
         var assignment = lockCurrentForMutation(restaurantId, examId, userId);
+        validateAudienceAndState(assignment, true);
 
         var memberPosition = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .map(RestaurantMember::getPosition)
@@ -256,14 +264,36 @@ class CertificationAssignmentService {
     @Transactional
     public void reopenByGrantingExtraAttempts(Long restaurantId, Long examId, Long userId, int amount) {
         var assignment = lockCurrentForMutation(restaurantId, examId, userId);
+        validateAudienceAndState(assignment, false);
         assignment.setExtraAttempts(assignment.getExtraAttempts() + amount);
         reconcileDerivedStateFromFinishedAttempts(assignment);
-        if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED
-                || assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED
-                || assignment.getStatus() == TrainingExamAssignmentStatus.IN_PROGRESS) {
-            return;
-        }
         refreshStatus(assignment, false);
+    }
+
+    private void validateAudienceAndState(TrainingExamAssignment assignment, boolean reset) {
+        boolean unfinished = attempts.existsByAssignmentIdAndFinishedAtIsNull(assignment.getId());
+        reconcileDerivedStateFromFinishedAttempts(assignment);
+        refreshStatus(assignment, unfinished);
+        if (unfinished) {
+            throw new ConflictException(reset
+                    ? "Нельзя сбросить попытки, пока сотрудник проходит аттестацию."
+                    : "Нельзя выдать дополнительную попытку, пока сотрудник проходит аттестацию.");
+        }
+        boolean inAudience = resolveAudienceMembers(assignment.getExam()).stream()
+                .anyMatch(member -> member.getUser().getId().equals(assignment.getUser().getId()));
+        if (!inAudience) {
+            throw new ConflictException("Сотрудник больше не входит в аудиторию аттестации.");
+        }
+        var status = assignment.getStatus();
+        boolean allowed = reset
+                ? status == TrainingExamAssignmentStatus.PASSED || status == TrainingExamAssignmentStatus.FAILED
+                    || status == TrainingExamAssignmentStatus.EXHAUSTED
+                : status == TrainingExamAssignmentStatus.FAILED || status == TrainingExamAssignmentStatus.EXHAUSTED;
+        if (!allowed) {
+            throw new ConflictException(reset
+                    ? "Сброс недоступен для текущего состояния назначения."
+                    : "Дополнительная попытка доступна только после неудачной аттестации.");
+        }
     }
 
     private TrainingExamAssignment lockCurrentForMutation(Long restaurantId, Long examId, Long userId) {
@@ -283,6 +313,25 @@ class CertificationAssignmentService {
             throw new ConflictException("Назначение уже изменилось, обновите данные.");
         }
         return assignment;
+    }
+
+    /** The sole ARCHIVED -> active lifecycle transition for an existing current-version row. */
+    private void reactivateLatestCurrentGeneration(TrainingExam exam,
+                                                   TrainingExamAssignment assignment,
+                                                   RestaurantMember member) {
+        if (assignment.getExamVersionSnapshot() != exam.getVersion()
+                || assignment.getAssessmentSpecification().getVersion() != exam.getVersion()
+                || !assignment.getAssessmentSpecification().getExam().getId().equals(exam.getId())) {
+            throw new ConflictException("Назначение не соответствует текущей версии аттестации.");
+        }
+        assignment.setAssignedPosition(member.getPosition());
+        if (!assignment.isActive() || assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
+            assignment.setActive(true);
+            // Temporarily leave ARCHIVED so canonical status may be derived; snapshots/history remain untouched.
+            assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+            reconcileDerivedStateFromFinishedAttempts(assignment);
+            refreshStatus(assignment, attempts.existsByAssignmentIdAndFinishedAtIsNull(assignment.getId()));
+        }
     }
 
     public Integer calculateAttemptsAllowed(TrainingExamAssignment assignment) {
@@ -325,9 +374,7 @@ class CertificationAssignmentService {
 
     private TrainingExamAssignment preferCurrentGeneration(TrainingExamAssignment first,
                                                             TrainingExamAssignment second) {
-        if (first.isActive() != second.isActive()) {
-            return first.isActive() ? first : second;
-        }
+        // Reactivation always targets max generation, never an older active/history row.
         return first.getResetGeneration() >= second.getResetGeneration() ? first : second;
     }
 }

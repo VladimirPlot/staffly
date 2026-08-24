@@ -4,7 +4,6 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import ru.staffly.training.model.TrainingExamAssignmentStatus;
 import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
@@ -44,15 +43,23 @@ class CertificationAnalyticsLifecycleCoordinator {
         var unfinishedByAssignment = unfinished.stream()
                 .collect(Collectors.groupingBy(a -> a.getAssignment().getId()));
 
+        // PASSED is canonical only when reconciliation finds a finished passing attempt.
+        // Do not use a stale persisted status to decide that an unfinished attempt is stale.
+        Map<Long, List<TrainingExamAttempt>> finishedByAssignment = attempts
+                .findFinishedForCurrentAnalyticsScope(restaurantId, requestedIds).stream()
+                .collect(Collectors.groupingBy(a -> a.getAssignment().getId()));
+
         for (var assignment : currentAssignments) {
+            assignmentService.reconcileDerivedStateFromFinishedAttempts(
+                    assignment, finishedByAssignment.getOrDefault(assignment.getId(), List.of()));
             var candidates = unfinishedByAssignment.getOrDefault(assignment.getId(), List.of());
-            normalizeCandidates(assignment.getStatus(), assignment.getPassedAt() != null, candidates, now);
+            normalizeCandidates(assignment.getPassedAt() != null, candidates, now);
         }
 
         // Finalization may have changed the canonical set. One batch reload avoids per-assignment
         // reconciliation queries and also repairs stale counters when no unfinished attempt exists.
         entityManager.flush();
-        Map<Long, List<TrainingExamAttempt>> finishedByAssignment = attempts
+        finishedByAssignment = attempts
                 .findFinishedForCurrentAnalyticsScope(restaurantId, requestedIds).stream()
                 .collect(Collectors.groupingBy(a -> a.getAssignment().getId()));
         for (var assignment : currentAssignments) {
@@ -64,8 +71,7 @@ class CertificationAnalyticsLifecycleCoordinator {
         }
     }
 
-    private void normalizeCandidates(TrainingExamAssignmentStatus status,
-                                     boolean hasPassedAt,
+    private void normalizeCandidates(boolean hasPassedAt,
                                      List<TrainingExamAttempt> candidates,
                                      Instant now) {
         if (candidates.size() > 1) {
@@ -79,7 +85,7 @@ class CertificationAnalyticsLifecycleCoordinator {
             return;
         }
         var current = candidates.get(0);
-        if (status == TrainingExamAssignmentStatus.PASSED || hasPassedAt) {
+        if (hasPassedAt) {
             finalizer.finalizeStaleUnfinishedAttemptForLifecycleRepair(current, now);
         } else if (isExpired(current, now)) {
             finalizer.finalizeExpiredUnfinishedAttempt(current, now);
