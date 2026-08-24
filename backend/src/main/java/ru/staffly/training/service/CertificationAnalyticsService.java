@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingExamAssignment;
@@ -30,14 +31,19 @@ class CertificationAnalyticsService {
     private final CertificationAssignmentService assignmentService;
     private final ExamSnapshotService snapshotService;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationAnalyticsLifecycleCoordinator lifecycleCoordinator;
+    private final jakarta.persistence.EntityManager entityManager;
 
-    @Transactional(readOnly = true)
+    @Transactional
     public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
+        entityManager.flush();
         var rows = loadActiveAssignmentScope(restaurantId, examId);
         return toSummary(rows);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<Long, CertificationExamSummaryPreviewDto> getExamSummaryPreviewBatch(Long restaurantId, Collection<Long> examIds) {
         if (examIds == null || examIds.isEmpty()) {
             return Map.of();
@@ -48,6 +54,9 @@ class CertificationAnalyticsService {
             return Map.of();
         }
 
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExams(restaurantId, distinctExamIds, now);
+        entityManager.flush();
         var rows = assignments.findActiveByRestaurantIdAndExamIds(restaurantId, distinctExamIds);
         var grouped = rows.stream().collect(Collectors.groupingBy(row -> row.getExam().getId()));
 
@@ -66,8 +75,11 @@ class CertificationAnalyticsService {
         return summaryByExamId;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long examId) {
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
+        entityManager.flush();
         var rows = loadActiveAssignmentScope(restaurantId, examId);
         return rows.stream()
                 .collect(Collectors.groupingBy(a -> new PositionKey(
@@ -94,8 +106,11 @@ class CertificationAnalyticsService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long actorUserId, Long examId) {
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
+        entityManager.flush();
         var rows = loadActiveAssignmentScope(restaurantId, examId);
         var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
         var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()

@@ -10,9 +10,46 @@ import ru.staffly.training.model.TrainingExamAttempt;
 import jakarta.persistence.LockModeType;
 
 import java.util.List;
+import java.util.Collection;
 import java.util.Optional;
 
 public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExamAttempt, Long> {
+    @Query("""
+            select a from TrainingExamAttempt a
+            join fetch a.assignment assignment
+            join fetch assignment.exam exam
+            where a.finishedAt is null
+              and assignment.active = true
+              and assignment.examVersionSnapshot = exam.version
+              and assignment.restaurant.id = :restaurantId
+              and exam.id in :examIds
+              and exam.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and a.examVersion = assignment.examVersionSnapshot
+            order by assignment.id, a.startedAt desc, a.id desc
+            """)
+    List<TrainingExamAttempt> findUnfinishedForCurrentAnalyticsScope(
+            @Param("restaurantId") Long restaurantId,
+            @Param("examIds") Collection<Long> examIds
+    );
+
+    @Query("""
+            select a from TrainingExamAttempt a
+            join fetch a.assignment assignment
+            join assignment.exam exam
+            where a.finishedAt is not null
+              and assignment.active = true
+              and assignment.examVersionSnapshot = exam.version
+              and assignment.restaurant.id = :restaurantId
+              and exam.id in :examIds
+              and exam.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and a.examVersion = assignment.examVersionSnapshot
+            order by assignment.id, a.finishedAt desc, a.id desc
+            """)
+    List<TrainingExamAttempt> findFinishedForCurrentAnalyticsScope(
+            @Param("restaurantId") Long restaurantId,
+            @Param("examIds") Collection<Long> examIds
+    );
+
     boolean existsByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNull(Long examId, Long restaurantId, Long userId);
 
     boolean existsByAssignmentIdAndFinishedAtIsNull(Long assignmentId);
