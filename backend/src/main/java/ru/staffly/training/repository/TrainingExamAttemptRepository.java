@@ -54,6 +54,12 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
 
     boolean existsByAssignmentIdAndFinishedAtIsNull(Long assignmentId);
 
+    List<TrainingExamAttempt> findByAssignmentIdInAndFinishedAtIsNotNullOrderByAssignmentIdAscFinishedAtDescIdDesc(
+            Collection<Long> assignmentIds);
+
+    List<TrainingExamAttempt> findByAssignmentIdInAndFinishedAtIsNullOrderByAssignmentIdAscStartedAtDescIdDesc(
+            Collection<Long> assignmentIds);
+
     List<TrainingExamAttempt> findByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
             Long examId,
             Long restaurantId,

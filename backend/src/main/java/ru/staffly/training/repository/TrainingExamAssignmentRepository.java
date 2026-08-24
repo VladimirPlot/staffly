@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import ru.staffly.training.model.TrainingExamAssignmentStatus;
+import ru.staffly.training.model.TrainingExamAssignmentDeactivationReason;
 
 public interface TrainingExamAssignmentRepository extends JpaRepository<TrainingExamAssignment, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -30,7 +31,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = a.exam.version
             """)
     List<TrainingExamAssignment> findActiveByExamIdAndRestaurantId(@Param("examId") Long examId,
                                                                    @Param("restaurantId") Long restaurantId);
@@ -38,7 +38,7 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     @Query("""
             select a from TrainingExamAssignment a
             where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.user.id = :userId
-              and a.active = true and a.examVersionSnapshot = a.exam.version
+              and a.active = true
             """)
     Optional<TrainingExamAssignment> findCurrentActiveByExamAndUser(@Param("examId") Long examId,
                                                                     @Param("restaurantId") Long restaurantId,
@@ -51,10 +51,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
               and a.restaurant.id = :restaurantId
               and a.user.id = :userId
               and a.active = true
-              and exists (
-                  select e.id from TrainingExam e
-                  where e = a.exam and a.examVersionSnapshot = e.version
-              )
             """)
     Optional<TrainingExamAssignment> findCurrentActiveForMutation(@Param("examId") Long examId,
                                                                    @Param("restaurantId") Long restaurantId,
@@ -67,14 +63,10 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
               and a.restaurant.id = :restaurantId
               and a.user.id = :userId
               and a.active = true
-              and a.examVersionSnapshot = :examVersion
-              and a.assessmentSpecification.id = :specificationId
             """)
     Optional<TrainingExamAssignment> findActiveForStartUpdate(@Param("examId") Long examId,
                                                               @Param("restaurantId") Long restaurantId,
-                                                              @Param("userId") Long userId,
-                                                              @Param("examVersion") int examVersion,
-                                                              @Param("specificationId") Long specificationId);
+                                                              @Param("userId") Long userId);
 
     List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndExamVersionSnapshot(Long examId,
                                                                                    Long restaurantId,
@@ -123,11 +115,34 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     List<TrainingExamAssignment> findAllActiveAssignmentsForCycleTransition(@Param("examId") Long examId,
                                                                              @Param("restaurantId") Long restaurantId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.active = true
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findActiveObligationsForPublication(@Param("examId") Long examId,
+                                                                     @Param("restaurantId") Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            join fetch a.user u
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.active = false
+              and a.deactivationReason = :reason
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findInactiveByDeactivationReasonForRestore(
+            @Param("examId") Long examId,
+            @Param("restaurantId") Long restaurantId,
+            @Param("reason") TrainingExamAssignmentDeactivationReason reason);
+
     @Query("""
             select a from TrainingExamAssignment a
             where a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = a.exam.version
               and a.exam.id in :examIds
             """)
     List<TrainingExamAssignment> findActiveByRestaurantIdAndExamIds(@Param("restaurantId") Long restaurantId,
@@ -156,7 +171,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             join a.exam e
             where a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = e.version
               and a.user.id in :userIds
               and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
               and e.active = true
@@ -170,7 +184,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             where a.restaurant.id = :restaurantId
               and a.user.id = :userId
               and a.active = true
-              and a.examVersionSnapshot = e.version
               and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
               and e.active = true
             order by a.assignedAt desc, a.id desc
@@ -183,7 +196,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.examVersionSnapshot = a.exam.version
               and a.user.id in :userIds
             """)
     List<TrainingExamAssignment> findActiveByExamIdAndRestaurantIdAndUserIds(@Param("examId") Long examId,
