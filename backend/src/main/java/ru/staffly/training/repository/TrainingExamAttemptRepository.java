@@ -20,14 +20,13 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             join fetch assignment.exam exam
             where a.finishedAt is null
               and assignment.active = true
-              and assignment.examVersionSnapshot = exam.version
               and assignment.restaurant.id = :restaurantId
               and exam.id in :examIds
               and exam.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
               and a.examVersion = assignment.examVersionSnapshot
             order by assignment.id, a.startedAt desc, a.id desc
             """)
-    List<TrainingExamAttempt> findUnfinishedForCurrentAnalyticsScope(
+    List<TrainingExamAttempt> findUnfinishedForActiveObligationsAnalyticsScope(
             @Param("restaurantId") Long restaurantId,
             @Param("examIds") Collection<Long> examIds
     );
@@ -38,14 +37,13 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             join assignment.exam exam
             where a.finishedAt is not null
               and assignment.active = true
-              and assignment.examVersionSnapshot = exam.version
               and assignment.restaurant.id = :restaurantId
               and exam.id in :examIds
               and exam.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
               and a.examVersion = assignment.examVersionSnapshot
             order by assignment.id, a.finishedAt desc, a.id desc
             """)
-    List<TrainingExamAttempt> findFinishedForCurrentAnalyticsScope(
+    List<TrainingExamAttempt> findFinishedForActiveObligationsAnalyticsScope(
             @Param("restaurantId") Long restaurantId,
             @Param("examIds") Collection<Long> examIds
     );

@@ -1,5 +1,7 @@
 package ru.staffly.training.dto;
 
+import ru.staffly.training.model.CertificationAssignmentCycleKind;
+import ru.staffly.training.model.TrainingExamAssignmentDeactivationReason;
 import java.time.Instant;
 import java.util.List;
 
@@ -11,6 +13,11 @@ public record CertificationAttemptDetailsDto(
         String userFullName,
         Long assignmentId,
         Integer examVersion,
+        Long assignmentCycleId,
+        Integer assignmentCycleSequence,
+        CertificationAssignmentCycleKind assignmentCycleKind,
+        Integer resetGeneration,
+        TrainingExamAssignmentDeactivationReason deactivationReason,
         Instant startedAt,
         Instant finishedAt,
         Integer scorePercent,

@@ -1,6 +1,7 @@
 package ru.staffly.training.dto;
 
 import ru.staffly.training.model.TrainingExamAssignmentStatus;
+import ru.staffly.training.model.CertificationAssignmentCycleKind;
 
 import java.time.Instant;
 
@@ -17,6 +18,11 @@ public record CurrentUserCertificationExamDto(
         TrainingExamAssignmentStatus assignmentStatus,
         Instant assignedAt,
         Integer examVersionSnapshot,
+        Integer latestPublishedVersion,
+        Long assignmentCycleId,
+        Integer assignmentCycleSequence,
+        CertificationAssignmentCycleKind assignmentCycleKind,
+        Integer resetGeneration,
         Integer attemptsUsed,
         Integer attemptsAllowed,
         Integer extraAttempts,

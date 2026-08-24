@@ -122,8 +122,16 @@ class CertificationAnalyticsService {
                 .filter(assignment -> memberByUserId.containsKey(assignment.getUser().getId()))
                 .map(assignment -> {
                     var member = memberByUserId.get(assignment.getUser().getId());
+                    var cycle = assignment.getAssignmentCycle();
                     return new CertificationExamEmployeeRowDto(
                             assignment.getId(),
+                            assignment.getExamVersionSnapshot(),
+                            assignment.getExam().getVersion(),
+                            cycle == null ? null : cycle.getId(),
+                            cycle == null ? null : cycle.getCycleSequence(),
+                            cycle == null ? null : cycle.getKind(),
+                            assignment.getResetGeneration(),
+                            assignment.getDeactivationReason(),
                             assignment.getUser().getId(),
                             assignment.getUser().getFullName(),
                             assignment.getAssignedPosition() == null ? null : assignment.getAssignedPosition().getId(),
@@ -151,16 +159,26 @@ class CertificationAnalyticsService {
         // История для employee endpoint возвращается как полная история попыток пользователя по exam.
         // Assignment-поля добавлены для прозрачного понимания связи попыток с циклом назначений.
         return attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(examId, restaurantId, userId).stream()
-                .map(attempt -> new CertificationExamAttemptHistoryDto(
+                .map(attempt -> {
+                    var assignment = attempt.getAssignment();
+                    var cycle = assignment == null ? null : assignment.getAssignmentCycle();
+                    return new CertificationExamAttemptHistoryDto(
                         attempt.getId(),
-                        attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),
-                        attempt.getAssignment() == null ? null : attempt.getAssignment().getExamVersionSnapshot(),
+                        assignment == null ? null : assignment.getId(),
+                        assignment == null ? null : assignment.getExamVersionSnapshot(),
+                        cycle == null ? null : cycle.getId(),
+                        cycle == null ? null : cycle.getCycleSequence(),
+                        cycle == null ? null : cycle.getKind(),
+                        assignment == null ? null : assignment.getResetGeneration(),
+                        assignment == null ? null : assignment.getDeactivationReason(),
                         attempt.getStartedAt(),
                         attempt.getFinishedAt(),
                         attempt.getScorePercent(),
                         attempt.getPassed(),
-                        attempt.getExamVersion()
-                ))
+                        attempt.getExamVersion(),
+                        attempt.getPassPercentSnapshot()
+                    );
+                })
                 .toList();
     }
 
@@ -195,14 +213,21 @@ class CertificationAnalyticsService {
                 ? Math.max(0L, finishedAt.getEpochSecond() - startedAt.getEpochSecond())
                 : null;
 
+        var assignment = attempt.getAssignment();
+        var cycle = assignment == null ? null : assignment.getAssignmentCycle();
         return new CertificationAttemptDetailsDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
                 attempt.getTitleSnapshot(),
                 attempt.getUser().getId(),
                 attempt.getUser().getFullName(),
-                attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),
+                assignment == null ? null : assignment.getId(),
                 attempt.getExamVersion(),
+                cycle == null ? null : cycle.getId(),
+                cycle == null ? null : cycle.getCycleSequence(),
+                cycle == null ? null : cycle.getKind(),
+                assignment == null ? null : assignment.getResetGeneration(),
+                assignment == null ? null : assignment.getDeactivationReason(),
                 startedAt,
                 finishedAt,
                 attempt.getScorePercent(),

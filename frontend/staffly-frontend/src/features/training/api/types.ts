@@ -210,6 +210,11 @@ export type CurrentUserCertificationExamDto = {
   assignmentStatus: CertificationAssignmentStatus;
   assignedAt: string;
   examVersionSnapshot?: number | null;
+  latestPublishedVersion: number;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration: number;
   attemptsUsed: number;
   attemptsAllowed?: number | null;
   extraAttempts: number;
@@ -232,7 +237,26 @@ export type CertificationMyResultDto = {
   examId: number;
   title: string;
   description?: string | null;
-  assignmentStatus: CertificationAssignmentStatus;
+  latestPublishedVersion: number;
+  certified: boolean;
+  currentAssignmentId?: number | null;
+  currentAssignmentVersion?: number | null;
+  currentAssignmentCycleId?: number | null;
+  currentAssignmentCycleSequence?: number | null;
+  currentAssignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  currentAssignmentResetGeneration?: number | null;
+  currentAssignmentStatus?: CertificationAssignmentStatus | null;
+  currentAssignmentDeactivationReason?: string | null;
+  validResultAssignmentId?: number | null;
+  validResultVersion?: number | null;
+  validResultCycleId?: number | null;
+  validResultPassedAt?: string | null;
+  validResultScorePercent?: number | null;
+  validResultDeactivationReason?: string | null;
+  unfinishedAttemptId?: number | null;
+  unfinishedAttemptVersion?: number | null;
+  unfinishedAssignmentId?: number | null;
+  hasPendingNewerObligation: boolean;
   scorePercent?: number | null;
   passPercent: number;
   attemptsUsed: number;
@@ -300,6 +324,13 @@ export type CertificationAssignmentStatus = "ASSIGNED" | "IN_PROGRESS" | "PASSED
 
 export type CertificationExamEmployeeRowDto = {
   assignmentId: number;
+  assignmentVersion: number;
+  latestPublishedVersion: number;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration: number;
+  deactivationReason?: string | null;
   userId: number;
   fullName: string;
   assignedPositionId?: number | null;
@@ -320,11 +351,17 @@ export type CertificationExamAttemptHistoryDto = {
   attemptId: number;
   assignmentId?: number | null;
   assignmentExamVersionSnapshot?: number | null;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration?: number | null;
+  deactivationReason?: string | null;
   startedAt: string;
   finishedAt?: string | null;
   scorePercent?: number | null;
   passed?: boolean | null;
   examVersion?: number | null;
+  passPercentSnapshot: number;
 };
 
 export type CertificationEmployeeSummaryDto = {
@@ -366,6 +403,11 @@ export type CertificationAttemptDetailsDto = {
   userFullName: string;
   assignmentId?: number | null;
   examVersion?: number | null;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration?: number | null;
+  deactivationReason?: string | null;
   startedAt: string;
   finishedAt?: string | null;
   scorePercent?: number | null;
