@@ -181,7 +181,7 @@ public class TrainingCertificationNotificationService {
         var assignment = attempt.getAssignment();
         var cycle = assignment == null ? null : assignment.getAssignmentCycle();
         long total = cycle == null
-                ? assignmentRepository.countCurrentActive(examId, restaurantId)
+                ? assignmentRepository.countActiveObligations(examId, restaurantId)
                 : assignmentRepository.countByAssignmentCycleIdAndActiveTrue(cycle.getId());
         if (total <= 0) {
             return;
@@ -189,7 +189,7 @@ public class TrainingCertificationNotificationService {
 
         var completedStatuses = List.of(TrainingExamAssignmentStatus.PASSED, TrainingExamAssignmentStatus.FAILED);
         long completed = cycle == null
-                ? assignmentRepository.countCurrentActiveByStatusIn(examId, restaurantId, completedStatuses)
+                ? assignmentRepository.countActiveObligationsByStatusIn(examId, restaurantId, completedStatuses)
                 : assignmentRepository.countByAssignmentCycleIdAndActiveTrueAndStatusIn(
                         cycle.getId(), completedStatuses);
 

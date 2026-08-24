@@ -40,10 +40,20 @@ class CertificationSelfResultService {
         var assignment = normalizedActiveAssignment != null
                 ? normalizedActiveAssignment
                 : assignments.findCurrentActiveByExamAndUser(exam.getId(), restaurantId, userId).orElse(null);
-        var fallbackAssignment = assignment == null
-                ? assignments.findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(exam.getId(), restaurantId, userId).orElse(null)
-                : null;
-        var assignmentForResult = assignment != null ? assignment : fallbackAssignment;
+        var validResult = assignments
+                .findTopByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
+                        exam.getId(), restaurantId, userId)
+                .orElse(null);
+        var unfinishedCandidates = attempts
+                .findByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+                        exam.getId(), restaurantId, userId);
+        if (unfinishedCandidates.size() > 1) {
+            throw new ConflictException("Нарушена целостность: найдено несколько незавершённых попыток аттестации.");
+        }
+        var unfinished = unfinishedCandidates.stream().findFirst().orElse(null);
+        var assignmentForResult = validResult != null ? validResult
+                : assignment != null ? assignment
+                : unfinished == null ? null : unfinished.getAssignment();
 
         if (assignmentForResult == null) {
             throw new ConflictException("Для вас нет назначения или истории попыток по этой аттестации.");
@@ -60,7 +70,8 @@ class CertificationSelfResultService {
         );
         var attemptForDetails = resolveAttemptForDetails(assignmentForResult, passedAttempt, lastFinishedAttempt);
 
-        Integer attemptsAllowed = certificationAssignmentService.calculateAttemptsAllowed(assignmentForResult);
+        var obligationForAllowance = assignment != null ? assignment : assignmentForResult;
+        Integer attemptsAllowed = certificationAssignmentService.calculateAttemptsAllowed(obligationForAllowance);
         boolean passed = attemptForDetails.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
                 || assignmentForResult.getPassedAt() != null
                 || assignmentForResult.getStatus() == TrainingExamAssignmentStatus.PASSED;
@@ -83,14 +94,38 @@ class CertificationSelfResultService {
                         .toList())
                 .orElse(List.of());
 
+        var currentCycle = assignment == null ? null : assignment.getAssignmentCycle();
+        var validCycle = validResult == null ? null : validResult.getAssignmentCycle();
+        boolean hasPendingNewerObligation = unfinished != null && assignment != null
+                && (unfinished.getAssignment() == null
+                || !assignment.getId().equals(unfinished.getAssignment().getId()));
         return new CertificationMyResultDto(
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
-                assignmentForResult.getStatus(),
+                exam.getVersion(),
+                validResult != null,
+                assignment == null ? null : assignment.getId(),
+                assignment == null ? null : assignment.getExamVersionSnapshot(),
+                currentCycle == null ? null : currentCycle.getId(),
+                currentCycle == null ? null : currentCycle.getCycleSequence(),
+                currentCycle == null ? null : currentCycle.getKind(),
+                assignment == null ? null : assignment.getResetGeneration(),
+                assignment == null ? null : assignment.getStatus(),
+                assignment == null ? null : assignment.getDeactivationReason(),
+                validResult == null ? null : validResult.getId(),
+                validResult == null ? null : validResult.getExamVersionSnapshot(),
+                validCycle == null ? null : validCycle.getId(),
+                validResult == null ? null : validResult.getPassedAt(),
+                validResult == null ? null : validResult.getBestScore(),
+                validResult == null ? null : validResult.getDeactivationReason(),
+                unfinished == null ? null : unfinished.getId(),
+                unfinished == null ? null : unfinished.getExamVersion(),
+                unfinished == null || unfinished.getAssignment() == null ? null : unfinished.getAssignment().getId(),
+                hasPendingNewerObligation,
                 attemptForDetails.map(attempt -> attempt.getScorePercent()).orElse(null),
-                exam.getPassPercent(),
-                assignmentForResult.getAttemptsUsed(),
+                assignmentForResult.getAssessmentSpecification().getPassPercent(),
+                obligationForAllowance.getAttemptsUsed(),
                 attemptsAllowed,
                 revealCorrectAnswers,
                 assignmentForResult.getBestScore(),
