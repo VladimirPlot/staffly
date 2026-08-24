@@ -17,6 +17,7 @@ public record TrainingExamDto(
         Long folderId,
         Integer attemptLimit,
         Integer version,
+        Long editorRevision,
         Integer sortOrder,
         Boolean active,
         List<ExamSourceFolderDto> sourcesFolders,

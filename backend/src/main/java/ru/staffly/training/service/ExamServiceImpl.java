@@ -1,5 +1,7 @@
 package ru.staffly.training.service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
+import ru.staffly.training.exception.StaleExamRevisionException;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
 import ru.staffly.user.model.User;
@@ -28,6 +31,7 @@ import java.util.stream.IntStream;
 @Slf4j
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
+    private final EntityManager entityManager;
     private final TrainingExamSourceFolderRepository sourceFolders;
     private final TrainingExamSourceQuestionRepository sourceQuestions;
     private final TrainingQuestionRepository questions;
@@ -185,6 +189,7 @@ public class ExamServiceImpl implements ExamService {
         exam.setSortOrder(request.sortOrder() == null
                 ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
                 : normalizeSortOrder(request.sortOrder()));
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -200,6 +205,7 @@ public class ExamServiceImpl implements ExamService {
         exam.setSortOrder(request.sortOrder() == null
                 ? nextCertificationExamSortOrder(restaurantId, request.folderId())
                 : normalizeSortOrder(request.sortOrder()));
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -227,6 +233,12 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        if (!Objects.equals(exam.getEditorRevision(), request.expectedEditorRevision())) {
+            throw new StaleExamRevisionException(exam.getId(), exam.getEditorRevision());
+        }
+        // A sources-only replacement does not dirty TrainingExam itself, so force a
+        // versioned write for every successful full-replace editor save.
+        entityManager.lock(exam, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
         validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
                 request.sourceQuestionIds(), request.questionCount());
         var previousVisibilityPositionIds = exam.getVisibilityPositions().stream()
@@ -291,6 +303,9 @@ public class ExamServiceImpl implements ExamService {
         if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
             certificationAudienceSyncService.syncExamAudience(exam);
         }
+        // Flush inside the transaction: the @Version compare is authoritative and any
+        // sources/audience/assignment changes above roll back together on a stale write.
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -300,6 +315,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
         certificationAudienceSyncService.syncExamAudience(exam);
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -333,6 +349,7 @@ public class ExamServiceImpl implements ExamService {
             exam.setActive(true);
         }
         certificationAudienceSyncService.syncExamAudience(exam);
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -529,6 +546,7 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId) {
         var exam = trainingExamOwnershipService.changeOwner(restaurantId, actorUserId, examId, ownerUserId);
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -934,6 +952,7 @@ public class ExamServiceImpl implements ExamService {
                 exam.getFolder() == null ? null : exam.getFolder().getId(),
                 exam.getAttemptLimit(),
                 exam.getVersion(),
+                exam.getEditorRevision(),
                 exam.getSortOrder(),
                 exam.isActive(),
                 folders,

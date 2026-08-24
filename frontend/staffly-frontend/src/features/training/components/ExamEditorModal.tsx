@@ -19,9 +19,13 @@ export default function ExamEditorModal(props: ExamEditorProps) {
           <Button variant="outline" onClick={props.onClose}>
             Отмена
           </Button>
-          <Button onClick={state.submit} isLoading={state.saving}>
-            {submitLabel}
-          </Button>
+          {state.staleConflict ? (
+            <Button onClick={state.refreshAfterConflict}>Обновить</Button>
+          ) : (
+            <Button onClick={state.submit} isLoading={state.saving}>
+              {submitLabel}
+            </Button>
+          )}
         </>
       }
     >
