@@ -393,11 +393,11 @@ public class ExamServiceImpl implements ExamService {
                         .toList(),
                 exam.getQuestionCount()
         );
-        certificationAudienceSyncService.syncExamAudience(exam);
         startNewCertificationCycle(exam);
         exams.flush();
         certificationSpecificationService.createCurrent(exam);
-        certificationAssignmentService.resetAssignmentsForNewCycle(exam);
+        var createdAssignments = certificationAssignmentService.createAssignmentsForNewCycle(exam);
+        trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
         trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
     }
 

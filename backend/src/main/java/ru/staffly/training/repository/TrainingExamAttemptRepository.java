@@ -10,6 +10,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExamAttempt, Long> {
+    boolean existsByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNull(Long examId, Long restaurantId, Long userId);
+
+    boolean existsByAssignmentIdAndFinishedAtIsNull(Long assignmentId);
+
     Optional<TrainingExamAttempt> findByIdAndRestaurantId(Long id, Long restaurantId);
 
     @Modifying(flushAutomatically = true)

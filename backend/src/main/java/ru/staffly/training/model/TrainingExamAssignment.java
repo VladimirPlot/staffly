@@ -44,20 +44,25 @@ public class TrainingExamAssignment {
     private Position assignedPosition;
 
     /**
-     * Timestamp of the initial assignment creation (not reset between cycles).
+     * Timestamp of this immutable business-cycle assignment creation.
      */
     @Column(name = "assigned_at", nullable = false)
     @Builder.Default
     private Instant assignedAt = TimeProvider.now();
 
     /**
-     * Attempts limit snapshot for the current cycle; refreshed only on cycle reset.
+     * Attempts limit snapshot for this assignment cycle.
      */
     @Column(name = "attempts_limit_snapshot")
     private Integer attemptsLimitSnapshot;
 
     @Column(name = "exam_version_snapshot", nullable = false)
     private int examVersionSnapshot;
+
+    /** Per-user reset boundary inside the immutable global Certification version. */
+    @Column(name = "reset_generation", nullable = false)
+    @Builder.Default
+    private int resetGeneration = 0;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "assessment_specification_id", nullable = false)

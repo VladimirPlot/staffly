@@ -39,7 +39,7 @@ class CertificationSelfResultService {
 
         var assignment = normalizedActiveAssignment != null
                 ? normalizedActiveAssignment
-                : assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(exam.getId(), restaurantId, userId).orElse(null);
+                : assignments.findCurrentActiveByExamAndUser(exam.getId(), restaurantId, userId).orElse(null);
         var fallbackAssignment = assignment == null
                 ? assignments.findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(exam.getId(), restaurantId, userId).orElse(null)
                 : null;
