@@ -13,6 +13,16 @@ import java.util.Optional;
 import ru.staffly.training.model.TrainingExamAssignmentStatus;
 
 public interface TrainingExamAssignmentRepository extends JpaRepository<TrainingExamAssignment, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.id = :assignmentId and a.restaurant.id = :restaurantId
+            """)
+    Optional<TrainingExamAssignment> findByIdAndRestaurantIdForFinalizationUpdate(
+            @Param("assignmentId") Long assignmentId,
+            @Param("restaurantId") Long restaurantId
+    );
+
     @Query("""
             select a from TrainingExamAssignment a
             left join fetch a.user u

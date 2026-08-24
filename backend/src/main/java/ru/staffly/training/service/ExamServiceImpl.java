@@ -551,12 +551,14 @@ public class ExamServiceImpl implements ExamService {
                 answersByQuestionId,
                 TimeProvider.now()
         );
-        try {
-            trainingCertificationNotificationService.notifyUserResultOnSubmit(finalizedAttempt.attempt());
-            trainingCertificationNotificationService.notifyOwnerMilestoneOnSubmit(finalizedAttempt.attempt());
-        } catch (Exception ex) {
-            log.warn("Failed to process certification notifications after submit (restaurantId={}, attemptId={})",
-                    restaurantId, attemptId, ex);
+        if (finalizedAttempt.newlyFinalized()) {
+            try {
+                trainingCertificationNotificationService.notifyUserResultOnSubmit(finalizedAttempt.attempt());
+                trainingCertificationNotificationService.notifyOwnerMilestoneOnSubmit(finalizedAttempt.attempt());
+            } catch (Exception ex) {
+                log.warn("Failed to process certification notifications after submit (restaurantId={}, attemptId={})",
+                        restaurantId, attemptId, ex);
+            }
         }
         return toAttemptResultDto(finalizedAttempt);
     }
