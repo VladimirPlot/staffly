@@ -107,6 +107,9 @@ class CertificationAssignmentService {
         for (var assignment : activeAssignments) {
             assignment.setActive(false);
         }
+        if (!exam.isActive()) {
+            return List.of();
+        }
         return resolveAudienceMembers(exam).stream()
                 .map(member -> assignments.save(createAssignment(exam, member, specification)))
                 .toList();
