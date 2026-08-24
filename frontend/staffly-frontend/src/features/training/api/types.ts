@@ -248,7 +248,7 @@ export type CertificationMyResultDto = {
 
 export type UpsertExamPayload = {
   expectedEditorRevision?: number;
-  confirmNewCycle?: boolean;
+  confirmNewVersion?: boolean;
   title: string;
   description?: string | null;
   mode: TrainingExamMode;

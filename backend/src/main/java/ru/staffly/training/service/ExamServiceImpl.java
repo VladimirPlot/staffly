@@ -59,6 +59,7 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingPolicyService trainingPolicyService;
     private final CertificationFolderManagementService certificationFolderManagementService;
     private final CertificationAssessmentSpecificationService certificationSpecificationService;
+    private final CertificationAssignmentCycleService certificationAssignmentCycleService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
     private final TrainingCertificationNotificationService trainingCertificationNotificationService;
     private final TrainingActiveContainerValidator activeContainerValidator;
@@ -170,7 +171,9 @@ public class ExamServiceImpl implements ExamService {
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
-            certificationSpecificationService.createCurrent(exam);
+            var specification = certificationSpecificationService.createCurrent(exam);
+            certificationAssignmentCycleService.createPublicationCycle(
+                    exam, specification, entityManager.getReference(User.class, userId));
         }
         certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam, null);
@@ -257,7 +260,7 @@ public class ExamServiceImpl implements ExamService {
                     exam, request.sourcesFolders(), request.sourceQuestionIds(), request.questionCount(),
                     request.passPercent(), request.timeLimitSec(), request.attemptLimit());
             materialChanged = materialDiff.materialChanged();
-            if (materialChanged && !Boolean.TRUE.equals(request.confirmNewCycle())) {
+            if (materialChanged && !Boolean.TRUE.equals(request.confirmNewVersion())) {
                 throw new MaterialChangeRequiresNewCycleException(
                         exam.getId(), exam.getVersion(), materialDiff.changedFields());
             }
@@ -322,10 +325,15 @@ public class ExamServiceImpl implements ExamService {
             // can be created for a newly-added audience member.
             startNewCertificationCycle(exam);
             exams.flush();
-            certificationSpecificationService.createCurrent(exam);
-            var createdAssignments = certificationAssignmentService.createAssignmentsForNewCycle(exam);
+            var specification = certificationSpecificationService.createCurrent(exam);
+            var publicationCycle = certificationAssignmentCycleService.createPublicationCycle(
+                    exam, specification, entityManager.getReference(User.class, userId));
+            var createdAssignments = certificationAssignmentService.publishMaterialVersion(
+                    exam, specification, publicationCycle);
+            // Publication classifies pre-existing obligations first; the authoritative
+            // audience sync then adds only genuinely new members to this same cycle.
+            createdAssignments.addAll(certificationAssignmentService.syncAudienceAssignments(exam));
             trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
-            trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
         } else if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
             certificationAudienceSyncService.syncExamAudience(exam);
         }
@@ -350,6 +358,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         activeContainerValidator.requireActiveChain(exam.getFolder());
+        boolean restoringCertification = exam.getMode() == TrainingExamMode.CERTIFICATION && !exam.isActive();
         if (!exam.isActive()) {
             validateSourceCapacity(
                     restaurantId,
@@ -374,6 +383,11 @@ public class ExamServiceImpl implements ExamService {
             }
             exam.setActive(true);
         }
+        if (restoringCertification) {
+            // Under the authoritative exam lock, restore the exact obligations hidden
+            // with the exam before generic audience add/re-add synchronization runs.
+            certificationAssignmentService.restoreHiddenAudienceAssignments(exam);
+        }
         certificationAudienceSyncService.syncExamAudience(exam);
         exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
@@ -396,26 +410,8 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
-        validateSourceCapacity(
-                restaurantId,
-                userId,
-                exam.getMode(),
-                sourceFolders.findByExamId(exam.getId()).stream()
-                        .map(source -> new ExamSourceFolderDto(
-                                source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
-                        .toList(),
-                sourceQuestions.findByExamId(exam.getId()).stream()
-                        .map(source -> source.getQuestion().getId())
-                        .toList(),
-                exam.getQuestionCount()
-        );
-        startNewCertificationCycle(exam);
-        exams.flush();
-        certificationSpecificationService.createCurrent(exam);
-        var createdAssignments = certificationAssignmentService.createAssignmentsForNewCycle(exam);
-        trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
-        trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
+        requireManageableCertificationExamMutation(restaurantId, userId, examId);
+        throw new ConflictException("Повторная аттестация временно недоступна до обновления жизненного цикла.");
     }
 
     @Override

@@ -76,12 +76,13 @@ export default function ExamEditorModal(props: ExamEditorProps) {
       </Modal>
       <ConfirmDialog
         open={state.newCycleConfirmation != null}
-        title="Создать новый цикл аттестации?"
+        title="Создать новую версию аттестации?"
         description={
           <div className="space-y-2">
-            <p>Изменения вопросов или правил создадут новый цикл аттестации.</p>
-            <p>Текущие результаты сохранятся. Сотрудникам будет назначена новая версия.</p>
-            <p>Начатые попытки предыдущей версии можно будет завершить.</p>
+            <p>Изменения создадут новую версию аттестации.</p>
+            <p>Результаты сотрудников, которые уже прошли тест, сохранятся.</p>
+            <p>Сотрудники, которые ещё не начали тест или завершили попытки неуспешно и сейчас не проходят тест, будут переведены на новую версию.</p>
+            <p>Уже начатые попытки можно будет завершить.</p>
             {typeof currentVersion === "number" && typeof proposedVersion === "number" && (
               <p className="text-slate-500">
                 Версия {currentVersion} → {proposedVersion}
@@ -90,10 +91,10 @@ export default function ExamEditorModal(props: ExamEditorProps) {
           </div>
         }
         cancelText="Отмена"
-        confirmText="Создать новый цикл и сохранить"
+        confirmText="Создать новую версию и сохранить"
         confirming={state.saving}
         onCancel={state.cancelNewCycleConfirmation}
-        onConfirm={state.confirmNewCycle}
+        onConfirm={state.confirmNewVersion}
       />
     </>
   );
