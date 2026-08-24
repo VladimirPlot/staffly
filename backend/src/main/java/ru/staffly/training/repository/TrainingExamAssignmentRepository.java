@@ -35,8 +35,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     List<TrainingExamAssignment> findActiveByExamIdAndRestaurantId(@Param("examId") Long examId,
                                                                    @Param("restaurantId") Long restaurantId);
 
-    Optional<TrainingExamAssignment> findByIdAndExamIdAndRestaurantIdAndActiveTrue(Long id, Long examId, Long restaurantId);
-
     @Query("""
             select a from TrainingExamAssignment a
             where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.user.id = :userId
@@ -45,6 +43,22 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     Optional<TrainingExamAssignment> findCurrentActiveByExamAndUser(@Param("examId") Long examId,
                                                                     @Param("restaurantId") Long restaurantId,
                                                                     @Param("userId") Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.user.id = :userId
+              and a.active = true
+              and exists (
+                  select e.id from TrainingExam e
+                  where e = a.exam and a.examVersionSnapshot = e.version
+              )
+            """)
+    Optional<TrainingExamAssignment> findCurrentActiveForMutation(@Param("examId") Long examId,
+                                                                   @Param("restaurantId") Long restaurantId,
+                                                                   @Param("userId") Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -87,7 +101,14 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             Long userId
     );
 
-    List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndActiveTrue(Long examId, Long restaurantId);
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.active = true
+            """)
+    List<TrainingExamAssignment> findAllActiveAssignmentsForCycleTransition(@Param("examId") Long examId,
+                                                                             @Param("restaurantId") Long restaurantId);
 
     @Query("""
             select a from TrainingExamAssignment a
@@ -157,21 +178,24 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
                                                                              @Param("userIds") Collection<Long> userIds);
 
     @Query("""
-            select a from TrainingExamAssignment a
-            left join fetch a.user u
+            select count(a) from TrainingExamAssignment a
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.user.id = :userId
-            order by a.assignedAt desc
+              and a.examVersionSnapshot = a.exam.version
             """)
-    List<TrainingExamAssignment> findActiveHistoryByExamAndUser(@Param("examId") Long examId,
-                                                                @Param("restaurantId") Long restaurantId,
-                                                                @Param("userId") Long userId);
+    long countCurrentActive(@Param("examId") Long examId,
+                            @Param("restaurantId") Long restaurantId);
 
-    long countByExamIdAndRestaurantIdAndActiveTrue(Long examId, Long restaurantId);
-
-    long countByExamIdAndRestaurantIdAndActiveTrueAndStatusIn(Long examId,
-                                                              Long restaurantId,
-                                                              Collection<TrainingExamAssignmentStatus> statuses);
+    @Query("""
+            select count(a) from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.active = true
+              and a.examVersionSnapshot = a.exam.version
+              and a.status in :statuses
+            """)
+    long countCurrentActiveByStatusIn(@Param("examId") Long examId,
+                                      @Param("restaurantId") Long restaurantId,
+                                      @Param("statuses") Collection<TrainingExamAssignmentStatus> statuses);
 }

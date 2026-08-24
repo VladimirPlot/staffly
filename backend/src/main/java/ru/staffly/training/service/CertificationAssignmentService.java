@@ -1,10 +1,10 @@
 package ru.staffly.training.service;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.ConflictException;
-import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.training.model.*;
@@ -25,6 +25,7 @@ class CertificationAssignmentService {
     private final TrainingExamAttemptRepository attempts;
     private final RestaurantMemberRepository members;
     private final CertificationAssessmentSpecificationService specificationService;
+    private final EntityManager entityManager;
 
     @Transactional
     public TrainingExamAssignment resolveForStart(TrainingExam exam, Long restaurantId, Long userId) {
@@ -103,7 +104,8 @@ class CertificationAssignmentService {
         }
 
         var specification = specificationService.requireCurrent(exam);
-        var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
+        var activeAssignments = assignments.findAllActiveAssignmentsForCycleTransition(
+                exam.getId(), exam.getRestaurant().getId());
         for (var assignment : activeAssignments) {
             assignment.setActive(false);
         }
@@ -226,15 +228,15 @@ class CertificationAssignmentService {
 
     @Transactional
     public void fullResetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
-        var assignment = assignments.findCurrentActiveByExamAndUser(examId, restaurantId, userId)
-                .orElseThrow(() -> new NotFoundException("Assignment not found"));
-        assignment.setActive(false);
+        var assignment = lockCurrentForMutation(restaurantId, examId, userId);
 
         var memberPosition = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .map(RestaurantMember::getPosition)
                 .orElse(assignment.getAssignedPosition());
-        int nextGeneration = assignments.findMaxResetGeneration(
-                examId, userId, assignment.getExamVersionSnapshot()) + 1;
+        int nextGeneration = assignment.getResetGeneration() + 1;
+        assignment.setActive(false);
+        // Force the partial active-row uniqueness transition before inserting its successor.
+        assignments.flush();
         assignments.save(TrainingExamAssignment.builder()
                 .exam(assignment.getExam())
                 .restaurant(assignment.getRestaurant())
@@ -253,8 +255,7 @@ class CertificationAssignmentService {
 
     @Transactional
     public void reopenByGrantingExtraAttempts(Long restaurantId, Long examId, Long userId, int amount) {
-        var assignment = assignments.findCurrentActiveByExamAndUser(examId, restaurantId, userId)
-                .orElseThrow(() -> new NotFoundException("Assignment not found"));
+        var assignment = lockCurrentForMutation(restaurantId, examId, userId);
         assignment.setExtraAttempts(assignment.getExtraAttempts() + amount);
         reconcileDerivedStateFromFinishedAttempts(assignment);
         if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED
@@ -263,6 +264,25 @@ class CertificationAssignmentService {
             return;
         }
         refreshStatus(assignment, false);
+    }
+
+    private TrainingExamAssignment lockCurrentForMutation(Long restaurantId, Long examId, Long userId) {
+        var assignment = assignments.findCurrentActiveForMutation(examId, restaurantId, userId)
+                .orElseThrow(() -> new ConflictException("Назначение уже изменилось, обновите данные."));
+        entityManager.refresh(assignment);
+
+        var exam = assignment.getExam();
+        var specification = assignment.getAssessmentSpecification();
+        boolean exactCurrent = assignment.isActive()
+                && assignment.getExamVersionSnapshot() == exam.getVersion()
+                && specification.getVersion() == assignment.getExamVersionSnapshot()
+                && specification.getExam().getId().equals(exam.getId());
+        int maxGeneration = assignments.findMaxResetGeneration(
+                examId, userId, assignment.getExamVersionSnapshot());
+        if (!exactCurrent || maxGeneration != assignment.getResetGeneration()) {
+            throw new ConflictException("Назначение уже изменилось, обновите данные.");
+        }
+        return assignment;
     }
 
     public Integer calculateAttemptsAllowed(TrainingExamAssignment assignment) {

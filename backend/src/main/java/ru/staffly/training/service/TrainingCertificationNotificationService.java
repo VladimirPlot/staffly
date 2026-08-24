@@ -176,12 +176,12 @@ public class TrainingCertificationNotificationService {
         // Ensure aggregate counts include assignment status just finalized in this transaction.
         entityManager.flush();
 
-        long total = assignmentRepository.countByExamIdAndRestaurantIdAndActiveTrue(examId, restaurantId);
+        long total = assignmentRepository.countCurrentActive(examId, restaurantId);
         if (total <= 0) {
             return;
         }
 
-        long completed = assignmentRepository.countByExamIdAndRestaurantIdAndActiveTrueAndStatusIn(
+        long completed = assignmentRepository.countCurrentActiveByStatusIn(
                 examId,
                 restaurantId,
                 List.of(TrainingExamAssignmentStatus.PASSED, TrainingExamAssignmentStatus.FAILED)
