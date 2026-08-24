@@ -82,6 +82,22 @@ class ExamQuestionPoolResolver {
         return assembleQuestionPool(selections, explicitQuestions);
     }
 
+    ResolvedQuestionPool buildQuestionPool(Long restaurantId,
+                                           CertificationAssessmentSpecification specification) {
+        var explicitIds = specification.getQuestionSources().stream()
+                .map(source -> source.getQuestion().getId()).distinct().toList();
+        var explicitQuestions = explicitIds.isEmpty() ? List.<TrainingQuestion>of()
+                : questions.findActiveByRestaurantIdAndIdIn(restaurantId, explicitIds).stream()
+                        .filter(question -> question.getQuestionGroup() == TrainingQuestionGroup.CERTIFICATION)
+                        .toList();
+        var selections = specification.getFolderSources().stream()
+                .map(source -> new FolderSelection(source.getPickMode(), source.getRandomCount(),
+                        questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                                restaurantId, source.getFolder().getId(), TrainingQuestionGroup.CERTIFICATION)))
+                .toList();
+        return assembleQuestionPool(selections, explicitQuestions);
+    }
+
     private List<TrainingQuestion> resolveAndValidateExplicitQuestions(Long restaurantId,
                                                                         Long userId,
                                                                         TrainingQuestionGroup group,
