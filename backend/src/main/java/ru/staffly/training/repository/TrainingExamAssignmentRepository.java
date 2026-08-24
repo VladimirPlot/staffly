@@ -99,6 +99,22 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     List<TrainingExamAssignment> findActiveByRestaurantIdAndExamIds(@Param("restaurantId") Long restaurantId,
                                                                     @Param("examIds") Collection<Long> examIds);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            join fetch a.exam e
+            where a.restaurant.id = :restaurantId
+              and a.active = true
+              and a.examVersionSnapshot = e.version
+              and e.id in :examIds
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findCurrentAnalyticsScopeForUpdate(
+            @Param("restaurantId") Long restaurantId,
+            @Param("examIds") Collection<Long> examIds
+    );
+
     @Query("""
             select a from TrainingExamAssignment a
             left join fetch a.assignedPosition ap

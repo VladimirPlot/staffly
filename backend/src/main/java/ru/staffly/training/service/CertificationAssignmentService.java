@@ -175,6 +175,12 @@ class CertificationAssignmentService {
                 assignment.getId(),
                 assignment.getExamVersionSnapshot()
         );
+        reconcileDerivedStateFromFinishedAttempts(assignment, finishedAttempts);
+    }
+
+    // Batch callers may preload the same canonical attempt set without changing the formula.
+    public void reconcileDerivedStateFromFinishedAttempts(TrainingExamAssignment assignment,
+                                                           List<TrainingExamAttempt> finishedAttempts) {
         assignment.setAttemptsUsed(finishedAttempts.size());
         assignment.setLastAttemptAt(finishedAttempts.stream()
                 .map(TrainingExamAttempt::getFinishedAt)

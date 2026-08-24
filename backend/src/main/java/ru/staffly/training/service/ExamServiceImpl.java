@@ -64,7 +64,7 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly) {
         TrainingExamMode modeFilter = certificationOnly == null
                 ? null
