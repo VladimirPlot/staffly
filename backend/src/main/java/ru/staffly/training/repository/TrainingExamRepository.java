@@ -2,14 +2,20 @@ package ru.staffly.training.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamMode;
 
 import java.util.List;
 import java.util.Optional;
+import jakarta.persistence.LockModeType;
 
 public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from TrainingExam e where e.id = :id and e.restaurant.id = :restaurantId")
+    Optional<TrainingExam> findByIdAndRestaurantIdForUpdate(@Param("id") Long id,
+                                                            @Param("restaurantId") Long restaurantId);
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
