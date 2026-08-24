@@ -28,13 +28,21 @@ class CertificationAssignmentService {
 
     @Transactional
     public TrainingExamAssignment resolveForStart(TrainingExam exam, Long restaurantId, Long userId) {
-        return assignments.findActiveForStartUpdate(exam.getId(), restaurantId, userId)
-                .orElseThrow(() -> new ConflictException("Для вас нет активного назначения на эту аттестацию."));
+        var specification = specificationService.requireCurrent(exam);
+        var assignment = assignments.findActiveForStartUpdate(
+                        exam.getId(), restaurantId, userId, exam.getVersion(), specification.getId())
+                .orElseThrow(() -> new ConflictException("Для вас нет активного назначения на текущий цикл аттестации."));
+        if (attempts.existsByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNull(exam.getId(), restaurantId, userId)
+                && attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+                        assignment.getId(), assignment.getExamVersionSnapshot()).isEmpty()) {
+            throw new ConflictException("Сначала завершите попытку предыдущего цикла аттестации.");
+        }
+        return assignment;
     }
 
     @Transactional(readOnly = true)
     public Optional<TrainingExamAssignment> findActiveForExamAndUser(Long examId, Long restaurantId, Long userId) {
-        return assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId);
+        return assignments.findCurrentActiveByExamAndUser(examId, restaurantId, userId);
     }
 
     @Transactional
@@ -51,22 +59,32 @@ class CertificationAssignmentService {
         var audience = resolveAudienceMembers(exam);
         var audienceUserIds = audience.stream().map(member -> member.getUser().getId()).collect(Collectors.toSet());
 
-        var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
-        var activeByUserId = activeAssignments.stream()
-                .collect(Collectors.toMap(a -> a.getUser().getId(), Function.identity(), (first, second) -> first));
+        var cycleAssignments = assignments.findByExamIdAndRestaurantIdAndExamVersionSnapshot(
+                exam.getId(), exam.getRestaurant().getId(), exam.getVersion());
+        var cycleByUserId = cycleAssignments.stream()
+                .collect(Collectors.toMap(
+                        a -> a.getUser().getId(),
+                        Function.identity(),
+                        this::preferCurrentGeneration));
 
         var createdAssignments = new java.util.ArrayList<TrainingExamAssignment>();
         for (var member : audience) {
-            var existing = activeByUserId.get(member.getUser().getId());
+            var existing = cycleByUserId.get(member.getUser().getId());
             if (existing == null) {
                 createdAssignments.add(assignments.save(createAssignment(exam, member)));
                 continue;
             }
             existing.setAssignedPosition(member.getPosition());
+            existing.setActive(true);
+            if (existing.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
+                reconcileDerivedStateFromFinishedAttempts(existing);
+                existing.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+                refreshStatus(existing, attempts.existsByAssignmentIdAndFinishedAtIsNull(existing.getId()));
+            }
         }
 
-        for (var assignment : activeAssignments) {
-            if (!audienceUserIds.contains(assignment.getUser().getId())) {
+        for (var assignment : cycleByUserId.values()) {
+            if (assignment.isActive() && !audienceUserIds.contains(assignment.getUser().getId())) {
                 assignment.setActive(false);
                 assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
             }
@@ -75,33 +93,28 @@ class CertificationAssignmentService {
     }
 
     private void archiveAllActiveAssignments(TrainingExam exam) {
-        var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
-        for (var assignment : activeAssignments) {
+        var currentAssignments = assignments.findByExamIdAndRestaurantIdAndExamVersionSnapshotAndActiveTrue(
+                exam.getId(), exam.getRestaurant().getId(), exam.getVersion());
+        for (var assignment : currentAssignments) {
             assignment.setActive(false);
             assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
         }
     }
 
     @Transactional
-    public void resetAssignmentsForNewCycle(TrainingExam exam) {
+    public List<TrainingExamAssignment> createAssignmentsForNewCycle(TrainingExam exam) {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            return;
+            return List.of();
         }
 
         var specification = specificationService.requireCurrent(exam);
         var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
         for (var assignment : activeAssignments) {
-            // TODO 7G.2: replace this transitional in-place cycle reset with a new assignment cycle row.
-            assignment.setAssessmentSpecification(specification);
-            assignment.setAttemptsLimitSnapshot(specification.getAttemptLimit());
-            assignment.setExamVersionSnapshot(specification.getVersion());
-            assignment.setExtraAttempts(0);
-            assignment.setAttemptsUsed(0);
-            assignment.setBestScore(null);
-            assignment.setLastAttemptAt(null);
-            assignment.setPassedAt(null);
-            assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+            assignment.setActive(false);
         }
+        return resolveAudienceMembers(exam).stream()
+                .map(member -> assignments.save(createAssignment(exam, member, specification)))
+                .toList();
     }
 
     public void ensureAttemptsAvailable(TrainingExamAssignment assignment) {
@@ -209,28 +222,26 @@ class CertificationAssignmentService {
 
     @Transactional
     public void fullResetEmployeeAttempts(Long restaurantId, Long examId, Long userId) {
-        var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
+        var assignment = assignments.findCurrentActiveByExamAndUser(examId, restaurantId, userId)
                 .orElseThrow(() -> new NotFoundException("Assignment not found"));
         assignment.setActive(false);
-        assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
 
         var memberPosition = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .map(RestaurantMember::getPosition)
-                .orElse(null);
-        var assignedPosition = memberPosition != null ? memberPosition : assignment.getAssignedPosition();
+                .orElse(assignment.getAssignedPosition());
+        int nextGeneration = assignments.findMaxResetGeneration(
+                examId, userId, assignment.getExamVersionSnapshot()) + 1;
         assignments.save(TrainingExamAssignment.builder()
                 .exam(assignment.getExam())
                 .restaurant(assignment.getRestaurant())
                 .user(assignment.getUser())
-                .assignedPosition(assignedPosition)
-                .attemptsLimitSnapshot(assignment.getExam().getAttemptLimit())
-                .examVersionSnapshot(assignment.getExam().getVersion())
-                .assessmentSpecification(specificationService.requireCurrent(assignment.getExam()))
+                .assignedPosition(memberPosition)
+                .assessmentSpecification(assignment.getAssessmentSpecification())
+                .attemptsLimitSnapshot(assignment.getAttemptsLimitSnapshot())
+                .examVersionSnapshot(assignment.getExamVersionSnapshot())
+                .resetGeneration(nextGeneration)
                 .extraAttempts(0)
                 .attemptsUsed(0)
-                .bestScore(null)
-                .lastAttemptAt(null)
-                .passedAt(null)
                 .status(TrainingExamAssignmentStatus.ASSIGNED)
                 .active(true)
                 .build());
@@ -238,7 +249,7 @@ class CertificationAssignmentService {
 
     @Transactional
     public void reopenByGrantingExtraAttempts(Long restaurantId, Long examId, Long userId, int amount) {
-        var assignment = assignments.findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(examId, restaurantId, userId)
+        var assignment = assignments.findCurrentActiveByExamAndUser(examId, restaurantId, userId)
                 .orElseThrow(() -> new NotFoundException("Assignment not found"));
         assignment.setExtraAttempts(assignment.getExtraAttempts() + amount);
         reconcileDerivedStateFromFinishedAttempts(assignment);
@@ -269,7 +280,12 @@ class CertificationAssignmentService {
     }
 
     private TrainingExamAssignment createAssignment(TrainingExam exam, RestaurantMember member) {
-        var specification = specificationService.requireCurrent(exam);
+        return createAssignment(exam, member, specificationService.requireCurrent(exam));
+    }
+
+    private TrainingExamAssignment createAssignment(TrainingExam exam,
+                                                    RestaurantMember member,
+                                                    CertificationAssessmentSpecification specification) {
         return TrainingExamAssignment.builder()
                 .exam(exam)
                 .restaurant(exam.getRestaurant())
@@ -281,5 +297,13 @@ class CertificationAssignmentService {
                 .status(TrainingExamAssignmentStatus.ASSIGNED)
                 .active(true)
                 .build();
+    }
+
+    private TrainingExamAssignment preferCurrentGeneration(TrainingExamAssignment first,
+                                                            TrainingExamAssignment second) {
+        if (first.isActive() != second.isActive()) {
+            return first.isActive() ? first : second;
+        }
+        return first.getResetGeneration() >= second.getResetGeneration() ? first : second;
     }
 }
