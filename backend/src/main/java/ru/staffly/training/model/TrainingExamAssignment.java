@@ -68,6 +68,11 @@ public class TrainingExamAssignment {
     @JoinColumn(name = "assessment_specification_id", nullable = false)
     private CertificationAssessmentSpecification assessmentSpecification;
 
+    /** Null only for assignments created by lifecycle paths predating cycle integration. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignment_cycle_id")
+    private CertificationAssignmentCycle assignmentCycle;
+
     @Column(name = "extra_attempts", nullable = false)
     @Builder.Default
     private int extraAttempts = 0;
@@ -93,6 +98,15 @@ public class TrainingExamAssignment {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "deactivation_reason", length = 32)
+    private TrainingExamAssignmentDeactivationReason deactivationReason;
+
+    /** Historical successor link. Deliberately has no cascading operations. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "replaced_by_assignment_id")
+    private TrainingExamAssignment replacedByAssignment;
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default
