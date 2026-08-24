@@ -59,6 +59,10 @@ public class TrainingExamAssignment {
     @Column(name = "exam_version_snapshot", nullable = false)
     private int examVersionSnapshot;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "assessment_specification_id", nullable = false)
+    private CertificationAssessmentSpecification assessmentSpecification;
+
     @Column(name = "extra_attempts", nullable = false)
     @Builder.Default
     private int extraAttempts = 0;

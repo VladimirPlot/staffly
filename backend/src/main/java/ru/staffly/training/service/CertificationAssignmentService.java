@@ -24,6 +24,7 @@ class CertificationAssignmentService {
     private final TrainingExamAssignmentRepository assignments;
     private final TrainingExamAttemptRepository attempts;
     private final RestaurantMemberRepository members;
+    private final CertificationAssessmentSpecificationService specificationService;
 
     @Transactional
     public TrainingExamAssignment resolveForStart(TrainingExam exam, Long restaurantId, Long userId) {
@@ -87,10 +88,13 @@ class CertificationAssignmentService {
             return;
         }
 
+        var specification = specificationService.requireCurrent(exam);
         var activeAssignments = assignments.findByExamIdAndRestaurantIdAndActiveTrue(exam.getId(), exam.getRestaurant().getId());
         for (var assignment : activeAssignments) {
-            assignment.setAttemptsLimitSnapshot(exam.getAttemptLimit());
-            assignment.setExamVersionSnapshot(exam.getVersion());
+            // TODO 7G.2: replace this transitional in-place cycle reset with a new assignment cycle row.
+            assignment.setAssessmentSpecification(specification);
+            assignment.setAttemptsLimitSnapshot(specification.getAttemptLimit());
+            assignment.setExamVersionSnapshot(specification.getVersion());
             assignment.setExtraAttempts(0);
             assignment.setAttemptsUsed(0);
             assignment.setBestScore(null);
@@ -221,6 +225,7 @@ class CertificationAssignmentService {
                 .assignedPosition(assignedPosition)
                 .attemptsLimitSnapshot(assignment.getExam().getAttemptLimit())
                 .examVersionSnapshot(assignment.getExam().getVersion())
+                .assessmentSpecification(specificationService.requireCurrent(assignment.getExam()))
                 .extraAttempts(0)
                 .attemptsUsed(0)
                 .bestScore(null)
@@ -264,13 +269,15 @@ class CertificationAssignmentService {
     }
 
     private TrainingExamAssignment createAssignment(TrainingExam exam, RestaurantMember member) {
+        var specification = specificationService.requireCurrent(exam);
         return TrainingExamAssignment.builder()
                 .exam(exam)
                 .restaurant(exam.getRestaurant())
                 .user(member.getUser())
                 .assignedPosition(member.getPosition())
-                .attemptsLimitSnapshot(exam.getAttemptLimit())
-                .examVersionSnapshot(exam.getVersion())
+                .assessmentSpecification(specification)
+                .attemptsLimitSnapshot(specification.getAttemptLimit())
+                .examVersionSnapshot(specification.getVersion())
                 .status(TrainingExamAssignmentStatus.ASSIGNED)
                 .active(true)
                 .build();

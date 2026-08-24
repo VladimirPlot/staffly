@@ -57,6 +57,7 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
     private final CertificationFolderManagementService certificationFolderManagementService;
+    private final CertificationAssessmentSpecificationService certificationSpecificationService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
     private final TrainingCertificationNotificationService trainingCertificationNotificationService;
     private final TrainingActiveContainerValidator activeContainerValidator;
@@ -167,6 +168,9 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            certificationSpecificationService.createCurrent(exam);
+        }
         certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam, null);
     }
@@ -239,8 +243,6 @@ public class ExamServiceImpl implements ExamService {
         // A sources-only replacement does not dirty TrainingExam itself, so force a
         // versioned write for every successful full-replace editor save.
         entityManager.lock(exam, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
-        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
-                request.sourceQuestionIds(), request.questionCount());
         var previousVisibilityPositionIds = exam.getVisibilityPositions().stream()
                 .map(Position::getId)
                 .collect(Collectors.toSet());
@@ -251,6 +253,13 @@ public class ExamServiceImpl implements ExamService {
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
         }
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            certificationSpecificationService.assertMaterialUnchanged(
+                    exam, request.sourcesFolders(), request.sourceQuestionIds(), request.questionCount(),
+                    request.passPercent(), request.timeLimitSec(), request.attemptLimit());
+        }
+        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
+                request.sourceQuestionIds(), request.questionCount());
         if (request.mode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
             activeContainerValidator.requireActiveChain(exam.getFolder());
         }
@@ -371,8 +380,23 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
+        validateSourceCapacity(
+                restaurantId,
+                userId,
+                exam.getMode(),
+                sourceFolders.findByExamId(exam.getId()).stream()
+                        .map(source -> new ExamSourceFolderDto(
+                                source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                        .toList(),
+                sourceQuestions.findByExamId(exam.getId()).stream()
+                        .map(source -> source.getQuestion().getId())
+                        .toList(),
+                exam.getQuestionCount()
+        );
         certificationAudienceSyncService.syncExamAudience(exam);
         startNewCertificationCycle(exam);
+        exams.flush();
+        certificationSpecificationService.createCurrent(exam);
         certificationAssignmentService.resetAssignmentsForNewCycle(exam);
         trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
     }
@@ -444,17 +468,29 @@ public class ExamServiceImpl implements ExamService {
             enforceAttemptLimit(exam, restaurantId, userId, attemptVersion);
         }
 
-        var pool = questionPoolResolver.buildQuestionPool(restaurantId, exam);
+        var specification = assignment == null ? null : assignment.getAssessmentSpecification();
+        if (specification != null
+                && (!Objects.equals(specification.getExam().getId(), exam.getId())
+                || specification.getVersion() != assignment.getExamVersionSnapshot())) {
+            throw new IllegalStateException("Assignment certification specification is inconsistent");
+        }
+        var pool = specification == null
+                ? questionPoolResolver.buildQuestionPool(restaurantId, exam)
+                : questionPoolResolver.buildQuestionPool(restaurantId, specification);
         if (pool.questions().isEmpty()) {
             throw new BadRequestException("No questions in exam scope");
         }
 
-        var selectedQuestions = pickQuestionsForAttempt(pool, exam.getQuestionCount());
+        int runtimeQuestionCount = specification == null ? exam.getQuestionCount() : specification.getQuestionCount();
+        var selectedQuestions = pickQuestionsForAttempt(pool, runtimeQuestionCount);
+        if (selectedQuestions.size() != runtimeQuestionCount) {
+            throw new BadRequestException("Не удалось сформировать точное количество вопросов для попытки.");
+        }
         var relationData = loadQuestionRelations(selectedQuestions);
         TrainingExamAttempt attempt;
         List<AttemptQuestionSnapshotDto> snapshots;
         try {
-            attempt = createAttempt(exam, userId, assignment, attemptVersion, now);
+            attempt = createAttempt(exam, userId, assignment, specification, attemptVersion, now);
             snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
         } catch (DataIntegrityViolationException duplicateStartError) {
             var resumed = attempts.findTopUnfinishedForStartContext(examId, restaurantId, userId, attemptVersion, assignmentId)
@@ -767,6 +803,7 @@ public class ExamServiceImpl implements ExamService {
     private TrainingExamAttempt createAttempt(TrainingExam exam,
                                               Long userId,
                                               TrainingExamAssignment assignment,
+                                              CertificationAssessmentSpecification specification,
                                               int examVersion,
                                               Instant now) {
         return attempts.save(TrainingExamAttempt.builder()
@@ -776,10 +813,10 @@ public class ExamServiceImpl implements ExamService {
                 .assignment(assignment)
                 .user(User.builder().id(userId).build())
                 .startedAt(now)
-                .passPercentSnapshot(exam.getPassPercent())
+                .passPercentSnapshot(specification == null ? exam.getPassPercent() : specification.getPassPercent())
                 .titleSnapshot(exam.getTitle())
-                .questionCountSnapshot(exam.getQuestionCount())
-                .timeLimitSecSnapshot(exam.getTimeLimitSec())
+                .questionCountSnapshot(specification == null ? exam.getQuestionCount() : specification.getQuestionCount())
+                .timeLimitSecSnapshot(specification == null ? exam.getTimeLimitSec() : specification.getTimeLimitSec())
                 .build());
     }
 
