@@ -32,11 +32,6 @@ class CertificationAssignmentService {
         var assignment = assignments.findActiveForStartUpdate(
                         exam.getId(), restaurantId, userId, exam.getVersion(), specification.getId())
                 .orElseThrow(() -> new ConflictException("Для вас нет активного назначения на текущий цикл аттестации."));
-        if (attempts.existsByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNull(exam.getId(), restaurantId, userId)
-                && attempts.findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
-                        assignment.getId(), assignment.getExamVersionSnapshot()).isEmpty()) {
-            throw new ConflictException("Сначала завершите попытку предыдущего цикла аттестации.");
-        }
         return assignment;
     }
 
