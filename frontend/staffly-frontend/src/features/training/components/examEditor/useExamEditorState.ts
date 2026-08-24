@@ -369,7 +369,7 @@ export function useExamEditorState({
           ...payload,
           active: exam.active,
           expectedEditorRevision: exam.editorRevision,
-          confirmNewCycle: false,
+          confirmNewVersion: false,
         };
         await updateExam(restaurantId, exam.id, attemptedUpdatePayload);
       } else if (mode === "PRACTICE") {
@@ -402,7 +402,7 @@ export function useExamEditorState({
     }
   };
 
-  const confirmNewCycle = async () => {
+  const confirmNewVersion = async () => {
     if (!exam || !newCycleConfirmation) return;
 
     // This is deliberately not the normal save path: confirmation must submit
@@ -415,7 +415,7 @@ export function useExamEditorState({
     try {
       await updateExam(restaurantId, exam.id, {
         ...frozenPayload,
-        confirmNewCycle: true,
+        confirmNewVersion: true,
       });
       await onSaved();
       onClose();
@@ -470,6 +470,6 @@ export function useExamEditorState({
     submit: () => void save(),
     newCycleConfirmation,
     cancelNewCycleConfirmation: () => setNewCycleConfirmation(null),
-    confirmNewCycle: () => void confirmNewCycle(),
+    confirmNewVersion: () => void confirmNewVersion(),
   };
 }
