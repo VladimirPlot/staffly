@@ -323,7 +323,7 @@ public class ExamServiceImpl implements ExamService {
             // Sources and the final audience are already in place. Bump before creating
             // either specification or assignments so no transient old-cycle assignment
             // can be created for a newly-added audience member.
-            startNewCertificationCycle(exam);
+            advanceCertificationMaterialVersion(exam);
             exams.flush();
             var specification = certificationSpecificationService.createCurrent(exam);
             var publicationCycle = certificationAssignmentCycleService.createPublicationCycle(
@@ -410,8 +410,30 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
-        requireManageableCertificationExamMutation(restaurantId, userId, examId);
-        throw new ConflictException("Повторная аттестация временно недоступна до обновления жизненного цикла.");
+        var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
+        if (!exam.isActive()) {
+            throw new ConflictException("Аттестация неактивна.");
+        }
+        activeContainerValidator.requireActiveChain(exam.getFolder());
+        validateSourceCapacity(
+                restaurantId,
+                userId,
+                exam.getMode(),
+                sourceFolders.findByExamId(exam.getId()).stream()
+                        .map(source -> new ExamSourceFolderDto(
+                                source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                        .toList(),
+                sourceQuestions.findByExamId(exam.getId()).stream()
+                        .map(source -> source.getQuestion().getId())
+                        .toList(),
+                exam.getQuestionCount()
+        );
+        var specification = certificationSpecificationService.requireCurrent(exam);
+        var cycle = certificationAssignmentCycleService.createRecertificationCycle(
+                exam, specification, entityManager.getReference(User.class, userId));
+        var created = certificationAssignmentService.launchRecertificationCycle(exam, specification, cycle);
+        trainingCertificationNotificationService.notifyAssignmentsCreated(exam, created);
+        exams.flush();
     }
 
     @Override
@@ -623,9 +645,8 @@ public class ExamServiceImpl implements ExamService {
         return trainingExamOwnershipService.getOwnerCandidates(restaurantId, actorUserId, examId);
     }
 
-    private void startNewCertificationCycle(TrainingExam exam) {
-        // certification reset-cycle открывает новый глобальный assignment cycle.
-        // Это не per-user reset: все новые попытки пишутся под новой версией экзамена.
+    private void advanceCertificationMaterialVersion(TrainingExam exam) {
+        // Only immutable material publication advances the content version.
         exam.setVersion(exam.getVersion() + 1);
     }
 

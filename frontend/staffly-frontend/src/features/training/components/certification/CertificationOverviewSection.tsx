@@ -24,6 +24,15 @@ export default function CertificationOverviewSection({ canManage, exam, summaryS
     );
   }
 
+  const launchRecertification = () => {
+    const confirmed = window.confirm(
+      "Всем сотрудникам текущей аудитории будет назначено повторное прохождение актуальной версии теста.\n\n" +
+        "Предыдущие результаты сохранятся.\n\n" +
+        "Если сотрудник уже проходит предыдущую попытку, он сможет завершить её, но после этого ему всё равно потребуется пройти новый цикл.",
+    );
+    if (confirmed) void managerActions.resetExamCycle();
+  };
+
   return (
     <Card className="space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -38,9 +47,9 @@ export default function CertificationOverviewSection({ canManage, exam, summaryS
             leftIcon={<Icon icon={RotateCcw} size="xs" />}
             className="shrink-0 self-start"
             isLoading={managerActions.loadingActionKey === "reset:exam"}
-            onClick={() => void managerActions.resetExamCycle()}
+            onClick={launchRecertification}
           >
-            Глобально сбросить цикл
+            Запустить новый цикл аттестации
           </Button>
         )}
       </div>
