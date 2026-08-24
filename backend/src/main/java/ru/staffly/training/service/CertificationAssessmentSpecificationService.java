@@ -14,9 +14,6 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 class CertificationAssessmentSpecificationService {
-    static final String MATERIAL_CHANGE_ERROR =
-            "Изменение вопросов или правил аттестации требует нового цикла.";
-
     private final CertificationAssessmentSpecificationRepository specifications;
     private final CertificationAssessmentFolderSourceRepository specificationFolders;
     private final CertificationAssessmentQuestionSourceRepository specificationQuestions;
@@ -61,13 +58,13 @@ class CertificationAssessmentSpecificationService {
                         "Missing certification specification for exam " + exam.getId() + " version " + exam.getVersion()));
     }
 
-    void assertMaterialUnchanged(TrainingExam exam,
-                                 List<ExamSourceFolderDto> requestedFolders,
-                                 List<Long> requestedQuestionIds,
-                                 int questionCount,
-                                 int passPercent,
-                                 Integer timeLimitSec,
-                                 Integer attemptLimit) {
+    MaterialDiff materialDiff(TrainingExam exam,
+                              List<ExamSourceFolderDto> requestedFolders,
+                              List<Long> requestedQuestionIds,
+                              int questionCount,
+                              int passPercent,
+                              Integer timeLimitSec,
+                              Integer attemptLimit) {
         var specification = requireCurrent(exam);
         var expectedFolders = specification.getFolderSources().stream()
                 .map(source -> new FolderDefinition(source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
@@ -83,15 +80,16 @@ class CertificationAssessmentSpecificationService {
                 .map(source -> source.getQuestion().getId()).distinct().sorted().toList();
         var actualQuestions = (requestedQuestionIds == null ? List.<Long>of() : requestedQuestionIds).stream()
                 .filter(Objects::nonNull).distinct().sorted().toList();
-        if (questionCount != specification.getQuestionCount()
-                || passPercent != specification.getPassPercent()
-                || !Objects.equals(timeLimitSec, specification.getTimeLimitSec())
-                || !Objects.equals(attemptLimit, specification.getAttemptLimit())
-                || !expectedFolders.equals(actualFolders)
-                || !expectedQuestions.equals(actualQuestions)) {
-            throw new ConflictException(MATERIAL_CHANGE_ERROR);
-        }
+        var changedFields = new java.util.ArrayList<String>();
+        if (!expectedFolders.equals(actualFolders)) changedFields.add("sourcesFolders");
+        if (!expectedQuestions.equals(actualQuestions)) changedFields.add("sourceQuestionIds");
+        if (questionCount != specification.getQuestionCount()) changedFields.add("questionCount");
+        if (passPercent != specification.getPassPercent()) changedFields.add("passPercent");
+        if (!Objects.equals(timeLimitSec, specification.getTimeLimitSec())) changedFields.add("timeLimitSec");
+        if (!Objects.equals(attemptLimit, specification.getAttemptLimit())) changedFields.add("attemptLimit");
+        return new MaterialDiff(!changedFields.isEmpty(), List.copyOf(changedFields));
     }
 
+    record MaterialDiff(boolean materialChanged, List<String> changedFields) {}
     private record FolderDefinition(Long folderId, TrainingExamSourcePickMode pickMode, Integer randomCount) {}
 }

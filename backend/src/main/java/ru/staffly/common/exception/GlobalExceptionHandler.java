@@ -17,6 +17,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.persistence.OptimisticLockException;
 import ru.staffly.training.exception.StaleExamRevisionException;
+import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.TrainingExam;
 
 import java.util.stream.Collectors;
@@ -89,6 +90,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleStaleExamRevision(StaleExamRevisionException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(StaleExamRevisionException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(MaterialChangeRequiresNewCycleException.class)
+    public ResponseEntity<ErrorResponse> handleMaterialChangeRequiresNewCycle(MaterialChangeRequiresNewCycleException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(MaterialChangeRequiresNewCycleException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
     }
 
     @ExceptionHandler({ OptimisticLockException.class, ObjectOptimisticLockingFailureException.class })
