@@ -8,7 +8,7 @@ import {
   preflightExamSources,
   updateExam,
 } from "../../api/trainingApi";
-import type { QuestionBankTreeNodeDto } from "../../api/types";
+import type { QuestionBankTreeNodeDto, UpsertExamPayload } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
 import { parseTrainingApiError } from "../../utils/trainingApiError";
 import { getManageablePositions } from "../../utils/certificationRoleScope";
@@ -53,6 +53,10 @@ export function useExamEditorState({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [staleConflict, setStaleConflict] = useState(false);
+  const [newCycleConfirmation, setNewCycleConfirmation] = useState<{
+    metadata: Record<string, unknown>;
+    payload: UpsertExamPayload;
+  } | null>(null);
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [totalQuestions, setTotalQuestions] = useState(0);
@@ -77,6 +81,7 @@ export function useExamEditorState({
     });
     setError(null);
     setStaleConflict(false);
+    setNewCycleConfirmation(null);
     setPositionMenuOpen(false);
   }, [open, exam]);
 
@@ -307,7 +312,7 @@ export function useExamEditorState({
     }));
   };
 
-  const submit = async () => {
+  const save = async () => {
     if (!form.title.trim()) {
       setError("Название обязательно.");
       return;
@@ -331,6 +336,7 @@ export function useExamEditorState({
     setSaving(true);
     setError(null);
 
+    let attemptedUpdatePayload: UpsertExamPayload | null = null;
     try {
       const preflight = await preflightExamSources(restaurantId, {
         mode,
@@ -343,7 +349,7 @@ export function useExamEditorState({
         return;
       }
       const authoritativeQuestionCount = preflight.availableQuestionCount;
-      const payload = {
+      const payload: UpsertExamPayload = {
         title: form.title.trim(),
         description: form.description.trim() || null,
         mode,
@@ -353,17 +359,19 @@ export function useExamEditorState({
         passPercent: form.passPercent,
         timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
         attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
-        visibilityPositionIds: normalizeVisibilityForSubmit(mode, form.visibilityPositionIds),
-        sourcesFolders: form.sourcesFolders,
-        sourceQuestionIds: form.sourceQuestionIds,
+        visibilityPositionIds: [...normalizeVisibilityForSubmit(mode, form.visibilityPositionIds)],
+        sourcesFolders: form.sourcesFolders.map((source) => ({ ...source })),
+        sourceQuestionIds: [...form.sourceQuestionIds],
       };
 
       if (exam) {
-        await updateExam(restaurantId, exam.id, {
+        attemptedUpdatePayload = {
           ...payload,
           active: exam.active,
           expectedEditorRevision: exam.editorRevision,
-        });
+          confirmNewCycle: false,
+        };
+        await updateExam(restaurantId, exam.id, attemptedUpdatePayload);
       } else if (mode === "PRACTICE") {
         await createKnowledgeExam(restaurantId, payload);
       } else {
@@ -375,6 +383,46 @@ export function useExamEditorState({
     } catch (submitError) {
       const parsedError = parseTrainingApiError(submitError);
       if (exam && parsedError.payload?.error === "STALE_EXAM_REVISION") {
+        setNewCycleConfirmation(null);
+        setStaleConflict(true);
+        setError("Тест уже изменён другим пользователем. Обновите данные перед сохранением.");
+      } else if (exam && parsedError.payload?.error === "MATERIAL_CHANGE_REQUIRES_NEW_CYCLE") {
+        if (attemptedUpdatePayload) {
+          setNewCycleConfirmation({
+            metadata: parsedError.payload.meta ?? {},
+            payload: attemptedUpdatePayload,
+          });
+        }
+        setError(null);
+      } else {
+        setError(getTrainingErrorMessage(submitError, "Не удалось сохранить тест."));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmNewCycle = async () => {
+    if (!exam || !newCycleConfirmation) return;
+
+    // This is deliberately not the normal save path: confirmation must submit
+    // exactly the full-replace payload that produced the warning, without a new
+    // source preflight or a rebuild from possibly changed form state.
+    const frozenPayload = newCycleConfirmation.payload;
+    setSaving(true);
+    setError(null);
+
+    try {
+      await updateExam(restaurantId, exam.id, {
+        ...frozenPayload,
+        confirmNewCycle: true,
+      });
+      await onSaved();
+      onClose();
+    } catch (submitError) {
+      const parsedError = parseTrainingApiError(submitError);
+      setNewCycleConfirmation(null);
+      if (parsedError.payload?.error === "STALE_EXAM_REVISION") {
         setStaleConflict(true);
         setError("Тест уже изменён другим пользователем. Обновите данные перед сохранением.");
       } else {
@@ -419,6 +467,9 @@ export function useExamEditorState({
     updateFolderPickMode,
     updateFolderRandomCount,
     toggleQuestion,
-    submit,
+    submit: () => void save(),
+    newCycleConfirmation,
+    cancelNewCycleConfirmation: () => setNewCycleConfirmation(null),
+    confirmNewCycle: () => void confirmNewCycle(),
   };
 }

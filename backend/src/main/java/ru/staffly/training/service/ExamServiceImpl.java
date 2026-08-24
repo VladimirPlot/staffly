@@ -16,6 +16,7 @@ import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.exception.StaleExamRevisionException;
+import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
 import ru.staffly.user.model.User;
@@ -240,9 +241,6 @@ public class ExamServiceImpl implements ExamService {
         if (!Objects.equals(exam.getEditorRevision(), request.expectedEditorRevision())) {
             throw new StaleExamRevisionException(exam.getId(), exam.getEditorRevision());
         }
-        // A sources-only replacement does not dirty TrainingExam itself, so force a
-        // versioned write for every successful full-replace editor save.
-        entityManager.lock(exam, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
         var previousVisibilityPositionIds = exam.getVisibilityPositions().stream()
                 .map(Position::getId)
                 .collect(Collectors.toSet());
@@ -253,11 +251,20 @@ public class ExamServiceImpl implements ExamService {
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
         }
+        boolean materialChanged = false;
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
-            certificationSpecificationService.assertMaterialUnchanged(
+            var materialDiff = certificationSpecificationService.materialDiff(
                     exam, request.sourcesFolders(), request.sourceQuestionIds(), request.questionCount(),
                     request.passPercent(), request.timeLimitSec(), request.attemptLimit());
+            materialChanged = materialDiff.materialChanged();
+            if (materialChanged && !Boolean.TRUE.equals(request.confirmNewCycle())) {
+                throw new MaterialChangeRequiresNewCycleException(
+                        exam.getId(), exam.getVersion(), materialDiff.changedFields());
+            }
         }
+        // Only accepted saves force editorRevision. In particular, the material-change
+        // preview above must leave the editor token and every projection untouched.
+        entityManager.lock(exam, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
         validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
                 request.sourceQuestionIds(), request.questionCount());
         if (request.mode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
@@ -309,7 +316,17 @@ public class ExamServiceImpl implements ExamService {
         var visibilityPositionIds = exam.getVisibilityPositions().stream()
                 .map(Position::getId)
                 .collect(Collectors.toSet());
-        if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
+        if (materialChanged) {
+            // Sources and the final audience are already in place. Bump before creating
+            // either specification or assignments so no transient old-cycle assignment
+            // can be created for a newly-added audience member.
+            startNewCertificationCycle(exam);
+            exams.flush();
+            certificationSpecificationService.createCurrent(exam);
+            var createdAssignments = certificationAssignmentService.createAssignmentsForNewCycle(exam);
+            trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
+            trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
+        } else if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
             certificationAudienceSyncService.syncExamAudience(exam);
         }
         // Flush inside the transaction: the @Version compare is authoritative and any

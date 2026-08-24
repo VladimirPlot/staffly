@@ -28,5 +28,6 @@ public record UpdateTrainingExamRequest(
         Boolean active,
         List<Long> visibilityPositionIds,
         List<ExamSourceFolderDto> sourcesFolders,
-        List<Long> sourceQuestionIds
+        List<Long> sourceQuestionIds,
+        Boolean confirmNewCycle
 ) {}
