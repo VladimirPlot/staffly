@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.CertificationAssignmentCycleRepository;
+import ru.staffly.training.repository.CertificationAssignmentCycleNotificationStateRepository;
 import ru.staffly.training.repository.TrainingExamRepository;
 import ru.staffly.user.model.User;
 
@@ -14,6 +15,7 @@ import ru.staffly.user.model.User;
 public class CertificationAssignmentCycleService {
     private final TrainingExamRepository exams;
     private final CertificationAssignmentCycleRepository cycles;
+    private final CertificationAssignmentCycleNotificationStateRepository notificationStates;
 
     @Transactional
     public CertificationAssignmentCycle createPublicationCycle(
@@ -40,12 +42,17 @@ public class CertificationAssignmentCycleService {
         var lockedExam = exams.findByIdAndRestaurantIdForUpdate(exam.getId(), exam.getRestaurant().getId())
                 .orElseThrow(() -> new ConflictException("Аттестация уже изменена или удалена."));
         int nextSequence = cycles.findMaxCycleSequence(lockedExam.getId()) + 1;
-        return cycles.saveAndFlush(CertificationAssignmentCycle.builder()
+        var cycle = cycles.saveAndFlush(CertificationAssignmentCycle.builder()
                 .exam(lockedExam)
                 .assessmentSpecification(specification)
                 .cycleSequence(nextSequence)
                 .kind(kind)
                 .launchedBy(launchedBy)
                 .build());
+        notificationStates.saveAndFlush(CertificationAssignmentCycleNotificationState.builder()
+                .assignmentCycle(cycle)
+                .lastCompletedMilestone(0)
+                .build());
+        return cycle;
     }
 }

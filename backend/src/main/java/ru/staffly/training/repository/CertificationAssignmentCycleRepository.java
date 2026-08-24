@@ -14,4 +14,7 @@ public interface CertificationAssignmentCycleRepository extends JpaRepository<Ce
 
     Optional<CertificationAssignmentCycle> findTopByExamIdAndAssessmentSpecificationIdAndKindOrderByCycleSequenceDesc(
             Long examId, Long specificationId, CertificationAssignmentCycleKind kind);
+
+    Optional<CertificationAssignmentCycle> findTopByExamIdAndAssessmentSpecificationIdOrderByCycleSequenceDesc(
+            Long examId, Long specificationId);
 }
