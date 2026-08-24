@@ -438,6 +438,14 @@ public class ExamServiceImpl implements ExamService {
             throw new ConflictException("Экзамен скрыт. Нельзя начать прохождение.");
         }
 
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            var unfinishedAttempt = certificationAssignmentLifecycleService.normalizeUnfinishedForStart(
+                    exam, restaurantId, userId, now);
+            if (unfinishedAttempt.isPresent()) {
+                return resumeAttempt(exam, unfinishedAttempt.get());
+            }
+        }
+
         examAccessService.ensureCanStartExam(exam, restaurantId, userId, isManager);
 
         TrainingExamAssignment assignment = null;
@@ -453,10 +461,10 @@ public class ExamServiceImpl implements ExamService {
         }
 
         var assignmentId = assignment == null ? null : assignment.getId();
-        var existingAttemptOpt = exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null
-                ? certificationAssignmentLifecycleService.findUnfinishedCurrentAttempt(assignment)
+        var existingAttemptOpt = exam.getMode() == TrainingExamMode.CERTIFICATION
+                ? Optional.<TrainingExamAttempt>empty()
                 : attempts.findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
-                examId, restaurantId, userId, attemptVersion);
+                        examId, restaurantId, userId, attemptVersion);
         if (existingAttemptOpt.isPresent()) {
             return resumeAttempt(exam, existingAttemptOpt.get());
         }
