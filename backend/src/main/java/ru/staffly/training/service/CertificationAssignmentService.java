@@ -73,10 +73,14 @@ class CertificationAssignmentService {
             if (existing == null) {
                 var specification = specificationService.requireCurrent(exam);
                 var cycle = requireCurrentAssignmentCycle(exam, specification);
-                var inactive = assignments.findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
-                        exam.getId(), exam.getRestaurant().getId(), member.getUser().getId()).orElse(null);
-                if (isCurrentAudienceRemoval(inactive, specification, cycle)) {
-                    reactivateCurrentAudienceAssignment(inactive, member);
+                var inactive = assignments.findAudienceRemovedForExactCycle(
+                        exam.getId(), exam.getRestaurant().getId(), member.getUser().getId(),
+                        specification.getId(), cycle.getId());
+                if (inactive.size() > 1) {
+                    throw new ConflictException("Обнаружено несколько удалённых назначений сотрудника в текущем цикле.");
+                }
+                if (!inactive.isEmpty()) {
+                    reactivateCurrentAudienceAssignment(inactive.get(0), member);
                 } else {
                     createdAssignments.add(assignments.save(createAssignment(exam, member, specification, cycle)));
                 }
@@ -167,6 +171,30 @@ class CertificationAssignmentService {
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
         var active = assignments.findAllActiveAssignmentsForCycleTransition(
                 exam.getId(), exam.getRestaurant().getId());
+        var expectedCycle = cycles.findTopByExamIdAndCycleSequenceLessThanOrderByCycleSequenceDesc(
+                        exam.getId(), recertificationCycle.getCycleSequence())
+                .orElseThrow(() -> new ConflictException("Для повторной аттестации отсутствует текущий предыдущий цикл."));
+        var activeIds = active.stream().map(TrainingExamAssignment::getId).toList();
+        var unfinishedAssignmentIds = (activeIds.isEmpty() ? List.<TrainingExamAttempt>of()
+                : attempts.findByAssignmentIdInAndFinishedAtIsNullOrderByAssignmentIdAscStartedAtDescIdDesc(activeIds))
+                .stream().filter(attempt -> attempt.getAssignment() != null
+                        && attempt.getExam() != null
+                        && attempt.getExam().getId().equals(attempt.getAssignment().getExam().getId())
+                        && attempt.getExamVersion() == attempt.getAssignment().getExamVersionSnapshot())
+                .map(attempt -> attempt.getAssignment().getId()).collect(Collectors.toSet());
+        for (var old : active) {
+            var predecessorShape = classifyRecertificationPredecessor(
+                    old, exam, specification, expectedCycle, recertificationCycle, unfinishedAssignmentIds);
+            if (predecessorShape == RecertificationPredecessorShape.INVALID) {
+                log.error("Rejecting re-certification due to invalid predecessor identity: assignmentId={}, examId={}, specificationId={}, cycleId={}, expectedSpecificationId={}, expectedCycleId={}, newCycleId={}, hasMatchingUnfinishedAttempt={}",
+                        old.getId(), old.getExam() == null ? null : old.getExam().getId(),
+                        old.getAssessmentSpecification() == null ? null : old.getAssessmentSpecification().getId(),
+                        old.getAssignmentCycle() == null ? null : old.getAssignmentCycle().getId(),
+                        specification.getId(), expectedCycle.getId(), recertificationCycle.getId(),
+                        unfinishedAssignmentIds.contains(old.getId()));
+                throw new ConflictException("Активное назначение имеет несогласованную идентичность текущего цикла.");
+            }
+        }
         var predecessorByUser = new java.util.HashMap<Long, TrainingExamAssignment>();
         for (var old : active) {
             var member = membersByUser.get(old.getUser().getId());
@@ -203,7 +231,7 @@ class CertificationAssignmentService {
         var membersByUser = audience.stream().collect(Collectors.toMap(m -> m.getUser().getId(), Function.identity()));
         var ids = active.stream().map(TrainingExamAssignment::getId).toList();
         var finished = ids.isEmpty() ? List.<TrainingExamAttempt>of()
-                : attempts.findByAssignmentIdInAndFinishedAtIsNotNullOrderByAssignmentIdAscFinishedAtDescIdDesc(ids);
+                : attempts.findCountedFinishedByAssignmentIdIn(ids);
         var finishedByAssignment = finished.stream().collect(Collectors.groupingBy(a -> a.getAssignment().getId()));
         var unfinishedIds = (ids.isEmpty() ? List.<TrainingExamAttempt>of()
                 : attempts.findByAssignmentIdInAndFinishedAtIsNullOrderByAssignmentIdAscStartedAtDescIdDesc(ids)).stream()
@@ -297,7 +325,7 @@ class CertificationAssignmentService {
     }
 
     public void reconcileDerivedStateFromFinishedAttempts(TrainingExamAssignment assignment) {
-        var finishedAttempts = attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+        var finishedAttempts = attempts.findCountedFinishedByAssignmentAndVersion(
                 assignment.getId(),
                 assignment.getExamVersionSnapshot()
         );
@@ -363,10 +391,12 @@ class CertificationAssignmentService {
                 .map(RestaurantMember::getPosition)
                 .orElse(assignment.getAssignedPosition());
         var latestSpecification = specificationService.requireCurrent(assignment.getExam());
-        boolean migrateVersion = assignment.getExamVersionSnapshot() < assignment.getExam().getVersion();
-        int nextGeneration = migrateVersion ? 0 : assignment.getResetGeneration() + 1;
-        var targetCycle = migrateVersion ? requirePublicationCycle(assignment.getExam(), latestSpecification)
-                : assignment.getAssignmentCycle();
+        var currentCycle = requireCurrentAssignmentCycle(assignment.getExam(), latestSpecification);
+        boolean migrateCycle = !assignment.getAssessmentSpecification().getId().equals(latestSpecification.getId())
+                || assignment.getAssignmentCycle() == null
+                || !assignment.getAssignmentCycle().getId().equals(currentCycle.getId());
+        int nextGeneration = migrateCycle ? 0 : assignment.getResetGeneration() + 1;
+        var targetCycle = migrateCycle ? currentCycle : assignment.getAssignmentCycle();
         assignment.setActive(false);
         assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.USER_RESET);
         // Force the partial active-row uniqueness transition before inserting its successor.
@@ -376,10 +406,10 @@ class CertificationAssignmentService {
                 .restaurant(assignment.getRestaurant())
                 .user(assignment.getUser())
                 .assignedPosition(memberPosition)
-                .assessmentSpecification(migrateVersion ? latestSpecification : assignment.getAssessmentSpecification())
+                .assessmentSpecification(migrateCycle ? latestSpecification : assignment.getAssessmentSpecification())
                 .assignmentCycle(targetCycle)
-                .attemptsLimitSnapshot(migrateVersion ? latestSpecification.getAttemptLimit() : assignment.getAttemptsLimitSnapshot())
-                .examVersionSnapshot(migrateVersion ? latestSpecification.getVersion() : assignment.getExamVersionSnapshot())
+                .attemptsLimitSnapshot(migrateCycle ? latestSpecification.getAttemptLimit() : assignment.getAttemptsLimitSnapshot())
+                .examVersionSnapshot(migrateCycle ? latestSpecification.getVersion() : assignment.getExamVersionSnapshot())
                 .resetGeneration(nextGeneration)
                 .extraAttempts(0)
                 .attemptsUsed(0)
@@ -502,13 +532,6 @@ class CertificationAssignmentService {
                 .build();
     }
 
-    private CertificationAssignmentCycle requirePublicationCycle(TrainingExam exam,
-                                                                  CertificationAssessmentSpecification specification) {
-        return cycles.findTopByExamIdAndAssessmentSpecificationIdAndKindOrderByCycleSequenceDesc(
-                        exam.getId(), specification.getId(), CertificationAssignmentCycleKind.VERSION_PUBLICATION)
-                .orElseThrow(() -> new ConflictException("Для текущей версии аттестации отсутствует цикл публикации."));
-    }
-
     private CertificationAssignmentCycle requireCurrentAssignmentCycle(
             TrainingExam exam, CertificationAssessmentSpecification specification) {
         return cycles.findTopByExamIdAndAssessmentSpecificationIdOrderByCycleSequenceDesc(
@@ -516,14 +539,46 @@ class CertificationAssignmentService {
                 .orElseThrow(() -> new ConflictException("Для текущей версии аттестации отсутствует цикл назначения."));
     }
 
-    private boolean isCurrentAudienceRemoval(TrainingExamAssignment assignment,
-                                             CertificationAssessmentSpecification specification,
-                                             CertificationAssignmentCycle cycle) {
-        return assignment != null && !assignment.isActive()
-                && assignment.getDeactivationReason() == TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED
-                && assignment.getAssessmentSpecification().getId().equals(specification.getId())
-                && assignment.getAssignmentCycle() != null
-                && assignment.getAssignmentCycle().getId().equals(cycle.getId());
+    private RecertificationPredecessorShape classifyRecertificationPredecessor(
+            TrainingExamAssignment assignment, TrainingExam exam,
+            CertificationAssessmentSpecification currentSpecification,
+            CertificationAssignmentCycle expectedCurrentCycle,
+            CertificationAssignmentCycle newCycle,
+            java.util.Set<Long> unfinishedAssignmentIds) {
+        var assignmentSpecification = assignment.getAssessmentSpecification();
+        var assignmentCycle = assignment.getAssignmentCycle();
+        boolean internallyConsistent = assignment.getExam() != null
+                && assignment.getExam().getId().equals(exam.getId())
+                && assignmentSpecification != null
+                && assignmentSpecification.getExam() != null
+                && assignmentSpecification.getExam().getId().equals(exam.getId())
+                && assignmentSpecification.getVersion() == assignment.getExamVersionSnapshot()
+                && assignmentCycle != null
+                && assignmentCycle.getExam() != null
+                && assignmentCycle.getAssessmentSpecification() != null
+                && assignmentCycle.getExam().getId().equals(exam.getId())
+                && assignmentCycle.getAssessmentSpecification().getId().equals(assignmentSpecification.getId())
+                && assignmentCycle.getCycleSequence() < newCycle.getCycleSequence();
+        if (!internallyConsistent) {
+            return RecertificationPredecessorShape.INVALID;
+        }
+        if (assignmentSpecification.getId().equals(currentSpecification.getId())) {
+            return assignmentCycle.getId().equals(expectedCurrentCycle.getId())
+                    ? RecertificationPredecessorShape.CURRENT
+                    : RecertificationPredecessorShape.INVALID;
+        }
+        boolean gracefulHistorical = assignmentSpecification.getVersion() < currentSpecification.getVersion()
+                && assignmentCycle.getCycleSequence() <= expectedCurrentCycle.getCycleSequence()
+                && unfinishedAssignmentIds.contains(assignment.getId());
+        return gracefulHistorical
+                ? RecertificationPredecessorShape.GRACEFUL_HISTORICAL
+                : RecertificationPredecessorShape.INVALID;
+    }
+
+    private enum RecertificationPredecessorShape {
+        CURRENT,
+        GRACEFUL_HISTORICAL,
+        INVALID
     }
 
     private void reactivateCurrentAudienceAssignment(TrainingExamAssignment assignment, RestaurantMember member) {

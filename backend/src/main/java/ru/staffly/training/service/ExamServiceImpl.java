@@ -9,10 +9,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.exception.StaleExamRevisionException;
@@ -45,6 +47,7 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAssignmentRepository assignments;
     private final TrainingFolderRepository folders;
     private final PositionRepository positions;
+    private final RestaurantMemberRepository members;
 
     private final TrainingExamAccessService examAccessService;
     private final ExamQuestionPoolResolver questionPoolResolver;
@@ -858,6 +861,12 @@ public class ExamServiceImpl implements ExamService {
                                               CertificationAssessmentSpecification specification,
                                               int examVersion,
                                               Instant now) {
+        Long positionAtStartId = null;
+        if (assignment != null) {
+            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, exam.getRestaurant().getId())
+                    .orElseThrow(() -> new ForbiddenException("Not a member"));
+            positionAtStartId = member.getPosition() == null ? null : member.getPosition().getId();
+        }
         return attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
                 .examVersion(examVersion)
@@ -869,6 +878,8 @@ public class ExamServiceImpl implements ExamService {
                 .titleSnapshot(exam.getTitle())
                 .questionCountSnapshot(specification == null ? exam.getQuestionCount() : specification.getQuestionCount())
                 .timeLimitSecSnapshot(specification == null ? exam.getTimeLimitSec() : specification.getTimeLimitSec())
+                .positionAtStartId(positionAtStartId)
+                .positionAtStartCaptured(assignment != null)
                 .build());
     }
 

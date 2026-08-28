@@ -36,6 +36,7 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             join fetch a.assignment assignment
             join assignment.exam exam
             where a.finishedAt is not null
+              and a.cancellationReason is null
               and assignment.active = true
               and assignment.restaurant.id = :restaurantId
               and exam.id in :examIds
@@ -52,8 +53,14 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
 
     boolean existsByAssignmentIdAndFinishedAtIsNull(Long assignmentId);
 
-    List<TrainingExamAttempt> findByAssignmentIdInAndFinishedAtIsNotNullOrderByAssignmentIdAscFinishedAtDescIdDesc(
-            Collection<Long> assignmentIds);
+    @Query("""
+            select a from TrainingExamAttempt a
+            where a.assignment.id in :assignmentIds and a.finishedAt is not null
+              and a.cancellationReason is null
+            order by a.assignment.id, a.finishedAt desc, a.id desc
+            """)
+    List<TrainingExamAttempt> findCountedFinishedByAssignmentIdIn(
+            @Param("assignmentIds") Collection<Long> assignmentIds);
 
     List<TrainingExamAttempt> findByAssignmentIdInAndFinishedAtIsNullOrderByAssignmentIdAscStartedAtDescIdDesc(
             Collection<Long> assignmentIds);
@@ -135,10 +142,14 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             int examVersion
     );
 
-    List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
-            Long assignmentId,
-            int examVersion
-    );
+    @Query("""
+            select a from TrainingExamAttempt a
+            where a.assignment.id = :assignmentId and a.examVersion = :examVersion
+              and a.finishedAt is not null and a.cancellationReason is null
+            order by a.finishedAt desc, a.id desc
+            """)
+    List<TrainingExamAttempt> findCountedFinishedByAssignmentAndVersion(
+            @Param("assignmentId") Long assignmentId, @Param("examVersion") int examVersion);
 
     List<TrainingExamAttempt> findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(Long examId, Long restaurantId, Long userId);
 
