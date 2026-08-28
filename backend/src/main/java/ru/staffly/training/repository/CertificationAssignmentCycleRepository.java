@@ -20,4 +20,6 @@ public interface CertificationAssignmentCycleRepository extends JpaRepository<Ce
 
     Optional<CertificationAssignmentCycle> findTopByExamIdAndCycleSequenceLessThanOrderByCycleSequenceDesc(
             Long examId, int cycleSequence);
+
+    boolean existsByExamIdAndCycleSequenceGreaterThan(Long examId, int cycleSequence);
 }

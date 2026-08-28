@@ -16,6 +16,7 @@ import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamNotificationStateRepository;
 import ru.staffly.training.repository.CertificationAssignmentCycleNotificationStateRepository;
+import ru.staffly.training.repository.CertificationAssignmentCycleRepository;
 
 import java.util.Comparator;
 import java.util.List;
@@ -36,6 +37,8 @@ public class TrainingCertificationNotificationService {
     private final TrainingExamAssignmentRepository assignmentRepository;
     private final TrainingExamNotificationStateRepository notificationStateRepository;
     private final CertificationAssignmentCycleNotificationStateRepository cycleNotificationStateRepository;
+    private final CertificationAssignmentCycleRepository cycleRepository;
+    private final CertificationAssignmentService assignmentService;
     private final TrainingPolicyService trainingPolicyService;
     @PersistenceContext
     private EntityManager entityManager;
@@ -144,9 +147,26 @@ public class TrainingCertificationNotificationService {
         }
 
         Integer score = attempt.getScorePercent() == null ? 0 : attempt.getScorePercent();
-        String content = Boolean.TRUE.equals(attempt.getPassed())
-                ? "Вы сдали аттестацию «" + attempt.getTitleSnapshot() + "» на " + score + "%"
-                : "Вы не сдали аттестацию «" + attempt.getTitleSnapshot() + "». Результат: " + score + "%";
+        var attemptAssignment = attempt.getAssignment();
+        var currentAssignment = assignmentRepository
+                .findCurrentActiveByExamAndUser(exam.getId(), exam.getRestaurant().getId(), userId)
+                .orElse(null);
+        boolean hasNewerCurrentObligation = attemptAssignment != null && currentAssignment != null
+                && !Objects.equals(attemptAssignment.getId(), currentAssignment.getId());
+        Integer attemptsAllowed = attemptAssignment == null
+                ? null
+                : assignmentService.calculateAttemptsAllowed(attemptAssignment);
+        boolean finalFailure = attemptAssignment != null
+                && attemptAssignment.getPassedAt() == null
+                && attemptsAllowed != null
+                && attemptAssignment.getAttemptsUsed() >= attemptsAllowed;
+        String content = hasNewerCurrentObligation
+                ? CertificationCompletionSemantics.SUPERSEDED_ATTEMPT_MESSAGE
+                : Boolean.TRUE.equals(attempt.getPassed())
+                    ? "Вы сдали аттестацию «" + attempt.getTitleSnapshot() + "» на " + score + "%"
+                    : finalFailure
+                        ? "Вы не сдали аттестацию «" + attempt.getTitleSnapshot() + "». Результат: " + score + "%"
+                        : "Попытка аттестации «" + attempt.getTitleSnapshot() + "» неуспешна. Результат: " + score + "%";
 
         try {
             var recipient = memberOpt.get();
@@ -180,6 +200,15 @@ public class TrainingCertificationNotificationService {
 
         var assignment = attempt.getAssignment();
         var cycle = assignment == null ? null : assignment.getAssignmentCycle();
+        // A successor global cycle makes every earlier cycle historical immediately,
+        // regardless of active assignments or late attempt finalization.
+        if (cycle != null && cycleRepository.existsByExamIdAndCycleSequenceGreaterThan(
+                examId, cycle.getCycleSequence())) {
+            return;
+        }
+        if (cycle == null && cycleRepository.findMaxCycleSequence(examId) > 0) {
+            return;
+        }
         long total = cycle == null
                 ? assignmentRepository.countActiveObligations(examId, restaurantId)
                 : assignmentRepository.countByAssignmentCycleIdAndActiveTrue(cycle.getId());
@@ -187,7 +216,7 @@ public class TrainingCertificationNotificationService {
             return;
         }
 
-        var completedStatuses = List.of(TrainingExamAssignmentStatus.PASSED, TrainingExamAssignmentStatus.FAILED);
+        var completedStatuses = CertificationCompletionSemantics.completedStatuses();
         long completed = cycle == null
                 ? assignmentRepository.countActiveObligationsByStatusIn(examId, restaurantId, completedStatuses)
                 : assignmentRepository.countByAssignmentCycleIdAndActiveTrueAndStatusIn(

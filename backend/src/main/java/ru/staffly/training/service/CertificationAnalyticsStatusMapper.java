@@ -13,9 +13,9 @@ final class CertificationAnalyticsStatusMapper {
         }
         return switch (lifecycleStatus) {
             case ASSIGNED, ARCHIVED -> CertificationAnalyticsStatus.NOT_STARTED;
-            case IN_PROGRESS -> CertificationAnalyticsStatus.IN_PROGRESS;
+            case IN_PROGRESS, FAILED -> CertificationAnalyticsStatus.IN_PROGRESS;
             case PASSED -> CertificationAnalyticsStatus.PASSED;
-            case FAILED, EXHAUSTED -> CertificationAnalyticsStatus.FAILED;
+            case EXHAUSTED -> CertificationAnalyticsStatus.FAILED;
         };
     }
 }
