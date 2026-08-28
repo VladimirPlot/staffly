@@ -111,6 +111,21 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             Long userId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.user.id = :userId
+              and a.assessmentSpecification.id = :specificationId
+              and a.assignmentCycle.id = :cycleId
+              and a.active = false
+              and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED
+            order by a.resetGeneration desc, a.id desc
+            """)
+    List<TrainingExamAssignment> findAudienceRemovedForExactCycle(
+            @Param("examId") Long examId, @Param("restaurantId") Long restaurantId,
+            @Param("userId") Long userId, @Param("specificationId") Long specificationId,
+            @Param("cycleId") Long cycleId);
+
     Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
             Long examId, Long restaurantId, Long userId);
 

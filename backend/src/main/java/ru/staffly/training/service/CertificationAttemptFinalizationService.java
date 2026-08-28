@@ -14,6 +14,8 @@ import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.repository.TrainingExamAttemptQuestionRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.training.model.TrainingExamAttemptCancellationReason;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,6 +31,7 @@ class CertificationAttemptFinalizationService {
     private final ExamSnapshotService snapshotService;
     private final ExamAttemptEvaluator attemptEvaluator;
     private final CertificationAssignmentService assignmentService;
+    private final RestaurantMemberRepository members;
 
     // Single source of truth for any certification attempt completion:
     // user submit, expired timeout auto-close, and lifecycle repair all converge here.
@@ -39,7 +42,10 @@ class CertificationAttemptFinalizationService {
         if (attempt.getExam() == null || attempt.getExam().getMode() != TrainingExamMode.CERTIFICATION) {
             return finalizeMutation(attempt, answersByQuestionId, finishedAt, AttemptFinalizationMode.USER_SUBMIT);
         }
-        return finalizeCertification(attempt, answersByQuestionId, finishedAt, AttemptFinalizationMode.USER_SUBMIT);
+        boolean expired = attempt.getTimeLimitSecSnapshot() != null
+                && attempt.getStartedAt().plusSeconds(attempt.getTimeLimitSecSnapshot()).compareTo(finishedAt) <= 0;
+        return finalizeCertification(attempt, expired ? Map.of() : answersByQuestionId, finishedAt,
+                expired ? AttemptFinalizationMode.EXPIRED_TIMEOUT : AttemptFinalizationMode.USER_SUBMIT);
     }
 
     @Transactional
@@ -91,10 +97,31 @@ class CertificationAttemptFinalizationService {
             return new FinalizedAttemptPayload(attempt, attemptQuestions.findByAttemptId(attempt.getId()), false);
         }
 
+        if (mode == AttemptFinalizationMode.EXPIRED_TIMEOUT && positionChangedSinceStart(attempt)) {
+            attempt.setFinishedAt(finishedAt);
+            attempt.setScorePercent(null);
+            attempt.setPassed(null);
+            attempt.setCancellationReason(TrainingExamAttemptCancellationReason.POSITION_CHANGED_TIMEOUT);
+            assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
+            assignmentService.refreshStatus(assignment, false);
+            return new FinalizedAttemptPayload(attempt, attemptQuestions.findByAttemptId(attempt.getId()), true);
+        }
+
         var result = finalizeMutation(attempt, answersByQuestionId, finishedAt, mode);
         assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
         assignmentService.refreshStatus(assignment, attempts.existsByAssignmentIdAndFinishedAtIsNull(assignment.getId()));
         return result;
+    }
+
+    private boolean positionChangedSinceStart(TrainingExamAttempt attempt) {
+        if (!attempt.isPositionAtStartCaptured()) {
+            return false;
+        }
+        Long currentPositionId = members.findByUserIdAndRestaurantIdWithPosition(
+                        attempt.getUser().getId(), attempt.getRestaurant().getId())
+                .map(member -> member.getPosition() == null ? null : member.getPosition().getId())
+                .orElse(null);
+        return !java.util.Objects.equals(attempt.getPositionAtStartId(), currentPositionId);
     }
 
     private FinalizedAttemptPayload finalizeMutation(TrainingExamAttempt attempt,
