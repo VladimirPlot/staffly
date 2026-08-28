@@ -56,6 +56,17 @@ public class TrainingExamAttempt {
     @Column(name = "time_limit_sec_snapshot")
     private Integer timeLimitSecSnapshot;
 
+    /** Nullable for attempts created before position-at-start tracking was introduced. */
+    @Column(name = "position_at_start_id")
+    private Long positionAtStartId;
+
+    @Column(name = "position_at_start_captured", nullable = false)
+    private boolean positionAtStartCaptured;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason", length = 40)
+    private TrainingExamAttemptCancellationReason cancellationReason;
+
     @Column(name = "score_percent")
     private Integer scorePercent;
 
