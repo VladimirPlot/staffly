@@ -269,9 +269,6 @@ class CertificationAssignmentService {
     }
 
     public void ensureAttemptsAvailable(TrainingExamAssignment assignment) {
-        if (assignment.getStatus() == TrainingExamAssignmentStatus.PASSED || assignment.getPassedAt() != null) {
-            throw new ConflictException("Аттестация уже успешно пройдена. Повторная попытка недоступна.");
-        }
         Integer allowed = calculateAttemptsAllowed(assignment);
         if (allowed != null && assignment.getAttemptsUsed() >= allowed) {
             throw new ConflictException("Лимит попыток по назначенной аттестации исчерпан.");
@@ -312,6 +309,13 @@ class CertificationAssignmentService {
             if (assignment.getPassedAt() == null) {
                 assignment.setPassedAt(attempt.getFinishedAt());
             }
+            if (!archived) assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
+            return;
+        }
+
+        // A passing result completes the obligation permanently. Later counted attempts
+        // may improve bestScore, but a lower score cannot undo the first successful pass.
+        if (assignment.getPassedAt() != null) {
             if (!archived) assignment.setStatus(TrainingExamAssignmentStatus.PASSED);
             return;
         }

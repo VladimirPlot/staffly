@@ -55,7 +55,7 @@ class CertificationAnalyticsLifecycleCoordinator {
             assignmentService.reconcileDerivedStateFromFinishedAttempts(
                     assignment, finishedByAssignment.getOrDefault(assignment.getId(), List.of()));
             var candidates = unfinishedByAssignment.getOrDefault(assignment.getId(), List.of());
-            normalizeCandidates(assignment.getPassedAt() != null, candidates, now);
+            normalizeCandidates(candidates, now);
         }
 
         // Finalization may have changed the canonical set. One batch reload avoids per-assignment
@@ -87,8 +87,7 @@ class CertificationAnalyticsLifecycleCoordinator {
         }
     }
 
-    private void normalizeCandidates(boolean hasPassedAt,
-                                     List<TrainingExamAttempt> candidates,
+    private void normalizeCandidates(List<TrainingExamAttempt> candidates,
                                      Instant now) {
         if (candidates.size() > 1) {
             log.warn("Found {} unfinished attempts for current assignmentId={}; repairing older duplicates",
@@ -101,9 +100,7 @@ class CertificationAnalyticsLifecycleCoordinator {
             return;
         }
         var current = candidates.get(0);
-        if (hasPassedAt) {
-            finalizer.finalizeStaleUnfinishedAttemptForLifecycleRepair(current, now);
-        } else if (isExpired(current, now)) {
+        if (isExpired(current, now)) {
             finalizer.finalizeExpiredUnfinishedAttempt(current, now);
         }
     }
