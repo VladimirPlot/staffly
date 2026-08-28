@@ -717,6 +717,7 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
+                certificationLifecycleMessage(attempt),
                 includeQuestionResults ? existingQuestions.stream()
                         .map(question -> new AttemptResultQuestionDto(
                                 snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
@@ -739,6 +740,7 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
+                certificationLifecycleMessage(attempt),
                 includeQuestionResults ? existingQuestions.stream()
                         .map(question -> new AttemptResultQuestionDto(
                                 snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
@@ -747,6 +749,19 @@ public class ExamServiceImpl implements ExamService {
                         ))
                         .toList() : List.of()
         );
+    }
+
+    private String certificationLifecycleMessage(TrainingExamAttempt attempt) {
+        if (attempt.getExam() == null || attempt.getExam().getMode() != TrainingExamMode.CERTIFICATION
+                || attempt.getAssignment() == null) {
+            return null;
+        }
+        var current = certificationAssignmentService.findActiveForExamAndUser(
+                attempt.getExam().getId(), attempt.getRestaurant().getId(), attempt.getUser().getId()).orElse(null);
+        if (current == null || Objects.equals(current.getId(), attempt.getAssignment().getId())) {
+            return null;
+        }
+        return CertificationCompletionSemantics.SUPERSEDED_ATTEMPT_MESSAGE;
     }
 
     private boolean shouldIncludeQuestionResults(TrainingExamAttempt attempt) {

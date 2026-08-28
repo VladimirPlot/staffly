@@ -12,5 +12,6 @@ public record AttemptResultDto(
         Instant finishedAt,
         Integer scorePercent,
         Boolean passed,
+        String certificationLifecycleMessage,
         List<AttemptResultQuestionDto> questions
 ) {}

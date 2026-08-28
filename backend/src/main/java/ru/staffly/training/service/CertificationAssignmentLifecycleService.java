@@ -53,10 +53,6 @@ class CertificationAssignmentLifecycleService {
         }
         var assignment = unfinished.getAssignment();
         assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
-        if (assignment.getPassedAt() != null) {
-            attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished, now);
-            return Optional.empty();
-        }
         if (isExpiredUnfinishedAttempt(unfinished, now)) {
             attemptFinalizationService.finalizeExpiredUnfinishedAttempt(unfinished, now);
             return Optional.empty();
@@ -84,10 +80,6 @@ class CertificationAssignmentLifecycleService {
 
         Optional<TrainingExamAttempt> unfinished = unfinishedAttempts.stream().findFirst();
         assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
-        if (unfinished.isPresent() && assignment.getPassedAt() != null) {
-            attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished.get(), now);
-            unfinished = Optional.empty();
-        }
         if (unfinished.isPresent() && isExpiredUnfinishedAttempt(unfinished.get(), now)) {
             attemptFinalizationService.finalizeExpiredUnfinishedAttempt(unfinished.get(), now);
             unfinished = Optional.empty();
