@@ -52,6 +52,7 @@ class CertificationAssignmentService {
 
         if (!exam.isActive()) {
             archiveAllActiveAssignments(exam);
+            syncHiddenAudienceAssignments(exam);
             return List.of();
         }
 
@@ -116,6 +117,50 @@ class CertificationAssignmentService {
         }
     }
 
+    /** Keeps audience lifecycle current while preserving the hidden employee-access overlay. */
+    private void syncHiddenAudienceAssignments(TrainingExam exam) {
+        var audience = resolveAudienceMembers(exam);
+        var audienceByUser = audience.stream()
+                .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
+        var hidden = assignments.findInactiveByDeactivationReasonForRestore(
+                exam.getId(), exam.getRestaurant().getId(), TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
+        var hiddenByUser = hidden.stream().collect(Collectors.toMap(
+                assignment -> assignment.getUser().getId(),
+                Function.identity(),
+                this::preferCurrentGeneration));
+
+        for (var assignment : hiddenByUser.values()) {
+            var member = audienceByUser.get(assignment.getUser().getId());
+            if (member == null) {
+                assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
+                assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
+            } else {
+                assignment.setAssignedPosition(member.getPosition());
+            }
+        }
+
+        var specification = specificationService.requireCurrent(exam);
+        var cycle = requireCurrentAssignmentCycle(exam, specification);
+        for (var member : audience) {
+            if (hiddenByUser.containsKey(member.getUser().getId())) {
+                continue;
+            }
+            var inactive = assignments.findAudienceRemovedForExactCycle(
+                    exam.getId(), exam.getRestaurant().getId(), member.getUser().getId(),
+                    specification.getId(), cycle.getId());
+            if (inactive.size() > 1) {
+                throw new ConflictException("Обнаружено несколько удалённых назначений сотрудника в текущем цикле.");
+            }
+            var assignment = inactive.isEmpty()
+                    ? assignments.save(createAssignment(exam, member, specification, cycle))
+                    : inactive.get(0);
+            assignment.setAssignedPosition(member.getPosition());
+            assignment.setActive(false);
+            assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
+            assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
+        }
+    }
+
     /**
      * Restores the exact obligations paused by exam hide. This deliberately does not
      * share the version-aware AUDIENCE_REMOVED re-add path: hide is neither publication
@@ -128,6 +173,8 @@ class CertificationAssignmentService {
         }
         var audienceByUser = resolveAudienceMembers(exam).stream()
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
+        var currentSpecification = specificationService.requireCurrent(exam);
+        var currentCycle = requireCurrentAssignmentCycle(exam, currentSpecification);
         var hidden = assignments.findInactiveByDeactivationReasonForRestore(
                 exam.getId(), exam.getRestaurant().getId(), TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
         var selectedByUser = new java.util.HashMap<Long, TrainingExamAssignment>();
@@ -138,6 +185,18 @@ class CertificationAssignmentService {
                 // is now the authoritative reason this obligation remains inactive.
                 // Do not normalize status or touch attempts/history on this path.
                 assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
+                continue;
+            }
+            boolean currentLifecycle = assignment.getAssessmentSpecification().getId().equals(currentSpecification.getId())
+                    && assignment.getAssignmentCycle() != null
+                    && assignment.getAssignmentCycle().getId().equals(currentCycle.getId());
+            boolean gracefulHistorical = assignment.getPassedAt() != null
+                    || attempts.existsByAssignmentIdAndFinishedAtIsNull(assignment.getId());
+            if (assignment.getReplacedByAssignment() != null || (!currentLifecycle && !gracefulHistorical)) {
+                assignment.setDeactivationReason(
+                        assignment.getAssessmentSpecification().getVersion() < currentSpecification.getVersion()
+                                ? TrainingExamAssignmentDeactivationReason.SUPERSEDED_BY_VERSION
+                                : TrainingExamAssignmentDeactivationReason.RE_CERTIFICATION_CYCLE);
                 continue;
             }
             if (selectedByUser.putIfAbsent(userId, assignment) != null) {
@@ -169,23 +228,30 @@ class CertificationAssignmentService {
         }
         var membersByUser = audience.stream()
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
-        var active = assignments.findAllActiveAssignmentsForCycleTransition(
+        var candidates = assignments.findLifecyclePredecessorCandidatesForRecertification(
                 exam.getId(), exam.getRestaurant().getId());
         var expectedCycle = cycles.findTopByExamIdAndCycleSequenceLessThanOrderByCycleSequenceDesc(
                         exam.getId(), recertificationCycle.getCycleSequence())
                 .orElseThrow(() -> new ConflictException("Для повторной аттестации отсутствует текущий предыдущий цикл."));
-        var activeIds = active.stream().map(TrainingExamAssignment::getId).toList();
-        var unfinishedAssignmentIds = (activeIds.isEmpty() ? List.<TrainingExamAttempt>of()
-                : attempts.findByAssignmentIdInAndFinishedAtIsNullOrderByAssignmentIdAscStartedAtDescIdDesc(activeIds))
+        var candidateIds = candidates.stream().map(TrainingExamAssignment::getId).toList();
+        var unfinishedAssignmentIds = (candidateIds.isEmpty() ? List.<TrainingExamAttempt>of()
+                : attempts.findByAssignmentIdInAndFinishedAtIsNullOrderByAssignmentIdAscStartedAtDescIdDesc(candidateIds))
                 .stream().filter(attempt -> attempt.getAssignment() != null
                         && attempt.getExam() != null
                         && attempt.getExam().getId().equals(attempt.getAssignment().getExam().getId())
                         && attempt.getExamVersion() == attempt.getAssignment().getExamVersionSnapshot())
                 .map(attempt -> attempt.getAssignment().getId()).collect(Collectors.toSet());
-        for (var old : active) {
+        var predecessors = new java.util.ArrayList<TrainingExamAssignment>();
+        for (var old : candidates) {
             var predecessorShape = classifyRecertificationPredecessor(
                     old, exam, specification, expectedCycle, recertificationCycle, unfinishedAssignmentIds);
-            if (predecessorShape == RecertificationPredecessorShape.INVALID) {
+            if (predecessorShape == RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL
+                    && !old.isActive()
+                    && old.getDeactivationReason() == TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN) {
+                continue;
+            }
+            if (predecessorShape == RecertificationPredecessorShape.INVALID
+                    || predecessorShape == RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL) {
                 log.error("Rejecting re-certification due to invalid predecessor identity: assignmentId={}, examId={}, specificationId={}, cycleId={}, expectedSpecificationId={}, expectedCycleId={}, newCycleId={}, hasMatchingUnfinishedAttempt={}",
                         old.getId(), old.getExam() == null ? null : old.getExam().getId(),
                         old.getAssessmentSpecification() == null ? null : old.getAssessmentSpecification().getId(),
@@ -194,9 +260,10 @@ class CertificationAssignmentService {
                         unfinishedAssignmentIds.contains(old.getId()));
                 throw new ConflictException("Активное назначение имеет несогласованную идентичность текущего цикла.");
             }
+            predecessors.add(old);
         }
         var predecessorByUser = new java.util.HashMap<Long, TrainingExamAssignment>();
-        for (var old : active) {
+        for (var old : predecessors) {
             var member = membersByUser.get(old.getUser().getId());
             old.setActive(false);
             if (member == null) {
@@ -212,6 +279,11 @@ class CertificationAssignmentService {
         var successors = new java.util.ArrayList<TrainingExamAssignment>();
         for (var member : audience) {
             var successor = assignments.save(createAssignment(exam, member, specification, recertificationCycle));
+            if (!exam.isActive()) {
+                successor.setActive(false);
+                successor.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
+                successor.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
+            }
             var predecessor = predecessorByUser.get(member.getUser().getId());
             if (predecessor != null) {
                 predecessor.setReplacedByAssignment(successor);
@@ -226,7 +298,10 @@ class CertificationAssignmentService {
     public List<TrainingExamAssignment> publishMaterialVersion(TrainingExam exam,
                                                                CertificationAssessmentSpecification specification,
                                                                CertificationAssignmentCycle publicationCycle) {
-        var active = assignments.findActiveObligationsForPublication(exam.getId(), exam.getRestaurant().getId());
+        // EXAM_HIDDEN is only an access overlay. Hidden obligations participate in
+        // publication exactly like active ones; more specific transitions below replace
+        // that temporary reason and therefore cannot be undone by restore.
+        var active = assignments.findLifecycleObligationsForPublication(exam.getId(), exam.getRestaurant().getId());
         var audience = resolveAudienceMembers(exam);
         var membersByUser = audience.stream().collect(Collectors.toMap(m -> m.getUser().getId(), Function.identity()));
         var ids = active.stream().map(TrainingExamAssignment::getId).toList();
@@ -249,6 +324,11 @@ class CertificationAssignmentService {
             validateAssignmentIdentity(old);
             reconcileDerivedStateFromFinishedAttempts(old, finishedByAssignment.getOrDefault(old.getId(), List.of()));
             boolean unfinished = unfinishedIds.contains(old.getId());
+            if (old.getDeactivationReason() == TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN) {
+                // Remove the hide status overlay before applying the ordinary publication
+                // classifier. active remains false, so employee runtime access stays closed.
+                old.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+            }
             refreshStatus(old, unfinished);
             if (old.getPassedAt() != null || old.getStatus() == TrainingExamAssignmentStatus.PASSED || unfinished) {
                 continue;
@@ -262,6 +342,11 @@ class CertificationAssignmentService {
             old.setDeactivationReason(TrainingExamAssignmentDeactivationReason.SUPERSEDED_BY_VERSION);
             assignments.flush();
             var successor = assignments.save(createAssignment(exam, member, specification, publicationCycle));
+            if (!exam.isActive()) {
+                successor.setActive(false);
+                successor.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
+                successor.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
+            }
             old.setReplacedByAssignment(successor);
             successors.add(successor);
         }
@@ -571,17 +656,20 @@ class CertificationAssignmentService {
                     ? RecertificationPredecessorShape.CURRENT
                     : RecertificationPredecessorShape.INVALID;
         }
-        boolean gracefulHistorical = assignmentSpecification.getVersion() < currentSpecification.getVersion()
-                && assignmentCycle.getCycleSequence() <= expectedCurrentCycle.getCycleSequence()
-                && unfinishedAssignmentIds.contains(assignment.getId());
-        return gracefulHistorical
+        boolean olderHistorical = assignmentSpecification.getVersion() < currentSpecification.getVersion()
+                && assignmentCycle.getCycleSequence() <= expectedCurrentCycle.getCycleSequence();
+        if (!olderHistorical) {
+            return RecertificationPredecessorShape.INVALID;
+        }
+        return unfinishedAssignmentIds.contains(assignment.getId())
                 ? RecertificationPredecessorShape.GRACEFUL_HISTORICAL
-                : RecertificationPredecessorShape.INVALID;
+                : RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL;
     }
 
     private enum RecertificationPredecessorShape {
         CURRENT,
         GRACEFUL_HISTORICAL,
+        PROVABLY_STALE_HISTORICAL,
         INVALID
     }
 
