@@ -143,11 +143,27 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select a from TrainingExamAssignment a
-            where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.active = true
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.replacedByAssignment is null
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
             order by a.id
             """)
-    List<TrainingExamAssignment> findActiveObligationsForPublication(@Param("examId") Long examId,
-                                                                     @Param("restaurantId") Long restaurantId);
+    List<TrainingExamAssignment> findLifecyclePredecessorCandidatesForRecertification(
+            @Param("examId") Long examId,
+            @Param("restaurantId") Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findLifecycleObligationsForPublication(@Param("examId") Long examId,
+                                                                        @Param("restaurantId") Long restaurantId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
