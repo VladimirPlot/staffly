@@ -93,7 +93,11 @@ public class ExamServiceImpl implements ExamService {
                 .filter(exam -> exam.getMode() == TrainingExamMode.CERTIFICATION)
                 .map(TrainingExam::getId)
                 .toList();
-        var summaryPreviewByExamId = certificationAnalyticsService.getExamSummaryPreviewBatch(restaurantId, certificationExamIds);
+        var summaryPreviewByExamId = certificationAnalyticsService.getExamSummaryPreviewBatch(
+                restaurantId,
+                userId,
+                certificationExamIds
+        );
 
         return visibleExams
                 .stream()
@@ -635,13 +639,13 @@ public class ExamServiceImpl implements ExamService {
     @Override
     public CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long actorUserId, Long examId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getExamSummary(restaurantId, examId);
+        return certificationAnalyticsService.getExamSummary(restaurantId, actorUserId, examId);
     }
 
     @Override
     public List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long actorUserId, Long examId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getPositionBreakdown(restaurantId, examId);
+        return certificationAnalyticsService.getPositionBreakdown(restaurantId, actorUserId, examId);
     }
 
     @Override
