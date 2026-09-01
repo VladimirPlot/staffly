@@ -77,7 +77,10 @@ class CertificationSelfResultService {
                 || assignmentForResult.getStatus() == TrainingExamAssignmentStatus.PASSED;
         boolean revealCorrectAnswers = certificationAssignmentService.shouldRevealCorrectAnswers(assignmentForResult, passed);
 
-        var questions = attemptForDetails
+        // A protected result is aggregate-only. Returning question rows with selected
+        // answers (even with nullable correctness) creates an unnecessary review
+        // surface and makes future DTO changes prone to reintroducing a leak.
+        var questions = revealCorrectAnswers ? attemptForDetails
                 .map(attempt -> attemptQuestions.findByAttemptId(attempt.getId()).stream()
                         .map(item -> {
                             var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
@@ -92,7 +95,7 @@ class CertificationSelfResultService {
                             );
                         })
                         .toList())
-                .orElse(List.of());
+                .orElse(List.of()) : List.<CertificationMyResultQuestionDto>of();
 
         var currentCycle = assignment == null ? null : assignment.getAssignmentCycle();
         var validCycle = validResult == null ? null : validResult.getAssignmentCycle();
