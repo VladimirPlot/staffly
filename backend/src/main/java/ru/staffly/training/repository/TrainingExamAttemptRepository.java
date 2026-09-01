@@ -12,6 +12,7 @@ import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Collection;
 import java.util.Optional;
+import java.time.Instant;
 
 public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExamAttempt, Long> {
     @Query("""
@@ -89,6 +90,31 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             where a.assignment.exam.id = :examId
             """)
     int detachAssignmentsForExam(@Param("examId") Long examId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            update training_exam_attempt
+            set finished_at = :finishedAt,
+                cancellation_reason = :reason,
+                passed = false
+            where finished_at is null
+              and (exam_id = :examId or assignment_id in (
+                  select id from training_exam_assignment where exam_id = :examId
+              ))
+            """, nativeQuery = true)
+    int terminalCancelUnfinishedForExam(@Param("examId") Long examId,
+                                        @Param("finishedAt") Instant finishedAt,
+                                        @Param("reason") String reason);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            update training_exam_attempt
+            set assignment_id = null, exam_id = null
+            where exam_id = :examId or assignment_id in (
+                select id from training_exam_assignment where exam_id = :examId
+            )
+            """, nativeQuery = true)
+    int detachLifecycleForExam(@Param("examId") Long examId);
 
     @Query(value = """
         select x.exam_id as examId,
