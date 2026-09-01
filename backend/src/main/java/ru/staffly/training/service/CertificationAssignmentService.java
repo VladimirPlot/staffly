@@ -51,7 +51,7 @@ class CertificationAssignmentService {
         }
 
         if (!exam.isActive()) {
-            archiveAllActiveAssignments(exam);
+            deactivateAllActiveAssignmentsForHiddenExam(exam);
             syncHiddenAudienceAssignments(exam);
             return List.of();
         }
@@ -59,7 +59,7 @@ class CertificationAssignmentService {
         var audience = resolveAudienceMembers(exam);
         var audienceUserIds = audience.stream().map(member -> member.getUser().getId()).collect(Collectors.toSet());
 
-        // One ordered lock query makes archive/reactivation a mutation-safe batch.
+        // One ordered lock query makes deactivation/reactivation a mutation-safe batch.
         var cycleAssignments = assignments.findAllActiveAssignmentsForCycleTransition(
                 exam.getId(), exam.getRestaurant().getId());
         var cycleByUserId = cycleAssignments.stream()
@@ -93,14 +93,13 @@ class CertificationAssignmentService {
         for (var assignment : cycleByUserId.values()) {
             if (assignment.isActive() && !audienceUserIds.contains(assignment.getUser().getId())) {
                 assignment.setActive(false);
-                assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
                 assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
             }
         }
         return createdAssignments;
     }
 
-    private void archiveAllActiveAssignments(TrainingExam exam) {
+    private void deactivateAllActiveAssignmentsForHiddenExam(TrainingExam exam) {
         var currentAssignments = assignments.findAllActiveAssignmentsForCycleTransition(
                 exam.getId(), exam.getRestaurant().getId());
         var latestByUser = currentAssignments.stream().collect(Collectors.toMap(
@@ -112,7 +111,6 @@ class CertificationAssignmentService {
                 continue;
             }
             assignment.setActive(false);
-            assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
             assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
         }
     }
@@ -132,7 +130,6 @@ class CertificationAssignmentService {
         for (var assignment : hiddenByUser.values()) {
             var member = audienceByUser.get(assignment.getUser().getId());
             if (member == null) {
-                assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
                 assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
             } else {
                 assignment.setAssignedPosition(member.getPosition());
@@ -156,7 +153,6 @@ class CertificationAssignmentService {
                     : inactive.get(0);
             assignment.setAssignedPosition(member.getPosition());
             assignment.setActive(false);
-            assignment.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
             assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
         }
     }
@@ -209,8 +205,11 @@ class CertificationAssignmentService {
             assignment.setAssignedPosition(audienceByUser.get(assignment.getUser().getId()).getPosition());
             assignment.setActive(true);
             assignment.setDeactivationReason(null);
-            // Remove the temporary lifecycle overlay before deriving the exact result state.
-            assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+            // Legacy rows used ARCHIVED as a lifecycle overlay. New rows already retain
+            // their business/result status, while old rows need a neutral derivation seed.
+            if (assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
+                assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
+            }
             reconcileDerivedStateFromFinishedAttempts(assignment);
             refreshStatus(assignment, attempts.existsByAssignmentIdAndFinishedAtIsNull(assignment.getId()));
         }
@@ -267,7 +266,6 @@ class CertificationAssignmentService {
             var member = membersByUser.get(old.getUser().getId());
             old.setActive(false);
             if (member == null) {
-                old.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
                 old.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
             } else {
                 old.setDeactivationReason(TrainingExamAssignmentDeactivationReason.RE_CERTIFICATION_CYCLE);
@@ -281,7 +279,6 @@ class CertificationAssignmentService {
             var successor = assignments.save(createAssignment(exam, member, specification, recertificationCycle));
             if (!exam.isActive()) {
                 successor.setActive(false);
-                successor.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
                 successor.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
             }
             var predecessor = predecessorByUser.get(member.getUser().getId());
@@ -317,16 +314,15 @@ class CertificationAssignmentService {
             var member = membersByUser.get(old.getUser().getId());
             if (member == null) {
                 old.setActive(false);
-                old.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
                 old.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
                 continue;
             }
             validateAssignmentIdentity(old);
             reconcileDerivedStateFromFinishedAttempts(old, finishedByAssignment.getOrDefault(old.getId(), List.of()));
             boolean unfinished = unfinishedIds.contains(old.getId());
-            if (old.getDeactivationReason() == TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN) {
-                // Remove the hide status overlay before applying the ordinary publication
-                // classifier. active remains false, so employee runtime access stays closed.
+            if (old.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
+                // Legacy hidden rows used ARCHIVED as an overlay. Seed only those rows
+                // before canonical derivation; current lifecycle rows retain business status.
                 old.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
             }
             refreshStatus(old, unfinished);
@@ -344,7 +340,6 @@ class CertificationAssignmentService {
             var successor = assignments.save(createAssignment(exam, member, specification, publicationCycle));
             if (!exam.isActive()) {
                 successor.setActive(false);
-                successor.setStatus(TrainingExamAssignmentStatus.ARCHIVED);
                 successor.setDeactivationReason(TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN);
             }
             old.setReplacedByAssignment(successor);
@@ -445,7 +440,7 @@ class CertificationAssignmentService {
 
     /**
      * Derives status from canonical assignment fields after finished-attempt reconciliation.
-     * ARCHIVED is the only persisted enum value with independent lifecycle meaning.
+     * ARCHIVED is retained unchanged as an unknown legacy lifecycle state.
      */
     public void refreshStatus(TrainingExamAssignment assignment, boolean hasActiveUnfinishedAttempt) {
         if (assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
