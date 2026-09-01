@@ -35,16 +35,20 @@ class CertificationAnalyticsService {
     private final jakarta.persistence.EntityManager entityManager;
 
     @Transactional
-    public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
+    public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long actorUserId, Long examId) {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
-        var rows = loadActiveAssignmentScope(restaurantId, examId);
+        var rows = loadPermissionFilteredActiveAssignmentScope(restaurantId, actorUserId, examId);
         return toSummary(rows);
     }
 
     @Transactional
-    public Map<Long, CertificationExamSummaryPreviewDto> getExamSummaryPreviewBatch(Long restaurantId, Collection<Long> examIds) {
+    public Map<Long, CertificationExamSummaryPreviewDto> getExamSummaryPreviewBatch(
+            Long restaurantId,
+            Long actorUserId,
+            Collection<Long> examIds
+    ) {
         if (examIds == null || examIds.isEmpty()) {
             return Map.of();
         }
@@ -57,7 +61,10 @@ class CertificationAnalyticsService {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExams(restaurantId, distinctExamIds, now);
         entityManager.flush();
-        var rows = assignments.findActiveByRestaurantIdAndExamIds(restaurantId, distinctExamIds);
+        var allowedUserIds = resolveAllowedAnalyticsUserIds(restaurantId, actorUserId);
+        var rows = assignments.findActiveByRestaurantIdAndExamIds(restaurantId, distinctExamIds).stream()
+                .filter(assignment -> allowedUserIds.contains(assignment.getUser().getId()))
+                .toList();
         var grouped = rows.stream().collect(Collectors.groupingBy(row -> row.getExam().getId()));
 
         Map<Long, CertificationExamSummaryPreviewDto> summaryByExamId = new HashMap<>();
@@ -76,11 +83,11 @@ class CertificationAnalyticsService {
     }
 
     @Transactional
-    public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long examId) {
+    public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long actorUserId, Long examId) {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
-        var rows = loadActiveAssignmentScope(restaurantId, examId);
+        var rows = loadPermissionFilteredActiveAssignmentScope(restaurantId, actorUserId, examId);
         return rows.stream()
                 .collect(Collectors.groupingBy(a -> new PositionKey(
                         a.getAssignedPosition() == null ? null : a.getAssignedPosition().getId(),
@@ -111,11 +118,10 @@ class CertificationAnalyticsService {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
-        var rows = loadActiveAssignmentScope(restaurantId, examId);
+        var rows = loadPermissionFilteredActiveAssignmentScope(restaurantId, actorUserId, examId);
         var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
         var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> userIds.contains(member.getUser().getId()))
-                .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole()))
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
 
         return rows.stream()
@@ -242,6 +248,28 @@ class CertificationAnalyticsService {
     private List<TrainingExamAssignment> loadActiveAssignmentScope(Long restaurantId, Long examId) {
         ensureCertificationExam(restaurantId, examId);
         return assignments.findActiveByExamIdAndRestaurantId(examId, restaurantId);
+    }
+
+    private List<TrainingExamAssignment> loadPermissionFilteredActiveAssignmentScope(
+            Long restaurantId,
+            Long actorUserId,
+            Long examId
+    ) {
+        var allowedUserIds = resolveAllowedAnalyticsUserIds(restaurantId, actorUserId);
+        return loadActiveAssignmentScope(restaurantId, examId).stream()
+                .filter(assignment -> allowedUserIds.contains(assignment.getUser().getId()))
+                .toList();
+    }
+
+    private Set<Long> resolveAllowedAnalyticsUserIds(Long restaurantId, Long actorUserId) {
+        return members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+                .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(
+                        actorUserId,
+                        restaurantId,
+                        member.getRole()
+                ))
+                .map(member -> member.getUser().getId())
+                .collect(Collectors.toSet());
     }
 
     private CertificationExamSummaryDto toSummary(List<TrainingExamAssignment> rows) {
