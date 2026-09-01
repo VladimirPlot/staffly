@@ -45,6 +45,10 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAttemptRepository attempts;
     private final TrainingExamAttemptQuestionRepository attemptQuestions;
     private final TrainingExamAssignmentRepository assignments;
+    private final CertificationAssignmentCycleRepository assignmentCycles;
+    private final CertificationAssignmentCycleNotificationStateRepository cycleNotificationStates;
+    private final CertificationAssessmentSpecificationRepository assessmentSpecifications;
+    private final TrainingExamNotificationStateRepository examNotificationStates;
     private final TrainingFolderRepository folders;
     private final PositionRepository positions;
     private final RestaurantMemberRepository members;
@@ -404,10 +408,37 @@ public class ExamServiceImpl implements ExamService {
         if (exam.isActive()) {
             throw new ConflictException("Сначала скройте экзамен, затем удаляйте.");
         }
-        // Attempts and their immutable snapshots are history. Detach them before the
-        // exam delete cascades through the current-cycle assignments.
+
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            permanentlyDeleteCertificationGraph(exam);
+            return;
+        }
+
         attempts.detachAssignmentsForExam(exam.getId());
         exams.delete(exam);
+    }
+
+    /** Deletes current Certification product state while retaining quiet, detached attempt history. */
+    private void permanentlyDeleteCertificationGraph(TrainingExam exam) {
+        Long examId = exam.getId();
+
+        // Terminalize first: no detached row may remain resumable after its obligation disappears.
+        attempts.terminalCancelUnfinishedForExam(
+                examId, TimeProvider.now(), TrainingExamAttemptCancellationReason.EXAM_DELETED.name());
+        attempts.detachLifecycleForExam(examId);
+
+        // Explicit FK-safe lifecycle order; historical attempts/questions are deliberately untouched.
+        cycleNotificationStates.deleteAllForExam(examId);
+        examNotificationStates.deleteById(examId);
+        assignments.detachReplacementLinksToExam(examId);
+        assignments.deleteAllForPermanentExamDeletion(examId);
+        assignmentCycles.deleteAllForExam(examId);
+        assessmentSpecifications.deleteAllForExam(examId);
+        sourceFolders.deleteByExamId(examId);
+        sourceQuestions.deleteByExamId(examId);
+
+        exams.deleteById(examId);
+        exams.flush();
     }
 
     @Override

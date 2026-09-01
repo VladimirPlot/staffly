@@ -1,5 +1,6 @@
 package ru.staffly.training.model;
 
 public enum TrainingExamAttemptCancellationReason {
-    POSITION_CHANGED_TIMEOUT
+    POSITION_CHANGED_TIMEOUT,
+    EXAM_DELETED
 }
