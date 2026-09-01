@@ -414,9 +414,6 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
-        if (!exam.isActive()) {
-            throw new ConflictException("Аттестация неактивна.");
-        }
         activeContainerValidator.requireActiveChain(exam.getFolder());
         validateSourceCapacity(
                 restaurantId,
