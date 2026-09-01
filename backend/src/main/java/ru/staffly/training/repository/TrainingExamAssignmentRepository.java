@@ -3,6 +3,7 @@ package ru.staffly.training.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExamAssignment;
 
@@ -14,6 +15,20 @@ import ru.staffly.training.model.TrainingExamAssignmentStatus;
 import ru.staffly.training.model.TrainingExamAssignmentDeactivationReason;
 
 public interface TrainingExamAssignmentRepository extends JpaRepository<TrainingExamAssignment, Long> {
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            update training_exam_assignment
+            set replaced_by_assignment_id = null
+            where replaced_by_assignment_id in (
+                select id from training_exam_assignment where exam_id = :examId
+            )
+            """, nativeQuery = true)
+    int detachReplacementLinksToExam(@Param("examId") Long examId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "delete from training_exam_assignment where exam_id = :examId", nativeQuery = true)
+    int deleteAllForPermanentExamDeletion(@Param("examId") Long examId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select a from TrainingExamAssignment a
