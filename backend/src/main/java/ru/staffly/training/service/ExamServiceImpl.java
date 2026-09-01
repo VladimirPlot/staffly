@@ -587,7 +587,7 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
                 toRuntimeExamDto(attempt),
-                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getId())
+                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getAssignment(), attempt.getId())
         );
     }
 
@@ -695,7 +695,7 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
                 toRuntimeExamDto(existingAttempt),
-                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getId())
+                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getAssignment(), existingAttempt.getId())
         );
     }
 
@@ -711,7 +711,10 @@ public class ExamServiceImpl implements ExamService {
 
     private List<RuntimeQuestionDto> toRuntimeQuestions(List<AttemptQuestionSnapshotDto> snapshots,
                                                          TrainingExamMode mode,
+                                                         TrainingExamAssignment assignment,
                                                          Long attemptId) {
+        boolean revealExplanation = mode != TrainingExamMode.CERTIFICATION
+                || certificationAssignmentService.shouldRevealCorrectAnswers(assignment, false);
         return snapshots.stream().map(snapshot -> {
             var leftItems = snapshot.matchPairs().stream()
                     .map(pair -> new RuntimeQuestionItemDto(pair.sortOrder(), pair.leftText()))
@@ -727,7 +730,7 @@ public class ExamServiceImpl implements ExamService {
                     snapshot.questionId(),
                     snapshot.type(),
                     snapshot.prompt(),
-                    mode == TrainingExamMode.CERTIFICATION ? null : snapshot.explanation(),
+                    revealExplanation ? snapshot.explanation() : null,
                     snapshot.options(),
                     leftItems,
                     rightOptions,
