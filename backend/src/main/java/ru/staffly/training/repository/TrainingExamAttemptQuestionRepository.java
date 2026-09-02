@@ -7,6 +7,5 @@ import java.util.List;
 
 public interface TrainingExamAttemptQuestionRepository extends JpaRepository<TrainingExamAttemptQuestion, Long> {
     List<TrainingExamAttemptQuestion> findByAttemptId(Long attemptId);
-    List<TrainingExamAttemptQuestion> findByAttemptIdIn(List<Long> attemptIds);
     void deleteByAttemptId(Long attemptId);
 }

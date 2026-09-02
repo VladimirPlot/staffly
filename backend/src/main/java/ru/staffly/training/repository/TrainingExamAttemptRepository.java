@@ -52,8 +52,6 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             @Param("examIds") Collection<Long> examIds
     );
 
-    boolean existsByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNull(Long examId, Long restaurantId, Long userId);
-
     boolean existsByAssignmentIdAndFinishedAtIsNull(Long assignmentId);
 
     @Query("""
@@ -158,11 +156,6 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
 
     Optional<TrainingExamAttempt> findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
             Long examId, Long restaurantId, Long userId, int examVersion
-    );
-
-    Optional<TrainingExamAttempt> findTopByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
-            Long assignmentId,
-            int examVersion
     );
 
     List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(

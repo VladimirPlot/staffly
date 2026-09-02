@@ -552,25 +552,6 @@ class CertificationAssignmentService {
         return assignment;
     }
 
-    /** The sole ARCHIVED -> active lifecycle transition for an existing current-version row. */
-    private void reactivateLatestCurrentGeneration(TrainingExam exam,
-                                                   TrainingExamAssignment assignment,
-                                                   RestaurantMember member) {
-        if (assignment.getExamVersionSnapshot() != exam.getVersion()
-                || assignment.getAssessmentSpecification().getVersion() != exam.getVersion()
-                || !assignment.getAssessmentSpecification().getExam().getId().equals(exam.getId())) {
-            throw new ConflictException("Назначение не соответствует текущей версии аттестации.");
-        }
-        assignment.setAssignedPosition(member.getPosition());
-        if (!assignment.isActive() || assignment.getStatus() == TrainingExamAssignmentStatus.ARCHIVED) {
-            assignment.setActive(true);
-            // Temporarily leave ARCHIVED so canonical status may be derived; snapshots/history remain untouched.
-            assignment.setStatus(TrainingExamAssignmentStatus.ASSIGNED);
-            reconcileDerivedStateFromFinishedAttempts(assignment);
-            refreshStatus(assignment, attempts.existsByAssignmentIdAndFinishedAtIsNull(assignment.getId()));
-        }
-    }
-
     public Integer calculateAttemptsAllowed(TrainingExamAssignment assignment) {
         var specificationLimit = assignment.getAssessmentSpecification().getAttemptLimit();
         if (!java.util.Objects.equals(assignment.getAttemptsLimitSnapshot(), specificationLimit)) {

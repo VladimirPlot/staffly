@@ -5,7 +5,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.CertificationAssignmentCycle;
-import ru.staffly.training.model.CertificationAssignmentCycleKind;
 
 import java.util.Optional;
 
@@ -16,9 +15,6 @@ public interface CertificationAssignmentCycleRepository extends JpaRepository<Ce
 
     @Query("select coalesce(max(c.cycleSequence), 0) from CertificationAssignmentCycle c where c.exam.id = :examId")
     int findMaxCycleSequence(@Param("examId") Long examId);
-
-    Optional<CertificationAssignmentCycle> findTopByExamIdAndAssessmentSpecificationIdAndKindOrderByCycleSequenceDesc(
-            Long examId, Long specificationId, CertificationAssignmentCycleKind kind);
 
     Optional<CertificationAssignmentCycle> findTopByExamIdAndAssessmentSpecificationIdOrderByCycleSequenceDesc(
             Long examId, Long specificationId);
