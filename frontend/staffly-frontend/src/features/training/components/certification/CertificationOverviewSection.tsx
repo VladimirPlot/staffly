@@ -37,8 +37,16 @@ export default function CertificationOverviewSection({ canManage, exam, summaryS
     <Card className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-lg font-semibold">{exam.title}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-lg font-semibold">{exam.title}</div>
+            {!exam.active && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                Аттестация скрыта
+              </span>
+            )}
+          </div>
           <div className="text-sm text-muted">Assignment-aware аналитика аттестации</div>
+          {!exam.active && <div className="text-sm text-amber-700">Сотрудникам тест недоступен</div>}
         </div>
         {canManage && (
           <Button
