@@ -30,6 +30,7 @@ public class TrainingExamOwnershipService {
     private final TrainingExamRepository exams;
     private final RestaurantMemberRepository members;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
 
     public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
         var actorUser = User.builder().id(actorUserId).build();
@@ -79,7 +80,7 @@ public class TrainingExamOwnershipService {
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         List<TrainingExam> ownedExams = findActiveOwnedCertificationExams(restaurantId, ownerUserId)
                 .stream()
-                .filter(exam -> canActorManageExam(actorUserId, restaurantId, exam))
+                .filter(exam -> canActorManageExamAndContainer(actorUserId, restaurantId, exam))
                 .toList();
 
         if (ownedExams.isEmpty()) {
@@ -137,6 +138,7 @@ public class TrainingExamOwnershipService {
             if (!canActorManageExam(actorUserId, restaurantId, exam)) {
                 throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
             }
+            assertCurrentContainerManageable(restaurantId, actorUserId, exam);
             if (Objects.equals(item.getValue(), ownerUserId)) {
                 throw new BadRequestException("Новый ответственный должен отличаться от увольняемого сотрудника");
             }
@@ -228,12 +230,29 @@ public class TrainingExamOwnershipService {
         if (!canActorManageExam(actorUserId, restaurantId, exam)) {
             throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
         }
+        assertCurrentContainerManageable(restaurantId, actorUserId, exam);
         return exam;
+    }
+
+    private boolean canActorManageExamAndContainer(Long actorUserId, Long restaurantId, TrainingExam exam) {
+        if (!canActorManageExam(actorUserId, restaurantId, exam)) {
+            return false;
+        }
+        return exam.getFolder() == null || certificationFolderManagementService
+                .manageableFolderIds(restaurantId, actorUserId)
+                .contains(exam.getFolder().getId());
+    }
+
+    private void assertCurrentContainerManageable(Long restaurantId, Long actorUserId, TrainingExam exam) {
+        if (exam.getFolder() != null) {
+            certificationFolderManagementService.assertSubtreeManageable(
+                    restaurantId, actorUserId, exam.getFolder().getId());
+        }
     }
 
     private boolean canActorManageExam(Long actorUserId, Long restaurantId, TrainingExam exam) {
         try {
-            trainingPolicyService.assertCanAccessExamTargetByVisibility(
+            trainingPolicyService.assertCanManageCertificationTargets(
                     actorUserId,
                     restaurantId,
                     exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())

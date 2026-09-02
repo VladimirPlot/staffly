@@ -6,6 +6,7 @@ import type {
   TrainingQuestionDto,
 } from "../../api/types";
 import type { PositionDto } from "../../../dictionaries/api";
+import type { RestaurantRole } from "../../../../shared/types/restaurant";
 
 export type ExamEditorProps = {
   open: boolean;
@@ -13,6 +14,8 @@ export type ExamEditorProps = {
   mode: TrainingExamMode;
   exam?: TrainingExamDto | null;
   knowledgeFolderId?: number | null;
+  initialFolderId?: number | null;
+  certificationAllowedAudienceRoles?: RestaurantRole[];
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 };

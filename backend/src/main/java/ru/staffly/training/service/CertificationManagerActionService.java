@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.training.model.TrainingExamMode;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.training.repository.TrainingExamRepository;
 
 @Service
@@ -31,10 +32,14 @@ class CertificationManagerActionService {
     }
 
     private void ensureCertificationExam(Long restaurantId, Long examId) {
-        var exam = exams.findByIdAndRestaurantId(examId, restaurantId)
+        // Exam is the common mutation boundary. Assignment is always locked second.
+        var exam = exams.findByIdAndRestaurantIdForUpdate(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Manager actions are available only for certification exams.");
+        }
+        if (!exam.isActive()) {
+            throw new ConflictException("Аттестация неактивна.");
         }
     }
 }

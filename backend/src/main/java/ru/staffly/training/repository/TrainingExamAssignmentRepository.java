@@ -3,6 +3,7 @@ package ru.staffly.training.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExamAssignment;
 
@@ -11,22 +12,66 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import ru.staffly.training.model.TrainingExamAssignmentStatus;
+import ru.staffly.training.model.TrainingExamAssignmentDeactivationReason;
 
 public interface TrainingExamAssignmentRepository extends JpaRepository<TrainingExamAssignment, Long> {
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            update training_exam_assignment
+            set replaced_by_assignment_id = null
+            where replaced_by_assignment_id in (
+                select id from training_exam_assignment where exam_id = :examId
+            )
+            """, nativeQuery = true)
+    int detachReplacementLinksToExam(@Param("examId") Long examId);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = "delete from training_exam_assignment where exam_id = :examId", nativeQuery = true)
+    int deleteAllForPermanentExamDeletion(@Param("examId") Long examId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.id = :assignmentId and a.restaurant.id = :restaurantId
+            """)
+    Optional<TrainingExamAssignment> findByIdAndRestaurantIdForFinalizationUpdate(
+            @Param("assignmentId") Long assignmentId,
+            @Param("restaurantId") Long restaurantId
+    );
+
     @Query("""
             select a from TrainingExamAssignment a
             left join fetch a.user u
             left join fetch a.assignedPosition ap
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
+            """)
+    List<TrainingExamAssignment> findCurrentAnalyticsScopeByExamIdAndRestaurantId(
+            @Param("examId") Long examId,
+            @Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.user.id = :userId
               and a.active = true
             """)
-    List<TrainingExamAssignment> findActiveByExamIdAndRestaurantId(@Param("examId") Long examId,
-                                                                   @Param("restaurantId") Long restaurantId);
+    Optional<TrainingExamAssignment> findCurrentActiveByExamAndUser(@Param("examId") Long examId,
+                                                                    @Param("restaurantId") Long restaurantId,
+                                                                    @Param("userId") Long userId);
 
-    Optional<TrainingExamAssignment> findByIdAndExamIdAndRestaurantIdAndActiveTrue(Long id, Long examId, Long restaurantId);
-
-    Optional<TrainingExamAssignment> findByExamIdAndRestaurantIdAndUserIdAndActiveTrue(Long examId, Long restaurantId, Long userId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.user.id = :userId
+              and a.active = true
+            """)
+    Optional<TrainingExamAssignment> findCurrentActiveForMutation(@Param("examId") Long examId,
+                                                                   @Param("restaurantId") Long restaurantId,
+                                                                   @Param("userId") Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -40,22 +85,117 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
                                                               @Param("restaurantId") Long restaurantId,
                                                               @Param("userId") Long userId);
 
-    Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
-            Long examId,
-            Long restaurantId,
-            Long userId
-    );
+    @Query("""
+            select coalesce(max(a.resetGeneration), -1) from TrainingExamAssignment a
+            where a.exam.id = :examId and a.user.id = :userId
+              and a.examVersionSnapshot = :examVersion
+            """)
+    int findMaxResetGeneration(@Param("examId") Long examId,
+                               @Param("userId") Long userId,
+                               @Param("examVersion") int examVersion);
 
-    List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndActiveTrue(Long examId, Long restaurantId);
+    @Query("""
+            select coalesce(max(a.resetGeneration), -1) from TrainingExamAssignment a
+            where a.assignmentCycle.id = :cycleId and a.user.id = :userId
+            """)
+    int findMaxResetGenerationInCycle(@Param("cycleId") Long cycleId,
+                                      @Param("userId") Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId and a.user.id = :userId
+              and a.assessmentSpecification.id = :specificationId
+              and a.assignmentCycle.id = :cycleId
+              and a.active = false
+              and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED
+            order by a.resetGeneration desc, a.id desc
+            """)
+    List<TrainingExamAssignment> findAudienceRemovedForExactCycle(
+            @Param("examId") Long examId, @Param("restaurantId") Long restaurantId,
+            @Param("userId") Long userId, @Param("specificationId") Long specificationId,
+            @Param("cycleId") Long cycleId);
+
+    List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
+            Long examId, Long restaurantId, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.active = true
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findAllActiveAssignmentsForCycleTransition(@Param("examId") Long examId,
+                                                                             @Param("restaurantId") Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.replacedByAssignment is null
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findLifecyclePredecessorCandidatesForRecertification(
+            @Param("examId") Long examId,
+            @Param("restaurantId") Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            where a.exam.id = :examId and a.restaurant.id = :restaurantId
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findLifecycleObligationsForPublication(@Param("examId") Long examId,
+                                                                        @Param("restaurantId") Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            join fetch a.user u
+            where a.exam.id = :examId
+              and a.restaurant.id = :restaurantId
+              and a.active = false
+              and a.deactivationReason = :reason
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findInactiveByDeactivationReasonForRestore(
+            @Param("examId") Long examId,
+            @Param("restaurantId") Long restaurantId,
+            @Param("reason") TrainingExamAssignmentDeactivationReason reason);
 
     @Query("""
             select a from TrainingExamAssignment a
             where a.restaurant.id = :restaurantId
-              and a.active = true
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
               and a.exam.id in :examIds
             """)
-    List<TrainingExamAssignment> findActiveByRestaurantIdAndExamIds(@Param("restaurantId") Long restaurantId,
-                                                                    @Param("examIds") Collection<Long> examIds);
+    List<TrainingExamAssignment> findCurrentAnalyticsScopeByRestaurantIdAndExamIds(
+            @Param("restaurantId") Long restaurantId,
+            @Param("examIds") Collection<Long> examIds);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select a from TrainingExamAssignment a
+            join fetch a.exam e
+            where a.restaurant.id = :restaurantId
+              and (a.active = true or (a.active = false
+                and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
+              and e.id in :examIds
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+            order by a.id
+            """)
+    List<TrainingExamAssignment> findCurrentCertificationObligationsForAnalyticsUpdate(
+            @Param("restaurantId") Long restaurantId,
+            @Param("examIds") Collection<Long> examIds
+    );
 
     @Query("""
             select a from TrainingExamAssignment a
@@ -85,32 +225,27 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
                                                                            @Param("userId") Long userId);
 
     @Query("""
-            select a from TrainingExamAssignment a
+            select count(a) from TrainingExamAssignment a
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.user.id in :userIds
             """)
-    List<TrainingExamAssignment> findActiveByExamIdAndRestaurantIdAndUserIds(@Param("examId") Long examId,
-                                                                             @Param("restaurantId") Long restaurantId,
-                                                                             @Param("userIds") Collection<Long> userIds);
+    long countActiveObligations(@Param("examId") Long examId,
+                            @Param("restaurantId") Long restaurantId);
 
     @Query("""
-            select a from TrainingExamAssignment a
-            left join fetch a.user u
+            select count(a) from TrainingExamAssignment a
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
               and a.active = true
-              and a.user.id = :userId
-            order by a.assignedAt desc
+              and a.status in :statuses
             """)
-    List<TrainingExamAssignment> findActiveHistoryByExamAndUser(@Param("examId") Long examId,
-                                                                @Param("restaurantId") Long restaurantId,
-                                                                @Param("userId") Long userId);
+    long countActiveObligationsByStatusIn(@Param("examId") Long examId,
+                                      @Param("restaurantId") Long restaurantId,
+                                      @Param("statuses") Collection<TrainingExamAssignmentStatus> statuses);
 
-    long countByExamIdAndRestaurantIdAndActiveTrue(Long examId, Long restaurantId);
+    long countByAssignmentCycleIdAndActiveTrue(Long assignmentCycleId);
 
-    long countByExamIdAndRestaurantIdAndActiveTrueAndStatusIn(Long examId,
-                                                              Long restaurantId,
-                                                              Collection<TrainingExamAssignmentStatus> statuses);
+    long countByAssignmentCycleIdAndActiveTrueAndStatusIn(Long assignmentCycleId,
+                                                          Collection<TrainingExamAssignmentStatus> statuses);
 }

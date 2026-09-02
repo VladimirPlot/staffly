@@ -1,4 +1,4 @@
-export type TrainingFolderType = "KNOWLEDGE" | "QUESTION_BANK";
+export type TrainingFolderType = "KNOWLEDGE" | "QUESTION_BANK" | "CERTIFICATION";
 
 export type TrainingFolderDto = {
   id: number;
@@ -10,6 +10,7 @@ export type TrainingFolderDto = {
   sortOrder: number;
   active: boolean;
   visibilityPositionIds: number[];
+  manageable: boolean;
 };
 
 export type CreateTrainingFolderPayload = {
@@ -132,6 +133,19 @@ export type ExamSourceFolderDto = {
   randomCount?: number | null;
 };
 
+export type ExamSourcesPreflightDto = {
+  availableQuestionCount: number;
+  valid: boolean;
+  issues: string[];
+};
+
+export type ExamSourcesPreflightPayload = {
+  mode: TrainingExamMode;
+  questionCount?: number | null;
+  sourcesFolders: ExamSourceFolderDto[];
+  sourceQuestionIds: number[];
+};
+
 export type TrainingExamDto = {
   id: number;
   restaurantId: number;
@@ -142,8 +156,10 @@ export type TrainingExamDto = {
   timeLimitSec?: number | null;
   mode: TrainingExamMode;
   knowledgeFolderId: number | null;
+  folderId: number | null;
   attemptLimit?: number | null;
   version: number;
+  editorRevision: number;
   sortOrder: number;
   active: boolean;
   sourcesFolders: ExamSourceFolderDto[];
@@ -164,33 +180,12 @@ export type CertificationOwnerCandidateDto = {
   positionName?: string | null;
 };
 
-export type OwnedCertificationExamDto = {
-  examId: number;
-  title: string;
-  visibilityPositionIds: number[];
-  visibilityPositionNames: string[];
-  candidates: CertificationOwnerCandidateDto[];
-};
-
-export type CertificationOwnerReassignmentOptionsDto = {
-  userId: number;
-  fullName?: string | null;
-  ownedExams: OwnedCertificationExamDto[];
-};
-
 export type CertificationOwnerCandidatesDto = {
   examId: number;
   title: string;
   currentOwnerUserId?: number | null;
   currentOwnerFullName?: string | null;
   candidates: CertificationOwnerCandidateDto[];
-};
-
-export type CertificationOwnerBatchReassignmentRequest = {
-  items: Array<{
-    examId: number;
-    newOwnerUserId: number;
-  }>;
 };
 
 export type CertificationExamSummaryPreviewDto = {
@@ -215,6 +210,11 @@ export type CurrentUserCertificationExamDto = {
   assignmentStatus: CertificationAssignmentStatus;
   assignedAt: string;
   examVersionSnapshot?: number | null;
+  latestPublishedVersion: number;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration: number;
   attemptsUsed: number;
   attemptsAllowed?: number | null;
   extraAttempts: number;
@@ -228,7 +228,7 @@ export type CertificationMyResultQuestionDto = {
   questionType: TrainingQuestionType;
   prompt: string;
   chosenAnswerJson?: string | null;
-  correct: boolean;
+  correct?: boolean | null;
   correctAnswerJson?: string | null;
   explanation?: string | null;
 };
@@ -237,25 +237,65 @@ export type CertificationMyResultDto = {
   examId: number;
   title: string;
   description?: string | null;
-  assignmentStatus: CertificationAssignmentStatus;
-  scorePercent?: number | null;
-  passPercent: number;
+  latestPublishedVersion: number;
+  currentObligation?: CertificationCurrentObligationDto | null;
+  previousValidResult?: CertificationPreviousValidResultDto | null;
+  unfinishedAttemptId?: number | null;
+  unfinishedAttemptVersion?: number | null;
+  unfinishedAssignmentId?: number | null;
+  hasPendingNewerObligation: boolean;
+};
+
+export type CertificationCurrentObligationDto = {
+  assignmentId: number;
+  specificationId: number;
+  version: number;
+  cycleId?: number | null;
+  cycleSequence?: number | null;
+  cycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration: number;
+  status: CertificationAssignmentStatus;
+  deactivationReason?: string | null;
   attemptsUsed: number;
   attemptsAllowed?: number | null;
-  revealCorrectAnswers: boolean;
   bestScore?: number | null;
+  scorePercent?: number | null;
+  passPercent: number;
   lastAttemptStartedAt?: string | null;
   lastAttemptFinishedAt?: string | null;
   lastAttemptAt?: string | null;
   passedAt?: string | null;
+  revealCorrectAnswers: boolean;
+  questions: CertificationMyResultQuestionDto[];
+};
+
+export type CertificationPreviousValidResultDto = {
+  assignmentId: number;
+  specificationId: number;
+  version: number;
+  cycleId?: number | null;
+  cycleSequence?: number | null;
+  cycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration: number;
+  deactivationReason?: string | null;
+  bestScore?: number | null;
+  scorePercent?: number | null;
+  passPercent: number;
+  passedAt?: string | null;
+  lastAttemptStartedAt?: string | null;
+  lastAttemptFinishedAt?: string | null;
+  revealCorrectAnswers: boolean;
   questions: CertificationMyResultQuestionDto[];
 };
 
 export type UpsertExamPayload = {
+  expectedEditorRevision?: number;
+  confirmNewVersion?: boolean;
   title: string;
   description?: string | null;
   mode: TrainingExamMode;
   knowledgeFolderId?: number | null;
+  folderId?: number | null;
   questionCount: number;
   passPercent: number;
   timeLimitSec?: number | null;
@@ -298,16 +338,17 @@ export type CertificationExamPositionBreakdownDto = {
 
 export type CertificationAnalyticsStatus = "NOT_STARTED" | "IN_PROGRESS" | "PASSED" | "FAILED";
 
-export type CertificationAssignmentStatus =
-  | "ASSIGNED"
-  | "IN_PROGRESS"
-  | "PASSED"
-  | "FAILED"
-  | "EXHAUSTED"
-  | "ARCHIVED";
+export type CertificationAssignmentStatus = "ASSIGNED" | "IN_PROGRESS" | "PASSED" | "FAILED" | "EXHAUSTED" | "ARCHIVED";
 
 export type CertificationExamEmployeeRowDto = {
   assignmentId: number;
+  assignmentVersion: number;
+  latestPublishedVersion: number;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration: number;
+  deactivationReason?: string | null;
   userId: number;
   fullName: string;
   assignedPositionId?: number | null;
@@ -328,11 +369,17 @@ export type CertificationExamAttemptHistoryDto = {
   attemptId: number;
   assignmentId?: number | null;
   assignmentExamVersionSnapshot?: number | null;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration?: number | null;
+  deactivationReason?: string | null;
   startedAt: string;
   finishedAt?: string | null;
   scorePercent?: number | null;
   passed?: boolean | null;
   examVersion?: number | null;
+  passPercentSnapshot: number;
 };
 
 export type CertificationEmployeeSummaryDto = {
@@ -374,6 +421,11 @@ export type CertificationAttemptDetailsDto = {
   userFullName: string;
   assignmentId?: number | null;
   examVersion?: number | null;
+  assignmentCycleId?: number | null;
+  assignmentCycleSequence?: number | null;
+  assignmentCycleKind?: "VERSION_PUBLICATION" | "RE_CERTIFICATION" | null;
+  resetGeneration?: number | null;
+  deactivationReason?: string | null;
   startedAt: string;
   finishedAt?: string | null;
   scorePercent?: number | null;
@@ -385,7 +437,7 @@ export type CertificationAttemptDetailsDto = {
 };
 
 export type ExamStartQuestionOptionViewDto = { sortOrder: number; text: string };
-export type ExamStartQuestionMatchPairViewDto = { sortOrder: number; leftText: string; rightText: string };
+export type ExamRuntimeQuestionItemDto = { sortOrder: number; text: string };
 
 export type ExamStartQuestionBlankOptionViewDto = { sortOrder: number; text: string };
 export type ExamStartQuestionBlankViewDto = { blankIndex: number; options: ExamStartQuestionBlankOptionViewDto[] };
@@ -396,15 +448,24 @@ export type AttemptQuestionSnapshotDto = {
   prompt: string;
   explanation?: string | null;
   options: ExamStartQuestionOptionViewDto[];
-  matchPairs: ExamStartQuestionMatchPairViewDto[];
+  matchLeftItems: ExamRuntimeQuestionItemDto[];
+  matchRightOptions: ExamRuntimeQuestionItemDto[];
   blanks: ExamStartQuestionBlankViewDto[];
+};
+
+export type RuntimeExamDto = {
+  id: number;
+  title: string;
+  questionCount: number;
+  timeLimitSec?: number | null;
+  mode: TrainingExamMode;
 };
 
 export type ExamAttemptDto = {
   attemptId: number;
   startedAt: string;
   examVersion: number;
-  exam: TrainingExamDto;
+  exam: RuntimeExamDto;
   questions: AttemptQuestionSnapshotDto[];
 };
 
@@ -455,11 +516,27 @@ export type MoveTrainingPracticeExamPayload = {
   sortOrder?: number | null;
 };
 
-export type ReorderTrainingObjectKind = "FOLDER" | "KNOWLEDGE_ITEM" | "QUESTION" | "PRACTICE_EXAM";
+export type MoveTrainingCertificationExamPayload = {
+  folderId?: number | null;
+  sortOrder?: number | null;
+};
+
+export type ReorderTrainingObjectKind =
+  | "FOLDER"
+  | "KNOWLEDGE_ITEM"
+  | "QUESTION"
+  | "PRACTICE_EXAM"
+  | "CERTIFICATION_EXAM";
 
 export type ReorderTrainingObjectsPayload = {
   type: TrainingFolderType;
   folderId?: number | null;
   kind: ReorderTrainingObjectKind;
+  questionGroup?: TrainingQuestionGroup;
   orderedIds: number[];
+};
+
+export type CertificationContainerCapabilitiesDto = {
+  folderReorderAllowed: boolean;
+  certificationExamReorderAllowed: boolean;
 };

@@ -83,7 +83,14 @@ export default function QuestionBankRootPage() {
         .sort(sortTrainingObjects),
     [foldersState.folders],
   );
-  const objectIds = useMemo(() => rootObjects.map((object) => trainingObjectId(object.kind, object.id)), [rootObjects]);
+  const activeRootFolders = useMemo(() => rootObjects.filter(trainingObjectActive), [rootObjects]);
+  const folderReorderEnabled = canManage
+    && activeRootFolders.length > 1
+    && activeRootFolders.every((object) => object.kind === "folder" && object.folder.manageable);
+  const objectIds = useMemo(
+    () => folderReorderEnabled ? activeRootFolders.map((object) => trainingObjectId(object.kind, object.id)) : [],
+    [activeRootFolders, folderReorderEnabled],
+  );
   const selectedObject = useMemo(
     () => rootObjects.find((object) => trainingObjectId(object.kind, object.id) === selectedObjectId) ?? null,
     [rootObjects, selectedObjectId],
@@ -170,7 +177,8 @@ export default function QuestionBankRootPage() {
       const newIndex = objectIds.indexOf(overId);
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
 
-      const activeFolders = rootObjects.filter(trainingObjectActive);
+      if (!folderReorderEnabled) return;
+      const activeFolders = activeRootFolders;
       const activeOldIndex = activeFolders.findIndex((object) => object.id === active.id);
       const over = parseTrainingObjectId(overId);
       const activeNewIndex = activeFolders.findIndex((object) => object.id === over?.id);
@@ -189,7 +197,7 @@ export default function QuestionBankRootPage() {
         await reload();
       }
     },
-    [blockedDropFolderIds, finishDrag, objectIds, reload, restaurantId, rootObjects],
+    [activeRootFolders, blockedDropFolderIds, finishDrag, folderReorderEnabled, objectIds, reload, restaurantId],
   );
 
   const archiveObject = async (object: TrainingFolderListObject) => {
@@ -327,6 +335,8 @@ export default function QuestionBankRootPage() {
                 blockedFolderIds={blockedDropFolderIds}
                 actionLoading={actionLoading}
                 canManage={canManage}
+                canManageObject={(object) => object.kind !== "folder" || object.folder.manageable}
+                canReorderObject={(object) => folderReorderEnabled && trainingObjectActive(object)}
                 onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
                 onClearSelection={() => setSelectedObjectId(null)}
                 onOpenObject={(object) => navigate(trainingRoutes.questionBankFolder(object.id))}
@@ -353,7 +363,7 @@ export default function QuestionBankRootPage() {
         object={selectedObject}
         visible={Boolean(selectedObject)}
         actionLoading={actionLoading}
-        canManage={canManage}
+        canManage={canManage && (selectedObject?.kind !== "folder" || selectedObject.folder.manageable)}
         onOpen={(object) => navigate(trainingRoutes.questionBankFolder(object.id))}
         onEditFolder={(folder) => {
           setEditingFolder(folder);

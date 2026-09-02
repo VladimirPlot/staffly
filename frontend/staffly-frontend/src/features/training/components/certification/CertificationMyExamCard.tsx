@@ -66,6 +66,11 @@ export default function CertificationMyExamCard({ exam }: Props) {
       <div className="mt-1 text-xs text-muted sm:text-sm">
         {resultText ? `Лучший результат: ${resultText}` : "Итогового результата пока нет"}
       </div>
+      <div className="mt-1 text-xs text-muted sm:text-sm">
+        Назначена версия {exam.examVersionSnapshot ?? "—"}
+        {exam.assignmentCycleSequence != null && ` · цикл ${exam.assignmentCycleSequence}`}
+        {exam.latestPublishedVersion !== exam.examVersionSnapshot && ` · опубликована версия ${exam.latestPublishedVersion}`}
+      </div>
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Link

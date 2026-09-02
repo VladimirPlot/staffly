@@ -44,20 +44,34 @@ public class TrainingExamAssignment {
     private Position assignedPosition;
 
     /**
-     * Timestamp of the initial assignment creation (not reset between cycles).
+     * Timestamp of this immutable business-cycle assignment creation.
      */
     @Column(name = "assigned_at", nullable = false)
     @Builder.Default
     private Instant assignedAt = TimeProvider.now();
 
     /**
-     * Attempts limit snapshot for the current cycle; refreshed only on cycle reset.
+     * Attempts limit snapshot for this assignment cycle.
      */
     @Column(name = "attempts_limit_snapshot")
     private Integer attemptsLimitSnapshot;
 
     @Column(name = "exam_version_snapshot", nullable = false)
     private int examVersionSnapshot;
+
+    /** Per-user reset boundary inside the immutable global Certification version. */
+    @Column(name = "reset_generation", nullable = false)
+    @Builder.Default
+    private int resetGeneration = 0;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "assessment_specification_id", nullable = false)
+    private CertificationAssessmentSpecification assessmentSpecification;
+
+    /** Null only for assignments created by lifecycle paths predating cycle integration. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignment_cycle_id")
+    private CertificationAssignmentCycle assignmentCycle;
 
     @Column(name = "extra_attempts", nullable = false)
     @Builder.Default
@@ -84,6 +98,15 @@ public class TrainingExamAssignment {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private boolean active = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "deactivation_reason", length = 32)
+    private TrainingExamAssignmentDeactivationReason deactivationReason;
+
+    /** Historical successor link. Deliberately has no cascading operations. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "replaced_by_assignment_id")
+    private TrainingExamAssignment replacedByAssignment;
 
     @Column(name = "created_at", nullable = false)
     @Builder.Default

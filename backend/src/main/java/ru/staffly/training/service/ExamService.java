@@ -10,9 +10,11 @@ public interface ExamService {
     CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager);
     List<TrainingExamDto> listPracticeExamsByKnowledgeFolder(Long restaurantId, Long userId, boolean isManager, Long folderId, boolean includeInactive);
     TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
+    ExamSourcesPreflightDto preflightSources(Long restaurantId, Long userId, ExamSourcesPreflightRequest request);
     TrainingExamDto createKnowledgeExam(Long restaurantId, Long userId, CreateTrainingExamRequest request);
     TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request);
     TrainingExamDto movePracticeExam(Long restaurantId, Long userId, Long examId, MoveTrainingPracticeExamRequest request);
+    TrainingExamDto moveCertificationExam(Long restaurantId, Long userId, Long examId, MoveTrainingCertificationExamRequest request);
     TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId);
     TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId);
     void deleteExam(Long restaurantId, Long userId, Long examId);
@@ -32,9 +34,4 @@ public interface ExamService {
 
     TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId);
     CertificationOwnerCandidatesDto getCertificationExamOwnerCandidates(Long restaurantId, Long actorUserId, Long examId);
-    CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId);
-    CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
-                                                                             Long actorUserId,
-                                                                             Long userId,
-                                                                             CertificationOwnerBatchReassignmentRequest request);
 }

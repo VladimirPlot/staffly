@@ -3,9 +3,9 @@ package ru.staffly.training.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamAssignment;
-import ru.staffly.training.model.TrainingExamAssignmentStatus;
 import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 
@@ -29,6 +29,37 @@ class CertificationAssignmentLifecycleService {
         return normalize(assignment, now);
     }
 
+    public Optional<TrainingExamAttempt> normalizeUnfinishedForStart(TrainingExam exam,
+                                                                      Long restaurantId,
+                                                                      Long userId,
+                                                                      Instant now) {
+        var unfinishedAttempts = attempts
+                .findByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
+                        exam.getId(), restaurantId, userId);
+        if (unfinishedAttempts.size() > 1) {
+            throw new ConflictException(
+                    "Обнаружено несколько незавершённых попыток аттестации. Обратитесь к администратору."
+            );
+        }
+        if (unfinishedAttempts.isEmpty()) {
+            return Optional.empty();
+        }
+
+        var unfinished = unfinishedAttempts.get(0);
+        if (unfinished.getAssignment() == null) {
+            throw new ConflictException(
+                    "Незавершённая попытка аттестации не связана с назначением. Обратитесь к администратору."
+            );
+        }
+        var assignment = unfinished.getAssignment();
+        assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
+        if (isExpiredUnfinishedAttempt(unfinished, now)) {
+            attemptFinalizationService.finalizeExpiredUnfinishedAttempt(unfinished, now);
+            return Optional.empty();
+        }
+        return Optional.of(unfinished);
+    }
+
     public TrainingExamAssignment normalize(TrainingExamAssignment assignment, Instant now) {
         // Full lifecycle normalization for certification assignment.
         // This is intentionally allowed to mutate DB state (read-repair) by:
@@ -48,10 +79,7 @@ class CertificationAssignmentLifecycleService {
         }
 
         Optional<TrainingExamAttempt> unfinished = unfinishedAttempts.stream().findFirst();
-        if (unfinished.isPresent() && (assignment.getPassedAt() != null || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED)) {
-            attemptFinalizationService.finalizeStaleUnfinishedAttemptForLifecycleRepair(unfinished.get(), now);
-            unfinished = Optional.empty();
-        }
+        assignmentService.reconcileDerivedStateFromFinishedAttempts(assignment);
         if (unfinished.isPresent() && isExpiredUnfinishedAttempt(unfinished.get(), now)) {
             attemptFinalizationService.finalizeExpiredUnfinishedAttempt(unfinished.get(), now);
             unfinished = Optional.empty();

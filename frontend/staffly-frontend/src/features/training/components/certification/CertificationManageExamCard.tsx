@@ -1,4 +1,4 @@
-import { Eye, Pencil, Trash2, UserRoundCog } from "lucide-react";
+import { Eye, MoveRight, Pencil, Trash2, UserRoundCog } from "lucide-react";
 import { Link } from "react-router-dom";
 import IconButton from "../../../../shared/ui/IconButton";
 import type { PositionDto } from "../../../dictionaries/api";
@@ -11,9 +11,11 @@ type Props = {
   analyticsHref: string;
   loading: boolean;
   positionsById: Map<number, PositionDto>;
-  onEdit: (exam: TrainingExamDto) => void;
-  onChangeOwner: (exam: TrainingExamDto) => void;
-  onAction: (examId: number, action: "hide" | "restore" | "delete") => void;
+  onEdit?: (exam: TrainingExamDto) => void;
+  onMove?: (exam: TrainingExamDto) => void;
+  onChangeOwner?: (exam: TrainingExamDto) => void;
+  onAction?: (examId: number, action: "hide" | "restore" | "delete") => void;
+  showDeleteAction?: boolean;
 };
 
 export default function CertificationManageExamCard({
@@ -22,8 +24,10 @@ export default function CertificationManageExamCard({
   loading,
   positionsById,
   onEdit,
+  onMove,
   onChangeOwner,
   onAction,
+  showDeleteAction = true,
 }: Props) {
   const targets = exam.visibilityPositionIds
     .map((id) => positionsById.get(id)?.name)
@@ -39,7 +43,7 @@ export default function CertificationManageExamCard({
   return (
     <div className="group relative rounded-2xl border border-subtle bg-surface p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--staffly-border)] hover:shadow-md sm:p-5">
       <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-2">
-        <div className="flex items-center gap-1">
+        {onEdit && onAction && <div className="flex items-center gap-1">
           <IconButton
             aria-label="Редактировать аттестацию"
             title="Редактировать"
@@ -52,6 +56,19 @@ export default function CertificationManageExamCard({
           >
             <Pencil className="h-4 w-4" />
           </IconButton>
+
+          {onMove && <IconButton
+            aria-label="Переместить аттестацию"
+            title="Переместить"
+            disabled={loading}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onMove(exam);
+            }}
+          >
+            <MoveRight className="h-4 w-4" />
+          </IconButton>}
 
           <IconButton
             aria-label={exam.active ? "Скрыть аттестацию" : "Восстановить аттестацию"}
@@ -66,7 +83,7 @@ export default function CertificationManageExamCard({
             <Eye className="h-4 w-4" />
           </IconButton>
 
-          <IconButton
+          {showDeleteAction && <IconButton
             aria-label="Удалить аттестацию"
             title="Удалить"
             disabled={loading}
@@ -77,8 +94,8 @@ export default function CertificationManageExamCard({
             }}
           >
             <Trash2 className="h-4 w-4" />
-          </IconButton>
-        </div>
+          </IconButton>}
+        </div>}
 
         <CertificationResultMetrics
           passedCount={passed}
@@ -129,7 +146,7 @@ export default function CertificationManageExamCard({
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="text-xs text-muted">{ownerLabel}</div>
-        <button
+        {onChangeOwner && <button
           type="button"
           className="inline-flex items-center gap-1 rounded-md border border-subtle px-2 py-1 text-xs text-muted transition-colors hover:bg-white/70 hover:text-default disabled:cursor-not-allowed disabled:opacity-60"
           disabled={loading}
@@ -141,7 +158,7 @@ export default function CertificationManageExamCard({
         >
           <UserRoundCog className="h-3.5 w-3.5" />
           Сменить ответственного
-        </button>
+        </button>}
       </div>
     </div>
   );

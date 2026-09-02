@@ -7,6 +7,6 @@ public record StartExamResponseDto(
         Long attemptId,
         Instant startedAt,
         Integer examVersion,
-        TrainingExamDto exam,
-        List<AttemptQuestionSnapshotDto> questions
+        RuntimeExamDto exam,
+        List<RuntimeQuestionDto> questions
 ) {}

@@ -65,7 +65,7 @@ const AliasGameShell: React.FC<AliasGameShellProps> = ({
         isFullscreen && isFullscreenLayout
           ? "fixed inset-0 z-[100] items-stretch overflow-hidden overscroll-contain rounded-none border-0 bg-[var(--staffly-surface)] p-0"
           : isFullscreen
-            ? "fixed inset-0 z-[100] h-screen w-screen items-start overflow-y-auto overscroll-contain rounded-none border-0 bg-[var(--staffly-bg)] px-[max(0.75rem,env(safe-area-inset-left))] pt-[max(3.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] supports-[height:100dvh]:h-[100dvh] sm:items-center sm:p-8 sm:pt-16"
+            ? "fixed inset-0 z-[100] h-screen w-screen items-start overflow-y-auto overscroll-contain rounded-none border-0 bg-[var(--staffly-bg)] px-[max(0.75rem,var(--staffly-safe-area-left))] pt-[max(3.5rem,var(--staffly-safe-area-top))] pr-[max(0.75rem,var(--staffly-safe-area-right))] pb-[max(0.75rem,var(--staffly-safe-area-bottom))] supports-[height:100dvh]:h-[100dvh] sm:items-center sm:pt-[max(4rem,var(--staffly-safe-area-top))] sm:pr-[max(2rem,var(--staffly-safe-area-right))] sm:pb-[max(2rem,var(--staffly-safe-area-bottom))] sm:pl-[max(2rem,var(--staffly-safe-area-left))]"
             : "relative min-h-[520px] w-full overflow-hidden rounded-[2rem] bg-[var(--staffly-control)]/30 p-3 sm:min-h-[620px] sm:p-6",
       ].join(" ")}
       data-alias-fullscreen-mode={fullscreenMode}

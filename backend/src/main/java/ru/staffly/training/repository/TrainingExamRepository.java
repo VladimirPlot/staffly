@@ -2,14 +2,20 @@ package ru.staffly.training.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamMode;
 
 import java.util.List;
 import java.util.Optional;
+import jakarta.persistence.LockModeType;
 
 public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select e from TrainingExam e where e.id = :id and e.restaurant.id = :restaurantId")
+    Optional<TrainingExam> findByIdAndRestaurantIdForUpdate(@Param("id") Long id,
+                                                            @Param("restaurantId") Long restaurantId);
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp
@@ -76,7 +82,7 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             left join fetch e.owner ow
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id = :folderId
+              and e.folder.id = :folderId
               and (:includeInactive = true or e.active = true)
               and (:positionId is null or vp.id is null or vp.id = :positionId)
             order by e.sortOrder asc, e.createdAt desc
@@ -90,31 +96,123 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             select max(e.sortOrder) from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id = :folderId
+              and e.folder.id = :folderId
               and e.active = true
             """)
     Integer maxActivePracticeSortOrderInKnowledgeFolder(@Param("restaurantId") Long restaurantId,
                                                          @Param("folderId") Long folderId);
 
     @Query("""
+            select max(e.sortOrder) from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder is null
+              and e.active = true
+            """)
+    Integer maxActiveCertificationRootSortOrder(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select max(e.sortOrder) from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id = :folderId
+              and e.active = true
+            """)
+    Integer maxActiveCertificationSortOrderInFolder(@Param("restaurantId") Long restaurantId,
+                                                     @Param("folderId") Long folderId);
+
+    @Query("""
             select e from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id = :folderId
+              and e.folder.id = :folderId
               and e.active = true
             """)
     List<TrainingExam> findActivePracticeInKnowledgeFolder(@Param("restaurantId") Long restaurantId,
                                                             @Param("folderId") Long folderId);
 
     @Query("""
+            select e from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id = :folderId
+              and e.active = true
+            order by e.sortOrder, e.id
+            """)
+    List<TrainingExam> findActiveCertificationInFolder(@Param("restaurantId") Long restaurantId,
+                                                        @Param("folderId") Long folderId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id = :folderId
+              and e.active = true
+            order by e.sortOrder, e.id
+            """)
+    List<TrainingExam> findActiveCertificationInFolderWithVisibility(@Param("restaurantId") Long restaurantId,
+                                                                      @Param("folderId") Long folderId);
+
+    @Query("""
+            select e from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder is null
+              and e.active = true
+            order by e.sortOrder, e.id
+            """)
+    List<TrainingExam> findActiveCertificationInRoot(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder is null
+              and e.active = true
+            order by e.sortOrder, e.id
+            """)
+    List<TrainingExam> findActiveCertificationInRootWithVisibility(@Param("restaurantId") Long restaurantId);
+
+    @Query("""
             select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)
             from TrainingExam e
             where e.restaurant.id = :restaurantId
               and e.mode = ru.staffly.training.model.TrainingExamMode.PRACTICE
-              and e.knowledgeFolder.id in :folderIds
+              and e.folder.id in :folderIds
             """)
     List<ru.staffly.training.dto.ExamUsageDto> findPracticeExamUsagesByKnowledgeFolderIds(@Param("restaurantId") Long restaurantId,
                                                                                           @Param("folderIds") List<Long> folderIds);
+
+    @Query("""
+            select distinct new ru.staffly.training.dto.ExamUsageDto(e.id, e.title)
+            from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id in :folderIds
+            """)
+    List<ru.staffly.training.dto.ExamUsageDto> findCertificationExamUsagesByFolderIds(@Param("restaurantId") Long restaurantId,
+                                                                                      @Param("folderIds") List<Long> folderIds);
+
+    @Query("""
+            select e from TrainingExam e
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+              and e.folder.id in :folderIds
+            order by e.folder.id, e.sortOrder, e.id
+            """)
+    List<TrainingExam> findCertificationByRestaurantIdAndFolderIdIn(@Param("restaurantId") Long restaurantId,
+                                                                     @Param("folderIds") List<Long> folderIds);
+
+    @Query("""
+            select distinct e from TrainingExam e
+            left join fetch e.visibilityPositions vp
+            left join fetch e.folder f
+            where e.restaurant.id = :restaurantId
+              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
+            """)
+    List<TrainingExam> findCertificationByRestaurantIdWithFolderAndVisibility(@Param("restaurantId") Long restaurantId);
 
     @Query("""
             select distinct e from TrainingExam e

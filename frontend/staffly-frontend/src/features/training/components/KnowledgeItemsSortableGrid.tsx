@@ -1,12 +1,16 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Edit3, GripVertical, MoveRight, Trash2 } from "lucide-react";
+import { GripVertical, Pencil } from "lucide-react";
 
 import Icon from "../../../shared/ui/Icon";
 import type { TrainingKnowledgeItemObject } from "../trainingFolderObjects";
 import { trainingObjectId } from "../trainingFolderDnd";
 import KnowledgeItemCard from "./KnowledgeItemCard";
-import TrainingObjectActionsMenu, { type TrainingObjectAction } from "./TrainingObjectActionsMenu";
+import TrainingObjectActionsMenu from "./TrainingObjectActionsMenu";
+import {
+  buildTrainingObjectManagementActions,
+  trainingObjectArchiveActionKey,
+} from "./trainingObjectManagementActions";
 
 type Props = {
   objects: TrainingKnowledgeItemObject[];
@@ -18,6 +22,9 @@ type Props = {
   onMoveObject: (object: TrainingKnowledgeItemObject) => void;
   onArchiveObject: (object: TrainingKnowledgeItemObject) => void;
 };
+
+const mediaControlClassName =
+  "inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/30 bg-black/30 px-0 py-0 text-white shadow-sm backdrop-blur-md transition hover:bg-black/45 focus:outline-none focus:ring-2 focus:ring-white/80 active:scale-[0.98]";
 
 function SortableKnowledgeItemCard({
   object,
@@ -43,18 +50,14 @@ function SortableKnowledgeItemCard({
     id: sortableId,
     disabled: !canManage,
   });
-  const archiveActionKey = `archive-${object.kind}-${object.id}`;
-  const actions: TrainingObjectAction[] = [
-    { label: "Изменить", icon: Edit3, onSelect: onEdit },
-    { label: "Переместить", icon: MoveRight, onSelect: onMove },
-    {
-      label: actionLoading === archiveActionKey ? "Перемещаем в корзину..." : "В корзину",
-      icon: Trash2,
-      tone: "danger",
-      disabled: actionLoading === archiveActionKey,
-      onSelect: onArchive,
-    },
-  ];
+  const managementActions = buildTrainingObjectManagementActions({
+    archiveActionKey: trainingObjectArchiveActionKey(object.kind, object.id),
+    actionLoading,
+    onEdit,
+    onMove,
+    onArchive,
+  });
+  const actions = [managementActions.edit, managementActions.move, managementActions.archive];
 
   return (
     <div
@@ -68,10 +71,10 @@ function SortableKnowledgeItemCard({
         selected={selected}
         dragging={isDragging}
         onSelect={onSelect}
-        managementControls={
+        mediaControls={
           canManage ? (
             <div
-              className="flex shrink-0 flex-col gap-2"
+              className="contents"
               onClick={(event) => event.stopPropagation()}
               onDoubleClick={(event) => event.stopPropagation()}
             >
@@ -79,10 +82,13 @@ function SortableKnowledgeItemCard({
                 type="button"
                 aria-label={`Перетащить карточку: ${object.item.title}`}
                 title="Изменить порядок"
-                className="border-subtle bg-surface hover:bg-app text-default inline-flex h-11 w-11 cursor-grab touch-none items-center justify-center rounded-xl border active:cursor-grabbing"
-                onPointerDown={(event) => event.stopPropagation()}
+                className={`${mediaControlClassName} cursor-grab touch-none active:cursor-grabbing`}
                 {...attributes}
                 {...listeners}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                  listeners?.onPointerDown?.(event);
+                }}
               >
                 <Icon icon={GripVertical} size="sm" decorative />
               </button>
@@ -90,6 +96,8 @@ function SortableKnowledgeItemCard({
                 title={object.item.title}
                 description="Карточка базы знаний"
                 actions={actions}
+                triggerIcon={Pencil}
+                triggerClassName={mediaControlClassName}
               />
             </div>
           ) : null

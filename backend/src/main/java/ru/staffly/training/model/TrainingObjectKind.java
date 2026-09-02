@@ -8,5 +8,6 @@ public enum TrainingObjectKind {
     FOLDER,
     KNOWLEDGE_ITEM,
     QUESTION,
-    PRACTICE_EXAM
+    PRACTICE_EXAM,
+    CERTIFICATION_EXAM
 }

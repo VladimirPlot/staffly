@@ -7,7 +7,7 @@ public record CertificationMyResultQuestionDto(
         TrainingQuestionType questionType,
         String prompt,
         String chosenAnswerJson,
-        boolean correct,
+        Boolean correct,
         String correctAnswerJson,
         String explanation
 ) {

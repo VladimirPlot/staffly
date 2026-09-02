@@ -16,6 +16,7 @@ import ru.staffly.training.model.TrainingFolderType;
 import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.service.ExamService;
 import ru.staffly.training.service.CertificationEmployeeAnalyticsService;
+import ru.staffly.training.service.CertificationFolderManagementService;
 import ru.staffly.training.service.KnowledgeService;
 import ru.staffly.training.service.QuestionService;
 import ru.staffly.training.service.TrainingPolicyService;
@@ -31,8 +32,19 @@ public class TrainingController {
     private final QuestionService questionService;
     private final ExamService examService;
     private final CertificationEmployeeAnalyticsService certificationEmployeeAnalyticsService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
     private final SecurityService securityService;
     private final TrainingPolicyService trainingPolicyService;
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @GetMapping("/certification/container-capabilities")
+    public CertificationContainerCapabilitiesDto getCertificationContainerCapabilities(
+            @PathVariable Long restaurantId,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Long folderId) {
+        return certificationFolderManagementService.containerCapabilities(
+                restaurantId, principal.userId(), folderId);
+    }
 
     @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
     @GetMapping("/folders")
@@ -40,8 +52,9 @@ public class TrainingController {
                                                @AuthenticationPrincipal UserPrincipal principal,
                                                @RequestParam TrainingFolderType type,
                                                @RequestParam(defaultValue = "false") boolean includeInactive) {
-        if (type == TrainingFolderType.QUESTION_BANK && !trainingPolicyService.canManageTraining(principal.userId(), restaurantId)) {
-            throw new ForbiddenException("Only managers can access question bank");
+        if ((type == TrainingFolderType.QUESTION_BANK || type == TrainingFolderType.CERTIFICATION)
+                && !trainingPolicyService.canManageTraining(principal.userId(), restaurantId)) {
+            throw new ForbiddenException("Only training managers can access these folders");
         }
         return knowledgeService.listFolders(restaurantId, principal.userId(), type, includeInactive);
     }
@@ -287,6 +300,14 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping("/exams/sources/preflight")
+    public ExamSourcesPreflightDto preflightExamSources(@PathVariable Long restaurantId,
+                                                        @AuthenticationPrincipal UserPrincipal principal,
+                                                        @Valid @RequestBody ExamSourcesPreflightRequest request) {
+        return examService.preflightSources(restaurantId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PostMapping("/knowledge-exams")
     public TrainingExamDto createKnowledgeExam(@PathVariable Long restaurantId,
                                                @AuthenticationPrincipal UserPrincipal principal,
@@ -313,6 +334,15 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PatchMapping("/exams/{examId}/move-certification-folder")
+    public TrainingExamDto moveCertificationExam(@PathVariable Long restaurantId,
+                                                 @PathVariable Long examId,
+                                                 @AuthenticationPrincipal UserPrincipal principal,
+                                                 @RequestBody MoveTrainingCertificationExamRequest request) {
+        return examService.moveCertificationExam(restaurantId, principal.userId(), examId, request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PatchMapping("/exams/{examId}/owner")
     public TrainingExamDto changeCertificationExamOwner(@PathVariable Long restaurantId,
                                                         @PathVariable Long examId,
@@ -327,23 +357,6 @@ public class TrainingController {
                                                                                @PathVariable Long examId,
                                                                                @AuthenticationPrincipal UserPrincipal principal) {
         return examService.getCertificationExamOwnerCandidates(restaurantId, principal.userId(), examId);
-    }
-
-    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
-    @GetMapping("/certification/owners/{userId}/reassignment-options")
-    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(@PathVariable Long restaurantId,
-                                                                                             @PathVariable Long userId,
-                                                                                             @AuthenticationPrincipal UserPrincipal principal) {
-        return examService.getCertificationOwnerReassignmentOptions(restaurantId, principal.userId(), userId);
-    }
-
-    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
-    @PostMapping("/certification/owners/{userId}/reassign")
-    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(@PathVariable Long restaurantId,
-                                                                                    @PathVariable Long userId,
-                                                                                    @AuthenticationPrincipal UserPrincipal principal,
-                                                                                    @Valid @RequestBody CertificationOwnerBatchReassignmentRequest request) {
-        return examService.reassignCertificationOwnerBatch(restaurantId, principal.userId(), userId, request);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")

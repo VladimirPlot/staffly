@@ -4,7 +4,7 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import Breadcrumbs from "../../../shared/ui/Breadcrumbs";
 import { getMyCertificationResult } from "../api/trainingApi";
-import type { CertificationMyResultDto } from "../api/types";
+import type { CertificationAssignmentStatus, CertificationMyResultDto } from "../api/types";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import CertificationQuestionReviewSection from "../components/certification/CertificationQuestionReviewSection";
@@ -13,17 +13,16 @@ import { formatDateTime } from "../utils/certificationResultFormatting";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { trainingRoutes } from "../utils/trainingRoutes";
 
-function getAttemptPeriodText(data: CertificationMyResultDto): string {
-  if (!data.lastAttemptStartedAt && !data.lastAttemptFinishedAt) {
-    return "—";
+function currentStatusLabel(status?: CertificationAssignmentStatus): string {
+  switch (status) {
+    case "ASSIGNED": return "Не начато";
+    case "IN_PROGRESS": return "В процессе";
+    case "PASSED": return "Пройдено";
+    case "FAILED": return "Не сдано";
+    case "EXHAUSTED": return "Попытки исчерпаны";
+    case "ARCHIVED": return "Архивировано";
+    default: return "Нет активного назначения";
   }
-  return `Начало попытки: ${formatDateTime(data.lastAttemptStartedAt)} · Завершение: ${formatDateTime(data.lastAttemptFinishedAt)}`;
-}
-
-
-function isPassedResult(data: CertificationMyResultDto): boolean {
-  if (data.passedAt) return true;
-  return data.assignmentStatus === "PASSED";
 }
 
 export default function CertificationMyResultPage() {
@@ -54,8 +53,24 @@ export default function CertificationMyResultPage() {
     void load();
   }, [load]);
 
-  const attemptsLeft = data == null || data.attemptsAllowed == null ? null : data.attemptsAllowed - data.attemptsUsed;
-  const canRestart = data != null && !isPassedResult(data) && (attemptsLeft == null || attemptsLeft > 0);
+  const current = data?.currentObligation;
+  const previous = data?.previousValidResult;
+  const attemptsLeft = current == null || current.attemptsAllowed == null ? null : current.attemptsAllowed - current.attemptsUsed;
+  const hasPreviousUnfinished = data != null && data.unfinishedAttemptId != null
+    && data.unfinishedAssignmentId !== current?.assignmentId;
+  const canActOnCurrent = current != null && (
+    current.status === "ASSIGNED"
+    || current.status === "IN_PROGRESS"
+    || (current.status === "FAILED" && (attemptsLeft == null || attemptsLeft > 0))
+  );
+  const canOpenRuntime = data != null && (data.unfinishedAttemptId != null || canActOnCurrent);
+  const actionLabel = hasPreviousUnfinished
+    ? "Продолжить предыдущую попытку"
+    : current?.status === "IN_PROGRESS" || data?.unfinishedAttemptId != null
+      ? "Продолжить аттестацию"
+      : current?.status === "FAILED"
+        ? "Повторить попытку"
+        : "Начать аттестацию";
   const restart = async () => {
     if (!data || restarting) return;
     setRestarting(true);
@@ -80,29 +95,75 @@ export default function CertificationMyResultPage() {
             <div className="text-lg font-semibold">{data.title}</div>
             {data.description && <div className="text-sm text-muted">{data.description}</div>}
             <div className="text-sm text-muted">
-              Статус: {data.scorePercent == null ? "нет завершённой попытки" : isPassedResult(data) ? "сдано" : "не сдано"} ·
-              Итог: {data.scorePercent == null ? "—" : `${data.scorePercent}%`} ·
-              Лучший результат: {data.bestScore == null ? "—" : `${data.bestScore}%`} ·
-              Попыток: {data.attemptsAllowed == null ? `${data.attemptsUsed}/∞` : `${data.attemptsUsed}/${data.attemptsAllowed}`}
+              Опубликована версия {data.latestPublishedVersion}
             </div>
-            <div className="text-sm text-muted">
-              {getAttemptPeriodText(data)}
-              {data.passedAt && ` · Дата сдачи: ${formatDateTime(data.passedAt)}`}
-            </div>
+
+            {current && (
+              <div className="rounded-2xl border border-subtle bg-app p-3">
+                <div className="font-medium text-default">Текущая аттестация</div>
+                <div className="mt-1 text-sm text-muted">
+                  Версия {current.version} · {currentStatusLabel(current.status)}
+                  {current.cycleSequence != null && ` · цикл ${current.cycleSequence}`}
+                </div>
+                <div className="mt-1 text-sm text-muted">
+                  Попыток: {current.attemptsAllowed == null ? `${current.attemptsUsed} из ∞` : `${current.attemptsUsed} из ${current.attemptsAllowed}`}
+                </div>
+                {current.bestScore != null && (
+                  <div className="mt-1 text-sm text-emerald-700">
+                    Результат: {current.bestScore}%
+                    {current.passedAt && ` · ${formatDateTime(current.passedAt)}`}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {previous && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="font-medium text-emerald-900">
+                  {current ? "Предыдущий результат" : "Результат аттестации"}
+                </div>
+                <div className="mt-1 text-sm text-emerald-800">
+                  Версия {previous.version} · Пройдено · {previous.bestScore == null ? "—" : `${previous.bestScore}%`}
+                  {previous.passedAt && ` · ${formatDateTime(previous.passedAt)}`}
+                  {previous.cycleSequence != null && ` · цикл ${previous.cycleSequence}`}
+                </div>
+              </div>
+            )}
+            {data.unfinishedAttemptId != null && (
+              <div className="text-sm text-amber-700">
+                Есть незавершённая попытка версии {data.unfinishedAttemptVersion ?? "—"}.
+                {data.hasPendingNewerObligation && " После неё потребуется пройти текущее назначение."}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Link to={trainingRoutes.exams}><Button variant="outline">К аттестациям</Button></Link>
-              {canRestart && <Button onClick={restart} isLoading={restarting}>Перезапустить</Button>}
+              {canOpenRuntime && <Button onClick={restart} isLoading={restarting}>{actionLabel}</Button>}
             </div>
           </Card>
 
-          {data.questions.length === 0 && <Card className="text-sm text-muted">Завершённой попытки пока нет — сначала пройдите аттестацию.</Card>}
+          {!current?.questions.length && !previous?.questions.length && <Card className="text-sm text-muted">Завершённой попытки пока нет — сначала пройдите аттестацию.</Card>}
 
-          {data.questions.length > 0 && (
-            <CertificationQuestionReviewSection
-              questions={data.questions}
-              revealCorrectAnswers={data.revealCorrectAnswers}
-              hiddenCorrectAnswersHint="Правильные ответы будут доступны после завершения всех попыток."
-            />
+          {current && current.questions.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-default">
+                Разбор текущей аттестации версии {current.version}
+              </div>
+              <CertificationQuestionReviewSection
+                questions={current.questions}
+                revealCorrectAnswers={current.revealCorrectAnswers}
+                hiddenCorrectAnswersHint="Правильные ответы будут доступны после завершения всех попыток."
+              />
+            </div>
+          )}
+          {previous && previous.questions.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-default">Разбор предыдущего результата версии {previous.version}</div>
+              <CertificationQuestionReviewSection
+                questions={previous.questions}
+                revealCorrectAnswers={previous.revealCorrectAnswers}
+                hiddenCorrectAnswersHint="Правильные ответы будут доступны после завершения всех попыток."
+              />
+            </div>
           )}
         </>
       )}

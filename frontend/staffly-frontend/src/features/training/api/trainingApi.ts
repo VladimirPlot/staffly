@@ -1,9 +1,8 @@
 import apiClient from "../../../shared/api/apiClient";
 import { mapExamsForUi } from "./mappers";
 import type {
-  CertificationOwnerBatchReassignmentRequest,
   CertificationOwnerCandidatesDto,
-  CertificationOwnerReassignmentOptionsDto,
+  CertificationContainerCapabilitiesDto,
   CertificationExamAttemptHistoryDto,
   CertificationEmployeeExamDto,
   CertificationEmployeeSummaryDto,
@@ -18,10 +17,13 @@ import type {
   CreateTrainingFolderPayload,
   ExamAttemptDto,
   ExamProgressDto,
+  ExamSourcesPreflightDto,
+  ExamSourcesPreflightPayload,
   ExamSubmitPayload,
   ExamSubmitResultDto,
   MoveTrainingFolderPayload,
   MoveTrainingKnowledgeItemPayload,
+  MoveTrainingCertificationExamPayload,
   MoveTrainingPracticeExamPayload,
   MoveTrainingQuestionPayload,
   QuestionBankTreeNodeDto,
@@ -61,6 +63,10 @@ export async function restoreFolder(restaurantId: number, folderId: number): Pro
 export async function updateFolder(restaurantId: number, folderId: number, payload: UpdateTrainingFolderPayload): Promise<TrainingFolderDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/folders/${folderId}`, payload); return data as TrainingFolderDto; }
 export async function deleteFolder(restaurantId: number, folderId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/folders/${folderId}`); }
 export async function reorderTrainingObjects(restaurantId: number, payload: ReorderTrainingObjectsPayload): Promise<void> { await apiClient.put(`/api/restaurants/${restaurantId}/training/order`, payload); }
+export async function getCertificationContainerCapabilities(restaurantId: number, folderId: number | null): Promise<CertificationContainerCapabilitiesDto> {
+  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/container-capabilities`, { params: folderId == null ? undefined : { folderId } });
+  return data as CertificationContainerCapabilitiesDto;
+}
 
 export async function listKnowledgeItems(restaurantId: number, folderId?: number, includeInactive = false): Promise<TrainingKnowledgeItemDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/knowledge-items`, { params: { folderId, includeInactive } });
@@ -111,12 +117,20 @@ export async function listKnowledgeExams(restaurantId: number, folderId: number,
   return mapExamsForUi(data as TrainingExamDto[]);
 }
 export async function createExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams`, payload); return data as TrainingExamDto; }
+export async function preflightExamSources(
+  restaurantId: number,
+  payload: ExamSourcesPreflightPayload,
+): Promise<ExamSourcesPreflightDto> {
+  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/sources/preflight`, payload);
+  return data as ExamSourcesPreflightDto;
+}
 export async function createKnowledgeExam(restaurantId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> {
   const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-exams`, payload);
   return data as TrainingExamDto;
 }
 export async function updateExam(restaurantId: number, examId: number, payload: UpsertExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.put(`/api/restaurants/${restaurantId}/training/exams/${examId}`, payload); return data as TrainingExamDto; }
 export async function movePracticeExam(restaurantId: number, examId: number, payload: MoveTrainingPracticeExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/move-knowledge-folder`, payload); return data as TrainingExamDto; }
+export async function moveCertificationExam(restaurantId: number, examId: number, payload: MoveTrainingCertificationExamPayload): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/move-certification-folder`, payload); return data as TrainingExamDto; }
 export async function hideExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/hide`); return data as TrainingExamDto; }
 export async function restoreExam(restaurantId: number, examId: number): Promise<TrainingExamDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/exams/${examId}/restore`); return data as TrainingExamDto; }
 export async function deleteExam(restaurantId: number, examId: number): Promise<void> { await apiClient.delete(`/api/restaurants/${restaurantId}/training/exams/${examId}`); }
@@ -137,21 +151,6 @@ export async function getCertificationExamOwnerCandidates(
 ): Promise<CertificationOwnerCandidatesDto> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/exams/${examId}/owner-candidates`);
   return data as CertificationOwnerCandidatesDto;
-}
-export async function getCertificationOwnerReassignmentOptions(
-  restaurantId: number,
-  userId: number,
-): Promise<CertificationOwnerReassignmentOptionsDto> {
-  const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/certification/owners/${userId}/reassignment-options`);
-  return data as CertificationOwnerReassignmentOptionsDto;
-}
-export async function reassignCertificationOwnerBatch(
-  restaurantId: number,
-  userId: number,
-  payload: CertificationOwnerBatchReassignmentRequest,
-): Promise<CertificationOwnerReassignmentOptionsDto> {
-  const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/certification/owners/${userId}/reassign`, payload);
-  return data as CertificationOwnerReassignmentOptionsDto;
 }
 export async function resetCertificationEmployeeAttempts(restaurantId: number, examId: number, userId: number): Promise<void> {
   await apiClient.post(`/api/restaurants/${restaurantId}/training/exams/${examId}/assignments/${userId}/reset-attempts`);

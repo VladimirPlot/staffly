@@ -211,7 +211,7 @@ const AliasStartMenu: React.FC<AliasStartMenuProps> = ({
       className={[
         "alias-start-menu relative z-10 w-full border border-[var(--staffly-border)] bg-[var(--staffly-surface)]",
         isFullscreenLayout
-          ? "mx-auto grid h-full w-full max-w-md grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden rounded-none border-none bg-transparent p-3 pt-[max(3.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))]"
+          ? "mx-auto grid h-full w-full max-w-md grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden rounded-none border-none bg-transparent p-3 pt-[max(3.5rem,var(--staffly-safe-area-top))] pr-[max(0.75rem,var(--staffly-safe-area-right))] pb-[max(0.75rem,var(--staffly-safe-area-bottom))] pl-[max(0.75rem,var(--staffly-safe-area-left))]"
           : "flex max-w-3xl flex-col gap-6 rounded-[2rem] p-5 sm:p-8",
       ].join(" ")}
     >

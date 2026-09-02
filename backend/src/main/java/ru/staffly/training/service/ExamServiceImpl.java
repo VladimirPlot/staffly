@@ -1,5 +1,7 @@
 package ru.staffly.training.service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -7,12 +9,16 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
+import ru.staffly.training.exception.StaleExamRevisionException;
+import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
 import ru.staffly.user.model.User;
@@ -21,12 +27,14 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
+    private final EntityManager entityManager;
     private final TrainingExamSourceFolderRepository sourceFolders;
     private final TrainingExamSourceQuestionRepository sourceQuestions;
     private final TrainingQuestionRepository questions;
@@ -37,8 +45,13 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAttemptRepository attempts;
     private final TrainingExamAttemptQuestionRepository attemptQuestions;
     private final TrainingExamAssignmentRepository assignments;
+    private final CertificationAssignmentCycleRepository assignmentCycles;
+    private final CertificationAssignmentCycleNotificationStateRepository cycleNotificationStates;
+    private final CertificationAssessmentSpecificationRepository assessmentSpecifications;
+    private final TrainingExamNotificationStateRepository examNotificationStates;
     private final TrainingFolderRepository folders;
     private final PositionRepository positions;
+    private final RestaurantMemberRepository members;
 
     private final TrainingExamAccessService examAccessService;
     private final ExamQuestionPoolResolver questionPoolResolver;
@@ -51,22 +64,40 @@ public class ExamServiceImpl implements ExamService {
     private final CertificationAnalyticsService certificationAnalyticsService;
     private final CertificationSelfResultService certificationSelfResultService;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
+    private final CertificationAssessmentSpecificationService certificationSpecificationService;
+    private final CertificationAssignmentCycleService certificationAssignmentCycleService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
     private final TrainingCertificationNotificationService trainingCertificationNotificationService;
+    private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<TrainingExamDto> listExams(Long restaurantId, Long userId, boolean isManager, boolean includeInactive, Boolean certificationOnly) {
         TrainingExamMode modeFilter = certificationOnly == null
                 ? null
                 : (certificationOnly ? TrainingExamMode.CERTIFICATION : TrainingExamMode.PRACTICE);
 
         var visibleExams = examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter);
+        if (isManager) {
+            visibleExams = visibleExams.stream()
+                    .filter(exam -> exam.getMode() != TrainingExamMode.CERTIFICATION
+                            || trainingPolicyService.canManageCertificationTargets(
+                                    userId,
+                                    restaurantId,
+                                    exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+                            ))
+                    .toList();
+        }
         var certificationExamIds = visibleExams.stream()
                 .filter(exam -> exam.getMode() == TrainingExamMode.CERTIFICATION)
                 .map(TrainingExam::getId)
                 .toList();
-        var summaryPreviewByExamId = certificationAnalyticsService.getExamSummaryPreviewBatch(restaurantId, certificationExamIds);
+        var summaryPreviewByExamId = certificationAnalyticsService.getExamSummaryPreviewBatch(
+                restaurantId,
+                userId,
+                certificationExamIds
+        );
 
         return visibleExams
                 .stream()
@@ -125,7 +156,9 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
+        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
+                request.sourceQuestionIds(), request.questionCount());
+        var examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
         var examEntity = TrainingExam.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .title(request.title())
@@ -134,9 +167,11 @@ public class ExamServiceImpl implements ExamService {
                 .passPercent(request.passPercent())
                 .timeLimitSec(request.timeLimitSec())
                 .mode(request.mode())
-                .knowledgeFolder(knowledgeFolder)
+                .folder(examFolder)
                 .attemptLimit(request.attemptLimit())
-                .sortOrder(knowledgeFolder == null ? 0 : nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId()))
+                .sortOrder(request.mode() == TrainingExamMode.PRACTICE
+                        ? nextPracticeExamSortOrder(restaurantId, examFolder.getId())
+                        : nextCertificationExamSortOrder(restaurantId, examFolder == null ? null : examFolder.getId()))
                 .active(true)
                 .version(1)
                 .build();
@@ -146,6 +181,11 @@ public class ExamServiceImpl implements ExamService {
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            var specification = certificationSpecificationService.createCurrent(exam);
+            certificationAssignmentCycleService.createPublicationCycle(
+                    exam, specification, entityManager.getReference(User.class, userId));
+        }
         certificationAudienceSyncService.syncExamAudience(exam);
         return toDtoWithSourcesAndVisibility(exam, null);
     }
@@ -164,10 +204,27 @@ public class ExamServiceImpl implements ExamService {
         if (!knowledgeFolder.isActive()) {
             throw new BadRequestException("Нельзя выбрать скрытую папку.");
         }
-        exam.setKnowledgeFolder(knowledgeFolder);
+        exam.setFolder(knowledgeFolder);
         exam.setSortOrder(request.sortOrder() == null
                 ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
                 : normalizeSortOrder(request.sortOrder()));
+        exams.flush();
+        return toDtoWithSourcesAndVisibility(exam, null);
+    }
+
+    @Override
+    @Transactional
+    public TrainingExamDto moveCertificationExam(Long restaurantId, Long userId, Long examId, MoveTrainingCertificationExamRequest request) {
+        var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
+        if (!exam.isActive()) {
+            throw new BadRequestException("Скрытый тест нельзя перемещать.");
+        }
+        var targetFolder = resolveCertificationFolder(restaurantId, userId, request.folderId());
+        exam.setFolder(targetFolder);
+        exam.setSortOrder(request.sortOrder() == null
+                ? nextCertificationExamSortOrder(restaurantId, request.folderId())
+                : normalizeSortOrder(request.sortOrder()));
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -182,6 +239,7 @@ public class ExamServiceImpl implements ExamService {
                 request.timeLimitSec(),
                 TrainingExamMode.PRACTICE,
                 request.knowledgeFolderId(),
+                null,
                 request.attemptLimit(),
                 request.visibilityPositionIds(),
                 request.sourcesFolders(),
@@ -194,22 +252,60 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        if (!Objects.equals(exam.getEditorRevision(), request.expectedEditorRevision())) {
+            throw new StaleExamRevisionException(exam.getId(), exam.getEditorRevision());
+        }
+        var previousVisibilityPositionIds = exam.getVisibilityPositions().stream()
+                .map(Position::getId)
+                .collect(Collectors.toSet());
         boolean wasActive = exam.isActive();
         boolean willBeActive = request.active() == null ? wasActive : request.active();
-        var currentKnowledgeFolderId = exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId();
+        var currentFolderId = exam.getFolder() == null ? null : exam.getFolder().getId();
 
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
+        }
+        boolean materialChanged = false;
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            var materialDiff = certificationSpecificationService.materialDiff(
+                    exam, request.sourcesFolders(), request.sourceQuestionIds(), request.questionCount(),
+                    request.passPercent(), request.timeLimitSec(), request.attemptLimit());
+            materialChanged = materialDiff.materialChanged();
+            if (materialChanged && !Boolean.TRUE.equals(request.confirmNewVersion())) {
+                throw new MaterialChangeRequiresNewCycleException(
+                        exam.getId(), exam.getVersion(), materialDiff.changedFields());
+            }
+        }
+        // Only accepted saves force editorRevision. In particular, the material-change
+        // preview above must leave the editor token and every projection untouched.
+        entityManager.lock(exam, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
+        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
+                request.sourceQuestionIds(), request.questionCount());
+        if (request.mode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
+            activeContainerValidator.requireActiveChain(exam.getFolder());
         }
 
         // UpdateTrainingExamRequest uses full-replace semantics for visibility collections.
         // For certification exams null/empty means "clear visibility", which is invalid.
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
-        var knowledgeFolder = resolveKnowledgeFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId());
-        boolean knowledgeFolderChanged = !Objects.equals(currentKnowledgeFolderId, request.knowledgeFolderId());
+        TrainingFolder examFolder;
+        if (request.mode() == TrainingExamMode.CERTIFICATION) {
+            if (request.folderId() != null && !Objects.equals(currentFolderId, request.folderId())) {
+                throw new BadRequestException("Для перемещения аттестации используйте операцию перемещения.");
+            }
+            examFolder = exam.getFolder();
+        } else {
+            examFolder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
+        }
+        Long targetFolderId = examFolder == null ? null : examFolder.getId();
+        boolean folderChanged = !Objects.equals(currentFolderId, targetFolderId);
         Integer targetPracticeSortOrder = request.mode() == TrainingExamMode.PRACTICE
-                && (knowledgeFolderChanged || (!wasActive && willBeActive))
-                        ? nextPracticeExamSortOrder(restaurantId, knowledgeFolder.getId())
+                && (folderChanged || (!wasActive && willBeActive))
+                        ? nextPracticeExamSortOrder(restaurantId, examFolder.getId())
+                        : null;
+        Integer targetCertificationSortOrder = request.mode() == TrainingExamMode.CERTIFICATION
+                && (folderChanged || (!wasActive && willBeActive))
+                        ? nextCertificationExamSortOrder(restaurantId, targetFolderId)
                         : null;
 
         exam.setTitle(request.title());
@@ -217,16 +313,44 @@ public class ExamServiceImpl implements ExamService {
         exam.setQuestionCount(request.questionCount());
         exam.setPassPercent(request.passPercent());
         exam.setTimeLimitSec(request.timeLimitSec());
-        exam.setKnowledgeFolder(knowledgeFolder);
+        if (request.mode() == TrainingExamMode.PRACTICE) {
+            exam.setFolder(examFolder);
+        }
         if (targetPracticeSortOrder != null) {
             exam.setSortOrder(targetPracticeSortOrder);
+        }
+        if (targetCertificationSortOrder != null) {
+            exam.setSortOrder(targetCertificationSortOrder);
         }
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(willBeActive);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
-        certificationAudienceSyncService.syncExamAudience(exam);
+        var visibilityPositionIds = exam.getVisibilityPositions().stream()
+                .map(Position::getId)
+                .collect(Collectors.toSet());
+        if (materialChanged) {
+            // Sources and the final audience are already in place. Bump before creating
+            // either specification or assignments so no transient old-cycle assignment
+            // can be created for a newly-added audience member.
+            advanceCertificationMaterialVersion(exam);
+            exams.flush();
+            var specification = certificationSpecificationService.createCurrent(exam);
+            var publicationCycle = certificationAssignmentCycleService.createPublicationCycle(
+                    exam, specification, entityManager.getReference(User.class, userId));
+            var createdAssignments = certificationAssignmentService.publishMaterialVersion(
+                    exam, specification, publicationCycle);
+            // Publication classifies pre-existing obligations first; the authoritative
+            // audience sync then adds only genuinely new members to this same cycle.
+            createdAssignments.addAll(certificationAssignmentService.syncAudienceAssignments(exam));
+            trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
+        } else if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
+            certificationAudienceSyncService.syncExamAudience(exam);
+        }
+        // Flush inside the transaction: the @Version compare is authoritative and any
+        // sources/audience/assignment changes above roll back together on a stale write.
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -236,6 +360,7 @@ public class ExamServiceImpl implements ExamService {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
         certificationAudienceSyncService.syncExamAudience(exam);
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -243,13 +368,39 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
+        activeContainerValidator.requireActiveChain(exam.getFolder());
+        boolean restoringCertification = exam.getMode() == TrainingExamMode.CERTIFICATION && !exam.isActive();
         if (!exam.isActive()) {
+            validateSourceCapacity(
+                    restaurantId,
+                    userId,
+                    exam.getMode(),
+                    sourceFolders.findByExamId(exam.getId()).stream()
+                            .map(source -> new ExamSourceFolderDto(
+                                    source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                            .toList(),
+                    sourceQuestions.findByExamId(exam.getId()).stream()
+                            .map(source -> source.getQuestion().getId())
+                            .toList(),
+                    exam.getQuestionCount()
+            );
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
-                exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getKnowledgeFolder().getId()));
+                exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
+            } else {
+                exam.setSortOrder(nextCertificationExamSortOrder(
+                        restaurantId,
+                        exam.getFolder() == null ? null : exam.getFolder().getId()
+                ));
             }
             exam.setActive(true);
         }
+        if (restoringCertification) {
+            // Under the authoritative exam lock, restore the exact obligations hidden
+            // with the exam before generic audience add/re-add synchronization runs.
+            certificationAssignmentService.restoreHiddenAudienceAssignments(exam);
+        }
         certificationAudienceSyncService.syncExamAudience(exam);
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -261,17 +412,63 @@ public class ExamServiceImpl implements ExamService {
         if (exam.isActive()) {
             throw new ConflictException("Сначала скройте экзамен, затем удаляйте.");
         }
+
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            permanentlyDeleteCertificationGraph(exam);
+            return;
+        }
+
+        attempts.detachAssignmentsForExam(exam.getId());
         exams.delete(exam);
+    }
+
+    /** Deletes current Certification product state while retaining quiet, detached attempt history. */
+    private void permanentlyDeleteCertificationGraph(TrainingExam exam) {
+        Long examId = exam.getId();
+
+        // Terminalize first: no detached row may remain resumable after its obligation disappears.
+        attempts.terminalCancelUnfinishedForExam(
+                examId, TimeProvider.now(), TrainingExamAttemptCancellationReason.EXAM_DELETED.name());
+        attempts.detachLifecycleForExam(examId);
+
+        // Explicit FK-safe lifecycle order; historical attempts/questions are deliberately untouched.
+        cycleNotificationStates.deleteAllForExam(examId);
+        examNotificationStates.deleteById(examId);
+        assignments.detachReplacementLinksToExam(examId);
+        assignments.deleteAllForPermanentExamDeletion(examId);
+        assignmentCycles.deleteAllForExam(examId);
+        assessmentSpecifications.deleteAllForExam(examId);
+        sourceFolders.deleteByExamId(examId);
+        sourceQuestions.deleteByExamId(examId);
+
+        exams.deleteById(examId);
+        exams.flush();
     }
 
     @Override
     @Transactional
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableCertificationExam(restaurantId, userId, examId);
-        certificationAudienceSyncService.syncExamAudience(exam);
-        startNewCertificationCycle(exam);
-        certificationAssignmentService.resetAssignmentsForNewCycle(exam);
-        trainingCertificationNotificationService.resetMilestoneStateForExam(exam);
+        var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
+        activeContainerValidator.requireActiveChain(exam.getFolder());
+        validateSourceCapacity(
+                restaurantId,
+                userId,
+                exam.getMode(),
+                sourceFolders.findByExamId(exam.getId()).stream()
+                        .map(source -> new ExamSourceFolderDto(
+                                source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                        .toList(),
+                sourceQuestions.findByExamId(exam.getId()).stream()
+                        .map(source -> source.getQuestion().getId())
+                        .toList(),
+                exam.getQuestionCount()
+        );
+        var specification = certificationSpecificationService.requireCurrent(exam);
+        var cycle = certificationAssignmentCycleService.createRecertificationCycle(
+                exam, specification, entityManager.getReference(User.class, userId));
+        var created = certificationAssignmentService.launchRecertificationCycle(exam, specification, cycle);
+        trainingCertificationNotificationService.notifyAssignmentsCreated(exam, created);
+        exams.flush();
     }
 
     @Override
@@ -311,6 +508,20 @@ public class ExamServiceImpl implements ExamService {
             throw new ConflictException("Экзамен скрыт. Нельзя начать прохождение.");
         }
 
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            // Certification mutations share exam -> assignment ordering with hide/reset/cycle.
+            entityManager.lock(exam, LockModeType.PESSIMISTIC_WRITE);
+            entityManager.refresh(exam, LockModeType.PESSIMISTIC_WRITE);
+            if (!exam.isActive()) {
+                throw new ConflictException("Экзамен скрыт. Нельзя начать прохождение.");
+            }
+            var unfinishedAttempt = certificationAssignmentLifecycleService.normalizeUnfinishedForStart(
+                    exam, restaurantId, userId, now);
+            if (unfinishedAttempt.isPresent()) {
+                return resumeAttempt(exam, unfinishedAttempt.get());
+            }
+        }
+
         examAccessService.ensureCanStartExam(exam, restaurantId, userId, isManager);
 
         TrainingExamAssignment assignment = null;
@@ -326,10 +537,10 @@ public class ExamServiceImpl implements ExamService {
         }
 
         var assignmentId = assignment == null ? null : assignment.getId();
-        var existingAttemptOpt = exam.getMode() == TrainingExamMode.CERTIFICATION && assignment != null
-                ? certificationAssignmentLifecycleService.findUnfinishedCurrentAttempt(assignment)
+        var existingAttemptOpt = exam.getMode() == TrainingExamMode.CERTIFICATION
+                ? Optional.<TrainingExamAttempt>empty()
                 : attempts.findTopByExamIdAndRestaurantIdAndUserIdAndExamVersionAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
-                examId, restaurantId, userId, attemptVersion);
+                        examId, restaurantId, userId, attemptVersion);
         if (existingAttemptOpt.isPresent()) {
             return resumeAttempt(exam, existingAttemptOpt.get());
         }
@@ -341,17 +552,29 @@ public class ExamServiceImpl implements ExamService {
             enforceAttemptLimit(exam, restaurantId, userId, attemptVersion);
         }
 
-        var pool = questionPoolResolver.buildQuestionPool(restaurantId, exam);
-        if (pool.isEmpty()) {
+        var specification = assignment == null ? null : assignment.getAssessmentSpecification();
+        if (specification != null
+                && (!Objects.equals(specification.getExam().getId(), exam.getId())
+                || specification.getVersion() != assignment.getExamVersionSnapshot())) {
+            throw new IllegalStateException("Assignment certification specification is inconsistent");
+        }
+        var pool = specification == null
+                ? questionPoolResolver.buildQuestionPool(restaurantId, exam)
+                : questionPoolResolver.buildQuestionPool(restaurantId, specification);
+        if (pool.questions().isEmpty()) {
             throw new BadRequestException("No questions in exam scope");
         }
 
-        var selectedQuestions = pickQuestionsForAttempt(pool, exam.getQuestionCount());
+        int runtimeQuestionCount = specification == null ? exam.getQuestionCount() : specification.getQuestionCount();
+        var selectedQuestions = pickQuestionsForAttempt(pool, runtimeQuestionCount);
+        if (selectedQuestions.size() != runtimeQuestionCount) {
+            throw new BadRequestException("Не удалось сформировать точное количество вопросов для попытки.");
+        }
         var relationData = loadQuestionRelations(selectedQuestions);
         TrainingExamAttempt attempt;
         List<AttemptQuestionSnapshotDto> snapshots;
         try {
-            attempt = createAttempt(exam, userId, assignment, attemptVersion, now);
+            attempt = createAttempt(exam, userId, assignment, specification, attemptVersion, now);
             snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
         } catch (DataIntegrityViolationException duplicateStartError) {
             var resumed = attempts.findTopUnfinishedForStartContext(examId, restaurantId, userId, attemptVersion, assignmentId)
@@ -363,8 +586,8 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getId(),
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam, null),
-                snapshots
+                toRuntimeExamDto(attempt),
+                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getAssignment(), attempt.getId())
         );
     }
 
@@ -387,38 +610,42 @@ public class ExamServiceImpl implements ExamService {
                 answersByQuestionId,
                 TimeProvider.now()
         );
-        try {
-            trainingCertificationNotificationService.notifyUserResultOnSubmit(finalizedAttempt.attempt());
-            trainingCertificationNotificationService.notifyOwnerMilestoneOnSubmit(finalizedAttempt.attempt());
-        } catch (Exception ex) {
-            log.warn("Failed to process certification notifications after submit (restaurantId={}, attemptId={})",
-                    restaurantId, attemptId, ex);
+        if (finalizedAttempt.newlyFinalized()) {
+            try {
+                trainingCertificationNotificationService.notifyUserResultOnSubmit(finalizedAttempt.attempt());
+                trainingCertificationNotificationService.notifyOwnerMilestoneOnSubmit(finalizedAttempt.attempt());
+            } catch (Exception ex) {
+                log.warn("Failed to process certification notifications after submit (restaurantId={}, attemptId={})",
+                        restaurantId, attemptId, ex);
+            }
         }
         return toAttemptResultDto(finalizedAttempt);
     }
 
     @Override
+    @Transactional
     public void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId) {
-        requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        requireManageableCertificationExamMutation(restaurantId, actorUserId, examId);
         certificationManagerActionService.resetAttemptsForEmployee(restaurantId, examId, userId);
     }
 
     @Override
+    @Transactional
     public void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount) {
-        requireManageableCertificationExam(restaurantId, actorUserId, examId);
+        requireManageableCertificationExamMutation(restaurantId, actorUserId, examId);
         certificationManagerActionService.grantExtraAttemptForEmployee(restaurantId, examId, userId, amount);
     }
 
     @Override
     public CertificationExamSummaryDto getCertificationExamSummary(Long restaurantId, Long actorUserId, Long examId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getExamSummary(restaurantId, examId);
+        return certificationAnalyticsService.getExamSummary(restaurantId, actorUserId, examId);
     }
 
     @Override
     public List<CertificationExamPositionBreakdownDto> getCertificationExamPositionBreakdown(Long restaurantId, Long actorUserId, Long examId) {
         requireManageableCertificationExam(restaurantId, actorUserId, examId);
-        return certificationAnalyticsService.getPositionBreakdown(restaurantId, examId);
+        return certificationAnalyticsService.getPositionBreakdown(restaurantId, actorUserId, examId);
     }
 
     @Override
@@ -443,6 +670,7 @@ public class ExamServiceImpl implements ExamService {
     @Transactional
     public TrainingExamDto changeCertificationExamOwner(Long restaurantId, Long actorUserId, Long examId, Long ownerUserId) {
         var exam = trainingExamOwnershipService.changeOwner(restaurantId, actorUserId, examId, ownerUserId);
+        exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
     }
 
@@ -452,27 +680,8 @@ public class ExamServiceImpl implements ExamService {
         return trainingExamOwnershipService.getOwnerCandidates(restaurantId, actorUserId, examId);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public CertificationOwnerReassignmentOptionsDto getCertificationOwnerReassignmentOptions(Long restaurantId, Long actorUserId, Long userId) {
-        return trainingExamOwnershipService.buildReassignmentOptions(restaurantId, actorUserId, userId);
-    }
-
-    @Override
-    @Transactional
-    public CertificationOwnerReassignmentOptionsDto reassignCertificationOwnerBatch(Long restaurantId,
-                                                                                    Long actorUserId,
-                                                                                    Long userId,
-                                                                                    CertificationOwnerBatchReassignmentRequest request) {
-        var entries = request.items().stream()
-                .map(item -> Map.entry(item.examId(), item.newOwnerUserId()))
-                .toList();
-        return trainingExamOwnershipService.batchReassign(restaurantId, actorUserId, userId, entries);
-    }
-
-    private void startNewCertificationCycle(TrainingExam exam) {
-        // certification reset-cycle открывает новый глобальный assignment cycle.
-        // Это не per-user reset: все новые попытки пишутся под новой версией экзамена.
+    private void advanceCertificationMaterialVersion(TrainingExam exam) {
+        // Only immutable material publication advances the content version.
         exam.setVersion(exam.getVersion() + 1);
     }
 
@@ -485,14 +694,55 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getId(),
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
-                toDtoWithSourcesAndVisibility(exam, null),
-                snapshots
+                toRuntimeExamDto(existingAttempt),
+                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getAssignment(), existingAttempt.getId())
         );
+    }
+
+    private RuntimeExamDto toRuntimeExamDto(TrainingExamAttempt attempt) {
+        return new RuntimeExamDto(
+                attempt.getExam().getId(),
+                attempt.getTitleSnapshot(),
+                attempt.getQuestionCountSnapshot(),
+                attempt.getTimeLimitSecSnapshot(),
+                attempt.getExam().getMode()
+        );
+    }
+
+    private List<RuntimeQuestionDto> toRuntimeQuestions(List<AttemptQuestionSnapshotDto> snapshots,
+                                                         TrainingExamMode mode,
+                                                         TrainingExamAssignment assignment,
+                                                         Long attemptId) {
+        boolean revealExplanation = mode != TrainingExamMode.CERTIFICATION
+                || certificationAssignmentService.shouldRevealCorrectAnswers(assignment, false);
+        return snapshots.stream().map(snapshot -> {
+            var leftItems = snapshot.matchPairs().stream()
+                    .map(pair -> new RuntimeQuestionItemDto(pair.sortOrder(), pair.leftText()))
+                    .toList();
+            var shuffledRightTexts = new ArrayList<>(snapshot.matchPairs().stream()
+                    .map(TrainingQuestionMatchPairViewDto::rightText)
+                    .toList());
+            Collections.shuffle(shuffledRightTexts, new Random(Objects.hash(attemptId, snapshot.questionId())));
+            var rightOptions = IntStream.range(0, shuffledRightTexts.size())
+                    .mapToObj(index -> new RuntimeQuestionItemDto(index, shuffledRightTexts.get(index)))
+                    .toList();
+            return new RuntimeQuestionDto(
+                    snapshot.questionId(),
+                    snapshot.type(),
+                    snapshot.prompt(),
+                    revealExplanation ? snapshot.explanation() : null,
+                    snapshot.options(),
+                    leftItems,
+                    rightOptions,
+                    snapshot.blanks()
+            );
+        }).toList();
     }
 
     private AttemptResultDto toAttemptResultDto(CertificationAttemptFinalizationService.FinalizedAttemptPayload finalizedAttempt) {
         var attempt = finalizedAttempt.attempt();
         var existingQuestions = finalizedAttempt.questions();
+        boolean includeQuestionResults = shouldIncludeQuestionResults(attempt);
         return new AttemptResultDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
@@ -502,18 +752,20 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
-                existingQuestions.stream()
+                certificationLifecycleMessage(attempt),
+                includeQuestionResults ? existingQuestions.stream()
                         .map(question -> new AttemptResultQuestionDto(
                                 snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
                                 question.getChosenAnswerJson(),
                                 question.isCorrect()
                         ))
-                        .toList()
+                        .toList() : List.of()
         );
     }
 
     private AttemptResultDto toExistingAttemptResultDto(TrainingExamAttempt attempt) {
         var existingQuestions = attemptQuestions.findByAttemptId(attempt.getId());
+        boolean includeQuestionResults = shouldIncludeQuestionResults(attempt);
         return new AttemptResultDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
@@ -523,13 +775,37 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getFinishedAt(),
                 attempt.getScorePercent(),
                 attempt.getPassed(),
-                existingQuestions.stream()
+                certificationLifecycleMessage(attempt),
+                includeQuestionResults ? existingQuestions.stream()
                         .map(question -> new AttemptResultQuestionDto(
                                 snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId(),
                                 question.getChosenAnswerJson(),
                                 question.isCorrect()
                         ))
-                        .toList()
+                        .toList() : List.of()
+        );
+    }
+
+    private String certificationLifecycleMessage(TrainingExamAttempt attempt) {
+        if (attempt.getExam() == null || attempt.getExam().getMode() != TrainingExamMode.CERTIFICATION
+                || attempt.getAssignment() == null) {
+            return null;
+        }
+        var current = certificationAssignmentService.findActiveForExamAndUser(
+                attempt.getExam().getId(), attempt.getRestaurant().getId(), attempt.getUser().getId()).orElse(null);
+        if (current == null || Objects.equals(current.getId(), attempt.getAssignment().getId())) {
+            return null;
+        }
+        return CertificationCompletionSemantics.SUPERSEDED_ATTEMPT_MESSAGE;
+    }
+
+    private boolean shouldIncludeQuestionResults(TrainingExamAttempt attempt) {
+        if (attempt.getExam() == null || attempt.getExam().getMode() == TrainingExamMode.PRACTICE) {
+            return true;
+        }
+        return certificationAssignmentService.shouldRevealCorrectAnswers(
+                attempt.getAssignment(),
+                Boolean.TRUE.equals(attempt.getPassed())
         );
     }
 
@@ -549,11 +825,65 @@ public class ExamServiceImpl implements ExamService {
         }
     }
 
-    private List<TrainingQuestion> pickQuestionsForAttempt(List<TrainingQuestion> pool, Integer requestedCount) {
-        var mutablePool = new ArrayList<>(pool);
-        Collections.shuffle(mutablePool);
-        int count = Math.min(requestedCount, mutablePool.size());
-        return mutablePool.subList(0, count);
+    private List<TrainingQuestion> pickQuestionsForAttempt(ExamQuestionPoolResolver.ResolvedQuestionPool pool,
+                                                            Integer requestedCount) {
+        var allQuestions = new ArrayList<>(pool.questions());
+        if (requestedCount >= allQuestions.size()) {
+            Collections.shuffle(allQuestions);
+            return allQuestions;
+        }
+
+        // Defensive legacy fallback. New and updated exams store the exact resolved
+        // cardinality, while older rows may request less. Explicit sources remain
+        // mandatory; only the optional remainder is randomly truncated.
+        var mandatory = allQuestions.stream()
+                .filter(question -> pool.mandatoryQuestionIds().contains(question.getId()))
+                .toList();
+        var optional = allQuestions.stream()
+                .filter(question -> !pool.mandatoryQuestionIds().contains(question.getId()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        Collections.shuffle(optional);
+        int optionalCount = Math.min(Math.max(0, requestedCount - mandatory.size()), optional.size());
+        var selected = new ArrayList<>(mandatory);
+        selected.addAll(optional.subList(0, optionalCount));
+        Collections.shuffle(selected);
+        return selected;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExamSourcesPreflightDto preflightSources(Long restaurantId,
+                                                    Long userId,
+                                                    ExamSourcesPreflightRequest request) {
+        try {
+            int available = questionPoolResolver.resolveAvailableQuestionCount(
+                    restaurantId, userId, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
+            if (request.questionCount() != null && request.questionCount() != available) {
+                return new ExamSourcesPreflightDto(available, false, List.of(
+                        "Количество вопросов в попытке должно совпадать с доступным пулом (" + available + ")."));
+            }
+            return new ExamSourcesPreflightDto(available, true, List.of());
+        } catch (BadRequestException | NotFoundException validationError) {
+            return new ExamSourcesPreflightDto(0, false, List.of(validationError.getMessage()));
+        }
+    }
+
+    private int validateSourceCapacity(Long restaurantId,
+                                       Long userId,
+                                       TrainingExamMode mode,
+                                       List<ExamSourceFolderDto> folderSources,
+                                       List<Long> explicitQuestionIds,
+                                       Integer questionCount) {
+        int available = questionPoolResolver.resolveAvailableQuestionCount(
+                restaurantId, userId, mode, folderSources, explicitQuestionIds);
+        if (questionCount == null || questionCount < 1) {
+            throw new BadRequestException("Количество вопросов в попытке должно быть больше нуля.");
+        }
+        if (questionCount != available) {
+            throw new BadRequestException(
+                    "Количество вопросов в попытке должно совпадать с доступным пулом (" + available + ").");
+        }
+        return available;
     }
 
     private QuestionRelations loadQuestionRelations(List<TrainingQuestion> selectedQuestions) {
@@ -578,8 +908,15 @@ public class ExamServiceImpl implements ExamService {
     private TrainingExamAttempt createAttempt(TrainingExam exam,
                                               Long userId,
                                               TrainingExamAssignment assignment,
+                                              CertificationAssessmentSpecification specification,
                                               int examVersion,
                                               Instant now) {
+        Long positionAtStartId = null;
+        if (assignment != null) {
+            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, exam.getRestaurant().getId())
+                    .orElseThrow(() -> new ForbiddenException("Not a member"));
+            positionAtStartId = member.getPosition() == null ? null : member.getPosition().getId();
+        }
         return attempts.save(TrainingExamAttempt.builder()
                 .exam(exam)
                 .examVersion(examVersion)
@@ -587,10 +924,12 @@ public class ExamServiceImpl implements ExamService {
                 .assignment(assignment)
                 .user(User.builder().id(userId).build())
                 .startedAt(now)
-                .passPercentSnapshot(exam.getPassPercent())
+                .passPercentSnapshot(specification == null ? exam.getPassPercent() : specification.getPassPercent())
                 .titleSnapshot(exam.getTitle())
-                .questionCountSnapshot(exam.getQuestionCount())
-                .timeLimitSecSnapshot(exam.getTimeLimitSec())
+                .questionCountSnapshot(specification == null ? exam.getQuestionCount() : specification.getQuestionCount())
+                .timeLimitSecSnapshot(specification == null ? exam.getTimeLimitSec() : specification.getTimeLimitSec())
+                .positionAtStartId(positionAtStartId)
+                .positionAtStartCaptured(assignment != null)
                 .build());
     }
 
@@ -759,9 +1098,11 @@ public class ExamServiceImpl implements ExamService {
                 exam.getPassPercent(),
                 exam.getTimeLimitSec(),
                 exam.getMode(),
-                exam.getKnowledgeFolder() == null ? null : exam.getKnowledgeFolder().getId(),
+                exam.getMode() == TrainingExamMode.PRACTICE && exam.getFolder() != null ? exam.getFolder().getId() : null,
+                exam.getFolder() == null ? null : exam.getFolder().getId(),
                 exam.getAttemptLimit(),
                 exam.getVersion(),
+                exam.getEditorRevision(),
                 exam.getSortOrder(),
                 exam.isActive(),
                 folders,
@@ -777,19 +1118,26 @@ public class ExamServiceImpl implements ExamService {
 
     private CurrentUserCertificationExamDto toCurrentUserCertificationExamDto(TrainingExamAssignment assignment) {
         var exam = assignment.getExam();
+        var specification = assignment.getAssessmentSpecification();
+        var cycle = assignment.getAssignmentCycle();
         return new CurrentUserCertificationExamDto(
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
-                exam.getQuestionCount(),
-                exam.getPassPercent(),
-                exam.getTimeLimitSec(),
+                specification.getQuestionCount(),
+                specification.getPassPercent(),
+                specification.getTimeLimitSec(),
                 assignment.getAttemptsLimitSnapshot(),
                 exam.isActive(),
                 assignment.getId(),
                 assignment.getStatus(),
                 assignment.getAssignedAt(),
                 assignment.getExamVersionSnapshot(),
+                exam.getVersion(),
+                cycle == null ? null : cycle.getId(),
+                cycle == null ? null : cycle.getCycleSequence(),
+                cycle == null ? null : cycle.getKind(),
+                assignment.getResetGeneration(),
                 assignment.getAttemptsUsed(),
                 certificationAssignmentService.calculateAttemptsAllowed(assignment),
                 assignment.getExtraAttempts(),
@@ -821,6 +1169,7 @@ public class ExamServiceImpl implements ExamService {
                     restaurantId,
                     folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
             );
+            activeContainerValidator.requireActiveChain(folder);
             return folder;
         }
 
@@ -828,6 +1177,36 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Для аттестации папка в базе знаний не задаётся.");
         }
         return null;
+    }
+
+    private TrainingFolder resolveExamFolder(Long restaurantId, Long userId, TrainingExamMode mode,
+                                             Long knowledgeFolderId, Long folderId) {
+        if (mode == TrainingExamMode.PRACTICE) {
+            if (folderId != null) {
+                throw new BadRequestException("Для учебного теста используйте knowledgeFolderId.");
+            }
+            return resolveKnowledgeFolder(restaurantId, userId, mode, knowledgeFolderId);
+        }
+        if (knowledgeFolderId != null) {
+            throw new BadRequestException("Для аттестации используйте folderId.");
+        }
+        return resolveCertificationFolder(restaurantId, userId, folderId);
+    }
+
+    private TrainingFolder resolveCertificationFolder(Long restaurantId, Long userId, Long folderId) {
+        if (folderId == null) {
+            return null;
+        }
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
+                .orElseThrow(() -> new BadRequestException("Папка аттестации не найдена."));
+        if (folder.getType() != TrainingFolderType.CERTIFICATION) {
+            throw new BadRequestException("Для аттестации нужна папка аттестаций.");
+        }
+        activeContainerValidator.requireActiveChain(folder);
+        // A readable certification folder may only be a navigation container. Creating or
+        // moving an exam into it is a structural mutation and therefore needs subtree authority.
+        certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
+        return folder;
     }
 
     private TrainingQuestionGroup questionGroupForMode(TrainingExamMode mode) {
@@ -838,6 +1217,13 @@ public class ExamServiceImpl implements ExamService {
 
     private int nextPracticeExamSortOrder(Long restaurantId, Long knowledgeFolderId) {
         return Optional.ofNullable(exams.maxActivePracticeSortOrderInKnowledgeFolder(restaurantId, knowledgeFolderId)).orElse(-1) + 1;
+    }
+
+    private int nextCertificationExamSortOrder(Long restaurantId, Long folderId) {
+        Integer maxSortOrder = folderId == null
+                ? exams.maxActiveCertificationRootSortOrder(restaurantId)
+                : exams.maxActiveCertificationSortOrderInFolder(restaurantId, folderId);
+        return Optional.ofNullable(maxSortOrder).orElse(-1) + 1;
     }
 
     private int normalizeSortOrder(Integer value) {
@@ -853,20 +1239,54 @@ public class ExamServiceImpl implements ExamService {
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
-        trainingPolicyService.assertCanAccessExamTargetByVisibility(
-                userId,
-                restaurantId,
-                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
-        );
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            return lockAndAuthorizeCertificationMutation(restaurantId, userId, exam);
+        }
+        var targetPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        trainingPolicyService.assertCanAccessExamTargetByVisibility(userId, restaurantId, targetPositionIds);
         return exam;
     }
 
     private TrainingExam requireManageableCertificationExam(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableExam(restaurantId, userId, examId);
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new BadRequestException("Операция доступна только для аттестационного теста.");
         }
+        trainingPolicyService.assertCanManageCertificationTargets(userId, restaurantId,
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
         return exam;
+    }
+
+    private TrainingExam requireManageableCertificationExamMutation(Long restaurantId, Long userId, Long examId) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        return lockAndAuthorizeCertificationMutation(restaurantId, userId, exam);
+    }
+
+    private TrainingExam lockAndAuthorizeCertificationMutation(Long restaurantId,
+                                                               Long userId,
+                                                               TrainingExam exam) {
+        // Authorization is authoritative only after the common exam mutation boundary.
+        entityManager.lock(exam, LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(exam, LockModeType.PESSIMISTIC_WRITE);
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Операция доступна только для аттестационного теста.");
+        }
+        trainingPolicyService.assertCanManageCertificationTargets(
+                userId,
+                restaurantId,
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+        );
+        assertCertificationCurrentContainerManageable(restaurantId, userId, exam);
+        return exam;
+    }
+
+    private void assertCertificationCurrentContainerManageable(Long restaurantId, Long userId, TrainingExam exam) {
+        if (exam.getFolder() != null) {
+            certificationFolderManagementService.assertSubtreeManageable(
+                    restaurantId, userId, exam.getFolder().getId());
+        }
     }
 
     private record QuestionRelations(

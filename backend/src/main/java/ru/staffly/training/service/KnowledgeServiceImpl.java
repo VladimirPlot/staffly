@@ -30,11 +30,15 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final TrainingKnowledgeItemRepository items;
     private final TrainingImageStorage storage;
     private final TrainingExamSourceFolderRepository folderSources;
+    private final TrainingExamSourceQuestionRepository questionSources;
     private final TrainingExamRepository exams;
     private final TrainingQuestionRepository questions;
     private final EntityManager entityManager;
     private final PositionRepository positions;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationFolderManagementService certificationFolderManagementService;
+    private final ExamService examService;
+    private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Transactional(readOnly = true)
     @Override
@@ -44,9 +48,16 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type)
                 : folders.findByRestaurantIdAndTypeAndActiveTrueWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type);
 
+        Set<Long> manageableCertificationFolderIds = type == TrainingFolderType.CERTIFICATION
+                ? certificationFolderManagementService.manageableFolderIds(restaurantId, userId)
+                : Set.of();
         return entities.stream()
                 .filter(folder -> canAccessFolderByType(userId, restaurantId, folder))
-                .map(this::toDto)
+                .map(folder -> toDto(folder, switch (type) {
+                    case QUESTION_BANK -> canManageQuestionBankFolder(userId, restaurantId, folder);
+                    case CERTIFICATION -> manageableCertificationFolderIds.contains(folder.getId());
+                    case KNOWLEDGE -> true;
+                }))
                 .toList();
     }
 
@@ -110,7 +121,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .active(true)
                 .visibilityPositions(visibilityPositions)
                 .build();
-        return toDto(folders.save(entity));
+        return toDto(folders.save(entity), request.type() != TrainingFolderType.CERTIFICATION
+                || certificationFolderManagementService.manageableFolderIds(restaurantId, userId).contains(entity.getId()));
     }
 
     @Override
@@ -124,7 +136,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             assertCanUseVisibilityPositions(userId, restaurantId, entity.getType(), request.visibilityPositionIds());
             applyUpdatedVisibility(restaurantId, entity, request.visibilityPositionIds());
         }
-        return toDto(folders.save(entity));
+        return toDto(folders.save(entity), true);
     }
 
     @Override
@@ -146,7 +158,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         entity.setSortOrder(request.sortOrder() == null
                 ? nextFolderSortOrder(restaurantId, entity.getType(), request.parentId())
                 : normalizeSortOrder(request.sortOrder()));
-        return toDto(folders.save(entity));
+        return toDto(folders.save(entity), true);
     }
 
     @Override
@@ -155,21 +167,43 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var root = requireManageableFolder(restaurantId, userId, folderId);
 
         ensureKnowledgeFolderHasNoPracticeExams(restaurantId, root);
-        setFolderTreeActive(restaurantId, root, false);
+        if (root.getType() == TrainingFolderType.QUESTION_BANK) {
+            assertQuestionBankTreeNotUsedByActiveExams(
+                    restaurantId, collectFolderIds(restaurantId, root.getId(), root.getType()));
+        }
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+            for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, folderIds)) {
+                examService.hideExam(restaurantId, userId, exam.getId());
+            }
+            setCertificationFoldersActiveInHierarchy(restaurantId, folderIds, false);
+        } else {
+            setFolderTreeActive(restaurantId, root, false);
+        }
 
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found")));
+                .orElseThrow(() -> new NotFoundException("Folder not found")), true);
     }
 
     @Override
     @Transactional
     public TrainingFolderDto restoreFolder(Long restaurantId, Long userId, Long folderId) {
         var root = requireManageableFolder(restaurantId, userId, folderId);
+        activeContainerValidator.requireActiveChain(root.getParent());
 
-        prepareFolderTreeRestore(restaurantId, root);
-        setFolderTreeActive(restaurantId, root, true);
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            var folderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+            prepareFolderTreeRestore(restaurantId, root);
+            setCertificationFoldersActiveInHierarchy(restaurantId, folderIds, true);
+            for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, folderIds)) {
+                examService.restoreExam(restaurantId, userId, exam.getId());
+            }
+        } else {
+            prepareFolderTreeRestore(restaurantId, root);
+            setFolderTreeActive(restaurantId, root, true);
+        }
         return toDto(folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Folder not found")));
+                .orElseThrow(() -> new NotFoundException("Folder not found")), true);
     }
 
     @Override
@@ -181,6 +215,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         }
 
         var allFolderIds = collectFolderIds(restaurantId, root.getId(), root.getType());
+        if (root.getType() == TrainingFolderType.CERTIFICATION) {
+            for (var exam : exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds)) {
+                examService.deleteExam(restaurantId, userId, exam.getId());
+            }
+            deleteFoldersBottomUp(restaurantId, allFolderIds);
+            return;
+        }
+
         ensureFolderDeletionAllowed(restaurantId, root, allFolderIds);
 
         var relatedItems = items.findByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds);
@@ -189,6 +231,39 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             storage.deleteItemFolder(item.getId());
         }
         folders.delete(root);
+    }
+
+    private void setCertificationFoldersActiveInHierarchy(Long restaurantId, List<Long> folderIds, boolean active) {
+        var byId = folders.findAllById(folderIds).stream()
+                .filter(folder -> Objects.equals(folder.getRestaurant().getId(), restaurantId))
+                .collect(Collectors.toMap(TrainingFolder::getId, Function.identity()));
+        var orderedIds = active ? folderIds : new ArrayList<>(folderIds);
+        if (!active) {
+            Collections.reverse(orderedIds);
+        }
+        for (Long id : orderedIds) {
+            var folder = byId.get(id);
+            if (folder != null) {
+                folder.setActive(active);
+                folders.save(folder);
+                folders.flush();
+            }
+        }
+    }
+
+    private void deleteFoldersBottomUp(Long restaurantId, List<Long> folderIds) {
+        var byId = folders.findAllById(folderIds).stream()
+                .filter(folder -> Objects.equals(folder.getRestaurant().getId(), restaurantId))
+                .collect(Collectors.toMap(TrainingFolder::getId, Function.identity()));
+        var bottomUpIds = new ArrayList<>(folderIds);
+        Collections.reverse(bottomUpIds);
+        for (Long id : bottomUpIds) {
+            var folder = byId.get(id);
+            if (folder != null) {
+                folders.delete(folder);
+                folders.flush();
+            }
+        }
     }
 
     @Override
@@ -206,6 +281,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             case KNOWLEDGE_ITEM -> reorderKnowledgeItems(restaurantId, userId, request);
             case QUESTION -> reorderQuestions(restaurantId, userId, request);
             case PRACTICE_EXAM -> reorderPracticeExams(restaurantId, userId, request);
+            case CERTIFICATION_EXAM -> reorderCertificationExams(restaurantId, userId, request);
         }
     }
 
@@ -230,13 +306,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     private void reorderQuestions(Long restaurantId, Long userId, ReorderTrainingObjectsRequest request) {
         if (request.type() != TrainingFolderType.QUESTION_BANK || request.folderId() == null) throw new BadRequestException("Вопросы доступны только в папках банка вопросов");
-        var actual = questions.findByRestaurantIdAndFolderIdAndActiveTrue(restaurantId, request.folderId());
+        if (request.questionGroup() == null) throw new BadRequestException("Для сортировки вопросов требуется группа вопросов");
+        var actual = questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                restaurantId,
+                request.folderId(),
+                request.questionGroup()
+        );
         requireCompleteOrder(request.orderedIds(), actual.stream().map(TrainingQuestion::getId).collect(Collectors.toSet()));
         var byId = actual.stream().collect(Collectors.toMap(TrainingQuestion::getId, Function.identity()));
         for (Long id : request.orderedIds()) {
             var question = questions.findByIdAndRestaurantIdWithFolderVisibility(id, restaurantId)
                     .orElseThrow(() -> new NotFoundException("Question not found"));
-            assertFolderAccessByType(userId, restaurantId, question.getFolder());
+            trainingPolicyService.assertCanManageQuestionBankByVisibility(
+                    userId, restaurantId, visibilityPositionIds(question.getFolder()));
         }
         applyOrder(request.orderedIds(), byId, TrainingQuestion::setSortOrder);
     }
@@ -247,6 +329,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         requireCompleteOrder(request.orderedIds(), actual.stream().map(TrainingExam::getId).collect(Collectors.toSet()));
         var byId = actual.stream().collect(Collectors.toMap(TrainingExam::getId, Function.identity()));
         request.orderedIds().forEach(id -> requireManageablePracticeExam(restaurantId, userId, id));
+        applyOrder(request.orderedIds(), byId, TrainingExam::setSortOrder);
+    }
+
+    private void reorderCertificationExams(Long restaurantId, Long userId, ReorderTrainingObjectsRequest request) {
+        if (request.type() != TrainingFolderType.CERTIFICATION) {
+            throw new BadRequestException("Аттестационные тесты доступны только в разделе аттестаций");
+        }
+        var actual = request.folderId() == null
+                ? exams.findActiveCertificationInRoot(restaurantId)
+                : exams.findActiveCertificationInFolder(restaurantId, request.folderId());
+        requireCompleteOrder(request.orderedIds(), actual.stream().map(TrainingExam::getId).collect(Collectors.toSet()));
+        var byId = actual.stream().collect(Collectors.toMap(TrainingExam::getId, Function.identity()));
+        request.orderedIds().forEach(id -> requireManageableCertificationExam(restaurantId, userId, id));
         applyOrder(request.orderedIds(), byId, TrainingExam::setSortOrder);
     }
 
@@ -347,6 +442,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public TrainingKnowledgeItemDto restoreKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
         var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
+        activeContainerValidator.requireActiveChain(entity.getFolder());
         if (!entity.isActive()) {
             var folderId = entity.getFolder() == null ? null : entity.getFolder().getId();
             entity.setSortOrder(nextKnowledgeItemSortOrder(restaurantId, folderId));
@@ -415,9 +511,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void requireActiveParent(TrainingFolder parent) {
-        if (parent != null && !parent.isActive()) {
-            throw new BadRequestException("Нельзя выбрать скрытую папку.");
-        }
+        activeContainerValidator.requireActiveChain(parent);
     }
 
     private int normalizeSortOrder(Integer value) {
@@ -443,6 +537,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.canAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
             case QUESTION_BANK -> trainingPolicyService.canAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
+            case CERTIFICATION -> trainingPolicyService.canAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
         };
     }
 
@@ -454,6 +549,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         switch (type) {
             case KNOWLEDGE -> trainingPolicyService.assertCanUseKnowledgePositions(userId, restaurantId, requested);
             case QUESTION_BANK -> trainingPolicyService.assertCanUseQuestionBankPositions(userId, restaurantId, requested);
+            case CERTIFICATION -> trainingPolicyService.assertCanUseCertificationPositions(userId, restaurantId, requested);
         }
     }
 
@@ -468,7 +564,15 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private TrainingFolder requireManageableFolder(Long restaurantId, Long userId, Long folderId) {
         var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
-        assertFolderAccessByType(userId, restaurantId, folder);
+        if (folder.getType() == TrainingFolderType.QUESTION_BANK) {
+            trainingPolicyService.assertCanManageQuestionBankByVisibility(
+                    userId, restaurantId, visibilityPositionIds(folder));
+        } else {
+            assertFolderAccessByType(userId, restaurantId, folder);
+            if (folder.getType() == TrainingFolderType.CERTIFICATION) {
+                certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
+            }
+        }
         return folder;
     }
 
@@ -491,11 +595,21 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void assertFolderAccessByType(Long userId, Long restaurantId, TrainingFolder folder) {
-        var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+        var visibilityIds = visibilityPositionIds(folder);
         switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.assertCanAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
             case QUESTION_BANK -> trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
+            case CERTIFICATION -> trainingPolicyService.assertCanAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
         }
+    }
+
+    private boolean canManageQuestionBankFolder(Long userId, Long restaurantId, TrainingFolder folder) {
+        return trainingPolicyService.canManageQuestionBankByVisibility(
+                userId, restaurantId, visibilityPositionIds(folder));
+    }
+
+    private Set<Long> visibilityPositionIds(TrainingFolder folder) {
+        return folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
     }
 
     private TrainingKnowledgeItem requireManageableKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
@@ -520,10 +634,14 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private void ensureFolderDeletionAllowed(Long restaurantId, TrainingFolder root, List<Long> allFolderIds) {
         if (root.getType() == TrainingFolderType.QUESTION_BANK) {
             var usages = folderSources.findExamUsagesByRestaurantIdAndFolderIds(restaurantId, allFolderIds);
-            if (!usages.isEmpty()) {
+            var explicitUsages = questionSources.findExamUsagesByRestaurantIdAndQuestionFolderIds(
+                    restaurantId, allFolderIds);
+            if (!usages.isEmpty() || !explicitUsages.isEmpty()) {
+                var allUsages = new ArrayList<Object>(usages);
+                allUsages.addAll(explicitUsages);
                 throw new ConflictException(
-                        "Нельзя удалить папку: она используется в экзаменах. Уберите папку из области экзаменов и повторите.",
-                        Map.of("exams", usages)
+                        "Нельзя удалить папку: внутри неё есть источники тестов. Сначала уберите их из тестов.",
+                        Map.of("exams", allUsages)
                 );
             }
             return;
@@ -531,7 +649,25 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         if (root.getType() == TrainingFolderType.KNOWLEDGE) {
             ensureKnowledgeFolderHasNoPracticeExams(restaurantId, allFolderIds);
+            return;
         }
+
+    }
+
+    private void assertQuestionBankTreeNotUsedByActiveExams(Long restaurantId, List<Long> folderIds) {
+        var folderUsages = folderSources.findActiveExamUsagesByRestaurantIdAndFolderIds(restaurantId, folderIds);
+        var explicitUsages = questionSources.findActiveExamUsagesByRestaurantIdAndQuestionFolderIds(
+                restaurantId, folderIds);
+        if (folderUsages.isEmpty() && explicitUsages.isEmpty()) {
+            return;
+        }
+        var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
+        folderUsages.forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+        explicitUsages.forEach(usage -> usagesByExamId.put(usage.getId(), usage));
+        throw new ConflictException(
+                "Внутри скрываемой папки есть источник активного теста. Сначала уберите его из источников теста.",
+                Map.of("exams", List.copyOf(usagesByExamId.values()))
+        );
     }
 
     private void ensureNotMovingIntoSelfOrDescendant(Long restaurantId, Long folderId, Long candidateParentId, TrainingFolderType type) {
@@ -554,8 +690,26 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 restaurantId,
                 exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
         );
-        if (exam.getKnowledgeFolder() != null) {
-            requireAccessibleKnowledgeFolder(restaurantId, userId, exam.getKnowledgeFolder().getId());
+        if (exam.getFolder() != null) {
+            requireAccessibleKnowledgeFolder(restaurantId, userId, exam.getFolder().getId());
+        }
+        return exam;
+    }
+
+    private TrainingExam requireManageableCertificationExam(Long restaurantId, Long userId, Long examId) {
+        var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
+            throw new BadRequestException("Операция доступна только для аттестационного теста.");
+        }
+        trainingPolicyService.assertCanManageCertificationTargets(
+                userId,
+                restaurantId,
+                exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
+        );
+        if (exam.getFolder() != null) {
+            certificationFolderManagementService.assertSubtreeManageable(
+                    restaurantId, userId, exam.getFolder().getId());
         }
         return exam;
     }
@@ -669,7 +823,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         return result;
     }
 
-    private TrainingFolderDto toDto(TrainingFolder entity) {
+    private TrainingFolderDto toDto(TrainingFolder entity, boolean manageable) {
         var visibilityPositionIds = entity.getVisibilityPositions().stream().map(Position::getId).sorted().toList();
         return new TrainingFolderDto(
                 entity.getId(),
@@ -680,7 +834,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 entity.getType(),
                 entity.getSortOrder(),
                 entity.isActive(),
-                visibilityPositionIds
+                visibilityPositionIds,
+                manageable
         );
     }
 

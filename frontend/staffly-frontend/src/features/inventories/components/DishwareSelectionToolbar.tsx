@@ -41,7 +41,7 @@ export default function DishwareSelectionToolbar({
   return (
     <div
       className={cn(
-        "pointer-events-none fixed inset-x-3 bottom-5 z-[60] flex justify-center pb-[env(safe-area-inset-bottom)] transition-opacity duration-150 ease-out motion-reduce:transition-none",
+        "pointer-events-none fixed right-[calc(0.75rem+var(--staffly-safe-area-right))] bottom-5 left-[calc(0.75rem+var(--staffly-safe-area-left))] z-[60] flex justify-center pb-[var(--staffly-safe-area-bottom)] transition-opacity duration-150 ease-out motion-reduce:transition-none",
         visible ? "opacity-100" : "opacity-0",
       )}
       aria-hidden={!visible}

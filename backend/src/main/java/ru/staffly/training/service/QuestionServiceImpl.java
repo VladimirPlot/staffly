@@ -9,7 +9,10 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingFolderType;
+import ru.staffly.training.model.TrainingExamMode;
+import ru.staffly.training.model.TrainingExamSourcePickMode;
 import ru.staffly.training.model.TrainingQuestion;
+import ru.staffly.training.model.TrainingQuestionGroup;
 import ru.staffly.training.model.TrainingQuestionBlank;
 import ru.staffly.training.repository.*;
 
@@ -33,11 +36,12 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionValidator validator;
     private final TrainingQuestionNestedPersistence nestedPersistence;
     private final TrainingPolicyService trainingPolicyService;
+    private final TrainingActiveContainerValidator activeContainerValidator;
 
     @Override
     @Transactional(readOnly = true)
     public List<TrainingQuestionDto> listQuestions(Long restaurantId, Long userId, Long folderId, ru.staffly.training.model.TrainingQuestionGroup questionGroup, boolean includeInactive, String query) {
-        requireAccessibleQuestionBankFolder(restaurantId, userId, folderId);
+        requireReadableQuestionBankFolder(restaurantId, userId, folderId);
         return toDtos(questions.listForFolder(restaurantId, folderId, questionGroup, includeInactive, query));
     }
 
@@ -46,7 +50,10 @@ public class QuestionServiceImpl implements QuestionService {
     public TrainingQuestionDto createQuestion(Long restaurantId, Long userId, CreateTrainingQuestionRequest request) {
         validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
-        var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
+        var folder = requireManageableQuestionBankFolder(restaurantId, userId, request.folderId());
+        activeContainerValidator.requireActiveChain(folder);
+        assertQuestionDoesNotGrowActiveAllSource(
+                restaurantId, folder.getId(), request.questionGroup());
         var entity = questions.save(TrainingQuestion.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
                 .folder(folder)
@@ -56,7 +63,7 @@ public class QuestionServiceImpl implements QuestionService {
                 .prompt(request.prompt().trim())
                 .explanation(request.explanation())
                 .sortOrder(request.sortOrder() == null
-                        ? nextQuestionSortOrder(restaurantId, folder.getId())
+                        ? nextQuestionSortOrder(restaurantId, folder.getId(), request.questionGroup())
                         : normalizeSortOrder(request.sortOrder()))
                 .active(true)
                 .build());
@@ -70,28 +77,40 @@ public class QuestionServiceImpl implements QuestionService {
     public TrainingQuestionDto updateQuestion(Long restaurantId, Long userId, Long questionId, UpdateTrainingQuestionRequest request) {
         validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
-        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
-        assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
+        var entity = requireManageableQuestion(restaurantId, userId, questionId);
+        if (entity.isActive()) {
+            assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
+        }
 
         boolean wasActive = entity.isActive();
+        var oldGroup = entity.getQuestionGroup();
         boolean willBeActive = request.active() == null ? wasActive : request.active();
         var currentFolder = entity.getFolder();
         boolean folderChanged = request.folderId() != null
                 && !Objects.equals(request.folderId(), currentFolder.getId());
         var targetFolder = folderChanged
-                ? requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId())
+                ? requireManageableQuestionBankFolder(restaurantId, userId, request.folderId())
                 : currentFolder;
+        if (willBeActive) {
+            activeContainerValidator.requireActiveChain(targetFolder);
+        }
+        var targetGroup = request.questionGroup();
+        boolean questionGroupChanged = targetGroup != oldGroup;
+        if (willBeActive && (!wasActive || folderChanged || questionGroupChanged)) {
+            assertQuestionDoesNotGrowActiveAllSource(
+                    restaurantId, targetFolder.getId(), targetGroup);
+        }
         int targetSortOrder = request.sortOrder() != null
                 ? normalizeSortOrder(request.sortOrder())
-                : folderChanged || (!wasActive && willBeActive)
-                        ? nextQuestionSortOrder(restaurantId, targetFolder.getId())
+                : folderChanged || questionGroupChanged || (!wasActive && willBeActive)
+                        ? nextQuestionSortOrder(restaurantId, targetFolder.getId(), targetGroup)
                         : entity.getSortOrder();
 
         entity.setTitle(request.title().trim());
         entity.setPrompt(request.prompt().trim());
         entity.setExplanation(request.explanation());
         entity.setType(request.type());
-        entity.setQuestionGroup(request.questionGroup());
+        entity.setQuestionGroup(targetGroup);
         entity.setFolder(targetFolder);
         entity.setSortOrder(targetSortOrder);
         entity.setActive(willBeActive);
@@ -103,19 +122,21 @@ public class QuestionServiceImpl implements QuestionService {
     @Override
     @Transactional
     public TrainingQuestionDto moveQuestion(Long restaurantId, Long userId, Long questionId, MoveTrainingQuestionRequest request) {
-        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        var entity = requireManageableQuestion(restaurantId, userId, questionId);
         if (!entity.isActive()) {
             throw new BadRequestException("Скрытый вопрос нельзя перемещать.");
         }
         assertQuestionNotUsedInExamsForMutation(restaurantId, entity);
 
-        var folder = requireAccessibleQuestionBankFolder(restaurantId, userId, request.folderId());
-        if (!folder.isActive()) {
-            throw new BadRequestException("Нельзя выбрать скрытую папку.");
+        var folder = requireManageableQuestionBankFolder(restaurantId, userId, request.folderId());
+        activeContainerValidator.requireActiveChain(folder);
+        if (!Objects.equals(entity.getFolder().getId(), folder.getId())) {
+            assertQuestionDoesNotGrowActiveAllSource(
+                    restaurantId, folder.getId(), entity.getQuestionGroup());
         }
         entity.setFolder(folder);
         entity.setSortOrder(request.sortOrder() == null
-                ? nextQuestionSortOrder(restaurantId, folder.getId())
+                ? nextQuestionSortOrder(restaurantId, folder.getId(), entity.getQuestionGroup())
                 : normalizeSortOrder(request.sortOrder()));
         return toDtos(List.of(entity)).get(0);
     }
@@ -123,7 +144,8 @@ public class QuestionServiceImpl implements QuestionService {
     @Override
     @Transactional
     public TrainingQuestionDto hideQuestion(Long restaurantId, Long userId, Long questionId) {
-        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        var entity = requireManageableQuestion(restaurantId, userId, questionId);
+        assertQuestionNotUsedInActiveExamsForMutation(restaurantId, entity);
         entity.setActive(false);
         return toDtos(List.of(entity)).get(0);
     }
@@ -131,9 +153,16 @@ public class QuestionServiceImpl implements QuestionService {
     @Override
     @Transactional
     public TrainingQuestionDto restoreQuestion(Long restaurantId, Long userId, Long questionId) {
-        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        var entity = requireManageableQuestion(restaurantId, userId, questionId);
+        activeContainerValidator.requireActiveChain(entity.getFolder());
         if (!entity.isActive()) {
-            entity.setSortOrder(nextQuestionSortOrder(restaurantId, entity.getFolder().getId()));
+            assertQuestionDoesNotGrowActiveAllSource(
+                    restaurantId, entity.getFolder().getId(), entity.getQuestionGroup());
+            entity.setSortOrder(nextQuestionSortOrder(
+                    restaurantId,
+                    entity.getFolder().getId(),
+                    entity.getQuestionGroup()
+            ));
             entity.setActive(true);
         }
         return toDtos(List.of(entity)).get(0);
@@ -142,7 +171,7 @@ public class QuestionServiceImpl implements QuestionService {
     @Override
     @Transactional
     public void deleteQuestion(Long restaurantId, Long userId, Long questionId) {
-        var entity = requireAccessibleQuestion(restaurantId, userId, questionId);
+        var entity = requireManageableQuestion(restaurantId, userId, questionId);
         if (entity.isActive()) {
             throw new ConflictException("Сначала скройте вопрос, затем удаляйте.");
         }
@@ -159,7 +188,7 @@ public class QuestionServiceImpl implements QuestionService {
         questions.delete(entity);
     }
 
-    private ru.staffly.training.model.TrainingFolder requireAccessibleQuestionBankFolder(Long restaurantId, Long userId, Long folderId) {
+    private ru.staffly.training.model.TrainingFolder requireReadableQuestionBankFolder(Long restaurantId, Long userId, Long folderId) {
         var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
         if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
@@ -173,8 +202,29 @@ public class QuestionServiceImpl implements QuestionService {
         return folder;
     }
 
-    private int nextQuestionSortOrder(Long restaurantId, Long folderId) {
-        return java.util.Optional.ofNullable(questions.maxActiveSortOrderInFolder(restaurantId, folderId)).orElse(-1) + 1;
+    private ru.staffly.training.model.TrainingFolder requireManageableQuestionBankFolder(Long restaurantId, Long userId, Long folderId) {
+        var folder = requireQuestionBankFolder(restaurantId, folderId);
+        trainingPolicyService.assertCanManageQuestionBankByVisibility(
+                userId,
+                restaurantId,
+                folder.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
+        );
+        return folder;
+    }
+
+    private ru.staffly.training.model.TrainingFolder requireQuestionBankFolder(Long restaurantId, Long folderId) {
+        var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+        if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
+            throw new BadRequestException("Wrong folder type");
+        }
+        return folder;
+    }
+
+    private int nextQuestionSortOrder(Long restaurantId, Long folderId, ru.staffly.training.model.TrainingQuestionGroup questionGroup) {
+        return java.util.Optional.ofNullable(
+                questions.maxActiveSortOrderInFolderAndQuestionGroup(restaurantId, folderId, questionGroup)
+        ).orElse(-1) + 1;
     }
 
     private int normalizeSortOrder(Integer value) {
@@ -187,10 +237,11 @@ public class QuestionServiceImpl implements QuestionService {
         return value;
     }
 
-    private TrainingQuestion requireAccessibleQuestion(Long restaurantId, Long userId, Long questionId) {
+    /** Questions have no independent visibility; management authority is inherited from their folder. */
+    private TrainingQuestion requireManageableQuestion(Long restaurantId, Long userId, Long questionId) {
         var question = questions.findByIdAndRestaurantIdWithFolderVisibility(questionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Question not found"));
-        trainingPolicyService.assertCanAccessQuestionBankByVisibility(
+        trainingPolicyService.assertCanManageQuestionBankByVisibility(
                 userId,
                 restaurantId,
                 question.getFolder().getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
@@ -199,10 +250,33 @@ public class QuestionServiceImpl implements QuestionService {
     }
 
     private void assertQuestionNotUsedInExamsForMutation(Long restaurantId, TrainingQuestion question) {
+        assertQuestionNotUsedInActiveExamsForMutation(restaurantId, question);
+    }
+
+    private void assertQuestionDoesNotGrowActiveAllSource(Long restaurantId,
+                                                           Long folderId,
+                                                           TrainingQuestionGroup questionGroup) {
+        var usages = folderSources.findActiveExamUsagesByFolderAndPickModeAndExamMode(
+                restaurantId,
+                folderId,
+                TrainingExamSourcePickMode.ALL,
+                TrainingExamMode.valueOf(questionGroup.name())
+        );
+        if (usages.isEmpty()) {
+            return;
+        }
+        var message = usages.size() == 1
+                ? "Папка используется в активном тесте \"" + usages.get(0).getTitle()
+                        + "\" в режиме «Все вопросы». Сначала измените источники теста."
+                : "Папка используется в активных тестах в режиме «Все вопросы». Сначала измените источники тестов.";
+        throw new ConflictException(message, Map.of("exams", usages));
+    }
+
+    private void assertQuestionNotUsedInActiveExamsForMutation(Long restaurantId, TrainingQuestion question) {
         var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
-        questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
+        questionSources.findActiveExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
                 .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
-        folderSources.findExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
+        folderSources.findActiveExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
                 .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
 
         var usages = List.copyOf(usagesByExamId.values());
@@ -211,8 +285,9 @@ public class QuestionServiceImpl implements QuestionService {
         }
 
         var message = usages.size() == 1
-                ? "Данный вопрос используется в тесте \"" + usages.get(0).getTitle() + "\", чтобы изменить его, нужно удалить тест или убрать данный вопрос из теста."
-                : "Данный вопрос используется в нескольких тестах. Чтобы изменить его, нужно удалить эти тесты или убрать из них данный вопрос.";
+                ? "Вопрос используется в активном тесте \"" + usages.get(0).getTitle()
+                        + "\". Сначала уберите его из источников теста."
+                : "Вопрос используется в нескольких активных тестах. Сначала уберите его из их источников.";
         throw new ConflictException(
                 message,
                 Map.of("exams", usages)

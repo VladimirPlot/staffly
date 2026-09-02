@@ -12,7 +12,7 @@ import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import QuestionDeleteGuardModal from "../components/QuestionDeleteGuardModal";
-import QuestionEditorModal from "../components/QuestionEditorModal";
+import QuestionEditorModal from "../components/questionEditor/QuestionEditorModal";
 import TrainingArchiveModal, { type ArchivedTrainingObject } from "../components/TrainingArchiveModal";
 import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingFolderModal from "../components/TrainingFolderModal";
@@ -34,7 +34,7 @@ import {
   restoreFolder,
   restoreQuestion,
 } from "../api/trainingApi";
-import type { TrainingFolderDto, TrainingQuestionDto } from "../api/types";
+import type { TrainingFolderDto, TrainingQuestionDto, TrainingQuestionGroup } from "../api/types";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
 import { useTrainingFolders } from "../hooks/useTrainingFolders";
 import {
@@ -98,38 +98,70 @@ export default function QuestionBankFolderPage() {
     const timeoutId = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(timeoutId);
   }, [search]);
+  const hasActiveSearch = debouncedSearch.trim().length > 0;
 
   const folderMap = useMemo(
     () => new Map(foldersState.folders.map((folder) => [folder.id, folder])),
     [foldersState.folders],
   );
   const currentFolder = folderMap.get(currentFolderId) ?? null;
+  const canManageCurrentFolder = canManage && Boolean(currentFolder?.manageable);
   const folderChain = useMemo(() => buildTrainingFolderChain(currentFolder, folderMap), [currentFolder, folderMap]);
   const childFolders = useMemo(
     () => foldersState.folders.filter((folder) => folder.parentId === currentFolderId),
     [currentFolderId, foldersState.folders],
   );
-  const currentObjects = useMemo<TrainingFolderListObject[]>(
+  const folderObjects = useMemo<TrainingFolderListObject[]>(
     () =>
-      [
-        ...childFolders.map((folder) => ({
+      childFolders
+        .map((folder) => ({
           kind: "folder" as const,
           id: folder.id,
           sortOrder: folder.sortOrder ?? 0,
           folder,
-        })),
-        ...questions.map((question) => ({
-          kind: "question" as const,
-          id: question.id,
-          sortOrder: question.sortOrder ?? 0,
-          question,
-        })),
-      ].sort(sortTrainingObjects),
-    [childFolders, questions],
+        }))
+        .sort(sortTrainingObjects),
+    [childFolders],
   );
-  const currentObjectIds = useMemo(
-    () => currentObjects.map((object) => trainingObjectId(object.kind, object.id)),
-    [currentObjects],
+  const activeFolderObjects = useMemo(() => folderObjects.filter(trainingObjectActive), [folderObjects]);
+  const folderReorderEnabled = canManageCurrentFolder
+    && activeFolderObjects.length > 1
+    && activeFolderObjects.every((object) => object.kind === "folder" && object.folder.manageable);
+  const questionObjects = useMemo(
+    () =>
+      questions.map((question) => ({
+        kind: "question" as const,
+        id: question.id,
+        sortOrder: question.sortOrder ?? 0,
+        question,
+      })),
+    [questions],
+  );
+  const practiceQuestionObjects = useMemo<TrainingFolderListObject[]>(
+    () => questionObjects.filter((object) => object.question.questionGroup === "PRACTICE").sort(sortTrainingObjects),
+    [questionObjects],
+  );
+  const certificationQuestionObjects = useMemo<TrainingFolderListObject[]>(
+    () =>
+      questionObjects.filter((object) => object.question.questionGroup === "CERTIFICATION").sort(sortTrainingObjects),
+    [questionObjects],
+  );
+  // This mixed collection is lookup-only; section layout and reordering use the scoped collections above.
+  const currentObjects = useMemo<TrainingFolderListObject[]>(
+    () => [...folderObjects, ...practiceQuestionObjects, ...certificationQuestionObjects],
+    [certificationQuestionObjects, folderObjects, practiceQuestionObjects],
+  );
+  const folderObjectIds = useMemo(
+    () => folderReorderEnabled ? activeFolderObjects.map((object) => trainingObjectId(object.kind, object.id)) : [],
+    [activeFolderObjects, folderReorderEnabled],
+  );
+  const practiceQuestionObjectIds = useMemo(
+    () => practiceQuestionObjects.map((object) => trainingObjectId(object.kind, object.id)),
+    [practiceQuestionObjects],
+  );
+  const certificationQuestionObjectIds = useMemo(
+    () => certificationQuestionObjects.map((object) => trainingObjectId(object.kind, object.id)),
+    [certificationQuestionObjects],
   );
   const hasLoadedEmptyFolder = !foldersState.loading && !loading && currentObjects.length === 0;
   const selectedObject = useMemo(
@@ -305,16 +337,28 @@ export default function QuestionBankFolderPage() {
         return;
       }
 
-      const oldIndex = currentObjectIds.indexOf(trainingObjectId(active.kind, active.id));
-      const newIndex = currentObjectIds.indexOf(overId);
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+      // Filtered question lists are incomplete, while backend reorder requires the full active question-group block.
+      if (draggedObject.kind === "question" && hasActiveSearch) return;
 
-      const overObject = currentObjects[newIndex];
+      const overObject = currentObjects.find((object) => trainingObjectId(object.kind, object.id) === overId);
       if (!overObject || overObject.kind !== active.kind) return;
 
-      const sameKindObjects = currentObjects.filter(
-        (object) => object.kind === active.kind && trainingObjectActive(object),
-      );
+      let reorderObjects: TrainingFolderListObject[];
+      let questionGroup: TrainingQuestionGroup | undefined;
+      if (draggedObject.kind === "question" && overObject.kind === "question") {
+        questionGroup = draggedObject.question.questionGroup;
+        if (overObject.question.questionGroup !== questionGroup) return;
+        reorderObjects = (questionGroup === "PRACTICE" ? practiceQuestionObjects : certificationQuestionObjects).filter(
+          trainingObjectActive,
+        );
+      } else if (draggedObject.kind === "folder" && overObject.kind === "folder") {
+        if (!folderReorderEnabled) return;
+        reorderObjects = activeFolderObjects;
+      } else {
+        return;
+      }
+
+      const sameKindObjects = reorderObjects;
       const sameKindOldIndex = sameKindObjects.findIndex((object) => object.id === active.id);
       const sameKindNewIndex = sameKindObjects.findIndex((object) => object.id === overObject.id);
       if (sameKindOldIndex === -1 || sameKindNewIndex === -1) return;
@@ -324,6 +368,7 @@ export default function QuestionBankFolderPage() {
           type: "QUESTION_BANK",
           folderId: currentFolderId,
           kind: active.kind === "folder" ? "FOLDER" : "QUESTION",
+          ...(questionGroup ? { questionGroup } : {}),
           orderedIds: nextObjects.map((object) => object.id),
         });
         await reloadVisible();
@@ -335,10 +380,14 @@ export default function QuestionBankFolderPage() {
     [
       blockedDropFolderIds,
       currentFolderId,
-      currentObjectIds,
       currentObjects,
+      certificationQuestionObjects,
       finishDrag,
+      activeFolderObjects,
+      folderReorderEnabled,
+      hasActiveSearch,
       moveObjectToFolder,
+      practiceQuestionObjects,
       reloadVisible,
       restaurantId,
     ],
@@ -406,6 +455,42 @@ export default function QuestionBankFolderPage() {
     }
   };
 
+  const renderObjectList = (objects: TrainingFolderListObject[]) => (
+    <TrainingObjectList
+      objects={objects}
+      activeObjectId={sortableDnd.activeId}
+      selectedObjectId={selectedObjectId}
+      blockedFolderIds={blockedDropFolderIds}
+      actionLoading={actionLoading}
+      canManage={canManage}
+      canManageObject={(object) => object.kind === "folder"
+        ? object.folder.manageable
+        : canManageCurrentFolder}
+      canReorderObject={(object) => object.kind !== "folder"
+        || (folderReorderEnabled && trainingObjectActive(object))}
+      onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
+      onClearSelection={() => setSelectedObjectId(null)}
+      onOpenObject={(object) => {
+        if (object.kind === "folder") navigate(trainingRoutes.questionBankFolder(object.id));
+        else if (object.kind === "question") {
+          setEditingQuestion(object.question);
+          setQuestionModalOpen(true);
+        }
+      }}
+      onEditObject={(object) => {
+        if (object.kind === "folder") {
+          setEditingFolder(object.folder);
+          setFolderModalOpen(true);
+        } else if (object.kind === "question") {
+          setEditingQuestion(object.question);
+          setQuestionModalOpen(true);
+        }
+      }}
+      onMoveObject={(object) => setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) })}
+      onArchiveObject={(object) => void archiveObject(object)}
+    />
+  );
+
   if (Number.isNaN(currentFolderId)) {
     return (
       <ErrorState
@@ -440,7 +525,7 @@ export default function QuestionBankFolderPage() {
         />
         <h2 className="text-2xl font-semibold">{currentFolder?.name ?? "Папка"}</h2>
 
-        {canManage ? (
+        {canManageCurrentFolder ? (
           <div className="border-subtle bg-surface rounded-2xl border p-3">
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
               <Input
@@ -490,44 +575,36 @@ export default function QuestionBankFolderPage() {
         {hasLoadedEmptyFolder ? (
           <EmptyState
             title="Здесь пока пусто"
-            description={canManage ? "Создайте папку или вопрос." : "В этой папке пока нет вопросов."}
+            description={canManageCurrentFolder ? "Создайте папку или вопрос." : "В этой папке пока нет вопросов."}
           />
         ) : null}
 
         {currentObjects.length > 0 ? (
-          <div ref={scrollContainerRef}>
-            <SortableContext items={currentObjectIds} strategy={verticalListSortingStrategy}>
-              <TrainingObjectList
-                objects={currentObjects}
-                activeObjectId={sortableDnd.activeId}
-                selectedObjectId={selectedObjectId}
-                blockedFolderIds={blockedDropFolderIds}
-                actionLoading={actionLoading}
-                canManage={canManage}
-                onSelectObject={(object) => setSelectedObjectId(trainingObjectId(object.kind, object.id))}
-                onClearSelection={() => setSelectedObjectId(null)}
-                onOpenObject={(object) => {
-                  if (object.kind === "folder") navigate(trainingRoutes.questionBankFolder(object.id));
-                  else if (object.kind === "question") {
-                    setEditingQuestion(object.question);
-                    setQuestionModalOpen(true);
-                  }
-                }}
-                onEditObject={(object) => {
-                  if (object.kind === "folder") {
-                    setEditingFolder(object.folder);
-                    setFolderModalOpen(true);
-                  } else if (object.kind === "question") {
-                    setEditingQuestion(object.question);
-                    setQuestionModalOpen(true);
-                  }
-                }}
-                onMoveObject={(object) =>
-                  setMoveTarget({ kind: object.kind, id: object.id, title: trainingObjectTitle(object) })
-                }
-                onArchiveObject={(object) => void archiveObject(object)}
-              />
-            </SortableContext>
+          <div ref={scrollContainerRef} className="space-y-6">
+            {folderObjects.length > 0 ? (
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold">Папки</h3>
+                <SortableContext items={folderObjectIds} strategy={verticalListSortingStrategy}>
+                  {renderObjectList(folderObjects)}
+                </SortableContext>
+              </section>
+            ) : null}
+            {practiceQuestionObjects.length > 0 ? (
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold">Учебные вопросы</h3>
+                <SortableContext items={practiceQuestionObjectIds} strategy={verticalListSortingStrategy}>
+                  {renderObjectList(practiceQuestionObjects)}
+                </SortableContext>
+              </section>
+            ) : null}
+            {certificationQuestionObjects.length > 0 ? (
+              <section className="space-y-3">
+                <h3 className="text-lg font-semibold">Аттестационные вопросы</h3>
+                <SortableContext items={certificationQuestionObjectIds} strategy={verticalListSortingStrategy}>
+                  {renderObjectList(certificationQuestionObjects)}
+                </SortableContext>
+              </section>
+            ) : null}
           </div>
         ) : null}
         <DragOverlay dropAnimation={null} modifiers={[centerTrainingDragOverlayOnCursor]}>
@@ -539,7 +616,9 @@ export default function QuestionBankFolderPage() {
         object={selectedObject}
         visible={Boolean(selectedObject)}
         actionLoading={actionLoading}
-        canManage={canManage}
+        canManage={selectedObject?.kind === "folder"
+          ? canManage && selectedObject.folder.manageable
+          : canManageCurrentFolder}
         onOpen={(object) => {
           if (object.kind === "folder") navigate(trainingRoutes.questionBankFolder(object.id));
           else if (object.kind === "question") {

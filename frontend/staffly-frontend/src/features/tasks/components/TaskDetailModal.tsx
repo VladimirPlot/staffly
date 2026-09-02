@@ -132,7 +132,7 @@ const TaskDetailModal = ({
         aria-hidden="true"
         onMouseDown={handleBackdropMouseDown}
       />
-      <div className="pointer-events-none relative flex min-h-[100vh] items-center justify-center p-4 supports-[height:100dvh]:min-h-[100dvh]">
+      <div className="safe-area-overlay pointer-events-none relative flex min-h-[100vh] items-center justify-center supports-[height:100dvh]:min-h-[100dvh]">
         <div
           ref={dialogRef}
           role="dialog"
@@ -140,7 +140,7 @@ const TaskDetailModal = ({
           aria-labelledby={titleId}
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className="bg-surface pointer-events-auto flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl shadow-[var(--staffly-shadow)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]"
+          className="bg-surface pointer-events-auto flex max-h-[calc(100vh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] w-full max-w-2xl flex-col overflow-hidden rounded-3xl shadow-[var(--staffly-shadow)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))]"
         >
           <div className="border-subtle flex items-start justify-between gap-4 border-b px-6 py-5">
             <div className="min-w-0">

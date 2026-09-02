@@ -36,6 +36,26 @@ public class TrainingPolicyService {
         return allowedPositionIdsByContext(userId, restaurantId, PolicyContext.EXAM_TARGET);
     }
 
+    /** Resolves the actor and restaurant positions once for certification tree authority calculations. */
+    public CertificationManagementScopes certificationManagementScopes(Long userId, Long restaurantId) {
+        var context = resolveContext(userId, restaurantId);
+        var folderLevels = allowedLevelsByContext(context, PolicyContext.CERTIFICATION);
+        var targetLevels = allowedLevelsByContext(context, PolicyContext.EXAM_TARGET);
+        var restaurantPositions = positions.findByRestaurantId(restaurantId);
+        var folderPositionIds = restaurantPositions.stream()
+                .filter(position -> folderLevels.contains(position.getLevel()))
+                .map(position -> position.getId())
+                .collect(Collectors.toUnmodifiableSet());
+        var targetPositionIds = restaurantPositions.stream()
+                .filter(position -> targetLevels.contains(position.getLevel()))
+                .map(position -> position.getId())
+                .collect(Collectors.toUnmodifiableSet());
+        return new CertificationManagementScopes(folderPositionIds, targetPositionIds);
+    }
+
+    public record CertificationManagementScopes(Set<Long> folderPositionIds, Set<Long> targetPositionIds) {
+    }
+
     public boolean canAccessKnowledgeByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.KNOWLEDGE);
     }
@@ -44,14 +64,49 @@ public class TrainingPolicyService {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.QUESTION_BANK);
     }
 
+    /** Reading is intersection-based; managing a question-bank object requires authority over its full scope. */
+    public boolean canManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
+            return true;
+        }
+        return allowedPositionIdsByContext(userId, restaurantId, PolicyContext.QUESTION_BANK)
+                .containsAll(visibilityPositionIds);
+    }
+
+    public boolean canAccessCertificationByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.CERTIFICATION);
+    }
+
     public boolean canAccessExamTargetByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET);
+    }
+
+    public boolean canManageCertificationTargets(Long userId, Long restaurantId, Set<Long> targetPositionIds) {
+        if (targetPositionIds == null || targetPositionIds.isEmpty()) {
+            return false;
+        }
+        var allowed = allowedPositionIdsByContext(userId, restaurantId, PolicyContext.EXAM_TARGET);
+        return allowed.containsAll(targetPositionIds);
+    }
+
+    /** Folder navigation is intersection-based, but changing a folder requires its entire scope. */
+    public boolean canManageCertificationFolderOwnScope(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
+            return true;
+        }
+        return allowedPositionIdsByContext(userId, restaurantId, PolicyContext.CERTIFICATION)
+                .containsAll(visibilityPositionIds);
     }
 
     public boolean canAccessCertificationEmployeeAnalyticsTargetRole(Long userId, Long restaurantId, RestaurantRole targetRole) {
         var context = resolveContext(userId, restaurantId);
         if (context.isCreator()) {
             return true;
+        }
+        if (context.hasExaminerAuthority()) {
+            return targetRole == RestaurantRole.STAFF
+                    || targetRole == RestaurantRole.MANAGER
+                    || targetRole == RestaurantRole.ADMIN;
         }
         return switch (context.baseRole()) {
             case MANAGER -> targetRole == RestaurantRole.STAFF;
@@ -70,9 +125,26 @@ public class TrainingPolicyService {
                 "Training question-bank policy does not allow access to this visibility scope.");
     }
 
+    public void assertCanManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        if (!canManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds)) {
+            throw new ForbiddenException("Training question-bank policy does not allow managing this visibility scope.");
+        }
+    }
+
+    public void assertCanAccessCertificationByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.CERTIFICATION,
+                "Training certification policy does not allow access to this visibility scope.");
+    }
+
     public void assertCanAccessExamTargetByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.EXAM_TARGET,
                 "Training exam-target policy does not allow access to this visibility scope.");
+    }
+
+    public void assertCanManageCertificationTargets(Long userId, Long restaurantId, Set<Long> targetPositionIds) {
+        if (!canManageCertificationTargets(userId, restaurantId, targetPositionIds)) {
+            throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
+        }
     }
 
     public void assertCanUseKnowledgePositions(Long userId, Long restaurantId, Set<Long> positionIds) {
@@ -81,6 +153,10 @@ public class TrainingPolicyService {
 
     public void assertCanUseQuestionBankPositions(Long userId, Long restaurantId, Set<Long> positionIds) {
         assertCanUsePositions(userId, restaurantId, positionIds, PolicyContext.QUESTION_BANK);
+    }
+
+    public void assertCanUseCertificationPositions(Long userId, Long restaurantId, Set<Long> positionIds) {
+        assertCanUsePositions(userId, restaurantId, positionIds, PolicyContext.CERTIFICATION);
     }
 
     public void assertCanUseExamTargetPositions(Long userId, Long restaurantId, Set<Long> positionIds) {
@@ -133,7 +209,7 @@ public class TrainingPolicyService {
                 case MANAGER -> EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER);
                 case STAFF -> EnumSet.of(RestaurantRole.STAFF);
             };
-            case QUESTION_BANK, EXAM_TARGET -> switch (context.baseRole()) {
+            case QUESTION_BANK, CERTIFICATION, EXAM_TARGET -> switch (context.baseRole()) {
                 case ADMIN -> EnumSet.of(RestaurantRole.STAFF, RestaurantRole.MANAGER);
                 case MANAGER, STAFF -> EnumSet.of(RestaurantRole.STAFF);
             };
@@ -163,6 +239,7 @@ public class TrainingPolicyService {
     private enum PolicyContext {
         KNOWLEDGE("knowledge"),
         QUESTION_BANK("question-bank"),
+        CERTIFICATION("certification"),
         EXAM_TARGET("exam-target");
 
         private final String code;

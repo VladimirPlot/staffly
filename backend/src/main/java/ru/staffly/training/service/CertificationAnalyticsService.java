@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingExamAssignment;
@@ -30,15 +31,24 @@ class CertificationAnalyticsService {
     private final CertificationAssignmentService assignmentService;
     private final ExamSnapshotService snapshotService;
     private final TrainingPolicyService trainingPolicyService;
+    private final CertificationAnalyticsLifecycleCoordinator lifecycleCoordinator;
+    private final jakarta.persistence.EntityManager entityManager;
 
-    @Transactional(readOnly = true)
-    public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long examId) {
-        var rows = loadActiveAssignmentScope(restaurantId, examId);
+    @Transactional
+    public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long actorUserId, Long examId) {
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
+        entityManager.flush();
+        var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         return toSummary(rows);
     }
 
-    @Transactional(readOnly = true)
-    public Map<Long, CertificationExamSummaryPreviewDto> getExamSummaryPreviewBatch(Long restaurantId, Collection<Long> examIds) {
+    @Transactional
+    public Map<Long, CertificationExamSummaryPreviewDto> getExamSummaryPreviewBatch(
+            Long restaurantId,
+            Long actorUserId,
+            Collection<Long> examIds
+    ) {
         if (examIds == null || examIds.isEmpty()) {
             return Map.of();
         }
@@ -48,7 +58,13 @@ class CertificationAnalyticsService {
             return Map.of();
         }
 
-        var rows = assignments.findActiveByRestaurantIdAndExamIds(restaurantId, distinctExamIds);
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExams(restaurantId, distinctExamIds, now);
+        entityManager.flush();
+        var allowedUserIds = resolveAllowedAnalyticsUserIds(restaurantId, actorUserId);
+        var rows = assignments.findCurrentAnalyticsScopeByRestaurantIdAndExamIds(restaurantId, distinctExamIds).stream()
+                .filter(assignment -> allowedUserIds.contains(assignment.getUser().getId()))
+                .toList();
         var grouped = rows.stream().collect(Collectors.groupingBy(row -> row.getExam().getId()));
 
         Map<Long, CertificationExamSummaryPreviewDto> summaryByExamId = new HashMap<>();
@@ -66,9 +82,12 @@ class CertificationAnalyticsService {
         return summaryByExamId;
     }
 
-    @Transactional(readOnly = true)
-    public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long examId) {
-        var rows = loadActiveAssignmentScope(restaurantId, examId);
+    @Transactional
+    public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long actorUserId, Long examId) {
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
+        entityManager.flush();
+        var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         return rows.stream()
                 .collect(Collectors.groupingBy(a -> new PositionKey(
                         a.getAssignedPosition() == null ? null : a.getAssignedPosition().getId(),
@@ -94,21 +113,31 @@ class CertificationAnalyticsService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long actorUserId, Long examId) {
-        var rows = loadActiveAssignmentScope(restaurantId, examId);
+        var now = TimeProvider.now();
+        lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
+        entityManager.flush();
+        var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
         var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> userIds.contains(member.getUser().getId()))
-                .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole()))
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
 
         return rows.stream()
                 .filter(assignment -> memberByUserId.containsKey(assignment.getUser().getId()))
                 .map(assignment -> {
                     var member = memberByUserId.get(assignment.getUser().getId());
+                    var cycle = assignment.getAssignmentCycle();
                     return new CertificationExamEmployeeRowDto(
                             assignment.getId(),
+                            assignment.getExamVersionSnapshot(),
+                            assignment.getExam().getVersion(),
+                            cycle == null ? null : cycle.getId(),
+                            cycle == null ? null : cycle.getCycleSequence(),
+                            cycle == null ? null : cycle.getKind(),
+                            assignment.getResetGeneration(),
+                            assignment.getDeactivationReason(),
                             assignment.getUser().getId(),
                             assignment.getUser().getFullName(),
                             assignment.getAssignedPosition() == null ? null : assignment.getAssignedPosition().getId(),
@@ -136,16 +165,26 @@ class CertificationAnalyticsService {
         // История для employee endpoint возвращается как полная история попыток пользователя по exam.
         // Assignment-поля добавлены для прозрачного понимания связи попыток с циклом назначений.
         return attempts.findByExamIdAndRestaurantIdAndUserIdOrderByStartedAtDesc(examId, restaurantId, userId).stream()
-                .map(attempt -> new CertificationExamAttemptHistoryDto(
+                .map(attempt -> {
+                    var assignment = attempt.getAssignment();
+                    var cycle = assignment == null ? null : assignment.getAssignmentCycle();
+                    return new CertificationExamAttemptHistoryDto(
                         attempt.getId(),
-                        attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),
-                        attempt.getAssignment() == null ? null : attempt.getAssignment().getExamVersionSnapshot(),
+                        assignment == null ? null : assignment.getId(),
+                        assignment == null ? null : assignment.getExamVersionSnapshot(),
+                        cycle == null ? null : cycle.getId(),
+                        cycle == null ? null : cycle.getCycleSequence(),
+                        cycle == null ? null : cycle.getKind(),
+                        assignment == null ? null : assignment.getResetGeneration(),
+                        assignment == null ? null : assignment.getDeactivationReason(),
                         attempt.getStartedAt(),
                         attempt.getFinishedAt(),
                         attempt.getScorePercent(),
                         attempt.getPassed(),
-                        attempt.getExamVersion()
-                ))
+                        attempt.getExamVersion(),
+                        attempt.getPassPercentSnapshot()
+                    );
+                })
                 .toList();
     }
 
@@ -180,14 +219,21 @@ class CertificationAnalyticsService {
                 ? Math.max(0L, finishedAt.getEpochSecond() - startedAt.getEpochSecond())
                 : null;
 
+        var assignment = attempt.getAssignment();
+        var cycle = assignment == null ? null : assignment.getAssignmentCycle();
         return new CertificationAttemptDetailsDto(
                 attempt.getId(),
                 attempt.getExam() == null ? null : attempt.getExam().getId(),
                 attempt.getTitleSnapshot(),
                 attempt.getUser().getId(),
                 attempt.getUser().getFullName(),
-                attempt.getAssignment() == null ? null : attempt.getAssignment().getId(),
+                assignment == null ? null : assignment.getId(),
                 attempt.getExamVersion(),
+                cycle == null ? null : cycle.getId(),
+                cycle == null ? null : cycle.getCycleSequence(),
+                cycle == null ? null : cycle.getKind(),
+                assignment == null ? null : assignment.getResetGeneration(),
+                assignment == null ? null : assignment.getDeactivationReason(),
                 startedAt,
                 finishedAt,
                 attempt.getScorePercent(),
@@ -199,9 +245,31 @@ class CertificationAnalyticsService {
         );
     }
 
-    private List<TrainingExamAssignment> loadActiveAssignmentScope(Long restaurantId, Long examId) {
+    private List<TrainingExamAssignment> loadCurrentAssignmentScope(Long restaurantId, Long examId) {
         ensureCertificationExam(restaurantId, examId);
-        return assignments.findActiveByExamIdAndRestaurantId(examId, restaurantId);
+        return assignments.findCurrentAnalyticsScopeByExamIdAndRestaurantId(examId, restaurantId);
+    }
+
+    private List<TrainingExamAssignment> loadPermissionFilteredCurrentAssignmentScope(
+            Long restaurantId,
+            Long actorUserId,
+            Long examId
+    ) {
+        var allowedUserIds = resolveAllowedAnalyticsUserIds(restaurantId, actorUserId);
+        return loadCurrentAssignmentScope(restaurantId, examId).stream()
+                .filter(assignment -> allowedUserIds.contains(assignment.getUser().getId()))
+                .toList();
+    }
+
+    private Set<Long> resolveAllowedAnalyticsUserIds(Long restaurantId, Long actorUserId) {
+        return members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+                .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(
+                        actorUserId,
+                        restaurantId,
+                        member.getRole()
+                ))
+                .map(member -> member.getUser().getId())
+                .collect(Collectors.toSet());
     }
 
     private CertificationExamSummaryDto toSummary(List<TrainingExamAssignment> rows) {

@@ -51,12 +51,18 @@ public class TrainingExam {
     private Integer attemptLimit;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "knowledge_folder_id")
-    private TrainingFolder knowledgeFolder;
+    @JoinColumn(name = "folder_id")
+    private TrainingFolder folder;
 
     @Column(name = "version", nullable = false)
     @Builder.Default
     private int version = 1;
+
+    /** Persistence revision for editor concurrency; unrelated to certification cycle version. */
+    @Version
+    @Column(name = "editor_revision", nullable = false)
+    @Builder.Default
+    private Long editorRevision = 0L;
 
     @Column(name = "sort_order", nullable = false)
     @Builder.Default

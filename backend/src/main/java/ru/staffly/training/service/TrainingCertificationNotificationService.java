@@ -15,6 +15,8 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamNotificationStateRepository;
+import ru.staffly.training.repository.CertificationAssignmentCycleNotificationStateRepository;
+import ru.staffly.training.repository.CertificationAssignmentCycleRepository;
 
 import java.util.Comparator;
 import java.util.List;
@@ -34,6 +36,9 @@ public class TrainingCertificationNotificationService {
     private final RestaurantMemberRepository memberRepository;
     private final TrainingExamAssignmentRepository assignmentRepository;
     private final TrainingExamNotificationStateRepository notificationStateRepository;
+    private final CertificationAssignmentCycleNotificationStateRepository cycleNotificationStateRepository;
+    private final CertificationAssignmentCycleRepository cycleRepository;
+    private final CertificationAssignmentService assignmentService;
     private final TrainingPolicyService trainingPolicyService;
     @PersistenceContext
     private EntityManager entityManager;
@@ -54,16 +59,6 @@ public class TrainingCertificationNotificationService {
         } catch (DataIntegrityViolationException ignoredConcurrentCreate) {
             // Another transaction created state first.
         }
-    }
-
-    @Transactional
-    public void resetMilestoneStateForExam(TrainingExam exam) {
-        if (exam == null || exam.getId() == null || exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            return;
-        }
-        var state = getOrCreateStateForUpdate(exam);
-        state.setLastCompletedMilestone(0);
-        notificationStateRepository.save(state);
     }
 
     @Transactional
@@ -142,9 +137,26 @@ public class TrainingCertificationNotificationService {
         }
 
         Integer score = attempt.getScorePercent() == null ? 0 : attempt.getScorePercent();
-        String content = Boolean.TRUE.equals(attempt.getPassed())
-                ? "Вы сдали аттестацию «" + attempt.getTitleSnapshot() + "» на " + score + "%"
-                : "Вы не сдали аттестацию «" + attempt.getTitleSnapshot() + "». Результат: " + score + "%";
+        var attemptAssignment = attempt.getAssignment();
+        var currentAssignment = assignmentRepository
+                .findCurrentActiveByExamAndUser(exam.getId(), exam.getRestaurant().getId(), userId)
+                .orElse(null);
+        boolean hasNewerCurrentObligation = attemptAssignment != null && currentAssignment != null
+                && !Objects.equals(attemptAssignment.getId(), currentAssignment.getId());
+        Integer attemptsAllowed = attemptAssignment == null
+                ? null
+                : assignmentService.calculateAttemptsAllowed(attemptAssignment);
+        boolean finalFailure = attemptAssignment != null
+                && attemptAssignment.getPassedAt() == null
+                && attemptsAllowed != null
+                && attemptAssignment.getAttemptsUsed() >= attemptsAllowed;
+        String content = hasNewerCurrentObligation
+                ? CertificationCompletionSemantics.SUPERSEDED_ATTEMPT_MESSAGE
+                : Boolean.TRUE.equals(attempt.getPassed())
+                    ? "Вы сдали аттестацию «" + attempt.getTitleSnapshot() + "» на " + score + "%"
+                    : finalFailure
+                        ? "Вы не сдали аттестацию «" + attempt.getTitleSnapshot() + "». Результат: " + score + "%"
+                        : "Попытка аттестации «" + attempt.getTitleSnapshot() + "» неуспешна. Результат: " + score + "%";
 
         try {
             var recipient = memberOpt.get();
@@ -176,22 +188,37 @@ public class TrainingCertificationNotificationService {
         // Ensure aggregate counts include assignment status just finalized in this transaction.
         entityManager.flush();
 
-        long total = assignmentRepository.countByExamIdAndRestaurantIdAndActiveTrue(examId, restaurantId);
+        var assignment = attempt.getAssignment();
+        var cycle = assignment == null ? null : assignment.getAssignmentCycle();
+        // A successor global cycle makes every earlier cycle historical immediately,
+        // regardless of active assignments or late attempt finalization.
+        if (cycle != null && cycleRepository.existsByExamIdAndCycleSequenceGreaterThan(
+                examId, cycle.getCycleSequence())) {
+            return;
+        }
+        if (cycle == null && cycleRepository.findMaxCycleSequence(examId) > 0) {
+            return;
+        }
+        long total = cycle == null
+                ? assignmentRepository.countActiveObligations(examId, restaurantId)
+                : assignmentRepository.countByAssignmentCycleIdAndActiveTrue(cycle.getId());
         if (total <= 0) {
             return;
         }
 
-        long completed = assignmentRepository.countByExamIdAndRestaurantIdAndActiveTrueAndStatusIn(
-                examId,
-                restaurantId,
-                List.of(TrainingExamAssignmentStatus.PASSED, TrainingExamAssignmentStatus.FAILED)
-        );
+        var completedStatuses = CertificationCompletionSemantics.completedStatuses();
+        long completed = cycle == null
+                ? assignmentRepository.countActiveObligationsByStatusIn(examId, restaurantId, completedStatuses)
+                : assignmentRepository.countByAssignmentCycleIdAndActiveTrueAndStatusIn(
+                        cycle.getId(), completedStatuses);
 
         int percent = (int) ((completed * 100) / total);
-        var state = getOrCreateStateForUpdate(exam);
+        var lastCompletedMilestone = cycle == null
+                ? getOrCreateStateForUpdate(exam).getLastCompletedMilestone()
+                : getCycleStateForUpdate(cycle).getLastCompletedMilestone();
 
         int highestCrossedMilestone = MILESTONES.stream()
-                .filter(milestone -> milestone > state.getLastCompletedMilestone() && percent >= milestone)
+                .filter(milestone -> milestone > lastCompletedMilestone && percent >= milestone)
                 .max(Integer::compareTo)
                 .orElse(0);
         if (highestCrossedMilestone == 0) {
@@ -214,7 +241,8 @@ public class TrainingCertificationNotificationService {
                         creator,
                         content,
                         InboxEventSubtype.CERTIFICATION,
-                        "certification:milestone:" + examId + ":" + highestCrossedMilestone,
+                        "certification:milestone:" + examId + ":"
+                                + (cycle == null ? "legacy" : cycle.getId()) + ":" + highestCrossedMilestone,
                         List.of(ownerRecipient),
                         null
                 );
@@ -228,8 +256,15 @@ public class TrainingCertificationNotificationService {
             // We advance milestone state only when inbox accepted the event (or when no recipient exists).
             // This keeps retries possible on transient notification failures without emitting duplicates:
             // inbox event meta is idempotent (restaurant_id + type + meta unique key).
-            state.setLastCompletedMilestone(highestCrossedMilestone);
-            notificationStateRepository.save(state);
+            if (cycle == null) {
+                var state = getOrCreateStateForUpdate(exam);
+                state.setLastCompletedMilestone(highestCrossedMilestone);
+                notificationStateRepository.save(state);
+            } else {
+                var state = getCycleStateForUpdate(cycle);
+                state.setLastCompletedMilestone(highestCrossedMilestone);
+                cycleNotificationStateRepository.save(state);
+            }
         }
     }
 
@@ -298,5 +333,12 @@ public class TrainingCertificationNotificationService {
         }
         return notificationStateRepository.findByExamIdForUpdate(examId)
                 .orElseThrow(() -> new IllegalStateException("Failed to resolve certification notification state for exam " + examId));
+    }
+
+    private CertificationAssignmentCycleNotificationState getCycleStateForUpdate(
+            CertificationAssignmentCycle cycle) {
+        return cycleNotificationStateRepository.findByCycleIdForUpdate(cycle.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Missing certification notification state for assignment cycle " + cycle.getId()));
     }
 }

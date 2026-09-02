@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import ru.staffly.training.model.TrainingExamMode;
 
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.List;
  * are treated as the final state provided by client.
  */
 public record UpdateTrainingExamRequest(
+        @NotNull Long expectedEditorRevision,
         @NotBlank String title,
         String description,
         @NotNull @Min(1) Integer questionCount,
@@ -22,9 +24,11 @@ public record UpdateTrainingExamRequest(
         @Min(1) Integer timeLimitSec,
         @NotNull TrainingExamMode mode,
         Long knowledgeFolderId,
+        Long folderId,
         @Min(1) Integer attemptLimit,
         Boolean active,
         List<Long> visibilityPositionIds,
         List<ExamSourceFolderDto> sourcesFolders,
-        List<Long> sourceQuestionIds
+        List<Long> sourceQuestionIds,
+        @JsonAlias("confirmNewCycle") Boolean confirmNewVersion
 ) {}
