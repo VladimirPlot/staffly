@@ -174,7 +174,7 @@ function getReorderContainerStyle(
   return {
     maxHeight:
       availableScrollHeight != null
-        ? `calc(${availableScrollHeight}px - env(safe-area-inset-bottom, 0px))`
+        ? `calc(${availableScrollHeight}px - var(--staffly-safe-area-bottom))`
         : undefined,
     overflowY: "auto",
     overflowX: "hidden",
