@@ -9,9 +9,9 @@ import ru.staffly.training.dto.CertificationMyResultDto;
 import ru.staffly.training.dto.CertificationMyResultQuestionDto;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamAssignment;
+import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.model.TrainingExamAssignmentStatus;
-import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptQuestionRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
@@ -37,12 +37,15 @@ class CertificationSelfResultService {
             throw new BadRequestException("Personal result is available only for certification exams.");
         }
 
-        var assignment = normalizedActiveAssignment != null
+        var current = normalizedActiveAssignment != null
                 ? normalizedActiveAssignment
                 : assignments.findCurrentActiveByExamAndUser(exam.getId(), restaurantId, userId).orElse(null);
-        var validResult = assignments
-                .findTopByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
-                        exam.getId(), restaurantId, userId)
+        var passedAssignments = assignments
+                .findByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
+                        exam.getId(), restaurantId, userId);
+        var previousValid = passedAssignments.stream()
+                .filter(candidate -> current == null || !candidate.getId().equals(current.getId()))
+                .findFirst()
                 .orElse(null);
         var unfinishedCandidates = attempts
                 .findByExamIdAndRestaurantIdAndUserIdAndFinishedAtIsNullOrderByStartedAtDescIdDesc(
@@ -51,91 +54,103 @@ class CertificationSelfResultService {
             throw new ConflictException("Нарушена целостность: найдено несколько незавершённых попыток аттестации.");
         }
         var unfinished = unfinishedCandidates.stream().findFirst().orElse(null);
-        var assignmentForResult = validResult != null ? validResult
-                : assignment != null ? assignment
-                : unfinished == null ? null : unfinished.getAssignment();
-
-        if (assignmentForResult == null) {
+        if (current == null && previousValid == null && unfinished == null) {
             throw new ConflictException("Для вас нет назначения или истории попыток по этой аттестации.");
         }
 
-        var finishedAttempts = attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
-                assignmentForResult.getId(),
-                assignmentForResult.getExamVersionSnapshot()
-        );
-        var lastFinishedAttempt = finishedAttempts.stream().findFirst();
-        var passedAttempt = attempts.findTopByAssignmentIdAndExamVersionAndPassedTrueAndFinishedAtIsNotNullOrderByFinishedAtAscIdAsc(
-                assignmentForResult.getId(),
-                assignmentForResult.getExamVersionSnapshot()
-        );
-        var attemptForDetails = resolveAttemptForDetails(assignmentForResult, passedAttempt, lastFinishedAttempt);
-
-        var obligationForAllowance = assignment != null ? assignment : assignmentForResult;
-        Integer attemptsAllowed = certificationAssignmentService.calculateAttemptsAllowed(obligationForAllowance);
-        boolean passed = attemptForDetails.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
-                || assignmentForResult.getPassedAt() != null
-                || assignmentForResult.getStatus() == TrainingExamAssignmentStatus.PASSED;
-        boolean revealCorrectAnswers = certificationAssignmentService.shouldRevealCorrectAnswers(assignmentForResult, passed);
-
-        // A protected result is aggregate-only. Returning question rows with selected
-        // answers (even with nullable correctness) creates an unnecessary review
-        // surface and makes future DTO changes prone to reintroducing a leak.
-        var questions = revealCorrectAnswers ? attemptForDetails
-                .map(attempt -> attemptQuestions.findByAttemptId(attempt.getId()).stream()
-                        .map(item -> {
-                            var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
-                            return new CertificationMyResultQuestionDto(
-                                    snapshot.questionId(),
-                                    snapshot.type(),
-                                    snapshot.prompt(),
-                                    item.getChosenAnswerJson(),
-                                    revealCorrectAnswers ? item.isCorrect() : null,
-                                    revealCorrectAnswers ? item.getCorrectKeyJson() : null,
-                                    revealCorrectAnswers ? snapshot.explanation() : null
-                            );
-                        })
-                        .toList())
-                .orElse(List.of()) : List.<CertificationMyResultQuestionDto>of();
-
-        var currentCycle = assignment == null ? null : assignment.getAssignmentCycle();
-        var validCycle = validResult == null ? null : validResult.getAssignmentCycle();
-        boolean hasPendingNewerObligation = unfinished != null && assignment != null
+        boolean hasPendingNewerObligation = unfinished != null && current != null
                 && (unfinished.getAssignment() == null
-                || !assignment.getId().equals(unfinished.getAssignment().getId()));
+                || !current.getId().equals(unfinished.getAssignment().getId()));
         return new CertificationMyResultDto(
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
                 exam.getVersion(),
-                validResult != null,
-                assignment == null ? null : assignment.getId(),
-                assignment == null ? null : assignment.getExamVersionSnapshot(),
-                currentCycle == null ? null : currentCycle.getId(),
-                currentCycle == null ? null : currentCycle.getCycleSequence(),
-                currentCycle == null ? null : currentCycle.getKind(),
-                assignment == null ? null : assignment.getResetGeneration(),
-                assignment == null ? null : assignment.getStatus(),
-                assignment == null ? null : assignment.getDeactivationReason(),
-                validResult == null ? null : validResult.getId(),
-                validResult == null ? null : validResult.getExamVersionSnapshot(),
-                validCycle == null ? null : validCycle.getId(),
-                validResult == null ? null : validResult.getPassedAt(),
-                validResult == null ? null : validResult.getBestScore(),
-                validResult == null ? null : validResult.getDeactivationReason(),
+                current == null ? null : toCurrentObligation(current),
+                previousValid == null ? null : toPreviousValidResult(previousValid),
                 unfinished == null ? null : unfinished.getId(),
                 unfinished == null ? null : unfinished.getExamVersion(),
                 unfinished == null || unfinished.getAssignment() == null ? null : unfinished.getAssignment().getId(),
-                hasPendingNewerObligation,
-                attemptForDetails.map(attempt -> attempt.getScorePercent()).orElse(null),
-                assignmentForResult.getAssessmentSpecification().getPassPercent(),
-                obligationForAllowance.getAttemptsUsed(),
-                attemptsAllowed,
-                revealCorrectAnswers,
-                assignmentForResult.getBestScore(),
+                hasPendingNewerObligation
+        );
+    }
+
+    private CertificationMyResultDto.CurrentObligation toCurrentObligation(TrainingExamAssignment assignment) {
+        var details = resultDetails(assignment);
+        var cycle = assignment.getAssignmentCycle();
+        return new CertificationMyResultDto.CurrentObligation(
+                assignment.getId(),
+                assignment.getAssessmentSpecification().getId(),
+                assignment.getExamVersionSnapshot(),
+                cycle == null ? null : cycle.getId(),
+                cycle == null ? null : cycle.getCycleSequence(),
+                cycle == null ? null : cycle.getKind(),
+                assignment.getResetGeneration(),
+                assignment.getStatus(),
+                assignment.getDeactivationReason(),
+                assignment.getAttemptsUsed(),
+                certificationAssignmentService.calculateAttemptsAllowed(assignment),
+                assignment.getBestScore(),
+                details.scorePercent(),
+                assignment.getAssessmentSpecification().getPassPercent(),
+                details.startedAt(),
+                details.finishedAt(),
+                assignment.getLastAttemptAt(),
+                assignment.getPassedAt(),
+                details.revealCorrectAnswers(),
+                details.questions()
+        );
+    }
+
+    private CertificationMyResultDto.PreviousValidResult toPreviousValidResult(TrainingExamAssignment assignment) {
+        var details = resultDetails(assignment);
+        var cycle = assignment.getAssignmentCycle();
+        return new CertificationMyResultDto.PreviousValidResult(
+                assignment.getId(),
+                assignment.getAssessmentSpecification().getId(),
+                assignment.getExamVersionSnapshot(),
+                cycle == null ? null : cycle.getId(),
+                cycle == null ? null : cycle.getCycleSequence(),
+                cycle == null ? null : cycle.getKind(),
+                assignment.getResetGeneration(),
+                assignment.getDeactivationReason(),
+                assignment.getBestScore(),
+                details.scorePercent(),
+                assignment.getAssessmentSpecification().getPassPercent(),
+                assignment.getPassedAt(),
+                details.startedAt(),
+                details.finishedAt(),
+                details.revealCorrectAnswers(),
+                details.questions()
+        );
+    }
+
+    private ResultDetails resultDetails(TrainingExamAssignment assignment) {
+        var finishedAttempts = attempts.findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+                assignment.getId(), assignment.getExamVersionSnapshot());
+        var lastFinishedAttempt = finishedAttempts.stream().findFirst();
+        var passedAttempt = attempts.findTopByAssignmentIdAndExamVersionAndPassedTrueAndFinishedAtIsNotNullOrderByFinishedAtAscIdAsc(
+                assignment.getId(), assignment.getExamVersionSnapshot());
+        var attemptForDetails = resolveAttemptForDetails(assignment, passedAttempt, lastFinishedAttempt);
+        boolean passed = attemptForDetails.map(attempt -> Boolean.TRUE.equals(attempt.getPassed())).orElse(false)
+                || assignment.getPassedAt() != null
+                || assignment.getStatus() == TrainingExamAssignmentStatus.PASSED;
+        boolean revealCorrectAnswers = certificationAssignmentService.shouldRevealCorrectAnswers(assignment, passed);
+        var questions = revealCorrectAnswers ? attemptForDetails
+                .map(attempt -> attemptQuestions.findByAttemptId(attempt.getId()).stream()
+                        .map(item -> {
+                            var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
+                            return new CertificationMyResultQuestionDto(
+                                    snapshot.questionId(), snapshot.type(), snapshot.prompt(), item.getChosenAnswerJson(),
+                                    item.isCorrect(), item.getCorrectKeyJson(), snapshot.explanation());
+                        })
+                        .toList())
+                .orElse(List.of()) : List.<CertificationMyResultQuestionDto>of();
+        return new ResultDetails(
+                attemptForDetails.map(TrainingExamAttempt::getScorePercent).orElse(null),
                 attemptForDetails.map(TrainingExamAttempt::getStartedAt).orElse(null),
                 attemptForDetails.map(TrainingExamAttempt::getFinishedAt).orElse(null),
-                assignmentForResult.getLastAttemptAt(),
-                assignmentForResult.getPassedAt(),
+                revealCorrectAnswers,
                 questions
         );
     }
@@ -149,5 +164,14 @@ class CertificationSelfResultService {
             return passedAttempt.or(() -> lastFinishedAttempt);
         }
         return lastFinishedAttempt;
+    }
+
+    private record ResultDetails(
+            Integer scorePercent,
+            java.time.Instant startedAt,
+            java.time.Instant finishedAt,
+            boolean revealCorrectAnswers,
+            List<CertificationMyResultQuestionDto> questions
+    ) {
     }
 }
