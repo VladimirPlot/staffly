@@ -62,16 +62,6 @@ public class TrainingCertificationNotificationService {
     }
 
     @Transactional
-    public void resetMilestoneStateForExam(TrainingExam exam) {
-        if (exam == null || exam.getId() == null || exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            return;
-        }
-        var state = getOrCreateStateForUpdate(exam);
-        state.setLastCompletedMilestone(0);
-        notificationStateRepository.save(state);
-    }
-
-    @Transactional
     public void notifyAssignmentsCreated(TrainingExam exam, List<TrainingExamAssignment> createdAssignments) {
         if (exam == null || exam.getMode() != TrainingExamMode.CERTIFICATION || !exam.isActive()) {
             return;

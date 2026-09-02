@@ -45,17 +45,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             left join fetch a.assignedPosition ap
             where a.exam.id = :examId
               and a.restaurant.id = :restaurantId
-              and a.active = true
-            """)
-    List<TrainingExamAssignment> findActiveByExamIdAndRestaurantId(@Param("examId") Long examId,
-                                                                   @Param("restaurantId") Long restaurantId);
-
-    @Query("""
-            select a from TrainingExamAssignment a
-            left join fetch a.user u
-            left join fetch a.assignedPosition ap
-            where a.exam.id = :examId
-              and a.restaurant.id = :restaurantId
               and (a.active = true or (a.active = false
                 and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
             """)
@@ -96,27 +85,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
                                                               @Param("restaurantId") Long restaurantId,
                                                               @Param("userId") Long userId);
 
-    List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndExamVersionSnapshot(Long examId,
-                                                                                   Long restaurantId,
-                                                                                   int examVersionSnapshot);
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select a from TrainingExamAssignment a
-            where a.exam.id = :examId and a.restaurant.id = :restaurantId
-              and a.examVersionSnapshot = :examVersion
-            order by a.id
-            """)
-    List<TrainingExamAssignment> findCurrentVersionForLifecycleUpdate(@Param("examId") Long examId,
-                                                                      @Param("restaurantId") Long restaurantId,
-                                                                      @Param("examVersion") int examVersion);
-
-    List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndExamVersionSnapshotAndActiveTrue(
-            Long examId,
-            Long restaurantId,
-            int examVersionSnapshot
-    );
-
     @Query("""
             select coalesce(max(a.resetGeneration), -1) from TrainingExamAssignment a
             where a.exam.id = :examId and a.user.id = :userId
@@ -133,12 +101,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     int findMaxResetGenerationInCycle(@Param("cycleId") Long cycleId,
                                       @Param("userId") Long userId);
 
-    Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdOrderByActiveDescAssignedAtDescIdDesc(
-            Long examId,
-            Long restaurantId,
-            Long userId
-    );
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select a from TrainingExamAssignment a
@@ -153,9 +115,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             @Param("examId") Long examId, @Param("restaurantId") Long restaurantId,
             @Param("userId") Long userId, @Param("specificationId") Long specificationId,
             @Param("cycleId") Long cycleId);
-
-    Optional<TrainingExamAssignment> findTopByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
-            Long examId, Long restaurantId, Long userId);
 
     List<TrainingExamAssignment> findByExamIdAndRestaurantIdAndUserIdAndPassedAtIsNotNullOrderByPassedAtDescIdDesc(
             Long examId, Long restaurantId, Long userId);
@@ -214,15 +173,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
     @Query("""
             select a from TrainingExamAssignment a
             where a.restaurant.id = :restaurantId
-              and a.active = true
-              and a.exam.id in :examIds
-            """)
-    List<TrainingExamAssignment> findActiveByRestaurantIdAndExamIds(@Param("restaurantId") Long restaurantId,
-                                                                    @Param("examIds") Collection<Long> examIds);
-
-    @Query("""
-            select a from TrainingExamAssignment a
-            where a.restaurant.id = :restaurantId
               and (a.active = true or (a.active = false
                 and a.deactivationReason = ru.staffly.training.model.TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN))
               and a.exam.id in :examIds
@@ -273,17 +223,6 @@ public interface TrainingExamAssignmentRepository extends JpaRepository<Training
             """)
     List<TrainingExamAssignment> findActiveCertificationAssignmentsForUser(@Param("restaurantId") Long restaurantId,
                                                                            @Param("userId") Long userId);
-
-    @Query("""
-            select a from TrainingExamAssignment a
-            where a.exam.id = :examId
-              and a.restaurant.id = :restaurantId
-              and a.active = true
-              and a.user.id in :userIds
-            """)
-    List<TrainingExamAssignment> findActiveByExamIdAndRestaurantIdAndUserIds(@Param("examId") Long examId,
-                                                                             @Param("restaurantId") Long restaurantId,
-                                                                             @Param("userIds") Collection<Long> userIds);
 
     @Query("""
             select count(a) from TrainingExamAssignment a
