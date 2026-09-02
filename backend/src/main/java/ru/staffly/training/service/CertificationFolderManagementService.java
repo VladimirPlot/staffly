@@ -63,7 +63,7 @@ public class CertificationFolderManagementService {
         var manageableFolderIds = manageableFolderIds(restaurantId, allowedFolderPositions, allowedExamTargets);
 
         if (folderId != null) {
-            var current = folders.findByIdAndRestaurantId(folderId).orElse(null);
+            var current = folders.findByIdAndRestaurantId(folderId, restaurantId).orElse(null);
             if (current == null || current.getType() != TrainingFolderType.CERTIFICATION
                     || !current.isActive() || !manageableFolderIds.contains(folderId)) {
                 return new CertificationContainerCapabilitiesDto(false, false);

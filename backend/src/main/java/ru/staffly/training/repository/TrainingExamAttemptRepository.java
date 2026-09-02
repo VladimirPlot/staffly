@@ -163,6 +163,11 @@ public interface TrainingExamAttemptRepository extends JpaRepository<TrainingExa
             int examVersion
     );
 
+    List<TrainingExamAttempt> findByAssignmentIdAndExamVersionAndFinishedAtIsNotNullOrderByFinishedAtDescIdDesc(
+            Long assignmentId,
+            int examVersion
+    );
+
     @Query("""
             select a from TrainingExamAttempt a
             where a.assignment.id = :assignmentId and a.examVersion = :examVersion
