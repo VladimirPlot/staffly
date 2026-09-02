@@ -413,7 +413,7 @@ const AliasGameView: React.FC<AliasGameViewComponentProps> = ({ state, actions, 
   }
 
   const contentWidthClassName = isFullscreenLayout
-    ? "mx-auto h-full min-h-0 w-full max-w-md gap-2 pt-[max(3.5rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))]"
+    ? "mx-auto h-full min-h-0 w-full max-w-md gap-2 pt-[max(3.5rem,var(--staffly-safe-area-top))] pr-[max(0.75rem,var(--staffly-safe-area-right))] pb-[max(0.75rem,var(--staffly-safe-area-bottom))] pl-[max(0.75rem,var(--staffly-safe-area-left))]"
     : state.phase === "roundSummary"
       ? "max-w-6xl"
       : "max-w-2xl";

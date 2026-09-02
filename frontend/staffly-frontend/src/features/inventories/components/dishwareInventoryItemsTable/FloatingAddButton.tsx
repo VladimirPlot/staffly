@@ -16,7 +16,7 @@ export default function FloatingAddButton({ progress, saving, onClick }: Floatin
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-3 bottom-6 z-[60] flex justify-center pb-[env(safe-area-inset-bottom)] transition-[opacity,transform] duration-150 ease-out [will-change:opacity,transform] motion-reduce:transition-none"
+      className="pointer-events-none fixed right-[calc(0.75rem+var(--staffly-safe-area-right))] bottom-6 left-[calc(0.75rem+var(--staffly-safe-area-left))] z-[60] flex justify-center pb-[var(--staffly-safe-area-bottom)] transition-[opacity,transform] duration-150 ease-out [will-change:opacity,transform] motion-reduce:transition-none"
       aria-hidden={!interactive}
       style={{
         opacity: progress,

@@ -99,7 +99,7 @@ export default function PwaUpdatePrompt() {
   if (!open) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-md">
+    <div className="fixed right-[calc(1rem+var(--staffly-safe-area-right))] bottom-[calc(1rem+var(--staffly-safe-area-bottom))] left-[calc(1rem+var(--staffly-safe-area-left))] z-50 mx-auto max-w-md">
       <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-lg">
         <div className="text-sm font-medium text-zinc-900">Доступно обновление</div>
         <div className="mt-1 text-sm text-zinc-600">
