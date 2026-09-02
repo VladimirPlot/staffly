@@ -39,7 +39,7 @@ class CertificationAnalyticsService {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
-        var rows = loadPermissionFilteredActiveAssignmentScope(restaurantId, actorUserId, examId);
+        var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         return toSummary(rows);
     }
 
@@ -62,7 +62,7 @@ class CertificationAnalyticsService {
         lifecycleCoordinator.normalizeCurrentExams(restaurantId, distinctExamIds, now);
         entityManager.flush();
         var allowedUserIds = resolveAllowedAnalyticsUserIds(restaurantId, actorUserId);
-        var rows = assignments.findActiveByRestaurantIdAndExamIds(restaurantId, distinctExamIds).stream()
+        var rows = assignments.findCurrentAnalyticsScopeByRestaurantIdAndExamIds(restaurantId, distinctExamIds).stream()
                 .filter(assignment -> allowedUserIds.contains(assignment.getUser().getId()))
                 .toList();
         var grouped = rows.stream().collect(Collectors.groupingBy(row -> row.getExam().getId()));
@@ -87,7 +87,7 @@ class CertificationAnalyticsService {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
-        var rows = loadPermissionFilteredActiveAssignmentScope(restaurantId, actorUserId, examId);
+        var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         return rows.stream()
                 .collect(Collectors.groupingBy(a -> new PositionKey(
                         a.getAssignedPosition() == null ? null : a.getAssignedPosition().getId(),
@@ -118,7 +118,7 @@ class CertificationAnalyticsService {
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
-        var rows = loadPermissionFilteredActiveAssignmentScope(restaurantId, actorUserId, examId);
+        var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
         var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> userIds.contains(member.getUser().getId()))
@@ -245,18 +245,18 @@ class CertificationAnalyticsService {
         );
     }
 
-    private List<TrainingExamAssignment> loadActiveAssignmentScope(Long restaurantId, Long examId) {
+    private List<TrainingExamAssignment> loadCurrentAssignmentScope(Long restaurantId, Long examId) {
         ensureCertificationExam(restaurantId, examId);
-        return assignments.findActiveByExamIdAndRestaurantId(examId, restaurantId);
+        return assignments.findCurrentAnalyticsScopeByExamIdAndRestaurantId(examId, restaurantId);
     }
 
-    private List<TrainingExamAssignment> loadPermissionFilteredActiveAssignmentScope(
+    private List<TrainingExamAssignment> loadPermissionFilteredCurrentAssignmentScope(
             Long restaurantId,
             Long actorUserId,
             Long examId
     ) {
         var allowedUserIds = resolveAllowedAnalyticsUserIds(restaurantId, actorUserId);
-        return loadActiveAssignmentScope(restaurantId, examId).stream()
+        return loadCurrentAssignmentScope(restaurantId, examId).stream()
                 .filter(assignment -> allowedUserIds.contains(assignment.getUser().getId()))
                 .toList();
     }
