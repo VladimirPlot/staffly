@@ -280,7 +280,7 @@ export default function DropdownMenu({
       <div
         id={mobileMenuId}
         role="menu"
-        className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} border-subtle flex max-h-[min(82vh,560px)] flex-col overflow-hidden rounded-t-[1.75rem] border-t shadow-[0_-12px_40px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out motion-reduce:transition-none ${mobileSheetClassName} ${
+        className={`bg-surface fixed inset-x-0 bottom-0 ${Z_MENU} border-subtle flex max-h-[min(82dvh,560px)] flex-col overflow-hidden rounded-t-[1.75rem] border-t shadow-[0_-12px_40px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out motion-reduce:transition-none ${mobileSheetClassName} ${
           sheetVisible ? "translate-y-0" : "translate-y-full"
         }`}
         onPointerDown={(event) => event.stopPropagation()}
@@ -297,7 +297,7 @@ export default function DropdownMenu({
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
+        <div className="flex-1 overflow-y-auto px-[calc(1rem+var(--staffly-safe-area-left))] pr-[calc(1rem+var(--staffly-safe-area-right))] pb-[calc(1rem+var(--staffly-safe-area-bottom))]">
           {children({ close, open, isMobile })}
         </div>
       </div>

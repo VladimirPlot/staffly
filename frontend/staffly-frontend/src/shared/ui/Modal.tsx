@@ -197,7 +197,7 @@ const Modal: React.FC<ModalProps> = ({
         aria-hidden="true"
         onMouseDown={handleBackdropMouseDown}
       />
-      <div className="pointer-events-none relative flex min-h-[100vh] items-center justify-center p-2 supports-[height:100dvh]:min-h-[100dvh] sm:p-4">
+      <div className="safe-area-overlay pointer-events-none relative flex min-h-[100vh] items-center justify-center supports-[height:100dvh]:min-h-[100dvh]">
         <div
           ref={dialogRef}
           role="dialog"
@@ -221,7 +221,7 @@ const Modal: React.FC<ModalProps> = ({
             </button>
           )}
 
-          <div className="border-subtle bg-surface flex max-h-[calc(100vh-1rem)] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2rem)] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem)]">
+          <div className="border-subtle bg-surface flex max-h-[calc(100vh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:max-h-[calc(100vh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))]">
             {hasHeader && (
               <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
                 <div className="min-w-0">

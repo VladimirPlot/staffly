@@ -508,7 +508,7 @@ function LandingRedirect() {
 
 function AppShell() {
   return (
-    <main className="bg-app min-h-screen px-1.5 py-3 sm:p-4">
+    <main className="app-shell bg-app">
       <React.Suspense fallback={<PageLoader delayMs={200} />}>
         <Outlet />
       </React.Suspense>

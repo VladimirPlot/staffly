@@ -16,7 +16,7 @@ export default function Toast({ message, durationMs = 4000, onClose }: ToastProp
   if (!message) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-center px-4">
+    <div className="pointer-events-none fixed right-[var(--staffly-safe-area-right)] bottom-[calc(1.25rem+var(--staffly-safe-area-bottom))] left-[var(--staffly-safe-area-left)] z-50 flex justify-center px-4">
       <div className="pointer-events-auto rounded-full bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
         {message}
       </div>
