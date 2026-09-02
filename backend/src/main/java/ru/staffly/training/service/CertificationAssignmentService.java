@@ -244,11 +244,6 @@ class CertificationAssignmentService {
         for (var old : candidates) {
             var predecessorShape = classifyRecertificationPredecessor(
                     old, exam, specification, expectedCycle, recertificationCycle, unfinishedAssignmentIds);
-            if (predecessorShape == RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL
-                    && !old.isActive()
-                    && old.getDeactivationReason() == TrainingExamAssignmentDeactivationReason.EXAM_HIDDEN) {
-                continue;
-            }
             if (predecessorShape == RecertificationPredecessorShape.INVALID
                     || predecessorShape == RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL) {
                 log.error("Rejecting re-certification due to invalid predecessor identity: assignmentId={}, examId={}, specificationId={}, cycleId={}, expectedSpecificationId={}, expectedCycleId={}, newCycleId={}, hasMatchingUnfinishedAttempt={}",
@@ -642,7 +637,8 @@ class CertificationAssignmentService {
                 && assignmentCycle.getAssessmentSpecification() != null
                 && assignmentCycle.getExam().getId().equals(exam.getId())
                 && assignmentCycle.getAssessmentSpecification().getId().equals(assignmentSpecification.getId())
-                && assignmentCycle.getCycleSequence() < newCycle.getCycleSequence();
+                && assignmentCycle.getCycleSequence() < newCycle.getCycleSequence()
+                && assignment.getReplacedByAssignment() == null;
         if (!internallyConsistent) {
             return RecertificationPredecessorShape.INVALID;
         }
@@ -656,14 +652,20 @@ class CertificationAssignmentService {
         if (!olderHistorical) {
             return RecertificationPredecessorShape.INVALID;
         }
-        return unfinishedAssignmentIds.contains(assignment.getId())
-                ? RecertificationPredecessorShape.GRACEFUL_HISTORICAL
-                : RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL;
+        if (unfinishedAssignmentIds.contains(assignment.getId())) {
+            return RecertificationPredecessorShape.GRACEFUL_HISTORICAL;
+        }
+        if (assignment.getPassedAt() != null
+                && assignment.getStatus() == TrainingExamAssignmentStatus.PASSED) {
+            return RecertificationPredecessorShape.RETAINED_PASSED_HISTORICAL;
+        }
+        return RecertificationPredecessorShape.PROVABLY_STALE_HISTORICAL;
     }
 
     private enum RecertificationPredecessorShape {
         CURRENT,
         GRACEFUL_HISTORICAL,
+        RETAINED_PASSED_HISTORICAL,
         PROVABLY_STALE_HISTORICAL,
         INVALID
     }
