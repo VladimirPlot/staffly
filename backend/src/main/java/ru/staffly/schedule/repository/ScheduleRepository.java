@@ -1,7 +1,9 @@
 package ru.staffly.schedule.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.schedule.model.Schedule;
@@ -17,6 +19,11 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
     @EntityGraph(attributePaths = {"rows", "ownerMember", "ownerMember.user", "ownerMember.position", "createdByUser"})
     Optional<Schedule> findByIdAndRestaurantId(Long id, Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Schedule s where s.id = :id and s.restaurant.id = :restaurantId")
+    Optional<Schedule> findForUpdateByIdAndRestaurantId(@Param("id") Long id,
+                                                         @Param("restaurantId") Long restaurantId);
 
     @EntityGraph(attributePaths = {"ownerMember", "ownerMember.user", "ownerMember.position", "ownerUser"})
     List<Schedule> findByRestaurantIdAndOwnerUserIdAndEndDateGreaterThanEqualOrderByStartDateAsc(

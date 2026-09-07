@@ -12,6 +12,7 @@ import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.dto.*;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
@@ -66,10 +67,15 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     @Override
     public SchedulePreferenceMyResponse upsertMyPreference(Long restaurantId, Long scheduleId, Long userId, UpsertMySchedulePreferenceRequest request) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
-        Schedule schedule = loadSchedule(restaurantId, scheduleId);
+        // The Schedule row is the mutex for the whole preference collection cycle.
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         Instant now = TimeProvider.now();
         if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
-            throw new BadRequestException("Отправить пожелания можно только во время сбора пожеланий");
+            throw new ScheduleDomainConflictException(
+                    "SCHEDULE_PREFERENCE_COLLECTION_CLOSED",
+                    "Сбор пожеланий уже закрыт. Обновите график."
+            );
         }
         if (schedule.getPreferenceDeadline() == null || !now.isBefore(schedule.getPreferenceDeadline())) {
             throw new BadRequestException("Срок отправки пожеланий истёк");
@@ -103,8 +109,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             submission.getCells().add(cell);
         }
 
-        SchedulePreferenceSubmission saved = submissions.save(submission);
+        SchedulePreferenceSubmission saved = submissions.saveAndFlush(submission);
         notifyManagersIfAllSubmitted(schedule, now);
+        schedules.flush();
         return toMyResponse(schedule, member, saved);
     }
 
