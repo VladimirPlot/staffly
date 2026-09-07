@@ -253,7 +253,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, request.version());
         assertCanUpdateScheduleContent(schedule);
@@ -489,7 +489,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, expectedVersion);
         if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
@@ -694,7 +694,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                                                    Map<String, String> newMap,
                                                    Set<Long> newMemberIds,
                                                    Set<LocalDate> newPeriodDays) {
-        List<ScheduleShiftRequest> pending = shiftRequests.findByScheduleIdAndStatus(schedule.getId(), ScheduleShiftRequestStatus.PENDING_MANAGER);
+        List<ScheduleShiftRequest> pending = shiftRequests.findForUpdateByScheduleIdAndStatus(
+                schedule.getId(), ScheduleShiftRequestStatus.PENDING_MANAGER
+        );
         for (ScheduleShiftRequest request : pending) {
             boolean changed = requestCells(request).stream().anyMatch(cell ->
                     isImportantCellChanged(cell.memberId(), cell.day(), oldMap, newMap, newMemberIds, newPeriodDays));

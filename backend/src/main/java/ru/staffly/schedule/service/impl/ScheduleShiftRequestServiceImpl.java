@@ -15,6 +15,7 @@ import ru.staffly.schedule.dto.CreateReplacementShiftRequest;
 import ru.staffly.schedule.dto.CreateSwapShiftRequest;
 import ru.staffly.schedule.dto.ShiftRequestDto;
 import ru.staffly.schedule.dto.ShiftRequestMemberDto;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
@@ -58,7 +59,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     @Override
     public ShiftRequestDto createReplacement(Long restaurantId, Long scheduleId, Long userId, CreateReplacementShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
-        Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
 
@@ -106,7 +107,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     @Override
     public ShiftRequestDto createSwap(Long restaurantId, Long scheduleId, Long userId, CreateSwapShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
-        Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
 
@@ -163,12 +164,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public ShiftRequestDto decideAsManager(Long restaurantId, Long requestId, Long userId, boolean accepted) {
         securityService.assertAtLeastManager(userId, restaurantId);
 
-        ScheduleShiftRequest entity = loadRequest(requestId, restaurantId);
+        ScheduleShiftRequest entity = loadRequestForDecision(requestId, restaurantId);
         if (entity.getStatus() != ScheduleShiftRequestStatus.PENDING_MANAGER) {
-            throw new BadRequestException("Заявка не требует решения менеджера");
+            throw alreadyDecided();
         }
 
-        Schedule schedule = loadSchedule(entity.getSchedule().getId(), restaurantId);
+        Schedule schedule = entity.getSchedule();
         scheduleAccessService.assertCanManageSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
         ScheduleRow fromRow = requireRow(schedule, entity.getFromRow().getId());
@@ -266,8 +267,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public void cancelOwn(Long restaurantId, Long scheduleId, Long userId, Long requestId) {
         RestaurantMember member = requireMember(userId, restaurantId);
 
-        ScheduleShiftRequest request = requests.findByIdAndScheduleRestaurantId(requestId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Заявка не найдена"));
+        ScheduleShiftRequest request = loadRequestForDecision(requestId, restaurantId);
 
         if (!Objects.equals(request.getSchedule().getId(), scheduleId)) {
             throw new BadRequestException("Заявка не относится к этому графику");
@@ -280,19 +280,45 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         if (request.getStatus() != ScheduleShiftRequestStatus.PENDING_MANAGER) {
-            throw new BadRequestException("Можно отменить только заявку, ожидающую решения менеджера");
+            throw alreadyDecided();
         }
 
         requests.delete(request);
     }
 
-    private ScheduleShiftRequest loadRequest(Long requestId, Long restaurantId) {
-        return requests.findByIdAndScheduleRestaurantId(requestId, restaurantId)
+    /**
+     * All request state transitions use the global order Schedule -> ShiftRequest.
+     * The first non-locking lookup only discovers the parent id; all validation uses
+     * the subsequently locked entities.
+     */
+    private ScheduleShiftRequest loadRequestForDecision(Long requestId, Long restaurantId) {
+        Long scheduleId = requests.findScheduleIdByIdAndRestaurantId(requestId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Запрос не найден"));
+        Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
+        ScheduleShiftRequest locked = requests.findForUpdateByIdAndRestaurantId(requestId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Запрос не найден"));
+        if (!Objects.equals(locked.getSchedule().getId(), schedule.getId())) {
+            throw new NotFoundException("Запрос не найден");
+        }
+        return locked;
+    }
+
+    private ScheduleDomainConflictException alreadyDecided() {
+        return new ScheduleDomainConflictException(
+                "SHIFT_REQUEST_ALREADY_DECIDED",
+                "Заявка уже обработана другим пользователем. Обновите список заявок."
+        );
     }
 
     private Schedule loadSchedule(Long scheduleId, Long restaurantId) {
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("График не найден"));
+        schedule.getRows().forEach(row -> row.getCells().size());
+        return schedule;
+    }
+
+    private Schedule loadScheduleForUpdate(Long scheduleId, Long restaurantId) {
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("График не найден"));
         schedule.getRows().forEach(row -> row.getCells().size());
         return schedule;
