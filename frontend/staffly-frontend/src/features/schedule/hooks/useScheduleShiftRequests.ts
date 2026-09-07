@@ -112,6 +112,9 @@ export default function useScheduleShiftRequests({
         await load(scheduleId);
         onSuccessMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
       } catch (e: unknown) {
+        // The server is authoritative: another manager may have decided the
+        // request while this tab still displayed PENDING_MANAGER.
+        await load(scheduleId);
         onErrorMessage(getFriendlyScheduleErrorMessage(e, "Не удалось обработать заявку"));
       }
     },

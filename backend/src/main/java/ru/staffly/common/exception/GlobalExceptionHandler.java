@@ -20,6 +20,7 @@ import ru.staffly.training.exception.StaleExamRevisionException;
 import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.Schedule;
 
 import java.util.stream.Collectors;
@@ -92,6 +93,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleScheduleVersionConflict(ScheduleVersionConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(ScheduleVersionConflictException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(ScheduleDomainConflictException.class)
+    public ResponseEntity<ErrorResponse> handleScheduleDomainConflict(ScheduleDomainConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), null));
     }
 
     @ExceptionHandler(StaleExamRevisionException.class)
