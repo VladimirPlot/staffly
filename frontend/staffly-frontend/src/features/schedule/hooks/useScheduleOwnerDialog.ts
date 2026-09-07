@@ -11,7 +11,7 @@ type UseScheduleOwnerDialogParams = {
   scheduleId: number | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   onScheduleUpdated: (schedule: ScheduleData) => void;
-  onSavedScheduleOwnerUpdated: (scheduleId: number, owner: ScheduleOwnerDto | null) => void;
+  onSavedScheduleOwnerUpdated: (scheduleId: number, owner: ScheduleOwnerDto | null, version: number) => void;
   onSuccessMessage: (message: string) => void;
   onClearScheduleError: () => void;
 };
@@ -81,16 +81,16 @@ export default function useScheduleOwnerDialog({
   }, [canManage, currentOwnerUserId, restaurantId, scheduleId]);
 
   const submit = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !scheduleId || selectedOwnerUserId == null) return;
+    if (!canManage || !restaurantId || !scheduleId || schedule?.version == null || selectedOwnerUserId == null) return;
     if (selectedOwnerUserId === currentOwnerUserId) return;
 
     setSaving(true);
     setError(null);
     try {
-      const updated = await changeScheduleOwner(restaurantId, scheduleId, selectedOwnerUserId);
+      const updated = await changeScheduleOwner(restaurantId, scheduleId, selectedOwnerUserId, schedule.version);
       const prepared = prepareSchedule(updated);
       onScheduleUpdated(prepared);
-      onSavedScheduleOwnerUpdated(scheduleId, prepared.owner ?? null);
+      onSavedScheduleOwnerUpdated(scheduleId, prepared.owner ?? null, prepared.version ?? schedule.version);
       onSuccessMessage("Ответственный изменён");
       onClearScheduleError();
       setOpen(false);
@@ -111,6 +111,7 @@ export default function useScheduleOwnerDialog({
     prepareSchedule,
     restaurantId,
     scheduleId,
+    schedule?.version,
     selectedOwnerUserId,
   ]);
 

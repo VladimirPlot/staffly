@@ -6,6 +6,7 @@ import java.util.Map;
 import ru.staffly.schedule.model.ScheduleCellSource;
 
 public record SaveScheduleRequest(
+        Long version,
         String title,
         ScheduleConfigDto config,
         List<ScheduleRowPayload> rows,

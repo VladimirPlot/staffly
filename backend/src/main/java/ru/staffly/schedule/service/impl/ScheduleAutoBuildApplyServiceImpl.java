@@ -24,6 +24,7 @@ import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -69,6 +70,9 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        if (!java.util.Objects.equals(schedule.getVersion(), request.version())) {
+            throw new ScheduleVersionConflictException(request.version(), schedule.getVersion());
+        }
         validateScheduleStatus(schedule);
 
         ScheduleBuildTemplate template = resolveEffectiveTemplate(restaurantId, schedule, request.templateId());
@@ -90,7 +94,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
 
         scheduleAuditService.record(
                 saved,

@@ -71,6 +71,7 @@ public class MemberResponsibilityHandoffService {
                     ownedSchedules.stream()
                             .map(schedule -> new MemberResponsibilityItemDto(
                                     schedule.getId(),
+                                    schedule.getVersion(),
                                     schedule.getTitle(),
                                     null,
                                     new MemberResponsibilityPeriodDto(
@@ -118,6 +119,15 @@ public class MemberResponsibilityHandoffService {
 
         Map<Long, Long> certificationAssignments = assignmentsForType(requestedItems, MemberResponsibilityType.CERTIFICATION);
         Map<Long, Long> scheduleAssignments = assignmentsForType(requestedItems, MemberResponsibilityType.SCHEDULE);
+        Map<Long, Long> scheduleVersions = new HashMap<>();
+        requestedItems.stream()
+                .filter(item -> item.type() == MemberResponsibilityType.SCHEDULE)
+                .forEach(item -> {
+                    if (item.resourceVersion() == null) {
+                        throw new BadRequestException("resourceVersion is required for schedules");
+                    }
+                    scheduleVersions.put(item.resourceId(), item.resourceVersion());
+                });
 
         assertExactCoverage(MemberResponsibilityType.CERTIFICATION, expectedCertificationIds, certificationAssignments.keySet());
         assertExactCoverage(MemberResponsibilityType.SCHEDULE, expectedScheduleIds, scheduleAssignments.keySet());
@@ -131,7 +141,9 @@ public class MemberResponsibilityHandoffService {
             );
         }
         if (!scheduleAssignments.isEmpty()) {
-            scheduleOwnershipService.reassignOwnedSchedules(restaurantId, actorUserId, targetUserId, scheduleAssignments);
+            scheduleOwnershipService.reassignOwnedSchedules(
+                    restaurantId, actorUserId, targetUserId, scheduleAssignments, scheduleVersions
+            );
         }
     }
 
@@ -163,6 +175,7 @@ public class MemberResponsibilityHandoffService {
                 : "Позиции: " + String.join(", ", exam.visibilityPositionNames());
         return new MemberResponsibilityItemDto(
                 exam.examId(),
+                null,
                 exam.title(),
                 subtitle,
                 null,
