@@ -73,6 +73,7 @@ export type MemberResponsibilityPeriodDto = {
 
 export type MemberResponsibilityItemDto = {
   id: number;
+  version?: number | null;
   title: string;
   subtitle: string | null;
   period: MemberResponsibilityPeriodDto | null;
@@ -95,6 +96,7 @@ export type MemberResponsibilityHandoffRequest = {
   items: {
     type: MemberResponsibilityType;
     resourceId: number;
+    resourceVersion?: number | null;
     newOwnerUserId: number;
   }[];
 };

@@ -46,6 +46,8 @@ export default function useScheduleLifecycleActions({
   const [preferenceBuildTemplateId, setPreferenceBuildTemplateId] = React.useState("");
   const [preferenceDeadlineError, setPreferenceDeadlineError] = React.useState<string | null>(null);
   const [pendingAction, setPendingAction] = React.useState<LifecycleAction | null>(null);
+  const activeScheduleIdRef = React.useRef(schedule?.id);
+  activeScheduleIdRef.current = schedule?.id;
 
   React.useEffect(() => {
     if (!canManage) {
@@ -67,6 +69,7 @@ export default function useScheduleLifecycleActions({
 
   const applyUpdatedSchedule = React.useCallback(
     async (updatedSchedule: ScheduleData) => {
+      if (updatedSchedule.id !== activeScheduleIdRef.current) return;
       const prepared = prepareSchedule(updatedSchedule);
       onScheduleChanged(prepared);
       onScheduleReadOnlyChanged(true);
@@ -103,7 +106,7 @@ export default function useScheduleLifecycleActions({
   }, [canManage]);
 
   const submitPreferenceCollection = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule?.id) return false;
+    if (!canManage || !restaurantId || !schedule?.id || schedule.version == null) return false;
     if (!preferenceDeadline) {
       setPreferenceDeadlineError("Укажите дедлайн сбора пожеланий");
       return;
@@ -121,6 +124,7 @@ export default function useScheduleLifecycleActions({
     try {
       const parsedBuildTemplateId = preferenceBuildTemplateId ? Number(preferenceBuildTemplateId) : null;
       const updatedSchedule = await startPreferenceCollection(restaurantId, schedule.id, {
+        version: schedule.version,
         preferenceDeadline: parsedDeadline.toISOString(),
         buildTemplateId: Number.isFinite(parsedBuildTemplateId) ? parsedBuildTemplateId : null,
       });
@@ -144,14 +148,15 @@ export default function useScheduleLifecycleActions({
     preferenceDeadline,
     restaurantId,
     schedule?.id,
+    schedule?.version,
   ]);
 
   const closePreferenceCollectionAction = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !schedule?.id) return false;
+    if (!canManage || !restaurantId || !schedule?.id || schedule.version == null) return false;
     setPendingAction("closePreferences");
     onClearScheduleNotices();
     try {
-      const updatedSchedule = await closePreferenceCollection(restaurantId, schedule.id);
+      const updatedSchedule = await closePreferenceCollection(restaurantId, schedule.id, schedule.version);
       await applyUpdatedSchedule(updatedSchedule);
       onScheduleMessage("Сбор пожеланий закрыт");
     } catch (e: unknown) {
@@ -167,14 +172,15 @@ export default function useScheduleLifecycleActions({
     onScheduleMessage,
     restaurantId,
     schedule?.id,
+    schedule?.version,
   ]);
 
   const applyPreferencesSimpleAction = React.useCallback(async (): Promise<boolean> => {
-    if (!canManage || !restaurantId || !schedule?.id) return false;
+    if (!canManage || !restaurantId || !schedule?.id || schedule.version == null) return false;
     setPendingAction("applyPreferences");
     onClearScheduleNotices();
     try {
-      const updatedSchedule = await applySchedulePreferencesSimple(restaurantId, schedule.id);
+      const updatedSchedule = await applySchedulePreferencesSimple(restaurantId, schedule.id, schedule.version);
       await applyUpdatedSchedule(updatedSchedule);
       onScheduleMessage("Черновик готов к ручной сборке");
       return true;
@@ -192,14 +198,15 @@ export default function useScheduleLifecycleActions({
     onScheduleMessage,
     restaurantId,
     schedule?.id,
+    schedule?.version,
   ]);
 
   const publishScheduleAction = React.useCallback(async (): Promise<boolean> => {
-    if (!canManage || !restaurantId || !schedule?.id) return false;
+    if (!canManage || !restaurantId || !schedule?.id || schedule.version == null) return false;
     setPendingAction("publish");
     onClearScheduleNotices();
     try {
-      const updatedSchedule = await publishSchedule(restaurantId, schedule.id);
+      const updatedSchedule = await publishSchedule(restaurantId, schedule.id, schedule.version);
       await applyUpdatedSchedule(updatedSchedule);
       onScheduleMessage("График опубликован");
       return true;
@@ -217,6 +224,7 @@ export default function useScheduleLifecycleActions({
     onScheduleMessage,
     restaurantId,
     schedule?.id,
+    schedule?.version,
   ]);
 
   return React.useMemo(

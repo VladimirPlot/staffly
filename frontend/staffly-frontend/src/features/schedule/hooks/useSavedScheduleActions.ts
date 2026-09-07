@@ -10,6 +10,7 @@ type UseSavedScheduleActionsParams = {
   restaurantId: number | null;
   canManage: boolean;
   scheduleId: number | null;
+  savedSchedules: ScheduleSummary[];
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   loadShiftRequests: (scheduleId?: number | null) => Promise<void>;
   onScheduleChanged: (schedule: ScheduleData | null) => void;
@@ -26,6 +27,7 @@ export default function useSavedScheduleActions({
   restaurantId,
   canManage,
   scheduleId,
+  savedSchedules,
   prepareSchedule,
   loadShiftRequests,
   onScheduleChanged,
@@ -150,13 +152,18 @@ export default function useSavedScheduleActions({
   const deleteSavedSchedule = React.useCallback(
     async (id: number) => {
       if (!canManage || !restaurantId) return;
+      const version = savedSchedules.find((item) => item.id === id)?.version;
+      if (version == null) {
+        onScheduleError("Обновите список графиков перед удалением");
+        return;
+      }
       if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
         return;
       }
       setDeletingId(id);
       onClearScheduleNotices();
       try {
-        await deleteSchedule(restaurantId, id);
+        await deleteSchedule(restaurantId, id, version);
         const savedList = await listSavedSchedules(restaurantId);
         onSavedSchedulesChanged(savedList);
         if (scheduleId === id) {
@@ -181,6 +188,7 @@ export default function useSavedScheduleActions({
       onScheduleReadOnlyChanged,
       restaurantId,
       scheduleId,
+      savedSchedules,
     ],
   );
 

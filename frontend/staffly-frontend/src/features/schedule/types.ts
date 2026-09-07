@@ -73,6 +73,7 @@ export type ScheduleRow = {
 
 export type ScheduleData = {
   id?: number;
+  version?: number;
   status?: ScheduleStatus;
   preferenceCollectionStartedAt?: string | null;
   preferenceDeadline?: string | null;

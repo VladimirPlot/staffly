@@ -19,6 +19,8 @@ import jakarta.persistence.OptimisticLockException;
 import ru.staffly.training.exception.StaleExamRevisionException;
 import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.TrainingExam;
+import ru.staffly.schedule.exception.ScheduleVersionConflictException;
+import ru.staffly.schedule.model.Schedule;
 
 import java.util.stream.Collectors;
 
@@ -86,6 +88,12 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("CONFLICT", ex.getMessage(), ex.getMeta()));
     }
 
+    @ExceptionHandler(ScheduleVersionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleScheduleVersionConflict(ScheduleVersionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ScheduleVersionConflictException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
     @ExceptionHandler(StaleExamRevisionException.class)
     public ResponseEntity<ErrorResponse> handleStaleExamRevision(StaleExamRevisionException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -107,7 +115,23 @@ public class GlobalExceptionHandler {
                     null
             ));
         }
+        if (isScheduleOptimisticLock(ex)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                    ScheduleVersionConflictException.ERROR_CODE,
+                    ScheduleVersionConflictException.MESSAGE,
+                    null
+            ));
+        }
         return buildResponse("Задача была изменена другим пользователем. Обновите страницу.", HttpStatus.CONFLICT);
+    }
+
+    private boolean isScheduleOptimisticLock(Exception ex) {
+        if (ex instanceof ObjectOptimisticLockingFailureException lockingFailure) {
+            return lockingFailure.getPersistentClass() != null
+                    && Schedule.class.isAssignableFrom(lockingFailure.getPersistentClass());
+        }
+        return ex instanceof OptimisticLockException lockingFailure
+                && lockingFailure.getEntity() instanceof Schedule;
     }
 
     private boolean isTrainingExamOptimisticLock(Exception ex) {

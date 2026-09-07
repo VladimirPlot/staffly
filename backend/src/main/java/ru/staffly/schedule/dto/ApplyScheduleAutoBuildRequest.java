@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record ApplyScheduleAutoBuildRequest(
+        @NotNull Long version,
         @JsonAlias("buildTemplateId") @NotNull Long templateId,
         @Valid List<AdjustedScheduleAutoBuildAssignmentDto> adjustedAssignments
 ) {

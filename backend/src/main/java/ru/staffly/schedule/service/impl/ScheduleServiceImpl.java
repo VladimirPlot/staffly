@@ -18,6 +18,7 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.*;
+import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
@@ -120,7 +121,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
         schedule.setRows(rowEntities);
 
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, auditDetails);
         return toDto(saved, days);
     }
@@ -145,6 +146,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                     Boolean myPreferenceSubmitted = resolveMyPreferenceSubmitted(s, currentMember, userId);
                     return new ScheduleSummaryDto(
                         s.getId(),
+                        s.getVersion(),
                         s.getTitle(),
                         s.getStartDate().toString(),
                         s.getEndDate().toString(),
@@ -253,6 +255,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, request.version());
         assertCanUpdateScheduleContent(schedule);
 
         ScheduleConfigDto config = Objects.requireNonNull(request.config(), "config");
@@ -299,7 +302,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
         applyRowsDiff(schedule, safeRows, newValues, request.cellSources(), days, memberMap);
 
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "График изменён");
         saved.getRows().forEach(row -> row.getCells().size());
         return toDto(saved, days);
@@ -331,12 +334,13 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     @Transactional
-    public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long memberId) {
+    public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion, Long memberId) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, expectedVersion);
         assertCanUpdateScheduleContent(schedule);
 
         RestaurantMember member = members.findById(memberId)
@@ -364,7 +368,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .sortOrder(nextSortOrder)
                 .build());
 
-        Schedule saved = schedules.save(schedule);
+        schedule.setUpdatedAt(TimeProvider.now());
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "Сотрудник добавлен в график");
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
@@ -400,6 +405,12 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
     }
 
+    private void assertExpectedVersion(Schedule schedule, Long expectedVersion) {
+        if (expectedVersion == null || !Objects.equals(schedule.getVersion(), expectedVersion)) {
+            throw new ScheduleVersionConflictException(expectedVersion, schedule.getVersion());
+        }
+    }
+
     @Override
     public ScheduleDto startPreferenceCollection(Long restaurantId,
                                                  Long scheduleId,
@@ -410,6 +421,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, request.version());
         if (schedule.getStatus() != ScheduleStatus.DRAFT) {
             throw new BadRequestException("Сбор пожеланий можно начать только из черновика графика");
         }
@@ -436,7 +448,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setPreferenceAppliedAt(null);
         schedule.setPreferenceAllSubmittedNotifiedAt(null);
 
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(
                 saved,
                 actorUserId,
@@ -472,12 +484,14 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
-    public ScheduleDto closePreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId) {
+    public ScheduleDto closePreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId,
+                                                 Long expectedVersion) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, expectedVersion);
         if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
             throw new BadRequestException("Сбор пожеланий можно закрыть только для графика в режиме сбора пожеланий");
         }
@@ -485,7 +499,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setStatus(ScheduleStatus.PREFERENCES_CLOSED);
         schedule.setPreferenceClosedAt(TimeProvider.now());
 
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(
                 saved,
                 actorUserId,
@@ -497,12 +511,14 @@ public class ScheduleServiceImpl implements ScheduleService {
 
 
     @Override
-    public ScheduleDto applyPreferencesSimple(Long restaurantId, Long scheduleId, Long actorUserId) {
+    public ScheduleDto applyPreferencesSimple(Long restaurantId, Long scheduleId, Long actorUserId,
+                                              Long expectedVersion) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, expectedVersion);
         if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             return toDto(schedule, collectDays(schedule.getStartDate(), schedule.getEndDate()));
         }
@@ -513,7 +529,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
 
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(
                 saved,
                 actorUserId,
@@ -524,12 +540,13 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
-    public ScheduleDto publish(Long restaurantId, Long scheduleId, Long actorUserId) {
+    public ScheduleDto publish(Long restaurantId, Long scheduleId, Long actorUserId, Long expectedVersion) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, expectedVersion);
         if (schedule.getStatus() != ScheduleStatus.DRAFT
                 && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Опубликовать можно только черновик графика");
@@ -549,12 +566,13 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
-    public void delete(Long restaurantId, Long scheduleId, Long userId) {
+    public void delete(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        assertExpectedVersion(schedule, expectedVersion);
 
         scheduleAuditService.record(schedule, userId, ScheduleAuditAction.DELETED, "График удалён");
         schedules.delete(schedule);
@@ -972,6 +990,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         return new ScheduleDto(
                 schedule.getId(),
+                schedule.getVersion(),
                 schedule.getTitle(),
                 config,
                 dayDtos,

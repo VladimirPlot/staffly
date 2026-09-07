@@ -317,16 +317,19 @@ const SchedulePage: React.FC = () => {
 
   const handleAddScheduleMember = React.useCallback(
     async (memberId: number) => {
-      if (!restaurantId || !scheduleId) return;
+      if (!restaurantId || !scheduleId || schedule?.version == null) return;
       setAddingMemberId(memberId);
       setAddMemberError(null);
       try {
-        const updated = prepareSchedule(await addScheduleMember(restaurantId, scheduleId, memberId));
+        const requestedScheduleId = scheduleId;
+        const updated = prepareSchedule(
+          await addScheduleMember(restaurantId, requestedScheduleId, memberId, schedule.version),
+        );
         const addedRow = updated.rows.find((row) => row.memberId === memberId);
         if (addedRow) {
           setSchedule((current) =>
-            current && !current.rows.some((row) => row.memberId === memberId)
-              ? { ...current, rows: [...current.rows, addedRow] }
+            current?.id === requestedScheduleId && !current.rows.some((row) => row.memberId === memberId)
+              ? { ...current, version: updated.version, rows: [...current.rows, addedRow] }
               : current,
           );
         }
@@ -339,7 +342,7 @@ const SchedulePage: React.FC = () => {
         setAddingMemberId(null);
       }
     },
-    [prepareSchedule, restaurantId, scheduleId],
+    [prepareSchedule, restaurantId, schedule?.version, scheduleId],
   );
 
   const handleScheduleOwnerUpdated = React.useCallback((updatedSchedule: ScheduleData) => {
@@ -347,8 +350,10 @@ const SchedulePage: React.FC = () => {
   }, []);
 
   const handleSavedScheduleOwnerUpdated = React.useCallback(
-    (updatedScheduleId: number, owner: ScheduleOwnerDto | null) => {
-      setSavedSchedules((prev) => prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner } : item)));
+    (updatedScheduleId: number, owner: ScheduleOwnerDto | null, version: number) => {
+      setSavedSchedules((prev) =>
+        prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner, version } : item)),
+      );
     },
     [setSavedSchedules],
   );
@@ -445,6 +450,7 @@ const SchedulePage: React.FC = () => {
     restaurantId,
     canManage,
     scheduleId,
+    savedSchedules,
     prepareSchedule,
     loadShiftRequests,
     onScheduleChanged: setSchedule,
@@ -492,6 +498,7 @@ const SchedulePage: React.FC = () => {
   const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
     restaurantId,
     scheduleId,
+    scheduleVersion: schedule?.version ?? null,
     prepareSchedule,
     onScheduleChanged: setSchedule,
     onSavedSchedulesChanged: setSavedSchedules,

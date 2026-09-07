@@ -38,6 +38,7 @@ export type ScheduleLifecycleDto = ScheduleLifecycleFields;
 
 export type ScheduleSummary = ScheduleLifecycleDto & {
   id: number;
+  version: number;
   title: string;
   startDate: string;
   endDate: string;
@@ -62,6 +63,7 @@ type ScheduleRowResponse = {
 
 type ScheduleResponse = ScheduleLifecycleDto & {
   id: number;
+  version: number;
   title: string;
   config: ScheduleConfig;
   days: ScheduleData["days"];
@@ -86,6 +88,7 @@ export type AddableScheduleMember = {
 };
 
 export type SaveSchedulePayload = {
+  version?: number;
   title: string;
   config: ScheduleConfig;
   rows: {
@@ -101,6 +104,7 @@ export type SaveSchedulePayload = {
 export type CreateDraftScheduleRequest = SaveSchedulePayload;
 
 export type StartPreferenceCollectionRequest = {
+  version: number;
   preferenceDeadline: string;
   buildTemplateId?: number | null;
 };
@@ -327,6 +331,7 @@ export type AdjustedScheduleAutoBuildAssignment = {
 };
 
 export type ApplyScheduleAutoBuildRequest = {
+  version: number;
   templateId: number;
   adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[];
 };
@@ -549,15 +554,17 @@ export async function addScheduleMember(
   restaurantId: number,
   scheduleId: number,
   memberId: number,
+  version: number,
 ): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/rows`, {
+    version,
     memberId,
   });
   return mapSchedule(data);
 }
 
-export async function deleteSchedule(restaurantId: number, scheduleId: number): Promise<void> {
-  await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`);
+export async function deleteSchedule(restaurantId: number, scheduleId: number, version: number): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, { params: { version } });
 }
 
 export async function listSavedSchedules(restaurantId: number): Promise<ScheduleSummary[]> {
@@ -585,16 +592,18 @@ export async function startPreferenceCollection(
   return mapSchedule(data);
 }
 
-export async function closePreferenceCollection(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+export async function closePreferenceCollection(restaurantId: number, scheduleId: number, version: number): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/close`,
+    { version },
   );
   return mapSchedule(data);
 }
 
-export async function applySchedulePreferencesSimple(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+export async function applySchedulePreferencesSimple(restaurantId: number, scheduleId: number, version: number): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/apply-simple`,
+    { version },
   );
   return mapSchedule(data);
 }
@@ -652,8 +661,10 @@ export async function applyScheduleAutoBuild(
   return mapSchedule(data);
 }
 
-export async function publishSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
-  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`);
+export async function publishSchedule(restaurantId: number, scheduleId: number, version: number): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`, {
+    version,
+  });
   return mapSchedule(data);
 }
 
@@ -676,8 +687,10 @@ export async function changeScheduleOwner(
   restaurantId: number,
   scheduleId: number,
   ownerUserId: number,
+  version: number,
 ): Promise<ScheduleData> {
   const { data } = await api.patch<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner`, {
+    version,
     ownerUserId,
   });
   return mapSchedule(data);
