@@ -14,6 +14,7 @@ type ScheduleRange = { start: string; end: string } | null;
 type UseScheduleAutoBuildApplyActionsParams = {
   restaurantId: number | null;
   scheduleId: number | null;
+  scheduleVersion: number | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   onScheduleChanged: (schedule: ScheduleData | null) => void;
   onSavedSchedulesChanged: (items: ScheduleSummary[]) => void;
@@ -27,6 +28,7 @@ type UseScheduleAutoBuildApplyActionsParams = {
 export default function useScheduleAutoBuildApplyActions({
   restaurantId,
   scheduleId,
+  scheduleVersion,
   prepareSchedule,
   onScheduleChanged,
   onSavedSchedulesChanged,
@@ -37,14 +39,21 @@ export default function useScheduleAutoBuildApplyActions({
   onScheduleError,
 }: UseScheduleAutoBuildApplyActionsParams) {
   const [applying, setApplying] = React.useState(false);
+  const activeScheduleIdRef = React.useRef(scheduleId);
+  activeScheduleIdRef.current = scheduleId;
 
   const applyAutoBuild = React.useCallback(
     async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
-      if (!restaurantId || !scheduleId || !templateId) return false;
+      if (!restaurantId || !scheduleId || scheduleVersion == null || !templateId) return false;
       setApplying(true);
       onClearScheduleNotices();
       try {
-        const updated = await applyScheduleAutoBuild(restaurantId, scheduleId, { templateId, adjustedAssignments });
+        const updated = await applyScheduleAutoBuild(restaurantId, scheduleId, {
+          version: scheduleVersion,
+          templateId,
+          adjustedAssignments,
+        });
+        if (updated.id !== activeScheduleIdRef.current) return false;
         const prepared = prepareSchedule(updated);
         onScheduleChanged(prepared);
         onScheduleReadOnlyChanged(true);
@@ -73,6 +82,7 @@ export default function useScheduleAutoBuildApplyActions({
       prepareSchedule,
       restaurantId,
       scheduleId,
+      scheduleVersion,
     ],
   );
 

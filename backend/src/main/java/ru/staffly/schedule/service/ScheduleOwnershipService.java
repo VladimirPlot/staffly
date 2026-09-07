@@ -10,6 +10,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
+import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.repository.ScheduleRepository;
@@ -35,9 +36,13 @@ public class ScheduleOwnershipService {
     private final ScheduleAuditService scheduleAuditService;
     private final SecurityService securityService;
 
-    public Schedule changeOwner(Long restaurantId, Long actorUserId, Long scheduleId, Long newOwnerUserId) {
+    public Schedule changeOwner(Long restaurantId, Long actorUserId, Long scheduleId, Long expectedVersion,
+                                Long newOwnerUserId) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         Schedule schedule = requireManageableSchedule(restaurantId, actorUserId, scheduleId);
+        if (!Objects.equals(schedule.getVersion(), expectedVersion)) {
+            throw new ScheduleVersionConflictException(expectedVersion, schedule.getVersion());
+        }
         RestaurantMember newOwner = requireOwnerCandidate(restaurantId, newOwnerUserId);
 
         Long currentOwnerUserId = schedule.getOwnerUser() == null ? null : schedule.getOwnerUser().getId();
@@ -48,7 +53,7 @@ public class ScheduleOwnershipService {
         String details = buildOwnerChangedDetails(schedule.getOwnerMember(), newOwner);
         schedule.setOwnerUser(newOwner.getUser());
         schedule.setOwnerMember(newOwner);
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, actorUserId, ScheduleAuditAction.OWNER_CHANGED, details);
         return saved;
     }
@@ -87,7 +92,8 @@ public class ScheduleOwnershipService {
     public void reassignOwnedSchedules(Long restaurantId,
                                        Long actorUserId,
                                        Long oldOwnerUserId,
-                                       Map<Long, Long> ownerUserIdsByScheduleId) {
+                                       Map<Long, Long> ownerUserIdsByScheduleId,
+                                       Map<Long, Long> expectedVersionsByScheduleId) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         if (ownerUserIdsByScheduleId == null || ownerUserIdsByScheduleId.isEmpty()) {
@@ -121,6 +127,10 @@ public class ScheduleOwnershipService {
 
         for (Map.Entry<Long, Long> entry : ownerUserIdsByScheduleId.entrySet()) {
             Schedule schedule = schedulesById.get(entry.getKey());
+            Long expectedVersion = expectedVersionsByScheduleId.get(entry.getKey());
+            if (!Objects.equals(schedule.getVersion(), expectedVersion)) {
+                throw new ScheduleVersionConflictException(expectedVersion, schedule.getVersion());
+            }
             RestaurantMember newOwner = requireOwnerCandidate(restaurantId, entry.getValue());
             String details = buildOwnerChangedDetails(schedule.getOwnerMember(), newOwner);
             schedule.setOwnerUser(newOwner.getUser());

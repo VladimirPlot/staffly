@@ -22,15 +22,15 @@ public interface ScheduleService {
 
     List<AddableScheduleMemberDto> getAddableMembers(Long restaurantId, Long scheduleId, Long userId);
 
-    ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long memberId);
+    ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion, Long memberId);
 
     ScheduleDto startPreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId, StartPreferenceCollectionRequest request);
 
-    ScheduleDto closePreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId);
+    ScheduleDto closePreferenceCollection(Long restaurantId, Long scheduleId, Long actorUserId, Long expectedVersion);
 
-    ScheduleDto applyPreferencesSimple(Long restaurantId, Long scheduleId, Long actorUserId);
+    ScheduleDto applyPreferencesSimple(Long restaurantId, Long scheduleId, Long actorUserId, Long expectedVersion);
 
-    ScheduleDto publish(Long restaurantId, Long scheduleId, Long actorUserId);
+    ScheduleDto publish(Long restaurantId, Long scheduleId, Long actorUserId, Long expectedVersion);
 
-    void delete(Long restaurantId, Long scheduleId, Long userId);
+    void delete(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion);
 }

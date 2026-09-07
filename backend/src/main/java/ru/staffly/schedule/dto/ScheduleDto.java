@@ -9,6 +9,7 @@ import java.util.Map;
 
 public record ScheduleDto(
         Long id,
+        Long version,
         String title,
         ScheduleConfigDto config,
         List<ScheduleDayDto> days,

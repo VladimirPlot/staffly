@@ -79,6 +79,8 @@ export default function useScheduleDraftActions({
   onScheduleError,
   onAutoTabReset,
 }: UseScheduleDraftActionsParams) {
+  const activeScheduleIdRef = React.useRef(schedule?.id);
+  activeScheduleIdRef.current = schedule?.id;
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [savingDraft, setSavingDraft] = React.useState(false);
@@ -195,6 +197,7 @@ export default function useScheduleDraftActions({
     });
 
     return {
+      version: schedule.version,
       title: schedule.title,
       config: schedule.config,
       rows: schedule.rows.map((row) => ({
@@ -233,9 +236,11 @@ export default function useScheduleDraftActions({
       const payload = buildPayload();
       if (!payload) return;
 
-      const saved = schedule.id
-        ? await updateSchedule(restaurantId, schedule.id, payload)
+      const requestedScheduleId = schedule.id;
+      const saved = requestedScheduleId
+        ? await updateSchedule(restaurantId, requestedScheduleId, payload)
         : await createSchedule(restaurantId, payload);
+      if (requestedScheduleId && activeScheduleIdRef.current !== requestedScheduleId) return;
       const prepared = prepareSchedule(saved);
       onScheduleChanged(prepared);
       onScheduleReadOnlyChanged(true);

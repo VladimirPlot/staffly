@@ -1,0 +1,5 @@
+ALTER TABLE schedule
+    ADD COLUMN version BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE schedule
+    ALTER COLUMN version DROP DEFAULT;

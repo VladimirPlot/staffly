@@ -220,6 +220,11 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             swapShifts(fromRow, toRow, dayFrom, dayTo);
         }
 
+        // Cell mutations belong to the Schedule aggregate even though they are persisted
+        // through child entities. Dirty the root so its optimistic-lock revision advances.
+        schedule.setUpdatedAt(now);
+        schedules.flush();
+
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
         entity.setDecidedByUserId(userId);
         entity.setDecidedAt(now);

@@ -224,6 +224,7 @@ export function useMemberRemoval({
         payload.items.push({
           type: group.type,
           resourceId: item.id,
+          resourceVersion: item.version ?? null,
           newOwnerUserId: selectedOwnerUserId,
         });
       }
