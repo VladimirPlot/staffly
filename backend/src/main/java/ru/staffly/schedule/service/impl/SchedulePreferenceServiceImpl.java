@@ -242,9 +242,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private RestaurantMember loadEligibleMember(Long restaurantId, Schedule schedule, Long userId) {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
-        if (schedule.getPositionIds() == null
-                || member.getPosition() == null
-                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
+        if (member.getPosition() == null || !positionIds.contains(member.getPosition().getId())) {
             throw new ForbiddenException("Должность сотрудника не входит в позиции графика");
         }
         return member;
@@ -252,10 +251,11 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
 
     private List<RestaurantMember> loadParticipants(Long restaurantId, Schedule schedule) {
-        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
+        if (positionIds.isEmpty()) {
             return List.of();
         }
-        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, schedule.getPositionIds());
+        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, positionIds);
     }
 
     private List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {

@@ -7,6 +7,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.security.SecurityService;
 
@@ -53,14 +54,15 @@ public class ScheduleAccessService {
     }
 
     private boolean staffCanViewScheduleWithStatuses(Long userId, Schedule schedule, ScheduleStatus... allowedStatuses) {
-        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+        var positionIds = SchedulePositionIds.ids(schedule);
+        if (positionIds.isEmpty()) {
             return false;
         }
         return members.findByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
                 .map(member -> member.getRole() == RestaurantRole.STAFF
                         && matchesAnyStatus(schedule.getStatus(), allowedStatuses)
                         && member.getPosition() != null
-                        && schedule.getPositionIds().contains(member.getPosition().getId()))
+                        && positionIds.contains(member.getPosition().getId()))
                 .orElse(false);
     }
 

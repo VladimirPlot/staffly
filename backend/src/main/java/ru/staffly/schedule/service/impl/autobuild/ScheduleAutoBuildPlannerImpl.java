@@ -7,6 +7,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildCoverageDateOverride;
 import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
 import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
@@ -50,7 +51,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         initializeTemplateCollections(template);
 
         List<String> topWarnings = new ArrayList<>();
-        List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        List<Long> schedulePositions = SchedulePositionIds.ids(schedule);
         List<ScheduleBuildPositionConfig> positionConfigs = safePositionConfigs(template);
         Set<Long> templatePositionIds = positionConfigs.stream()
                 .flatMap(config -> configPositionIds(config).stream())
@@ -114,7 +115,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
             PlannerState plannerState
     ) {
-        List<Long> effectivePositionIds = intersection(configPositionIds(config), schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
+        List<Long> effectivePositionIds = intersection(configPositionIds(config), SchedulePositionIds.ids(schedule));
         List<RestaurantMember> candidates = loadCandidates(restaurantId, effectivePositionIds);
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
