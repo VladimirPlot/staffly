@@ -16,6 +16,7 @@ import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
@@ -120,7 +121,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         Map<Long, RestaurantMember> membersById = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
         Map<Long, ScheduleBuildPositionConfig> configsById = configsById(template);
-        Set<Long> schedulePositions = new HashSet<>(schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
+        Set<Long> schedulePositions = new HashSet<>(SchedulePositionIds.ids(schedule));
         Set<Long> affectedPositionIds = configsById.values().stream()
                 .flatMap(config -> configPositionIds(config).stream())
                 .filter(schedulePositions::contains)
@@ -310,7 +311,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     }
 
     private void validateTemplateHasSchedulePositions(Schedule schedule, ScheduleBuildTemplate template) {
-        List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        List<Long> schedulePositions = SchedulePositionIds.ids(schedule);
         Set<Long> templatePositionIds = template.getPositionConfigs().stream()
                 .flatMap(config -> configPositionIds(config).stream())
                 .collect(Collectors.toSet());

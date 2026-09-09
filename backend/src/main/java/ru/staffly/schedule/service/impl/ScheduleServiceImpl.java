@@ -9,6 +9,7 @@ import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.dictionary.model.Position;
 import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
@@ -90,13 +91,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         ScheduleShiftMode shiftMode = Objects.requireNonNull(config.shiftMode(), "shiftMode");
 
-        List<Long> positionIds = config.positionIds() != null
-                ? config.positionIds()
-                : List.of();
-        if (positionIds.isEmpty()) {
-            throw new BadRequestException("config.positionIds must contain at least one position");
-        }
-        validatePositions(restaurantId, positionIds);
+        Set<Position> schedulePositions = resolvePositions(restaurantId, config.positionIds());
 
         List<LocalDate> days = collectDays(startDate, endDate);
 
@@ -112,7 +107,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .shiftMode(shiftMode)
                 .status(status)
                 .showFullName(config.showFullName())
-                .positionIds(new ArrayList<>(positionIds))
+                .positions(schedulePositions)
                 .build();
 
         applyOwnerAndCreator(schedule, restaurantId, userId, request.ownerUserId());
@@ -138,8 +133,18 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
         final RestaurantMember currentMember = membership.orElse(null);
         final Long memberId = currentMember != null ? currentMember.getId() : null;
+        List<Schedule> visibleCandidates;
+        if (canManage) {
+            visibleCandidates = schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId);
+        } else if (currentMember.getPosition() != null && currentMember.getPosition().getId() != null) {
+            visibleCandidates = schedules.findByRestaurantIdAndPositionId(
+                    restaurantId, currentMember.getPosition().getId()
+            );
+        } else {
+            return List.of();
+        }
 
-        return schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId).stream()
+        return visibleCandidates.stream()
                 .filter(schedule -> scheduleAccessService.canViewScheduleSummary(userId, schedule))
                 .map(s -> {
                     PreferenceProgressSummary progress = resolvePreferenceProgressSummary(canManage, s);
@@ -161,7 +166,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                                 ScheduleShiftRequestStatus.PENDING_MANAGER,
                                 memberId
                         ),
-                        s.getPositionIds(),
+                        SchedulePositionIds.ids(s),
                         buildOwnerDto(s),
                         s.getStatus(),
                         s.getPreferenceCollectionStartedAt(),
@@ -186,7 +191,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (currentMember.getPosition() == null || currentMember.getPosition().getId() == null) {
             return null;
         }
-        List<Long> positionIds = schedule.getPositionIds();
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
         if (positionIds == null || !positionIds.contains(currentMember.getPosition().getId())) {
             return null;
         }
@@ -206,7 +211,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (!canManage || schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
             return PreferenceProgressSummary.empty();
         }
-        List<Long> positionIds = schedule.getPositionIds();
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
         if (positionIds == null || positionIds.isEmpty()) {
             return new PreferenceProgressSummary(0, 0);
         }
@@ -271,13 +276,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         ScheduleShiftMode shiftMode = Objects.requireNonNull(config.shiftMode(), "shiftMode");
 
-        List<Long> positionIds = config.positionIds() != null
-                ? config.positionIds()
-                : List.of();
-        if (positionIds.isEmpty()) {
-            throw new BadRequestException("config.positionIds must contain at least one position");
-        }
-        validatePositions(restaurantId, positionIds);
+        Set<Position> schedulePositions = resolvePositions(restaurantId, config.positionIds());
 
         List<LocalDate> days = collectDays(startDate, endDate);
 
@@ -290,7 +289,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setEndDate(endDate);
         schedule.setShiftMode(shiftMode);
         schedule.setShowFullName(config.showFullName());
-        schedule.setPositionIds(new ArrayList<>(positionIds));
+        schedule.setPositions(schedulePositions);
 
         List<ScheduleRowPayload> safeRows = request.rows() != null ? request.rows() : List.of();
         Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
@@ -346,9 +345,9 @@ public class ScheduleServiceImpl implements ScheduleService {
         RestaurantMember member = members.findById(memberId)
                 .filter(candidate -> Objects.equals(candidate.getRestaurant().getId(), restaurantId))
                 .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + memberId));
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
         if (member.getUser() == null || member.getPosition() == null
-                || schedule.getPositionIds() == null
-                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
+                || !positionIds.contains(member.getPosition().getId())) {
             throw new BadRequestException("Сотрудник не подходит по должности для этого графика");
         }
         if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId))) {
@@ -375,10 +374,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private List<RestaurantMember> findEligibleMembers(Schedule schedule) {
-        List<Long> allowedPositionIds = Optional.ofNullable(schedule.getPositionIds()).orElse(List.of()).stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        List<Long> allowedPositionIds = SchedulePositionIds.ids(schedule);
         if (allowedPositionIds.isEmpty()) {
             return List.of();
         }
@@ -465,7 +461,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
         ScheduleBuildTemplate template = buildTemplates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(buildTemplateId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("Активный шаблон сборки не найден"));
-        List<Long> schedulePositionIds = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        List<Long> schedulePositionIds = SchedulePositionIds.ids(schedule);
         boolean hasSchedulePositionConfig = template.getPositionConfigs().stream()
                 .flatMap(config -> buildConfigPositionIds(config).stream())
                 .anyMatch(schedulePositionIds::contains);
@@ -600,7 +596,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             }
             if (member.getUser() == null) { throw new BadRequestException("У сотрудника нет пользователя"); }
             if (member.getPosition() == null) { throw new BadRequestException("У сотрудника не задана должность"); }
-            if (!schedule.getPositionIds().contains(member.getPosition().getId())) {
+            if (!SchedulePositionIds.ids(schedule).contains(member.getPosition().getId())) {
                 throw new BadRequestException("Должность сотрудника не входит в позиции графика");
             }
             if (!seenMemberIds.add(member.getId())) { throw new BadRequestException("Один и тот же сотрудник не может быть добавлен дважды"); }
@@ -660,7 +656,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             }
             if (member.getUser() == null) throw new BadRequestException("У сотрудника нет пользователя");
             if (member.getPosition() == null) throw new BadRequestException("У сотрудника не задана должность");
-            if (!schedule.getPositionIds().contains(member.getPosition().getId())) {
+            if (!SchedulePositionIds.ids(schedule).contains(member.getPosition().getId())) {
                 throw new BadRequestException("Должность сотрудника не входит в позиции графика");
             }
             if (memberMap.putIfAbsent(member.getId(), member) != null) {
@@ -861,13 +857,14 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private void notifyPreferenceCollectionStarted(Schedule schedule, Long actorUserId) {
-        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
+        if (positionIds.isEmpty()) {
             return;
         }
         List<RestaurantMember> targets = deduplicateMembersByUserId(
                 members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
                         schedule.getRestaurant().getId(),
-                        schedule.getPositionIds()
+                        positionIds
                 )
         );
         if (targets.isEmpty()) {
@@ -891,17 +888,11 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private void notifySchedulePublished(Schedule schedule, Long actorUserId) {
-        if (schedule == null
-                || schedule.getRestaurant() == null
-                || schedule.getPositionIds() == null
-                || schedule.getPositionIds().isEmpty()) {
+        if (schedule == null || schedule.getRestaurant() == null) {
             return;
         }
 
-        List<Long> positionIds = schedule.getPositionIds().stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
         if (positionIds.isEmpty()) {
             return;
         }
@@ -985,7 +976,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         ScheduleConfigDto config = new ScheduleConfigDto(
                 schedule.getStartDate().toString(),
                 schedule.getEndDate().toString(),
-                new ArrayList<>(schedule.getPositionIds()),
+                new ArrayList<>(SchedulePositionIds.ids(schedule)),
                 schedule.isShowFullName(),
                 schedule.getShiftMode()
         );
@@ -1015,12 +1006,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (schedule.getRestaurant() == null || schedule.getRestaurant().getId() == null) {
             return Set.of();
         }
-        List<Long> positionIds = schedule.getPositionIds() == null
-                ? List.of()
-                : schedule.getPositionIds().stream()
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        List<Long> positionIds = SchedulePositionIds.ids(schedule);
         if (positionIds.isEmpty()) {
             return Set.of();
         }
@@ -1049,18 +1035,25 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
     }
 
-    private void validatePositions(Long restaurantId, List<Long> positionIds) {
-        if (positionIds.isEmpty()) {
-            return;
+    private Set<Position> resolvePositions(Long restaurantId, List<Long> requestedIds) {
+        if (requestedIds == null || requestedIds.isEmpty()) {
+            throw new BadRequestException("config.positionIds must contain at least one position");
         }
-        Set<Long> allowed = positions.findByRestaurantId(restaurantId).stream()
-                .map(p -> p.getId())
-                .collect(Collectors.toSet());
-        for (Long id : positionIds) {
-            if (!allowed.contains(id)) {
-                throw new BadRequestException("Position " + id + " does not belong to the restaurant");
-            }
+        if (requestedIds.stream().anyMatch(Objects::isNull)) {
+            throw new BadRequestException("config.positionIds must not contain null");
         }
+
+        Set<Long> distinctIds = new TreeSet<>(requestedIds);
+        Map<Long, Position> foundById = positions.findAllById(distinctIds).stream()
+                .filter(position -> Objects.equals(position.getRestaurant().getId(), restaurantId))
+                .collect(Collectors.toMap(Position::getId, position -> position));
+        if (foundById.size() != distinctIds.size()) {
+            throw new BadRequestException("All config.positionIds must belong to the restaurant");
+        }
+
+        return distinctIds.stream()
+                .map(foundById::get)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private String makeUniqueTitle(Long restaurantId, String baseTitle, String currentTitleToIgnore) {

@@ -8,6 +8,7 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleStatus;
@@ -48,7 +49,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         initializeTemplateCollections(template);
 
         Set<Long> templatePositions = template.getPositionConfigs().stream().flatMap(pc -> configPositionIds(pc).stream()).collect(java.util.stream.Collectors.toSet());
-        List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        List<Long> schedulePositions = SchedulePositionIds.ids(schedule);
         if (Collections.disjoint(templatePositions, schedulePositions)) {
             throw new BadRequestException("Шаблон не содержит конфигураций для позиций графика");
         }
