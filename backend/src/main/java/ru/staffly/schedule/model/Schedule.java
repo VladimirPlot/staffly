@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
@@ -11,7 +12,9 @@ import ru.staffly.user.model.User;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "schedule",
@@ -61,10 +64,17 @@ public class Schedule {
     @Column(name = "show_full_name", nullable = false)
     private boolean showFullName;
 
-    @Column(name = "position_ids", columnDefinition = "text")
-    @Convert(converter = PositionIdsConverter.class)
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "schedule_position",
+            joinColumns = @JoinColumn(name = "schedule_id", nullable = false),
+            inverseJoinColumns = @JoinColumn(name = "position_id", nullable = false),
+            uniqueConstraints = @UniqueConstraint(
+                    name = "uq_schedule_position_schedule_position",
+                    columnNames = {"schedule_id", "position_id"}
+            ))
+    @OrderBy("id ASC")
     @Builder.Default
-    private List<Long> positionIds = new ArrayList<>();
+    private Set<Position> positions = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")

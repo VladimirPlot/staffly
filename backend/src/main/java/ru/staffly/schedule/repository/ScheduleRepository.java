@@ -14,7 +14,7 @@ import java.util.Optional;
 
 public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
-    @EntityGraph(attributePaths = {"ownerMember", "ownerMember.user", "ownerMember.position"})
+    @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position"})
     List<Schedule> findByRestaurantIdOrderByCreatedAtDesc(Long restaurantId);
 
     @EntityGraph(attributePaths = {"rows", "ownerMember", "ownerMember.user", "ownerMember.position", "createdByUser"})
@@ -25,7 +25,7 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     Optional<Schedule> findForUpdateByIdAndRestaurantId(@Param("id") Long id,
                                                          @Param("restaurantId") Long restaurantId);
 
-    @EntityGraph(attributePaths = {"ownerMember", "ownerMember.user", "ownerMember.position", "ownerUser"})
+    @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position", "ownerUser"})
     List<Schedule> findByRestaurantIdAndOwnerUserIdAndEndDateGreaterThanEqualOrderByStartDateAsc(
             Long restaurantId,
             Long ownerUserId,
@@ -34,4 +34,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
     @Query("select s.title from Schedule s where s.restaurant.id = :restaurantId")
     List<String> findTitlesByRestaurantId(@Param("restaurantId") Long restaurantId);
+
+    @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position"})
+    @Query("""
+            select distinct s from Schedule s join s.positions p
+            where s.restaurant.id = :restaurantId and p.id = :positionId
+            order by s.createdAt desc
+            """)
+    List<Schedule> findByRestaurantIdAndPositionId(@Param("restaurantId") Long restaurantId,
+                                                   @Param("positionId") Long positionId);
 }
