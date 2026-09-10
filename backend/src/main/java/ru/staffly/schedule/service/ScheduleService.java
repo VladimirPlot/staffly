@@ -5,6 +5,7 @@ import ru.staffly.schedule.dto.AddableScheduleMemberDto;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
 import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
+import ru.staffly.schedule.dto.ScheduleChangeDto;
 
 import java.util.List;
 
@@ -19,6 +20,8 @@ public interface ScheduleService {
     ScheduleDto get(Long restaurantId, Long scheduleId, Long userId);
 
     ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, SaveScheduleRequest request);
+
+    List<ScheduleChangeDto> getChanges(Long restaurantId, Long scheduleId, Long userId);
 
     List<AddableScheduleMemberDto> getAddableMembers(Long restaurantId, Long scheduleId, Long userId);
 
