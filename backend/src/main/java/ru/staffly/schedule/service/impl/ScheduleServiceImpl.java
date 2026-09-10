@@ -299,7 +299,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         autoRejectAffectedPendingRequests(
                 schedule, userId, oldValueMap, newValueMap, memberMap.keySet(), new HashSet<>(days)
         );
-        applyRowsDiff(schedule, safeRows, newValues, request.cellSources(), days, memberMap);
+        applyRowsDiff(schedule, newValues, request.cellSources(), days, memberMap);
 
         Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "График изменён");
@@ -351,7 +351,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("Сотрудник не подходит по должности для этого графика");
         }
         if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId))) {
-            throw new ConflictException("Сотрудник уже есть в графике");
+            throw new ConflictException("Сотрудник уже представлен в графике");
         }
 
         int nextSortOrder = schedule.getRows().stream()
@@ -645,6 +645,10 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowPayload> rows) {
         Map<Long, RestaurantMember> memberMap = new LinkedHashMap<>();
+        Set<Long> historicalMemberIds = schedule.getRows().stream()
+                .map(ScheduleRow::getMemberId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
         for (ScheduleRowPayload row : rows) {
             if (row.memberId() == null) {
                 throw new BadRequestException("memberId is required for each row");
@@ -654,9 +658,18 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (!Objects.equals(member.getRestaurant().getId(), schedule.getRestaurant().getId())) {
                 throw new ForbiddenException("Нельзя добавить сотрудника из другого ресторана");
             }
-            if (member.getUser() == null) throw new BadRequestException("У сотрудника нет пользователя");
-            if (member.getPosition() == null) throw new BadRequestException("У сотрудника не задана должность");
-            if (!SchedulePositionIds.ids(schedule).contains(member.getPosition().getId())) {
+            boolean currentlyEligible = member.getUser() != null
+                    && member.getPosition() != null
+                    && SchedulePositionIds.ids(schedule).contains(member.getPosition().getId());
+            if (!currentlyEligible) {
+                // A client can still hold a row that became inactive after it loaded the schedule
+                // (member position or schedule positions changed). Treat it as retained history,
+                // not as an active edit and not as an attempt to add an ineligible employee.
+                if (historicalMemberIds.contains(member.getId())) {
+                    continue;
+                }
+                if (member.getUser() == null) throw new BadRequestException("У сотрудника нет пользователя");
+                if (member.getPosition() == null) throw new BadRequestException("У сотрудника не задана должность");
                 throw new BadRequestException("Должность сотрудника не входит в позиции графика");
             }
             if (memberMap.putIfAbsent(member.getId(), member) != null) {
@@ -668,6 +681,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private Map<String, String> buildCurrentValueMap(Schedule schedule) {
         return schedule.getRows().stream()
+                .filter(row -> row.getMemberId() != null)
                 .flatMap(row -> row.getCells().stream()
                         .map(cell -> Map.entry(row.getMemberId() + ":" + cell.getDay(), normalizeCellValue(cell.getValue()))))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -730,7 +744,12 @@ public class ScheduleServiceImpl implements ScheduleService {
                                            Map<String, String> newMap,
                                            Set<Long> newMemberIds,
                                            Set<LocalDate> newPeriodDays) {
-        if (!newMemberIds.contains(memberId) || !newPeriodDays.contains(day)) {
+        // Rows omitted from the active-table payload are historical rows retained by the server.
+        // Their cells were not edited and must not make an unrelated pending request look changed.
+        if (!newMemberIds.contains(memberId)) {
+            return false;
+        }
+        if (!newPeriodDays.contains(day)) {
             return true;
         }
         String key = memberId + ":" + day;
@@ -738,26 +757,16 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private void applyRowsDiff(Schedule schedule,
-                               List<ScheduleRowPayload> rows,
                                Map<String, String> values,
                                Map<String, ScheduleCellSource> sources,
                                List<LocalDate> days,
                                Map<Long, RestaurantMember> memberMap) {
         Map<Long, ScheduleRow> existingByMemberId = schedule.getRows().stream()
+                .filter(row -> row.getMemberId() != null)
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, r -> r, (left, right) -> left));
-        Set<Long> requestedIds = rows.stream()
-                .map(ScheduleRowPayload::memberId)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Long> requestedIds = new LinkedHashSet<>(memberMap.keySet());
+        Set<ScheduleRow> activeRows = Collections.newSetFromMap(new IdentityHashMap<>());
 
-        List<ScheduleRow> rowsToRemove = schedule.getRows().stream()
-                .filter(row -> !requestedIds.contains(row.getMemberId()))
-                .toList();
-        for (ScheduleRow row : rowsToRemove) {
-            if (row.getId() != null && shiftRequests.existsByFromRowIdOrToRowId(row.getId())) {
-                throw new BadRequestException("Нельзя удалить сотрудника из графика: по его строке есть история заявок на смену");
-            }
-            schedule.getRows().remove(row);
-        }
         int index = 0;
         for (Long memberId : requestedIds) {
             RestaurantMember member = memberMap.get(memberId);
@@ -765,12 +774,22 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (row == null) {
                 row = ScheduleRow.builder().schedule(schedule).memberId(memberId).build();
                 schedule.getRows().add(row);
+                row.setPositionId(member.getPosition().getId());
+                row.setPositionName(member.getPosition().getName());
             }
+            activeRows.add(row);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
-            row.setPositionId(member.getPosition().getId());
-            row.setPositionName(member.getPosition().getName());
             row.setSortOrder(index++);
             reconcileCells(row, memberId, values, sources, days);
+        }
+
+        List<ScheduleRow> historicalRows = schedule.getRows().stream()
+                .filter(row -> !activeRows.contains(row))
+                .sorted(Comparator.comparingInt(ScheduleRow::getSortOrder)
+                        .thenComparing(ScheduleRow::getId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+        for (ScheduleRow historicalRow : historicalRows) {
+            historicalRow.setSortOrder(index++);
         }
     }
 
