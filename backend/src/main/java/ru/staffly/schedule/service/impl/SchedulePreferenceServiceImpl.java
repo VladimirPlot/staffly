@@ -321,21 +321,17 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                                          RestaurantMember member,
                                          LocalTime startTime,
                                          LocalTime endTime) {
-        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
-        if (template == null) {
+        if (schedule.getPreferenceBuildTemplate() == null) {
             return true;
         }
         Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
         if (positionId == null) {
             return false;
         }
-        return template.getPositionConfigs().stream()
-                .filter(config -> configPositionIds(config).contains(positionId))
-                .findFirst()
-                .map(config -> config.getShiftOptions().stream()
-                        .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
-                                && Objects.equals(option.getEndTime(), endTime)))
-                .orElse(false);
+        return schedule.getPreferenceShiftOptionSnapshots().stream()
+                .filter(option -> option.getPositionIds().contains(positionId))
+                .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
+                        && Objects.equals(option.getEndTime(), endTime));
     }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
@@ -368,28 +364,18 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     }
 
     private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, RestaurantMember member) {
-        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
         Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
-        if (template == null || positionId == null) {
+        if (schedule.getPreferenceBuildTemplate() == null || positionId == null) {
             return List.of();
         }
-        return template.getPositionConfigs().stream()
-                .filter(config -> configPositionIds(config).contains(positionId))
-                .findFirst()
-                .map(config -> config.getShiftOptions().stream()
-                        .sorted(Comparator.comparing(
-                                        ScheduleBuildShiftOption::getSortOrder,
-                                        Comparator.nullsLast(Integer::compareTo)
-                                )
-                                .thenComparing(option -> option.getId() == null ? Long.MAX_VALUE : option.getId()))
-                        .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
-                                option.getId(),
-                                option.getLabel(),
-                                option.getStartTime(),
-                                option.getEndTime()
-                        ))
-                        .toList())
-                .orElseGet(List::of);
+        return schedule.getPreferenceShiftOptionSnapshots().stream()
+                .filter(option -> option.getPositionIds().contains(positionId))
+                .sorted(Comparator.comparing(SchedulePreferenceShiftOptionSnapshot::getSortOrder)
+                        .thenComparing(SchedulePreferenceShiftOptionSnapshot::getId,
+                                Comparator.nullsLast(Long::compareTo)))
+                .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
+                        option.getSourceShiftOptionId(), option.getLabel(), option.getStartTime(), option.getEndTime()))
+                .toList();
     }
 
     private boolean canSubmit(Schedule schedule) {

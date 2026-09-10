@@ -110,6 +110,12 @@ public class Schedule {
     @JoinColumn(name = "preference_build_template_id")
     private ScheduleBuildTemplate preferenceBuildTemplate;
 
+    @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, id ASC")
+    @BatchSize(size = 64)
+    @Builder.Default
+    private List<SchedulePreferenceShiftOptionSnapshot> preferenceShiftOptionSnapshots = new ArrayList<>();
+
     @Column(name = "preference_closed_at")
     private Instant preferenceClosedAt;
 

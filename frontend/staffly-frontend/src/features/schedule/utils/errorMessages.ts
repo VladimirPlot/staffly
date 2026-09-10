@@ -15,6 +15,9 @@ export function getFriendlyScheduleErrorMessage(error: unknown, fallback: string
   if (maybeError.response?.data?.error === "SCHEDULE_PREFERENCE_COLLECTION_CLOSED") {
     return "Сбор пожеланий уже закрыт. Обновите список графиков.";
   }
+  if (maybeError.response?.data?.error === "SCHEDULE_BUILD_TEMPLATE_LOCKED_BY_PREFERENCE_COLLECTION") {
+    return "Этот шаблон сейчас используется для сбора пожеланий и временно заблокирован для редактирования.";
+  }
   if (maybeError.response?.data?.error === "SHIFT_REQUEST_ALREADY_DECIDED") {
     return "Эта заявка уже обработана другим пользователем. Список заявок обновлён.";
   }
