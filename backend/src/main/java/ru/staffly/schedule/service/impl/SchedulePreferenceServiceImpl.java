@@ -110,12 +110,12 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
 
         SchedulePreferenceSubmission saved = submissions.saveAndFlush(submission);
-        notifyManagersIfAllSubmitted(schedule, now);
+        notifyOwnerIfAllSubmitted(schedule, now, userId);
         schedules.flush();
         return toMyResponse(schedule, member, saved);
     }
 
-    private void notifyManagersIfAllSubmitted(Schedule schedule, Instant now) {
+    private void notifyOwnerIfAllSubmitted(Schedule schedule, Instant now, Long actorUserId) {
         if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
                 || schedule.getPreferenceAllSubmittedNotifiedAt() != null) {
             return;
@@ -137,25 +137,20 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             return;
         }
 
-        LinkedHashSet<Long> managerUserIds = new LinkedHashSet<>();
-        if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
-            managerUserIds.add(schedule.getOwnerUser().getId());
-        }
-        if (schedule.getCreatedByUser() != null && schedule.getCreatedByUser().getId() != null) {
-            managerUserIds.add(schedule.getCreatedByUser().getId());
-        }
-        if (managerUserIds.isEmpty()) {
+        Long ownerUserId = schedule.getOwnerUser() == null ? null : schedule.getOwnerUser().getId();
+        if (ownerUserId == null || Objects.equals(ownerUserId, actorUserId)) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
         }
-        List<RestaurantMember> managerTargets = deduplicateMembersByUserId(
-                members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds)
-        );
-        if (managerTargets.isEmpty()) {
+        RestaurantMember owner = schedule.getOwnerMember();
+        if (owner == null || owner.getUser() == null || !Objects.equals(owner.getUser().getId(), ownerUserId)) {
+            owner = members.findByUserIdAndRestaurantId(ownerUserId, schedule.getRestaurant().getId()).orElse(null);
+        }
+        if (owner == null || owner.getUser() == null) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
         }
-        User creator = users.findById(managerUserIds.iterator().next()).orElse(null);
+        User creator = users.findById(actorUserId).orElse(null);
         String content = "Все сотрудники отправили пожелания по графику «" + schedule.getTitle()
                 + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + ".";
         inboxMessages.createEvent(
@@ -164,8 +159,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 content,
                 InboxEventSubtype.SCHEDULE_PREFERENCES,
                 "schedulePreferences:allSubmitted:restaurant:" + schedule.getRestaurant().getId() + ":schedule:" + schedule.getId(),
-                managerTargets,
-                schedule.getEndDate()
+                List.of(owner),
+                null
         );
         schedule.setPreferenceAllSubmittedNotifiedAt(now);
     }
