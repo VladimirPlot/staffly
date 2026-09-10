@@ -72,8 +72,8 @@ export type ScheduleRow = {
 };
 
 export type ScheduleData = {
-  id?: number;
-  version?: number;
+  id: number;
+  version: number;
   status?: ScheduleStatus;
   preferenceCollectionStartedAt?: string | null;
   preferenceDeadline?: string | null;
@@ -90,6 +90,14 @@ export type ScheduleData = {
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];
 };
+
+export type UnsavedScheduleData = Omit<ScheduleData, "id" | "version" | "status"> & {
+  id?: undefined;
+  version?: undefined;
+  status?: ScheduleStatus;
+};
+
+export type EditableScheduleData = ScheduleData | UnsavedScheduleData;
 
 export type ScheduleCellKey = `${number}:${string}`;
 

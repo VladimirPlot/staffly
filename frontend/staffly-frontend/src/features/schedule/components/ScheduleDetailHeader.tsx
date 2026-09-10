@@ -1,7 +1,7 @@
 import React from "react";
 
 import Button from "../../../shared/ui/Button";
-import { type ScheduleData } from "../types";
+import { type EditableScheduleData } from "../types";
 import {
   canApplySchedulePreferences,
   canEditScheduleContent,
@@ -12,7 +12,7 @@ import {
 } from "../utils/status";
 
 type ScheduleDetailHeaderProps = {
-  schedule: ScheduleData;
+  schedule: EditableScheduleData;
   canManage: boolean;
   scheduleReadOnly: boolean;
   scheduleId: number | null;

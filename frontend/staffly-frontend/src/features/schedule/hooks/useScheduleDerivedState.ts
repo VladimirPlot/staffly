@@ -1,7 +1,7 @@
 import React from "react";
 
 import type { ScheduleSummary } from "../api";
-import type { ScheduleData } from "../types";
+import type { EditableScheduleData } from "../types";
 import type { MemberDto } from "../../employees/api";
 import { monthLabelsBetween } from "../utils/date";
 
@@ -13,7 +13,7 @@ type TodayShift = {
 
 type UseScheduleDerivedStateParams = {
   userId: number | null | undefined;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   scheduleId: number | null;
   savedSchedules: ScheduleSummary[];
   members: MemberDto[];
