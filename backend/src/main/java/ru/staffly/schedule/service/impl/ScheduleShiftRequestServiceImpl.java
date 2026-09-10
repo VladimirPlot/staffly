@@ -192,7 +192,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                     ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
                     "Заявка на смену отклонена"
             );
-            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false, userId);
             return toDto(entity);
         }
 
@@ -208,7 +208,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                     ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
                     staleReason
             );
-            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false, userId);
             return toDto(entity);
         }
 
@@ -236,7 +236,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 ScheduleAuditAction.SHIFT_REQUEST_APPROVED,
                 "Заявка на смену одобрена"
         );
-        notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true);
+        notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true, userId);
         return toDto(entity);
     }
 
@@ -346,16 +346,19 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private void notifyParticipantsOnDecision(ScheduleShiftRequest request,
                                               String fromShiftValue,
                                               String toShiftValue,
-                                              boolean accepted) {
-        RestaurantMember initiator = members.findById(request.getInitiatorMemberId()).orElse(null);
+                                              boolean accepted,
+                                              Long actorUserId) {
         RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
         RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
+        RestaurantMember actor = members.findByUserIdAndRestaurantId(
+                actorUserId, request.getSchedule().getRestaurant().getId()).orElse(null);
 
         List<RestaurantMember> targets = Stream.of(fromMember, toMember)
                 .filter(Objects::nonNull)
                 .filter(member -> member.getUser() != null)
+                .filter(member -> !Objects.equals(member.getUser().getId(), actorUserId))
                 .collect(Collectors.collectingAndThen(
-                        Collectors.toMap(RestaurantMember::getId, m -> m, (a, b) -> a, LinkedHashMap::new),
+                        Collectors.toMap(member -> member.getUser().getId(), m -> m, (a, b) -> a, LinkedHashMap::new),
                         map -> new ArrayList<>(map.values())
                 ));
         if (targets.isEmpty()) {
@@ -367,13 +370,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
         inboxMessages.createEvent(
                 request.getSchedule().getRestaurant(),
-                initiator != null ? initiator.getUser() : fromMember.getUser(),
+                actor == null ? null : actor.getUser(),
                 content,
                 InboxEventSubtype.SCHEDULE_DECISION,
                 "scheduleRequest:decision:" + request.getId() + ":" + decision,
                 targets,
-                Optional.ofNullable(request.getSchedule().getEndDate())
-                        .orElse(request.getSchedule().getStartDate())
+                null
         );
     }
 

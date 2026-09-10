@@ -37,6 +37,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -122,6 +123,9 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, auditDetails);
+        if (status == ScheduleStatus.PUBLISHED) {
+            notifySchedulePublished(saved, userId);
+        }
         return toDto(saved, days);
     }
 
@@ -1070,9 +1074,14 @@ public class ScheduleServiceImpl implements ScheduleService {
     private void notifyAutoRejectedRequest(ScheduleShiftRequest request, Long actorUserId) {
         RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
         RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
-        if (fromMember == null || toMember == null) return;
+        List<RestaurantMember> targets = deduplicateMembersByUserId(Stream.of(fromMember, toMember)
+                .filter(Objects::nonNull)
+                .filter(member -> member.getUser() != null)
+                .filter(member -> !Objects.equals(member.getUser().getId(), actorUserId))
+                .toList());
+        if (targets.isEmpty()) return;
         var actorUser = users.findById(actorUserId).orElse(null);
-        var sender = actorUser != null ? actorUser : (fromMember.getUser() != null ? fromMember.getUser() : toMember.getUser());
+        var sender = actorUser != null ? actorUser : targets.get(0).getUser();
         String content = "Заявка на замену/обмен сменами в графике «" + request.getSchedule().getTitle()
                 + "» была отклонена автоматически, потому что график был изменён.";
         inboxMessages.createEvent(
@@ -1080,9 +1089,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                 sender,
                 content,
                 InboxEventSubtype.SCHEDULE_DECISION,
-                "scheduleRequest:" + request.getId(),
-                new ArrayList<>(Set.of(fromMember, toMember)),
-                Optional.ofNullable(request.getSchedule().getEndDate()).orElse(request.getSchedule().getStartDate())
+                "scheduleRequest:auto-rejected:" + request.getId(),
+                targets,
+                null
         );
     }
 
@@ -1112,6 +1121,9 @@ public class ScheduleServiceImpl implements ScheduleService {
                         positionIds
                 )
         );
+        targets = targets.stream()
+                .filter(member -> !Objects.equals(member.getUser().getId(), actorUserId))
+                .toList();
         if (targets.isEmpty()) {
             return;
         }
@@ -1149,6 +1161,9 @@ public class ScheduleServiceImpl implements ScheduleService {
         Map<Long, RestaurantMember> targetsByUserId = new LinkedHashMap<>();
         for (RestaurantMember member : membersWithSchedulePositions) {
             if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            if (Objects.equals(member.getUser().getId(), actorUserId)) {
                 continue;
             }
             targetsByUserId.putIfAbsent(member.getUser().getId(), member);
