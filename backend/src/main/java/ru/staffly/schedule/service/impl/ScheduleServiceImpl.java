@@ -27,8 +27,10 @@ import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
+import ru.staffly.schedule.service.ScheduleChangeService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.security.SecurityService;
+import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
 import java.time.Instant;
@@ -55,6 +57,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
     private final ScheduleAuditService scheduleAuditService;
+    private final ScheduleChangeService scheduleChangeService;
     private final UserRepository users;
     private final InboxMessageService inboxMessages;
 
@@ -264,6 +267,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         assertExpectedVersion(schedule, request.version());
         assertCanUpdateScheduleContent(schedule);
 
+        boolean publishedEdit = schedule.getStatus() == ScheduleStatus.PUBLISHED;
         ScheduleConfigDto config = Objects.requireNonNull(request.config(), "config");
         LocalDate startDate = parseDate(config.startDate(), "startDate");
         LocalDate endDate = parseDate(config.endDate(), "endDate");
@@ -285,27 +289,62 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .orElse("График");
         String title = makeUniqueTitle(restaurantId, baseTitle, schedule.getTitle());
 
+        boolean aggregateChanged = !Objects.equals(schedule.getTitle(), title)
+                || !Objects.equals(schedule.getStartDate(), startDate)
+                || !Objects.equals(schedule.getEndDate(), endDate)
+                || schedule.getShiftMode() != shiftMode
+                || schedule.isShowFullName() != config.showFullName()
+                || !new HashSet<>(SchedulePositionIds.ids(schedule)).equals(
+                        schedulePositions.stream().map(Position::getId).collect(Collectors.toSet()));
+
+        List<ScheduleRowPayload> safeRows = request.rows() != null ? request.rows() : List.of();
+        Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
+        Set<Long> requestedPositionIds = schedulePositions.stream().map(Position::getId).collect(Collectors.toSet());
+        Map<Long, RestaurantMember> memberMap = validateAndMapMembers(schedule, safeRows, requestedPositionIds);
+        Map<String, String> oldValueMap = buildCurrentValueMap(schedule);
+        Map<String, String> newValueMap = buildRequestedValueMap(newValues, days, memberMap.keySet());
+        List<PublishedScheduleCellChange> publishedChanges = publishedEdit
+                ? buildPublishedChanges(schedule, memberMap, days, newValues, request.cellSources())
+                : List.of();
+        autoRejectAffectedPendingRequests(
+                schedule, userId, oldValueMap, newValueMap, memberMap.keySet(), new HashSet<>(days)
+        );
         schedule.setTitle(title);
         schedule.setStartDate(startDate);
         schedule.setEndDate(endDate);
         schedule.setShiftMode(shiftMode);
         schedule.setShowFullName(config.showFullName());
         schedule.setPositions(schedulePositions);
-
-        List<ScheduleRowPayload> safeRows = request.rows() != null ? request.rows() : List.of();
-        Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
-        Map<Long, RestaurantMember> memberMap = validateAndMapMembers(schedule, safeRows);
-        Map<String, String> oldValueMap = buildCurrentValueMap(schedule);
-        Map<String, String> newValueMap = buildRequestedValueMap(newValues, days, memberMap.keySet());
-        autoRejectAffectedPendingRequests(
-                schedule, userId, oldValueMap, newValueMap, memberMap.keySet(), new HashSet<>(days)
-        );
         applyRowsDiff(schedule, newValues, request.cellSources(), days, memberMap);
 
         Schedule saved = schedules.saveAndFlush(schedule);
-        scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "График изменён");
+        if (!publishedEdit || aggregateChanged || !publishedChanges.isEmpty()) {
+            scheduleAuditService.record(saved, userId, ScheduleAuditAction.UPDATED, "График изменён");
+        }
+        if (publishedEdit && (aggregateChanged || !publishedChanges.isEmpty())) {
+            User actor = users.findById(userId)
+                    .orElseThrow(() -> new NotFoundException("User not found: " + userId));
+            Set<Long> notifiedEmployeeUserIds = new HashSet<>();
+            if (!publishedChanges.isEmpty()) {
+                ScheduleChange batch = persistPublishedChanges(saved, actor, publishedChanges);
+                notifiedEmployeeUserIds = notifyAffectedEmployees(
+                        saved, actor, batch, publishedChanges, memberMap
+                );
+            }
+            notifyOwnerIfNeeded(saved, actor, publishedChanges, notifiedEmployeeUserIds);
+        }
         saved.getRows().forEach(row -> row.getCells().size());
         return toDto(saved, days);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ScheduleChangeDto> getChanges(Long restaurantId, Long scheduleId, Long userId) {
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
+        scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
+        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        return scheduleChangeService.getHistory(schedule);
     }
 
     @Override
@@ -693,7 +732,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         return cells;
     }
 
-    private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowPayload> rows) {
+    private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowPayload> rows,
+                                                               Set<Long> allowedPositionIds) {
         Map<Long, RestaurantMember> memberMap = new LinkedHashMap<>();
         Set<Long> historicalMemberIds = schedule.getRows().stream()
                 .map(ScheduleRow::getMemberId)
@@ -710,7 +750,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             }
             boolean currentlyEligible = member.getUser() != null
                     && member.getPosition() != null
-                    && SchedulePositionIds.ids(schedule).contains(member.getPosition().getId());
+                    && allowedPositionIds.contains(member.getPosition().getId());
             if (!currentlyEligible) {
                 // A client can still hold a row that became inactive after it loaded the schedule
                 // (member position or schedule positions changed). Treat it as retained history,
@@ -890,6 +930,142 @@ public class ScheduleServiceImpl implements ScheduleService {
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
+
+    private List<PublishedScheduleCellChange> buildPublishedChanges(
+            Schedule schedule,
+            Map<Long, RestaurantMember> activeMembers,
+            List<LocalDate> newDays,
+            Map<String, String> requestedValues,
+            Map<String, ScheduleCellSource> requestedSources) {
+        Map<Long, ScheduleRow> rowsByMember = schedule.getRows().stream()
+                .filter(row -> row.getMemberId() != null && activeMembers.containsKey(row.getMemberId()))
+                .collect(Collectors.toMap(ScheduleRow::getMemberId, row -> row, (left, right) -> left));
+        Set<LocalDate> newDaySet = new HashSet<>(newDays);
+        List<PublishedScheduleCellChange> result = new ArrayList<>();
+        for (Map.Entry<Long, RestaurantMember> entry : activeMembers.entrySet()) {
+            Long memberId = entry.getKey();
+            RestaurantMember member = entry.getValue();
+            ScheduleRow row = rowsByMember.get(memberId);
+            Map<LocalDate, ScheduleCell> oldCells = row == null ? Map.of() : row.getCells().stream()
+                    .collect(Collectors.toMap(ScheduleCell::getDay, cell -> cell, (left, right) -> left));
+            Set<LocalDate> relevantDays = new TreeSet<>(newDaySet);
+            relevantDays.addAll(oldCells.keySet()); // includes cells removed by a shortened period
+            for (LocalDate day : relevantDays) {
+                String key = memberId + ":" + day;
+                ScheduleCell oldCell = oldCells.get(day);
+                String oldValue = normalizeCellValue(oldCell == null ? null : oldCell.getValue());
+                String newValue = newDaySet.contains(day) ? normalizeCellValue(requestedValues.get(key)) : null;
+                if (Objects.equals(oldValue, newValue)) continue;
+                result.add(new PublishedScheduleCellChange(
+                        row == null ? null : row.getId(), memberId,
+                        member.getUser() == null ? null : member.getUser().getId(),
+                        safeDisplayName(member.getUser()),
+                        day, oldValue, newValue,
+                        oldCell == null ? null : oldCell.getSource(),
+                        newValue == null ? null : resolveManualSaveSource(requestedSources, key)
+                ));
+            }
+        }
+        result.sort(Comparator.comparing(PublishedScheduleCellChange::day)
+                .thenComparing(PublishedScheduleCellChange::memberId)
+                .thenComparing(PublishedScheduleCellChange::rowId, Comparator.nullsLast(Long::compareTo)));
+        return result;
+    }
+
+    private ScheduleChange persistPublishedChanges(Schedule schedule,
+                                                    User actor,
+                                                    List<PublishedScheduleCellChange> changes) {
+        List<ScheduleChangeItem> items = changes.stream().map(cell -> ScheduleChangeItem.builder()
+                .memberId(cell.memberId()).rowId(cell.rowId()).memberDisplayName(cell.memberDisplayName())
+                .day(cell.day()).oldValue(cell.oldValue()).newValue(cell.newValue())
+                .oldSource(cell.oldSource()).newSource(cell.newSource()).build()).toList();
+        return scheduleChangeService.record(schedule, actor.getId(), safeDisplayName(actor), items);
+    }
+
+    private Set<Long> notifyAffectedEmployees(Schedule schedule,
+                                              User actor,
+                                              ScheduleChange batch,
+                                              List<PublishedScheduleCellChange> changes,
+                                              Map<Long, RestaurantMember> activeMembers) {
+        Map<Long, List<PublishedScheduleCellChange>> byUser = changes.stream()
+                .filter(cell -> cell.memberUserId() != null && !cell.memberUserId().equals(actor.getId()))
+                .collect(Collectors.groupingBy(PublishedScheduleCellChange::memberUserId,
+                        LinkedHashMap::new, Collectors.toList()));
+        Set<Long> notifiedUserIds = new HashSet<>();
+        for (Map.Entry<Long, List<PublishedScheduleCellChange>> entry : byUser.entrySet()) {
+            RestaurantMember target = entry.getValue().stream()
+                    .map(cell -> activeMembers.get(cell.memberId())).filter(Objects::nonNull).findFirst().orElse(null);
+            if (target == null) continue;
+            inboxMessages.createEvent(schedule.getRestaurant(), actor,
+                    employeeChangeMessage(schedule, entry.getValue()),
+                    InboxEventSubtype.SCHEDULE_PUBLISHED_CHANGED,
+                    changeMeta(schedule, batch, "employee:" + entry.getKey()), List.of(target), null);
+            notifiedUserIds.add(entry.getKey());
+        }
+        return notifiedUserIds;
+    }
+
+    private void notifyOwnerIfNeeded(Schedule schedule,
+                                     User actor,
+                                     List<PublishedScheduleCellChange> changes,
+                                     Set<Long> notifiedEmployeeUserIds) {
+        Long ownerUserId = schedule.getOwnerUser() == null ? null : schedule.getOwnerUser().getId();
+        RestaurantMember ownerMember = schedule.getOwnerMember();
+        if (ownerUserId != null && !ownerUserId.equals(actor.getId())
+                && !notifiedEmployeeUserIds.contains(ownerUserId)
+                && ownerMember != null && ownerMember.getUser() != null) {
+            String content = ownerChangeMessage(schedule, changes);
+            inboxMessages.createEvent(schedule.getRestaurant(), actor, content,
+                    InboxEventSubtype.SCHEDULE_PUBLISHED_CHANGED_OWNER,
+                    ownerChangeMeta(schedule, ownerUserId), List.of(ownerMember), null);
+        }
+    }
+
+    private String ownerChangeMessage(Schedule schedule, List<PublishedScheduleCellChange> changes) {
+        String prefix = "Опубликованный график «" + schedule.getTitle() + "» изменён другим менеджером.";
+        if (changes.isEmpty()) {
+            return prefix + " Изменены параметры графика.";
+        }
+        long employeesChanged = changes.stream().map(PublishedScheduleCellChange::memberId).distinct().count();
+        return prefix + " Изменено сотрудников: " + employeesChanged + ", смен: " + changes.size() + ".";
+    }
+
+    private String safeDisplayName(User user) {
+        return Optional.ofNullable(user)
+                .map(User::getFullName)
+                .map(String::trim)
+                .orElse("");
+    }
+
+    private String employeeChangeMessage(Schedule schedule, List<PublishedScheduleCellChange> changes) {
+        if (changes.size() > 3) {
+            return "Ваш опубликованный график «" + schedule.getTitle() + "» изменён на " + changes.size() + " датах.";
+        }
+        String details = changes.stream().map(change -> change.day() + ": "
+                + displayCellValue(change.oldValue()) + " → " + displayCellValue(change.newValue()))
+                .collect(Collectors.joining("; "));
+        return "Ваш опубликованный график «" + schedule.getTitle() + "» изменён. " + details;
+    }
+
+    private String displayCellValue(String value) {
+        return value == null ? "Пусто" : value;
+    }
+
+    private String changeMeta(Schedule schedule, ScheduleChange batch, String recipient) {
+        return "schedule:published-change:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId() + ":change:" + batch.getId() + ":" + recipient;
+    }
+
+    private String ownerChangeMeta(Schedule schedule, Long ownerUserId) {
+        return "schedule:published-change:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId() + ":version:" + schedule.getVersion()
+                + ":owner:" + ownerUserId;
+    }
+
+    private record PublishedScheduleCellChange(Long rowId, Long memberId, Long memberUserId,
+                                               String memberDisplayName, LocalDate day,
+                                               String oldValue, String newValue,
+                                               ScheduleCellSource oldSource, ScheduleCellSource newSource) {}
 
     private void notifyAutoRejectedRequest(ScheduleShiftRequest request, Long actorUserId) {
         RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);

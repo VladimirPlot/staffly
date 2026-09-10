@@ -80,6 +80,26 @@ export type ScheduleDto = Omit<ScheduleData, "id" | "status"> &
     id: number;
   };
 
+export type ScheduleChangeItemDto = {
+  memberId: number | null;
+  rowId: number | null;
+  memberName: string;
+  day: string;
+  oldValue: string | null;
+  newValue: string | null;
+  oldSource: ScheduleCellSource | null;
+  newSource: ScheduleCellSource | null;
+  isPastDate: boolean;
+};
+
+export type ScheduleChangeDto = {
+  changeId: number;
+  actorUserId: number;
+  actorName: string;
+  createdAt: string;
+  items: ScheduleChangeItemDto[];
+};
+
 export type AddableScheduleMember = {
   memberId: number;
   displayName: string;
@@ -674,6 +694,16 @@ export async function publishSchedule(restaurantId: number, scheduleId: number, 
 export async function fetchSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
   const { data } = await api.get<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`);
   return mapSchedule(data);
+}
+
+export async function getScheduleChanges(
+  restaurantId: number,
+  scheduleId: number,
+): Promise<ScheduleChangeDto[]> {
+  const { data } = await api.get<ScheduleChangeDto[]>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/changes`,
+  );
+  return data ?? [];
 }
 
 export async function getScheduleOwnerCandidates(
