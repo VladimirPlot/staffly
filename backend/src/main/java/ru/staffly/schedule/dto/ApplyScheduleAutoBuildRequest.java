@@ -9,6 +9,7 @@ import java.util.List;
 public record ApplyScheduleAutoBuildRequest(
         @NotNull Long version,
         @JsonAlias("buildTemplateId") @NotNull Long templateId,
+        @NotNull String previewToken,
         @Valid List<AdjustedScheduleAutoBuildAssignmentDto> adjustedAssignments
 ) {
 }

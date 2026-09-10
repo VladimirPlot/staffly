@@ -25,17 +25,21 @@ import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleAutoBuildApplyService;
+import ru.staffly.schedule.service.ScheduleAutoBuildFingerprintService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
 import ru.staffly.security.SecurityService;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Collections;
@@ -58,6 +62,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private final ScheduleAutoBuildPlanner planner;
     private final ScheduleAuditService scheduleAuditService;
     private final ScheduleService scheduleService;
+    private final ScheduleAutoBuildFingerprintService fingerprintService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -80,6 +85,9 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         initializeTemplateCollections(template);
         validateTemplateHasSchedulePositions(schedule, template);
 
+        String fingerprintBefore = fingerprintService.fingerprint(restaurantId, schedule, template);
+        assertPreviewTokenMatches(request.previewToken(), fingerprintBefore);
+
         boolean adjustedApply = hasAdjustedAssignments(request);
         ScheduleAutoBuildPlan plan = adjustedApply
                 ? buildAdjustedPlan(restaurantId, schedule, template, request.adjustedAssignments())
@@ -90,6 +98,10 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         Map<Long, ScheduleRow> rowsByMember = indexRowsByMember(schedule);
         Map<Long, Long> currentPositionByMember = loadCurrentSchedulePositionByMember(schedule);
+
+        String fingerprintAfter = fingerprintService.fingerprint(restaurantId, schedule, template);
+        assertPreviewTokenMatches(request.previewToken(), fingerprintAfter);
+
         clearAffectedCells(schedule, plan.affectedPositionIds(), currentPositionByMember);
 
         int skippedAssignments = applyAssignments(schedule, plan, rowsByMember);
@@ -106,6 +118,16 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
+    }
+
+    private void assertPreviewTokenMatches(String previewToken, String currentFingerprint) {
+        if (!MessageDigest.isEqual(previewToken.getBytes(StandardCharsets.UTF_8),
+                currentFingerprint.getBytes(StandardCharsets.UTF_8))) {
+            throw new ScheduleDomainConflictException(
+                    "AUTO_BUILD_PREVIEW_STALE",
+                    "Данные графика изменились после построения предпросмотра. Постройте автосборку заново."
+            );
+        }
     }
 
 
@@ -299,8 +321,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     }
 
     private void validateRequest(ApplyScheduleAutoBuildRequest request) {
-        if (request == null || request.templateId() == null) {
-            throw new BadRequestException("templateId is required");
+        if (request == null || request.templateId() == null || request.previewToken() == null || request.previewToken().isBlank()) {
+            throw new BadRequestException("templateId and previewToken are required");
         }
     }
 

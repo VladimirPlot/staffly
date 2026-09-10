@@ -12,6 +12,9 @@ export function getFriendlyScheduleErrorMessage(error: unknown, fallback: string
   if (maybeError.response?.data?.error === "SCHEDULE_VERSION_CONFLICT") {
     return "График был изменён другим пользователем. Ваши локальные изменения не отправлены. Закройте график и откройте его заново, затем повторите действие.";
   }
+  if (maybeError.response?.data?.error === "AUTO_BUILD_PREVIEW_STALE") {
+    return "Предпросмотр автосборки устарел, потому что данные графика изменились. Постройте автосборку заново.";
+  }
   if (maybeError.response?.data?.error === "SCHEDULE_PREFERENCE_COLLECTION_CLOSED") {
     return "Сбор пожеланий уже закрыт. Обновите список графиков.";
   }

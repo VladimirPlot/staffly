@@ -333,6 +333,7 @@ export type AdjustedScheduleAutoBuildAssignment = {
 export type ApplyScheduleAutoBuildRequest = {
   version: number;
   templateId: number;
+  previewToken: string;
   adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[];
 };
 
@@ -403,6 +404,7 @@ export type ScheduleAutoBuildPreviewResponse = {
   scheduleId: number;
   templateId: number;
   effectiveBuildTemplateId?: number | null;
+  previewToken: string;
   templateName: string;
   positions: ScheduleAutoBuildPositionPreviewDto[];
   warnings: string[];
@@ -622,6 +624,7 @@ export async function previewScheduleAutoBuild(
     scheduleId: data.scheduleId,
     templateId: data.templateId,
     effectiveBuildTemplateId: data.effectiveBuildTemplateId ?? data.templateId ?? null,
+    previewToken: data.previewToken,
     templateName: data.templateName,
     positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
       ...position,
