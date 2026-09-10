@@ -3,6 +3,8 @@ package ru.staffly.inbox.model;
 public enum InboxEventSubtype {
     SCHEDULE_DECISION,
     SCHEDULE_PREFERENCES,
+    SCHEDULE_PUBLISHED_CHANGED,
+    SCHEDULE_PUBLISHED_CHANGED_OWNER,
     TASK,
     REMINDER,
     CERTIFICATION

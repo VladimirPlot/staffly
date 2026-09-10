@@ -14,6 +14,7 @@ import ru.staffly.schedule.dto.ScheduleOwnerDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
 import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
 import ru.staffly.schedule.dto.ScheduleVersionRequest;
+import ru.staffly.schedule.dto.ScheduleChangeDto;
 import ru.staffly.schedule.service.ScheduleOwnershipService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.security.UserPrincipal;
@@ -66,6 +67,14 @@ public class ScheduleController {
                               @AuthenticationPrincipal UserPrincipal principal,
                               @Valid @RequestBody SaveScheduleRequest request) {
         return schedules.update(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/schedules/{scheduleId}/changes")
+    public List<ScheduleChangeDto> getChanges(@PathVariable Long restaurantId,
+                                              @PathVariable Long scheduleId,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return schedules.getChanges(restaurantId, scheduleId, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
