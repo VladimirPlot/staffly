@@ -8,7 +8,7 @@ import {
   startPreferenceCollection,
   type ScheduleSummary,
 } from "../api";
-import type { ScheduleData } from "../types";
+import type { EditableScheduleData, ScheduleData } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type ScheduleRange = { start: string; end: string } | null;
@@ -17,9 +17,9 @@ type LifecycleAction = "startPreferences" | "closePreferences" | "applyPreferenc
 type UseScheduleLifecycleActionsParams = {
   restaurantId: number | null;
   canManage: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
-  onScheduleChanged: (schedule: ScheduleData | null) => void;
+  onScheduleChanged: (schedule: EditableScheduleData | null) => void;
   onSavedSchedulesChanged: (items: ScheduleSummary[]) => void;
   onScheduleReadOnlyChanged: (value: boolean) => void;
   onLastRangeChanged: (value: ScheduleRange) => void;

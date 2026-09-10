@@ -5,10 +5,10 @@ import {
   createSchedule,
   listSavedSchedules,
   updateSchedule,
-  type SaveSchedulePayload,
+  type CreateSchedulePayload,
   type ScheduleSummary,
 } from "../api";
-import type { ScheduleCellSource, ScheduleConfig, ScheduleData } from "../types";
+import type { EditableScheduleData, ScheduleCellSource, ScheduleConfig, ScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
@@ -22,12 +22,12 @@ type ScheduleRange = { start: string; end: string } | null;
 type UseScheduleDraftActionsParams = {
   restaurantId: number | null;
   canManage: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   members: MemberDto[];
   positions: PositionDto[];
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   loadShiftRequests: (scheduleId?: number | null) => Promise<void>;
-  onScheduleChanged: (schedule: ScheduleData | null) => void;
+  onScheduleChanged: (schedule: EditableScheduleData | null) => void;
   onScheduleReadOnlyChanged: (value: boolean) => void;
   onSavedSchedulesChanged: (items: ScheduleSummary[]) => void;
   onLastRangeChanged: (value: ScheduleRange) => void;
@@ -177,7 +177,7 @@ export default function useScheduleDraftActions({
     ],
   );
 
-  const buildPayload = React.useCallback((): SaveSchedulePayload | null => {
+  const buildPayload = React.useCallback((): CreateSchedulePayload | null => {
     if (!schedule) return null;
 
     const normalizedCells: Record<string, string> = {};
@@ -197,7 +197,6 @@ export default function useScheduleDraftActions({
     });
 
     return {
-      version: schedule.version,
       title: schedule.title,
       config: schedule.config,
       rows: schedule.rows.map((row) => ({
@@ -237,8 +236,8 @@ export default function useScheduleDraftActions({
       if (!payload) return;
 
       const requestedScheduleId = schedule.id;
-      const saved = requestedScheduleId
-        ? await updateSchedule(restaurantId, requestedScheduleId, payload)
+      const saved = schedule.id != null
+        ? await updateSchedule(restaurantId, schedule.id, { ...payload, version: schedule.version })
         : await createSchedule(restaurantId, payload);
       if (requestedScheduleId && activeScheduleIdRef.current !== requestedScheduleId) return;
       const prepared = prepareSchedule(saved);
