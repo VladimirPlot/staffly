@@ -8,6 +8,8 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.inbox.model.InboxEventSubtype;
+import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
@@ -35,6 +37,7 @@ public class ScheduleOwnershipService {
     private final ScheduleAccessService scheduleAccessService;
     private final ScheduleAuditService scheduleAuditService;
     private final SecurityService securityService;
+    private final InboxMessageService inboxMessages;
 
     public Schedule changeOwner(Long restaurantId, Long actorUserId, Long scheduleId, Long expectedVersion,
                                 Long newOwnerUserId) {
@@ -55,6 +58,7 @@ public class ScheduleOwnershipService {
         schedule.setOwnerMember(newOwner);
         Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(saved, actorUserId, ScheduleAuditAction.OWNER_CHANGED, details);
+        notifyNewOwner(saved, newOwner, actorUserId);
         return saved;
     }
 
@@ -135,10 +139,10 @@ public class ScheduleOwnershipService {
             String details = buildOwnerChangedDetails(schedule.getOwnerMember(), newOwner);
             schedule.setOwnerUser(newOwner.getUser());
             schedule.setOwnerMember(newOwner);
-            Schedule saved = schedules.save(schedule);
+            Schedule saved = schedules.saveAndFlush(schedule);
             scheduleAuditService.record(saved, actorUserId, ScheduleAuditAction.OWNER_CHANGED, details);
+            notifyNewOwner(saved, newOwner, actorUserId);
         }
-        schedules.flush();
     }
 
     private Schedule requireManageableSchedule(Long restaurantId, Long actorUserId, Long scheduleId) {
@@ -221,5 +225,25 @@ public class ScheduleOwnershipService {
         String oldName = oldOwner == null ? "—" : Objects.toString(displayName(oldOwner), "—");
         String newName = Objects.toString(displayName(newOwner), "—");
         return "Ответственный изменён: " + oldName + " → " + newName;
+    }
+
+    private void notifyNewOwner(Schedule schedule, RestaurantMember newOwner, Long actorUserId) {
+        if (newOwner == null || newOwner.getUser() == null
+                || Objects.equals(newOwner.getUser().getId(), actorUserId)) {
+            return;
+        }
+        RestaurantMember actor = members.findByUserIdAndRestaurantId(actorUserId, schedule.getRestaurant().getId())
+                .orElse(null);
+        inboxMessages.createEvent(
+                schedule.getRestaurant(),
+                actor == null ? null : actor.getUser(),
+                "Вы назначены ответственным за график «" + schedule.getTitle() + "».",
+                InboxEventSubtype.SCHEDULE_DECISION,
+                "schedule:owner-changed:restaurant:" + schedule.getRestaurant().getId()
+                        + ":schedule:" + schedule.getId() + ":version:" + schedule.getVersion()
+                        + ":owner:" + newOwner.getUser().getId(),
+                List.of(newOwner),
+                null
+        );
     }
 }
