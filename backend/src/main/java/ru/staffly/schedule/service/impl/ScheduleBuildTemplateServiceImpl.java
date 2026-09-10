@@ -13,6 +13,8 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
+import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleBuildTemplateService;
 import ru.staffly.security.SecurityService;
@@ -27,6 +29,7 @@ import java.util.stream.Collectors;
 @Transactional
 public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateService {
     private final ScheduleBuildTemplateRepository templates;
+    private final ScheduleRepository schedules;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final SecurityService securityService;
@@ -57,14 +60,14 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     @Override
     public ScheduleBuildTemplateDto update(Long restaurantId, Long templateId, Long actorUserId, SaveScheduleBuildTemplateRequest request) {
         assertManageAccess(restaurantId, actorUserId);
-        ScheduleBuildTemplate template = getTemplate(restaurantId, templateId);
+        ScheduleBuildTemplate template = getEditableTemplate(restaurantId, templateId);
         applyRequest(template, restaurantId, request, false);
         return toDto(templates.save(template));
     }
     @Override
     public void archive(Long restaurantId, Long templateId, Long actorUserId) {
         assertManageAccess(restaurantId, actorUserId);
-        ScheduleBuildTemplate template = getTemplate(restaurantId, templateId);
+        ScheduleBuildTemplate template = getEditableTemplate(restaurantId, templateId);
         template.setActive(false);
         templates.save(template);
     }
@@ -257,6 +260,20 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private ScheduleBuildTemplate getTemplate(Long restaurantId, Long templateId) {
         ScheduleBuildTemplate template = templates.findByIdAndRestaurantId(templateId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule build template not found: " + templateId));
+        initializeTemplateCollections(template);
+        return template;
+    }
+
+    /** Template-row mutex serializes every mutation with collection startup. */
+    private ScheduleBuildTemplate getEditableTemplate(Long restaurantId, Long templateId) {
+        ScheduleBuildTemplate template = templates.findForUpdateByIdAndRestaurantId(templateId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule build template not found: " + templateId));
+        if (schedules.existsByPreferenceBuildTemplateIdAndStatus(templateId, ScheduleStatus.COLLECTING_PREFERENCES)) {
+            throw new ScheduleDomainConflictException(
+                    "SCHEDULE_BUILD_TEMPLATE_LOCKED_BY_PREFERENCE_COLLECTION",
+                    "Шаблон нельзя изменить, пока по связанному графику идёт сбор пожеланий."
+            );
+        }
         initializeTemplateCollections(template);
         return template;
     }

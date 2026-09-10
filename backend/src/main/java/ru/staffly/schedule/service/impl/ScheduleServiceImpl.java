@@ -1,6 +1,7 @@
 package ru.staffly.schedule.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
@@ -415,7 +416,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        // Global two-aggregate lock order is Schedule -> ScheduleBuildTemplate.
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, request.version());
         if (schedule.getStatus() != ScheduleStatus.DRAFT) {
@@ -430,12 +432,13 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
 
-        ScheduleBuildTemplate preferenceBuildTemplate = resolvePreferenceBuildTemplate(
+        ScheduleBuildTemplate preferenceBuildTemplate = resolvePreferenceBuildTemplateForUpdate(
                 restaurantId,
                 schedule,
                 request == null ? null : request.buildTemplateId()
         );
 
+        replacePreferenceShiftOptionSnapshot(schedule, preferenceBuildTemplate);
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
         schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
         schedule.setPreferenceCollectionStartedAt(now);
@@ -455,12 +458,16 @@ public class ScheduleServiceImpl implements ScheduleService {
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
     }
 
-    private ScheduleBuildTemplate resolvePreferenceBuildTemplate(Long restaurantId, Schedule schedule, Long buildTemplateId) {
+    private ScheduleBuildTemplate resolvePreferenceBuildTemplateForUpdate(Long restaurantId, Schedule schedule, Long buildTemplateId) {
         if (buildTemplateId == null) {
             return null;
         }
-        ScheduleBuildTemplate template = buildTemplates.findDetailedByIdAndRestaurantIdAndIsActiveTrue(buildTemplateId, restaurantId)
+        ScheduleBuildTemplate template = buildTemplates.findForUpdateByIdAndRestaurantId(buildTemplateId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("Активный шаблон сборки не найден"));
+        if (!template.isActive()) {
+            throw new BadRequestException("Активный шаблон сборки не найден");
+        }
+        initializeBuildTemplateCollections(template);
         List<Long> schedulePositionIds = SchedulePositionIds.ids(schedule);
         boolean hasSchedulePositionConfig = template.getPositionConfigs().stream()
                 .flatMap(config -> buildConfigPositionIds(config).stream())
@@ -469,6 +476,49 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("Шаблон сборки не содержит настроек для позиций графика");
         }
         return template;
+    }
+
+    private void replacePreferenceShiftOptionSnapshot(Schedule schedule, ScheduleBuildTemplate template) {
+        schedule.getPreferenceShiftOptionSnapshots().clear();
+        if (template == null) {
+            return;
+        }
+        Set<Long> schedulePositionIds = new HashSet<>(SchedulePositionIds.ids(schedule));
+        int order = 0;
+        for (ScheduleBuildPositionConfig config : template.getPositionConfigs().stream()
+                .sorted(Comparator.comparing(ScheduleBuildPositionConfig::getSortOrder,
+                        Comparator.nullsLast(Integer::compareTo)))
+                .toList()) {
+            Set<Long> positionIds = buildConfigPositionIds(config).stream()
+                    .filter(schedulePositionIds::contains)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (positionIds.isEmpty()) {
+                continue;
+            }
+            for (ScheduleBuildShiftOption option : config.getShiftOptions().stream()
+                    .sorted(Comparator.comparing(ScheduleBuildShiftOption::getSortOrder,
+                                    Comparator.nullsLast(Integer::compareTo))
+                            .thenComparing(ScheduleBuildShiftOption::getId))
+                    .toList()) {
+                SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder()
+                        .schedule(schedule)
+                        .sourceShiftOptionId(option.getId())
+                        .label(option.getLabel())
+                        .startTime(option.getStartTime())
+                        .endTime(option.getEndTime())
+                        .sortOrder(order++)
+                        .positionIds(new LinkedHashSet<>(positionIds))
+                        .build();
+                schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
+            }
+        }
+    }
+
+    private void initializeBuildTemplateCollections(ScheduleBuildTemplate template) {
+        for (ScheduleBuildPositionConfig config : template.getPositionConfigs()) {
+            Hibernate.initialize(config.getPositions());
+            Hibernate.initialize(config.getShiftOptions());
+        }
     }
 
     private List<Long> buildConfigPositionIds(ScheduleBuildPositionConfig config) {
