@@ -7,14 +7,17 @@ export default function useScheduleAutoBuildPreviewActions(restaurantId: number 
   const [preview, setPreview] = React.useState<ScheduleAutoBuildPreviewResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const requestSequenceRef = React.useRef(0);
 
   React.useEffect(() => {
+    requestSequenceRef.current += 1;
     setPreview(null);
     setLoading(false);
     setError(null);
   }, [restaurantId, scheduleId]);
 
   const clearPreview = React.useCallback(() => {
+    requestSequenceRef.current += 1;
     setPreview(null);
     setError(null);
   }, []);
@@ -22,17 +25,20 @@ export default function useScheduleAutoBuildPreviewActions(restaurantId: number 
   const loadPreview = React.useCallback(
     async (templateId: number): Promise<boolean> => {
       if (!restaurantId || !scheduleId) return false;
+      const requestSequence = ++requestSequenceRef.current;
       setLoading(true);
       setError(null);
       try {
         const response = await previewScheduleAutoBuild(restaurantId, scheduleId, { templateId });
+        if (requestSequence !== requestSequenceRef.current) return false;
         setPreview(response);
         return true;
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return false;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось построить предварительный график"));
         return false;
       } finally {
-        setLoading(false);
+        if (requestSequence === requestSequenceRef.current) setLoading(false);
       }
     },
     [restaurantId, scheduleId],

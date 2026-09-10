@@ -16,6 +16,7 @@ import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAutoBuildPreviewService;
+import ru.staffly.schedule.service.ScheduleAutoBuildFingerprintService;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 import ru.staffly.security.SecurityService;
 
@@ -37,6 +38,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     private final ScheduleRepository schedules;
     private final ScheduleBuildTemplateRepository templates;
     private final ScheduleAutoBuildPlanner planner;
+    private final ScheduleAutoBuildFingerprintService fingerprintService;
 
     @Override
     public ScheduleAutoBuildPreviewResponse preview(Long restaurantId, Long scheduleId, Long actorUserId, PreviewScheduleAutoBuildRequest request) {
@@ -59,7 +61,15 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
             throw new BadRequestException("Шаблон не содержит конфигураций для позиций графика");
         }
 
+        String previewToken = fingerprintService.fingerprint(restaurantId, schedule, template);
         var plan = planner.build(restaurantId, schedule, template);
+        String verifiedToken = fingerprintService.fingerprint(restaurantId, schedule, template);
+        if (!previewToken.equals(verifiedToken)) {
+            throw new ru.staffly.schedule.exception.ScheduleDomainConflictException(
+                    "AUTO_BUILD_PREVIEW_STALE",
+                    "Данные графика изменились во время построения предпросмотра. Постройте автосборку заново."
+            );
+        }
         boolean vocabularyChanged = hasShiftVocabularyChanged(schedule, template);
         List<String> warnings = new ArrayList<>(plan.warnings());
         if (vocabularyChanged) {
@@ -69,6 +79,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                 plan.scheduleId(),
                 plan.templateId(),
                 plan.templateId(),
+                previewToken,
                 plan.templateName(),
                 plan.positions().stream().map(this::toPositionDto).toList(),
                 warnings,

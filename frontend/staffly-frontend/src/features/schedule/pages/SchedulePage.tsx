@@ -507,6 +507,7 @@ const SchedulePage: React.FC = () => {
     onClearScheduleNotices: clearScheduleNotices,
     onScheduleMessage: setScheduleMessage,
     onScheduleError: setScheduleError,
+    onPreviewStale: autoBuildPreviewActions.clearPreview,
   });
 
   const lifecycleActions = useScheduleLifecycleActions({
@@ -612,8 +613,12 @@ const SchedulePage: React.FC = () => {
   );
 
   const handleApplyAutoBuild = React.useCallback(
-    async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
-      const ok = await autoBuildApplyActions.applyAutoBuild(templateId, adjustedAssignments);
+    async (
+      templateId: number,
+      previewToken: string,
+      adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[],
+    ): Promise<boolean> => {
+      const ok = await autoBuildApplyActions.applyAutoBuild(templateId, previewToken, adjustedAssignments);
       if (ok) {
         setApplyPreferencesDialogOpen(false);
         autoBuildPreviewActions.clearPreview();

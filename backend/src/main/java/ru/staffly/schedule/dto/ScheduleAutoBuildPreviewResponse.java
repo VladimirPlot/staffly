@@ -6,6 +6,7 @@ public record ScheduleAutoBuildPreviewResponse(
         Long scheduleId,
         Long templateId,
         Long effectiveBuildTemplateId,
+        String previewToken,
         String templateName,
         List<ScheduleAutoBuildPositionPreviewDto> positions,
         List<String> warnings,
