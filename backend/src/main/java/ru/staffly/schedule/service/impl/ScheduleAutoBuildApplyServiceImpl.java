@@ -89,7 +89,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         }
 
         Map<Long, ScheduleRow> rowsByMember = indexRowsByMember(schedule);
-        clearAffectedCells(schedule, plan.affectedPositionIds());
+        Map<Long, Long> currentPositionByMember = loadCurrentSchedulePositionByMember(schedule);
+        clearAffectedCells(schedule, plan.affectedPositionIds(), currentPositionByMember);
 
         int skippedAssignments = applyAssignments(schedule, plan, rowsByMember);
 
@@ -456,7 +457,20 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 + ", пропущено без строки: " + skippedAssignments;
     }
 
-    private void clearAffectedCells(Schedule schedule, Set<Long> affectedPositionIds) {
+    private Map<Long, Long> loadCurrentSchedulePositionByMember(Schedule schedule) {
+        List<Long> schedulePositionIds = SchedulePositionIds.ids(schedule);
+        if (schedulePositionIds.isEmpty()) {
+            return Map.of();
+        }
+        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+                        schedule.getRestaurant().getId(), schedulePositionIds
+                ).stream()
+                .collect(Collectors.toMap(RestaurantMember::getId, member -> member.getPosition().getId()));
+    }
+
+    private void clearAffectedCells(Schedule schedule,
+                                    Set<Long> affectedPositionIds,
+                                    Map<Long, Long> currentPositionByMember) {
         if (affectedPositionIds.isEmpty()) {
             return;
         }
@@ -465,7 +479,10 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         LocalDate end = schedule.getEndDate();
 
         for (ScheduleRow row : schedule.getRows()) {
-            if (row.getPositionId() == null || !affectedPositionIds.contains(row.getPositionId())) {
+            Long currentPositionId = row.getMemberId() == null
+                    ? null
+                    : currentPositionByMember.get(row.getMemberId());
+            if (currentPositionId == null || !affectedPositionIds.contains(currentPositionId)) {
                 continue;
             }
             row.getCells().removeIf(cell -> !cell.getDay().isBefore(start) && !cell.getDay().isAfter(end));
