@@ -11,6 +11,9 @@ import java.util.List;
 @Table(name = "schedule_row",
         indexes = {
                 @Index(name = "idx_schedule_row_schedule", columnList = "schedule_id")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_schedule_row_schedule_member", columnNames = {"schedule_id", "member_id"})
         })
 @Getter
 @Setter
