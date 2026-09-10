@@ -42,7 +42,7 @@ import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceM
 import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
-import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import type { EditableScheduleData, ScheduleData, ScheduleOwnerDto } from "../types";
 import type { AdjustedScheduleAutoBuildAssignment, ScheduleSummary } from "../api";
 import { addScheduleMember, getAddableScheduleMembers, type AddableScheduleMember } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
@@ -86,7 +86,7 @@ const SchedulePage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
 
-  const [schedule, setSchedule] = React.useState<ScheduleData | null>(null);
+  const [schedule, setSchedule] = React.useState<EditableScheduleData | null>(null);
   const [scheduleReadOnly, setScheduleReadOnly] = React.useState(false);
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);

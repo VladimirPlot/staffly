@@ -107,8 +107,7 @@ export type AddableScheduleMember = {
   positionName: string;
 };
 
-export type SaveSchedulePayload = {
-  version?: number;
+type SchedulePayloadFields = {
   title: string;
   config: ScheduleConfig;
   rows: {
@@ -121,7 +120,9 @@ export type SaveSchedulePayload = {
   cellSources?: Record<string, ScheduleCellSource>;
 };
 
-export type CreateDraftScheduleRequest = SaveSchedulePayload;
+export type CreateSchedulePayload = SchedulePayloadFields;
+export type UpdateSchedulePayload = SchedulePayloadFields & { version: number };
+export type CreateDraftScheduleRequest = CreateSchedulePayload;
 
 export type StartPreferenceCollectionRequest = {
   version: number;
@@ -300,7 +301,6 @@ export type SaveScheduleBuildShiftOptionRequest = {
 };
 
 export type SaveScheduleBuildCoverageRuleRequest = {
-  id?: number;
   dayOfWeek: number;
   startTime: string;
   endTime: string;
@@ -315,7 +315,6 @@ export type SaveScheduleBuildCoverageDateOverrideRequest = {
 };
 
 export type SaveScheduleBuildPositionConfigRequest = {
-  id?: number;
   positionIds: number[];
   fullShiftStart: string;
   fullShiftEnd: string;
@@ -460,6 +459,7 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
 function mapSchedule(data: ScheduleResponse): ScheduleData {
   return {
     id: data.id,
+    version: data.version,
     ...mapLifecycle(data),
     title: data.title,
     config: data.config,
@@ -548,7 +548,7 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
   };
 }
 
-export async function createSchedule(restaurantId: number, payload: SaveSchedulePayload): Promise<ScheduleData> {
+export async function createSchedule(restaurantId: number, payload: CreateSchedulePayload): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules`, payload);
   return mapSchedule(data);
 }
@@ -556,7 +556,7 @@ export async function createSchedule(restaurantId: number, payload: SaveSchedule
 export async function updateSchedule(
   restaurantId: number,
   scheduleId: number,
-  payload: SaveSchedulePayload,
+  payload: UpdateSchedulePayload,
 ): Promise<ScheduleData> {
   const { data } = await api.put<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, payload);
   return mapSchedule(data);
@@ -824,16 +824,6 @@ export async function listScheduleBuildTemplates(restaurantId: number): Promise<
     `/api/restaurants/${restaurantId}/schedules/build-templates`,
   );
   return (data ?? []).map(mapScheduleBuildTemplate);
-}
-
-export async function getScheduleBuildTemplate(
-  restaurantId: number,
-  templateId: number,
-): Promise<ScheduleBuildTemplateDto> {
-  const { data } = await api.get<ScheduleBuildTemplateDto>(
-    `/api/restaurants/${restaurantId}/schedules/build-templates/${templateId}`,
-  );
-  return mapScheduleBuildTemplate(data);
 }
 
 export async function createScheduleBuildTemplate(

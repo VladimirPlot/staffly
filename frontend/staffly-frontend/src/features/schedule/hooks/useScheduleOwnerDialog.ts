@@ -1,13 +1,13 @@
 import React from "react";
 
 import { changeScheduleOwner, getScheduleOwnerCandidates } from "../api";
-import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import type { EditableScheduleData, ScheduleData, ScheduleOwnerDto } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseScheduleOwnerDialogParams = {
   restaurantId: number | null;
   canManage: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   scheduleId: number | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   onScheduleUpdated: (schedule: ScheduleData) => void;
@@ -90,7 +90,7 @@ export default function useScheduleOwnerDialog({
       const updated = await changeScheduleOwner(restaurantId, scheduleId, selectedOwnerUserId, schedule.version);
       const prepared = prepareSchedule(updated);
       onScheduleUpdated(prepared);
-      onSavedScheduleOwnerUpdated(scheduleId, prepared.owner ?? null, prepared.version ?? schedule.version);
+      onSavedScheduleOwnerUpdated(scheduleId, prepared.owner ?? null, prepared.version);
       onSuccessMessage("Ответственный изменён");
       onClearScheduleError();
       setOpen(false);

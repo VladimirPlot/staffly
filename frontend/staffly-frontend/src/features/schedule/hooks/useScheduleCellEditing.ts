@@ -1,10 +1,10 @@
 import React from "react";
 
-import type { ScheduleCellChangeOptions, ScheduleCellKey, ScheduleData } from "../types";
+import type { ScheduleCellChangeOptions, ScheduleCellKey, EditableScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 
 type UseScheduleCellEditingParams = {
-  onScheduleChanged: React.Dispatch<React.SetStateAction<ScheduleData | null>>;
+  onScheduleChanged: React.Dispatch<React.SetStateAction<EditableScheduleData | null>>;
 };
 
 export default function useScheduleCellEditing({ onScheduleChanged }: UseScheduleCellEditingParams) {

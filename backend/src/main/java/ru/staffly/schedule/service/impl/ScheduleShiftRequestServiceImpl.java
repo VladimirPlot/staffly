@@ -161,10 +161,13 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     @Override
-    public ShiftRequestDto decideAsManager(Long restaurantId, Long requestId, Long userId, boolean accepted) {
+    public ShiftRequestDto decideAsManager(Long restaurantId, Long scheduleId, Long requestId, Long userId, boolean accepted) {
         securityService.assertAtLeastManager(userId, restaurantId);
 
         ScheduleShiftRequest entity = loadRequestForDecision(requestId, restaurantId);
+        if (!Objects.equals(entity.getSchedule().getId(), scheduleId)) {
+            throw new NotFoundException("Запрос не найден");
+        }
         if (entity.getStatus() != ScheduleShiftRequestStatus.PENDING_MANAGER) {
             throw alreadyDecided();
         }

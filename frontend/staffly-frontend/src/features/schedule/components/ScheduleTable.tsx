@@ -6,7 +6,7 @@ import type {
   ScheduleCellChangeOptions,
   ScheduleCellKey,
   ScheduleCellSource,
-  ScheduleData,
+  EditableScheduleData,
   ScheduleDay,
   SchedulePreferenceHintsByCellKey,
   ScheduleRejectionHintsByCellKey,
@@ -72,7 +72,7 @@ const scheduleZoomCss = {
 };
 
 type Props = {
-  data: ScheduleData | null | undefined;
+  data: EditableScheduleData | null | undefined;
   onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
@@ -82,8 +82,8 @@ type Props = {
   zoomScale?: number;
 };
 
-type CellValues = ScheduleData["cellValues"];
-type CellSources = NonNullable<ScheduleData["cellSources"]>;
+type CellValues = EditableScheduleData["cellValues"];
+type CellSources = NonNullable<EditableScheduleData["cellSources"]>;
 
 const EMPTY_DAYS: ScheduleDay[] = [];
 const EMPTY_ROWS: ScheduleRow[] = [];

@@ -3,13 +3,13 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Modal from "../../../shared/ui/Modal";
 import type { ScheduleBuildTemplateDto } from "../api";
-import type { ScheduleCellKey, ScheduleData, SchedulePreferenceHintsByCellKey } from "../types";
+import type { ScheduleCellKey, EditableScheduleData, SchedulePreferenceHintsByCellKey } from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 import { hasStartWithoutEndValue } from "../utils/timeValues";
 
 type PublishScheduleConfirmDialogProps = {
   open: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   buildTemplate?: ScheduleBuildTemplateDto | null;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   publishing: boolean;
@@ -63,7 +63,7 @@ const WarningBox: React.FC<{ children: React.ReactNode; high?: boolean }> = ({ c
 );
 
 function getPublishSummary(
-  schedule: ScheduleData | null,
+  schedule: EditableScheduleData | null,
   buildTemplate?: ScheduleBuildTemplateDto | null,
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey,
 ): PublishSummary {

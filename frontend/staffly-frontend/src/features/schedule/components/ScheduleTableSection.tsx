@@ -5,7 +5,7 @@ import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
 import { useScheduleTableZoom } from "../hooks/useScheduleTableZoom";
 import {
-  type ScheduleData,
+  type EditableScheduleData,
   type ScheduleCellChangeOptions,
   type ScheduleCellKey,
   type SchedulePreferenceHintsByCellKey,
@@ -14,7 +14,7 @@ import {
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 
 type ScheduleTableSectionProps = {
-  schedule: ScheduleData;
+  schedule: EditableScheduleData;
   scheduleReadOnly: boolean;
   scheduleId: number | null;
   saving: boolean;
