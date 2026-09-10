@@ -22,6 +22,11 @@ import ru.staffly.security.SecurityService;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -55,21 +60,52 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         }
 
         var plan = planner.build(restaurantId, schedule, template);
+        boolean vocabularyChanged = hasShiftVocabularyChanged(schedule, template);
+        List<String> warnings = new ArrayList<>(plan.warnings());
+        if (vocabularyChanged) {
+            warnings.add("Набор смен в шаблоне изменился после сбора пожеланий. Проверьте пожелания сотрудников перед применением автосборки.");
+        }
         return new ScheduleAutoBuildPreviewResponse(
                 plan.scheduleId(),
                 plan.templateId(),
                 plan.templateId(),
                 plan.templateName(),
                 plan.positions().stream().map(this::toPositionDto).toList(),
-                plan.warnings(),
+                warnings,
                 plan.uncoveredSlots().stream().map(this::toUncoveredSlotDto).toList(),
                 plan.rejectionHints().stream().map(this::toRejectionHintDto).toList(),
                 plan.totalAssignments(),
-                plan.warningsCount(),
+                plan.warningsCount() + (vocabularyChanged ? 1 : 0),
                 plan.unfilledCount(),
                 plan.negativeAssignmentsCount()
         );
     }
+
+    private boolean hasShiftVocabularyChanged(Schedule schedule, ScheduleBuildTemplate template) {
+        if (schedule.getPreferenceBuildTemplate() == null) {
+            return false;
+        }
+        Map<ShiftVocabularyEntry, Long> snapshot = schedule.getPreferenceShiftOptionSnapshots().stream()
+                .map(option -> new ShiftVocabularyEntry(new LinkedHashSet<>(option.getPositionIds()),
+                        option.getStartTime(), option.getEndTime()))
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        Set<Long> schedulePositionIds = new java.util.HashSet<>(SchedulePositionIds.ids(schedule));
+        Map<ShiftVocabularyEntry, Long> live = template.getPositionConfigs().stream()
+                .map(config -> new ScopedPositionConfig(config, configPositionIds(config).stream()
+                        .filter(schedulePositionIds::contains)
+                        .collect(Collectors.toCollection(LinkedHashSet::new))))
+                .filter(scoped -> !scoped.positionIds().isEmpty())
+                .flatMap(scoped -> scoped.config().getShiftOptions().stream().map(option ->
+                        new ShiftVocabularyEntry(scoped.positionIds(), option.getStartTime(), option.getEndTime())))
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        return !snapshot.equals(live);
+    }
+
+    // Label and planner-only configuration are intentionally cosmetic/outside this vocabulary comparison.
+    private record ShiftVocabularyEntry(Set<Long> positionIds, java.time.LocalTime startTime,
+                                        java.time.LocalTime endTime) { }
+
+    private record ScopedPositionConfig(ScheduleBuildPositionConfig config, Set<Long> positionIds) { }
 
     private ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
         ScheduleBuildTemplate preferenceTemplate = schedule.getPreferenceBuildTemplate();

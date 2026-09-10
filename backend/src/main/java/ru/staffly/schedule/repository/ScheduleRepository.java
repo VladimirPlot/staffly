@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.ScheduleStatus;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -24,6 +25,8 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     @Query("select s from Schedule s where s.id = :id and s.restaurant.id = :restaurantId")
     Optional<Schedule> findForUpdateByIdAndRestaurantId(@Param("id") Long id,
                                                          @Param("restaurantId") Long restaurantId);
+
+    boolean existsByPreferenceBuildTemplateIdAndStatus(Long templateId, ScheduleStatus status);
 
     @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position", "ownerUser"})
     List<Schedule> findByRestaurantIdAndOwnerUserIdAndEndDateGreaterThanEqualOrderByStartDateAsc(
