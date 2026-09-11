@@ -43,6 +43,8 @@ export default function useScheduleAutoBuildApplyActions({
   const [applying, setApplying] = React.useState(false);
   const activeScheduleIdRef = React.useRef(scheduleId);
   activeScheduleIdRef.current = scheduleId;
+  const activeContextRef = React.useRef(`${restaurantId}:${scheduleId}`);
+  activeContextRef.current = `${restaurantId}:${scheduleId}`;
 
   const applyAutoBuild = React.useCallback(
     async (
@@ -51,6 +53,7 @@ export default function useScheduleAutoBuildApplyActions({
       adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[],
     ): Promise<boolean> => {
       if (!restaurantId || !scheduleId || scheduleVersion == null || !templateId || !previewToken) return false;
+      const requestContext = `${restaurantId}:${scheduleId}`;
       setApplying(true);
       onClearScheduleNotices();
       try {
@@ -60,18 +63,20 @@ export default function useScheduleAutoBuildApplyActions({
           previewToken,
           adjustedAssignments,
         });
-        if (updated.id !== activeScheduleIdRef.current) return false;
+        if (updated.id !== activeScheduleIdRef.current || requestContext !== activeContextRef.current) return false;
         const prepared = prepareSchedule(updated);
         onScheduleChanged(prepared);
         onScheduleReadOnlyChanged(true);
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
 
         const savedList = await listSavedSchedules(restaurantId);
+        if (requestContext !== activeContextRef.current) return false;
         onSavedSchedulesChanged(savedList);
 
         onScheduleMessage("Автосборка применена. Проверьте черновик и при необходимости отредактируйте смены вручную.");
         return true;
       } catch (e: unknown) {
+        if (requestContext !== activeContextRef.current) return false;
         if (
           typeof e === "object" &&
           e != null &&
@@ -82,7 +87,7 @@ export default function useScheduleAutoBuildApplyActions({
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось применить автосборку"));
         return false;
       } finally {
-        setApplying(false);
+        if (requestContext === activeContextRef.current) setApplying(false);
       }
     },
     [

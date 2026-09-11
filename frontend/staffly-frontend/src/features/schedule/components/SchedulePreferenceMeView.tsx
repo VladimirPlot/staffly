@@ -11,6 +11,7 @@ import type {
   UpsertMySchedulePreferenceRequest,
 } from "../api";
 import { getScheduleStatusLabel } from "../utils/status";
+import { formatInstantInTimeZone } from "../utils/date";
 
 type SchedulePreferenceMeViewProps = {
   data: SchedulePreferenceMyResponse | null;
@@ -20,6 +21,7 @@ type SchedulePreferenceMeViewProps = {
   message: string | null;
   onBack: () => void;
   onSubmit: (request: UpsertMySchedulePreferenceRequest) => void;
+  timeZone: string;
 };
 
 type PreferenceSelectValue = "" | SchedulePreferenceType;
@@ -60,19 +62,6 @@ function getFullDayHelp(type: PreferenceSelectValue): string | null {
   if (type === "PREFER_DAY_OFF") return "Без времени: предпочитаю выходной весь день.";
   if (type === "UNAVAILABLE") return "Без времени: не могу весь день.";
   return null;
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function normalizeTimeForUi(value: string | null | undefined): string {
@@ -199,6 +188,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   message,
   onBack,
   onSubmit,
+  timeZone,
 }) => {
   const [formStateByDay, setFormStateByDay] = React.useState<PreferenceFormState>({});
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -362,7 +352,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
             <div className="text-default text-sm">
               Период: {formatDateFromIso(data.startDate)} — {formatDateFromIso(data.endDate)}
             </div>
-            <div className="text-muted text-sm">Дедлайн: {formatDateTime(data.preferenceDeadline)}</div>
+            <div className="text-muted text-sm">Дедлайн: {formatInstantInTimeZone(data.preferenceDeadline, timeZone)}</div>
           </div>
           <Button variant="outline" onClick={onBack}>
             Назад к графикам
@@ -371,7 +361,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 
         {data.submittedAt && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Пожелания отправлены: {formatDateTime(data.submittedAt)} · ревизия {data.revision}
+            Пожелания отправлены: {formatInstantInTimeZone(data.submittedAt, timeZone)} · ревизия {data.revision}
           </div>
         )}
 

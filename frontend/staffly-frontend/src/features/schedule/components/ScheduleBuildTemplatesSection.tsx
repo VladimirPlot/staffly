@@ -17,6 +17,7 @@ type Props = {
   onCreate: (request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
   onUpdate: (templateId: number, request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
   onArchive: (templateId: number) => void;
+  timeZone: string;
 };
 
 const ScheduleBuildTemplatesSection: React.FC<Props> = ({
@@ -31,6 +32,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
   onCreate,
   onUpdate,
   onArchive,
+  timeZone,
 }) => {
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<ScheduleBuildTemplateDto | null>(null);
@@ -98,6 +100,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
         template={editing}
         positions={positions}
         saving={saving}
+        timeZone={timeZone}
         onClose={() => setOpen(false)}
         onSubmit={async (request, id) => {
           if (id) return onUpdate(id, request);

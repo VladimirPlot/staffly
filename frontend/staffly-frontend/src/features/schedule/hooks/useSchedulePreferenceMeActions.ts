@@ -27,8 +27,10 @@ export default function useSchedulePreferenceMeActions({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
+  const requestSequenceRef = React.useRef(0);
 
   React.useEffect(() => {
+    requestSequenceRef.current += 1;
     setPreferenceViewScheduleId(null);
     setPreferenceData(null);
     setLoading(false);
@@ -40,18 +42,21 @@ export default function useSchedulePreferenceMeActions({
   const loadPreference = React.useCallback(
     async (scheduleId: number) => {
       if (!restaurantId) return;
+      const requestSequence = ++requestSequenceRef.current;
 
       setLoading(true);
       setError(null);
       setMessage(null);
       try {
         const data = await getMySchedulePreference(restaurantId, scheduleId);
+        if (requestSequence !== requestSequenceRef.current) return;
         setPreferenceData(data);
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return;
         setPreferenceData(null);
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить пожелания"));
       } finally {
-        setLoading(false);
+        if (requestSequence === requestSequenceRef.current) setLoading(false);
       }
     },
     [restaurantId],
@@ -71,6 +76,7 @@ export default function useSchedulePreferenceMeActions({
   );
 
   const closePreferenceView = React.useCallback(() => {
+    requestSequenceRef.current += 1;
     setPreferenceViewScheduleId(null);
     setPreferenceData(null);
     setLoading(false);
@@ -82,17 +88,20 @@ export default function useSchedulePreferenceMeActions({
   const submitPreference = React.useCallback(
     async (request: UpsertMySchedulePreferenceRequest) => {
       if (!restaurantId || !preferenceViewScheduleId) return;
+      const requestSequence = ++requestSequenceRef.current;
 
       setSaving(true);
       setError(null);
       setMessage(null);
       try {
         const data = await upsertMySchedulePreference(restaurantId, preferenceViewScheduleId, request);
+        if (requestSequence !== requestSequenceRef.current) return;
         setPreferenceData(data);
         setMessage("Пожелания отправлены");
         try {
           await onPreferenceSubmitted?.();
         } catch (reloadError: unknown) {
+          if (requestSequence !== requestSequenceRef.current) return;
           setError(
             getFriendlyScheduleErrorMessage(
               reloadError,
@@ -101,9 +110,10 @@ export default function useSchedulePreferenceMeActions({
           );
         }
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось отправить пожелания"));
       } finally {
-        setSaving(false);
+        if (requestSequence === requestSequenceRef.current) setSaving(false);
       }
     },
     [onPreferenceSubmitted, preferenceViewScheduleId, restaurantId],

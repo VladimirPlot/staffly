@@ -3,6 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
 import type { ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import { getTodayInTimeZone } from "../utils/date";
 
 const formatTimeShort = (value?: string | null) => (value ? value.slice(0, 5) : "");
 const getShiftLabel = (label: string, index: number) => (label.trim() ? label.trim() : `Смена ${index + 1}`);
@@ -13,12 +14,13 @@ type Props = {
   config: ScheduleBuildPositionConfigDraft;
   saving: boolean;
   onChange: (next: ScheduleBuildPositionConfigDraft) => void;
+  timeZone: string;
 };
 
 const uniqueOverrideDates = (config: ScheduleBuildPositionConfigDraft) =>
   [...new Set(config.coverageDateOverrides.map((override) => override.date).filter(Boolean))].sort();
 
-const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, saving, onChange }) => {
+const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, saving, onChange, timeZone }) => {
   const dates = uniqueOverrideDates(config);
 
   const upsertOverride = (date: string, shiftOptionIndex: number, requiredCount: number) => {
@@ -48,7 +50,7 @@ const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, sav
           variant="outline"
           disabled={saving || config.shiftOptions.length === 0}
           onClick={() => {
-            const date = new Date().toISOString().slice(0, 10);
+            const date = getTodayInTimeZone(timeZone);
             const nextDate = dates.includes(date) ? "" : date;
             if (!nextDate) return;
             onChange({

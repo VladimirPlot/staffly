@@ -3,18 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import { type ShiftRequestDto } from "../api";
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatInstantInTimeZone } from "../utils/date";
 
 type ShiftRequestsSectionProps = {
   canManage: boolean;
@@ -26,6 +15,7 @@ type ShiftRequestsSectionProps = {
   canCancelOwnRequest: (request: ShiftRequestDto) => boolean;
   onManagerDecision: (requestId: number, accept: boolean) => void;
   onCancel: (requestId: number) => void;
+  timeZone: string;
 };
 
 const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
@@ -38,6 +28,7 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
   canCancelOwnRequest,
   onManagerDecision,
   onCancel,
+  timeZone,
 }) => {
   return (
     <div className="space-y-3">
@@ -76,13 +67,13 @@ const ShiftRequestsSection: React.FC<ShiftRequestsSectionProps> = ({
                       )}
                     </div>
                     {request.reason && <div className="text-muted text-xs">Причина: {request.reason}</div>}
-                    <div className="text-muted text-xs">Создано: {formatDateTime(request.createdAt)}</div>
+                    <div className="text-muted text-xs">Создано: {formatInstantInTimeZone(request.createdAt, timeZone)}</div>
                     {showDecisionInfo && (
                       <div className="border-subtle bg-app text-default rounded-2xl border px-3 py-2 text-xs">
                         {decisionComment && <div>Причина: {decisionComment}</div>}
                         {request.decidedAt && (
                           <div className={decisionComment ? "text-muted mt-1" : "text-muted"}>
-                            Решено: {formatDateTime(request.decidedAt)}
+                            Решено: {formatInstantInTimeZone(request.decidedAt, timeZone)}
                           </div>
                         )}
                       </div>

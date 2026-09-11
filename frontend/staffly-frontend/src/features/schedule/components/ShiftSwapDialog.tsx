@@ -1,4 +1,5 @@
 import React from "react";
+import { formatDateFromIso } from "../../../shared/utils/date";
 
 import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
@@ -136,7 +137,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
   }, [myDay, onClose, onSubmit, reason, targetDay, targetMemberId, validate]);
 
   const formatLabel = React.useCallback((item: { date: string; value: string | null }) => {
-    const dateLabel = new Date(item.date).toLocaleDateString("ru-RU");
+    const dateLabel = formatDateFromIso(item.date);
     return `${dateLabel} — ${item.value ?? ""}`;
   }, []);
 
