@@ -112,15 +112,11 @@ type SchedulePayloadFields = {
   config: ScheduleConfig;
   rows: {
     memberId: number;
-    displayName: string;
-    positionId: number | null;
-    positionName: string | null;
   }[];
   cellValues: Record<string, string>;
-  cellSources?: Record<string, ScheduleCellSource>;
 };
 
-export type CreateSchedulePayload = SchedulePayloadFields;
+export type CreateSchedulePayload = SchedulePayloadFields & { ownerUserId?: number | null };
 export type UpdateSchedulePayload = SchedulePayloadFields & { version: number };
 export type CreateDraftScheduleRequest = CreateSchedulePayload;
 
@@ -643,7 +639,7 @@ export async function previewScheduleAutoBuild(
   return {
     scheduleId: data.scheduleId,
     templateId: data.templateId,
-    effectiveBuildTemplateId: data.effectiveBuildTemplateId ?? data.templateId ?? null,
+    effectiveBuildTemplateId: data.effectiveBuildTemplateId,
     previewToken: data.previewToken,
     templateName: data.templateName,
     positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
