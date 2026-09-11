@@ -69,7 +69,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             }
         }
 
-        Map<Long, List<SchedulePreferenceCell>> preferencesByMember = loadPreferencesByMember(schedule.getId());
+        Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay =
+                loadPreferencesByMemberAndDay(schedule.getId());
         PlannerState plannerState = new PlannerState();
         List<PositionPlan> positions = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
@@ -79,7 +80,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (disjoint(configPositionIds(config), schedulePositions)) {
                 continue;
             }
-            PositionBuildResult positionResult = buildPosition(restaurantId, schedule, config, preferencesByMember, plannerState);
+            PositionBuildResult positionResult = buildPosition(restaurantId, schedule, config, preferencesByMemberAndDay, plannerState);
             positions.add(positionResult.positionPlan());
             uncoveredSlots.addAll(positionResult.uncoveredSlots());
             rejectionHints.addAll(positionResult.rejectionHints());
@@ -112,7 +113,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Long restaurantId,
             Schedule schedule,
             ScheduleBuildPositionConfig config,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState
     ) {
         List<Long> effectivePositionIds = intersection(configPositionIds(config), SchedulePositionIds.ids(schedule));
@@ -131,7 +132,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     day,
                     config,
                     candidates,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     plannerState,
                     targetShiftsPerCandidate
             );
@@ -174,7 +175,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             LocalDate day,
             ScheduleBuildPositionConfig config,
             List<RestaurantMember> candidates,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
             double targetShiftsPerCandidate
     ) {
@@ -188,7 +189,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<ScheduleBuildCoverageRule> allCoverageRules = safeCoverageRules(config);
         List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(config, day);
         if (allCoverageRules.isEmpty() && coverageRules.isEmpty() && !hasDateOverride(config, day)) {
-            return buildLegacyAssignmentsForDay(day, config, candidates, preferencesByMember, plannerState);
+            return buildLegacyAssignmentsForDay(day, config, candidates, preferencesByMemberAndDay, plannerState);
         }
 
         for (ScheduleBuildCoverageRule rule : coverageRules) {
@@ -197,7 +198,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     config,
                     rule,
                     candidates,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     plannerState,
                     targetShiftsPerCandidate
             );
@@ -218,7 +219,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config,
             ScheduleBuildCoverageRule rule,
             List<RestaurantMember> candidates,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
             double targetShiftsPerCandidate
     ) {
@@ -238,7 +239,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (singleOption != null) {
                 singleSelection = pickMember(
                         candidates,
-                        preferencesByMember,
+                        preferencesByMemberAndDay,
                         day,
                         singleOption,
                         config,
@@ -253,7 +254,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                             selectedSingle.member(),
                             day,
                             singleOption,
-                            preferencesByMember,
+                            preferencesByMemberAndDay,
                             config
                     );
                     if (isNegativeGrade(assignmentResult.grade())) {
@@ -268,7 +269,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     config,
                     rule,
                     candidates,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     plannerState,
                     shiftOptions,
                     false,
@@ -291,7 +292,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         singleSelection.selected().member(),
                         day,
                         singleOption,
-                        preferencesByMember,
+                        preferencesByMemberAndDay,
                         config
                 );
                 if (isNegativeGrade(assignmentResult.grade())) {
@@ -305,7 +306,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     config,
                     rule,
                     candidates,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     plannerState,
                     shiftOptions,
                     true,
@@ -328,7 +329,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config,
             ScheduleBuildCoverageRule rule,
             List<RestaurantMember> candidates,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
             List<ScheduleBuildShiftOption> shiftOptions,
             boolean allowNegativeAssignments,
@@ -353,7 +354,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     rule,
                     cursor,
                     candidates,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     day,
                     config,
                     workingState,
@@ -385,7 +386,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     selected,
                     day,
                     option,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     config
             );
             if (isNegativeGrade(assignmentResult.grade())) {
@@ -411,12 +412,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember selected,
             LocalDate day,
             ScheduleBuildShiftOption option,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             ScheduleBuildPositionConfig config
     ) {
-        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
+        SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, selected.getId(), day);
         boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option.getStartTime(), option.getEndTime());
-        AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells, minRestViolation, config.getMinRestHours());
+        AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, preferenceCell, minRestViolation, config.getMinRestHours());
         assignments.add(assignmentResult.assignment());
         registerAssignment(plannerState, selected, day, option, config);
         return assignmentResult;
@@ -427,7 +428,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildCoverageRule rule,
             int cursor,
             List<RestaurantMember> candidates,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             LocalDate day,
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
@@ -444,7 +445,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (optionStart > cursor || optionEnd <= cursor) {
                 continue;
             }
-            CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState, targetShiftsPerCandidate);
+            CandidateSelectionResult selection = pickMember(candidates, preferencesByMemberAndDay, day, option, config, plannerState, targetShiftsPerCandidate);
             if (!allowNegativeAssignments && selection.selected() != null && isNegativeGrade(selection.selected().grade())) {
                 selection = new CandidateSelectionResult(
                         null,
@@ -556,12 +557,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember member,
             LocalDate day,
             ScheduleBuildShiftOption option,
-            List<SchedulePreferenceCell> memberCells,
+            SchedulePreferenceCell preferenceCell,
             boolean minRestViolation,
             Integer minRestHours
     ) {
         List<String> cellWarnings = new ArrayList<>();
-        MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
+        MatchStatus matchStatus = matchStatusFor(preferenceCell, option);
         PreferenceGrade grade = grade(matchStatus);
         String reason = reasonFor(cellWarnings, matchStatus, formatShift(option));
         String warningMessage = warningMessageFor(matchStatus);
@@ -610,7 +611,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private CandidateSelectionResult pickMember(
             List<RestaurantMember> candidates,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             LocalDate day,
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config,
@@ -626,7 +627,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         for (RestaurantMember member : candidates) {
             CandidateEvaluation evaluation = evaluateCandidate(
                     member,
-                    preferencesByMember,
+                    preferencesByMemberAndDay,
                     day,
                     option,
                     config,
@@ -636,7 +637,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (!evaluation.eligible()) {
                 if (evaluation.rejectionReason() == CandidateRejectionReason.MAX_SHIFTS) {
                     maxShiftsRejectedCount++;
-                    toMaxShiftsRejectionHint(evaluation, preferencesByMember, day, option, config)
+                    toMaxShiftsRejectionHint(evaluation, preferencesByMemberAndDay, day, option, config)
                             .ifPresent(rejectionHints::add);
                 } else if (evaluation.rejectionReason() == CandidateRejectionReason.MIN_REST) {
                     minRestRejectedCount++;
@@ -662,7 +663,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private CandidateEvaluation evaluateCandidate(
             RestaurantMember member,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             LocalDate day,
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config,
@@ -672,8 +673,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int shiftsCount = plannerState.shiftsCount(member.getId());
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option.getStartTime(), option.getEndTime());
-        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(member.getId(), List.of());
-        MatchStatus matchStatus = matchStatusFor(memberCells, day, option);
+        SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
+        MatchStatus matchStatus = matchStatusFor(preferenceCell, option);
         PreferenceGrade memberGrade = grade(matchStatus);
         CandidateRejectionReason rejectionReason = hardConstraintRejectionReason(
                 member,
@@ -713,13 +714,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private Optional<RejectionHintPlan> toMaxShiftsRejectionHint(
             CandidateEvaluation evaluation,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             LocalDate day,
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config
     ) {
-        List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(evaluation.member().getId(), List.of());
-        if (hasNegativePreferenceOnDay(memberCells, day)) {
+        SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, evaluation.member().getId(), day);
+        if (hasNegativePreferenceOnDay(preferenceCell)) {
             return Optional.empty();
         }
         if (evaluation.grade() != PreferenceGrade.POSITIVE && evaluation.grade() != PreferenceGrade.NONE) {
@@ -741,11 +742,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         ));
     }
 
-    private boolean hasNegativePreferenceOnDay(List<SchedulePreferenceCell> cells, LocalDate day) {
-        return cells.stream().anyMatch(cell -> cell != null
-                && day.equals(cell.getDay())
+    private boolean hasNegativePreferenceOnDay(SchedulePreferenceCell cell) {
+        return cell != null
                 && (cell.getType() == SchedulePreferenceType.UNAVAILABLE
-                || cell.getType() == SchedulePreferenceType.PREFER_DAY_OFF));
+                || cell.getType() == SchedulePreferenceType.PREFER_DAY_OFF);
     }
 
     private CandidateRejectionReason hardConstraintRejectionReason(
@@ -1058,42 +1058,32 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return PreferenceGrade.NONE;
     }
 
-    private MatchStatus matchStatusFor(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option) {
-        List<SchedulePreferenceCell> dayCells = cells.stream()
-                .filter(cell -> cell != null && day.equals(cell.getDay()))
-                .toList();
-
-        if (dayCells.isEmpty()) {
+    private MatchStatus matchStatusFor(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
+        if (cell == null) {
             return MatchStatus.NO_PREFERENCE;
         }
 
-        boolean hasHardNegative = dayCells.stream().anyMatch(cell -> isHardNegativeForShift(cell, option));
-        if (hasHardNegative) {
+        if (isHardNegativeForShift(cell, option)) {
             return MatchStatus.HARD_NEGATIVE_FALLBACK;
         }
 
-        boolean hasExactPositive = dayCells.stream().anyMatch(cell -> isExactPositiveForShift(cell, option));
-        if (hasExactPositive) {
+        if (isExactPositiveForShift(cell, option)) {
             return MatchStatus.EXACT_INTERVAL_PREFERENCE;
         }
 
-        boolean hasCoveringPositive = dayCells.stream().anyMatch(cell -> isCoveringPositiveForShift(cell, option));
-        if (hasCoveringPositive) {
+        if (isCoveringPositiveForShift(cell, option)) {
             return MatchStatus.COVERING_INTERVAL_PREFERENCE;
         }
 
-        boolean hasFullDayPositive = dayCells.stream().anyMatch(this::isFullDayPositive);
-        if (hasFullDayPositive) {
+        if (isFullDayPositive(cell)) {
             return MatchStatus.FULL_DAY_POSITIVE;
         }
 
-        boolean hasPartialPositiveOverlap = hasPartialPositiveOverlap(dayCells, day, option);
-        if (hasPartialPositiveOverlap) {
+        if (hasPartialPositiveOverlap(cell, option)) {
             return MatchStatus.PARTIAL_INTERVAL_FALLBACK;
         }
 
-        boolean hasSoftNegative = dayCells.stream().anyMatch(cell -> isSoftNegativeForShift(cell, option));
-        if (hasSoftNegative) {
+        if (isSoftNegativeForShift(cell, option)) {
             return MatchStatus.SOFT_NEGATIVE_FALLBACK;
         }
 
@@ -1177,42 +1167,37 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         );
     }
 
-    private boolean hasPartialPositiveOverlap(List<SchedulePreferenceCell> cells, LocalDate day, ScheduleBuildShiftOption option) {
+    private boolean hasPartialPositiveOverlap(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
         int shiftStart = toMinute(option.getStartTime(), false);
         int shiftEnd = toMinute(option.getEndTime(), true);
 
-        return cells.stream().anyMatch(cell -> {
-            if (cell == null || !day.equals(cell.getDay())) {
-                return false;
-            }
-            if (cell.isFullDay() || !isPositiveType(cell.getType())) {
-                return false;
-            }
-            if (cell.getStartTime() == null || cell.getEndTime() == null) {
-                return false;
-            }
+        if (cell.isFullDay() || !isPositiveType(cell.getType())) {
+            return false;
+        }
+        if (cell.getStartTime() == null || cell.getEndTime() == null) {
+            return false;
+        }
 
-            boolean hasOverlap = overlaps(
-                    toMinute(cell.getStartTime(), false),
-                    toMinute(cell.getEndTime(), true),
-                    shiftStart,
-                    shiftEnd
-            );
-            boolean fullyCoversShift = coversInterval(
-                    cell.getStartTime(),
-                    cell.getEndTime(),
-                    option.getStartTime(),
-                    option.getEndTime()
-            );
-            boolean exactMatch = intervalsEqual(
-                    cell.getStartTime(),
-                    cell.getEndTime(),
-                    option.getStartTime(),
-                    option.getEndTime()
-            );
+        boolean hasOverlap = overlaps(
+                toMinute(cell.getStartTime(), false),
+                toMinute(cell.getEndTime(), true),
+                shiftStart,
+                shiftEnd
+        );
+        boolean fullyCoversShift = coversInterval(
+                cell.getStartTime(),
+                cell.getEndTime(),
+                option.getStartTime(),
+                option.getEndTime()
+        );
+        boolean exactMatch = intervalsEqual(
+                cell.getStartTime(),
+                cell.getEndTime(),
+                option.getStartTime(),
+                option.getEndTime()
+        );
 
-            return hasOverlap && !fullyCoversShift && !exactMatch;
-        });
+        return hasOverlap && !fullyCoversShift && !exactMatch;
     }
 
     private boolean isPositiveType(SchedulePreferenceType type) {
@@ -1449,7 +1434,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             LocalDate day,
             ScheduleBuildPositionConfig config,
             List<RestaurantMember> candidates,
-            Map<Long, List<SchedulePreferenceCell>> preferencesByMember,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
@@ -1458,15 +1443,15 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int negativeAssignmentsCount = 0;
 
         for (ScheduleBuildShiftOption option : safeShiftOptions(config)) {
-            CandidateSelectionResult selection = pickMember(candidates, preferencesByMember, day, option, config, plannerState, 0);
+            CandidateSelectionResult selection = pickMember(candidates, preferencesByMemberAndDay, day, option, config, plannerState, 0);
             if (selection.selected() == null) {
                 rejectionHints.addAll(selection.rejectionHints());
                 continue;
             }
 
             RestaurantMember selected = selection.selected().member();
-            List<SchedulePreferenceCell> memberCells = preferencesByMember.getOrDefault(selected.getId(), List.of());
-            AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, memberCells, false, null);
+            SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, selected.getId(), day);
+            AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, preferenceCell, false, null);
             assignments.add(assignmentResult.assignment());
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
@@ -1515,14 +1500,39 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         );
     }
 
-    private Map<Long, List<SchedulePreferenceCell>> loadPreferencesByMember(Long scheduleId) {
-        return submissions.findWithCellsByScheduleId(scheduleId).stream()
+    private Map<Long, Map<LocalDate, SchedulePreferenceCell>> loadPreferencesByMemberAndDay(Long scheduleId) {
+        Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay = new HashMap<>();
+        submissions.findWithCellsByScheduleId(scheduleId).stream()
                 .filter(submission -> submission.getMember() != null)
-                .collect(Collectors.toMap(
-                        submission -> submission.getMember().getId(),
-                        submission -> submission.getCells() == null ? List.of() : submission.getCells(),
-                        (left, right) -> left
-                ));
+                .forEach(submission -> {
+                    Long memberId = submission.getMember().getId();
+                    Map<LocalDate, SchedulePreferenceCell> preferencesByDay =
+                            preferencesByMemberAndDay.computeIfAbsent(memberId, ignored -> new HashMap<>());
+                    if (submission.getCells() == null) {
+                        return;
+                    }
+                    for (SchedulePreferenceCell cell : submission.getCells()) {
+                        if (cell == null) {
+                            continue;
+                        }
+                        SchedulePreferenceCell previous = preferencesByDay.putIfAbsent(cell.getDay(), cell);
+                        if (previous != null) {
+                            throw new IllegalStateException(
+                                    "Duplicate schedule preference cell for member " + memberId + " and day " + cell.getDay()
+                            );
+                        }
+                    }
+                });
+        return preferencesByMemberAndDay;
+    }
+
+    private SchedulePreferenceCell preferenceFor(
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
+            Long memberId,
+            LocalDate day
+    ) {
+        Map<LocalDate, SchedulePreferenceCell> preferencesByDay = preferencesByMemberAndDay.get(memberId);
+        return preferencesByDay == null ? null : preferencesByDay.get(day);
     }
 
 
