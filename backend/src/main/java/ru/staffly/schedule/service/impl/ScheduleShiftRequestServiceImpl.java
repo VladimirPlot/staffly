@@ -426,9 +426,6 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
             return members.findByUserIdAndRestaurantId(schedule.getOwnerUser().getId(), schedule.getRestaurant().getId()).orElse(null);
         }
-        if (schedule.getCreatedByUser() != null && schedule.getCreatedByUser().getId() != null) {
-            return members.findByUserIdAndRestaurantId(schedule.getCreatedByUser().getId(), schedule.getRestaurant().getId()).orElse(null);
-        }
         return null;
     }
 
