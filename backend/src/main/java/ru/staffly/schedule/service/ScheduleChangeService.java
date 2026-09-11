@@ -3,7 +3,7 @@ package ru.staffly.schedule.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.staffly.common.time.TimeProvider;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.schedule.dto.ScheduleChangeDto;
 import ru.staffly.schedule.dto.ScheduleChangeItemDto;
 import ru.staffly.schedule.model.*;
@@ -15,6 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ScheduleChangeService {
     private final ScheduleChangeRepository changes;
+    private final RestaurantTimeService restaurantTime;
 
     public ScheduleChange record(Schedule schedule, Long actorUserId, String actorName,
                                  List<ScheduleChangeItem> items) {
@@ -26,7 +27,7 @@ public class ScheduleChangeService {
 
     @Transactional(readOnly = true)
     public List<ScheduleChangeDto> getHistory(Schedule schedule) {
-        var today = TimeProvider.todayUtc();
+        var today = restaurantTime.today(schedule.getRestaurant());
         return changes.findByScheduleIdOrderByCreatedAtDescIdDesc(schedule.getId()).stream()
                 .map(change -> new ScheduleChangeDto(change.getId(), change.getActorUserId(),
                         change.getActorDisplayName(), change.getCreatedAt(), change.getItems().stream()

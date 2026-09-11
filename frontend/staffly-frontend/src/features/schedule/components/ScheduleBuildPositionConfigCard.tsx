@@ -43,9 +43,10 @@ type Props = {
   saving: boolean;
   onChange: (next: ScheduleBuildPositionConfigDraft) => void;
   onRemove: () => void;
+  timeZone: string;
 };
 
-const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, positions, saving, onChange, onRemove }) => {
+const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, positions, saving, onChange, onRemove, timeZone }) => {
   const selectedPositions = positions.filter((position) => config.positionIds.includes(position.id));
   const availablePositions = positions.filter(
     (position) => position.active && !config.positionIds.includes(position.id),
@@ -261,7 +262,7 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
       />
 
       <ScheduleBuildCoverageRulesEditor config={config} saving={saving} onChange={onChange} />
-      <ScheduleBuildCoverageDateOverridesEditor config={config} saving={saving} onChange={onChange} />
+      <ScheduleBuildCoverageDateOverridesEditor config={config} saving={saving} onChange={onChange} timeZone={timeZone} />
     </div>
   );
 };
