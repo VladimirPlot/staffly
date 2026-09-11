@@ -30,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,13 +54,19 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<String> topWarnings = new ArrayList<>();
         List<Long> schedulePositions = SchedulePositionIds.ids(schedule);
         List<ScheduleBuildPositionConfig> positionConfigs = safePositionConfigs(template);
+        List<EffectivePositionConfig> effectivePositionConfigs = positionConfigs.stream()
+                .map(config -> new EffectivePositionConfig(
+                        config,
+                        intersection(configPositionIds(config), schedulePositions)
+                ))
+                .toList();
         Set<Long> templatePositionIds = positionConfigs.stream()
                 .flatMap(config -> configPositionIds(config).stream())
                 .collect(Collectors.toSet());
 
-        for (ScheduleBuildPositionConfig config : positionConfigs) {
-            if (disjoint(configPositionIds(config), schedulePositions)) {
-                topWarnings.add("В шаблоне есть блок должностей вне графика: " + configDisplayName(config));
+        for (EffectivePositionConfig effectiveConfig : effectivePositionConfigs) {
+            if (effectiveConfig.positionIds().isEmpty()) {
+                topWarnings.add("В шаблоне есть блок должностей вне графика: " + configDisplayName(effectiveConfig.config()));
             }
         }
 
@@ -71,16 +78,28 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay =
                 loadPreferencesByMemberAndDay(schedule.getId());
+        List<Long> relevantPositionIds = effectivePositionConfigs.stream()
+                .flatMap(effectiveConfig -> effectiveConfig.positionIds().stream())
+                .distinct()
+                .toList();
+        List<RestaurantMember> allCandidates = loadCandidates(restaurantId, relevantPositionIds);
         PlannerState plannerState = new PlannerState();
         List<PositionPlan> positions = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
         List<RejectionHintPlan> rejectionHints = new ArrayList<>();
 
-        for (ScheduleBuildPositionConfig config : positionConfigs) {
-            if (disjoint(configPositionIds(config), schedulePositions)) {
+        for (EffectivePositionConfig effectiveConfig : effectivePositionConfigs) {
+            if (effectiveConfig.positionIds().isEmpty()) {
                 continue;
             }
-            PositionBuildResult positionResult = buildPosition(restaurantId, schedule, config, preferencesByMemberAndDay, plannerState);
+            PositionBuildResult positionResult = buildPosition(
+                    schedule,
+                    effectiveConfig.config(),
+                    effectiveConfig.positionIds(),
+                    candidatesForPositions(allCandidates, effectiveConfig.positionIds()),
+                    preferencesByMemberAndDay,
+                    plannerState
+            );
             positions.add(positionResult.positionPlan());
             uncoveredSlots.addAll(positionResult.uncoveredSlots());
             rejectionHints.addAll(positionResult.rejectionHints());
@@ -110,14 +129,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private PositionBuildResult buildPosition(
-            Long restaurantId,
             Schedule schedule,
             ScheduleBuildPositionConfig config,
+            List<Long> effectivePositionIds,
+            List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState
     ) {
-        List<Long> effectivePositionIds = intersection(configPositionIds(config), SchedulePositionIds.ids(schedule));
-        List<RestaurantMember> candidates = loadCandidates(restaurantId, effectivePositionIds);
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
@@ -163,6 +181,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private List<RestaurantMember> loadCandidates(Long restaurantId, List<Long> positionIds) {
+        if (positionIds.isEmpty()) {
+            return List.of();
+        }
         List<RestaurantMember> foundMembers = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 restaurantId,
                 positionIds
@@ -170,6 +191,17 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         return foundMembers.stream()
                 .filter(member -> member.getUser() != null)
+                .toList();
+    }
+
+    private List<RestaurantMember> candidatesForPositions(
+            List<RestaurantMember> allCandidates,
+            List<Long> positionIds
+    ) {
+        Set<Long> positionIdSet = new HashSet<>(positionIds);
+        return allCandidates.stream()
+                .filter(member -> member.getPosition() != null)
+                .filter(member -> positionIdSet.contains(member.getPosition().getId()))
                 .toList();
     }
 
@@ -1367,10 +1399,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return left.stream().filter(rightSet::contains).toList();
     }
 
-    private boolean disjoint(List<Long> left, List<Long> right) {
-        return intersection(left, right).isEmpty();
-    }
-
     private List<ScheduleBuildPositionConfig> safePositionConfigs(ScheduleBuildTemplate template) {
         if (template.getPositionConfigs() == null) {
             return List.of();
@@ -1764,6 +1792,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private record PositionBuildResult(PositionPlan positionPlan, List<UncoveredSlotPlan> uncoveredSlots, List<RejectionHintPlan> rejectionHints) {
+    }
+
+    private record EffectivePositionConfig(
+            ScheduleBuildPositionConfig config,
+            List<Long> positionIds
+    ) {
     }
 
     private record AssignmentBuildResult(AssignmentPlan assignment, PreferenceGrade grade) {
