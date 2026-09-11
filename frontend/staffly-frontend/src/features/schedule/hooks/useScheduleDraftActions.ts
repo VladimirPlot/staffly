@@ -8,7 +8,7 @@ import {
   type CreateSchedulePayload,
   type ScheduleSummary,
 } from "../api";
-import type { EditableScheduleData, ScheduleCellSource, ScheduleConfig, ScheduleData } from "../types";
+import type { EditableScheduleData, ScheduleConfig, ScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
@@ -188,25 +188,13 @@ export default function useScheduleDraftActions({
       }
     });
 
-    const normalizedSources: Record<string, ScheduleCellSource> = {};
-    Object.keys(normalizedCells).forEach((key) => {
-      const source = schedule.cellSources?.[key];
-      if (source && source !== "MANUAL") {
-        normalizedSources[key] = source;
-      }
-    });
-
     return {
       title: schedule.title,
       config: schedule.config,
       rows: schedule.rows.map((row) => ({
         memberId: row.memberId,
-        displayName: row.displayName,
-        positionId: row.positionId ?? null,
-        positionName: row.positionName ?? null,
       })),
       cellValues: normalizedCells,
-      cellSources: normalizedSources,
     };
   }, [schedule]);
 

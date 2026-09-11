@@ -8,7 +8,8 @@ import org.springframework.web.bind.annotation.*;
 import ru.staffly.schedule.dto.ChangeScheduleOwnerRequest;
 import ru.staffly.schedule.dto.AddScheduleMemberRequest;
 import ru.staffly.schedule.dto.AddableScheduleMemberDto;
-import ru.staffly.schedule.dto.SaveScheduleRequest;
+import ru.staffly.schedule.dto.CreateScheduleRequest;
+import ru.staffly.schedule.dto.UpdateScheduleRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
@@ -33,7 +34,7 @@ public class ScheduleController {
     @PostMapping("/schedules")
     public ScheduleDto create(@PathVariable Long restaurantId,
                               @AuthenticationPrincipal UserPrincipal principal,
-                              @Valid @RequestBody SaveScheduleRequest request) {
+                              @Valid @RequestBody CreateScheduleRequest request) {
         return schedules.create(restaurantId, principal.userId(), request);
     }
 
@@ -41,7 +42,7 @@ public class ScheduleController {
     @PostMapping("/schedules/drafts")
     public ScheduleDto createDraft(@PathVariable Long restaurantId,
                                    @AuthenticationPrincipal UserPrincipal principal,
-                                   @Valid @RequestBody SaveScheduleRequest request) {
+                                   @Valid @RequestBody CreateScheduleRequest request) {
         return schedules.createDraft(restaurantId, principal.userId(), request);
     }
 
@@ -65,7 +66,7 @@ public class ScheduleController {
     public ScheduleDto update(@PathVariable Long restaurantId,
                               @PathVariable Long scheduleId,
                               @AuthenticationPrincipal UserPrincipal principal,
-                              @Valid @RequestBody SaveScheduleRequest request) {
+                              @Valid @RequestBody UpdateScheduleRequest request) {
         return schedules.update(restaurantId, scheduleId, principal.userId(), request);
     }
 

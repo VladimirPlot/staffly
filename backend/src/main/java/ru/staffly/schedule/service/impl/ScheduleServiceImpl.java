@@ -63,18 +63,18 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final InboxMessageService inboxMessages;
 
     @Override
-    public ScheduleDto create(Long restaurantId, Long userId, SaveScheduleRequest request) {
+    public ScheduleDto create(Long restaurantId, Long userId, CreateScheduleRequest request) {
         return createWithStatus(restaurantId, userId, request, ScheduleStatus.PUBLISHED, "График создан");
     }
 
     @Override
-    public ScheduleDto createDraft(Long restaurantId, Long userId, SaveScheduleRequest request) {
+    public ScheduleDto createDraft(Long restaurantId, Long userId, CreateScheduleRequest request) {
         return createWithStatus(restaurantId, userId, request, ScheduleStatus.DRAFT, "Черновик графика создан");
     }
 
     private ScheduleDto createWithStatus(Long restaurantId,
                                          Long userId,
-                                         SaveScheduleRequest request,
+                                         CreateScheduleRequest request,
                                          ScheduleStatus status,
                                          String auditDetails) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
@@ -117,7 +117,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         applyOwnerAndCreator(schedule, restaurantId, userId, request.ownerUserId());
         List<ScheduleRow> rowEntities = buildRows(
-                schedule, request.rows(), request.cellValues(), request.cellSources(), days
+                schedule, request.rows(), request.cellValues(), days
         );
         schedule.setRows(rowEntities);
 
@@ -262,7 +262,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
-    public ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, SaveScheduleRequest request) {
+    public ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, UpdateScheduleRequest request) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -301,14 +301,14 @@ public class ScheduleServiceImpl implements ScheduleService {
                 || !new HashSet<>(SchedulePositionIds.ids(schedule)).equals(
                         schedulePositions.stream().map(Position::getId).collect(Collectors.toSet()));
 
-        List<ScheduleRowPayload> safeRows = request.rows() != null ? request.rows() : List.of();
+        List<ScheduleRowRequest> safeRows = request.rows() != null ? request.rows() : List.of();
         Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
         Set<Long> requestedPositionIds = schedulePositions.stream().map(Position::getId).collect(Collectors.toSet());
         Map<Long, RestaurantMember> memberMap = validateAndMapMembers(schedule, safeRows, requestedPositionIds);
         Map<String, String> oldValueMap = buildCurrentValueMap(schedule);
         Map<String, String> newValueMap = buildRequestedValueMap(newValues, days, memberMap.keySet());
         List<PublishedScheduleCellChange> publishedChanges = publishedEdit
-                ? buildPublishedChanges(schedule, memberMap, days, newValues, request.cellSources())
+                ? buildPublishedChanges(schedule, memberMap, days, newValues)
                 : List.of();
         autoRejectAffectedPendingRequests(
                 schedule, userId, oldValueMap, newValueMap, memberMap.keySet(), new HashSet<>(days)
@@ -319,7 +319,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setShiftMode(shiftMode);
         schedule.setShowFullName(config.showFullName());
         schedule.setPositions(schedulePositions);
-        applyRowsDiff(schedule, newValues, request.cellSources(), days, memberMap);
+        applyRowsDiff(schedule, newValues, days, memberMap);
 
         Schedule saved = schedules.saveAndFlush(schedule);
         if (!publishedEdit || aggregateChanged || !publishedChanges.isEmpty()) {
@@ -668,17 +668,16 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private List<ScheduleRow> buildRows(Schedule schedule,
-                                        List<ScheduleRowPayload> rows,
+                                        List<ScheduleRowRequest> rows,
                                         Map<String, String> cellValues,
-                                        Map<String, ScheduleCellSource> cellSources,
                                         List<LocalDate> days) {
-        List<ScheduleRowPayload> safeRows = rows != null ? rows : List.of();
+        List<ScheduleRowRequest> safeRows = rows != null ? rows : List.of();
         Map<String, String> values = cellValues != null ? cellValues : Map.of();
 
         List<ScheduleRow> entities = new ArrayList<>(safeRows.size());
         Set<Long> seenMemberIds = new HashSet<>();
         int index = 0;
-        for (ScheduleRowPayload row : safeRows) {
+        for (ScheduleRowRequest row : safeRows) {
             if (row.memberId() == null) {
                 throw new BadRequestException("memberId is required for each row");
             }
@@ -702,7 +701,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                     .sortOrder(index++)
                     .build();
 
-            List<ScheduleCell> cells = buildCells(entity, member.getId(), values, cellSources, days);
+            List<ScheduleCell> cells = buildCells(entity, member.getId(), values, days);
             entity.setCells(cells);
             entities.add(entity);
         }
@@ -712,7 +711,6 @@ public class ScheduleServiceImpl implements ScheduleService {
     private List<ScheduleCell> buildCells(ScheduleRow row,
                                           Long memberId,
                                           Map<String, String> values,
-                                          Map<String, ScheduleCellSource> sources,
                                           List<LocalDate> days) {
         List<ScheduleCell> cells = new ArrayList<>();
         for (LocalDate day : days) {
@@ -729,21 +727,21 @@ public class ScheduleServiceImpl implements ScheduleService {
                     .row(row)
                     .day(day)
                     .value(trimmed)
-                    .source(resolveManualSaveSource(sources, key))
+                    .source(ScheduleCellSource.MANUAL)
                     .build();
             cells.add(cell);
         }
         return cells;
     }
 
-    private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowPayload> rows,
+    private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowRequest> rows,
                                                                Set<Long> allowedPositionIds) {
         Map<Long, RestaurantMember> memberMap = new LinkedHashMap<>();
         Set<Long> historicalMemberIds = schedule.getRows().stream()
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        for (ScheduleRowPayload row : rows) {
+        for (ScheduleRowRequest row : rows) {
             if (row.memberId() == null) {
                 throw new BadRequestException("memberId is required for each row");
             }
@@ -852,7 +850,6 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private void applyRowsDiff(Schedule schedule,
                                Map<String, String> values,
-                               Map<String, ScheduleCellSource> sources,
                                List<LocalDate> days,
                                Map<Long, RestaurantMember> memberMap) {
         Map<Long, ScheduleRow> existingByMemberId = schedule.getRows().stream()
@@ -874,7 +871,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             activeRows.add(row);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
             row.setSortOrder(index++);
-            reconcileCells(row, memberId, values, sources, days);
+            reconcileCells(row, memberId, values, days);
         }
 
         List<ScheduleRow> historicalRows = schedule.getRows().stream()
@@ -890,7 +887,6 @@ public class ScheduleServiceImpl implements ScheduleService {
     private void reconcileCells(ScheduleRow row,
                                 Long memberId,
                                 Map<String, String> values,
-                                Map<String, ScheduleCellSource> sources,
                                 List<LocalDate> days) {
         Set<LocalDate> validDays = new HashSet<>(days);
         row.getCells().removeIf(cell -> !validDays.contains(cell.getDay()));
@@ -899,8 +895,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         for (LocalDate day : days) {
             String key = memberId + ":" + day;
             String normalized = normalizeCellValue(values.get(key));
-            ScheduleCellSource source = resolveManualSaveSource(sources, key);
             ScheduleCell existing = byDay.get(day);
+            ScheduleCellSource source = existing != null
+                    && Objects.equals(normalizeCellValue(existing.getValue()), normalized)
+                    ? existing.getSource()
+                    : ScheduleCellSource.MANUAL;
             if (normalized == null) {
                 if (existing != null) {
                     row.getCells().remove(existing);
@@ -921,14 +920,6 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
     }
 
-    private ScheduleCellSource resolveManualSaveSource(Map<String, ScheduleCellSource> sources, String key) {
-        ScheduleCellSource source = sources == null ? null : sources.get(key);
-        if (source == ScheduleCellSource.PREFERENCE_HINT) {
-            return ScheduleCellSource.PREFERENCE_HINT;
-        }
-        return ScheduleCellSource.MANUAL;
-    }
-
     private String normalizeCellValue(String value) {
         if (value == null) return null;
         String trimmed = value.trim();
@@ -939,8 +930,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             Schedule schedule,
             Map<Long, RestaurantMember> activeMembers,
             List<LocalDate> newDays,
-            Map<String, String> requestedValues,
-            Map<String, ScheduleCellSource> requestedSources) {
+            Map<String, String> requestedValues) {
         Map<Long, ScheduleRow> rowsByMember = schedule.getRows().stream()
                 .filter(row -> row.getMemberId() != null && activeMembers.containsKey(row.getMemberId()))
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, row -> row, (left, right) -> left));
@@ -966,7 +956,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                         safeDisplayName(member.getUser()),
                         day, oldValue, newValue,
                         oldCell == null ? null : oldCell.getSource(),
-                        newValue == null ? null : resolveManualSaveSource(requestedSources, key)
+                        newValue == null ? null : ScheduleCellSource.MANUAL
                 ));
             }
         }
