@@ -126,11 +126,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
         double targetShiftsPerCandidate = targetShiftsPerCandidate(schedule, config, candidates);
+        DemandLookup demandLookup = buildDemandLookup(config);
 
         for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
             DayBuildResult dayResult = buildAssignmentsForDay(
                     day,
                     config,
+                    demandLookup,
                     candidates,
                     preferencesByMemberAndDay,
                     plannerState,
@@ -174,6 +176,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private DayBuildResult buildAssignmentsForDay(
             LocalDate day,
             ScheduleBuildPositionConfig config,
+            DemandLookup demandLookup,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
@@ -186,9 +189,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
-        List<ScheduleBuildCoverageRule> allCoverageRules = safeCoverageRules(config);
-        List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(config, day);
-        if (allCoverageRules.isEmpty() && coverageRules.isEmpty() && !hasDateOverride(config, day)) {
+        List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(config, day, demandLookup);
+        if (!demandLookup.hasWeeklyRules()
+                && coverageRules.isEmpty()
+                && !demandLookup.overridesByDate().containsKey(day)) {
             return buildLegacyAssignmentsForDay(day, config, candidates, preferencesByMemberAndDay, plannerState);
         }
 
@@ -1381,12 +1385,28 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return config.getShiftOptions();
     }
 
-    private List<ScheduleBuildCoverageRule> effectiveCoverageRulesForDate(ScheduleBuildPositionConfig config, LocalDate day) {
-        List<ScheduleBuildCoverageDateOverride> dateOverrides = safeCoverageDateOverrides(config).stream()
-                .filter(override -> day.equals(override.getDate()))
-                .toList();
-        if (!dateOverrides.isEmpty()) {
-            return dateOverrides.stream()
+    private DemandLookup buildDemandLookup(ScheduleBuildPositionConfig config) {
+        Map<LocalDate, List<ScheduleBuildCoverageDateOverride>> overridesByDate = new HashMap<>();
+        for (ScheduleBuildCoverageDateOverride dateOverride : safeCoverageDateOverrides(config)) {
+            overridesByDate.computeIfAbsent(dateOverride.getDate(), ignored -> new ArrayList<>()).add(dateOverride);
+        }
+
+        List<ScheduleBuildCoverageRule> coverageRules = safeCoverageRules(config);
+        Map<Integer, List<ScheduleBuildCoverageRule>> weeklyRulesByDayOfWeek = new HashMap<>();
+        for (ScheduleBuildCoverageRule rule : coverageRules) {
+            weeklyRulesByDayOfWeek.computeIfAbsent(rule.getDayOfWeek(), ignored -> new ArrayList<>()).add(rule);
+        }
+
+        return new DemandLookup(overridesByDate, weeklyRulesByDayOfWeek, !coverageRules.isEmpty());
+    }
+
+    private List<ScheduleBuildCoverageRule> effectiveCoverageRulesForDate(
+            ScheduleBuildPositionConfig config,
+            LocalDate day,
+            DemandLookup demandLookup
+    ) {
+        if (demandLookup.overridesByDate().containsKey(day)) {
+            return demandLookup.overridesByDate().get(day).stream()
                     .filter(override -> override.getShiftOption() != null)
                     .map(override -> ScheduleBuildCoverageRule.builder()
                             .positionConfig(config)
@@ -1398,14 +1418,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                             .build())
                     .toList();
         }
-        int dayOfWeek = day.getDayOfWeek().getValue();
-        return safeCoverageRules(config).stream()
-                .filter(rule -> rule.getDayOfWeek() == dayOfWeek)
-                .toList();
-    }
-
-    private boolean hasDateOverride(ScheduleBuildPositionConfig config, LocalDate day) {
-        return safeCoverageDateOverrides(config).stream().anyMatch(override -> day.equals(override.getDate()));
+        return demandLookup.weeklyRulesByDayOfWeek().getOrDefault(day.getDayOfWeek().getValue(), List.of());
     }
 
     private List<ScheduleBuildCoverageDateOverride> safeCoverageDateOverrides(ScheduleBuildPositionConfig config) {
@@ -1428,6 +1441,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return 0;
         }
         return requiredCount;
+    }
+
+    private record DemandLookup(
+            Map<LocalDate, List<ScheduleBuildCoverageDateOverride>> overridesByDate,
+            Map<Integer, List<ScheduleBuildCoverageRule>> weeklyRulesByDayOfWeek,
+            boolean hasWeeklyRules
+    ) {
     }
 
     private DayBuildResult buildLegacyAssignmentsForDay(
