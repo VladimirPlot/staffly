@@ -50,6 +50,14 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findByRestaurantIdAndPositionIdIn(Long restaurantId, List<Long> positionIds);
 
     @Query("""
+           select m from RestaurantMember m
+           left join fetch m.user u
+           left join fetch m.position p
+           where m.id in :memberIds
+           """)
+    List<RestaurantMember> findWithUserAndPositionByIdIn(@Param("memberIds") Set<Long> memberIds);
+
+    @Query("""
            select distinct m from RestaurantMember m
            join fetch m.user u
            join fetch m.position p

@@ -2,6 +2,7 @@ package ru.staffly.schedule.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.LocalTime;
 import java.util.LinkedHashSet;
@@ -38,6 +39,7 @@ public class SchedulePreferenceShiftOptionSnapshot {
     private Integer sortOrder;
 
     @ElementCollection
+    @BatchSize(size = 64)
     @CollectionTable(name = "schedule_preference_shift_option_snapshot_position",
             joinColumns = @JoinColumn(name = "snapshot_id"))
     @Column(name = "position_id", nullable = false)
