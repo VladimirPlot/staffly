@@ -10,12 +10,14 @@ import {
 } from "../api";
 import type { EditableScheduleData, ScheduleData } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
+import { restaurantLocalDateTimeToInstant } from "../utils/date";
 
 type ScheduleRange = { start: string; end: string } | null;
 type LifecycleAction = "startPreferences" | "closePreferences" | "applyPreferences" | "publish";
 
 type UseScheduleLifecycleActionsParams = {
   restaurantId: number | null;
+  restaurantTimeZone: string;
   canManage: boolean;
   schedule: EditableScheduleData | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
@@ -30,6 +32,7 @@ type UseScheduleLifecycleActionsParams = {
 
 export default function useScheduleLifecycleActions({
   restaurantId,
+  restaurantTimeZone,
   canManage,
   schedule,
   prepareSchedule,
@@ -112,8 +115,8 @@ export default function useScheduleLifecycleActions({
       return;
     }
 
-    const parsedDeadline = new Date(preferenceDeadline);
-    if (Number.isNaN(parsedDeadline.getTime())) {
+    const deadlineInstant = restaurantLocalDateTimeToInstant(preferenceDeadline, restaurantTimeZone);
+    if (!deadlineInstant) {
       setPreferenceDeadlineError("Укажите корректные дату и время");
       return;
     }
@@ -125,7 +128,7 @@ export default function useScheduleLifecycleActions({
       const parsedBuildTemplateId = preferenceBuildTemplateId ? Number(preferenceBuildTemplateId) : null;
       const updatedSchedule = await startPreferenceCollection(restaurantId, schedule.id, {
         version: schedule.version,
-        preferenceDeadline: parsedDeadline.toISOString(),
+        preferenceDeadline: deadlineInstant,
         buildTemplateId: Number.isFinite(parsedBuildTemplateId) ? parsedBuildTemplateId : null,
       });
       await applyUpdatedSchedule(updatedSchedule);
@@ -147,6 +150,7 @@ export default function useScheduleLifecycleActions({
     preferenceBuildTemplateId,
     preferenceDeadline,
     restaurantId,
+    restaurantTimeZone,
     schedule?.id,
     schedule?.version,
   ]);

@@ -124,7 +124,17 @@ const SchedulePage: React.FC = () => {
     clearScheduleNotices();
   }, [clearScheduleNotices]);
 
-  const { loading, error, myRole, positions, members, savedSchedules, setSavedSchedules, reloadSavedSchedules } =
+  const {
+    loading,
+    error,
+    myRole,
+    positions,
+    members,
+    savedSchedules,
+    restaurantTimeZone,
+    setSavedSchedules,
+    reloadSavedSchedules,
+  } =
     useScheduleInitialData({
       restaurantId,
       userRoles: user?.roles,
@@ -281,6 +291,7 @@ const SchedulePage: React.FC = () => {
     members,
     canManage,
     positionFilter,
+    restaurantTimeZone,
   });
 
   const prepareSchedule = React.useCallback(
@@ -512,6 +523,7 @@ const SchedulePage: React.FC = () => {
 
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
+    restaurantTimeZone,
     canManage,
     schedule,
     prepareSchedule,
@@ -775,6 +787,7 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && showTemplatesTabContent && (
         <ScheduleBuildTemplatesSection
+          timeZone={restaurantTimeZone}
           templates={buildTemplatesActions.templates}
           loading={buildTemplatesActions.loading}
           error={buildTemplatesActions.error}
@@ -818,6 +831,7 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && preferenceActions.preferenceViewScheduleId && (
         <SchedulePreferenceMeView
+          timeZone={restaurantTimeZone}
           data={preferenceActions.preferenceData}
           loading={preferenceActions.loading}
           saving={preferenceActions.saving}
@@ -894,10 +908,13 @@ const SchedulePage: React.FC = () => {
             />
           )}
 
-          {activeTab === "table" && scheduleReadOnly && <ScheduleHistoryBlock history={schedule.history} />}
+          {activeTab === "table" && scheduleReadOnly && (
+            <ScheduleHistoryBlock history={schedule.history} timeZone={restaurantTimeZone} />
+          )}
 
           {activeTab === "requests" && (
             <ShiftRequestsSection
+              timeZone={restaurantTimeZone}
               canManage={canManage}
               loading={shiftRequests.loading}
               error={shiftRequests.error}
@@ -958,6 +975,7 @@ const SchedulePage: React.FC = () => {
       />
 
       <SchedulePreferenceManagerDialog
+        timeZone={restaurantTimeZone}
         open={preferenceManagerActions.open}
         loading={preferenceManagerActions.loading}
         error={preferenceManagerActions.error}

@@ -21,8 +21,10 @@ export default function useSchedulePreferenceManagerActions({
   const [submissions, setSubmissions] = React.useState<SchedulePreferenceSubmissionsResponse | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const requestSequenceRef = React.useRef(0);
 
   React.useEffect(() => {
+    requestSequenceRef.current += 1;
     setOpen(false);
     setScheduleId(null);
     setProgress(null);
@@ -34,6 +36,7 @@ export default function useSchedulePreferenceManagerActions({
   const load = React.useCallback(
     async (targetScheduleId: number) => {
       if (!restaurantId) return;
+      const requestSequence = ++requestSequenceRef.current;
 
       setLoading(true);
       setError(null);
@@ -42,12 +45,14 @@ export default function useSchedulePreferenceManagerActions({
           getSchedulePreferenceProgress(restaurantId, targetScheduleId),
           getSchedulePreferenceSubmissions(restaurantId, targetScheduleId),
         ]);
+        if (requestSequence !== requestSequenceRef.current) return;
         setProgress(progressData);
         setSubmissions(submissionsData);
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить пожелания сотрудников"));
       } finally {
-        setLoading(false);
+        if (requestSequence === requestSequenceRef.current) setLoading(false);
       }
     },
     [restaurantId],
@@ -67,6 +72,7 @@ export default function useSchedulePreferenceManagerActions({
   );
 
   const closeDialog = React.useCallback(() => {
+    requestSequenceRef.current += 1;
     setOpen(false);
     setScheduleId(null);
     setProgress(null);

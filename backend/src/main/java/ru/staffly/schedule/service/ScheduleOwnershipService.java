@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
-import ru.staffly.common.time.TimeProvider;
+import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.inbox.model.InboxEventSubtype;
@@ -38,6 +38,7 @@ public class ScheduleOwnershipService {
     private final ScheduleAuditService scheduleAuditService;
     private final SecurityService securityService;
     private final InboxMessageService inboxMessages;
+    private final RestaurantTimeService restaurantTime;
 
     public Schedule changeOwner(Long restaurantId, Long actorUserId, Long scheduleId, Long expectedVersion,
                                 Long newOwnerUserId) {
@@ -73,7 +74,7 @@ public class ScheduleOwnershipService {
 
     @Transactional(readOnly = true)
     public List<Schedule> findActiveOrFutureOwnedSchedules(Long restaurantId, Long ownerUserId) {
-        LocalDate today = TimeProvider.todayUtc();
+        LocalDate today = restaurantTime.today(restaurantId);
         return schedules.findByRestaurantIdAndOwnerUserIdAndEndDateGreaterThanEqualOrderByStartDateAsc(
                 restaurantId,
                 ownerUserId,

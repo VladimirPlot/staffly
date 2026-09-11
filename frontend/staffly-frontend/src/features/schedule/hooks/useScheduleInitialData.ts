@@ -5,6 +5,7 @@ import { fetchMyRoleIn, listMembers, type MemberDto } from "../../employees/api"
 import { listPositions, type PositionDto, type RestaurantRole } from "../../dictionaries/api";
 import { resolveRestaurantAccess } from "../../../shared/utils/access";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
+import { fetchRestaurant } from "../../restaurants/api";
 
 type UseScheduleInitialDataParams = {
   restaurantId: number | null;
@@ -25,6 +26,7 @@ export default function useScheduleInitialData({
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
   const [members, setMembers] = React.useState<MemberDto[]>([]);
   const [savedSchedules, setSavedSchedules] = React.useState<ScheduleSummary[]>([]);
+  const [restaurantTimeZone, setRestaurantTimeZone] = React.useState("Europe/Moscow");
   const [reloadVersion, setReloadVersion] = React.useState(0);
 
   const reload = React.useCallback(() => {
@@ -34,6 +36,7 @@ export default function useScheduleInitialData({
   const reloadSavedSchedules = React.useCallback(async () => {
     if (!restaurantId) {
       setSavedSchedules([]);
+      setRestaurantTimeZone("Europe/Moscow");
       return;
     }
 
@@ -66,16 +69,18 @@ export default function useScheduleInitialData({
       try {
         const role = await fetchMyRoleIn(restaurantId);
         const accessNow = resolveRestaurantAccess(userRoles, role);
-        const [posList, memList, savedList] = await Promise.all([
+        const [posList, memList, savedList, restaurant] = await Promise.all([
           listPositions(restaurantId, { includeInactive: accessNow.isManagerLike }),
           listMembers(restaurantId),
           listSavedSchedules(restaurantId),
+          fetchRestaurant(restaurantId),
         ]);
         if (!alive) return;
         setMyRole(role);
         setPositions(posList);
         setMembers(memList);
         setSavedSchedules(savedList);
+        setRestaurantTimeZone(restaurant.timezone);
       } catch (e: unknown) {
         if (!alive) return;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить данные"));
@@ -100,6 +105,7 @@ export default function useScheduleInitialData({
     positions,
     members,
     savedSchedules,
+    restaurantTimeZone,
     setSavedSchedules,
     setMembers,
     setPositions,

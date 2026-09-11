@@ -23,9 +23,10 @@ type Props = {
   saving: boolean;
   onClose: () => void;
   onSubmit: (req: SaveScheduleBuildTemplateRequest, id?: number) => Promise<ScheduleBuildTemplateDto | null>;
+  timeZone: string;
 };
 
-const ScheduleBuildTemplateDialog: React.FC<Props> = ({ open, template, positions, saving, onClose, onSubmit }) => {
+const ScheduleBuildTemplateDialog: React.FC<Props> = ({ open, template, positions, saving, onClose, onSubmit, timeZone }) => {
   const [draft, setDraft] = React.useState<ScheduleBuildTemplateDraft>({
     name: "",
     description: "",
@@ -88,6 +89,7 @@ const ScheduleBuildTemplateDialog: React.FC<Props> = ({ open, template, position
             config={config}
             positions={positions}
             saving={saving}
+            timeZone={timeZone}
             onChange={(next) =>
               setDraft((prev) => ({
                 ...prev,

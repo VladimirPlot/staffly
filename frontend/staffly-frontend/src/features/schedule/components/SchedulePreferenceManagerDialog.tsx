@@ -11,6 +11,7 @@ import type {
   SchedulePreferenceType,
 } from "../api";
 import { getScheduleStatusLabel } from "../utils/status";
+import { formatInstantInTimeZone } from "../utils/date";
 
 type SchedulePreferenceManagerDialogProps = {
   open: boolean;
@@ -20,6 +21,7 @@ type SchedulePreferenceManagerDialogProps = {
   submissions: SchedulePreferenceSubmissionsResponse | null;
   onClose: () => void;
   onReload: () => void;
+  timeZone: string;
 };
 
 const PREFERENCE_TYPE_LABELS: Record<SchedulePreferenceType, string> = {
@@ -27,19 +29,6 @@ const PREFERENCE_TYPE_LABELS: Record<SchedulePreferenceType, string> = {
   UNAVAILABLE: "Не могу работать",
   PREFER_DAY_OFF: "Предпочитаю выходной",
 };
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function formatMemberName(displayName: string | null | undefined): string {
   return displayName?.trim() || "Сотрудник без имени";
@@ -142,10 +131,12 @@ function EmployeePreferenceAccordionRow({
   row,
   expanded,
   onToggle,
+  timeZone,
 }: {
   row: EmployeePreferenceRow;
   expanded: boolean;
   onToggle: () => void;
+  timeZone: string;
 }) {
   const cells = sortCells(row.submission?.cells ?? []);
   const periodComment = row.submission?.periodComment ?? row.submission?.comment ?? null;
@@ -182,7 +173,7 @@ function EmployeePreferenceAccordionRow({
           <div className="text-muted flex flex-wrap gap-x-3 gap-y-1 text-xs">
             <span>заполнено: {row.cellsCount}</span>
             <span>{formatPreferenceSummary(summary)}</span>
-            {row.submittedAt && <span>отправлено: {formatDateTime(row.submittedAt)}</span>}
+            {row.submittedAt && <span>отправлено: {formatInstantInTimeZone(row.submittedAt, timeZone)}</span>}
             {row.revision > 0 && <span>ревизия {row.revision}</span>}
             {periodComment && <span>Есть комментарий</span>}
           </div>
@@ -254,13 +245,14 @@ const SchedulePreferenceManagerDialog: React.FC<SchedulePreferenceManagerDialogP
   submissions,
   onClose,
   onReload,
+  timeZone,
 }) => {
   const metadata = progress ?? submissions;
   const description = metadata ? (
     <div className="space-y-1">
       <div>{metadata.title}</div>
       <div>
-        Статус: {getScheduleStatusLabel(metadata.status)} · Дедлайн: {formatDateTime(metadata.preferenceDeadline)}
+        Статус: {getScheduleStatusLabel(metadata.status)} · Дедлайн: {formatInstantInTimeZone(metadata.preferenceDeadline, timeZone)}
       </div>
     </div>
   ) : (
@@ -380,6 +372,7 @@ const SchedulePreferenceManagerDialog: React.FC<SchedulePreferenceManagerDialogP
                   row={row}
                   expanded={expandedRows.has(row.key)}
                   onToggle={() => toggleRow(row.key)}
+              timeZone={timeZone}
                 />
               ))}
             </div>
