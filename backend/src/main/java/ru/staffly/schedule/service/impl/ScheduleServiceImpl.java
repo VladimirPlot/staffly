@@ -1154,6 +1154,14 @@ public class ScheduleServiceImpl implements ScheduleService {
             return;
         }
 
+        Set<Long> activeRowMemberIds = schedule.getRows().stream()
+                .map(ScheduleRow::getMemberId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (activeRowMemberIds.isEmpty()) {
+            return;
+        }
+
         List<RestaurantMember> membersWithSchedulePositions = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 schedule.getRestaurant().getId(),
                 positionIds
@@ -1161,6 +1169,9 @@ public class ScheduleServiceImpl implements ScheduleService {
         Map<Long, RestaurantMember> targetsByUserId = new LinkedHashMap<>();
         for (RestaurantMember member : membersWithSchedulePositions) {
             if (member == null || member.getUser() == null || member.getUser().getId() == null) {
+                continue;
+            }
+            if (!activeRowMemberIds.contains(member.getId())) {
                 continue;
             }
             if (Objects.equals(member.getUser().getId(), actorUserId)) {
