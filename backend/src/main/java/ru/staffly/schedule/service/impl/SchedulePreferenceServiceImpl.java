@@ -261,7 +261,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             throw new BadRequestException("Too many preference cells");
         }
 
-        Set<CellKey> seen = new HashSet<>();
+        Set<LocalDate> seenDays = new HashSet<>();
         List<SchedulePreferenceCell> cells = new ArrayList<>(safeRequests.size());
         for (int i = 0; i < safeRequests.size(); i++) {
             SchedulePreferenceCellRequest request = safeRequests.get(i);
@@ -269,6 +269,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 throw new BadRequestException("cells[" + i + "] is required");
             }
             LocalDate day = parseDay(request.day(), i);
+            if (!seenDays.add(day)) {
+                throw new BadRequestException("На один день можно указать только одно пожелание");
+            }
             if (day.isBefore(schedule.getStartDate()) || day.isAfter(schedule.getEndDate())) {
                 throw new BadRequestException("cells[" + i + "].day must be inside schedule range");
             }
@@ -294,10 +297,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 if (!isAllowedShiftOption(schedule, member, startTime, endTime)) {
                     throw new BadRequestException("cells[" + i + "] interval is not available for member position");
                 }
-            }
-            CellKey key = new CellKey(day, request.type(), fullDay, startTime, endTime);
-            if (!seen.add(key)) {
-                throw new BadRequestException("Duplicate preference cell");
             }
             cells.add(SchedulePreferenceCell.builder()
                     .day(day)
@@ -513,6 +512,4 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
         return endTime.equals(END_OF_DAY_TIME);
     }
-
-    private record CellKey(LocalDate day, SchedulePreferenceType type, boolean fullDay, LocalTime startTime, LocalTime endTime) {}
 }
