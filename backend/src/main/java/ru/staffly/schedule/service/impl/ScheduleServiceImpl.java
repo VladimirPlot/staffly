@@ -675,20 +675,22 @@ public class ScheduleServiceImpl implements ScheduleService {
         Map<String, String> values = cellValues != null ? cellValues : Map.of();
 
         List<ScheduleRow> entities = new ArrayList<>(safeRows.size());
+        Map<Long, RestaurantMember> membersById = loadRequestedMembers(safeRows);
+        Set<Long> schedulePositionIds = new HashSet<>(SchedulePositionIds.ids(schedule));
         Set<Long> seenMemberIds = new HashSet<>();
         int index = 0;
         for (ScheduleRowRequest row : safeRows) {
             if (row.memberId() == null) {
                 throw new BadRequestException("memberId is required for each row");
             }
-            RestaurantMember member = members.findById(row.memberId())
+            RestaurantMember member = Optional.ofNullable(membersById.get(row.memberId()))
                     .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + row.memberId()));
             if (!Objects.equals(member.getRestaurant().getId(), schedule.getRestaurant().getId())) {
                 throw new ForbiddenException("Нельзя добавить сотрудника из другого ресторана");
             }
             if (member.getUser() == null) { throw new BadRequestException("У сотрудника нет пользователя"); }
             if (member.getPosition() == null) { throw new BadRequestException("У сотрудника не задана должность"); }
-            if (!SchedulePositionIds.ids(schedule).contains(member.getPosition().getId())) {
+            if (!schedulePositionIds.contains(member.getPosition().getId())) {
                 throw new BadRequestException("Должность сотрудника не входит в позиции графика");
             }
             if (!seenMemberIds.add(member.getId())) { throw new BadRequestException("Один и тот же сотрудник не может быть добавлен дважды"); }
@@ -737,6 +739,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowRequest> rows,
                                                                Set<Long> allowedPositionIds) {
         Map<Long, RestaurantMember> memberMap = new LinkedHashMap<>();
+        Map<Long, RestaurantMember> membersById = loadRequestedMembers(rows);
         Set<Long> historicalMemberIds = schedule.getRows().stream()
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
@@ -745,7 +748,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (row.memberId() == null) {
                 throw new BadRequestException("memberId is required for each row");
             }
-            RestaurantMember member = members.findById(row.memberId())
+            RestaurantMember member = Optional.ofNullable(membersById.get(row.memberId()))
                     .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + row.memberId()));
             if (!Objects.equals(member.getRestaurant().getId(), schedule.getRestaurant().getId())) {
                 throw new ForbiddenException("Нельзя добавить сотрудника из другого ресторана");
@@ -769,6 +772,19 @@ public class ScheduleServiceImpl implements ScheduleService {
             }
         }
         return memberMap;
+    }
+
+    private Map<Long, RestaurantMember> loadRequestedMembers(List<ScheduleRowRequest> rows) {
+        Set<Long> memberIds = rows.stream()
+                .filter(Objects::nonNull)
+                .map(ScheduleRowRequest::memberId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (memberIds.isEmpty()) {
+            return Map.of();
+        }
+        return members.findWithUserAndPositionByIdIn(memberIds).stream()
+                .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
     }
 
     private Map<String, String> buildCurrentValueMap(Schedule schedule) {
