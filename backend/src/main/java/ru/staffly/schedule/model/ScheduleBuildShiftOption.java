@@ -26,10 +26,6 @@ public class ScheduleBuildShiftOption {
     @Column(name = "label", length = 150)
     private String label;
 
-    @Column(name = "is_full_shift", nullable = false)
-    @Builder.Default
-    private boolean isFullShift = false;
-
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private Integer sortOrder = 0;

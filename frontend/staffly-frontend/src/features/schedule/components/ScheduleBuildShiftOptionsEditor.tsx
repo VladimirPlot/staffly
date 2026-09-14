@@ -63,22 +63,6 @@ const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, saving, onCh
             })
           }
         />
-        <label className="mt-8 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={option.isFullShift}
-            disabled={saving}
-            onChange={(e) =>
-              onChange({
-                ...config,
-                shiftOptions: config.shiftOptions.map((item, idx) =>
-                  idx === optionIndex ? { ...item, isFullShift: e.target.checked } : item,
-                ),
-              })
-            }
-          />
-          Полная смена
-        </label>
         <Button variant="outline" disabled={saving} onClick={() => onRemove(optionIndex)}>
           Удалить смену
         </Button>
