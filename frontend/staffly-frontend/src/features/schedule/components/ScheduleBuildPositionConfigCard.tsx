@@ -110,7 +110,7 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
       </div>
       <div className="space-y-2">
         <div>
-          <div className="text-sm font-medium">Рабочий диапазон должности</div>
+          <div className="text-sm font-medium">Рабочий период должности</div>
           <div className="text-muted text-xs">
             Это общий период, в рамках которого могут быть смены. Автосборка не назначает этот интервал автоматически.
           </div>
@@ -120,17 +120,17 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
             label="С"
             type="time"
             step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-            value={config.fullShiftStart}
+            value={config.workPeriodStart}
             disabled={saving}
-            onChange={(e) => onChange({ ...config, fullShiftStart: e.target.value })}
+            onChange={(e) => onChange({ ...config, workPeriodStart: e.target.value })}
           />
           <Input
             label="По"
             type="time"
             step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-            value={config.fullShiftEnd}
+            value={config.workPeriodEnd}
             disabled={saving}
-            onChange={(e) => onChange({ ...config, fullShiftEnd: e.target.value })}
+            onChange={(e) => onChange({ ...config, workPeriodEnd: e.target.value })}
           />
         </div>
       </div>

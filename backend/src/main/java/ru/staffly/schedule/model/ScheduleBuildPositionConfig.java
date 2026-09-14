@@ -34,11 +34,11 @@ public class ScheduleBuildPositionConfig {
     @Builder.Default
     private Set<Position> positions = new LinkedHashSet<>();
 
-    @Column(name = "full_shift_start", nullable = false)
-    private LocalTime fullShiftStart;
+    @Column(name = "work_period_start", nullable = false)
+    private LocalTime workPeriodStart;
 
-    @Column(name = "full_shift_end", nullable = false)
-    private LocalTime fullShiftEnd;
+    @Column(name = "work_period_end", nullable = false)
+    private LocalTime workPeriodEnd;
 
     @Column(name = "min_rest_hours")
     private Integer minRestHours;
