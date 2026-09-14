@@ -38,6 +38,20 @@ public record CanonicalBusinessInterval(
         return endMinute() - startMinute();
     }
 
+    public boolean overlaps(CanonicalBusinessInterval other) {
+        Objects.requireNonNull(other, "other must not be null");
+        return startMinute() < other.endMinute() && other.startMinute() < endMinute();
+    }
+
+    public boolean contains(CanonicalBusinessInterval other) {
+        Objects.requireNonNull(other, "other must not be null");
+        return startMinute() <= other.startMinute() && endMinute() >= other.endMinute();
+    }
+
+    public boolean containsMinute(int canonicalMinute) {
+        return startMinute() <= canonicalMinute && canonicalMinute < endMinute();
+    }
+
     private static int canonicalMinute(LocalTime time, int dayOffset) {
         return dayOffset * MINUTES_PER_DAY + time.getHour() * 60 + time.getMinute();
     }
