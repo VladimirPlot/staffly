@@ -29,8 +29,8 @@ export type ScheduleBuildCoverageRuleDraft = {
 
 export type ScheduleBuildPositionConfigDraft = {
   positionIds: number[];
-  fullShiftStart: string;
-  fullShiftEnd: string;
+  workPeriodStart: string;
+  workPeriodEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours: number | "";
   minRestMode: ScheduleBuildMinRestMode;
@@ -83,8 +83,8 @@ export const createCoverageRuleDraft = (): ScheduleBuildCoverageRuleDraft => ({
 
 export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft => ({
   positionIds: [],
-  fullShiftStart: "",
-  fullShiftEnd: "",
+  workPeriodStart: "",
+  workPeriodEnd: "",
   targetPattern: "NONE",
   minRestHours: 12,
   minRestMode: "SOFT",
@@ -101,8 +101,8 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
   description: template?.description ?? "",
   positionConfigs: template?.positionConfigs?.map((config) => ({
     positionIds: config.positionIds ?? [],
-    fullShiftStart: config.fullShiftStart,
-    fullShiftEnd: config.fullShiftEnd,
+    workPeriodStart: config.workPeriodStart,
+    workPeriodEnd: config.workPeriodEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours ?? "",
     minRestMode: config.minRestMode ?? "SOFT",
@@ -138,8 +138,8 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
   description: draft.description.trim() ? draft.description.trim() : null,
   positionConfigs: draft.positionConfigs.map((config, index) => ({
     positionIds: [...new Set(config.positionIds)].sort((a, b) => a - b),
-    fullShiftStart: config.fullShiftStart,
-    fullShiftEnd: config.fullShiftEnd,
+    workPeriodStart: config.workPeriodStart,
+    workPeriodEnd: config.workPeriodEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
     minRestMode: config.minRestMode,
@@ -190,8 +190,8 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
   for (let i = 0; i < draft.positionConfigs.length; i++) {
     const config = draft.positionConfigs[i];
     if (config.positionIds.length === 0) return `Укажите хотя бы одну должность #${i + 1}`;
-    if (!config.fullShiftStart || !config.fullShiftEnd) return `Укажите рабочий диапазон для должности #${i + 1}`;
-    if (!isTimeMultipleOf15Minutes(config.fullShiftStart) || !isTimeMultipleOf15Minutes(config.fullShiftEnd)) {
+    if (!config.workPeriodStart || !config.workPeriodEnd) return `Укажите рабочий период для должности #${i + 1}`;
+    if (!isTimeMultipleOf15Minutes(config.workPeriodStart) || !isTimeMultipleOf15Minutes(config.workPeriodEnd)) {
       return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
     }
     if ((config.shiftOptions ?? []).length === 0) return `Добавьте хотя бы одну смену для должности #${i + 1}`;

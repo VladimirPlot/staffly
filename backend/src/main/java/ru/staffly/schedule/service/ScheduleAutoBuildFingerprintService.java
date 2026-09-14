@@ -43,7 +43,7 @@ public class ScheduleAutoBuildFingerprintService {
                 .sorted(Comparator.comparing(ScheduleBuildPositionConfig::getId, Comparator.nullsFirst(Long::compareTo)))
                 .toList();
         for (ScheduleBuildPositionConfig config : configs) {
-            out.add("config", config.getId(), config.getFullShiftStart(), config.getFullShiftEnd(),
+            out.add("config", config.getId(), config.getWorkPeriodStart(), config.getWorkPeriodEnd(),
                     config.getTargetPattern() == null ? null : config.getTargetPattern().name(),
                     config.getMinRestHours(), config.getMinRestMode() == null ? null : config.getMinRestMode().name(),
                     config.getMaxShiftsPerPeriod(), config.getSortOrder());

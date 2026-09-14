@@ -111,7 +111,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         int idx = 0;
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
             if (cfg == null) throw new BadRequestException("positionConfig is required");
-            validateInterval(cfg.fullShiftStart(), cfg.fullShiftEnd(), "fullShift");
+            validateInterval(cfg.workPeriodStart(), cfg.workPeriodEnd(), "workPeriod");
             List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional.ofNullable(cfg.shiftOptions()).orElse(List.of());
             if (shiftOptions.isEmpty()) throw new BadRequestException("shiftOptions must not be empty");
 
@@ -125,8 +125,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setTemplate(template);
             entity.getPositions().clear();
             cfgPositionIds.stream().map(positionMap::get).forEach(entity.getPositions()::add);
-            entity.setFullShiftStart(cfg.fullShiftStart());
-            entity.setFullShiftEnd(cfg.fullShiftEnd());
+            entity.setWorkPeriodStart(cfg.workPeriodStart());
+            entity.setWorkPeriodEnd(cfg.workPeriodEnd());
             entity.setTargetPattern(cfg.targetPattern() == null ? ScheduleBuildPattern.NONE : cfg.targetPattern());
             if (cfg.minRestHours() != null && cfg.minRestHours() < 0) throw new BadRequestException("minRestHours must be >= 0");
             if (cfg.maxShiftsPerPeriod() != null && cfg.maxShiftsPerPeriod() <= 0) throw new BadRequestException("maxShiftsPerPeriod must be > 0");
@@ -292,7 +292,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private ScheduleBuildTemplateDto toDto(ScheduleBuildTemplate t) {
         return new ScheduleBuildTemplateDto(t.getId(), t.getName(), t.getDescription(), t.isActive(), t.getCreatedAt(), t.getUpdatedAt(),
                 t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(
-                        pc.getId(), configPositionIds(pc), configPositionNames(pc), pc.getFullShiftStart(), pc.getFullShiftEnd(),
+                        pc.getId(), configPositionIds(pc), configPositionNames(pc), pc.getWorkPeriodStart(), pc.getWorkPeriodEnd(),
                         pc.getTargetPattern(), pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(),
                         pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
                         pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),

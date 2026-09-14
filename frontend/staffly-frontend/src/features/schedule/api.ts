@@ -265,8 +265,8 @@ export type ScheduleBuildPositionConfigDto = {
   id: number;
   positionIds: number[];
   positionNames: string[];
-  fullShiftStart: string;
-  fullShiftEnd: string;
+  workPeriodStart: string;
+  workPeriodEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours: number | null;
   minRestMode: ScheduleBuildMinRestMode;
@@ -312,8 +312,8 @@ export type SaveScheduleBuildCoverageDateOverrideRequest = {
 
 export type SaveScheduleBuildPositionConfigRequest = {
   positionIds: number[];
-  fullShiftStart: string;
-  fullShiftEnd: string;
+  workPeriodStart: string;
+  workPeriodEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours?: number | null;
   minRestMode?: ScheduleBuildMinRestMode | null;
