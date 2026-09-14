@@ -239,7 +239,6 @@ export type ScheduleBuildShiftOptionDto = {
   startTime: string;
   endTime: string;
   label: string | null;
-  isFullShift: boolean;
   sortOrder: number;
 };
 
@@ -292,7 +291,6 @@ export type SaveScheduleBuildShiftOptionRequest = {
   startTime: string;
   endTime: string;
   label?: string | null;
-  isFullShift: boolean;
   sortOrder: number;
 };
 
