@@ -53,7 +53,7 @@ public class ScheduleAutoBuildFingerprintService {
             config.getShiftOptions().stream()
                     .sorted(Comparator.comparing(ScheduleBuildShiftOption::getId, Comparator.nullsFirst(Long::compareTo)))
                     .forEach(option -> out.add("shift", option.getId(), option.getStartTime(), option.getEndTime(),
-                            option.isFullShift(), option.getSortOrder()));
+                            option.getSortOrder()));
             config.getCoverageRules().stream()
                     .sorted(Comparator.comparing(this::coverageKey))
                     .forEach(rule -> out.add("coverage", rule.getDayOfWeek(), rule.getStartTime(), rule.getEndTime(),
@@ -64,7 +64,7 @@ public class ScheduleAutoBuildFingerprintService {
                         ScheduleBuildShiftOption option = override.getShiftOption();
                         out.add("override", override.getDate(), option == null ? null : option.getId(),
                                 option == null ? null : option.getStartTime(), option == null ? null : option.getEndTime(),
-                                option != null && option.isFullShift(), override.getRequiredCount());
+                                override.getRequiredCount());
                     });
         }
 

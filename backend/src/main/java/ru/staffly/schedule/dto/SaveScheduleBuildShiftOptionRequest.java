@@ -6,6 +6,5 @@ public record SaveScheduleBuildShiftOptionRequest(
         LocalTime startTime,
         LocalTime endTime,
         String label,
-        Boolean isFullShift,
         Integer sortOrder
 ) {}

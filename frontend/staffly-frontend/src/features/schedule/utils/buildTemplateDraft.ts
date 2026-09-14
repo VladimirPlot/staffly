@@ -9,7 +9,6 @@ export type ScheduleBuildShiftOptionDraft = {
   startTime: string;
   endTime: string;
   label: string;
-  isFullShift: boolean;
   sortOrder: number;
 };
 
@@ -69,7 +68,6 @@ export const createShiftOptionDraft = (): ScheduleBuildShiftOptionDraft => ({
   startTime: "",
   endTime: "",
   label: "",
-  isFullShift: false,
   sortOrder: 0,
 });
 
@@ -115,7 +113,6 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label ?? "",
-      isFullShift: option.isFullShift,
       sortOrder: option.sortOrder,
     })),
     coverageRules: (config.coverageRules ?? []).map((rule) => ({
@@ -152,7 +149,6 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label?.trim() ? option.label.trim() : null,
-      isFullShift: option.isFullShift,
       sortOrder: optionIndex,
     })),
     coverageRules: config.coverageRules.map((rule, ruleIndex) => ({

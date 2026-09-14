@@ -7,6 +7,5 @@ public record ScheduleBuildShiftOptionDto(
         LocalTime startTime,
         LocalTime endTime,
         String label,
-        boolean isFullShift,
         Integer sortOrder
 ) {}

@@ -147,7 +147,6 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 o.setStartTime(option.startTime());
                 o.setEndTime(option.endTime());
                 o.setLabel(trimToNull(option.label()));
-                o.setFullShift(Boolean.TRUE.equals(option.isFullShift()));
                 o.setSortOrder(option.sortOrder() != null ? option.sortOrder() : so++);
                 entity.getShiftOptions().add(o);
             }
@@ -295,7 +294,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                         pc.getId(), configPositionIds(pc), configPositionNames(pc), pc.getWorkPeriodStart(), pc.getWorkPeriodEnd(),
                         pc.getTargetPattern(), pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(),
                         pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
-                        pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.isFullShift(), o.getSortOrder())).toList(),
+                        pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.getSortOrder())).toList(),
                         pc.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
                         pc.getCoverageDateOverrides().stream()
                                 .map(o -> new ScheduleBuildCoverageDateOverrideDto(o.getId(), o.getDate(), shiftOptionIndex(pc, o.getShiftOption()), o.getRequiredCount()))
