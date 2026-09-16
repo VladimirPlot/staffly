@@ -1,5 +1,7 @@
 package ru.staffly.schedule.model;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Objects;
 
@@ -36,6 +38,16 @@ public record CanonicalBusinessInterval(
 
     public int durationMinutes() {
         return endMinute() - startMinute();
+    }
+
+    public LocalDateTime physicalStart(LocalDate businessDate) {
+        Objects.requireNonNull(businessDate, "businessDate must not be null");
+        return businessDate.plusDays(startDayOffset).atTime(startTime);
+    }
+
+    public LocalDateTime physicalEnd(LocalDate businessDate) {
+        Objects.requireNonNull(businessDate, "businessDate must not be null");
+        return businessDate.plusDays(endDayOffset).atTime(endTime);
     }
 
     public boolean overlaps(CanonicalBusinessInterval other) {
