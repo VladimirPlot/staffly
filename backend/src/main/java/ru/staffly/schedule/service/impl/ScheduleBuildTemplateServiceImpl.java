@@ -111,7 +111,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         int idx = 0;
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
             if (cfg == null) throw new BadRequestException("positionConfig is required");
-            validateInterval(cfg.workPeriodStart(), cfg.workPeriodEnd(), "workPeriod");
+            validateWorkPeriod(cfg.workPeriodStart(), cfg.workPeriodEnd());
             List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional.ofNullable(cfg.shiftOptions()).orElse(List.of());
             if (shiftOptions.isEmpty()) throw new BadRequestException("shiftOptions must not be empty");
 
@@ -213,6 +213,13 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (start == null || end == null) throw new BadRequestException(field + " interval is required");
         if (start.equals(end)) throw new BadRequestException(field + " startTime must not equal endTime");
         if (!end.equals(LocalTime.MIDNIGHT) && start.isAfter(end)) throw new BadRequestException(field + " startTime must be before endTime");
+    }
+
+    private void validateWorkPeriod(LocalTime start, LocalTime end) {
+        if (start == null || end == null) throw new BadRequestException("workPeriod interval is required");
+        if (!start.equals(end) && !end.equals(LocalTime.MIDNIGHT) && start.isAfter(end)) {
+            throw new BadRequestException("workPeriod startTime must be before endTime");
+        }
     }
 
     private void validateCoverageRuleHasShiftOption(SaveScheduleBuildCoverageRuleRequest rule, List<ScheduleBuildShiftOption> shiftOptions) {
