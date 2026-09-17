@@ -7,5 +7,5 @@ import java.time.Instant;
 public record StartPreferenceCollectionRequest(
         @NotNull Long version,
         @NotNull Instant preferenceDeadline,
-        Long buildTemplateId
+        @NotNull Long buildTemplateId
 ) {}
