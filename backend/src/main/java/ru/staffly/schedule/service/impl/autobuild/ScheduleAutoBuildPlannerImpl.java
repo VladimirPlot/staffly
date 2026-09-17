@@ -10,6 +10,8 @@ import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildCoverageDateOverride;
 import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
+import ru.staffly.schedule.model.CanonicalBusinessInterval;
+import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
@@ -24,13 +26,16 @@ import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.UncoveredS
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.RejectionHintPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -136,6 +141,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState
     ) {
+        CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                config.getWorkPeriodStart(), config.getWorkPeriodEnd());
+        plannerState.registerCanonicalOptions(workPeriod, safeShiftOptions(config));
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
@@ -452,7 +460,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config
     ) {
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, selected.getId(), day);
-        boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option.getStartTime(), option.getEndTime());
+        boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option);
         AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, preferenceCell, minRestViolation, config.getMinRestHours());
         assignments.add(assignmentResult.assignment());
         registerAssignment(plannerState, selected, day, option, config);
@@ -708,7 +716,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         int shiftsCount = plannerState.shiftsCount(member.getId());
         String displayName = displayName(member);
-        boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option.getStartTime(), option.getEndTime());
+        boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
         MatchStatus matchStatus = matchStatusFor(preferenceCell, option);
         PreferenceGrade memberGrade = grade(matchStatus);
@@ -798,7 +806,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (hasAssignmentOnDay(member, plannerState, day)) {
             return CandidateRejectionReason.OVERLAP;
         }
-        if (overlapsExistingAssignment(member, plannerState, day, option.getStartTime(), option.getEndTime())) {
+        if (overlapsExistingAssignment(member, plannerState, day, option)) {
             return CandidateRejectionReason.OVERLAP;
         }
         if (isStrictMinRest(config) && minRestViolation) {
@@ -833,19 +841,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember member,
             PlannerState plannerState,
             LocalDate day,
-            LocalTime startTime,
-            LocalTime endTime
+            ScheduleBuildShiftOption option
     ) {
-        long candidateStart = toAbsoluteMinute(day, startTime, false, startTime);
-        long candidateEnd = toAbsoluteMinute(day, endTime, true, startTime);
+        AssignedInterval candidate = new AssignedInterval(day, plannerState.canonicalInterval(option));
 
         return plannerState.assignedIntervals(member.getId()).stream()
-                .anyMatch(interval -> overlaps(
-                        candidateStart,
-                        candidateEnd,
-                        interval.startAbsoluteMinute(),
-                        interval.endAbsoluteMinute()
-                ));
+                .anyMatch(candidate::overlaps);
     }
 
     private boolean violatesMinRest(
@@ -853,8 +854,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
             LocalDate day,
-            LocalTime startTime,
-            LocalTime endTime
+            ScheduleBuildShiftOption option
     ) {
         Integer minRestHours = config.getMinRestHours();
         if (minRestHours == null || minRestHours <= 0) {
@@ -862,33 +862,27 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
         return !hasEnoughRest(
                 plannerState.assignedIntervals(member.getId()),
-                day,
-                startTime,
-                endTime,
+                new AssignedInterval(day, plannerState.canonicalInterval(option)),
                 minRestHours
         );
     }
 
-    private boolean hasEnoughRest(
+    static boolean hasEnoughRest(
             List<AssignedInterval> existingAssignments,
-            LocalDate candidateDay,
-            LocalTime shiftStart,
-            LocalTime shiftEnd,
+            AssignedInterval candidate,
             int minRestHours
     ) {
-        long requiredRestMinutes = (long) minRestHours * 60;
-        long candidateStart = toAbsoluteMinute(candidateDay, shiftStart, false, shiftStart);
-        long candidateEnd = toAbsoluteMinute(candidateDay, shiftEnd, true, shiftStart);
+        Duration requiredRest = Duration.ofHours(minRestHours);
 
         for (AssignedInterval interval : existingAssignments) {
-            if (candidateStart >= interval.endAbsoluteMinute()) {
-                long restMinutes = candidateStart - interval.endAbsoluteMinute();
-                if (restMinutes < requiredRestMinutes) {
+            if (!candidate.physicalStart().isBefore(interval.physicalEnd())) {
+                Duration rest = Duration.between(interval.physicalEnd(), candidate.physicalStart());
+                if (rest.compareTo(requiredRest) < 0) {
                     return false;
                 }
-            } else if (interval.startAbsoluteMinute() >= candidateEnd) {
-                long restMinutes = interval.startAbsoluteMinute() - candidateEnd;
-                if (restMinutes < requiredRestMinutes) {
+            } else if (!interval.physicalStart().isBefore(candidate.physicalEnd())) {
+                Duration rest = Duration.between(candidate.physicalEnd(), interval.physicalStart());
+                if (rest.compareTo(requiredRest) < 0) {
                     return false;
                 }
             }
@@ -1015,7 +1009,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config
     ) {
-        plannerState.register(member.getId(), new AssignedInterval(day, option.getStartTime(), option.getEndTime()));
+        plannerState.register(member.getId(), new AssignedInterval(day, plannerState.canonicalInterval(option)));
         if (isHeavyDay(config, day)) {
             plannerState.registerHeavyDay(member.getId(), configKey(config));
         }
@@ -1330,19 +1324,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return startA < endB && startB < endA;
     }
 
-    private boolean overlaps(long startA, long endA, long startB, long endB) {
-        return startA < endB && startB < endA;
-    }
-
-    private long toAbsoluteMinute(LocalDate day, LocalTime time, boolean endTime, LocalTime shiftStart) {
-        long dayStart = day.toEpochDay() * END_OF_DAY_MINUTES;
-        int minute = toMinute(time, endTime);
-        if (endTime && minute <= toMinute(shiftStart, false)) {
-            return dayStart + END_OF_DAY_MINUTES + minute;
-        }
-        return dayStart + minute;
-    }
-
     private boolean covers(int startA, int endA, int startB, int endB) {
         return startA <= startB && endA >= endB;
     }
@@ -1588,6 +1569,26 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         private final Map<Long, Integer> shiftsCountByMember = new HashMap<>();
         private final Map<Long, List<AssignedInterval>> assignedIntervalsByMember = new HashMap<>();
         private final Map<Long, Map<String, Integer>> heavyDaysCountByMemberAndConfig = new HashMap<>();
+        private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> canonicalIntervalsByOption = new IdentityHashMap<>();
+
+        private void registerCanonicalOptions(
+                CanonicalBusinessInterval workPeriod,
+                List<ScheduleBuildShiftOption> shiftOptions
+        ) {
+            shiftOptions.forEach(option -> canonicalIntervalsByOption.put(
+                    option,
+                    CanonicalBusinessIntervalResolver.resolveInside(
+                            workPeriod, option.getStartTime(), option.getEndTime())
+            ));
+        }
+
+        private CanonicalBusinessInterval canonicalInterval(ScheduleBuildShiftOption option) {
+            CanonicalBusinessInterval interval = canonicalIntervalsByOption.get(option);
+            if (interval == null) {
+                throw new IllegalStateException("Shift option has no canonical planner interval");
+            }
+            return interval;
+        }
 
         private int shiftsCount(Long memberId) {
             return shiftsCountByMember.getOrDefault(memberId, 0);
@@ -1621,6 +1622,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         private PlannerState copy() {
             PlannerState copy = new PlannerState();
             copy.shiftsCountByMember.putAll(shiftsCountByMember);
+            copy.canonicalIntervalsByOption.putAll(canonicalIntervalsByOption);
             assignedIntervalsByMember.forEach((memberId, intervals) ->
                     copy.assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
             );
@@ -1644,48 +1646,32 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
     }
 
-    private static final class AssignedInterval {
+    static final class AssignedInterval {
         private final LocalDate day;
-        private final LocalTime startTime;
-        private final LocalTime endTime;
-        private final long startAbsoluteMinute;
-        private final long endAbsoluteMinute;
+        private final LocalDateTime physicalStart;
+        private final LocalDateTime physicalEnd;
 
-        private AssignedInterval(LocalDate day, LocalTime startTime, LocalTime endTime) {
+        AssignedInterval(LocalDate day, CanonicalBusinessInterval interval) {
             this.day = day;
-            this.startTime = startTime;
-            this.endTime = endTime;
-            this.startAbsoluteMinute = day.toEpochDay() * END_OF_DAY_MINUTES
-                    + startTime.getHour() * 60L
-                    + startTime.getMinute();
-            long endMinute = LocalTime.MIDNIGHT.equals(endTime)
-                    ? END_OF_DAY_MINUTES
-                    : endTime.getHour() * 60L + endTime.getMinute();
-            long startMinute = startTime.getHour() * 60L + startTime.getMinute();
-            if (endMinute <= startMinute) {
-                endMinute += END_OF_DAY_MINUTES;
-            }
-            this.endAbsoluteMinute = day.toEpochDay() * END_OF_DAY_MINUTES + endMinute;
+            this.physicalStart = interval.physicalStart(day);
+            this.physicalEnd = interval.physicalEnd(day);
         }
 
-        private LocalDate day() {
+        LocalDate day() {
             return day;
         }
 
-        private LocalTime startTime() {
-            return startTime;
+        LocalDateTime physicalStart() {
+            return physicalStart;
         }
 
-        private LocalTime endTime() {
-            return endTime;
+        LocalDateTime physicalEnd() {
+            return physicalEnd;
         }
 
-        private long startAbsoluteMinute() {
-            return startAbsoluteMinute;
-        }
-
-        private long endAbsoluteMinute() {
-            return endAbsoluteMinute;
+        boolean overlaps(AssignedInterval other) {
+            return physicalStart.isBefore(other.physicalEnd)
+                    && other.physicalStart.isBefore(physicalEnd);
         }
     }
 
