@@ -263,6 +263,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
         Set<LocalDate> seenDays = new HashSet<>();
         List<SchedulePreferenceCell> cells = new ArrayList<>(safeRequests.size());
+        PreferenceIntervalValidation intervalValidation = null;
         for (int i = 0; i < safeRequests.size(); i++) {
             SchedulePreferenceCellRequest request = safeRequests.get(i);
             if (request == null) {
@@ -291,11 +292,18 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             } else {
                 startTime = parseTime(request.startTime(), "cells[" + i + "].startTime");
                 endTime = parseTime(request.endTime(), "cells[" + i + "].endTime");
-                if (!isValidPreferenceInterval(startTime, endTime)) {
-                    throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
+                if (startTime.equals(endTime)) {
+                    throw unavailablePreferenceInterval(startTime, endTime);
                 }
-                if (!isAllowedShiftOption(schedule, member, startTime, endTime)) {
-                    throw new BadRequestException("cells[" + i + "] interval is not available for member position");
+                if (schedule.getPreferenceBuildTemplate() == null) {
+                    if (!isValidPreferenceInterval(startTime, endTime)) {
+                        throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
+                    }
+                } else {
+                    if (intervalValidation == null) {
+                        intervalValidation = preferenceIntervalValidation(schedule, member);
+                    }
+                    validatePreferenceInterval(intervalValidation, startTime, endTime);
                 }
             }
             cells.add(SchedulePreferenceCell.builder()
@@ -311,22 +319,72 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return cells;
     }
 
-    private boolean isAllowedShiftOption(Schedule schedule,
-                                         RestaurantMember member,
-                                         LocalTime startTime,
-                                         LocalTime endTime) {
-        if (schedule.getPreferenceBuildTemplate() == null) {
-            return true;
-        }
+    private PreferenceIntervalValidation preferenceIntervalValidation(Schedule schedule,
+                                                                      RestaurantMember member) {
         Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
         if (positionId == null) {
-            return false;
+            throw new BadRequestException("Для должности сотрудника не найдены настройки рабочего периода");
         }
-        return schedule.getPreferenceShiftOptionSnapshots().stream()
+
+        List<ScheduleBuildPositionConfig> matchingConfigs = schedule.getPreferenceBuildTemplate().getPositionConfigs().stream()
+                .filter(config -> configPositionIds(config).contains(positionId))
+                .toList();
+        if (matchingConfigs.size() != 1) {
+            throw new BadRequestException("Для должности сотрудника не найдены однозначные настройки рабочего периода");
+        }
+
+        ScheduleBuildPositionConfig config = matchingConfigs.get(0);
+        CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                config.getWorkPeriodStart(),
+                config.getWorkPeriodEnd()
+        );
+        Set<CanonicalBusinessInterval> allowedIntervals = schedule.getPreferenceShiftOptionSnapshots().stream()
                 .filter(option -> option.getPositionIds().contains(positionId))
-                .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
-                        && Objects.equals(option.getEndTime(), endTime));
+                .map(option -> resolveSnapshotInterval(workPeriod, option))
+                .collect(Collectors.toSet());
+        return new PreferenceIntervalValidation(workPeriod, allowedIntervals);
     }
+
+    private CanonicalBusinessInterval resolveSnapshotInterval(CanonicalBusinessInterval workPeriod,
+                                                                SchedulePreferenceShiftOptionSnapshot option) {
+        try {
+            return CanonicalBusinessIntervalResolver.resolveInside(
+                    workPeriod,
+                    option.getStartTime(),
+                    option.getEndTime()
+            );
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Настройки доступных смен не соответствуют рабочему периоду");
+        }
+    }
+
+    private void validatePreferenceInterval(PreferenceIntervalValidation validation,
+                                            LocalTime startTime,
+                                            LocalTime endTime) {
+        CanonicalBusinessInterval preferenceInterval;
+        try {
+            preferenceInterval = CanonicalBusinessIntervalResolver.resolveInside(
+                    validation.workPeriod(),
+                    startTime,
+                    endTime
+            );
+        } catch (IllegalArgumentException ex) {
+            throw unavailablePreferenceInterval(startTime, endTime);
+        }
+        if (!validation.allowedIntervals().contains(preferenceInterval)) {
+            throw unavailablePreferenceInterval(startTime, endTime);
+        }
+    }
+
+    private BadRequestException unavailablePreferenceInterval(LocalTime startTime, LocalTime endTime) {
+        return new BadRequestException("Выбранный интервал " + startTime + "–" + endTime
+                + " недоступен для этого рабочего дня");
+    }
+
+    private record PreferenceIntervalValidation(
+            CanonicalBusinessInterval workPeriod,
+            Set<CanonicalBusinessInterval> allowedIntervals
+    ) { }
 
     private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
         return config.getPositions() == null ? List.of() : config.getPositions().stream()
