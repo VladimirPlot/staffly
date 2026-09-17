@@ -441,7 +441,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
             }
-            cursor = Math.max(cursor + 1, workingState.canonicalInterval(option).endMinute());
+            cursor = workingState.canonicalInterval(option).endMinute();
         }
 
         boolean complete = uncoveredSlots.isEmpty() && cursor >= ruleEnd;

@@ -77,6 +77,29 @@ class ScheduleAutoBuildPlannerCoverageTimeTest {
     }
 
     @Test
+    void keepsOneMinuteCanonicalGapUncovered() {
+        ScheduleAutoBuildPlan plan = build("10:00", "06:00", "18:00", "06:00",
+                option("18:00", "00:00", 1), option("00:01", "06:00", 2));
+
+        assertEquals(2, plan.totalAssignments());
+        assertEquals(1, plan.unfilledCount());
+        assertEquals(1, plan.uncoveredSlots().size());
+        assertEquals("00:00", plan.uncoveredSlots().get(0).startTime());
+        assertEquals("00:01", plan.uncoveredSlots().get(0).endTime());
+    }
+
+    @Test
+    void convertsCrossMidnightCanonicalGapToWallClockDisplay() {
+        ScheduleAutoBuildPlan plan = build("10:00", "06:00", "23:00", "01:00");
+
+        assertEquals(0, plan.totalAssignments());
+        assertEquals(1, plan.unfilledCount());
+        assertEquals(1, plan.uncoveredSlots().size());
+        assertEquals("23:00", plan.uncoveredSlots().get(0).startTime());
+        assertEquals("01:00", plan.uncoveredSlots().get(0).endTime());
+    }
+
+    @Test
     void buildsSplitInsideTwentyFourHourPeriodAnchoredAtTen() {
         ScheduleAutoBuildPlan plan = build("10:00", "10:00", "18:00", "06:00",
                 option("18:00", "00:00", 1), option("00:00", "06:00", 2));
