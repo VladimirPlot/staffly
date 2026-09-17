@@ -475,10 +475,12 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
 
+        Long buildTemplateId = request == null ? null : request.buildTemplateId();
+        if (buildTemplateId == null) {
+            throw new BadRequestException("Выберите шаблон сборки для сбора пожеланий");
+        }
         ScheduleBuildTemplate preferenceBuildTemplate = resolvePreferenceBuildTemplateForUpdate(
-                restaurantId,
-                schedule,
-                request == null ? null : request.buildTemplateId()
+                restaurantId, schedule, buildTemplateId
         );
 
         replacePreferenceShiftOptionSnapshot(schedule, preferenceBuildTemplate);
@@ -502,9 +504,6 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private ScheduleBuildTemplate resolvePreferenceBuildTemplateForUpdate(Long restaurantId, Schedule schedule, Long buildTemplateId) {
-        if (buildTemplateId == null) {
-            return null;
-        }
         ScheduleBuildTemplate template = buildTemplates.findForUpdateByIdAndRestaurantId(buildTemplateId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("Активный шаблон сборки не найден"));
         if (!template.isActive()) {
@@ -523,9 +522,6 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private void replacePreferenceShiftOptionSnapshot(Schedule schedule, ScheduleBuildTemplate template) {
         schedule.getPreferenceShiftOptionSnapshots().clear();
-        if (template == null) {
-            return;
-        }
         Set<Long> schedulePositionIds = new HashSet<>(SchedulePositionIds.ids(schedule));
         int order = 0;
         for (ScheduleBuildPositionConfig config : template.getPositionConfigs().stream()

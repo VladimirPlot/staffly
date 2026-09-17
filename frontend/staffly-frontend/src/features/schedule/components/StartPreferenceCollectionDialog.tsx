@@ -13,6 +13,7 @@ type StartPreferenceCollectionDialogProps = {
   buildTemplates: ScheduleBuildTemplateDto[];
   templatesLoading: boolean;
   error: string | null;
+  templateError: string | null;
   saving: boolean;
   onDeadlineChange: (value: string) => void;
   onBuildTemplateChange: (value: string) => void;
@@ -28,6 +29,7 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
   buildTemplates,
   templatesLoading,
   error,
+  templateError,
   saving,
   onDeadlineChange,
   onBuildTemplateChange,
@@ -47,6 +49,7 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
   }, [onClose, saving]);
 
   const activeTemplates = buildTemplates.filter((template) => template.isActive);
+  const hasActiveTemplates = activeTemplates.length > 0;
 
   return (
     <Modal
@@ -60,7 +63,11 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
           <Button variant="outline" onClick={handleClose} disabled={saving} className="w-full">
             Отмена
           </Button>
-          <Button onClick={onSubmit} disabled={saving} className="w-full">
+          <Button
+            onClick={onSubmit}
+            disabled={saving || templatesLoading || !hasActiveTemplates}
+            className="w-full"
+          >
             {saving ? "Запуск…" : "Запустить"}
           </Button>
         </div>
@@ -79,18 +86,28 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
           label="Шаблон для пожеланий"
           value={buildTemplateId}
           onChange={(event) => onBuildTemplateChange(event.target.value)}
-          disabled={saving || templatesLoading}
+          disabled={saving || templatesLoading || !hasActiveTemplates}
+          error={templateError ?? undefined}
+          required
         >
-          <option value="">Без шаблона</option>
+          <option value="" disabled>
+            Выберите шаблон
+          </option>
           {activeTemplates.map((template) => (
             <option key={template.id} value={String(template.id)}>
               {template.name}
             </option>
           ))}
         </DropdownSelect>
-        <p className="text-muted text-xs">
-          Если шаблон выбран, сотрудник сможет указать точное время только из вариантов смен для своей должности.
-        </p>
+        {!templatesLoading && !hasActiveTemplates ? (
+          <p className="text-sm text-red-600">
+            Сначала создайте активный шаблон сборки. Без него начать сбор пожеланий нельзя.
+          </p>
+        ) : (
+          <p className="text-muted text-xs">
+            Сотрудник сможет указать точное время только из вариантов смен для своей должности.
+          </p>
+        )}
       </div>
     </Modal>
   );
