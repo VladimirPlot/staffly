@@ -992,6 +992,7 @@ const SchedulePage: React.FC = () => {
         buildTemplates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
         error={lifecycleActions.preferenceDeadlineError}
+        templateError={lifecycleActions.preferenceBuildTemplateError}
         saving={lifecycleActions.pendingAction === "startPreferences"}
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
         onBuildTemplateChange={lifecycleActions.setPreferenceBuildTemplateId}

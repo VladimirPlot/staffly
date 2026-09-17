@@ -123,7 +123,7 @@ export type CreateDraftScheduleRequest = CreateSchedulePayload;
 export type StartPreferenceCollectionRequest = {
   version: number;
   preferenceDeadline: string;
-  buildTemplateId?: number | null;
+  buildTemplateId: number;
 };
 
 export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF";
