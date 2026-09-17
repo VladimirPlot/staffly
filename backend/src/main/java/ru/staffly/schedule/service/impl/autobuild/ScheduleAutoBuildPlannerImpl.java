@@ -158,6 +158,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             DayBuildResult dayResult = buildAssignmentsForDay(
                     day,
                     config,
+                    workPeriod,
                     demandLookup,
                     candidates,
                     preferencesByMemberAndDay,
@@ -216,6 +217,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private DayBuildResult buildAssignmentsForDay(
             LocalDate day,
             ScheduleBuildPositionConfig config,
+            CanonicalBusinessInterval workPeriod,
             DemandLookup demandLookup,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
@@ -240,6 +242,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CoverageRuleResult ruleResult = buildAssignmentForCoverageRule(
                     day,
                     config,
+                    CanonicalBusinessIntervalResolver.resolveInside(
+                            workPeriod, rule.getStartTime(), rule.getEndTime()),
                     rule,
                     candidates,
                     preferencesByMemberAndDay,
@@ -261,6 +265,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private CoverageRuleResult buildAssignmentForCoverageRule(
             LocalDate day,
             ScheduleBuildPositionConfig config,
+            CanonicalBusinessInterval canonicalRule,
             ScheduleBuildCoverageRule rule,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
@@ -276,7 +281,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         int requiredCount = safeRequiredCount(rule);
         List<ScheduleBuildShiftOption> shiftOptions = safeShiftOptions(config);
-        ScheduleBuildShiftOption singleOption = findExactShiftOption(shiftOptions, rule);
+        ScheduleBuildShiftOption singleOption = findExactShiftOption(shiftOptions, canonicalRule, plannerState);
 
         for (int index = 0; index < requiredCount; index++) {
             CandidateSelectionResult singleSelection = CandidateSelectionResult.empty();
@@ -311,7 +316,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CoverageLayerResult positiveSplitResult = buildFallbackCoverageLayer(
                     day,
                     config,
-                    rule,
+                    canonicalRule,
                     candidates,
                     preferencesByMemberAndDay,
                     plannerState,
@@ -348,7 +353,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CoverageLayerResult layerResult = buildFallbackCoverageLayer(
                     day,
                     config,
-                    rule,
+                    canonicalRule,
                     candidates,
                     preferencesByMemberAndDay,
                     plannerState,
@@ -371,7 +376,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private CoverageLayerResult buildFallbackCoverageLayer(
             LocalDate day,
             ScheduleBuildPositionConfig config,
-            ScheduleBuildCoverageRule rule,
+            CanonicalBusinessInterval canonicalRule,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
@@ -388,14 +393,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
 
         PlannerState workingState = requireComplete ? plannerState.copy() : plannerState;
-        int ruleStart = toMinute(rule.getStartTime(), false);
-        int ruleEnd = toMinute(rule.getEndTime(), true);
+        int ruleStart = canonicalRule.startMinute();
+        int ruleEnd = canonicalRule.endMinute();
         int cursor = ruleStart;
 
         while (cursor < ruleEnd) {
             SplitOptionSelection splitSelection = selectSplitOption(
                     shiftOptions,
-                    rule,
+                    canonicalRule,
                     cursor,
                     candidates,
                     preferencesByMemberAndDay,
@@ -408,7 +413,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
             if (splitSelection.option() == null || splitSelection.selection().selected() == null) {
                 rejectionHints.addAll(splitSelection.selection().rejectionHints());
-                int nextBoundary = nextCoverageBoundary(shiftOptions, rule, cursor, ruleEnd);
+                int nextBoundary = nextCoverageBoundary(shiftOptions, cursor, ruleEnd, workingState);
                 LocalTime uncoveredStart = minuteToTime(cursor);
                 LocalTime uncoveredEnd = minuteToTime(nextBoundary);
                 ScheduleBuildShiftOption warningOption = ScheduleBuildShiftOption.builder()
@@ -436,7 +441,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
             }
-            cursor = Math.max(cursor + 1, toMinute(option.getEndTime(), true));
+            cursor = Math.max(cursor + 1, workingState.canonicalInterval(option).endMinute());
         }
 
         boolean complete = uncoveredSlots.isEmpty() && cursor >= ruleEnd;
@@ -469,7 +474,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private SplitOptionSelection selectSplitOption(
             List<ScheduleBuildShiftOption> shiftOptions,
-            ScheduleBuildCoverageRule rule,
+            CanonicalBusinessInterval canonicalRule,
             int cursor,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
@@ -481,9 +486,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         SplitOptionSelection best = null;
         for (ScheduleBuildShiftOption option : shiftOptions) {
-            int optionStart = toMinute(option.getStartTime(), false);
-            int optionEnd = toMinute(option.getEndTime(), true);
-            if (optionStart < toMinute(rule.getStartTime(), false) || optionEnd > toMinute(rule.getEndTime(), true)) {
+            CanonicalBusinessInterval canonicalOption = plannerState.canonicalInterval(option);
+            int optionStart = canonicalOption.startMinute();
+            int optionEnd = canonicalOption.endMinute();
+            if (optionStart < canonicalRule.startMinute() || optionEnd > canonicalRule.endMinute()) {
                 continue;
             }
             if (optionStart > cursor || optionEnd <= cursor) {
@@ -504,14 +510,20 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 continue;
             }
             SplitOptionSelection current = new SplitOptionSelection(option, selection);
-            if (best == null || compareSplitOption(current, best, cursor, toMinute(rule.getEndTime(), true)) < 0) {
+            if (best == null || compareSplitOption(current, best, cursor, canonicalRule.endMinute(), plannerState) < 0) {
                 best = current;
             }
         }
         return best == null ? new SplitOptionSelection(null, CandidateSelectionResult.empty()) : best;
     }
 
-    private int compareSplitOption(SplitOptionSelection left, SplitOptionSelection right, int cursor, int ruleEnd) {
+    private int compareSplitOption(
+            SplitOptionSelection left,
+            SplitOptionSelection right,
+            int cursor,
+            int ruleEnd,
+            PlannerState plannerState
+    ) {
         CandidateEvaluation leftCandidate = left.selection().selected();
         CandidateEvaluation rightCandidate = right.selection().selected();
         if (leftCandidate == null && rightCandidate != null) {
@@ -520,8 +532,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (leftCandidate != null && rightCandidate == null) {
             return -1;
         }
-        int leftStart = toMinute(left.option().getStartTime(), false);
-        int rightStart = toMinute(right.option().getStartTime(), false);
+        int leftStart = plannerState.canonicalInterval(left.option()).startMinute();
+        int rightStart = plannerState.canonicalInterval(right.option()).startMinute();
         int byExactStart = Boolean.compare(rightStart == cursor, leftStart == cursor);
         if (byExactStart != 0) {
             return byExactStart;
@@ -530,8 +542,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (byMatchStatus != 0) {
             return byMatchStatus;
         }
-        int leftEnd = toMinute(left.option().getEndTime(), true);
-        int rightEnd = toMinute(right.option().getEndTime(), true);
+        int leftEnd = plannerState.canonicalInterval(left.option()).endMinute();
+        int rightEnd = plannerState.canonicalInterval(right.option()).endMinute();
         int leftExtraCoverage = Math.max(0, cursor - leftStart) + Math.max(0, leftEnd - ruleEnd);
         int rightExtraCoverage = Math.max(0, cursor - rightStart) + Math.max(0, rightEnd - ruleEnd);
         int byExtraCoverage = Integer.compare(leftExtraCoverage, rightExtraCoverage);
@@ -582,19 +594,22 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return grade == PreferenceGrade.SOFT_NEGATIVE || grade == PreferenceGrade.HARD_NEGATIVE;
     }
 
-    private int nextCoverageBoundary(List<ScheduleBuildShiftOption> shiftOptions, ScheduleBuildCoverageRule rule, int cursor, int ruleEnd) {
+    private int nextCoverageBoundary(
+            List<ScheduleBuildShiftOption> shiftOptions,
+            int cursor,
+            int ruleEnd,
+            PlannerState plannerState
+    ) {
         return shiftOptions.stream()
-                .mapToInt(option -> toMinute(option.getStartTime(), false))
+                .mapToInt(option -> plannerState.canonicalInterval(option).startMinute())
                 .filter(start -> start > cursor && start < ruleEnd)
                 .min()
                 .orElse(ruleEnd);
     }
 
     private LocalTime minuteToTime(int minute) {
-        if (minute >= END_OF_DAY_MINUTES) {
-            return LocalTime.MIDNIGHT;
-        }
-        return LocalTime.of(minute / 60, minute % 60);
+        int minuteOfDay = Math.floorMod(minute, END_OF_DAY_MINUTES);
+        return LocalTime.of(minuteOfDay / 60, minuteOfDay % 60);
     }
 
     private AssignmentBuildResult createAssignment(
@@ -1234,40 +1249,16 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return type == SchedulePreferenceType.AVAILABLE;
     }
 
-    private ScheduleBuildShiftOption findExactShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
+    private ScheduleBuildShiftOption findExactShiftOption(
+            List<ScheduleBuildShiftOption> options,
+            CanonicalBusinessInterval canonicalRule,
+            PlannerState plannerState
+    ) {
         for (ScheduleBuildShiftOption option : options) {
-            if (intervalsEqual(option.getStartTime(), option.getEndTime(), rule.getStartTime(), rule.getEndTime())) {
+            if (plannerState.canonicalInterval(option).equals(canonicalRule)) {
                 return option;
             }
         }
-        return null;
-    }
-
-    private ScheduleBuildShiftOption findShiftOption(List<ScheduleBuildShiftOption> options, ScheduleBuildCoverageRule rule) {
-        for (ScheduleBuildShiftOption option : options) {
-            boolean exactMatch = intervalsEqual(
-                    option.getStartTime(),
-                    option.getEndTime(),
-                    rule.getStartTime(),
-                    rule.getEndTime()
-            );
-            if (exactMatch) {
-                return option;
-            }
-        }
-
-        for (ScheduleBuildShiftOption option : options) {
-            boolean containsRuleInterval = coversInterval(
-                    option.getStartTime(),
-                    option.getEndTime(),
-                    rule.getStartTime(),
-                    rule.getEndTime()
-            );
-            if (containsRuleInterval) {
-                return option;
-            }
-        }
-
         return null;
     }
 
