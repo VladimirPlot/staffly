@@ -13,6 +13,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
+import ru.staffly.schedule.dto.SaveScheduleBuildCoverageRuleRequest;
 import ru.staffly.schedule.dto.SaveScheduleBuildPositionConfigRequest;
 import ru.staffly.schedule.dto.SaveScheduleBuildShiftOptionRequest;
 import ru.staffly.schedule.dto.SaveScheduleBuildTemplateRequest;
@@ -91,13 +92,84 @@ class ScheduleBuildTemplateServiceImplTest {
         );
     }
 
+    @ParameterizedTest(name = "work period {0}-{1}, shift {2}-{3} accepts coverage {4}-{5}")
+    @MethodSource("validCoverageRules")
+    void acceptsCanonicalCoverageRules(
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd,
+            String coverageStart,
+            String coverageEnd
+    ) {
+        ScheduleBuildTemplateDto result = createWithCoverage(
+                workStart, workEnd, shiftStart, shiftEnd, coverageStart, coverageEnd
+        );
+
+        assertEquals(time(coverageStart), result.positionConfigs().get(0).coverageRules().get(0).startTime());
+        assertEquals(time(coverageEnd), result.positionConfigs().get(0).coverageRules().get(0).endTime());
+    }
+
+    @ParameterizedTest(name = "work period {0}-{1}, shift {2}-{3} rejects coverage {4}-{5}")
+    @MethodSource("invalidCoverageRules")
+    void rejectsInvalidCanonicalCoverageRules(
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd,
+            String coverageStart,
+            String coverageEnd
+    ) {
+        assertThrows(BadRequestException.class, () -> createWithCoverage(
+                workStart, workEnd, shiftStart, shiftEnd, coverageStart, coverageEnd
+        ));
+    }
+
+    @Test
+    void reportsMissingCanonicalCoveringShiftOption() {
+        BadRequestException error = assertThrows(
+                BadRequestException.class,
+                () -> createWithCoverage("10:00", "06:00", "10:00", "18:00", "18:00", "06:00")
+        );
+
+        assertEquals(
+                "Для правила покрытия 1 18:00–06:00 не найден подходящий вариант смены. "
+                        + "Добавьте вариант смены, который покрывает этот интервал.",
+                error.getMessage()
+        );
+    }
+
     private ScheduleBuildTemplateDto create(String workStart, String workEnd, String shiftStart, String shiftEnd) {
+        return create(workStart, workEnd, shiftStart, shiftEnd, List.of());
+    }
+
+    private ScheduleBuildTemplateDto createWithCoverage(
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd,
+            String coverageStart,
+            String coverageEnd
+    ) {
+        SaveScheduleBuildCoverageRuleRequest coverageRule = new SaveScheduleBuildCoverageRuleRequest(
+                1, time(coverageStart), time(coverageEnd), 1, null
+        );
+        return create(workStart, workEnd, shiftStart, shiftEnd, List.of(coverageRule));
+    }
+
+    private ScheduleBuildTemplateDto create(
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd,
+            List<SaveScheduleBuildCoverageRuleRequest> coverageRules
+    ) {
         SaveScheduleBuildShiftOptionRequest shift = new SaveScheduleBuildShiftOptionRequest(
                 time(shiftStart), time(shiftEnd), null, null
         );
         SaveScheduleBuildPositionConfigRequest config = new SaveScheduleBuildPositionConfigRequest(
                 List.of(2L), time(workStart), time(workEnd), null, null, null, null,
-                List.of(), List.of(shift), List.of(), List.of(), null
+                List.of(), List.of(shift), coverageRules, List.of(), null
         );
         return service.create(
                 1L,
@@ -149,8 +221,50 @@ class ScheduleBuildTemplateServiceImplTest {
         );
     }
 
+    private static Stream<Arguments> validCoverageRules() {
+        return Stream.of(
+                arguments("10:00", "06:00", "10:00", "18:00", "10:00", "18:00"),
+                arguments("10:00", "06:00", "18:00", "06:00", "18:00", "06:00"),
+                arguments("10:00", "06:00", "21:00", "02:00", "21:00", "02:00"),
+                arguments("10:00", "06:00", "18:00", "06:00", "00:00", "06:00"),
+                arguments("00:00", "00:00", "00:00", "06:00", "00:00", "06:00"),
+                arguments("00:00", "00:00", "18:00", "00:00", "18:00", "00:00"),
+                arguments("10:00", "10:00", "18:00", "06:00", "18:00", "06:00"),
+                arguments("10:00", "10:00", "18:00", "06:00", "00:00", "06:00"),
+                arguments("10:00", "10:00", "06:00", "10:00", "06:00", "10:00"),
+                arguments("10:00", "06:00", "18:00", "06:00", "21:00", "02:00")
+        );
+    }
+
+    private static Stream<Arguments> invalidCoverageRules() {
+        return Stream.of(
+                // Partial overlap is not full coverage.
+                arguments("10:00", "06:00", "18:00", "02:00", "00:00", "06:00"),
+                // Coverage must first fit inside the work period.
+                arguments("10:00", "18:00", "10:00", "18:00", "17:00", "20:00"),
+                arguments("00:00", "00:00", "00:00", "06:00", "18:00", "06:00"),
+                arguments("00:00", "00:00", "00:00", "06:00", "21:00", "02:00"),
+                arguments("10:00", "10:00", "10:00", "18:00", "09:00", "11:00"),
+                arguments("10:00", "06:00", "10:00", "18:00", "10:00", "10:00"),
+                arguments("00:00", "00:00", "00:00", "06:00", "00:00", "00:00"),
+                // No shift option covers this otherwise valid rule.
+                arguments("10:00", "06:00", "10:00", "18:00", "18:00", "06:00")
+        );
+    }
+
     private static Arguments arguments(String workStart, String workEnd, String shiftStart, String shiftEnd) {
         return Arguments.of(workStart, workEnd, shiftStart, shiftEnd);
+    }
+
+    private static Arguments arguments(
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd,
+            String coverageStart,
+            String coverageEnd
+    ) {
+        return Arguments.of(workStart, workEnd, shiftStart, shiftEnd, coverageStart, coverageEnd);
     }
 
     private static LocalTime time(String value) {
