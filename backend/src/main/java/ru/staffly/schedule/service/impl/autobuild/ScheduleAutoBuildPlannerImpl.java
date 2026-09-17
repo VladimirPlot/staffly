@@ -300,10 +300,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     AssignmentBuildResult assignmentResult = assignSelected(
                             assignments,
                             plannerState,
-                            selectedSingle.member(),
+                            selectedSingle,
                             day,
                             singleOption,
-                            preferencesByMemberAndDay,
                             config
                     );
                     if (isNegativeGrade(assignmentResult.grade())) {
@@ -338,10 +337,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 AssignmentBuildResult assignmentResult = assignSelected(
                         assignments,
                         plannerState,
-                        singleSelection.selected().member(),
+                        singleSelection.selected(),
                         day,
                         singleOption,
-                        preferencesByMemberAndDay,
                         config
                 );
                 if (isNegativeGrade(assignmentResult.grade())) {
@@ -428,14 +426,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             }
 
             ScheduleBuildShiftOption option = splitSelection.option();
-            RestaurantMember selected = splitSelection.selection().selected().member();
+            CandidateEvaluation selected = splitSelection.selection().selected();
             AssignmentBuildResult assignmentResult = assignSelected(
                     assignments,
                     workingState,
                     selected,
                     day,
                     option,
-                    preferencesByMemberAndDay,
                     config
             );
             if (isNegativeGrade(assignmentResult.grade())) {
@@ -458,15 +455,21 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private AssignmentBuildResult assignSelected(
             List<AssignmentPlan> assignments,
             PlannerState plannerState,
-            RestaurantMember selected,
+            CandidateEvaluation selectedEvaluation,
             LocalDate day,
             ScheduleBuildShiftOption option,
-            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             ScheduleBuildPositionConfig config
     ) {
-        SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, selected.getId(), day);
+        RestaurantMember selected = selectedEvaluation.member();
         boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option);
-        AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, preferenceCell, minRestViolation, config.getMinRestHours());
+        AssignmentBuildResult assignmentResult = createAssignment(
+                selected,
+                day,
+                option,
+                selectedEvaluation.matchStatus(),
+                minRestViolation,
+                config.getMinRestHours()
+        );
         assignments.add(assignmentResult.assignment());
         registerAssignment(plannerState, selected, day, option, config);
         return assignmentResult;
@@ -616,12 +619,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember member,
             LocalDate day,
             ScheduleBuildShiftOption option,
-            SchedulePreferenceCell preferenceCell,
+            MatchStatus matchStatus,
             boolean minRestViolation,
             Integer minRestHours
     ) {
         List<String> cellWarnings = new ArrayList<>();
-        MatchStatus matchStatus = matchStatusFor(preferenceCell, option);
         PreferenceGrade grade = grade(matchStatus);
         String reason = reasonFor(cellWarnings, matchStatus, formatShift(option));
         String warningMessage = warningMessageFor(matchStatus);
@@ -733,7 +735,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
-        MatchStatus matchStatus = matchStatusFor(preferenceCell, option);
+        MatchStatus matchStatus = matchStatusFor(preferenceCell, option, plannerState);
         PreferenceGrade memberGrade = grade(matchStatus);
         CandidateRejectionReason rejectionReason = hardConstraintRejectionReason(
                 member,
@@ -1103,20 +1105,38 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return PreferenceGrade.NONE;
     }
 
-    private MatchStatus matchStatusFor(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
+    private MatchStatus matchStatusFor(
+            SchedulePreferenceCell cell,
+            ScheduleBuildShiftOption option,
+            PlannerState plannerState
+    ) {
+        return matchStatusFor(
+                cell,
+                plannerState.workPeriod(option),
+                plannerState.canonicalInterval(option)
+        );
+    }
+
+    MatchStatus matchStatusFor(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval workPeriod,
+            CanonicalBusinessInterval canonicalShift
+    ) {
         if (cell == null) {
             return MatchStatus.NO_PREFERENCE;
         }
 
-        if (isHardNegativeForShift(cell, option)) {
+        CanonicalBusinessInterval canonicalPreference = canonicalPreference(cell, workPeriod);
+
+        if (isHardNegativeForShift(cell, canonicalPreference, canonicalShift)) {
             return MatchStatus.HARD_NEGATIVE_FALLBACK;
         }
 
-        if (isExactPositiveForShift(cell, option)) {
+        if (isExactPositiveForShift(cell, canonicalPreference, canonicalShift)) {
             return MatchStatus.EXACT_INTERVAL_PREFERENCE;
         }
 
-        if (isCoveringPositiveForShift(cell, option)) {
+        if (isCoveringPositiveForShift(cell, canonicalPreference, canonicalShift)) {
             return MatchStatus.COVERING_INTERVAL_PREFERENCE;
         }
 
@@ -1124,11 +1144,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return MatchStatus.FULL_DAY_POSITIVE;
         }
 
-        if (hasPartialPositiveOverlap(cell, option)) {
+        if (hasPartialPositiveOverlap(cell, canonicalPreference, canonicalShift)) {
             return MatchStatus.PARTIAL_INTERVAL_FALLBACK;
         }
 
-        if (isSoftNegativeForShift(cell, option)) {
+        if (isSoftNegativeForShift(cell, canonicalPreference, canonicalShift)) {
             return MatchStatus.SOFT_NEGATIVE_FALLBACK;
         }
 
@@ -1139,110 +1159,88 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return cell.isFullDay() && isPositiveType(cell.getType());
     }
 
-    private boolean isExactPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        if (!isPositiveType(cell.getType()) || cell.isFullDay()) {
-            return false;
+    private CanonicalBusinessInterval canonicalPreference(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval workPeriod
+    ) {
+        if (cell.isFullDay() || cell.getStartTime() == null || cell.getEndTime() == null) {
+            return null;
         }
-        if (cell.getStartTime() == null || cell.getEndTime() == null) {
-            return false;
+        try {
+            return CanonicalBusinessIntervalResolver.resolveInside(
+                    workPeriod, cell.getStartTime(), cell.getEndTime());
+        } catch (IllegalArgumentException exception) {
+            return null;
         }
-
-        return intervalsEqual(
-                cell.getStartTime(),
-                cell.getEndTime(),
-                option.getStartTime(),
-                option.getEndTime()
-        );
     }
 
-    private boolean isCoveringPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        if (!isPositiveType(cell.getType()) || cell.isFullDay()) {
-            return false;
-        }
-        if (cell.getStartTime() == null || cell.getEndTime() == null) {
-            return false;
-        }
-        return coversInterval(cell.getStartTime(), cell.getEndTime(), option.getStartTime(), option.getEndTime())
-                && !intervalsEqual(cell.getStartTime(), cell.getEndTime(), option.getStartTime(), option.getEndTime());
+    private boolean isExactPositiveForShift(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval canonicalPreference,
+            CanonicalBusinessInterval canonicalShift
+    ) {
+        return isPositiveType(cell.getType())
+                && !cell.isFullDay()
+                && canonicalPreference != null
+                && canonicalPreference.equals(canonicalShift);
     }
 
-    private boolean isPositiveForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        if (!isPositiveType(cell.getType())) {
-            return false;
-        }
-        if (cell.isFullDay()) {
-            return true;
-        }
-        if (cell.getStartTime() == null || cell.getEndTime() == null) {
-            return false;
-        }
-
-        return intervalsEqual(
-                cell.getStartTime(),
-                cell.getEndTime(),
-                option.getStartTime(),
-                option.getEndTime()
-        );
+    private boolean isCoveringPositiveForShift(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval canonicalPreference,
+            CanonicalBusinessInterval canonicalShift
+    ) {
+        return isPositiveType(cell.getType())
+                && !cell.isFullDay()
+                && canonicalPreference != null
+                && canonicalPreference.contains(canonicalShift)
+                && !canonicalPreference.equals(canonicalShift);
     }
 
-    private boolean isSoftNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        return isNegativeForShift(cell, option, SchedulePreferenceType.PREFER_DAY_OFF);
+    private boolean isSoftNegativeForShift(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval canonicalPreference,
+            CanonicalBusinessInterval canonicalShift
+    ) {
+        return isNegativeForShift(
+                cell, canonicalPreference, canonicalShift, SchedulePreferenceType.PREFER_DAY_OFF);
     }
 
-    private boolean isHardNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        return isNegativeForShift(cell, option, SchedulePreferenceType.UNAVAILABLE);
+    private boolean isHardNegativeForShift(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval canonicalPreference,
+            CanonicalBusinessInterval canonicalShift
+    ) {
+        return isNegativeForShift(
+                cell, canonicalPreference, canonicalShift, SchedulePreferenceType.UNAVAILABLE);
     }
 
-    private boolean isNegativeForShift(SchedulePreferenceCell cell, ScheduleBuildShiftOption option, SchedulePreferenceType negativeType) {
+    private boolean isNegativeForShift(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval canonicalPreference,
+            CanonicalBusinessInterval canonicalShift,
+            SchedulePreferenceType negativeType
+    ) {
         if (cell.getType() != negativeType) {
             return false;
         }
         if (cell.isFullDay()) {
             return true;
         }
-        if (cell.getStartTime() == null || cell.getEndTime() == null) {
-            return false;
-        }
-
-        return overlaps(
-                toMinute(cell.getStartTime(), false),
-                toMinute(cell.getEndTime(), true),
-                toMinute(option.getStartTime(), false),
-                toMinute(option.getEndTime(), true)
-        );
+        return canonicalPreference != null && canonicalPreference.overlaps(canonicalShift);
     }
 
-    private boolean hasPartialPositiveOverlap(SchedulePreferenceCell cell, ScheduleBuildShiftOption option) {
-        int shiftStart = toMinute(option.getStartTime(), false);
-        int shiftEnd = toMinute(option.getEndTime(), true);
-
-        if (cell.isFullDay() || !isPositiveType(cell.getType())) {
-            return false;
-        }
-        if (cell.getStartTime() == null || cell.getEndTime() == null) {
-            return false;
-        }
-
-        boolean hasOverlap = overlaps(
-                toMinute(cell.getStartTime(), false),
-                toMinute(cell.getEndTime(), true),
-                shiftStart,
-                shiftEnd
-        );
-        boolean fullyCoversShift = coversInterval(
-                cell.getStartTime(),
-                cell.getEndTime(),
-                option.getStartTime(),
-                option.getEndTime()
-        );
-        boolean exactMatch = intervalsEqual(
-                cell.getStartTime(),
-                cell.getEndTime(),
-                option.getStartTime(),
-                option.getEndTime()
-        );
-
-        return hasOverlap && !fullyCoversShift && !exactMatch;
+    private boolean hasPartialPositiveOverlap(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval canonicalPreference,
+            CanonicalBusinessInterval canonicalShift
+    ) {
+        return !cell.isFullDay()
+                && isPositiveType(cell.getType())
+                && canonicalPreference != null
+                && canonicalPreference.overlaps(canonicalShift)
+                && !canonicalPreference.contains(canonicalShift)
+                && !canonicalPreference.equals(canonicalShift);
     }
 
     private boolean isPositiveType(SchedulePreferenceType type) {
@@ -1302,35 +1300,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private String formatShift(ScheduleBuildShiftOption option) {
         return formatInterval(option.getStartTime(), option.getEndTime());
-    }
-
-    private int toMinute(LocalTime time, boolean endTime) {
-        if (endTime && LocalTime.MIDNIGHT.equals(time)) {
-            return END_OF_DAY_MINUTES;
-        }
-        return time.getHour() * 60 + time.getMinute();
-    }
-
-    private boolean overlaps(int startA, int endA, int startB, int endB) {
-        return startA < endB && startB < endA;
-    }
-
-    private boolean covers(int startA, int endA, int startB, int endB) {
-        return startA <= startB && endA >= endB;
-    }
-
-    private boolean coversInterval(LocalTime aStart, LocalTime aEnd, LocalTime bStart, LocalTime bEnd) {
-        return covers(
-                toMinute(aStart, false),
-                toMinute(aEnd, true),
-                toMinute(bStart, false),
-                toMinute(bEnd, true)
-        );
-    }
-
-    private boolean intervalsEqual(LocalTime aStart, LocalTime aEnd, LocalTime bStart, LocalTime bEnd) {
-        return toMinute(aStart, false) == toMinute(bStart, false)
-                && toMinute(aEnd, true) == toMinute(bEnd, true);
     }
 
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
@@ -1469,9 +1438,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 continue;
             }
 
-            RestaurantMember selected = selection.selected().member();
-            SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, selected.getId(), day);
-            AssignmentBuildResult assignmentResult = createAssignment(selected, day, option, preferenceCell, false, null);
+            CandidateEvaluation selectedEvaluation = selection.selected();
+            RestaurantMember selected = selectedEvaluation.member();
+            AssignmentBuildResult assignmentResult = createAssignment(
+                    selected, day, option, selectedEvaluation.matchStatus(), false, null);
             assignments.add(assignmentResult.assignment());
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
@@ -1561,16 +1531,20 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         private final Map<Long, List<AssignedInterval>> assignedIntervalsByMember = new HashMap<>();
         private final Map<Long, Map<String, Integer>> heavyDaysCountByMemberAndConfig = new HashMap<>();
         private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> canonicalIntervalsByOption = new IdentityHashMap<>();
+        private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> workPeriodsByOption = new IdentityHashMap<>();
 
         private void registerCanonicalOptions(
                 CanonicalBusinessInterval workPeriod,
                 List<ScheduleBuildShiftOption> shiftOptions
         ) {
-            shiftOptions.forEach(option -> canonicalIntervalsByOption.put(
-                    option,
-                    CanonicalBusinessIntervalResolver.resolveInside(
-                            workPeriod, option.getStartTime(), option.getEndTime())
-            ));
+            shiftOptions.forEach(option -> {
+                canonicalIntervalsByOption.put(
+                        option,
+                        CanonicalBusinessIntervalResolver.resolveInside(
+                                workPeriod, option.getStartTime(), option.getEndTime())
+                );
+                workPeriodsByOption.put(option, workPeriod);
+            });
         }
 
         private CanonicalBusinessInterval canonicalInterval(ScheduleBuildShiftOption option) {
@@ -1579,6 +1553,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 throw new IllegalStateException("Shift option has no canonical planner interval");
             }
             return interval;
+        }
+
+        private CanonicalBusinessInterval workPeriod(ScheduleBuildShiftOption option) {
+            CanonicalBusinessInterval workPeriod = workPeriodsByOption.get(option);
+            if (workPeriod == null) {
+                throw new IllegalStateException("Shift option has no canonical planner work period");
+            }
+            return workPeriod;
         }
 
         private int shiftsCount(Long memberId) {
@@ -1614,6 +1596,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             PlannerState copy = new PlannerState();
             copy.shiftsCountByMember.putAll(shiftsCountByMember);
             copy.canonicalIntervalsByOption.putAll(canonicalIntervalsByOption);
+            copy.workPeriodsByOption.putAll(workPeriodsByOption);
             assignedIntervalsByMember.forEach((memberId, intervals) ->
                     copy.assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
             );
@@ -1681,7 +1664,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         HARD_NEGATIVE
     }
 
-    private enum MatchStatus {
+    enum MatchStatus {
         EXACT_INTERVAL_PREFERENCE,
         COVERING_INTERVAL_PREFERENCE,
         FULL_DAY_POSITIVE,

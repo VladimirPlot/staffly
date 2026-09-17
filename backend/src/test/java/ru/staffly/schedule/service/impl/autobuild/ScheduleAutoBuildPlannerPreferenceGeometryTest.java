@@ -1,0 +1,95 @@
+package ru.staffly.schedule.service.impl.autobuild;
+
+import org.junit.jupiter.api.Test;
+import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.schedule.model.CanonicalBusinessInterval;
+import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
+import ru.staffly.schedule.model.SchedulePreferenceCell;
+import ru.staffly.schedule.model.SchedulePreferenceType;
+import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+
+import java.time.LocalTime;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+
+class ScheduleAutoBuildPlannerPreferenceGeometryTest {
+    private final ScheduleAutoBuildPlannerImpl planner = new ScheduleAutoBuildPlannerImpl(
+            mock(RestaurantMemberRepository.class),
+            mock(SchedulePreferenceSubmissionRepository.class)
+    );
+
+    @Test
+    void characterizesCanonicalPositiveGeometry() {
+        assertStatus("EXACT_INTERVAL_PREFERENCE", "10:00", "06:00", "00:00", "06:00", available("00:00", "06:00")); // A
+        assertStatus("EXACT_INTERVAL_PREFERENCE", "10:00", "06:00", "18:00", "06:00", available("18:00", "06:00")); // B
+        assertStatus("PARTIAL_INTERVAL_FALLBACK", "10:00", "06:00", "18:00", "06:00", available("00:00", "06:00")); // C
+        assertStatus("COVERING_INTERVAL_PREFERENCE", "10:00", "06:00", "00:00", "06:00", available("18:00", "06:00")); // D
+        assertStatus("PARTIAL_INTERVAL_FALLBACK", "10:00", "06:00", "21:00", "02:00", available("00:00", "06:00")); // E
+        assertStatus("NO_PREFERENCE", "10:00", "06:00", "18:00", "02:00", available("03:00", "06:00")); // F
+        assertStatus("NO_PREFERENCE", "10:00", "06:00", "00:00", "06:00", available("18:00", "23:00")); // G
+        assertStatus("PARTIAL_INTERVAL_FALLBACK", "10:00", "18:00", "10:00", "18:00", available("14:00", "18:00")); // H
+        assertStatus("COVERING_INTERVAL_PREFERENCE", "10:00", "18:00", "12:00", "16:00", available("10:00", "18:00")); // I
+    }
+
+    @Test
+    void keepsFullDayAndMissingCellSemanticsIndependentOfIntervalResolution() {
+        assertStatus("FULL_DAY_POSITIVE", "10:00", "06:00", "00:00", "06:00", fullDay(SchedulePreferenceType.AVAILABLE)); // J
+        assertStatus("NO_PREFERENCE", "10:00", "06:00", "00:00", "06:00", null); // K
+        assertStatus("HARD_NEGATIVE_FALLBACK", "10:00", "06:00", "00:00", "06:00", fullDay(SchedulePreferenceType.UNAVAILABLE)); // L
+        assertStatus("SOFT_NEGATIVE_FALLBACK", "10:00", "06:00", "00:00", "06:00", fullDay(SchedulePreferenceType.PREFER_DAY_OFF)); // M
+    }
+
+    @Test
+    void characterizesCanonicalNegativeGeometry() {
+        assertStatus("HARD_NEGATIVE_FALLBACK", "10:00", "06:00", "00:00", "06:00", interval(SchedulePreferenceType.UNAVAILABLE, "18:00", "02:00")); // N1
+        assertStatus("NO_PREFERENCE", "10:00", "06:00", "03:00", "06:00", interval(SchedulePreferenceType.UNAVAILABLE, "18:00", "02:00")); // N2
+        assertStatus("SOFT_NEGATIVE_FALLBACK", "10:00", "06:00", "00:00", "06:00", interval(SchedulePreferenceType.PREFER_DAY_OFF, "18:00", "02:00"));
+        assertStatus("NO_PREFERENCE", "10:00", "06:00", "03:00", "06:00", interval(SchedulePreferenceType.PREFER_DAY_OFF, "18:00", "02:00"));
+    }
+
+    @Test
+    void invalidOrMalformedPersistedIntervalContributesNoPreference() {
+        assertStatus("NO_PREFERENCE", "10:00", "18:00", "10:00", "18:00", available("18:00", "20:00"));
+        assertStatus("NO_PREFERENCE", "10:00", "18:00", "10:00", "18:00",
+                SchedulePreferenceCell.builder().type(SchedulePreferenceType.AVAILABLE).fullDay(false).startTime(time("12:00")).build());
+        assertStatus("NO_PREFERENCE", "10:00", "18:00", "10:00", "18:00", available("12:00", "12:00"));
+    }
+
+    private void assertStatus(
+            String expected,
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd,
+            SchedulePreferenceCell preference
+    ) {
+        CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                time(workStart), time(workEnd));
+        CanonicalBusinessInterval shift = CanonicalBusinessIntervalResolver.resolveInside(
+                workPeriod, time(shiftStart), time(shiftEnd));
+
+        assertEquals(expected, planner.matchStatusFor(preference, workPeriod, shift).name());
+    }
+
+    private static SchedulePreferenceCell available(String start, String end) {
+        return interval(SchedulePreferenceType.AVAILABLE, start, end);
+    }
+
+    private static SchedulePreferenceCell interval(SchedulePreferenceType type, String start, String end) {
+        return SchedulePreferenceCell.builder()
+                .type(type)
+                .fullDay(false)
+                .startTime(time(start))
+                .endTime(time(end))
+                .build();
+    }
+
+    private static SchedulePreferenceCell fullDay(SchedulePreferenceType type) {
+        return SchedulePreferenceCell.builder().type(type).fullDay(true).build();
+    }
+
+    private static LocalTime time(String value) {
+        return LocalTime.parse(value);
+    }
+}
