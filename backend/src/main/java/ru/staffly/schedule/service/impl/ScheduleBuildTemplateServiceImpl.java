@@ -111,7 +111,10 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         int idx = 0;
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
             if (cfg == null) throw new BadRequestException("positionConfig is required");
-            validateWorkPeriod(cfg.workPeriodStart(), cfg.workPeriodEnd());
+            CanonicalBusinessInterval canonicalWorkPeriod = validateWorkPeriod(
+                    cfg.workPeriodStart(),
+                    cfg.workPeriodEnd()
+            );
             List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional.ofNullable(cfg.shiftOptions()).orElse(List.of());
             if (shiftOptions.isEmpty()) throw new BadRequestException("shiftOptions must not be empty");
 
@@ -141,7 +144,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             int so = 0;
             for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
                 if (option == null) throw new BadRequestException("shiftOption is required");
-                validateInterval(option.startTime(), option.endTime(), "shiftOption");
+                validateShiftOption(option, canonicalWorkPeriod, cfg.workPeriodStart(), cfg.workPeriodEnd());
                 ScheduleBuildShiftOption o = new ScheduleBuildShiftOption();
                 o.setPositionConfig(entity);
                 o.setStartTime(option.startTime());
@@ -215,10 +218,26 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (!end.equals(LocalTime.MIDNIGHT) && start.isAfter(end)) throw new BadRequestException(field + " startTime must be before endTime");
     }
 
-    private void validateWorkPeriod(LocalTime start, LocalTime end) {
+    private CanonicalBusinessInterval validateWorkPeriod(LocalTime start, LocalTime end) {
         if (start == null || end == null) throw new BadRequestException("workPeriod interval is required");
-        if (!start.equals(end) && !end.equals(LocalTime.MIDNIGHT) && start.isAfter(end)) {
-            throw new BadRequestException("workPeriod startTime must be before endTime");
+        return CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(start, end);
+    }
+
+    private void validateShiftOption(
+            SaveScheduleBuildShiftOptionRequest option,
+            CanonicalBusinessInterval workPeriod,
+            LocalTime workPeriodStart,
+            LocalTime workPeriodEnd
+    ) {
+        LocalTime start = option.startTime();
+        LocalTime end = option.endTime();
+        if (start == null || end == null) throw new BadRequestException("shiftOption interval is required");
+        if (start.equals(end)) throw new BadRequestException("shiftOption startTime must not equal endTime");
+        try {
+            CanonicalBusinessIntervalResolver.resolveInside(workPeriod, start, end);
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Вариант смены " + start + "–" + end
+                    + " не помещается в рабочий период " + workPeriodStart + "–" + workPeriodEnd);
         }
     }
 

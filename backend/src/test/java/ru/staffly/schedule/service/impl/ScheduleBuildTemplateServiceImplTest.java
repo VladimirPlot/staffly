@@ -1,0 +1,159 @@
+package ru.staffly.schedule.service.impl;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.repository.RestaurantRepository;
+import ru.staffly.schedule.dto.SaveScheduleBuildPositionConfigRequest;
+import ru.staffly.schedule.dto.SaveScheduleBuildShiftOptionRequest;
+import ru.staffly.schedule.dto.SaveScheduleBuildTemplateRequest;
+import ru.staffly.schedule.dto.ScheduleBuildTemplateDto;
+import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
+import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.service.ScheduleAccessService;
+import ru.staffly.security.SecurityService;
+
+import java.time.LocalTime;
+import java.util.List;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ScheduleBuildTemplateServiceImplTest {
+
+    @Mock private ScheduleBuildTemplateRepository templates;
+    @Mock private ScheduleRepository schedules;
+    @Mock private RestaurantRepository restaurants;
+    @Mock private PositionRepository positions;
+    @Mock private SecurityService securityService;
+    @Mock private ScheduleAccessService scheduleAccessService;
+
+    private ScheduleBuildTemplateServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        service = new ScheduleBuildTemplateServiceImpl(
+                templates, schedules, restaurants, positions, securityService, scheduleAccessService
+        );
+        Restaurant restaurant = Restaurant.builder().id(1L).build();
+        Position position = Position.builder().id(2L).restaurant(restaurant).name("Cook").build();
+        when(restaurants.findById(1L)).thenReturn(java.util.Optional.of(restaurant));
+        when(positions.findAllById(any())).thenReturn(List.of(position));
+        lenient().when(templates.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @ParameterizedTest(name = "work period {0}-{1} accepts shift {2}-{3}")
+    @MethodSource("validIntervals")
+    void acceptsCanonicalShiftPlacements(String workStart, String workEnd, String shiftStart, String shiftEnd) {
+        ScheduleBuildTemplateDto result = create(workStart, workEnd, shiftStart, shiftEnd);
+
+        assertEquals(time(workStart), result.positionConfigs().get(0).workPeriodStart());
+        assertEquals(time(workEnd), result.positionConfigs().get(0).workPeriodEnd());
+        assertEquals(time(shiftStart), result.positionConfigs().get(0).shiftOptions().get(0).startTime());
+        assertEquals(time(shiftEnd), result.positionConfigs().get(0).shiftOptions().get(0).endTime());
+    }
+
+    @ParameterizedTest(name = "work period {0}-{1} rejects shift {2}-{3}")
+    @MethodSource("invalidIntervals")
+    void rejectsShiftPlacementsOutsideCanonicalWorkPeriod(
+            String workStart,
+            String workEnd,
+            String shiftStart,
+            String shiftEnd
+    ) {
+        assertThrows(BadRequestException.class, () -> create(workStart, workEnd, shiftStart, shiftEnd));
+    }
+
+    @Test
+    void reportsRawValuesWhenShiftDoesNotFit() {
+        BadRequestException error = assertThrows(
+                BadRequestException.class,
+                () -> create("00:00", "00:00", "18:00", "06:00")
+        );
+
+        assertEquals(
+                "Вариант смены 18:00–06:00 не помещается в рабочий период 00:00–00:00",
+                error.getMessage()
+        );
+    }
+
+    private ScheduleBuildTemplateDto create(String workStart, String workEnd, String shiftStart, String shiftEnd) {
+        SaveScheduleBuildShiftOptionRequest shift = new SaveScheduleBuildShiftOptionRequest(
+                time(shiftStart), time(shiftEnd), null, null
+        );
+        SaveScheduleBuildPositionConfigRequest config = new SaveScheduleBuildPositionConfigRequest(
+                List.of(2L), time(workStart), time(workEnd), null, null, null, null,
+                List.of(), List.of(shift), List.of(), List.of(), null
+        );
+        return service.create(
+                1L,
+                3L,
+                new SaveScheduleBuildTemplateRequest("Template", null, true, List.of(config))
+        );
+    }
+
+    private static Stream<Arguments> validIntervals() {
+        return Stream.of(
+                // A: overnight business day
+                arguments("10:00", "06:00", "10:00", "18:00"),
+                arguments("10:00", "06:00", "18:00", "06:00"),
+                arguments("10:00", "06:00", "21:00", "02:00"),
+                arguments("10:00", "06:00", "00:00", "06:00"),
+                arguments("10:00", "06:00", "10:00", "06:00"),
+                // B: calendar-day business day
+                arguments("00:00", "00:00", "00:00", "12:00"),
+                arguments("00:00", "00:00", "12:00", "00:00"),
+                arguments("00:00", "00:00", "00:00", "06:00"),
+                arguments("00:00", "00:00", "18:00", "00:00"),
+                // C: 24-hour business day starting at 10:00
+                arguments("10:00", "10:00", "10:00", "18:00"),
+                arguments("10:00", "10:00", "18:00", "06:00"),
+                arguments("10:00", "10:00", "00:00", "06:00"),
+                arguments("10:00", "10:00", "06:00", "10:00"),
+                // D: same-day business day
+                arguments("10:00", "18:00", "10:00", "18:00"),
+                arguments("10:00", "18:00", "10:00", "17:00"),
+                arguments("10:00", "18:00", "14:00", "18:00")
+        );
+    }
+
+    private static Stream<Arguments> invalidIntervals() {
+        return Stream.of(
+                arguments("10:00", "06:00", "08:00", "12:00"),
+                arguments("10:00", "06:00", "05:00", "11:00"),
+                arguments("10:00", "06:00", "06:00", "10:00"),
+                arguments("10:00", "06:00", "10:00", "10:00"),
+                arguments("10:00", "06:00", "00:00", "00:00"),
+                arguments("00:00", "00:00", "18:00", "06:00"),
+                arguments("00:00", "00:00", "21:00", "02:00"),
+                arguments("00:00", "00:00", "00:00", "00:00"),
+                arguments("10:00", "10:00", "09:00", "11:00"),
+                arguments("10:00", "10:00", "10:00", "10:00"),
+                arguments("10:00", "18:00", "18:00", "06:00"),
+                arguments("10:00", "18:00", "08:00", "12:00"),
+                arguments("10:00", "18:00", "17:00", "20:00")
+        );
+    }
+
+    private static Arguments arguments(String workStart, String workEnd, String shiftStart, String shiftEnd) {
+        return Arguments.of(workStart, workEnd, shiftStart, shiftEnd);
+    }
+
+    private static LocalTime time(String value) {
+        return LocalTime.parse(value);
+    }
+}
