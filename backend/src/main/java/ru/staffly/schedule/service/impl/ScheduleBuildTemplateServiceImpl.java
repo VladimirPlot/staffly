@@ -141,10 +141,16 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
 
             entity.getShiftOptions().clear();
+            List<CanonicalBusinessInterval> canonicalShiftOptions = new ArrayList<>();
             int so = 0;
             for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
                 if (option == null) throw new BadRequestException("shiftOption is required");
-                validateShiftOption(option, canonicalWorkPeriod, cfg.workPeriodStart(), cfg.workPeriodEnd());
+                canonicalShiftOptions.add(validateShiftOption(
+                        option,
+                        canonicalWorkPeriod,
+                        cfg.workPeriodStart(),
+                        cfg.workPeriodEnd()
+                ));
                 ScheduleBuildShiftOption o = new ScheduleBuildShiftOption();
                 o.setPositionConfig(entity);
                 o.setStartTime(option.startTime());
@@ -160,8 +166,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 if (rule == null) throw new BadRequestException("coverageRule is required");
                 if (rule.dayOfWeek() == null || rule.dayOfWeek() < 1 || rule.dayOfWeek() > 7) throw new BadRequestException("coverageRule.dayOfWeek must be 1..7");
                 if (rule.requiredCount() == null || rule.requiredCount() <= 0) throw new BadRequestException("coverageRule.requiredCount must be > 0");
-                validateInterval(rule.startTime(), rule.endTime(), "coverageRule");
-                validateCoverageRuleHasShiftOption(rule, entity.getShiftOptions());
+                CanonicalBusinessInterval canonicalCoverageRule = validateCoverageRule(rule, canonicalWorkPeriod);
+                validateCoverageRuleHasShiftOption(rule, canonicalCoverageRule, canonicalShiftOptions);
                 ScheduleBuildCoverageRule r = new ScheduleBuildCoverageRule();
                 r.setPositionConfig(entity);
                 r.setDayOfWeek(rule.dayOfWeek());
@@ -212,18 +218,12 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 .toList();
     }
 
-    private void validateInterval(LocalTime start, LocalTime end, String field) {
-        if (start == null || end == null) throw new BadRequestException(field + " interval is required");
-        if (start.equals(end)) throw new BadRequestException(field + " startTime must not equal endTime");
-        if (!end.equals(LocalTime.MIDNIGHT) && start.isAfter(end)) throw new BadRequestException(field + " startTime must be before endTime");
-    }
-
     private CanonicalBusinessInterval validateWorkPeriod(LocalTime start, LocalTime end) {
         if (start == null || end == null) throw new BadRequestException("workPeriod interval is required");
         return CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(start, end);
     }
 
-    private void validateShiftOption(
+    private CanonicalBusinessInterval validateShiftOption(
             SaveScheduleBuildShiftOptionRequest option,
             CanonicalBusinessInterval workPeriod,
             LocalTime workPeriodStart,
@@ -234,48 +234,42 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (start == null || end == null) throw new BadRequestException("shiftOption interval is required");
         if (start.equals(end)) throw new BadRequestException("shiftOption startTime must not equal endTime");
         try {
-            CanonicalBusinessIntervalResolver.resolveInside(workPeriod, start, end);
+            return CanonicalBusinessIntervalResolver.resolveInside(workPeriod, start, end);
         } catch (IllegalArgumentException exception) {
             throw new BadRequestException("Вариант смены " + start + "–" + end
                     + " не помещается в рабочий период " + workPeriodStart + "–" + workPeriodEnd);
         }
     }
 
-    private void validateCoverageRuleHasShiftOption(SaveScheduleBuildCoverageRuleRequest rule, List<ScheduleBuildShiftOption> shiftOptions) {
-        boolean hasCoveringShiftOption = shiftOptions.stream().anyMatch(option -> intervalsEqual(
-                option.getStartTime(),
-                option.getEndTime(),
-                rule.startTime(),
-                rule.endTime()
-        ) || coversInterval(
-                option.getStartTime(),
-                option.getEndTime(),
-                rule.startTime(),
-                rule.endTime()
-        ));
+    private CanonicalBusinessInterval validateCoverageRule(
+            SaveScheduleBuildCoverageRuleRequest rule,
+            CanonicalBusinessInterval workPeriod
+    ) {
+        LocalTime start = rule.startTime();
+        LocalTime end = rule.endTime();
+        if (start == null || end == null) throw new BadRequestException("coverageRule interval is required");
+        if (start.equals(end)) throw new BadRequestException("coverageRule startTime must not equal endTime");
+        try {
+            return CanonicalBusinessIntervalResolver.resolveInside(workPeriod, start, end);
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Правило покрытия " + rule.dayOfWeek() + " " + start + "–" + end
+                    + " не помещается в рабочий период");
+        }
+    }
+
+    private void validateCoverageRuleHasShiftOption(
+            SaveScheduleBuildCoverageRuleRequest rule,
+            CanonicalBusinessInterval coverageRule,
+            List<CanonicalBusinessInterval> shiftOptions
+    ) {
+        boolean hasCoveringShiftOption = shiftOptions.stream()
+                .anyMatch(option -> option.contains(coverageRule));
         if (!hasCoveringShiftOption) {
             throw new BadRequestException("Для правила покрытия "
                     + rule.dayOfWeek() + " "
                     + rule.startTime() + "–" + rule.endTime()
                     + " не найден подходящий вариант смены. Добавьте вариант смены, который покрывает этот интервал.");
         }
-    }
-
-    private boolean intervalsEqual(LocalTime leftStart, LocalTime leftEnd, LocalTime rightStart, LocalTime rightEnd) {
-        return toMinute(leftStart, false) == toMinute(rightStart, false)
-                && toMinute(leftEnd, true) == toMinute(rightEnd, true);
-    }
-
-    private boolean coversInterval(LocalTime outerStart, LocalTime outerEnd, LocalTime innerStart, LocalTime innerEnd) {
-        return toMinute(outerStart, false) <= toMinute(innerStart, false)
-                && toMinute(outerEnd, true) >= toMinute(innerEnd, true);
-    }
-
-    private int toMinute(LocalTime time, boolean endTime) {
-        if (endTime && LocalTime.MIDNIGHT.equals(time)) {
-            return 24 * 60;
-        }
-        return time.getHour() * 60 + time.getMinute();
     }
 
     private void assertManageAccess(Long restaurantId, Long actorUserId) {
