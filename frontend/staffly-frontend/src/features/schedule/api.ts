@@ -123,7 +123,8 @@ export type CreateDraftScheduleRequest = CreateSchedulePayload;
 export type StartPreferenceCollectionRequest = {
   version: number;
   preferenceDeadline: string;
-  buildTemplateId: number;
+  mode: "DAY_LEVEL" | "SHIFT_OPTIONS";
+  buildTemplateId?: number | null;
 };
 
 export type SchedulePreferenceType = "AVAILABLE" | "UNAVAILABLE" | "PREFER_DAY_OFF";
@@ -170,6 +171,7 @@ export type SchedulePreferenceMyResponse = {
   endDate: string;
   days: ScheduleDay[];
   status: ScheduleStatus;
+  preferenceCollectionMode: "DAY_LEVEL" | "SHIFT_OPTIONS";
   preferenceDeadline?: string | null;
   canSubmit: boolean;
   submittedAt?: string | null;
@@ -178,7 +180,6 @@ export type SchedulePreferenceMyResponse = {
   member: SchedulePreferenceMemberDto;
   allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
   cells: SchedulePreferenceCellDto[];
-  comment?: string | null;
   periodComment?: string | null;
 };
 
@@ -214,7 +215,6 @@ export type SchedulePreferenceSubmissionDto = {
   submittedAt?: string | null;
   updatedAt?: string | null;
   revision: number;
-  comment?: string | null;
   periodComment?: string | null;
   cells: SchedulePreferenceCellDto[];
 };
@@ -229,7 +229,6 @@ export type SchedulePreferenceSubmissionsResponse = {
 
 export type UpsertMySchedulePreferenceRequest = {
   cells: SchedulePreferenceCellRequest[];
-  comment?: string | null;
   periodComment?: string | null;
 };
 export type ScheduleBuildTargetPattern = "NONE" | "TWO_TWO" | "THREE_THREE" | "FIVE_TWO";
@@ -446,6 +445,7 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
     preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
     preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
     preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+    preferenceCollectionMode: data.preferenceCollectionMode ?? null,
     preferenceBuildTemplateId: data.preferenceBuildTemplateId ?? null,
   };
 }
@@ -493,7 +493,6 @@ function mapPreferenceMyResponse(data: SchedulePreferenceMyResponse): SchedulePr
     updatedAt: nullableTimestamp(data.updatedAt),
     days: data.days ?? [],
     cells: data.cells ?? [],
-    comment: data.comment ?? null,
   };
 }
 
@@ -519,7 +518,6 @@ function mapPreferenceSubmissionsResponse(
       ...submission,
       submittedAt: nullableTimestamp(submission.submittedAt),
       updatedAt: nullableTimestamp(submission.updatedAt),
-      comment: submission.comment ?? null,
       cells: submission.cells ?? [],
     })),
   };

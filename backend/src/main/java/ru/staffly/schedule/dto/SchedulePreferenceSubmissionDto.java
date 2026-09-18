@@ -11,7 +11,6 @@ public record SchedulePreferenceSubmissionDto(
         Instant submittedAt,
         Instant updatedAt,
         int revision,
-        String comment,
         String periodComment,
         List<SchedulePreferenceCellDto> cells
 ) {}

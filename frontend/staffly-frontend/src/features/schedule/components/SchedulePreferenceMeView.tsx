@@ -192,21 +192,21 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 }) => {
   const [formStateByDay, setFormStateByDay] = React.useState<PreferenceFormState>({});
   const [formError, setFormError] = React.useState<string | null>(null);
-  const [comment, setComment] = React.useState("");
+  const [periodComment, setPeriodComment] = React.useState("");
   const [quickPatternStartDay, setQuickPatternStartDay] = React.useState("");
 
   React.useEffect(() => {
     if (!data) {
       setFormStateByDay({});
       setFormError(null);
-      setComment("");
+      setPeriodComment("");
       setQuickPatternStartDay("");
       return;
     }
 
     setFormStateByDay(getInitialFormState(data));
     setFormError(null);
-    setComment(data.periodComment ?? data.comment ?? "");
+    setPeriodComment(data.periodComment ?? "");
     setQuickPatternStartDay(data.days[0]?.date ?? "");
   }, [data]);
 
@@ -217,7 +217,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
       [day]: {
         ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
         type: value as PreferenceSelectValue,
-        fullDay: value ? (prev[day]?.fullDay ?? true) : true,
+        fullDay: value === "AVAILABLE" ? (prev[day]?.fullDay ?? true) : true,
+        startTime: value === "AVAILABLE" ? (prev[day]?.startTime ?? "") : "",
+        endTime: value === "AVAILABLE" ? (prev[day]?.endTime ?? "") : "",
       },
     }));
   }, []);
@@ -301,10 +303,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 
     onSubmit({
       cells,
-      comment: comment.trim().length > 0 ? comment.trim() : null,
-      periodComment: comment.trim().length > 0 ? comment.trim() : null,
+      periodComment: periodComment.trim().length > 0 ? periodComment.trim() : null,
     });
-  }, [comment, data, formStateByDay, onSubmit]);
+  }, [data, formStateByDay, onSubmit, periodComment]);
 
   const clearAll = React.useCallback(() => {
     setFormStateByDay({});
@@ -453,7 +454,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         <div className="space-y-1">
           <h3 className="text-strong text-base font-semibold">Дни</h3>
           <p className="text-muted text-sm">
-            Выберите пожелание на день. При необходимости можно указать конкретное время из вариантов смен.
+            {data.preferenceCollectionMode === "SHIFT_OPTIONS"
+              ? "Выберите пожелание на день. Для «Могу работать» можно указать вариант смены."
+              : "Выберите пожелание на день без указания времени."}
           </p>
         </div>
 
@@ -481,7 +484,8 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               </DropdownSelect>
               {(formStateByDay[day.date]?.type ?? "") !== "" && (
                 <div className="space-y-2 sm:col-start-2">
-                  <label className="text-muted flex items-center gap-2 text-xs">
+                  {data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
+                  formStateByDay[day.date]?.type === "AVAILABLE" && <label className="text-muted flex items-center gap-2 text-xs">
                     <input
                       type="checkbox"
                       checked={!(formStateByDay[day.date]?.fullDay ?? true)}
@@ -489,12 +493,14 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                       disabled={!data.canSubmit || saving}
                     />
                     {getIntervalToggleLabel(formStateByDay[day.date]?.type ?? "")}
-                  </label>
+                  </label>}
                   {(formStateByDay[day.date]?.fullDay ?? true) &&
                   getFullDayHelp(formStateByDay[day.date]?.type ?? "") ? (
                     <div className="text-muted text-xs">{getFullDayHelp(formStateByDay[day.date]?.type ?? "")}</div>
                   ) : null}
-                  {!(formStateByDay[day.date]?.fullDay ?? true) && (
+                  {data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
+                  formStateByDay[day.date]?.type === "AVAILABLE" &&
+                  !(formStateByDay[day.date]?.fullDay ?? true) && (
                     <div className="space-y-2">
                       {hasAllowedShiftOptions ? (
                         <DropdownSelect
@@ -555,8 +561,8 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
           <span className="text-muted text-sm font-medium">Комментарий к периоду</span>
           <textarea
             className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-28 w-full rounded-2xl border px-4 py-3 text-sm transition outline-none focus:ring-2 disabled:cursor-not-allowed"
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
+            value={periodComment}
+            onChange={(event) => setPeriodComment(event.target.value)}
             disabled={!data.canSubmit || saving}
             maxLength={1000}
             placeholder="Например: могу работать только после 17:00 из-за учёбы"

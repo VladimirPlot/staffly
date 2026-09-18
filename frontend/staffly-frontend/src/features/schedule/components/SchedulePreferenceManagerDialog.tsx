@@ -139,7 +139,7 @@ function EmployeePreferenceAccordionRow({
   timeZone: string;
 }) {
   const cells = sortCells(row.submission?.cells ?? []);
-  const periodComment = row.submission?.periodComment ?? row.submission?.comment ?? null;
+  const periodComment = row.submission?.periodComment ?? null;
   const summary = countPreferenceSummary(cells);
   const statusClassName = row.submitted
     ? "border-emerald-200 bg-emerald-50 text-emerald-700"

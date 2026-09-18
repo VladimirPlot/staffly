@@ -39,7 +39,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private static final int MAX_CELLS_PER_DAY = 8;
     private static final int MAX_PERIOD_COMMENT_LENGTH = 1000;
     private static final int MAX_CELL_NOTE_LENGTH = 500;
-    private static final LocalTime END_OF_DAY_TIME = LocalTime.MIDNIGHT;
 
     private final ScheduleRepository schedules;
     private final SchedulePreferenceSubmissionRepository submissions;
@@ -82,7 +81,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
         RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
         List<SchedulePreferenceCell> cells = buildCells(schedule, member, request == null ? null : request.cells());
-        String comment = normalizeText(request == null ? null : firstNonBlank(request.periodComment(), request.comment()), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
+        String periodComment = normalizeText(request == null ? null : request.periodComment(), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
 
         SchedulePreferenceSubmission submission = submissions.findForUpdateByScheduleIdAndMemberId(scheduleId, member.getId())
                 .orElseGet(() -> SchedulePreferenceSubmission.builder()
@@ -102,7 +101,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         submission.setPositionName(member.getPosition() == null ? null : member.getPosition().getName());
         submission.setSubmittedAt(now);
         submission.setUpdatedAt(now);
-        submission.setPeriodComment(comment);
+        submission.setPeriodComment(periodComment);
         submission.getCells().clear();
         for (SchedulePreferenceCell cell : cells) {
             cell.setSubmission(submission);
@@ -253,127 +252,66 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, positionIds);
     }
 
-    private List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {
+    List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {
         List<SchedulePreferenceCellRequest> safeRequests = requests == null ? List.of() : requests;
         long daysCount = schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).count();
         int maxCells = Math.toIntExact(daysCount * MAX_CELLS_PER_DAY);
         if (safeRequests.size() > maxCells) {
             throw new BadRequestException("Too many preference cells");
         }
+        if (schedule.getPreferenceCollectionMode() == null) {
+            throw new BadRequestException("Способ сбора пожеланий не настроен");
+        }
 
         Set<LocalDate> seenDays = new HashSet<>();
         List<SchedulePreferenceCell> cells = new ArrayList<>(safeRequests.size());
-        PreferenceIntervalValidation intervalValidation = null;
         for (int i = 0; i < safeRequests.size(); i++) {
             SchedulePreferenceCellRequest request = safeRequests.get(i);
-            if (request == null) {
-                throw new BadRequestException("cells[" + i + "] is required");
-            }
+            if (request == null) throw new BadRequestException("cells[" + i + "] is required");
             LocalDate day = parseDay(request.day(), i);
-            if (!seenDays.add(day)) {
-                throw new BadRequestException("На один день можно указать только одно пожелание");
-            }
+            if (!seenDays.add(day)) throw new BadRequestException("На один день можно указать только одно пожелание");
             if (day.isBefore(schedule.getStartDate()) || day.isAfter(schedule.getEndDate())) {
                 throw new BadRequestException("cells[" + i + "].day must be inside schedule range");
             }
-            if (request.type() == null) {
-                throw new BadRequestException("cells[" + i + "].type is required");
-            }
-            if (request.fullDay() == null) {
-                throw new BadRequestException("cells[" + i + "].fullDay is required");
-            }
+            if (request.type() == null) throw new BadRequestException("cells[" + i + "].type is required");
+            if (request.fullDay() == null) throw new BadRequestException("cells[" + i + "].fullDay is required");
+
             boolean fullDay = request.fullDay();
             LocalTime startTime = null;
             LocalTime endTime = null;
             if (fullDay) {
                 if (!isBlank(request.startTime()) || !isBlank(request.endTime())) {
-                    throw new BadRequestException("Full-day preference cannot have startTime or endTime");
+                    throw new BadRequestException("Пожелание на весь день не может содержать время");
                 }
             } else {
+                if (request.type() != SchedulePreferenceType.AVAILABLE) {
+                    throw new BadRequestException("Время можно указать только для пожелания «Могу работать»");
+                }
+                if (schedule.getPreferenceCollectionMode() != PreferenceCollectionMode.SHIFT_OPTIONS) {
+                    throw new BadRequestException("В этом сборе пожеланий нельзя выбирать время");
+                }
                 startTime = parseTime(request.startTime(), "cells[" + i + "].startTime");
                 endTime = parseTime(request.endTime(), "cells[" + i + "].endTime");
-                if (startTime.equals(endTime)) {
+                if (startTime.equals(endTime) || !isApplicableSnapshot(schedule, member, startTime, endTime)) {
                     throw unavailablePreferenceInterval(startTime, endTime);
-                }
-                if (schedule.getPreferenceBuildTemplate() == null) {
-                    if (!isValidPreferenceInterval(startTime, endTime)) {
-                        throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
-                    }
-                } else {
-                    if (intervalValidation == null) {
-                        intervalValidation = preferenceIntervalValidation(schedule, member);
-                    }
-                    validatePreferenceInterval(intervalValidation, startTime, endTime);
                 }
             }
             cells.add(SchedulePreferenceCell.builder()
-                    .day(day)
-                    .type(request.type())
-                    .fullDay(fullDay)
-                    .startTime(startTime)
-                    .endTime(endTime)
+                    .day(day).type(request.type()).fullDay(fullDay)
+                    .startTime(startTime).endTime(endTime)
                     .note(normalizeText(request.note(), MAX_CELL_NOTE_LENGTH, "cells[" + i + "].note"))
-                    .sortOrder(i)
-                    .build());
+                    .sortOrder(i).build());
         }
         return cells;
     }
 
-    private PreferenceIntervalValidation preferenceIntervalValidation(Schedule schedule,
-                                                                      RestaurantMember member) {
+    private boolean isApplicableSnapshot(Schedule schedule, RestaurantMember member,
+                                         LocalTime startTime, LocalTime endTime) {
         Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
-        if (positionId == null) {
-            throw new BadRequestException("Для должности сотрудника не найдены настройки рабочего периода");
-        }
-
-        List<ScheduleBuildPositionConfig> matchingConfigs = schedule.getPreferenceBuildTemplate().getPositionConfigs().stream()
-                .filter(config -> configPositionIds(config).contains(positionId))
-                .toList();
-        if (matchingConfigs.size() != 1) {
-            throw new BadRequestException("Для должности сотрудника не найдены однозначные настройки рабочего периода");
-        }
-
-        ScheduleBuildPositionConfig config = matchingConfigs.get(0);
-        CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
-                config.getWorkPeriodStart(),
-                config.getWorkPeriodEnd()
-        );
-        Set<CanonicalBusinessInterval> allowedIntervals = schedule.getPreferenceShiftOptionSnapshots().stream()
-                .filter(option -> option.getPositionIds().contains(positionId))
-                .map(option -> resolveSnapshotInterval(workPeriod, option))
-                .collect(Collectors.toSet());
-        return new PreferenceIntervalValidation(workPeriod, allowedIntervals);
-    }
-
-    private CanonicalBusinessInterval resolveSnapshotInterval(CanonicalBusinessInterval workPeriod,
-                                                                SchedulePreferenceShiftOptionSnapshot option) {
-        try {
-            return CanonicalBusinessIntervalResolver.resolveInside(
-                    workPeriod,
-                    option.getStartTime(),
-                    option.getEndTime()
-            );
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("Настройки доступных смен не соответствуют рабочему периоду");
-        }
-    }
-
-    private void validatePreferenceInterval(PreferenceIntervalValidation validation,
-                                            LocalTime startTime,
-                                            LocalTime endTime) {
-        CanonicalBusinessInterval preferenceInterval;
-        try {
-            preferenceInterval = CanonicalBusinessIntervalResolver.resolveInside(
-                    validation.workPeriod(),
-                    startTime,
-                    endTime
-            );
-        } catch (IllegalArgumentException ex) {
-            throw unavailablePreferenceInterval(startTime, endTime);
-        }
-        if (!validation.allowedIntervals().contains(preferenceInterval)) {
-            throw unavailablePreferenceInterval(startTime, endTime);
-        }
+        return positionId != null && schedule.getPreferenceShiftOptionSnapshots().stream()
+                .anyMatch(option -> option.getPositionIds().contains(positionId)
+                        && option.getStartTime().equals(startTime)
+                        && option.getEndTime().equals(endTime));
     }
 
     private BadRequestException unavailablePreferenceInterval(LocalTime startTime, LocalTime endTime) {
@@ -381,18 +319,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 + " недоступен для этого рабочего дня");
     }
 
-    private record PreferenceIntervalValidation(
-            CanonicalBusinessInterval workPeriod,
-            Set<CanonicalBusinessInterval> allowedIntervals
-    ) { }
-
-    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        return config.getPositions() == null ? List.of() : config.getPositions().stream()
-                .map(position -> position.getId())
-                .filter(Objects::nonNull)
-                .sorted()
-                .toList();
-    }
 
     private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {
         return new SchedulePreferenceMyResponse(
@@ -402,6 +328,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 schedule.getEndDate().toString(),
                 collectDays(schedule.getStartDate(), schedule.getEndDate()).stream().map(this::toDayDto).toList(),
                 schedule.getStatus(),
+                schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceDeadline(),
                 canSubmit(schedule),
                 submission == null ? null : submission.getSubmittedAt(),
@@ -410,14 +337,13 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 toMemberDto(member),
                 allowedShiftOptions(schedule, member),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
-                submission == null ? null : submission.getPeriodComment(),
                 submission == null ? null : submission.getPeriodComment()
         );
     }
 
     private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, RestaurantMember member) {
         Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
-        if (schedule.getPreferenceBuildTemplate() == null || positionId == null) {
+        if (schedule.getPreferenceCollectionMode() != PreferenceCollectionMode.SHIFT_OPTIONS || positionId == null) {
             return List.of();
         }
         return schedule.getPreferenceShiftOptionSnapshots().stream()
@@ -460,7 +386,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission.getSubmittedAt(),
                 submission.getUpdatedAt(),
                 submission.getRevision(),
-                submission.getPeriodComment(),
                 submission.getPeriodComment(),
                 toCellDtos(submission.getCells())
         );
@@ -539,10 +464,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
     }
 
-    private String firstNonBlank(String first, String fallback) {
-        return isBlank(first) ? fallback : first;
-    }
-
     private String normalizeText(String value, int maxLength, String fieldName) {
         String normalized = trimToNull(value);
         if (normalized != null && normalized.length() > maxLength) {
@@ -561,13 +482,4 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return value == null || value.isBlank();
     }
 
-    private boolean isValidPreferenceInterval(LocalTime startTime, LocalTime endTime) {
-        if (startTime.equals(endTime)) {
-            return false;
-        }
-        if (startTime.isBefore(endTime)) {
-            return true;
-        }
-        return endTime.equals(END_OF_DAY_TIME);
-    }
 }

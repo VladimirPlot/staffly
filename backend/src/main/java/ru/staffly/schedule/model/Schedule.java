@@ -106,6 +106,10 @@ public class Schedule {
     @Column(name = "preference_deadline")
     private Instant preferenceDeadline;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preference_collection_mode", length = 32)
+    private PreferenceCollectionMode preferenceCollectionMode;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "preference_build_template_id")
     private ScheduleBuildTemplate preferenceBuildTemplate;

@@ -2,6 +2,7 @@ package ru.staffly.schedule.dto;
 
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.PreferenceCollectionMode;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,5 +25,6 @@ public record ScheduleDto(
         Instant preferenceDeadline,
         Instant preferenceClosedAt,
         Instant preferenceAppliedAt,
+        PreferenceCollectionMode preferenceCollectionMode,
         Long preferenceBuildTemplateId
 ) {}

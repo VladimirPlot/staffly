@@ -46,6 +46,7 @@ export default function useScheduleLifecycleActions({
 }: UseScheduleLifecycleActionsParams) {
   const [preferenceDialogOpen, setPreferenceDialogOpen] = React.useState(false);
   const [preferenceDeadline, setPreferenceDeadline] = React.useState("");
+  const [preferenceCollectionMode, setPreferenceCollectionMode] = React.useState<"DAY_LEVEL" | "SHIFT_OPTIONS">("DAY_LEVEL");
   const [preferenceBuildTemplateId, setPreferenceBuildTemplateIdValue] = React.useState("");
   const [preferenceDeadlineError, setPreferenceDeadlineError] = React.useState<string | null>(null);
   const [preferenceBuildTemplateError, setPreferenceBuildTemplateError] = React.useState<string | null>(null);
@@ -57,6 +58,7 @@ export default function useScheduleLifecycleActions({
     if (!canManage) {
       setPreferenceDialogOpen(false);
       setPreferenceDeadline("");
+      setPreferenceCollectionMode("DAY_LEVEL");
       setPreferenceBuildTemplateIdValue("");
       setPreferenceDeadlineError(null);
       setPreferenceBuildTemplateError(null);
@@ -67,6 +69,7 @@ export default function useScheduleLifecycleActions({
   React.useEffect(() => {
     setPreferenceDialogOpen(false);
     setPreferenceDeadline("");
+    setPreferenceCollectionMode("DAY_LEVEL");
     setPreferenceBuildTemplateIdValue("");
     setPreferenceDeadlineError(null);
     setPreferenceBuildTemplateError(null);
@@ -99,6 +102,7 @@ export default function useScheduleLifecycleActions({
     if (pendingAction === "startPreferences") return;
     setPreferenceDialogOpen(false);
     setPreferenceDeadline("");
+    setPreferenceCollectionMode("DAY_LEVEL");
     setPreferenceBuildTemplateIdValue("");
     setPreferenceDeadlineError(null);
     setPreferenceBuildTemplateError(null);
@@ -107,6 +111,7 @@ export default function useScheduleLifecycleActions({
   const openPreferenceDialog = React.useCallback(() => {
     if (!canManage) return;
     setPreferenceDeadline("");
+    setPreferenceCollectionMode("DAY_LEVEL");
     setPreferenceBuildTemplateIdValue("");
     setPreferenceDeadlineError(null);
     setPreferenceBuildTemplateError(null);
@@ -124,7 +129,7 @@ export default function useScheduleLifecycleActions({
       setPreferenceDeadlineError("Укажите дедлайн сбора пожеланий");
       return;
     }
-    if (!preferenceBuildTemplateId) {
+    if (preferenceCollectionMode === "SHIFT_OPTIONS" && !preferenceBuildTemplateId) {
       setPreferenceBuildTemplateError("Выберите шаблон сборки");
       return;
     }
@@ -139,19 +144,23 @@ export default function useScheduleLifecycleActions({
     setPreferenceDeadlineError(null);
     onClearScheduleNotices();
     try {
-      const parsedBuildTemplateId = Number(preferenceBuildTemplateId);
-      if (!Number.isFinite(parsedBuildTemplateId)) {
+      const parsedBuildTemplateId = preferenceCollectionMode === "SHIFT_OPTIONS"
+        ? Number(preferenceBuildTemplateId)
+        : null;
+      if (preferenceCollectionMode === "SHIFT_OPTIONS" && !Number.isFinite(parsedBuildTemplateId)) {
         setPreferenceBuildTemplateError("Выберите шаблон сборки");
         return;
       }
       const updatedSchedule = await startPreferenceCollection(restaurantId, schedule.id, {
         version: schedule.version,
         preferenceDeadline: deadlineInstant,
+        mode: preferenceCollectionMode,
         buildTemplateId: parsedBuildTemplateId,
       });
       await applyUpdatedSchedule(updatedSchedule);
       setPreferenceDialogOpen(false);
       setPreferenceDeadline("");
+      setPreferenceCollectionMode("DAY_LEVEL");
       setPreferenceBuildTemplateIdValue("");
       setPreferenceBuildTemplateError(null);
       onScheduleMessage("Сбор пожеланий запущен");
@@ -167,6 +176,7 @@ export default function useScheduleLifecycleActions({
     onScheduleError,
     onScheduleMessage,
     preferenceBuildTemplateId,
+    preferenceCollectionMode,
     preferenceDeadline,
     restaurantId,
     restaurantTimeZone,
@@ -254,11 +264,13 @@ export default function useScheduleLifecycleActions({
     () => ({
       preferenceDialogOpen,
       preferenceDeadline,
+      preferenceCollectionMode,
       preferenceBuildTemplateId,
       preferenceDeadlineError,
       preferenceBuildTemplateError,
       pendingAction,
       setPreferenceDeadline,
+      setPreferenceCollectionMode,
       setPreferenceBuildTemplateId,
       openPreferenceDialog,
       closePreferenceDialog,
@@ -274,12 +286,14 @@ export default function useScheduleLifecycleActions({
       openPreferenceDialog,
       pendingAction,
       preferenceBuildTemplateId,
+      preferenceCollectionMode,
       preferenceBuildTemplateError,
       preferenceDeadline,
       preferenceDeadlineError,
       preferenceDialogOpen,
       publishScheduleAction,
       setPreferenceBuildTemplateId,
+      setPreferenceCollectionMode,
       submitPreferenceCollection,
     ],
   );
