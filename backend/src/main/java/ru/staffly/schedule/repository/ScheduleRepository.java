@@ -46,4 +46,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
             """)
     List<Schedule> findByRestaurantIdAndPositionId(@Param("restaurantId") Long restaurantId,
                                                    @Param("positionId") Long positionId);
+
+    @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position"})
+    @Query("""
+            select distinct s from Schedule s join ScheduleParticipation sp on sp.schedule = s
+            where s.restaurant.id = :restaurantId and sp.member.id = :memberId
+            order by s.createdAt desc
+            """)
+    List<Schedule> findByRestaurantIdAndParticipantMemberId(@Param("restaurantId") Long restaurantId,
+                                                            @Param("memberId") Long memberId);
 }

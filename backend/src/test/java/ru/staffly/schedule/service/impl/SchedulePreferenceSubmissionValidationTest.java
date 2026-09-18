@@ -27,7 +27,7 @@ class SchedulePreferenceSubmissionValidationTest {
     private static final RestaurantMember MEMBER = RestaurantMember.builder().position(EMPLOYEE_POSITION).build();
 
     private final SchedulePreferenceServiceImpl service = new SchedulePreferenceServiceImpl(
-            null, null, null, null, null, null, null);
+            null, null, null, null, null, null, null, null);
 
     @Test
     void acceptsDayLevelFullDayAvailable() {
@@ -75,7 +75,7 @@ class SchedulePreferenceSubmissionValidationTest {
     }
 
     private void assertAccepted(Schedule schedule, SchedulePreferenceCellRequest request) {
-        List<SchedulePreferenceCell> cells = service.buildCells(schedule, MEMBER, List.of(request));
+        List<SchedulePreferenceCell> cells = service.buildCells(schedule, MEMBER.getPosition().getId(), List.of(request));
         assertThat(cells).singleElement().satisfies(cell -> {
             assertThat(cell.getType()).isEqualTo(request.type());
             assertThat(cell.isFullDay()).isEqualTo(request.fullDay());
@@ -83,7 +83,7 @@ class SchedulePreferenceSubmissionValidationTest {
     }
 
     private void assertRejected(Schedule schedule, SchedulePreferenceCellRequest request) {
-        assertThatThrownBy(() -> service.buildCells(schedule, MEMBER, List.of(request)))
+        assertThatThrownBy(() -> service.buildCells(schedule, MEMBER.getPosition().getId(), List.of(request)))
                 .isInstanceOf(BadRequestException.class);
     }
 

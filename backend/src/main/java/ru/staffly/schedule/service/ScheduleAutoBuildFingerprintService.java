@@ -3,10 +3,9 @@ package ru.staffly.schedule.service;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
-import ru.staffly.member.model.RestaurantMember;
-import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -18,8 +17,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class ScheduleAutoBuildFingerprintService {
-    private final RestaurantMemberRepository members;
     private final SchedulePreferenceSubmissionRepository submissions;
+    private final ScheduleParticipationRepository participations;
 
     public String fingerprint(Long restaurantId, Schedule schedule, ScheduleBuildTemplate template) {
         initialize(template);
@@ -70,15 +69,17 @@ public class ScheduleAutoBuildFingerprintService {
 
         List<Long> relevantPositionIds = configs.stream().flatMap(config -> configPositionIds(config).stream())
                 .filter(scheduled::contains).distinct().sorted().toList();
-        List<RestaurantMember> candidates = relevantPositionIds.isEmpty() ? List.of()
-                : members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, relevantPositionIds).stream()
-                .filter(member -> member.getUser() != null)
-                .sorted(Comparator.comparing(RestaurantMember::getId))
+        Set<Long> relevantPositions = new HashSet<>(relevantPositionIds);
+        List<ScheduleParticipation> candidates = relevantPositionIds.isEmpty() ? List.of()
+                : participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                .filter(participation -> relevantPositions.contains(participation.getPositionId()))
+                .filter(participation -> participation.getMember().getUser() != null)
+                .sorted(Comparator.comparing(participation -> participation.getMember().getId()))
                 .toList();
         Set<Long> candidateIds = new HashSet<>();
-        for (RestaurantMember candidate : candidates) {
-            candidateIds.add(candidate.getId());
-            out.add("candidate", candidate.getId(), candidate.getPosition().getId());
+        for (ScheduleParticipation candidate : candidates) {
+            candidateIds.add(candidate.getMember().getId());
+            out.add("candidate", candidate.getMember().getId(), candidate.getPositionId());
         }
 
         submissions.findWithCellsByScheduleId(schedule.getId()).stream()
