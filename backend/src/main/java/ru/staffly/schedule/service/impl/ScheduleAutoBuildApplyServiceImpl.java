@@ -76,7 +76,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         validateRequest(request);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         if (!java.util.Objects.equals(schedule.getVersion(), request.version())) {
             throw new ScheduleVersionConflictException(request.version(), schedule.getVersion());

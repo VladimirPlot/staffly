@@ -114,6 +114,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
         SchedulePreferenceSubmission saved = submissions.saveAndFlush(submission);
         notifyOwnerIfAllSubmitted(schedule, now, userId);
+        // Preference submissions are children of the locked Schedule aggregate;
+        // invalidate Schedule-versioned clients even when this is not the last submission.
+        schedule.setUpdatedAt(now);
         schedules.flush();
         return toMyResponse(schedule, participation, saved);
     }

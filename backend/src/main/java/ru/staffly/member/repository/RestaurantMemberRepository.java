@@ -1,6 +1,8 @@
 package ru.staffly.member.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.member.model.RestaurantMember;
@@ -11,6 +13,20 @@ import java.util.Optional;
 import java.util.Set;
 
 public interface RestaurantMemberRepository extends JpaRepository<RestaurantMember, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select m from RestaurantMember m where m.id = :memberId and m.restaurant.id = :restaurantId")
+    Optional<RestaurantMember> findForUpdateByIdAndRestaurantId(@Param("memberId") Long memberId,
+                                                                 @Param("restaurantId") Long restaurantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+           select m from RestaurantMember m
+           where m.restaurant.id = :restaurantId and m.id in :memberIds
+           order by m.id asc
+           """)
+    List<RestaurantMember> findForUpdateByRestaurantIdAndIdInOrderByIdAsc(@Param("restaurantId") Long restaurantId,
+                                                                           @Param("memberIds") List<Long> memberIds);
 
     Optional<RestaurantMember> findByUserIdAndRestaurantId(Long userId, Long restaurantId);
 

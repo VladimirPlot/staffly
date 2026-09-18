@@ -281,11 +281,10 @@ public class EmployeeServiceImpl implements EmployeeService {
     public MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
-        RestaurantMember member = members.findById(memberId)
+        // RestaurantMember is the current-position mutex. Schedule snapshot creation
+        // acquires this same row before any Schedule lock.
+        RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-        if (!member.getRestaurant().getId().equals(restaurantId)) {
-            throw new BadRequestException("Member belongs to another restaurant");
-        }
 
         Position position = null;
         if (positionId != null) {
