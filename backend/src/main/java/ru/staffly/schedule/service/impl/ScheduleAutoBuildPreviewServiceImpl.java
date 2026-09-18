@@ -12,6 +12,7 @@ import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.PreferenceCollectionMode;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
@@ -118,9 +119,16 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
 
     private record ScopedPositionConfig(ScheduleBuildPositionConfig config, Set<Long> positionIds) { }
 
-    private ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
+    ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
+        PreferenceCollectionMode mode = schedule.getPreferenceCollectionMode();
+        if (mode == null) {
+            throw new BadRequestException("Автосборка доступна только после проведения сбора пожеланий");
+        }
         ScheduleBuildTemplate preferenceTemplate = schedule.getPreferenceBuildTemplate();
-        if (preferenceTemplate != null) {
+        if (mode == PreferenceCollectionMode.SHIFT_OPTIONS) {
+            if (preferenceTemplate == null) {
+                throw new BadRequestException("Для сбора с вариантами смен не сохранён шаблон сборки");
+            }
             Long preferenceTemplateId = preferenceTemplate.getId();
             if (requestedTemplateId != null && !preferenceTemplateId.equals(requestedTemplateId)) {
                 throw new BadRequestException("Автосборка использует шаблон, выбранный при сборе пожеланий. Передан другой templateId: " + requestedTemplateId);

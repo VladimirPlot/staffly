@@ -272,9 +272,9 @@ const SchedulePage: React.FC = () => {
     const submissions = preferenceHints.submissions?.submissions ?? [];
     submissions.forEach((submission) => {
       const memberId = submission.member?.memberId;
-      const comment = (submission.periodComment ?? submission.comment ?? "").trim();
-      if (!memberId || !comment) return;
-      map[memberId] = comment;
+      const periodComment = (submission.periodComment ?? "").trim();
+      if (!memberId || !periodComment) return;
+      map[memberId] = periodComment;
     });
     return map;
   }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
@@ -988,6 +988,7 @@ const SchedulePage: React.FC = () => {
       <StartPreferenceCollectionDialog
         open={lifecycleActions.preferenceDialogOpen}
         deadline={lifecycleActions.preferenceDeadline}
+        mode={lifecycleActions.preferenceCollectionMode}
         buildTemplateId={lifecycleActions.preferenceBuildTemplateId}
         buildTemplates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
@@ -995,6 +996,7 @@ const SchedulePage: React.FC = () => {
         templateError={lifecycleActions.preferenceBuildTemplateError}
         saving={lifecycleActions.pendingAction === "startPreferences"}
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
+        onModeChange={lifecycleActions.setPreferenceCollectionMode}
         onBuildTemplateChange={lifecycleActions.setPreferenceBuildTemplateId}
         onLoadTemplates={loadBuildTemplatesIfNeeded}
         onClose={lifecycleActions.closePreferenceDialog}

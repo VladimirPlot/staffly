@@ -9,6 +9,7 @@ import type { ScheduleBuildTemplateDto } from "../api";
 type StartPreferenceCollectionDialogProps = {
   open: boolean;
   deadline: string;
+  mode: "DAY_LEVEL" | "SHIFT_OPTIONS";
   buildTemplateId: string;
   buildTemplates: ScheduleBuildTemplateDto[];
   templatesLoading: boolean;
@@ -16,6 +17,7 @@ type StartPreferenceCollectionDialogProps = {
   templateError: string | null;
   saving: boolean;
   onDeadlineChange: (value: string) => void;
+  onModeChange: (value: "DAY_LEVEL" | "SHIFT_OPTIONS") => void;
   onBuildTemplateChange: (value: string) => void;
   onLoadTemplates: () => void;
   onClose: () => void;
@@ -25,6 +27,7 @@ type StartPreferenceCollectionDialogProps = {
 const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogProps> = ({
   open,
   deadline,
+  mode,
   buildTemplateId,
   buildTemplates,
   templatesLoading,
@@ -32,6 +35,7 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
   templateError,
   saving,
   onDeadlineChange,
+  onModeChange,
   onBuildTemplateChange,
   onLoadTemplates,
   onClose,
@@ -56,7 +60,7 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
       open={open}
       onClose={handleClose}
       title="Собрать пожелания"
-      description="Укажите дедлайн и шаблон, из которого сотрудники будут выбирать интервалы смен."
+      description="Укажите дедлайн и выберите, как сотрудники смогут оставить пожелания."
       className="max-w-md"
       footer={
         <div className="grid w-full grid-cols-2 gap-2">
@@ -65,7 +69,7 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
           </Button>
           <Button
             onClick={onSubmit}
-            disabled={saving || templatesLoading || !hasActiveTemplates}
+            disabled={saving || (mode === "SHIFT_OPTIONS" && (templatesLoading || !hasActiveTemplates))}
             className="w-full"
           >
             {saving ? "Запуск…" : "Запустить"}
@@ -82,7 +86,22 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
           error={error ?? undefined}
           required
         />
-        <DropdownSelect
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Как сотрудники смогут оставить пожелания?</legend>
+          <label className="flex cursor-pointer gap-3 rounded-xl border p-3">
+            <input type="radio" name="preference-mode" checked={mode === "DAY_LEVEL"}
+              onChange={() => onModeChange("DAY_LEVEL")} disabled={saving} />
+            <span><span className="block text-sm font-medium">Без выбора времени</span>
+              <span className="text-muted block text-xs">Только пожелание на день: могу работать, не могу работать, предпочитаю выходной или без пожеланий.</span></span>
+          </label>
+          <label className="flex cursor-pointer gap-3 rounded-xl border p-3">
+            <input type="radio" name="preference-mode" checked={mode === "SHIFT_OPTIONS"}
+              onChange={() => onModeChange("SHIFT_OPTIONS")} disabled={saving} />
+            <span><span className="block text-sm font-medium">С вариантами смен</span>
+              <span className="text-muted block text-xs">Для «Могу работать» можно выбрать смену из шаблона сборки.</span></span>
+          </label>
+        </fieldset>
+        {mode === "SHIFT_OPTIONS" && <DropdownSelect
           label="Шаблон для пожеланий"
           value={buildTemplateId}
           onChange={(event) => onBuildTemplateChange(event.target.value)}
@@ -98,16 +117,16 @@ const StartPreferenceCollectionDialog: React.FC<StartPreferenceCollectionDialogP
               {template.name}
             </option>
           ))}
-        </DropdownSelect>
-        {!templatesLoading && !hasActiveTemplates ? (
+        </DropdownSelect>}
+        {mode === "SHIFT_OPTIONS" && !templatesLoading && !hasActiveTemplates ? (
           <p className="text-sm text-red-600">
             Сначала создайте активный шаблон сборки. Без него начать сбор пожеланий нельзя.
           </p>
-        ) : (
+        ) : mode === "SHIFT_OPTIONS" ? (
           <p className="text-muted text-xs">
             Сотрудник сможет указать точное время только из вариантов смен для своей должности.
           </p>
-        )}
+        ) : null}
       </div>
     </Modal>
   );

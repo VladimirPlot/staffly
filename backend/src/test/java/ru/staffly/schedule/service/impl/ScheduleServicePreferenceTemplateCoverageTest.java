@@ -48,6 +48,19 @@ class ScheduleServicePreferenceTemplateCoverageTest {
     }
 
     @Test
+    void createsPositionScopedSnapshotsForMultipleCompleteConfigs() {
+        Schedule schedule = schedule(WAITER, BARTENDER);
+        ScheduleBuildTemplate template = template(
+                config(List.of(WAITER), true), config(List.of(BARTENDER), true));
+
+        ScheduleServiceImpl.replacePreferenceShiftOptionSnapshot(schedule, template);
+
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).hasSize(2);
+        assertThat(schedule.getPreferenceShiftOptionSnapshots().get(0).getPositionIds()).containsExactly(WAITER.getId());
+        assertThat(schedule.getPreferenceShiftOptionSnapshots().get(1).getPositionIds()).containsExactly(BARTENDER.getId());
+    }
+
+    @Test
     void acceptsSharedMultiPositionConfig() {
         assertValid(schedule(WAITER, BARTENDER), template(config(List.of(WAITER, BARTENDER), true)));
     }
