@@ -510,17 +510,67 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("Активный шаблон сборки не найден");
         }
         initializeBuildTemplateCollections(template);
-        List<Long> schedulePositionIds = SchedulePositionIds.ids(schedule);
-        boolean hasSchedulePositionConfig = template.getPositionConfigs().stream()
-                .flatMap(config -> buildConfigPositionIds(config).stream())
-                .anyMatch(schedulePositionIds::contains);
-        if (!hasSchedulePositionConfig) {
-            throw new BadRequestException("Шаблон сборки не содержит настроек для позиций графика");
-        }
+        validatePreferenceTemplatePositionCoverage(schedule, template);
         return template;
     }
 
-    private void replacePreferenceShiftOptionSnapshot(Schedule schedule, ScheduleBuildTemplate template) {
+    static void validatePreferenceTemplatePositionCoverage(Schedule schedule, ScheduleBuildTemplate template) {
+        List<Position> schedulePositions = Optional.ofNullable(schedule.getPositions()).orElseGet(Set::of).stream()
+                .filter(position -> position.getId() != null)
+                .collect(Collectors.toMap(Position::getId, position -> position, (left, right) -> left))
+                .values().stream()
+                .sorted(Comparator.comparing(Position::getName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER))
+                        .thenComparing(Position::getId))
+                .toList();
+
+        Map<Long, List<ScheduleBuildPositionConfig>> ownersByPositionId = new HashMap<>();
+        for (ScheduleBuildPositionConfig config : Optional.ofNullable(template.getPositionConfigs()).orElseGet(List::of)) {
+            for (Long positionId : config.getPositions() == null ? List.<Long>of() : config.getPositions().stream()
+                    .map(Position::getId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList()) {
+                ownersByPositionId.computeIfAbsent(positionId, ignored -> new ArrayList<>()).add(config);
+            }
+        }
+
+        List<Position> missing = schedulePositions.stream()
+                .filter(position -> ownersByPositionId.getOrDefault(position.getId(), List.of()).isEmpty())
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new BadRequestException("Выбранный шаблон не настроен для всех должностей графика: "
+                    + positionNames(missing));
+        }
+
+        List<Position> duplicated = schedulePositions.stream()
+                .filter(position -> ownersByPositionId.getOrDefault(position.getId(), List.of()).size() > 1)
+                .toList();
+        if (!duplicated.isEmpty()) {
+            throw new BadRequestException("В выбранном шаблоне несколько настроек для должностей графика: "
+                    + positionNames(duplicated));
+        }
+
+        List<Position> withoutShiftOptions = schedulePositions.stream()
+                .filter(position -> {
+                    ScheduleBuildPositionConfig owner = ownersByPositionId.get(position.getId()).get(0);
+                    return owner.getShiftOptions() == null || owner.getShiftOptions().isEmpty();
+                })
+                .toList();
+        if (!withoutShiftOptions.isEmpty()) {
+            throw new BadRequestException("В выбранном шаблоне нет вариантов смен для должностей графика: "
+                    + positionNames(withoutShiftOptions));
+        }
+    }
+
+    private static String positionNames(List<Position> positions) {
+        return positions.stream()
+                .map(position -> position.getName() == null || position.getName().isBlank()
+                        ? String.valueOf(position.getId())
+                        : position.getName())
+                .collect(Collectors.joining(", "));
+    }
+
+    static void replacePreferenceShiftOptionSnapshot(Schedule schedule, ScheduleBuildTemplate template) {
         schedule.getPreferenceShiftOptionSnapshots().clear();
         Set<Long> schedulePositionIds = new HashSet<>(SchedulePositionIds.ids(schedule));
         int order = 0;
