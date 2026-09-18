@@ -25,6 +25,7 @@ import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleChangeService;
@@ -54,6 +55,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final PositionRepository positions;
     private final ScheduleShiftRequestRepository shiftRequests;
     private final SchedulePreferenceSubmissionRepository preferenceSubmissions;
+    private final ScheduleParticipationRepository participations;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -122,6 +124,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setRows(rowEntities);
 
         Schedule saved = schedules.saveAndFlush(schedule);
+        ensureParticipationsForRows(saved);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, auditDetails);
         if (status == ScheduleStatus.PUBLISHED) {
             notifySchedulePublished(saved, userId);
@@ -144,10 +147,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         List<Schedule> visibleCandidates;
         if (canManage) {
             visibleCandidates = schedules.findByRestaurantIdOrderByCreatedAtDesc(restaurantId);
-        } else if (currentMember.getPosition() != null && currentMember.getPosition().getId() != null) {
-            visibleCandidates = schedules.findByRestaurantIdAndPositionId(
-                    restaurantId, currentMember.getPosition().getId()
-            );
+        } else if (currentMember != null) {
+            visibleCandidates = schedules.findByRestaurantIdAndParticipantMemberId(restaurantId, currentMember.getId());
         } else {
             return List.of();
         }
@@ -196,11 +197,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (isScheduleOwner(schedule, currentMember, currentUserId)) {
             return null;
         }
-        if (currentMember.getPosition() == null || currentMember.getPosition().getId() == null) {
-            return null;
-        }
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (positionIds == null || !positionIds.contains(currentMember.getPosition().getId())) {
+        if (!participations.existsByScheduleIdAndMemberId(schedule.getId(), currentMember.getId())) {
             return null;
         }
         return preferenceSubmissions.existsByScheduleIdAndMemberId(schedule.getId(), currentMember.getId());
@@ -219,15 +216,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (!canManage || schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
             return PreferenceProgressSummary.empty();
         }
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (positionIds == null || positionIds.isEmpty()) {
-            return new PreferenceProgressSummary(0, 0);
-        }
-
-        List<RestaurantMember> participants = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                schedule.getRestaurant().getId(),
-                positionIds
-        );
+        List<RestaurantMember> participants = participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                .map(ScheduleParticipation::getMember).toList();
         Set<Long> participantMemberIds = participants.stream()
                 .map(RestaurantMember::getId)
                 .collect(Collectors.toSet());
@@ -320,6 +310,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setShowFullName(config.showFullName());
         schedule.setPositions(schedulePositions);
         applyRowsDiff(schedule, newValues, days, memberMap);
+        ensureParticipations(schedule, memberMap.values());
 
         Schedule saved = schedules.saveAndFlush(schedule);
         if (!publishedEdit || aggregateChanged || !publishedChanges.isEmpty()) {
@@ -410,6 +401,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .positionName(member.getPosition().getName())
                 .sortOrder(nextSortOrder)
                 .build());
+        ensureParticipations(schedule, List.of(member));
 
         schedule.setUpdatedAt(TimeProvider.now());
         Schedule saved = schedules.saveAndFlush(schedule);
@@ -425,6 +417,28 @@ public class ScheduleServiceImpl implements ScheduleService {
         return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 schedule.getRestaurant().getId(), allowedPositionIds
         );
+    }
+
+    private void ensureParticipationsForRows(Schedule schedule) {
+        Set<Long> memberIds = schedule.getRows().stream().map(ScheduleRow::getMemberId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (memberIds.isEmpty()) return;
+        ensureParticipations(schedule, members.findWithUserAndPositionByIdIn(memberIds));
+    }
+
+    private void ensureParticipations(Schedule schedule, Collection<RestaurantMember> candidates) {
+        Set<Long> existing = participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                .map(value -> value.getMember().getId()).collect(Collectors.toSet());
+        for (RestaurantMember member : candidates) {
+            if (member.getPosition() != null && existing.add(member.getId())) {
+                participations.save(ScheduleParticipation.builder()
+                        .schedule(schedule)
+                        .member(member)
+                        .positionId(member.getPosition().getId())
+                        .positionName(member.getPosition().getName())
+                        .build());
+            }
+        }
     }
 
     private AddableScheduleMemberDto toAddableMemberDto(RestaurantMember member) {
@@ -491,6 +505,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (mode == PreferenceCollectionMode.SHIFT_OPTIONS) {
             replacePreferenceShiftOptionSnapshot(schedule, preferenceBuildTemplate);
         }
+        ensureParticipations(schedule, findEligibleMembers(schedule));
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
         schedule.setPreferenceCollectionMode(mode);
         schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
@@ -1180,15 +1195,9 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private void notifyPreferenceCollectionStarted(Schedule schedule, Long actorUserId) {
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (positionIds.isEmpty()) {
-            return;
-        }
         List<RestaurantMember> targets = deduplicateMembersByUserId(
-                members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                        schedule.getRestaurant().getId(),
-                        positionIds
-                )
+                participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                        .map(ScheduleParticipation::getMember).toList()
         );
         targets = targets.stream()
                 .filter(member -> !Objects.equals(member.getUser().getId(), actorUserId))
@@ -1218,11 +1227,6 @@ public class ScheduleServiceImpl implements ScheduleService {
             return;
         }
 
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (positionIds.isEmpty()) {
-            return;
-        }
-
         Set<Long> activeRowMemberIds = schedule.getRows().stream()
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
@@ -1231,12 +1235,11 @@ public class ScheduleServiceImpl implements ScheduleService {
             return;
         }
 
-        List<RestaurantMember> membersWithSchedulePositions = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                schedule.getRestaurant().getId(),
-                positionIds
-        );
+        List<RestaurantMember> participatingMembers = participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                .map(ScheduleParticipation::getMember)
+                .toList();
         Map<Long, RestaurantMember> targetsByUserId = new LinkedHashMap<>();
-        for (RestaurantMember member : membersWithSchedulePositions) {
+        for (RestaurantMember member : participatingMembers) {
             if (member == null || member.getUser() == null || member.getUser().getId() == null) {
                 continue;
             }
@@ -1344,18 +1347,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private Set<Long> resolveActiveScheduleMemberIds(Schedule schedule) {
-        if (schedule.getRestaurant() == null || schedule.getRestaurant().getId() == null) {
-            return Set.of();
-        }
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (positionIds.isEmpty()) {
-            return Set.of();
-        }
-        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                        schedule.getRestaurant().getId(),
-                        positionIds
-                ).stream()
-                .map(RestaurantMember::getId)
+        return participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                .map(value -> value.getMember().getId())
                 .collect(Collectors.toSet());
     }
 

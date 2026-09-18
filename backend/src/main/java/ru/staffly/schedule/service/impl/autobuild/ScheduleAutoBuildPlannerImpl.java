@@ -5,7 +5,6 @@ import org.hibernate.Hibernate;
 import org.springframework.stereotype.Component;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
-import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildCoverageDateOverride;
@@ -19,6 +18,7 @@ import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.SchedulePreferenceCell;
 import ru.staffly.schedule.model.SchedulePreferenceType;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.AssignmentPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.PositionPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
@@ -49,8 +49,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private static final int END_OF_DAY_MINUTES = 24 * 60;
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
 
-    private final RestaurantMemberRepository members;
     private final SchedulePreferenceSubmissionRepository submissions;
+    private final ScheduleParticipationRepository participations;
 
     @Override
     public ScheduleAutoBuildPlan build(Long restaurantId, Schedule schedule, ScheduleBuildTemplate template) {
@@ -87,8 +87,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 .flatMap(effectiveConfig -> effectiveConfig.positionIds().stream())
                 .distinct()
                 .toList();
-        List<RestaurantMember> allCandidates = loadCandidates(restaurantId, relevantPositionIds);
+        CandidatePopulation candidatePopulation = loadCandidates(schedule.getId(), relevantPositionIds);
         PlannerState plannerState = new PlannerState();
+        plannerState.registerParticipationPositions(candidatePopulation.positionByMember());
         List<PositionPlan> positions = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
         List<RejectionHintPlan> rejectionHints = new ArrayList<>();
@@ -101,7 +102,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     schedule,
                     effectiveConfig.config(),
                     effectiveConfig.positionIds(),
-                    candidatesForPositions(allCandidates, effectiveConfig.positionIds()),
+                    candidatesForPositions(candidatePopulation, effectiveConfig.positionIds()),
                     preferencesByMemberAndDay,
                     plannerState
             );
@@ -189,28 +190,33 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return new PositionBuildResult(positionPlan, uncoveredSlots, rejectionHints);
     }
 
-    private List<RestaurantMember> loadCandidates(Long restaurantId, List<Long> positionIds) {
+    private CandidatePopulation loadCandidates(Long scheduleId, List<Long> positionIds) {
         if (positionIds.isEmpty()) {
-            return List.of();
+            return new CandidatePopulation(List.of(), Map.of());
         }
-        List<RestaurantMember> foundMembers = members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
-                restaurantId,
-                positionIds
-        );
-
-        return foundMembers.stream()
+        Set<Long> allowed = new HashSet<>(positionIds);
+        List<ScheduleParticipation> foundParticipations = participations.findByScheduleIdOrderById(scheduleId).stream()
+                .filter(participation -> allowed.contains(participation.getPositionId()))
+                .toList();
+        List<RestaurantMember> foundMembers = foundParticipations.stream()
+                .map(ScheduleParticipation::getMember)
                 .filter(member -> member.getUser() != null)
                 .toList();
+        Set<Long> foundMemberIds = foundMembers.stream().map(RestaurantMember::getId).collect(Collectors.toSet());
+        Map<Long, Long> positionByMember = foundParticipations.stream()
+                .filter(participation -> foundMemberIds.contains(participation.getMember().getId()))
+                .collect(Collectors.toMap(participation -> participation.getMember().getId(),
+                        ScheduleParticipation::getPositionId));
+        return new CandidatePopulation(foundMembers, positionByMember);
     }
 
     private List<RestaurantMember> candidatesForPositions(
-            List<RestaurantMember> allCandidates,
+            CandidatePopulation population,
             List<Long> positionIds
     ) {
         Set<Long> positionIdSet = new HashSet<>(positionIds);
-        return allCandidates.stream()
-                .filter(member -> member.getPosition() != null)
-                .filter(member -> positionIdSet.contains(member.getPosition().getId()))
+        return population.members().stream()
+                .filter(member -> positionIdSet.contains(population.positionByMember().get(member.getId())))
                 .toList();
     }
 
@@ -464,6 +470,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option);
         AssignmentBuildResult assignmentResult = createAssignment(
                 selected,
+                plannerState.participationPosition(selected.getId()),
                 day,
                 option,
                 selectedEvaluation.matchStatus(),
@@ -617,6 +624,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
     private AssignmentBuildResult createAssignment(
             RestaurantMember member,
+            Long participationPositionId,
             LocalDate day,
             ScheduleBuildShiftOption option,
             MatchStatus matchStatus,
@@ -635,7 +643,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         AssignmentPlan assignment = new AssignmentPlan(
                 member.getId(),
                 displayName(member),
-                member.getPosition() == null ? null : member.getPosition().getId(),
+                participationPositionId,
                 day.toString(),
                 formatShift(option),
                 option.getId(),
@@ -1441,7 +1449,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CandidateEvaluation selectedEvaluation = selection.selected();
             RestaurantMember selected = selectedEvaluation.member();
             AssignmentBuildResult assignmentResult = createAssignment(
-                    selected, day, option, selectedEvaluation.matchStatus(), false, null);
+                    selected, plannerState.participationPosition(selected.getId()), day, option,
+                    selectedEvaluation.matchStatus(), false, null);
             assignments.add(assignmentResult.assignment());
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
@@ -1527,11 +1536,20 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
 
     private static final class PlannerState {
+        private final Map<Long, Long> participationPositionByMember = new HashMap<>();
         private final Map<Long, Integer> shiftsCountByMember = new HashMap<>();
         private final Map<Long, List<AssignedInterval>> assignedIntervalsByMember = new HashMap<>();
         private final Map<Long, Map<String, Integer>> heavyDaysCountByMemberAndConfig = new HashMap<>();
         private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> canonicalIntervalsByOption = new IdentityHashMap<>();
         private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> workPeriodsByOption = new IdentityHashMap<>();
+
+        private void registerParticipationPositions(Map<Long, Long> positions) {
+            participationPositionByMember.putAll(positions);
+        }
+
+        private Long participationPosition(Long memberId) {
+            return participationPositionByMember.get(memberId);
+        }
 
         private void registerCanonicalOptions(
                 CanonicalBusinessInterval workPeriod,
@@ -1594,6 +1612,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         private PlannerState copy() {
             PlannerState copy = new PlannerState();
+            copy.participationPositionByMember.putAll(participationPositionByMember);
             copy.shiftsCountByMember.putAll(shiftsCountByMember);
             copy.canonicalIntervalsByOption.putAll(canonicalIntervalsByOption);
             copy.workPeriodsByOption.putAll(workPeriodsByOption);
@@ -1618,6 +1637,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     heavyDaysCountByMemberAndConfig.put(memberId, new HashMap<>(counts))
             );
         }
+    }
+
+    private record CandidatePopulation(List<RestaurantMember> members, Map<Long, Long> positionByMember) {
     }
 
     static final class AssignedInterval {

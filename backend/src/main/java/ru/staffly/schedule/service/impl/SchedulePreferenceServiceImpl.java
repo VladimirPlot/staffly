@@ -15,6 +15,7 @@ import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.SchedulePreferenceService;
@@ -42,6 +43,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
 
     private final ScheduleRepository schedules;
     private final SchedulePreferenceSubmissionRepository submissions;
+    private final ScheduleParticipationRepository participations;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -58,9 +60,10 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Пожелания доступны только в режиме сбора или после закрытия сбора");
         }
-        RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
+        ScheduleParticipation participation = loadParticipation(restaurantId, schedule, userId);
+        RestaurantMember member = participation.getMember();
         SchedulePreferenceSubmission submission = submissions.findWithCellsByScheduleIdAndMemberId(scheduleId, member.getId()).orElse(null);
-        return toMyResponse(schedule, member, submission);
+        return toMyResponse(schedule, participation, submission);
     }
 
     @Override
@@ -79,8 +82,9 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         if (schedule.getPreferenceDeadline() == null || !now.isBefore(schedule.getPreferenceDeadline())) {
             throw new BadRequestException("Срок отправки пожеланий истёк");
         }
-        RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
-        List<SchedulePreferenceCell> cells = buildCells(schedule, member, request == null ? null : request.cells());
+        ScheduleParticipation participation = loadParticipation(restaurantId, schedule, userId);
+        RestaurantMember member = participation.getMember();
+        List<SchedulePreferenceCell> cells = buildCells(schedule, participation.getPositionId(), request == null ? null : request.cells());
         String periodComment = normalizeText(request == null ? null : request.periodComment(), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
 
         SchedulePreferenceSubmission submission = submissions.findForUpdateByScheduleIdAndMemberId(scheduleId, member.getId())
@@ -97,8 +101,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             submission.setRevision(submission.getRevision() + 1);
         }
         submission.setUserId(member.getUser() == null ? null : member.getUser().getId());
-        submission.setPositionId(member.getPosition() == null ? null : member.getPosition().getId());
-        submission.setPositionName(member.getPosition() == null ? null : member.getPosition().getName());
+        submission.setPositionId(participation.getPositionId());
+        submission.setPositionName(participation.getPositionName());
         submission.setSubmittedAt(now);
         submission.setUpdatedAt(now);
         submission.setPeriodComment(periodComment);
@@ -111,7 +115,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         SchedulePreferenceSubmission saved = submissions.saveAndFlush(submission);
         notifyOwnerIfAllSubmitted(schedule, now, userId);
         schedules.flush();
-        return toMyResponse(schedule, member, saved);
+        return toMyResponse(schedule, participation, saved);
     }
 
     private void notifyOwnerIfAllSubmitted(Schedule schedule, Instant now, Long actorUserId) {
@@ -119,12 +123,12 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 || schedule.getPreferenceAllSubmittedNotifiedAt() != null) {
             return;
         }
-        List<RestaurantMember> participants = loadParticipants(schedule.getRestaurant().getId(), schedule);
+        List<ScheduleParticipation> participants = loadParticipations(schedule);
         int totalParticipants = participants.size();
         if (totalParticipants <= 0) {
             return;
         }
-        Set<Long> participantIds = participants.stream().map(RestaurantMember::getId).collect(Collectors.toSet());
+        Set<Long> participantIds = participants.stream().map(value -> value.getMember().getId()).collect(Collectors.toSet());
         long submittedCount = submissions.findByScheduleIdWithMember(schedule.getId()).stream()
                 .map(SchedulePreferenceSubmission::getMember)
                 .filter(Objects::nonNull)
@@ -185,15 +189,15 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         Schedule schedule = loadSchedule(restaurantId, scheduleId);
-        List<RestaurantMember> participants = loadParticipants(restaurantId, schedule);
+        List<ScheduleParticipation> participants = loadParticipations(schedule);
         Map<Long, SchedulePreferenceSubmission> byMemberId = submissions.findWithCellsByScheduleId(scheduleId).stream()
                 .collect(Collectors.toMap(s -> s.getMember().getId(), Function.identity(), (a, b) -> a));
 
         List<SchedulePreferenceParticipantDto> participantDtos = participants.stream()
-                .sorted(Comparator.comparing(this::displayName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
-                .map(member -> {
-                    SchedulePreferenceSubmission submission = byMemberId.get(member.getId());
-                    return toParticipantDto(member, submission);
+                .sorted(Comparator.comparing(value -> displayName(value.getMember()), Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .map(participation -> {
+                    SchedulePreferenceSubmission submission = byMemberId.get(participation.getMember().getId());
+                    return toParticipantDto(participation, submission);
                 })
                 .toList();
         long submittedCount = participantDtos.stream().filter(SchedulePreferenceParticipantDto::submitted).count();
@@ -233,26 +237,19 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
     }
 
-    private RestaurantMember loadEligibleMember(Long restaurantId, Schedule schedule, Long userId) {
+    private ScheduleParticipation loadParticipation(Long restaurantId, Schedule schedule, Long userId) {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (member.getPosition() == null || !positionIds.contains(member.getPosition().getId())) {
-            throw new ForbiddenException("Должность сотрудника не входит в позиции графика");
-        }
-        return member;
+        return participations.findByScheduleIdAndMemberId(schedule.getId(), member.getId())
+                .orElseThrow(() -> new ForbiddenException("Сотрудник не участвует в этом графике"));
     }
 
 
-    private List<RestaurantMember> loadParticipants(Long restaurantId, Schedule schedule) {
-        List<Long> positionIds = SchedulePositionIds.ids(schedule);
-        if (positionIds.isEmpty()) {
-            return List.of();
-        }
-        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, positionIds);
+    private List<ScheduleParticipation> loadParticipations(Schedule schedule) {
+        return participations.findByScheduleIdOrderById(schedule.getId());
     }
 
-    List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {
+    List<SchedulePreferenceCell> buildCells(Schedule schedule, Long participationPositionId, List<SchedulePreferenceCellRequest> requests) {
         List<SchedulePreferenceCellRequest> safeRequests = requests == null ? List.of() : requests;
         long daysCount = schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).count();
         int maxCells = Math.toIntExact(daysCount * MAX_CELLS_PER_DAY);
@@ -292,7 +289,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 }
                 startTime = parseTime(request.startTime(), "cells[" + i + "].startTime");
                 endTime = parseTime(request.endTime(), "cells[" + i + "].endTime");
-                if (startTime.equals(endTime) || !isApplicableSnapshot(schedule, member, startTime, endTime)) {
+                if (startTime.equals(endTime) || !isApplicableSnapshot(schedule, participationPositionId, startTime, endTime)) {
                     throw unavailablePreferenceInterval(startTime, endTime);
                 }
             }
@@ -305,9 +302,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return cells;
     }
 
-    private boolean isApplicableSnapshot(Schedule schedule, RestaurantMember member,
+    private boolean isApplicableSnapshot(Schedule schedule, Long positionId,
                                          LocalTime startTime, LocalTime endTime) {
-        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
         return positionId != null && schedule.getPreferenceShiftOptionSnapshots().stream()
                 .anyMatch(option -> option.getPositionIds().contains(positionId)
                         && option.getStartTime().equals(startTime)
@@ -320,7 +316,8 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     }
 
 
-    private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {
+    private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, ScheduleParticipation participation, SchedulePreferenceSubmission submission) {
+        RestaurantMember member = participation.getMember();
         return new SchedulePreferenceMyResponse(
                 schedule.getId(),
                 schedule.getTitle(),
@@ -334,15 +331,14 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission == null ? null : submission.getSubmittedAt(),
                 submission == null ? null : submission.getUpdatedAt(),
                 submission == null ? 0 : submission.getRevision(),
-                toMemberDto(member),
-                allowedShiftOptions(schedule, member),
+                toMemberDto(participation),
+                allowedShiftOptions(schedule, participation.getPositionId()),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
                 submission == null ? null : submission.getPeriodComment()
         );
     }
 
-    private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, RestaurantMember member) {
-        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
+    private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, Long positionId) {
         if (schedule.getPreferenceCollectionMode() != PreferenceCollectionMode.SHIFT_OPTIONS || positionId == null) {
             return List.of();
         }
@@ -362,13 +358,14 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 && TimeProvider.now().isBefore(schedule.getPreferenceDeadline());
     }
 
-    private SchedulePreferenceParticipantDto toParticipantDto(RestaurantMember member, SchedulePreferenceSubmission submission) {
+    private SchedulePreferenceParticipantDto toParticipantDto(ScheduleParticipation participation, SchedulePreferenceSubmission submission) {
+        RestaurantMember member = participation.getMember();
         return new SchedulePreferenceParticipantDto(
                 member.getId(),
                 member.getUser() == null ? null : member.getUser().getId(),
                 displayName(member),
-                member.getPosition() == null ? null : member.getPosition().getId(),
-                member.getPosition() == null ? null : member.getPosition().getName(),
+                participation.getPositionId(),
+                participation.getPositionName(),
                 submission != null,
                 submission == null ? null : submission.getSubmittedAt(),
                 submission == null ? null : submission.getUpdatedAt(),
@@ -380,7 +377,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private SchedulePreferenceSubmissionDto toSubmissionDto(SchedulePreferenceSubmission submission) {
         return new SchedulePreferenceSubmissionDto(
                 submission.getId(),
-                toMemberDto(submission.getMember()),
+                toMemberDto(submission),
                 submission.getPositionId(),
                 submission.getPositionName(),
                 submission.getSubmittedAt(),
@@ -391,14 +388,22 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         );
     }
 
-    private SchedulePreferenceMemberDto toMemberDto(RestaurantMember member) {
+    private SchedulePreferenceMemberDto toMemberDto(ScheduleParticipation participation) {
+        RestaurantMember member = participation.getMember();
         return new SchedulePreferenceMemberDto(
                 member.getId(),
                 member.getUser() == null ? null : member.getUser().getId(),
                 displayName(member),
-                member.getPosition() == null ? null : member.getPosition().getId(),
-                member.getPosition() == null ? null : member.getPosition().getName()
+                participation.getPositionId(),
+                participation.getPositionName()
         );
+    }
+
+    private SchedulePreferenceMemberDto toMemberDto(SchedulePreferenceSubmission submission) {
+        RestaurantMember member = submission.getMember();
+        return new SchedulePreferenceMemberDto(member.getId(),
+                member.getUser() == null ? null : member.getUser().getId(), displayName(member),
+                submission.getPositionId(), submission.getPositionName());
     }
 
     private List<SchedulePreferenceCellDto> toCellDtos(List<SchedulePreferenceCell> cells) {
