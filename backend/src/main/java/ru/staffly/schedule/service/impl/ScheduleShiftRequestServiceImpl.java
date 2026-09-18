@@ -25,6 +25,7 @@ import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.model.ScheduleShiftRequestType;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
@@ -50,6 +51,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
     private final ScheduleRepository schedules;
     private final ScheduleShiftRequestRepository requests;
+    private final ScheduleParticipationRepository participations;
     private final RestaurantMemberRepository members;
     private final InboxMessageService inboxMessages;
     private final SecurityService securityService;
@@ -62,11 +64,14 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
+        assertParticipant(scheduleId, initiator.getId());
+        Long targetMemberId = Objects.requireNonNull(request.toMemberId());
+        assertParticipant(scheduleId, targetMemberId);
 
         LocalDate day = parseDate(request.day(), "day");
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
                 .orElseThrow(() -> new BadRequestException("У вас нет смен в этом графике"));
-        ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.toMemberId()))
+        ScheduleRow toRow = findRowForMember(schedule, targetMemberId)
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
         String value = normalizeValue(findCellValue(fromRow, day)
@@ -94,6 +99,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        touchSchedule(schedule);
         scheduleAuditService.record(
                 schedule,
                 userId,
@@ -110,13 +116,16 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
+        assertParticipant(scheduleId, initiator.getId());
+        Long targetMemberId = Objects.requireNonNull(request.targetMemberId());
+        assertParticipant(scheduleId, targetMemberId);
 
         LocalDate myDay = parseDate(request.myDay(), "myDay");
         LocalDate targetDay = parseDate(request.targetDay(), "targetDay");
 
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
                 .orElseThrow(() -> new BadRequestException("У вас нет смен в этом графике"));
-        ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.targetMemberId()))
+        ScheduleRow toRow = findRowForMember(schedule, targetMemberId)
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
         String fromValue = normalizeValue(findCellValue(fromRow, myDay)
@@ -150,6 +159,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        touchSchedule(schedule);
         scheduleAuditService.record(
                 schedule,
                 userId,
@@ -189,6 +199,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             entity.setDecidedByUserId(userId);
             entity.setDecidedAt(now);
             entity.setDecisionComment(null);
+            touchSchedule(schedule);
             scheduleAuditService.record(
                     schedule,
                     userId,
@@ -205,6 +216,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             entity.setDecidedByUserId(userId);
             entity.setDecidedAt(now);
             entity.setDecisionComment(staleReason);
+            touchSchedule(schedule);
             scheduleAuditService.record(
                     schedule,
                     userId,
@@ -226,8 +238,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
         // Cell mutations belong to the Schedule aggregate even though they are persisted
         // through child entities. Dirty the root so its optimistic-lock revision advances.
-        schedule.setUpdatedAt(now);
-        schedules.flush();
+        touchSchedule(schedule);
 
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
         entity.setDecidedByUserId(userId);
@@ -287,6 +298,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         requests.delete(request);
+        touchSchedule(request.getSchedule());
     }
 
     /**
@@ -336,6 +348,17 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         if (schedule.getStatus() != ScheduleStatus.PUBLISHED) {
             throw new BadRequestException("Заявки на смены доступны только для опубликованного графика");
         }
+    }
+
+    private void assertParticipant(Long scheduleId, Long memberId) {
+        if (!participations.existsByScheduleIdAndMemberId(scheduleId, memberId)) {
+            throw new BadRequestException("Сотрудник не участвует в этом графике");
+        }
+    }
+
+    private void touchSchedule(Schedule schedule) {
+        schedule.setUpdatedAt(TimeProvider.now());
+        schedules.flush();
     }
 
 

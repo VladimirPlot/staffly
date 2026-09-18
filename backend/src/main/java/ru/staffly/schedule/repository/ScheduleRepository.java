@@ -26,6 +26,20 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     Optional<Schedule> findForUpdateByIdAndRestaurantId(@Param("id") Long id,
                                                          @Param("restaurantId") Long restaurantId);
 
+    /** Locks multiple aggregates in the global deterministic schedule-id order. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select s from Schedule s
+            where s.restaurant.id = :restaurantId and s.id in :ids
+            order by s.id asc
+            """)
+    List<Schedule> findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(@Param("restaurantId") Long restaurantId,
+                                                                      @Param("ids") List<Long> ids);
+
+    @Query("select p.id from Schedule s join s.positions p where s.id = :id and s.restaurant.id = :restaurantId order by p.id")
+    List<Long> findPositionIdsByIdAndRestaurantId(@Param("id") Long id,
+                                                   @Param("restaurantId") Long restaurantId);
+
     boolean existsByPreferenceBuildTemplateIdAndStatus(Long templateId, ScheduleStatus status);
 
     @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position", "ownerUser"})

@@ -30,6 +30,7 @@ import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleChangeService;
 import ru.staffly.schedule.service.ScheduleService;
+import ru.staffly.schedule.service.ScheduleParticipationCreator;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
@@ -56,6 +57,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final ScheduleShiftRequestRepository shiftRequests;
     private final SchedulePreferenceSubmissionRepository preferenceSubmissions;
     private final ScheduleParticipationRepository participations;
+    private final ScheduleParticipationCreator participationCreator;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -118,13 +120,14 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .build();
 
         applyOwnerAndCreator(schedule, restaurantId, userId, request.ownerUserId());
-        List<ScheduleRow> rowEntities = buildRows(
-                schedule, request.rows(), request.cellValues(), days
-        );
-        schedule.setRows(rowEntities);
-
+        List<ScheduleRowRequest> requestedRows = request.rows() == null ? List.of() : request.rows();
+        Map<Long, RestaurantMember> lockedMembers = lockRequestedMembers(restaurantId, requestedRows);
         Schedule saved = schedules.saveAndFlush(schedule);
-        ensureParticipationsForRows(saved);
+        List<ScheduleRow> rowEntities = buildRows(
+                saved, requestedRows, request.cellValues(), days, lockedMembers
+        );
+        saved.setRows(rowEntities);
+        saved = schedules.saveAndFlush(saved);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, auditDetails);
         if (status == ScheduleStatus.PUBLISHED) {
             notifySchedulePublished(saved, userId);
@@ -256,6 +259,8 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
+        List<ScheduleRowRequest> requestedRows = request.rows() != null ? request.rows() : List.of();
+        Map<Long, RestaurantMember> lockedRequestedMembers = lockRequestedMembers(restaurantId, requestedRows);
         Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, request.version());
@@ -291,10 +296,11 @@ public class ScheduleServiceImpl implements ScheduleService {
                 || !new HashSet<>(SchedulePositionIds.ids(schedule)).equals(
                         schedulePositions.stream().map(Position::getId).collect(Collectors.toSet()));
 
-        List<ScheduleRowRequest> safeRows = request.rows() != null ? request.rows() : List.of();
+        List<ScheduleRowRequest> safeRows = requestedRows;
         Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
         Set<Long> requestedPositionIds = schedulePositions.stream().map(Position::getId).collect(Collectors.toSet());
-        Map<Long, RestaurantMember> memberMap = validateAndMapMembers(schedule, safeRows, requestedPositionIds);
+        Map<Long, RestaurantMember> memberMap = validateAndMapMembers(
+                schedule, safeRows, requestedPositionIds, lockedRequestedMembers);
         Map<String, String> oldValueMap = buildCurrentValueMap(schedule);
         Map<String, String> newValueMap = buildRequestedValueMap(newValues, days, memberMap.keySet());
         List<PublishedScheduleCellChange> publishedChanges = publishedEdit
@@ -309,8 +315,10 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setShiftMode(shiftMode);
         schedule.setShowFullName(config.showFullName());
         schedule.setPositions(schedulePositions);
-        applyRowsDiff(schedule, newValues, days, memberMap);
-        ensureParticipations(schedule, memberMap.values());
+        Map<Long, ScheduleParticipation> participationByMemberId = ensureParticipations(
+                schedule, memberMap.values());
+        applyRowsDiff(schedule, newValues, days, memberMap, participationByMemberId);
+        schedule.setUpdatedAt(TimeProvider.now());
 
         Schedule saved = schedules.saveAndFlush(schedule);
         if (!publishedEdit || aggregateChanged || !publishedChanges.isEmpty()) {
@@ -352,9 +360,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertCanUpdateScheduleContent(schedule);
 
-        Set<Long> existingMemberIds = schedule.getRows().stream()
-                .map(ScheduleRow::getMemberId)
-                .filter(Objects::nonNull)
+        Set<Long> existingMemberIds = participations.findByScheduleIdOrderById(scheduleId).stream()
+                .map(value -> value.getMember().getId())
                 .collect(Collectors.toSet());
 
         return findEligibleMembers(schedule).stream()
@@ -372,14 +379,13 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + memberId));
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, expectedVersion);
         assertCanUpdateScheduleContent(schedule);
 
-        RestaurantMember member = members.findById(memberId)
-                .filter(candidate -> Objects.equals(candidate.getRestaurant().getId(), restaurantId))
-                .orElseThrow(() -> new NotFoundException("Сотрудник не найден: " + memberId));
         List<Long> positionIds = SchedulePositionIds.ids(schedule);
         if (member.getUser() == null || member.getPosition() == null
                 || !positionIds.contains(member.getPosition().getId())) {
@@ -393,15 +399,16 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .mapToInt(ScheduleRow::getSortOrder)
                 .max()
                 .orElse(-1) + 1;
+        ScheduleParticipation participation = participationCreator
+                .createWithLocksHeld(schedule, member, true).participation();
         schedule.getRows().add(ScheduleRow.builder()
                 .schedule(schedule)
                 .memberId(member.getId())
                 .displayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""))
-                .positionId(member.getPosition().getId())
-                .positionName(member.getPosition().getName())
+                .positionId(participation.getPositionId())
+                .positionName(participation.getPositionName())
                 .sortOrder(nextSortOrder)
                 .build());
-        ensureParticipations(schedule, List.of(member));
 
         schedule.setUpdatedAt(TimeProvider.now());
         Schedule saved = schedules.saveAndFlush(schedule);
@@ -419,26 +426,9 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
     }
 
-    private void ensureParticipationsForRows(Schedule schedule) {
-        Set<Long> memberIds = schedule.getRows().stream().map(ScheduleRow::getMemberId)
-                .filter(Objects::nonNull).collect(Collectors.toSet());
-        if (memberIds.isEmpty()) return;
-        ensureParticipations(schedule, members.findWithUserAndPositionByIdIn(memberIds));
-    }
-
-    private void ensureParticipations(Schedule schedule, Collection<RestaurantMember> candidates) {
-        Set<Long> existing = participations.findByScheduleIdOrderById(schedule.getId()).stream()
-                .map(value -> value.getMember().getId()).collect(Collectors.toSet());
-        for (RestaurantMember member : candidates) {
-            if (member.getPosition() != null && existing.add(member.getId())) {
-                participations.save(ScheduleParticipation.builder()
-                        .schedule(schedule)
-                        .member(member)
-                        .positionId(member.getPosition().getId())
-                        .positionName(member.getPosition().getName())
-                        .build());
-            }
-        }
+    private Map<Long, ScheduleParticipation> ensureParticipations(
+            Schedule schedule, Collection<RestaurantMember> lockedCandidates) {
+        return participationCreator.createMissingWithLocksHeld(schedule, lockedCandidates, true);
     }
 
     private AddableScheduleMemberDto toAddableMemberDto(RestaurantMember member) {
@@ -473,7 +463,13 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
-        // Global two-aggregate lock order is Schedule -> ScheduleBuildTemplate.
+        // Discover without locking, then acquire the global Member -> Schedule -> Template order.
+        List<Long> discoveredPositionIds = schedules.findPositionIdsByIdAndRestaurantId(scheduleId, restaurantId);
+        List<Long> candidateIds = discoveredPositionIds.isEmpty() ? List.of()
+                : members.findByRestaurantIdAndPositionIdIn(restaurantId, discoveredPositionIds).stream()
+                .map(RestaurantMember::getId).sorted().toList();
+        List<RestaurantMember> lockedCandidates = candidateIds.isEmpty() ? List.of()
+                : members.findForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, candidateIds);
         Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, request.version());
@@ -505,7 +501,24 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (mode == PreferenceCollectionMode.SHIFT_OPTIONS) {
             replacePreferenceShiftOptionSnapshot(schedule, preferenceBuildTemplate);
         }
-        ensureParticipations(schedule, findEligibleMembers(schedule));
+        Set<Long> lockedSchedulePositionIds = new HashSet<>(SchedulePositionIds.ids(schedule));
+        if (!lockedSchedulePositionIds.equals(new HashSet<>(discoveredPositionIds))) {
+            throw new ConflictException("Позиции графика изменились. Повторите начало сбора пожеланий");
+        }
+        List<RestaurantMember> eligibleLockedCandidates = lockedCandidates.stream()
+                .filter(member -> member.getPosition() != null
+                        && lockedSchedulePositionIds.contains(member.getPosition().getId()))
+                .toList();
+        Set<Long> revalidatedCandidateIds = lockedSchedulePositionIds.isEmpty() ? Set.of()
+                : members.findByRestaurantIdAndPositionIdIn(
+                                restaurantId, lockedSchedulePositionIds.stream().sorted().toList()).stream()
+                        .map(RestaurantMember::getId).collect(Collectors.toSet());
+        Set<Long> lockedEligibleCandidateIds = eligibleLockedCandidates.stream()
+                .map(RestaurantMember::getId).collect(Collectors.toSet());
+        if (!revalidatedCandidateIds.equals(lockedEligibleCandidateIds)) {
+            throw new ConflictException("Состав подходящих сотрудников изменился. Повторите начало сбора пожеланий");
+        }
+        ensureParticipations(schedule, eligibleLockedCandidates);
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
         schedule.setPreferenceCollectionMode(mode);
         schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
@@ -683,7 +696,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, expectedVersion);
         if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
@@ -711,7 +724,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, expectedVersion);
         if (schedule.getStatus() != ScheduleStatus.DRAFT
@@ -737,7 +750,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, expectedVersion);
 
@@ -748,12 +761,15 @@ public class ScheduleServiceImpl implements ScheduleService {
     private List<ScheduleRow> buildRows(Schedule schedule,
                                         List<ScheduleRowRequest> rows,
                                         Map<String, String> cellValues,
-                                        List<LocalDate> days) {
+                                        List<LocalDate> days,
+                                        Map<Long, RestaurantMember> lockedMembers) {
         List<ScheduleRowRequest> safeRows = rows != null ? rows : List.of();
         Map<String, String> values = cellValues != null ? cellValues : Map.of();
 
         List<ScheduleRow> entities = new ArrayList<>(safeRows.size());
-        Map<Long, RestaurantMember> membersById = loadRequestedMembers(safeRows);
+        Map<Long, RestaurantMember> membersById = lockedMembers;
+        Map<Long, ScheduleParticipation> participationByMemberId = ensureParticipations(
+                schedule, membersById.values());
         Set<Long> schedulePositionIds = new HashSet<>(SchedulePositionIds.ids(schedule));
         Set<Long> seenMemberIds = new HashSet<>();
         int index = 0;
@@ -772,12 +788,13 @@ public class ScheduleServiceImpl implements ScheduleService {
                 throw new BadRequestException("Должность сотрудника не входит в позиции графика");
             }
             if (!seenMemberIds.add(member.getId())) { throw new BadRequestException("Один и тот же сотрудник не может быть добавлен дважды"); }
+            ScheduleParticipation participation = participationByMemberId.get(member.getId());
             ScheduleRow entity = ScheduleRow.builder()
                     .schedule(schedule)
                     .memberId(member.getId())
                     .displayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""))
-                    .positionId(member.getPosition().getId())
-                    .positionName(member.getPosition().getName())
+                    .positionId(participation.getPositionId())
+                    .positionName(participation.getPositionName())
                     .sortOrder(index++)
                     .build();
 
@@ -815,9 +832,12 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private Map<Long, RestaurantMember> validateAndMapMembers(Schedule schedule, List<ScheduleRowRequest> rows,
-                                                               Set<Long> allowedPositionIds) {
+                                                               Set<Long> allowedPositionIds,
+                                                               Map<Long, RestaurantMember> membersById) {
         Map<Long, RestaurantMember> memberMap = new LinkedHashMap<>();
-        Map<Long, RestaurantMember> membersById = loadRequestedMembers(rows);
+        Map<Long, ScheduleParticipation> participationByMemberId = participations
+                .findByScheduleIdOrderById(schedule.getId()).stream()
+                .collect(Collectors.toMap(value -> value.getMember().getId(), value -> value));
         Set<Long> historicalMemberIds = schedule.getRows().stream()
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
@@ -831,9 +851,18 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (!Objects.equals(member.getRestaurant().getId(), schedule.getRestaurant().getId())) {
                 throw new ForbiddenException("Нельзя добавить сотрудника из другого ресторана");
             }
+            ScheduleParticipation participation = participationByMemberId.get(member.getId());
+            if (participation == null && historicalMemberIds.contains(member.getId())) {
+                // A materialized row is history, not membership. Re-adding a former
+                // participant must go through the explicit add-member boundary.
+                continue;
+            }
+            Long authoritativePositionId = participation == null
+                    ? (member.getPosition() == null ? null : member.getPosition().getId())
+                    : participation.getPositionId();
             boolean currentlyEligible = member.getUser() != null
-                    && member.getPosition() != null
-                    && allowedPositionIds.contains(member.getPosition().getId());
+                    && authoritativePositionId != null
+                    && allowedPositionIds.contains(authoritativePositionId);
             if (!currentlyEligible) {
                 // A client can still hold a row that became inactive after it loaded the schedule
                 // (member position or schedule positions changed). Treat it as retained history,
@@ -852,16 +881,12 @@ public class ScheduleServiceImpl implements ScheduleService {
         return memberMap;
     }
 
-    private Map<Long, RestaurantMember> loadRequestedMembers(List<ScheduleRowRequest> rows) {
-        Set<Long> memberIds = rows.stream()
-                .filter(Objects::nonNull)
-                .map(ScheduleRowRequest::memberId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        if (memberIds.isEmpty()) {
-            return Map.of();
-        }
-        return members.findWithUserAndPositionByIdIn(memberIds).stream()
+    private Map<Long, RestaurantMember> lockRequestedMembers(Long restaurantId, List<ScheduleRowRequest> rows) {
+        List<Long> memberIds = rows.stream().filter(Objects::nonNull)
+                .map(ScheduleRowRequest::memberId).filter(Objects::nonNull)
+                .distinct().sorted().toList();
+        if (memberIds.isEmpty()) return Map.of();
+        return members.findForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, memberIds).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
     }
 
@@ -945,7 +970,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private void applyRowsDiff(Schedule schedule,
                                Map<String, String> values,
                                List<LocalDate> days,
-                               Map<Long, RestaurantMember> memberMap) {
+                               Map<Long, RestaurantMember> memberMap,
+                               Map<Long, ScheduleParticipation> participationByMemberId) {
         Map<Long, ScheduleRow> existingByMemberId = schedule.getRows().stream()
                 .filter(row -> row.getMemberId() != null)
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, r -> r, (left, right) -> left));
@@ -959,8 +985,10 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (row == null) {
                 row = ScheduleRow.builder().schedule(schedule).memberId(memberId).build();
                 schedule.getRows().add(row);
-                row.setPositionId(member.getPosition().getId());
-                row.setPositionName(member.getPosition().getName());
+                ScheduleParticipation participation = Objects.requireNonNull(
+                        participationByMemberId.get(memberId), "Active row requires ScheduleParticipation");
+                row.setPositionId(participation.getPositionId());
+                row.setPositionName(participation.getPositionName());
             }
             activeRows.add(row);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
