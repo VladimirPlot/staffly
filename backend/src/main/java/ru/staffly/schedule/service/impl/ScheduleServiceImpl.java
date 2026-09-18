@@ -475,16 +475,24 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
 
-        Long buildTemplateId = request == null ? null : request.buildTemplateId();
-        if (buildTemplateId == null) {
-            throw new BadRequestException("Выберите шаблон сборки для сбора пожеланий");
+        PreferenceCollectionMode mode = request == null ? null : request.mode();
+        if (mode == null) {
+            throw new BadRequestException("Выберите способ сбора пожеланий");
         }
-        ScheduleBuildTemplate preferenceBuildTemplate = resolvePreferenceBuildTemplateForUpdate(
-                restaurantId, schedule, buildTemplateId
-        );
+        Long buildTemplateId = request.buildTemplateId();
+        validatePreferenceCollectionModeSelection(mode, buildTemplateId);
+        ScheduleBuildTemplate preferenceBuildTemplate = mode == PreferenceCollectionMode.SHIFT_OPTIONS
+                ? resolvePreferenceBuildTemplateForUpdate(restaurantId, schedule, buildTemplateId)
+                : null;
 
-        replacePreferenceShiftOptionSnapshot(schedule, preferenceBuildTemplate);
+        // All validation above precedes aggregate mutation. Clearing also removes stale
+        // dictionaries should a future lifecycle permit a new collection iteration.
+        schedule.getPreferenceShiftOptionSnapshots().clear();
+        if (mode == PreferenceCollectionMode.SHIFT_OPTIONS) {
+            replacePreferenceShiftOptionSnapshot(schedule, preferenceBuildTemplate);
+        }
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
+        schedule.setPreferenceCollectionMode(mode);
         schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
         schedule.setPreferenceCollectionStartedAt(now);
         schedule.setPreferenceDeadline(deadline);
@@ -501,6 +509,15 @@ public class ScheduleServiceImpl implements ScheduleService {
         );
         notifyPreferenceCollectionStarted(saved, actorUserId);
         return toDto(saved, collectDays(saved.getStartDate(), saved.getEndDate()));
+    }
+
+    static void validatePreferenceCollectionModeSelection(PreferenceCollectionMode mode, Long buildTemplateId) {
+        if (mode == PreferenceCollectionMode.DAY_LEVEL && buildTemplateId != null) {
+            throw new BadRequestException("Для сбора без выбора времени шаблон сборки указывать нельзя");
+        }
+        if (mode == PreferenceCollectionMode.SHIFT_OPTIONS && buildTemplateId == null) {
+            throw new BadRequestException("Выберите шаблон сборки для сбора пожеланий с вариантами смен");
+        }
     }
 
     private ScheduleBuildTemplate resolvePreferenceBuildTemplateForUpdate(Long restaurantId, Schedule schedule, Long buildTemplateId) {
@@ -1321,6 +1338,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceDeadline(),
                 schedule.getPreferenceClosedAt(),
                 schedule.getPreferenceAppliedAt(),
+                schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );
     }

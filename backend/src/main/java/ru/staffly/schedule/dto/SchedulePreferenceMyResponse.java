@@ -1,6 +1,7 @@
 package ru.staffly.schedule.dto;
 
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.PreferenceCollectionMode;
 
 import java.time.Instant;
 import java.util.List;
@@ -12,6 +13,7 @@ public record SchedulePreferenceMyResponse(
         String endDate,
         List<ScheduleDayDto> days,
         ScheduleStatus status,
+        PreferenceCollectionMode preferenceCollectionMode,
         Instant preferenceDeadline,
         boolean canSubmit,
         Instant submittedAt,
@@ -20,6 +22,5 @@ public record SchedulePreferenceMyResponse(
         SchedulePreferenceMemberDto member,
         List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions,
         List<SchedulePreferenceCellDto> cells,
-        String comment,
         String periodComment
 ) {}

@@ -10,6 +10,8 @@ export type ScheduleCellChangeOptions = {
   source?: ScheduleCellSource;
 };
 
+export type PreferenceCollectionMode = "DAY_LEVEL" | "SHIFT_OPTIONS";
+
 export type ScheduleStatus =
   | "DRAFT"
   | "COLLECTING_PREFERENCES"
@@ -23,6 +25,7 @@ export type ScheduleLifecycleFields = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
 };
 
@@ -79,6 +82,7 @@ export type ScheduleData = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
   title: string;
   config: ScheduleConfig;
