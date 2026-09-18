@@ -3,7 +3,6 @@ package ru.staffly.schedule.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.model.RestaurantMember;
@@ -14,7 +13,6 @@ import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 
 import java.util.List;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +20,7 @@ public class ScheduleParticipationService {
     private final ScheduleRepository schedules;
     private final RestaurantMemberRepository members;
     private final ScheduleParticipationRepository participations;
+    private final ScheduleParticipationCreator creator;
 
     @Transactional(readOnly = true)
     public boolean isParticipant(Long scheduleId, Long memberId) {
@@ -36,19 +35,13 @@ public class ScheduleParticipationService {
 
     @Transactional
     public ScheduleParticipation add(Long restaurantId, Long scheduleId, Long memberId) {
+        RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
         Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
-        RestaurantMember member = members.findById(memberId)
-                .filter(value -> Objects.equals(value.getRestaurant().getId(), restaurantId))
-                .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-        if (member.getPosition() == null) {
-            throw new BadRequestException("Participant must have a position");
-        }
-        ScheduleParticipation existing = participations.findByScheduleIdOrderById(scheduleId).stream()
-                .filter(value -> Objects.equals(value.getMember().getId(), memberId)).findFirst().orElse(null);
-        if (existing != null) return existing;
-        schedule.setUpdatedAt(TimeProvider.now());
-        return participations.save(newParticipation(schedule, member));
+        ScheduleParticipationCreator.CreationResult result = creator.createWithLocksHeld(schedule, member, false);
+        if (result.created()) schedule.setUpdatedAt(TimeProvider.now());
+        return result.participation();
     }
 
     @Transactional
@@ -60,8 +53,4 @@ public class ScheduleParticipationService {
         return removed;
     }
 
-    public static ScheduleParticipation newParticipation(Schedule schedule, RestaurantMember member) {
-        return ScheduleParticipation.builder().schedule(schedule).member(member)
-                .positionId(member.getPosition().getId()).positionName(member.getPosition().getName()).build();
-    }
 }
