@@ -279,31 +279,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId) {
-        security.assertAtLeastManager(currentUserId, restaurantId);
-
-        // RestaurantMember is the current-position mutex. Schedule snapshot creation
-        // acquires this same row before any Schedule lock.
-        RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-
-        Position position = null;
-        if (positionId != null) {
-            position = positions.findById(positionId)
-                    .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
-
-            if (!position.getRestaurant().getId().equals(restaurantId) || !position.isActive()) {
-                throw new BadRequestException("Position is not in this restaurant or inactive");
-            }
-
-            if (!isPositionCompatibleWithRole(position.getLevel(), member.getRole())) {
-                throw new ConflictException("Position level is not compatible with member role");
-            }
-        }
-
-        member.setPosition(position);
-        member = members.save(member);
-        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
-        return memberMapper.toDto(member);
+        throw new ConflictException("Direct position update is retired; use the atomic position-change command");
     }
 
     @Override
