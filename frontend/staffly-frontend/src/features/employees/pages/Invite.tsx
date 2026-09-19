@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
@@ -21,6 +21,8 @@ import { useMemberFilteringSorting } from "../hooks/useMemberFilteringSorting";
 import { useMemberRemoval } from "../hooks/useMemberRemoval";
 import { useMembers } from "../hooks/useMembers";
 import { usePositions } from "../hooks/usePositions";
+import Toast from "../../home/components/Toast";
+import { fetchRestaurant } from "../../restaurants/api";
 
 export default function InvitePage() {
   const navigate = useNavigate();
@@ -28,6 +30,11 @@ export default function InvitePage() {
   const restaurantId = user?.restaurantId ?? null;
   const currentUserId = user?.id ?? null;
   const [avatarPreviewMember, setAvatarPreviewMember] = useState<MemberDto | null>(null);
+  const [restaurantTimeZone, setRestaurantTimeZone] = useState("Europe/Moscow");
+  useEffect(() => {
+    if (!restaurantId) return;
+    void fetchRestaurant(restaurantId).then((restaurant) => setRestaurantTimeZone(restaurant.timezone));
+  }, [restaurantId]);
 
   const membersState = useMembers(restaurantId);
   const positionsState = usePositions(restaurantId);
@@ -58,8 +65,10 @@ export default function InvitePage() {
   const editPositionState = useMemberEditPosition({
     restaurantId,
     allPositions: positionsState.allPositions,
-    updateRole: membersState.patchMemberRole,
-    updatePosition: membersState.patchMemberPosition,
+    restaurantTimeZone,
+    onApplied: async () => {
+      await membersState.refresh();
+    },
   });
 
   const removalState = useMemberRemoval({
@@ -165,13 +174,19 @@ export default function InvitePage() {
         positionsError={positionsState.error}
         options={editPositionState.editOptions}
         value={editPositionState.editPositionId}
-        memberDescription={editPositionState.description}
+        plan={editPositionState.plan}
+        decisions={editPositionState.decisions}
+        restaurantTimeZone={restaurantTimeZone}
         saving={editPositionState.saving}
+        loadingImpact={editPositionState.loadingImpact}
         error={editPositionState.error}
         onClose={editPositionState.close}
-        onSave={editPositionState.save}
+        onPreview={editPositionState.preview}
+        onApply={editPositionState.apply}
         onChangeValue={editPositionState.setEditPositionId}
+        onDecision={(id, decision) => editPositionState.setDecisions((current) => ({ ...current, [id]: decision }))}
       />
+      <Toast message={editPositionState.success} onClose={() => editPositionState.setSuccess(null)} />
 
       <RemoveMemberDialog
         open={Boolean(removalState.memberToRemove)}

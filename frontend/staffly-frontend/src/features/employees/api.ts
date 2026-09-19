@@ -144,13 +144,115 @@ export async function updateMemberRole(
   return data as MemberDto;
 }
 
-export async function updateMemberPosition(
+export type PositionChangeAction =
+  | "ADD_TO_COLLECTION"
+  | "DO_NOT_ADD"
+  | "CHANGE_POSITION_AND_REOPEN_COLLECTION"
+  | "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE"
+  | "REOPEN_AND_REBUILD_PREFERENCE_FLOW"
+  | "INFORMATION_ONLY";
+export type PositionChangeEligibilityProblem = "MISSING_PREFERENCE_MODE" | "MISSING_FROZEN_SHIFT_OPTIONS_FOR_POSITION";
+export type PositionChangePosition = { id: number; name: string };
+export type PositionChangeEmployee = {
+  memberId: number;
+  name: string;
+  oldPosition: PositionChangePosition;
+  newPosition: PositionChangePosition;
+  memberCreatedAt: string;
+};
+export type PublishedShiftImpact = {
+  elapsedPreserved: number;
+  currentPreserved: number;
+  futureToCancel: number;
+  legacyUnstructuredPreserved: number;
+};
+export type OldPositionImpact = {
+  scheduleId: number;
+  scheduleTitle: string;
+  scheduleStatus: string;
+  scheduleVersion: number;
+  preferenceCollectionCycle: number;
+  currentPreferenceDeadline: string | null;
+  participationId: number | null;
+  participationWillBeRemoved: boolean;
+  preferenceSubmissionId: number | null;
+  preferenceSubmissionRevision: number | null;
+  preferenceDataWillBeDeleted: boolean;
+  progressDenominatorWillChange: boolean;
+  appliedDraftWillBeInvalidated: boolean;
+  activeRowWillBeRemoved: boolean;
+  publishedRowBecomesHistorical: boolean;
+  publishedShiftImpact: PublishedShiftImpact | null;
+};
+export type NewPositionOpportunity = {
+  scheduleId: number;
+  scheduleTitle: string;
+  scheduleStatus: string;
+  scheduleVersion: number;
+  allowedActions: PositionChangeAction[];
+  currentPreferenceDeadline: string | null;
+  lessThanSixHoursRemain: boolean;
+  preferenceMode: string | null;
+  newPositionEligible: boolean;
+  frozenShiftOptionsRequired: boolean;
+  frozenShiftOptionsAvailable: boolean;
+  preferenceBuildTemplateId: number | null;
+  applicableFrozenShiftOptionSnapshotIds: number[];
+  preferenceCollectionCycle: number;
+  eligibilityProblems: PositionChangeEligibilityProblem[];
+  newDeadlineRequiredForReopen: boolean;
+};
+export type PositionChangeImpactPlan = {
+  calculatedAt: string;
+  employee: PositionChangeEmployee;
+  oldPositionImpacts: OldPositionImpact[];
+  newPositionOpportunities: NewPositionOpportunity[];
+};
+export type ScheduleDecision = {
+  scheduleId: number;
+  expectedVersion: number;
+  expectedStatus: string;
+  expectedCollectionCycle: number;
+  expectedPreferenceDeadline: string | null;
+  expectedParticipationId: number | null;
+  expectedPreferenceSubmissionId: number | null;
+  expectedPreferenceSubmissionRevision: number | null;
+  action: PositionChangeAction | null;
+  newDeadline: string | null;
+};
+export type ApplyPositionChangeRequest = {
+  targetPositionId: number;
+  expectedCurrentPositionId: number;
+  expectedMemberCreatedAt: string;
+  schedules: ScheduleDecision[];
+};
+export type ApplyPositionChangeResult = {
+  member: MemberDto;
+  affectedScheduleIds: number[];
+  reopenedCollections: { scheduleId: number; deadline: string }[];
+  cancelledFutureShiftCount: number;
+};
+
+export async function getPositionChangeImpact(
   restaurantId: number,
   memberId: number,
-  positionId: number | null,
-): Promise<MemberDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/position`, {
-    positionId,
-  });
-  return data as MemberDto;
+  targetPositionId: number,
+): Promise<PositionChangeImpactPlan> {
+  const { data } = await api.post<PositionChangeImpactPlan>(
+    `/api/restaurants/${restaurantId}/members/${memberId}/position-change-impact`,
+    { targetPositionId },
+  );
+  return data;
+}
+
+export async function applyPositionChange(
+  restaurantId: number,
+  memberId: number,
+  request: ApplyPositionChangeRequest,
+): Promise<ApplyPositionChangeResult> {
+  const { data } = await api.post<ApplyPositionChangeResult>(
+    `/api/restaurants/${restaurantId}/members/${memberId}/position-change`,
+    request,
+  );
+  return data;
 }

@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  fetchMyRoleIn,
-  listMembers,
-  removeMember as removeMemberApi,
-  updateMemberPosition,
-  updateMemberRole,
-  type MemberDto,
-} from "../api";
+import { fetchMyRoleIn, listMembers, removeMember as removeMemberApi, updateMemberRole, type MemberDto } from "../api";
 import type { RestaurantRole } from "../../dictionaries/api";
 import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 
@@ -21,10 +14,7 @@ export function useMembers(restaurantId: number | null) {
     setLoading(true);
     setError(null);
     try {
-      const [role, data] = await Promise.all([
-        fetchMyRoleIn(restaurantId),
-        listMembers(restaurantId),
-      ]);
+      const [role, data] = await Promise.all([fetchMyRoleIn(restaurantId), listMembers(restaurantId)]);
       setMyRole(role);
       setMembers(data);
     } catch (error: unknown) {
@@ -45,7 +35,7 @@ export function useMembers(restaurantId: number | null) {
       await removeMemberApi(restaurantId, memberId);
       setMembers((prev) => prev.filter((member) => member.id !== memberId));
     },
-    [restaurantId]
+    [restaurantId],
   );
 
   const patchMemberRole = useCallback(
@@ -55,17 +45,7 @@ export function useMembers(restaurantId: number | null) {
       setMembers((prev) => prev.map((member) => (member.id === updated.id ? { ...member, ...updated } : member)));
       return updated;
     },
-    [restaurantId]
-  );
-
-  const patchMemberPosition = useCallback(
-    async (memberId: number, positionId: number | null) => {
-      if (!restaurantId) throw new Error("restaurantId is required");
-      const updated = await updateMemberPosition(restaurantId, memberId, positionId);
-      setMembers((prev) => prev.map((member) => (member.id === updated.id ? { ...member, ...updated } : member)));
-      return updated;
-    },
-    [restaurantId]
+    [restaurantId],
   );
 
   return {
@@ -77,6 +57,5 @@ export function useMembers(restaurantId: number | null) {
     refresh,
     removeMember,
     patchMemberRole,
-    patchMemberPosition,
   };
 }
