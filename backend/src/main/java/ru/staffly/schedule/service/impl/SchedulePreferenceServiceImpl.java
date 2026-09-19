@@ -164,11 +164,16 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 creator,
                 content,
                 InboxEventSubtype.SCHEDULE_PREFERENCES,
-                "schedulePreferences:allSubmitted:restaurant:" + schedule.getRestaurant().getId() + ":schedule:" + schedule.getId(),
+                allSubmittedMeta(schedule),
                 List.of(owner),
                 null
         );
         schedule.setPreferenceAllSubmittedNotifiedAt(now);
+    }
+
+    static String allSubmittedMeta(Schedule schedule) {
+        return "schedulePreferences:allSubmitted:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId() + ":cycle:" + schedule.getPreferenceCollectionCycle();
     }
 
 
