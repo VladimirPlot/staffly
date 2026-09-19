@@ -17,6 +17,7 @@ public record ScheduleDto(
         List<ScheduleRowDto> rows,
         Map<String, String> cellValues,
         Map<String, ScheduleCellSource> cellSources,
+        Map<String, ScheduleCellShiftDto> cellShifts,
         ScheduleOwnerDto owner,
         ScheduleCreatedByDto createdBy,
         List<ScheduleAuditLogDto> history,

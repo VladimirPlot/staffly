@@ -496,7 +496,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     private void transferShift(ScheduleRow fromRow, ScheduleRow toRow, LocalDate day) {
-        String value = removeCell(fromRow, day)
+        ScheduleCell removed = removeCell(fromRow, day)
                 .orElseThrow(() -> new BadRequestException("Смена отсутствует"));
 
         if (findCellValue(toRow, day).isPresent()) {
@@ -506,40 +506,48 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         ScheduleCell newCell = ScheduleCell.builder()
                 .row(toRow)
                 .day(day)
-                .value(value)
+                .value(removed.getValue())
+                .source(removed.getSource())
                 .build();
+        removed.structuredShift().ifPresent(newCell::setStructuredShift);
         toRow.getCells().add(newCell);
     }
 
     private void swapShifts(ScheduleRow fromRow, ScheduleRow toRow, LocalDate dayFrom, LocalDate dayTo) {
-        String fromValue = removeCell(fromRow, dayFrom)
+        ScheduleCell fromCell = removeCell(fromRow, dayFrom)
                 .orElseThrow(() -> new BadRequestException("Смена сотрудника не найдена"));
-        String toValue = removeCell(toRow, dayTo)
+        ScheduleCell toCell = removeCell(toRow, dayTo)
                 .orElseThrow(() -> new BadRequestException("Смена коллеги не найдена"));
 
         if (findCellValue(fromRow, dayTo).isPresent() || findCellValue(toRow, dayFrom).isPresent()) {
             throw new BadRequestException("Одна из дат уже занята");
         }
 
-        fromRow.getCells().add(ScheduleCell.builder()
+        ScheduleCell movedToFrom = ScheduleCell.builder()
                 .row(fromRow)
                 .day(dayTo)
-                .value(toValue)
-                .build());
-        toRow.getCells().add(ScheduleCell.builder()
+                .value(toCell.getValue())
+                .source(toCell.getSource())
+                .build();
+        toCell.structuredShift().ifPresent(movedToFrom::setStructuredShift);
+        fromRow.getCells().add(movedToFrom);
+        ScheduleCell movedToTo = ScheduleCell.builder()
                 .row(toRow)
                 .day(dayFrom)
-                .value(fromValue)
-                .build());
+                .value(fromCell.getValue())
+                .source(fromCell.getSource())
+                .build();
+        fromCell.structuredShift().ifPresent(movedToTo::setStructuredShift);
+        toRow.getCells().add(movedToTo);
     }
 
-    private Optional<String> removeCell(ScheduleRow row, LocalDate day) {
+    private Optional<ScheduleCell> removeCell(ScheduleRow row, LocalDate day) {
         List<ScheduleCell> cells = new ArrayList<>(row.getCells());
         Optional<ScheduleCell> target = cells.stream()
                 .filter(cell -> day.equals(cell.getDay()))
                 .findFirst();
         target.ifPresent(cell -> row.getCells().remove(cell));
-        return target.map(ScheduleCell::getValue);
+        return target;
     }
 
     private LocalDate parseDate(String value, String field) {

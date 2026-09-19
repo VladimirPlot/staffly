@@ -124,7 +124,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         Map<Long, RestaurantMember> lockedMembers = lockRequestedMembers(restaurantId, requestedRows);
         Schedule saved = schedules.saveAndFlush(schedule);
         List<ScheduleRow> rowEntities = buildRows(
-                saved, requestedRows, request.cellValues(), days, lockedMembers
+                saved, requestedRows, request.cellValues(), request.cellShifts(), days, lockedMembers
         );
         saved.setRows(rowEntities);
         saved = schedules.saveAndFlush(saved);
@@ -317,7 +317,9 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setPositions(schedulePositions);
         Map<Long, ScheduleParticipation> participationByMemberId = ensureParticipations(
                 schedule, memberMap.values());
-        applyRowsDiff(schedule, newValues, days, memberMap, participationByMemberId);
+        applyRowsDiff(schedule, newValues,
+                request.cellShifts() != null ? request.cellShifts() : Map.of(),
+                days, memberMap, participationByMemberId);
         schedule.setUpdatedAt(TimeProvider.now());
 
         Schedule saved = schedules.saveAndFlush(schedule);
@@ -762,6 +764,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private List<ScheduleRow> buildRows(Schedule schedule,
                                         List<ScheduleRowRequest> rows,
                                         Map<String, String> cellValues,
+                                        Map<String, ScheduleCellShiftDto> cellShifts,
                                         List<LocalDate> days,
                                         Map<Long, RestaurantMember> lockedMembers) {
         List<ScheduleRowRequest> safeRows = rows != null ? rows : List.of();
@@ -799,7 +802,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                     .sortOrder(index++)
                     .build();
 
-            List<ScheduleCell> cells = buildCells(entity, member.getId(), values, days);
+            List<ScheduleCell> cells = buildCells(entity, member.getId(), values,
+                    cellShifts != null ? cellShifts : Map.of(), days);
             entity.setCells(cells);
             entities.add(entity);
         }
@@ -809,6 +813,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private List<ScheduleCell> buildCells(ScheduleRow row,
                                           Long memberId,
                                           Map<String, String> values,
+                                          Map<String, ScheduleCellShiftDto> shifts,
                                           List<LocalDate> days) {
         List<ScheduleCell> cells = new ArrayList<>();
         for (LocalDate day : days) {
@@ -827,6 +832,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                     .value(trimmed)
                     .source(ScheduleCellSource.MANUAL)
                     .build();
+            applyStructuredShift(cell, shifts.get(key));
             cells.add(cell);
         }
         return cells;
@@ -970,6 +976,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private void applyRowsDiff(Schedule schedule,
                                Map<String, String> values,
+                               Map<String, ScheduleCellShiftDto> shifts,
                                List<LocalDate> days,
                                Map<Long, RestaurantMember> memberMap,
                                Map<Long, ScheduleParticipation> participationByMemberId) {
@@ -994,7 +1001,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             activeRows.add(row);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
             row.setSortOrder(index++);
-            reconcileCells(row, memberId, values, days);
+            reconcileCells(row, memberId, values, shifts, days);
         }
 
         List<ScheduleRow> historicalRows = schedule.getRows().stream()
@@ -1010,6 +1017,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private void reconcileCells(ScheduleRow row,
                                 Long memberId,
                                 Map<String, String> values,
+                                Map<String, ScheduleCellShiftDto> shifts,
                                 List<LocalDate> days) {
         Set<LocalDate> validDays = new HashSet<>(days);
         row.getCells().removeIf(cell -> !validDays.contains(cell.getDay()));
@@ -1040,6 +1048,17 @@ public class ScheduleServiceImpl implements ScheduleService {
                 existing.setValue(normalized);
                 existing.setSource(source);
             }
+            ScheduleCell persisted = existing == null || !row.getCells().contains(existing)
+                    ? row.getCells().get(row.getCells().size() - 1) : existing;
+            applyStructuredShift(persisted, shifts.get(key));
+        }
+    }
+
+    private void applyStructuredShift(ScheduleCell cell, ScheduleCellShiftDto shift) {
+        try {
+            cell.setStructuredShift(shift == null ? null : shift.toInterval());
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Некорректный структурированный интервал смены");
         }
     }
 
@@ -1321,6 +1340,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
         Map<String, String> cellValues = new HashMap<>();
         Map<String, ScheduleCellSource> cellSources = new HashMap<>();
+        Map<String, ScheduleCellShiftDto> cellShifts = new HashMap<>();
         visibleRows.forEach(row -> row.getCells().forEach(cell -> {
             if (cell.getValue() == null || cell.getValue().isBlank()) {
                 return;
@@ -1328,6 +1348,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             String key = row.getMemberId() + ":" + cell.getDay();
             cellValues.put(key, cell.getValue());
             cellSources.put(key, cell.getSource() != null ? cell.getSource() : ScheduleCellSource.MANUAL);
+            cell.structuredShift().ifPresent(interval -> cellShifts.put(key, ScheduleCellShiftDto.from(interval)));
         }));
 
         List<ScheduleDayDto> dayDtos = days.stream()
@@ -1362,6 +1383,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 rowDtos,
                 cellValues,
                 cellSources,
+                cellShifts,
                 buildOwnerDto(schedule),
                 buildCreatedByDto(schedule),
                 scheduleAuditService.getRecentHistory(schedule, HISTORY_LIMIT),

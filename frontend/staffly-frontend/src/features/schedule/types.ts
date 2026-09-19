@@ -5,6 +5,13 @@ export type ShiftMode = "ARRIVAL_ONLY" | "FULL" | "NONE";
 
 export type ScheduleCellSource = "MANUAL" | "PREFERENCE_HINT" | "AUTO_BUILD";
 
+export type ScheduleCellShift = {
+  startTime: string;
+  startDayOffset: 0 | 1;
+  endTime: string;
+  endDayOffset: 0 | 1;
+};
+
 export type ScheduleCellChangeOptions = {
   commit?: boolean;
   source?: ScheduleCellSource;
@@ -90,6 +97,7 @@ export type ScheduleData = {
   rows: ScheduleRow[];
   cellValues: Record<string, string>;
   cellSources?: Record<string, ScheduleCellSource>;
+  cellShifts?: Record<string, ScheduleCellShift>;
   owner?: ScheduleOwnerDto | null;
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];
