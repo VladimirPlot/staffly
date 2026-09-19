@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.ArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +30,22 @@ class PublishedShiftImpactClassifierTest {
         assertThat(impact.currentPreserved()).isEqualTo(1);
         assertThat(impact.futureToCancel()).isEqualTo(1);
         assertThat(impact.legacyUnstructuredPreserved()).isEqualTo(1);
+    }
+
+    @Test
+    void cancellationPreservesElapsedCurrentAndLegacyButRemovesFutureStructuredShift() {
+        LocalDateTime now = LocalDateTime.of(2026, 9, 19, 12, 0);
+        ScheduleCell elapsed = structured(LocalDate.of(2026, 9, 19),
+                new CanonicalBusinessInterval(LocalTime.of(8, 0), 0, LocalTime.of(10, 0), 0));
+        ScheduleCell current = structured(LocalDate.of(2026, 9, 19),
+                new CanonicalBusinessInterval(LocalTime.of(10, 0), 0, LocalTime.of(14, 0), 0));
+        ScheduleCell future = structured(LocalDate.of(2026, 9, 19),
+                new CanonicalBusinessInterval(LocalTime.of(13, 0), 0, LocalTime.of(18, 0), 0));
+        ScheduleCell legacy = ScheduleCell.builder().day(LocalDate.of(2026, 9, 20)).value("legacy").build();
+        List<ScheduleCell> cells = new ArrayList<>(List.of(elapsed, current, future, legacy));
+
+        assertThat(classifier.cancelFuture(cells, now)).isEqualTo(1);
+        assertThat(cells).containsExactly(elapsed, current, legacy);
     }
 
     private ScheduleCell structured(LocalDate day, CanonicalBusinessInterval interval) {

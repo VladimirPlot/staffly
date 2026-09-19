@@ -190,6 +190,42 @@ class SchedulePreferenceLifecycleServiceTest {
     }
 
     @Test
+    void appliedResultInvalidationPreservesCollectionInputsAndReturnsToClosedState() {
+        Instant started = Instant.parse("2026-01-01T00:00:00Z");
+        Instant closed = Instant.parse("2026-01-02T00:00:00Z");
+        Instant applied = Instant.parse("2026-01-03T00:00:00Z");
+        ScheduleBuildTemplate template = ScheduleBuildTemplate.builder().id(60L).build();
+        SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder().id(70L).build();
+        ScheduleRow row = ScheduleRow.builder().schedule(schedule).memberId(30L).cells(new ArrayList<>()).build();
+        row.getCells().add(cell(row, ScheduleCellSource.AUTO_BUILD));
+        row.getCells().add(cell(row, ScheduleCellSource.MANUAL));
+        schedule.getRows().add(row);
+        schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.SHIFT_OPTIONS);
+        schedule.setPreferenceBuildTemplate(template);
+        schedule.setPreferenceCollectionStartedAt(started);
+        schedule.setPreferenceClosedAt(closed);
+        schedule.setPreferenceAppliedAt(applied);
+        schedule.setPreferenceCollectionCycle(4);
+        schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
+
+        service.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, 50L, "position change");
+
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.PREFERENCES_CLOSED);
+        assertThat(schedule.getPreferenceAppliedAt()).isNull();
+        assertThat(schedule.getPreferenceCollectionMode()).isEqualTo(PreferenceCollectionMode.SHIFT_OPTIONS);
+        assertThat(schedule.getPreferenceBuildTemplate()).isSameAs(template);
+        assertThat(schedule.getPreferenceCollectionStartedAt()).isEqualTo(started);
+        assertThat(schedule.getPreferenceClosedAt()).isEqualTo(closed);
+        assertThat(schedule.getPreferenceCollectionCycle()).isEqualTo(4);
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).containsExactly(snapshot);
+        assertThat(row.getCells()).extracting(ScheduleCell::getSource).containsExactly(ScheduleCellSource.MANUAL);
+        verifyNoInteractions(submissions, participations);
+        verify(audit).record(schedule, 50L, ScheduleAuditAction.APPLIED_PREFERENCE_DRAFT_INVALIDATED,
+                "Применённый результат пожеланий аннулирован: position change");
+    }
+
+    @Test
     void publishedInvalidationAndStaleVersionAreRejectedBeforeCleanup() {
         schedule.setStatus(ScheduleStatus.PUBLISHED);
         assertThatThrownBy(() -> service.invalidatePreferenceCollection(10L, 40L, 7L, 50L, null))

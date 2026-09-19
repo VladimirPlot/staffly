@@ -999,6 +999,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 row.setPositionName(participation.getPositionName());
             }
             activeRows.add(row);
+            row.setHistorical(false);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
             row.setSortOrder(index++);
             reconcileCells(row, memberId, values, shifts, days);
@@ -1335,7 +1336,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private ScheduleDto toDto(Schedule schedule, List<LocalDate> days) {
         Set<Long> activeScheduleMemberIds = resolveActiveScheduleMemberIds(schedule);
         List<ScheduleRow> visibleRows = schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null && activeScheduleMemberIds.contains(row.getMemberId()))
+                .filter(row -> row.getMemberId() != null && (activeScheduleMemberIds.contains(row.getMemberId())
+                        || schedule.getStatus() == ScheduleStatus.PUBLISHED && row.isHistorical()))
                 .toList();
 
         Map<String, String> cellValues = new HashMap<>();
@@ -1356,13 +1358,16 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .toList();
 
         List<ScheduleRowDto> rowDtos = visibleRows.stream()
-                .sorted(Comparator.comparingInt(ScheduleRow::getSortOrder))
+                .sorted(Comparator.comparing(ScheduleRow::isHistorical)
+                        .thenComparing(row -> row.isHistorical() ? row.getDisplayName() : "", String.CASE_INSENSITIVE_ORDER)
+                        .thenComparingInt(ScheduleRow::getSortOrder))
                 .map(row -> new ScheduleRowDto(
                         row.getId(),
                         row.getMemberId(),
                         row.getDisplayName(),
                         row.getPositionId(),
-                        row.getPositionName()
+                        row.getPositionName(),
+                        row.isHistorical()
                 ))
                 .toList();
 
