@@ -8,12 +8,15 @@ import org.springframework.web.bind.annotation.*;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
 import ru.staffly.member.dto.MemberDto;
+import ru.staffly.member.dto.PositionChangeImpactPlan;
+import ru.staffly.member.dto.PositionChangeImpactRequest;
 import ru.staffly.member.dto.UpdateMemberPositionRequest;
 import ru.staffly.member.dto.UpdateMemberRoleRequest;
 import ru.staffly.member.responsibility.MemberResponsibilityHandoffOptionsDto;
 import ru.staffly.member.responsibility.MemberResponsibilityHandoffRequest;
 import ru.staffly.member.responsibility.MemberResponsibilityHandoffService;
 import ru.staffly.member.service.EmployeeService;
+import ru.staffly.member.service.PositionChangeImpactService;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.security.UserPrincipal;
 
@@ -26,6 +29,7 @@ public class EmployeeController {
 
     private final EmployeeService employees;
     private final MemberResponsibilityHandoffService responsibilityHandoffService;
+    private final PositionChangeImpactService positionChangeImpactService;
 
     // Пригласить по телефону/email (MANAGER/OWNER)
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -72,6 +76,16 @@ public class EmployeeController {
                                     @AuthenticationPrincipal UserPrincipal principal,
                                     @RequestBody UpdateMemberPositionRequest req) {
         return employees.updatePosition(restaurantId, memberId, req.positionId(), principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/members/{memberId}/position-change-impact")
+    public PositionChangeImpactPlan positionChangeImpact(@PathVariable Long restaurantId,
+                                                          @PathVariable Long memberId,
+                                                          @AuthenticationPrincipal UserPrincipal principal,
+                                                          @Valid @RequestBody PositionChangeImpactRequest request) {
+        return positionChangeImpactService.calculate(restaurantId, memberId, request.targetPositionId(),
+                principal.userId());
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")

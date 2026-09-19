@@ -14,6 +14,16 @@ import java.util.Set;
 
 public interface RestaurantMemberRepository extends JpaRepository<RestaurantMember, Long> {
 
+    @Query("""
+           select m from RestaurantMember m
+           join fetch m.user
+           left join fetch m.position
+           join fetch m.restaurant
+           where m.id = :memberId and m.restaurant.id = :restaurantId
+           """)
+    Optional<RestaurantMember> findWithUserAndPositionByIdAndRestaurantId(@Param("memberId") Long memberId,
+                                                                           @Param("restaurantId") Long restaurantId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from RestaurantMember m where m.id = :memberId and m.restaurant.id = :restaurantId")
     Optional<RestaurantMember> findForUpdateByIdAndRestaurantId(@Param("memberId") Long memberId,
