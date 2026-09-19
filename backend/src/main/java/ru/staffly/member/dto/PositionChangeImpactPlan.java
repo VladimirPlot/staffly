@@ -20,6 +20,7 @@ public record PositionChangeImpactPlan(
 
     public record OldPositionImpact(
             Long scheduleId, String scheduleTitle, ScheduleStatus scheduleStatus, Long scheduleVersion,
+            long preferenceCollectionCycle, Instant currentPreferenceDeadline,
             Long participationId, boolean participationWillBeRemoved,
             Long preferenceSubmissionId, Integer preferenceSubmissionRevision,
             boolean preferenceDataWillBeDeleted, boolean progressDenominatorWillChange,
