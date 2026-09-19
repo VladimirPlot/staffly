@@ -108,6 +108,7 @@ public class PositionChangeImpactService {
             shiftImpact = shiftClassifier.classify(row.getCells(), localNow);
         }
         return new OldPositionImpact(schedule.getId(), schedule.getTitle(), status, schedule.getVersion(),
+                schedule.getPreferenceCollectionCycle(), schedule.getPreferenceDeadline(),
                 participation == null ? null : participation.getId(), participation != null,
                 submission == null ? null : submission.getId(), submission == null ? null : submission.getRevision(),
                 preferenceLifecycle && submission != null,
