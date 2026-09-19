@@ -133,6 +133,11 @@ public class Schedule {
     @Column(name = "preference_all_submitted_notified_at")
     private Instant preferenceAllSubmittedNotifiedAt;
 
+    /** Notification/deduplication identity only; preference records are not versioned by this value. */
+    @Column(name = "preference_collection_cycle", nullable = false)
+    @Builder.Default
+    private long preferenceCollectionCycle = 0;
+
     @PrePersist
     void prePersist() {
         Instant now = TimeProvider.now();

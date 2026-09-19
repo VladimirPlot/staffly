@@ -29,7 +29,7 @@ public class ScheduleParticipationCreator {
         return participations.findByScheduleIdAndMemberId(schedule.getId(), member.getId())
                 .map(existing -> new CreationResult(existing, false))
                 .orElseGet(() -> {
-                    validate(schedule, member, requireSupportedPosition);
+                    validateEligibility(schedule, member, requireSupportedPosition);
                     return new CreationResult(participations.save(snapshot(schedule, member)), true);
                 });
     }
@@ -41,14 +41,15 @@ public class ScheduleParticipationCreator {
                         (left, right) -> left, LinkedHashMap::new));
         members.stream().sorted(java.util.Comparator.comparing(RestaurantMember::getId)).forEach(member -> {
             if (!byMemberId.containsKey(member.getId())) {
-                validate(schedule, member, requireSupportedPosition);
+                validateEligibility(schedule, member, requireSupportedPosition);
                 byMemberId.put(member.getId(), participations.save(snapshot(schedule, member)));
             }
         });
         return byMemberId;
     }
 
-    private void validate(Schedule schedule, RestaurantMember member, boolean requireSupportedPosition) {
+    /** Validates participation eligibility without persisting any child row. */
+    void validateEligibility(Schedule schedule, RestaurantMember member, boolean requireSupportedPosition) {
         if (!Objects.equals(schedule.getRestaurant().getId(), member.getRestaurant().getId())) {
             throw new BadRequestException("Participant must belong to the Schedule restaurant");
         }
