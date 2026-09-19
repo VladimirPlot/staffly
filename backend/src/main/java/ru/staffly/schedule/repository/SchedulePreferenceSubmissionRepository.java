@@ -13,6 +13,10 @@ import java.util.Optional;
 
 public interface SchedulePreferenceSubmissionRepository extends JpaRepository<SchedulePreferenceSubmission, Long> {
 
+    long deleteByScheduleIdAndMemberId(Long scheduleId, Long memberId);
+
+    long deleteByScheduleId(Long scheduleId);
+
     Optional<SchedulePreferenceSubmission> findByScheduleIdAndMemberId(Long scheduleId, Long memberId);
 
     boolean existsByScheduleIdAndMemberId(Long scheduleId, Long memberId);

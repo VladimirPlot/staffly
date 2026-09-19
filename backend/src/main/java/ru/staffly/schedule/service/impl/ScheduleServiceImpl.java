@@ -527,6 +527,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         schedule.setPreferenceClosedAt(null);
         schedule.setPreferenceAppliedAt(null);
         schedule.setPreferenceAllSubmittedNotifiedAt(null);
+        schedule.setPreferenceCollectionCycle(schedule.getPreferenceCollectionCycle() + 1);
 
         Schedule saved = schedules.saveAndFlush(schedule);
         scheduleAuditService.record(
