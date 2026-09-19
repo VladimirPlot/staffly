@@ -6,6 +6,7 @@ import ru.staffly.schedule.model.ScheduleCell;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.List;
 
 @Component
 public class PublishedShiftImpactClassifier {
@@ -27,5 +28,12 @@ public class PublishedShiftImpactClassifier {
             }
         }
         return new PublishedShiftImpact(elapsed, current, future, legacy);
+    }
+
+    /** Removes only structured shifts whose physical start is strictly after now. */
+    public int cancelFuture(List<ScheduleCell> cells, LocalDateTime restaurantNow) {
+        int before = cells.size();
+        cells.removeIf(cell -> cell.hasStructuredShift() && cell.physicalStart().isAfter(restaurantNow));
+        return before - cells.size();
     }
 }

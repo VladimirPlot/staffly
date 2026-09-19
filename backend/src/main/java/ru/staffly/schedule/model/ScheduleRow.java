@@ -45,6 +45,11 @@ public class ScheduleRow {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
+    /** Explicitly retained published history; never treated as active participation. */
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean historical = false;
+
     @OneToMany(mappedBy = "row", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 128)
     @Builder.Default

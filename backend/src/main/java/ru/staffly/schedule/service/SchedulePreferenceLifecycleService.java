@@ -186,4 +186,90 @@ public class SchedulePreferenceLifecycleService {
     }
 
     public record MutationResult(Schedule schedule, boolean changed) {}
+
+    /** Internal orchestration primitive. Caller must hold member then schedule locks. */
+    public boolean removeParticipantWithLocksHeld(Schedule schedule, RestaurantMember member,
+                                                   Long actorUserId, String reason) {
+        boolean hadSubmission = submissions.deleteByScheduleIdAndMemberId(schedule.getId(), member.getId()) > 0;
+        boolean removed = participations.deleteByScheduleIdAndMemberId(schedule.getId(), member.getId()) > 0;
+        if (hadSubmission || removed) {
+            auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
+                    details("Участник сбора пожеланий удалён", reason));
+        }
+        return hadSubmission || removed;
+    }
+
+    /** Internal orchestration primitive. Caller must hold member then schedule locks. */
+    public boolean addParticipantWithLocksHeld(Schedule schedule, RestaurantMember member,
+                                                Long actorUserId, String reason) {
+        ScheduleParticipationCreator.CreationResult result = addWithLocksHeld(schedule, member);
+        if (result.created()) {
+            schedule.setPreferenceAllSubmittedNotifiedAt(null);
+            auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_PARTICIPANT_ADDED,
+                    details("Участник добавлен в сбор пожеланий", reason));
+        }
+        return result.created();
+    }
+
+    /** Reopens either a closed collection or its applied draft without discarding valid preferences/vocabulary. */
+    public void reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
+                                    Long actorUserId, String reason) {
+        if (deadline == null || !deadline.isAfter(TimeProvider.now())) {
+            throw new BadRequestException("preferenceDeadline must be in the future");
+        }
+        if (schedule.getStatus() != ScheduleStatus.PREFERENCES_CLOSED
+                && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            throw new BadRequestException("Only a closed or applied preference collection can be reopened");
+        }
+        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            schedule.getRows().forEach(row -> row.getCells()
+                    .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
+            schedule.setPreferenceAppliedAt(null);
+        }
+        addWithLocksHeld(schedule, member);
+        schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
+        schedule.setPreferenceDeadline(deadline);
+        schedule.setPreferenceClosedAt(null);
+        schedule.setPreferenceAllSubmittedNotifiedAt(null);
+        schedule.setPreferenceCollectionCycle(schedule.getPreferenceCollectionCycle() + 1);
+        auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_COLLECTION_REOPENED,
+                details("Сбор пожеланий открыт повторно", reason));
+    }
+
+    public void invalidatePreferenceCollectionWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
+        if (schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            throw new BadRequestException("Only an applied preference draft can be invalidated here");
+        }
+        submissions.deleteByScheduleId(schedule.getId());
+        participations.deleteByScheduleId(schedule.getId());
+        schedule.getPreferenceShiftOptionSnapshots().clear();
+        schedule.getRows().forEach(row -> row.getCells()
+                .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
+        schedule.setPreferenceBuildTemplate(null);
+        schedule.setPreferenceCollectionMode(null);
+        schedule.setPreferenceCollectionStartedAt(null);
+        schedule.setPreferenceDeadline(null);
+        schedule.setPreferenceClosedAt(null);
+        schedule.setPreferenceAllSubmittedNotifiedAt(null);
+        schedule.setPreferenceAppliedAt(null);
+        schedule.setStatus(ScheduleStatus.DRAFT);
+        auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_COLLECTION_INVALIDATED,
+                details("Сбор пожеланий аннулирован", reason));
+    }
+
+    /**
+     * Invalidates only the generated result of a completed preference collection.
+     * The caller holds the schedule lock; collection input remains authoritative and rebuildable.
+     */
+    public void invalidateAppliedPreferenceDraftWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
+        if (schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            throw new BadRequestException("Only an applied preference draft can have its result invalidated");
+        }
+        schedule.getRows().forEach(row -> row.getCells()
+                .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
+        schedule.setPreferenceAppliedAt(null);
+        schedule.setStatus(ScheduleStatus.PREFERENCES_CLOSED);
+        auditService.record(schedule, actorUserId, ScheduleAuditAction.APPLIED_PREFERENCE_DRAFT_INVALIDATED,
+                details("Применённый результат пожеланий аннулирован", reason));
+    }
 }

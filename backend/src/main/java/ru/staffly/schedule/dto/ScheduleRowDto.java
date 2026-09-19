@@ -5,5 +5,6 @@ public record ScheduleRowDto(
         Long memberId,
         String displayName,
         Long positionId,
-        String positionName
+        String positionName,
+        boolean historical
 ) {}
