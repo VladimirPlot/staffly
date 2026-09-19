@@ -11,6 +11,7 @@ public record UpdateScheduleRequest(
         String title,
         @Valid @NotNull ScheduleConfigDto config,
         @Valid List<ScheduleRowRequest> rows,
-        Map<String, String> cellValues
+        Map<String, String> cellValues,
+        @Valid Map<String, ScheduleCellShiftDto> cellShifts
 ) {
 }

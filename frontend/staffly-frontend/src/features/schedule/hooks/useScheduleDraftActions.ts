@@ -195,6 +195,7 @@ export default function useScheduleDraftActions({
         memberId: row.memberId,
       })),
       cellValues: normalizedCells,
+      cellShifts: schedule.cellShifts ?? {},
     };
   }, [schedule]);
 

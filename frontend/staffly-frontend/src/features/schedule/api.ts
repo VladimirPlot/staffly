@@ -1,6 +1,7 @@
 import api from "../../shared/api/apiClient";
 import type {
   ScheduleCellSource,
+  ScheduleCellShift,
   ScheduleConfig,
   ScheduleData,
   ScheduleDay,
@@ -70,6 +71,7 @@ type ScheduleResponse = ScheduleLifecycleDto & {
   rows: ScheduleRowResponse[];
   cellValues: Record<string, string>;
   cellSources?: Record<string, ScheduleCellSource>;
+  cellShifts?: Record<string, ScheduleCellShift>;
   owner?: ScheduleOwnerDto | null;
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];
@@ -114,6 +116,7 @@ type SchedulePayloadFields = {
     memberId: number;
   }[];
   cellValues: Record<string, string>;
+  cellShifts: Record<string, ScheduleCellShift>;
 };
 
 export type CreateSchedulePayload = SchedulePayloadFields & { ownerUserId?: number | null };
@@ -467,6 +470,7 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
     })),
     cellValues: data.cellValues ?? {},
     cellSources: data.cellSources ?? {},
+    cellShifts: data.cellShifts ?? {},
     owner: data.owner ?? null,
     createdBy: data.createdBy ?? null,
     history: data.history ?? [],
