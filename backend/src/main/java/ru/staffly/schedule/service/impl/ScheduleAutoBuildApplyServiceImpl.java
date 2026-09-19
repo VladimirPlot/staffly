@@ -25,6 +25,8 @@ import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.CanonicalBusinessInterval;
+import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
@@ -106,7 +108,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         clearAffectedCells(schedule, plan.affectedPositionIds(), participationPositionByMember);
 
-        int skippedAssignments = applyAssignments(schedule, plan, rowsByMember);
+        int skippedAssignments = applyAssignments(schedule, plan, rowsByMember, template);
 
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
@@ -359,15 +361,22 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         return rowsByMember;
     }
 
-    private int applyAssignments(Schedule schedule, ScheduleAutoBuildPlan plan, Map<Long, ScheduleRow> rowsByMember) {
+    private int applyAssignments(Schedule schedule, ScheduleAutoBuildPlan plan, Map<Long, ScheduleRow> rowsByMember,
+                                 ScheduleBuildTemplate template) {
         int skippedAssignments = 0;
 
         Set<String> appliedMemberDays = new HashSet<>();
         Map<Long, Map<LocalDate, ScheduleCell>> cellsByRowAndDay = indexCellsByRowAndDay(rowsByMember);
+        Map<Long, ScheduleBuildPositionConfig> configs = configsById(template);
 
         for (var position : plan.positions()) {
+            ScheduleBuildPositionConfig config = configs.get(position.positionConfigId());
+            if (config == null) {
+                throw new BadRequestException("Автосборка ссылается на неизвестную конфигурацию позиции");
+            }
             for (var assignment : position.cells()) {
                 validateAssignment(assignment);
+                CanonicalBusinessInterval interval = resolveCanonicalAssignment(config, assignment);
                 String assignmentKey = assignment.memberId() + ":" + assignment.day();
                 if (!appliedMemberDays.add(assignmentKey)) {
                     throw new BadRequestException("Автосборка содержит несколько смен для одного сотрудника в день: " + assignment.day());
@@ -385,6 +394,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 if (existing != null) {
                     existing.setValue(resolveCellValue(assignment));
                     existing.setSource(ScheduleCellSource.AUTO_BUILD);
+                    existing.setStructuredShift(interval);
                 } else {
                     ScheduleCell created = ScheduleCell.builder()
                             .row(row)
@@ -392,6 +402,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                             .value(resolveCellValue(assignment))
                             .source(ScheduleCellSource.AUTO_BUILD)
                             .build();
+                    created.setStructuredShift(interval);
                     row.getCells().add(created);
                     rowCellsByDay.put(day, created);
                 }
@@ -399,6 +410,21 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         }
 
         return skippedAssignments;
+    }
+
+    private CanonicalBusinessInterval resolveCanonicalAssignment(
+            ScheduleBuildPositionConfig config,
+            ScheduleAutoBuildPlanner.AssignmentPlan assignment
+    ) {
+        try {
+            CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                    config.getWorkPeriodStart(), config.getWorkPeriodEnd());
+            return CanonicalBusinessIntervalResolver.resolveInside(workPeriod,
+                    parseTime(assignment.startTime(), "startTime"),
+                    parseTime(assignment.endTime(), "endTime"));
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Автосборка содержит смену вне рабочего периода: " + assignment.day());
+        }
     }
 
     private Map<Long, Map<LocalDate, ScheduleCell>> indexCellsByRowAndDay(Map<Long, ScheduleRow> rowsByMember) {
