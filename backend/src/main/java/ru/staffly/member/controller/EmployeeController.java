@@ -97,7 +97,7 @@ public class EmployeeController {
         return positionChangeApplyService.apply(restaurantId, memberId, request, principal.userId());
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @PostMapping("/members/{memberId}/removal-impact")
     public EmployeeRemovalImpactPlan removalImpact(@PathVariable Long restaurantId,
                                                     @PathVariable Long memberId,
@@ -105,7 +105,7 @@ public class EmployeeController {
         return employeeRemovalImpactService.calculate(restaurantId, memberId, principal.userId());
     }
 
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @PostMapping("/members/{memberId}/remove")
     public ApplyEmployeeRemovalResult remove(@PathVariable Long restaurantId,
                                               @PathVariable Long memberId,

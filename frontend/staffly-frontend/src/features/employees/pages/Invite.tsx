@@ -26,7 +26,7 @@ import { fetchRestaurant } from "../../restaurants/api";
 
 export default function InvitePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const currentUserId = user?.id ?? null;
   const [avatarPreviewMember, setAvatarPreviewMember] = useState<MemberDto | null>(null);
@@ -77,8 +77,11 @@ export default function InvitePage() {
     currentUserId,
     members: membersState.members,
     myRole: membersState.myRole,
-    removeMember: membersState.removeMember,
-    onSelfRemoved: () => membersState.setMyRole(null),
+    refreshMembers: membersState.refresh,
+    onSelfRemoved: () => {
+      membersState.setMyRole(null);
+      void refreshMe().finally(() => navigate("/restaurants", { replace: true }));
+    },
   });
 
   const handleOpenAvatarPreview = useCallback((member: MemberDto) => {
@@ -190,13 +193,16 @@ export default function InvitePage() {
 
       <RemoveMemberDialog
         open={Boolean(removalState.memberToRemove)}
-        title={removalState.title}
-        description={removalState.description}
-        confirmText={removalState.confirmText}
+        plan={removalState.plan}
+        loading={removalState.loadingImpact}
         confirming={removalState.removing}
+        error={removalState.error}
+        notice={removalState.notice}
+        isSelf={removalState.memberToRemove?.userId === currentUserId}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
       />
+      <Toast message={removalState.success} onClose={() => removalState.setSuccess(null)} />
 
       <MemberResponsibilityHandoffDialog
         open={Boolean(removalState.pendingHandoffMember)}
@@ -208,6 +214,7 @@ export default function InvitePage() {
         onSelect={removalState.selectHandoffOwner}
         onClose={removalState.closeHandoff}
         onSubmit={removalState.confirmHandoff}
+        isSelf={removalState.pendingHandoffMember?.userId === currentUserId}
       />
 
       <EmployeeAvatarPreviewModal

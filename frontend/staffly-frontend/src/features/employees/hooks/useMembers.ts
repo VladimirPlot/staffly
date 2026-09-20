@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchMyRoleIn, listMembers, removeMember as removeMemberApi, updateMemberRole, type MemberDto } from "../api";
+import { fetchMyRoleIn, listMembers, updateMemberRole, type MemberDto } from "../api";
 import type { RestaurantRole } from "../../dictionaries/api";
 import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 
@@ -29,15 +29,6 @@ export function useMembers(restaurantId: number | null) {
     void refresh();
   }, [refresh]);
 
-  const removeMember = useCallback(
-    async (memberId: number) => {
-      if (!restaurantId) return;
-      await removeMemberApi(restaurantId, memberId);
-      setMembers((prev) => prev.filter((member) => member.id !== memberId));
-    },
-    [restaurantId],
-  );
-
   const patchMemberRole = useCallback(
     async (memberId: number, role: RestaurantRole) => {
       if (!restaurantId) throw new Error("restaurantId is required");
@@ -55,7 +46,6 @@ export function useMembers(restaurantId: number | null) {
     loading,
     error,
     refresh,
-    removeMember,
     patchMemberRole,
   };
 }
