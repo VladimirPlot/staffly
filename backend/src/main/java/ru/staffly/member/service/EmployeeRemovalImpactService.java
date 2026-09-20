@@ -10,6 +10,7 @@ import ru.staffly.member.dto.EmployeeRemovalImpactPlan;
 import ru.staffly.member.dto.PublishedShiftImpact;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.service.policy.MemberRemovalPolicyService;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleParticipation;
 import ru.staffly.schedule.model.SchedulePreferenceSubmission;
@@ -18,7 +19,6 @@ import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
-import ru.staffly.security.SecurityService;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -32,15 +32,15 @@ public class EmployeeRemovalImpactService {
     private final ScheduleRepository schedules;
     private final ScheduleParticipationRepository participations;
     private final SchedulePreferenceSubmissionRepository submissions;
-    private final SecurityService security;
+    private final MemberRemovalPolicyService removalPolicy;
     private final RestaurantTimeService restaurantTime;
     private final PublishedShiftImpactClassifier shiftClassifier;
 
     @Transactional(Transactional.TxType.SUPPORTS)
     public EmployeeRemovalImpactPlan calculate(Long restaurantId, Long memberId, Long currentUserId) {
-        security.assertAtLeastManager(currentUserId, restaurantId);
         RestaurantMember member = members.findWithUserAndPositionByIdAndRestaurantId(memberId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
+        removalPolicy.assertCanStartRemoval(restaurantId, currentUserId, member);
 
         Instant now = restaurantTime.nowInstant();
         LocalDateTime localNow = LocalDateTime.ofInstant(now, restaurantTime.zoneFor(member.getRestaurant()));
