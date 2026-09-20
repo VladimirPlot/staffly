@@ -1,7 +1,7 @@
 package ru.staffly.member.service;
 
 import org.springframework.stereotype.Component;
-import ru.staffly.member.dto.PositionChangeImpactPlan.PublishedShiftImpact;
+import ru.staffly.member.dto.PublishedShiftImpact;
 import ru.staffly.schedule.model.ScheduleCell;
 
 import java.time.LocalDateTime;

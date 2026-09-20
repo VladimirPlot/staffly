@@ -28,9 +28,6 @@ public record PositionChangeImpactPlan(
             boolean publishedRowBecomesHistorical, PublishedShiftImpact publishedShiftImpact
     ) { }
 
-    public record PublishedShiftImpact(int elapsedPreserved, int currentPreserved,
-                                       int futureToCancel, int legacyUnstructuredPreserved) { }
-
     public record NewPositionOpportunity(
             Long scheduleId, String scheduleTitle, ScheduleStatus scheduleStatus, Long scheduleVersion,
             List<Action> allowedActions, Instant currentPreferenceDeadline, boolean lessThanSixHoursRemain,

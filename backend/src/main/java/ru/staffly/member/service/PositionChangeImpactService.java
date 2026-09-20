@@ -12,6 +12,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.dto.PositionChangeImpactPlan;
 import ru.staffly.member.dto.PositionChangeImpactPlan.*;
+import ru.staffly.member.dto.PublishedShiftImpact;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
