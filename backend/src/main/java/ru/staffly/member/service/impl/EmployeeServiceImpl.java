@@ -22,14 +22,11 @@ import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
-import ru.staffly.member.responsibility.MemberResponsibilityHandoffService;
 import ru.staffly.member.service.EmployeeService;
-import ru.staffly.member.service.policy.MemberRemovalPolicyService;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
-import ru.staffly.training.service.CertificationAudienceSyncService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
@@ -55,9 +52,6 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final InvitationMapper invitationMapper;
     private final MemberMapper memberMapper;
     private final SecurityService security;
-    private final CertificationAudienceSyncService certificationAudienceSyncService;
-    private final MemberRemovalPolicyService memberRemovalPolicyService;
-    private final MemberResponsibilityHandoffService memberResponsibilityHandoffService;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -280,22 +274,6 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Transactional
     public MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId) {
         throw new ConflictException("Direct position update is retired; use the atomic position-change command");
-    }
-
-    @Override
-    @Transactional
-    public void removeMember(Long restaurantId, Long memberId, Long currentUserId) {
-        RestaurantMember targetMember = members.findById(memberId)
-                .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-
-        memberRemovalPolicyService.assertCanCompleteRemoval(restaurantId, currentUserId, targetMember);
-
-        if (targetMember.getUser() != null) {
-            memberResponsibilityHandoffService.assertNoBlockingResponsibilities(restaurantId, targetMember.getUser().getId());
-        }
-
-        members.deleteById(memberId);
-        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
     }
 
     private boolean isPositionCompatibleWithRole(RestaurantRole positionLevel, RestaurantRole role) {
