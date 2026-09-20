@@ -78,4 +78,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
             """)
     List<Schedule> findByRestaurantIdAndRowMemberId(@Param("restaurantId") Long restaurantId,
                                                     @Param("memberId") Long memberId);
+
+    @EntityGraph(attributePaths = {"positions"})
+    @Query("""
+            select distinct s from Schedule s join SchedulePreferenceSubmission submission on submission.schedule = s
+            where s.restaurant.id = :restaurantId and submission.member.id = :memberId
+            order by s.createdAt desc
+            """)
+    List<Schedule> findByRestaurantIdAndSubmissionMemberId(@Param("restaurantId") Long restaurantId,
+                                                           @Param("memberId") Long memberId);
 }
