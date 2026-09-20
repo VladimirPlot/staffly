@@ -101,8 +101,80 @@ export type MemberResponsibilityHandoffRequest = {
   }[];
 };
 
-export async function removeMember(restaurantId: number, memberId: number): Promise<void> {
-  await api.delete(`/api/restaurants/${restaurantId}/members/${memberId}`);
+export type EmployeeRemovalPosition = { id: number; name: string };
+export type EmployeeRemovalScheduleImpact = {
+  scheduleId: number;
+  scheduleTitle: string;
+  scheduleStatus: string;
+  scheduleVersion: number;
+  preferenceCollectionCycle: number;
+  currentPreferenceDeadline: string | null;
+  participationId: number | null;
+  preferenceSubmissionId: number | null;
+  preferenceSubmissionRevision: number | null;
+  participationWillBeRemoved: boolean;
+  preferenceDataWillBeDeleted: boolean;
+  progressDenominatorWillChange: boolean;
+  appliedPreferenceDraftWillBeInvalidated: boolean;
+  activeDraftRowWillBeRemoved: boolean;
+  publishedRowBecomesHistorical: boolean;
+  publishedShiftImpact: PublishedShiftImpact | null;
+};
+export type EmployeeRemovalImpactPlan = {
+  calculatedAt: string;
+  employee: {
+    memberId: number;
+    name: string;
+    currentPosition: EmployeeRemovalPosition | null;
+    memberCreatedAt: string;
+  };
+  scheduleImpacts: EmployeeRemovalScheduleImpact[];
+};
+export type EmployeeRemovalScheduleToken = {
+  scheduleId: number;
+  expectedVersion: number;
+  expectedStatus: string;
+  expectedCollectionCycle: number;
+  expectedPreferenceDeadline: string | null;
+  expectedParticipationId: number | null;
+  expectedPreferenceSubmissionId: number | null;
+  expectedPreferenceSubmissionRevision: number | null;
+};
+export type ApplyEmployeeRemovalRequest = {
+  expectedMemberCreatedAt: string;
+  expectedCurrentPositionId: number | null;
+  schedules: EmployeeRemovalScheduleToken[];
+};
+export type ApplyEmployeeRemovalResult = {
+  removedMemberId: number;
+  affectedScheduleIds: number[];
+  cancelledFutureShiftCount: number;
+  historicalPublishedRowCount: number;
+  removedPreferenceSubmissionCount: number;
+  removedParticipationCount: number;
+  invalidatedAppliedPreferenceDraftCount: number;
+};
+
+export async function getEmployeeRemovalImpact(
+  restaurantId: number,
+  memberId: number,
+): Promise<EmployeeRemovalImpactPlan> {
+  const { data } = await api.post<EmployeeRemovalImpactPlan>(
+    `/api/restaurants/${restaurantId}/members/${memberId}/removal-impact`,
+  );
+  return data;
+}
+
+export async function applyEmployeeRemoval(
+  restaurantId: number,
+  memberId: number,
+  request: ApplyEmployeeRemovalRequest,
+): Promise<ApplyEmployeeRemovalResult> {
+  const { data } = await api.post<ApplyEmployeeRemovalResult>(
+    `/api/restaurants/${restaurantId}/members/${memberId}/remove`,
+    request,
+  );
+  return data;
 }
 
 export async function getMemberResponsibilityHandoffOptions(

@@ -73,6 +73,30 @@ class EmployeeRemovalApplyServiceTest {
     }
 
     @Test
+    void successfulSelfLeaveUsesAtomicRemovalWithoutBroadcastDependency() {
+        when(schedules.findByRestaurantIdAndParticipantMemberId(3L, 7L)).thenReturn(List.of());
+        when(schedules.findByRestaurantIdAndSubmissionMemberId(3L, 7L)).thenReturn(List.of());
+        when(schedules.findByRestaurantIdAndRowMemberId(3L, 7L)).thenReturn(List.of());
+        when(restaurantTime.nowInstant()).thenReturn(Instant.parse("2026-09-20T12:00:00Z"));
+
+        service.apply(3L, 7L, new ApplyEmployeeRemovalRequest(createdAt, null, List.of()), 9L);
+
+        verify(members).delete(member);
+        verify(audits).save(any());
+    }
+
+    @Test
+    void responsibilityConflictPreventsPhysicalSelfDeletion() {
+        doThrow(new ConflictException("handoff required"))
+                .when(responsibilityHandoff).assertNoBlockingResponsibilities(3L, 9L);
+
+        assertThrows(ConflictException.class,
+                () -> service.apply(3L, 7L, new ApplyEmployeeRemovalRequest(createdAt, null, List.of()), 9L));
+
+        verify(members, never()).delete(any());
+    }
+
+    @Test
     void appliedPreferenceDraftUsesNarrowInvalidation() {
         Schedule schedule = schedule(12L, ScheduleStatus.DRAFT_FROM_PREFERENCES, 2L);
         affectedByRow(schedule);

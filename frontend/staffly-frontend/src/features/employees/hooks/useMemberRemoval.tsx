@@ -1,72 +1,41 @@
 import { useMemo, useState } from "react";
 import {
+  applyEmployeeRemoval,
+  getEmployeeRemovalImpact,
   getMemberResponsibilityHandoffOptions,
   submitMemberResponsibilityHandoff,
+  type ApplyEmployeeRemovalRequest,
+  type EmployeeRemovalImpactPlan,
   type MemberDto,
   type MemberResponsibilityHandoffOptionsDto,
   type MemberResponsibilityHandoffRequest,
 } from "../api";
 import { getMemberResponsibilityItemKey } from "../components/MemberResponsibilityHandoffDialog";
-import { displayNameOf } from "../utils/memberUtils";
 
-type FriendlyError = {
+type ApiError = {
   friendlyMessage?: unknown;
   message?: unknown;
-  response?: {
-    status?: unknown;
-    data?: {
-      message?: unknown;
-      error?: unknown;
-    };
-  };
+  response?: { status?: unknown; data?: { message?: unknown; error?: unknown; meta?: { code?: unknown } } };
 };
-
-function asFriendlyError(error: unknown): FriendlyError {
-  return typeof error === "object" && error != null ? (error as FriendlyError) : {};
-}
-
-function firstString(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function getFriendlyMessage(error: unknown, fallback: string): string {
-  const maybeError = asFriendlyError(error);
+const apiError = (value: unknown): ApiError => (typeof value === "object" && value ? (value as ApiError) : {});
+const errorStatus = (value: unknown) => apiError(value).response?.status;
+const errorCode = (value: unknown) => apiError(value).response?.data?.meta?.code;
+function errorMessage(value: unknown, fallback: string) {
+  const error = apiError(value);
   return (
-    firstString(
-      maybeError.friendlyMessage,
-      maybeError.response?.data?.message,
-      maybeError.response?.data?.error,
-      maybeError.message,
+    [error.friendlyMessage, error.response?.data?.message, error.response?.data?.error, error.message].find(
+      (item): item is string => typeof item === "string" && Boolean(item.trim()),
     ) ?? fallback
   );
 }
 
-function getErrorStatus(error: unknown): unknown {
-  return asFriendlyError(error).response?.status;
-}
-
-function hasHandoffItems(options: MemberResponsibilityHandoffOptionsDto): boolean {
-  return options.groups.some((group) => group.items.length > 0);
-}
-
-type AccessFlags = {
-  isAdminLike: boolean;
-  isCreator: boolean;
-  isManagerLike: boolean;
-};
-
-type UseMemberRemovalParams = {
+type Params = {
   restaurantId: number | null;
-  access: AccessFlags;
+  access: { isAdminLike: boolean; isCreator: boolean; isManagerLike: boolean };
   currentUserId: number | null;
   members: MemberDto[];
   myRole: MemberDto["role"] | null;
-  removeMember: (memberId: number) => Promise<void>;
+  refreshMembers: () => Promise<void>;
   onSelfRemoved: () => void;
 };
 
@@ -76,22 +45,23 @@ export function useMemberRemoval({
   currentUserId,
   members,
   myRole,
-  removeMember,
+  refreshMembers,
   onSelfRemoved,
-}: UseMemberRemovalParams) {
+}: Params) {
   const [memberToRemove, setMemberToRemove] = useState<MemberDto | null>(null);
+  const [plan, setPlan] = useState<EmployeeRemovalImpactPlan | null>(null);
+  const [loadingImpact, setLoadingImpact] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [pendingHandoffMember, setPendingHandoffMember] = useState<MemberDto | null>(null);
   const [handoffOptions, setHandoffOptions] = useState<MemberResponsibilityHandoffOptionsDto | null>(null);
   const [handoffSelections, setHandoffSelections] = useState<Record<string, number | null>>({});
   const [handoffLoading, setHandoffLoading] = useState(false);
   const [handoffSaving, setHandoffSaving] = useState(false);
   const [handoffError, setHandoffError] = useState<string | null>(null);
-
   const adminsCount = useMemo(() => members.filter((member) => member.role === "ADMIN").length, [members]);
-
-  const isStaffInCurrentRestaurant = myRole === "STAFF";
 
   const resetHandoff = () => {
     setPendingHandoffMember(null);
@@ -99,125 +69,139 @@ export function useMemberRemoval({
     setHandoffSelections({});
     setHandoffError(null);
   };
-
-  const resetRemovalState = () => {
+  const resetRemoval = () => {
     setMemberToRemove(null);
+    setPlan(null);
     setError(null);
-    resetHandoff();
+    setNotice(null);
   };
-
   const canRemoveMember = (member: MemberDto) => {
     if (!currentUserId) return false;
-    const isSelf = member.userId === currentUserId;
-
-    if (!access.isManagerLike || isStaffInCurrentRestaurant) {
-      return isSelf;
-    }
-
-    if (access.isAdminLike) {
-      if (!access.isCreator && isSelf && member.role === "ADMIN" && adminsCount <= 1) {
-        return false;
-      }
-      return true;
-    }
-
-    if (isSelf) return true;
-    return member.role === "STAFF";
+    const self = member.userId === currentUserId;
+    if (!access.isManagerLike || myRole === "STAFF") return self;
+    if (access.isAdminLike) return !(!access.isCreator && self && member.role === "ADMIN" && adminsCount <= 1);
+    return self || member.role === "STAFF";
   };
 
+  const fetchImpact = async (member: MemberDto, stale = false) => {
+    if (!restaurantId) return;
+    setLoadingImpact(true);
+    setError(null);
+    setPlan(null);
+    try {
+      setPlan(await getEmployeeRemovalImpact(restaurantId, member.id));
+      setNotice(
+        stale
+          ? "Данные сотрудника или связанных графиков изменились. Мы обновили последствия удаления. Проверьте их ещё раз."
+          : null,
+      );
+    } catch (value) {
+      if (errorStatus(value) === 404) {
+        resetRemoval();
+        await refreshMembers();
+        setSuccess("Сотрудник уже отсутствует в ресторане.");
+      } else setError(errorMessage(value, "Не удалось проверить последствия удаления. Сотрудник не удалён."));
+    } finally {
+      setLoadingImpact(false);
+    }
+  };
   const open = (member: MemberDto) => {
-    setError(null);
+    resetRemoval();
     setMemberToRemove(member);
+    void fetchImpact(member);
   };
-
   const close = () => {
-    if (removing) return;
-    setMemberToRemove(null);
-    setError(null);
+    if (!removing && !loadingImpact) resetRemoval();
   };
-
   const closeHandoff = () => {
-    if (handoffLoading || handoffSaving || removing) return;
-    resetHandoff();
+    if (!handoffLoading && !handoffSaving) resetHandoff();
   };
 
-  const openResponsibilityHandoff = async (member: MemberDto, originalError: unknown) => {
-    if (!restaurantId) {
-      setError("Не удалось открыть переназначение: ресторан не выбран");
-      return;
-    }
-
+  const openHandoff = async (member: MemberDto, originalError: unknown) => {
+    if (!restaurantId) return;
     resetHandoff();
     setHandoffLoading(true);
     try {
       const options = await getMemberResponsibilityHandoffOptions(restaurantId, member.id);
-      if (!hasHandoffItems(options)) {
-        setError(getFriendlyMessage(originalError, "Не удалось исключить участника"));
+      if (!options.groups.some((group) => group.items.length)) {
+        setError(errorMessage(originalError, "Сотрудника нельзя удалить, пока он отвечает за активные объекты."));
         return;
       }
-
-      setMemberToRemove(null);
+      resetRemoval();
       setPendingHandoffMember(member);
       setHandoffOptions(options);
       setHandoffSelections(
-        options.groups.reduce<Record<string, number | null>>((acc, group) => {
-          for (const item of group.items) {
-            acc[getMemberResponsibilityItemKey(group.type, item.id)] = item.candidates[0]?.userId ?? null;
-          }
-          return acc;
+        options.groups.reduce<Record<string, number | null>>((result, group) => {
+          group.items.forEach((item) => {
+            result[getMemberResponsibilityItemKey(group.type, item.id)] =
+              member.userId === currentUserId ? null : (item.candidates[0]?.userId ?? null);
+          });
+          return result;
         }, {}),
       );
-    } catch (handoffLoadError: unknown) {
-      resetHandoff();
-      setError(
-        getFriendlyMessage(handoffLoadError, getFriendlyMessage(originalError, "Не удалось исключить участника")),
-      );
+    } catch (value) {
+      setError(errorMessage(value, errorMessage(originalError, "Не удалось открыть переназначение ответственностей.")));
     } finally {
       setHandoffLoading(false);
     }
   };
 
-  const runRemove = async (member: MemberDto, handleResponsibilityConflict: boolean) => {
+  const requestFrom = (source: EmployeeRemovalImpactPlan): ApplyEmployeeRemovalRequest => ({
+    expectedMemberCreatedAt: source.employee.memberCreatedAt,
+    expectedCurrentPositionId: source.employee.currentPosition?.id ?? null,
+    schedules: source.scheduleImpacts.map((schedule) => ({
+      scheduleId: schedule.scheduleId,
+      expectedVersion: schedule.scheduleVersion,
+      expectedStatus: schedule.scheduleStatus,
+      expectedCollectionCycle: schedule.preferenceCollectionCycle,
+      expectedPreferenceDeadline: schedule.currentPreferenceDeadline,
+      expectedParticipationId: schedule.participationId,
+      expectedPreferenceSubmissionId: schedule.preferenceSubmissionId,
+      expectedPreferenceSubmissionRevision: schedule.preferenceSubmissionRevision,
+    })),
+  });
+  const confirmRemove = async () => {
+    if (!restaurantId || !memberToRemove || !plan || removing) return;
+    const member = memberToRemove;
     setRemoving(true);
     setError(null);
+    setNotice(null);
     try {
-      await removeMember(member.id);
-      if (member.userId === currentUserId) {
-        onSelfRemoved();
-      }
-      resetRemovalState();
-    } catch (removeError: unknown) {
-      if (handleResponsibilityConflict && getErrorStatus(removeError) === 409) {
-        await openResponsibilityHandoff(member, removeError);
-      } else if (handleResponsibilityConflict) {
-        setError(getFriendlyMessage(removeError, "Не удалось исключить участника"));
-      } else {
-        setHandoffError(
-          "Ответственные переназначены, но удалить участника автоматически не удалось. Повторите удаление вручную.",
-        );
-      }
+      const result = await applyEmployeeRemoval(restaurantId, member.id, requestFrom(plan));
+      await refreshMembers();
+      if (member.userId === currentUserId) onSelfRemoved();
+      resetRemoval();
+      const detail = [
+        result.cancelledFutureShiftCount ? `Отменено будущих смен: ${result.cancelledFutureShiftCount}.` : null,
+        result.invalidatedAppliedPreferenceDraftCount
+          ? `Графики, требующие повторной сборки: ${result.invalidatedAppliedPreferenceDraftCount}.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      setSuccess(`Сотрудник удалён.${detail ? ` ${detail}` : ""}`);
+    } catch (value) {
+      if (errorCode(value) === "EMPLOYEE_REMOVAL_PLAN_STALE") await fetchImpact(member, true);
+      else if (errorStatus(value) === 404) {
+        resetRemoval();
+        await refreshMembers();
+        setSuccess("Сотрудник уже отсутствует в ресторане.");
+      } else if (errorStatus(value) === 409) await openHandoff(member, value);
+      else setError(errorMessage(value, "Не удалось удалить сотрудника. Попробуйте ещё раз."));
     } finally {
       setRemoving(false);
     }
   };
 
-  const confirmRemove = async () => {
-    if (!restaurantId || !memberToRemove) return;
-    await runRemove(memberToRemove, true);
-  };
-
-  const selectHandoffOwner = (key: string, ownerUserId: number | null) => {
-    setHandoffSelections((prev) => ({ ...prev, [key]: ownerUserId }));
-  };
-
+  const selectHandoffOwner = (key: string, owner: number | null) =>
+    setHandoffSelections((old) => ({ ...old, [key]: owner }));
   const confirmHandoff = async () => {
     if (!restaurantId || !pendingHandoffMember || !handoffOptions) return;
-
     const payload: MemberResponsibilityHandoffRequest = { items: [] };
-    for (const group of handoffOptions.groups) {
+    for (const group of handoffOptions.groups)
       for (const item of group.items) {
-        const selectedOwnerUserId = handoffSelections[getMemberResponsibilityItemKey(group.type, item.id)];
-        if (selectedOwnerUserId == null) {
+        const owner = handoffSelections[getMemberResponsibilityItemKey(group.type, item.id)];
+        if (owner == null) {
           setHandoffError("Выберите нового ответственного для каждого объекта");
           return;
         }
@@ -225,57 +209,36 @@ export function useMemberRemoval({
           type: group.type,
           resourceId: item.id,
           resourceVersion: item.version ?? null,
-          newOwnerUserId: selectedOwnerUserId,
+          newOwnerUserId: owner,
         });
       }
-    }
-
     setHandoffSaving(true);
     setHandoffError(null);
     try {
-      await submitMemberResponsibilityHandoff(restaurantId, pendingHandoffMember.id, payload);
-      await runRemove(pendingHandoffMember, false);
-    } catch (handoffErrorValue: unknown) {
-      setHandoffError(getFriendlyMessage(handoffErrorValue, "Не удалось переназначить ответственных"));
+      const member = pendingHandoffMember;
+      await submitMemberResponsibilityHandoff(restaurantId, member.id, payload);
+      resetHandoff();
+      setMemberToRemove(member);
+      await fetchImpact(member);
+    } catch (value) {
+      setHandoffError(errorMessage(value, "Не удалось переназначить ответственных"));
     } finally {
       setHandoffSaving(false);
     }
   };
-
-  const title = memberToRemove
-    ? currentUserId != null && memberToRemove.userId === currentUserId
-      ? "Покинуть ресторан?"
-      : "Исключить участника?"
-    : "";
-
-  const confirmText = memberToRemove
-    ? currentUserId != null && memberToRemove.userId === currentUserId
-      ? "Покинуть"
-      : "Исключить"
-    : "Исключить";
-
-  const description = !memberToRemove ? null : (
-    <div className="space-y-3">
-      <p>
-        {currentUserId != null && memberToRemove.userId === currentUserId
-          ? "Вы действительно хотите покинуть ресторан? После подтверждения вы потеряете доступ к его данным."
-          : `Вы действительно хотите исключить ${displayNameOf(memberToRemove)} из ресторана?`}
-      </p>
-      {error && <div className="text-sm text-red-600">{error}</div>}
-    </div>
-  );
-
   return {
     memberToRemove,
+    plan,
+    loadingImpact,
     removing,
     error,
+    notice,
+    success,
+    setSuccess,
     canRemoveMember,
     open,
     close,
     confirmRemove,
-    title,
-    confirmText,
-    description,
     pendingHandoffMember,
     handoffOptions,
     handoffSelections,
