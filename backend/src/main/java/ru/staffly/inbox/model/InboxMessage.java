@@ -50,6 +50,9 @@ public class InboxMessage {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
+    @Column(name = "push_text", columnDefinition = "text")
+    private String pushText;
+
     @Column(name = "expires_at")
     private LocalDate expiresAt;
 
