@@ -43,6 +43,9 @@ import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.service.SchedulePreferenceLifecycleService;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.training.service.CertificationAudienceSyncService;
+import ru.staffly.training.dto.AppliedCertificationAudienceEffect;
+import ru.staffly.schedule.dto.AppliedInvitationScheduleEffect;
+import ru.staffly.invite.service.InvitationAcceptanceOwnerNotificationService;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -53,6 +56,7 @@ import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.Objects;
+import java.util.ArrayList;
 import java.util.function.Function;
 
 import static ru.staffly.common.util.InviteUtils.*;
@@ -75,6 +79,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final MemberMapper memberMapper;
     private final SecurityService security;
     private final CertificationAudienceSyncService certificationAudienceSyncService;
+    private final InvitationAcceptanceOwnerNotificationService invitationOwnerNotifications;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -331,16 +336,24 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .build();
         m = members.save(m);
 
+        List<AppliedInvitationScheduleEffect> appliedScheduleEffects = new ArrayList<>();
         for (InvitationScheduleIntent intent : intents) {
             if (isAddAction(intent.getSelectedAction())) {
-                preferenceLifecycle.addParticipantWithLocksHeld(
-                        scheduleById.get(intent.getExpectedScheduleId()), m, currentUserId,
-                        "Принятие приглашения");
+                Schedule schedule = scheduleById.get(intent.getExpectedScheduleId());
+                boolean created = preferenceLifecycle.addParticipantWithLocksHeld(
+                        schedule, m, currentUserId, "Принятие приглашения");
+                if (created) {
+                    appliedScheduleEffects.add(new AppliedInvitationScheduleEffect(
+                            schedule.getId(), schedule.getTitle(),
+                            schedule.getOwnerUser() == null ? null : schedule.getOwnerUser().getId()));
+                }
             }
         }
-        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
+        List<AppliedCertificationAudienceEffect> certificationEffects =
+                certificationAudienceSyncService.syncRestaurantAudience(restaurantId, currentUserId);
         inv.setStatus(InvitationStatus.ACCEPTED);
         invitations.save(inv);
+        invitationOwnerNotifications.submit(m, user, appliedScheduleEffects, certificationEffects);
 
         return memberMapper.toDto(m);
     }
