@@ -56,7 +56,7 @@ export default function InvitePage() {
     [access.isAdminLike, positionsState.activePositions],
   );
 
-  const inviteForm = useInviteForm(restaurantId, { isManagerLike: canInvite }, invitablePositions);
+  const inviteForm = useInviteForm(restaurantId, { isManagerLike: canInvite }, invitablePositions, restaurantTimeZone);
 
   const { positionOptions, sortedMembers, positionFilter, setPositionFilter } = useMemberFilteringSorting(
     membersState.members,
@@ -131,8 +131,13 @@ export default function InvitePage() {
             loadingPositions={positionsState.loading}
             positionId={inviteForm.positionId}
             error={inviteForm.error}
+            impact={inviteForm.impact}
+            decisions={inviteForm.decisions}
+            deadlines={inviteForm.deadlines}
+            restaurantTimeZone={restaurantTimeZone}
             submitting={inviteForm.submitting}
             isSubmitDisabled={inviteForm.isSubmitDisabled}
+            isConfirmDisabled={!inviteForm.allRequiredScheduleDecisionsSelected || inviteForm.submitting}
             onChangePhone={inviteForm.setPhone}
             onChangePhoneCountry={(country, meta) => {
               inviteForm.setPhoneCountry(country);
@@ -140,6 +145,10 @@ export default function InvitePage() {
             }}
             onChangePositionId={inviteForm.setPositionId}
             onSubmit={inviteForm.submit}
+            onConfirm={inviteForm.confirm}
+            onBack={inviteForm.backToDetails}
+            onChangeDecision={inviteForm.setDecision}
+            onChangeDeadline={inviteForm.setDeadline}
             onCancel={() => inviteForm.setInviteOpen(false)}
             onResetDone={() => inviteForm.resetForm()}
           />
