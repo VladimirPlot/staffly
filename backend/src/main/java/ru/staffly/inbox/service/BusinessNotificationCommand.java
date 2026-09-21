@@ -6,6 +6,7 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -21,6 +22,7 @@ public record BusinessNotificationCommand(
         BusinessNotificationKind kind,
         String inboxText,
         String pushText,
+        Map<String, Object> metadata,
         LocalDate expiresAt
 ) {
     public BusinessNotificationCommand {
@@ -37,6 +39,7 @@ public record BusinessNotificationCommand(
         if (inboxText == null) {
             inboxText = pushText;
         }
+        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 
     public Long restaurantId() {

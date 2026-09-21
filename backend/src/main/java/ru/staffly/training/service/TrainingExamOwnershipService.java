@@ -12,6 +12,7 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.training.dto.CertificationOwnerCandidateDto;
+import ru.staffly.training.dto.AppliedCertificationOwnershipTransfer;
 import ru.staffly.training.dto.CertificationOwnerCandidatesDto;
 import ru.staffly.training.dto.CertificationOwnerReassignmentOptionsDto;
 import ru.staffly.training.dto.OwnedCertificationExamDto;
@@ -107,10 +108,11 @@ public class TrainingExamOwnershipService {
         );
     }
 
-    public CertificationOwnerReassignmentOptionsDto batchReassign(Long restaurantId,
-                                                                  Long actorUserId,
-                                                                  Long ownerUserId,
-                                                                  List<Map.Entry<Long, Long>> reassignments) {
+    public List<AppliedCertificationOwnershipTransfer> batchReassign(
+            Long restaurantId,
+            Long actorUserId,
+            Long ownerUserId,
+            List<Map.Entry<Long, Long>> reassignments) {
         if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
             throw new ForbiddenException("Only managers can manage exam ownership");
         }
@@ -150,7 +152,13 @@ public class TrainingExamOwnershipService {
         }
         exams.flush();
 
-        return buildReassignmentOptions(restaurantId, actorUserId, ownerUserId);
+        return reassignments.stream()
+                .map(item -> {
+                    TrainingExam exam = examsById.get(item.getKey());
+                    return new AppliedCertificationOwnershipTransfer(
+                            exam.getId(), exam.getTitle(), exam.getOwner().getId());
+                })
+                .toList();
     }
 
     public void validateOwnerCandidate(TrainingExam exam, Long ownerUserId) {

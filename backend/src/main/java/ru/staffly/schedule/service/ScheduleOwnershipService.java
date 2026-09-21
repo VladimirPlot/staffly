@@ -12,6 +12,7 @@ import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
+import ru.staffly.schedule.dto.AppliedScheduleOwnershipTransfer;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
@@ -96,11 +97,12 @@ public class ScheduleOwnershipService {
                 .toList();
     }
 
-    public void reassignOwnedSchedules(Long restaurantId,
-                                       Long actorUserId,
-                                       Long oldOwnerUserId,
-                                       Map<Long, Long> ownerUserIdsByScheduleId,
-                                       Map<Long, Long> expectedVersionsByScheduleId) {
+    public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedules(
+            Long restaurantId,
+            Long actorUserId,
+            Long oldOwnerUserId,
+            Map<Long, Long> ownerUserIdsByScheduleId,
+            Map<Long, Long> expectedVersionsByScheduleId) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         if (ownerUserIdsByScheduleId == null || ownerUserIdsByScheduleId.isEmpty()) {
@@ -131,6 +133,7 @@ public class ScheduleOwnershipService {
                 .collect(Collectors.toMap(Schedule::getId, Function.identity()));
 
         Map<Long, RestaurantMember> newOwnersByScheduleId = new java.util.HashMap<>();
+        List<AppliedScheduleOwnershipTransfer> appliedTransfers = new java.util.ArrayList<>();
         for (Long scheduleId : orderedScheduleIds) {
             Long newOwnerUserId = ownerUserIdsByScheduleId.get(scheduleId);
             RestaurantMember newOwner = requireOwnerCandidate(restaurantId, newOwnerUserId);
@@ -158,8 +161,10 @@ public class ScheduleOwnershipService {
             schedule.setOwnerMember(newOwner);
             Schedule saved = schedules.saveAndFlush(schedule);
             scheduleAuditService.record(saved, actorUserId, ScheduleAuditAction.OWNER_CHANGED, details);
-            notifyNewOwner(saved, newOwner, actorUserId);
+            appliedTransfers.add(new AppliedScheduleOwnershipTransfer(
+                    saved.getId(), saved.getTitle(), newOwner.getUser().getId()));
         }
+        return List.copyOf(appliedTransfers);
     }
 
     private Schedule requireManageableScheduleForUpdate(Long restaurantId, Long actorUserId, Long scheduleId) {

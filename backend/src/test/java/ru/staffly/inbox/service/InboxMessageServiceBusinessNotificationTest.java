@@ -145,17 +145,19 @@ class InboxMessageServiceBusinessNotificationTest {
 
         var result = service.createBusinessNotification(new BusinessNotificationCommand(
                 restaurant, OPERATION_ID, recipient, User.builder().id(999L).build(),
-                BusinessNotificationKind.CERTIFICATION, "Detailed inbox text", "Short push text", null));
+                BusinessNotificationKind.CERTIFICATION, "Detailed inbox text", "Short push text",
+                java.util.Map.of("resourceIds", java.util.List.of(21L)), null));
 
         assertThat(result.message().getContent()).isEqualTo("Detailed inbox text");
         assertThat(result.message().getPushText()).isEqualTo("Short push text");
+        assertThat(result.message().getMetadata()).containsEntry("resourceIds", java.util.List.of(21L));
     }
 
     @Test
     void fallsBackToPushTextWhenInboxTextIsAbsent() {
         var command = new BusinessNotificationCommand(
                 restaurant, OPERATION_ID, recipient, null, BusinessNotificationKind.SCHEDULE,
-                null, "Push is also safe for Inbox", null);
+                null, "Push is also safe for Inbox", null, null);
 
         assertThat(command.inboxText()).isEqualTo("Push is also safe for Inbox");
         assertThat(command.pushText()).isEqualTo("Push is also safe for Inbox");
@@ -213,7 +215,7 @@ class InboxMessageServiceBusinessNotificationTest {
     private BusinessNotificationCommand command(UUID operationId, RestaurantMember target, User actor,
                                                 BusinessNotificationKind kind) {
         return new BusinessNotificationCommand(
-                restaurant, operationId, target, actor, kind, "Detailed", null, null);
+                restaurant, operationId, target, actor, kind, "Detailed", null, null, null);
     }
 
     private RestaurantMember member(Long memberId, Long userId) {
