@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +31,55 @@ public class InboxMessageService {
     private final InboxMessageRepository messages;
     private final InboxRecipientRepository recipients;
     private final PushEnqueueService pushEnqueueService;
+
+    /**
+     * Creates one retry-safe notification group for a business operation. This method joins the
+     * caller's transaction; it deliberately does not use an independent transaction.
+     */
+    @Transactional
+    public BusinessNotificationResult createBusinessNotification(BusinessNotificationCommand command) {
+        Objects.requireNonNull(command, "command is required");
+        RestaurantMember recipient = command.recipient();
+        if (recipient == null) {
+            return BusinessNotificationResult.suppressed(
+                    BusinessNotificationResult.Status.SUPPRESSED_NO_RECIPIENT);
+        }
+        validateRecipient(command, recipient);
+
+        Long recipientUserId = recipient.getUser().getId();
+        if (command.actor() != null && Objects.equals(command.actor().getId(), recipientUserId)) {
+            return BusinessNotificationResult.suppressed(
+                    BusinessNotificationResult.Status.SUPPRESSED_ACTOR);
+        }
+
+        String meta = BusinessNotificationIdentity.meta(
+                command.restaurantId(), command.operationId(), recipient.getId(), command.kind());
+        // A transaction-scoped database lock closes the find-then-insert race without handling a
+        // PostgreSQL constraint violation in an already-aborted JPA transaction. Because this
+        // method uses REQUIRED propagation, the lock and notification share the caller's commit.
+        messages.lockBusinessNotificationIdentity(meta);
+        var existing = messages.findByRestaurantIdAndTypeAndMeta(
+                command.restaurantId(), InboxMessageType.EVENT, meta);
+        if (existing.isPresent()) {
+            ensureRecipient(existing.get(), recipient);
+            return BusinessNotificationResult.deduplicated(existing.get());
+        }
+
+        InboxMessage message = InboxMessage.builder()
+                .restaurant(command.restaurant())
+                .type(InboxMessageType.EVENT)
+                .eventSubtype(command.kind().eventSubtype())
+                .content(command.inboxText())
+                .pushText(command.pushText())
+                .meta(meta)
+                .expiresAt(command.expiresAt())
+                .createdBy(command.actor())
+                .build();
+        message = messages.save(message);
+        List<RestaurantMember> savedRecipients = saveRecipients(message, List.of(recipient));
+        pushEnqueueService.enqueueForMessage(message, savedRecipients);
+        return BusinessNotificationResult.created(message);
+    }
 
     @Transactional
     public InboxMessage createAnnouncement(Restaurant restaurant,
@@ -185,5 +235,15 @@ public class InboxMessageService {
             throw new IllegalArgumentException("Inbox message meta must be provided");
         }
         return meta.trim();
+    }
+
+    private void validateRecipient(BusinessNotificationCommand command, RestaurantMember recipient) {
+        if (recipient.getId() == null || recipient.getUser() == null || recipient.getUser().getId() == null) {
+            throw new IllegalArgumentException("recipient must be a persisted member with a user");
+        }
+        if (recipient.getRestaurant() == null
+                || !Objects.equals(recipient.getRestaurant().getId(), command.restaurantId())) {
+            throw new IllegalArgumentException("recipient must belong to the notification restaurant");
+        }
     }
 }
