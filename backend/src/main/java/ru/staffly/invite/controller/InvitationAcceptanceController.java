@@ -52,7 +52,7 @@ public class InvitationAcceptanceController {
         return employees.acceptInvite(token, principal.userId());
     }
 
-    // (опционально) Отклонить — пометим как CANCELED от лица пользователя
+    // Explicit employee decision is distinct from manager cancellation.
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/{token}/decline")
     @Transactional
@@ -74,7 +74,7 @@ public class InvitationAcceptanceController {
         if (!ok) throw new BadRequestException("Invite not intended for this user");
 
         if (inv.getStatus() == InvitationStatus.PENDING) {
-            inv.setStatus(InvitationStatus.CANCELED);
+            inv.setStatus(InvitationStatus.DECLINED);
             invitations.save(inv);
         }
     }

@@ -21,6 +21,8 @@ import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.exception.ScheduleDomainConflictException;
+import ru.staffly.invite.exception.InvitationInvalidatedException;
+import ru.staffly.invite.exception.InvitationExpiredException;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.invite.exception.InvitationImpactPlanStaleException;
 
@@ -94,6 +96,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvitationImpactPlanStale(InvitationImpactPlanStaleException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(InvitationImpactPlanStaleException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(InvitationInvalidatedException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationInvalidated(InvitationInvalidatedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(InvitationInvalidatedException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(InvitationExpiredException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationExpired(InvitationExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(InvitationExpiredException.ERROR_CODE, ex.getMessage(), null));
     }
 
     @ExceptionHandler(ScheduleVersionConflictException.class)

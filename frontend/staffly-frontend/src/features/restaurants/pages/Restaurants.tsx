@@ -6,22 +6,12 @@ import Modal from "../../../shared/ui/Modal";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
 import { Pencil, Trash2, Lock, Unlock } from "lucide-react";
-import {
-  loadMyRestaurants,
-  updateRestaurant,
-  deleteRestaurant,
-  toggleRestaurantLock,
-} from "../api";
+import { loadMyRestaurants, updateRestaurant, deleteRestaurant, toggleRestaurantLock } from "../api";
 import { switchRestaurant } from "../../auth/api";
 import { useAuth } from "../../../shared/providers/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import type { UiRestaurant } from "../../../entities/restaurant/types";
-import {
-  fetchMyInvites,
-  acceptInvite,
-  declineInvite,
-  type MyInvite,
-} from "../../invitations/api";
+import { fetchMyInvites, acceptInvite, declineInvite, type MyInvite } from "../../invitations/api";
 
 const invitationDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   dateStyle: "medium",
@@ -52,10 +42,7 @@ export default function Restaurants() {
   const reload = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [list, my] = await Promise.all([
-        loadMyRestaurants(),
-        fetchMyInvites(),
-      ]);
+      const [list, my] = await Promise.all([loadMyRestaurants(), fetchMyInvites()]);
       setRestaurants(list);
       setInvites(my);
     } catch {
@@ -78,7 +65,7 @@ export default function Restaurants() {
         <Card>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-xl font-semibold">Выбор ресторана</h2>
-            <div className="w-fit animate-pulse rounded-full border border-subtle px-3 py-1 text-xs text-muted">
+            <div className="border-subtle text-muted w-fit animate-pulse rounded-full border px-3 py-1 text-xs">
               Загружаем рестораны…
             </div>
           </div>
@@ -94,21 +81,17 @@ export default function Restaurants() {
           <h2 className="text-xl font-semibold">Выбор ресторана</h2>
 
           {isCreator && (
-            <Button
-              className="w-full sm:w-auto"
-              variant="outline"
-              onClick={() => navigate("/restaurants/new")}
-            >
+            <Button className="w-full sm:w-auto" variant="outline" onClick={() => navigate("/restaurants/new")}>
               Создать ресторан
             </Button>
           )}
         </div>
 
         {invites.length > 0 && (
-          <div className="mb-4 rounded-3xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)] sm:p-5">
+          <div className="border-subtle bg-surface mb-4 rounded-3xl border p-4 shadow-[var(--staffly-shadow)] sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="text-sm font-medium text-default">У вас есть приглашения</div>
-              <div className="rounded-full border border-subtle bg-[var(--staffly-control)] px-2.5 py-1 text-xs font-medium text-muted">
+              <div className="text-default text-sm font-medium">У вас есть приглашения</div>
+              <div className="border-subtle text-muted rounded-full border bg-[var(--staffly-control)] px-2.5 py-1 text-xs font-medium">
                 {invites.length}
               </div>
             </div>
@@ -117,18 +100,16 @@ export default function Restaurants() {
               {invites.map((inv) => (
                 <div
                   key={inv.token}
-                  className="grid gap-3 rounded-2xl border border-subtle bg-[var(--staffly-control)] p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  className="border-subtle grid gap-3 rounded-2xl border bg-[var(--staffly-control)] p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
-                  <div className="min-w-0 space-y-1 text-sm leading-snug text-default">
-                    <div className="break-words text-base font-medium text-strong">
-                      {inv.restaurantName}
-                    </div>
+                  <div className="text-default min-w-0 space-y-1 text-sm leading-snug">
+                    <div className="text-strong text-base font-medium break-words">{inv.restaurantName}</div>
                     {inv.positionName && (
                       <div>
                         <span className="text-muted">Должность:</span> {inv.positionName}
                       </div>
                     )}
-                    <div className="text-xs text-muted tabular-nums">
+                    <div className="text-muted text-xs tabular-nums">
                       Истекает: {invitationDateFormatter.format(new Date(inv.expiresAt))}
                     </div>
                   </div>
@@ -143,6 +124,15 @@ export default function Restaurants() {
                           await refreshMe();
                           navigate("/app", { replace: true });
                         } catch (e: any) {
+                          if (
+                            e?.response?.data?.error === "INVITATION_INVALIDATED" ||
+                            e?.response?.data?.code === "INVITATION_INVALIDATED" ||
+                            e?.response?.data?.meta?.code === "INVITATION_INVALIDATED"
+                          ) {
+                            // The backend has committed a terminal outcome; authoritative refetch
+                            // removes the stale invitation. Acceptance must not be retried.
+                            await reload();
+                          }
                           alert(e?.friendlyMessage || "Не удалось принять приглашение");
                         }
                       }}
@@ -175,18 +165,12 @@ export default function Restaurants() {
           {restaurants.map((r) => (
             <div
               key={r.id}
-              className="flex flex-col gap-3 rounded-2xl border border-subtle p-4 hover:bg-app sm:flex-row sm:items-center sm:justify-between"
+              className="border-subtle hover:bg-app flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
                 <div className="text-lg font-medium">{r.name}</div>
-                <div className="text-sm text-muted">
-                  {(r.city || "") + " · Роль: " + r.role}
-                </div>
-                {r.locked && (
-                  <div className="mt-1 text-xs font-medium text-rose-600">
-                    Ресторан заблокирован
-                  </div>
-                )}
+                <div className="text-muted text-sm">{(r.city || "") + " · Роль: " + r.role}</div>
+                {r.locked && <div className="mt-1 text-xs font-medium text-rose-600">Ресторан заблокирован</div>}
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                 <Button
@@ -226,11 +210,7 @@ export default function Restaurants() {
                         try {
                           const updated = await toggleRestaurantLock(r.id);
                           setRestaurants((prev) =>
-                            prev.map((item) =>
-                              item.id === r.id
-                                ? { ...item, locked: updated.locked }
-                                : item
-                            )
+                            prev.map((item) => (item.id === r.id ? { ...item, locked: updated.locked } : item)),
                           );
                         } catch (e: any) {
                           alert(e?.friendlyMessage || "Не удалось изменить статус");
@@ -270,31 +250,17 @@ export default function Restaurants() {
         }}
       >
         <div className="grid gap-4">
-          <Input
-            label="Название"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-          />
-          <Input
-            label="Описание"
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
-          />
+          <Input label="Название" value={editName} onChange={(e) => setEditName(e.target.value)} />
+          <Input label="Описание" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
           <Input
             label="Часовой пояс (IANA)"
             value={editTimezone}
             onChange={(e) => setEditTimezone(e.target.value)}
             placeholder="Напр. Europe/Moscow"
           />
-          {editError && (
-            <div className="text-sm text-red-600">{editError}</div>
-          )}
+          {editError && <div className="text-sm text-red-600">{editError}</div>}
           <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setEditing(null)}
-              disabled={editBusy}
-            >
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={editBusy}>
               Отмена
             </Button>
             <Button
@@ -310,17 +276,11 @@ export default function Restaurants() {
                     timezone: editTimezone.trim(),
                   });
                   setRestaurants((prev) =>
-                    prev.map((item) =>
-                      item.id === editing.id
-                        ? { ...item, ...updated }
-                        : item
-                    )
+                    prev.map((item) => (item.id === editing.id ? { ...item, ...updated } : item)),
                   );
                   setEditing(null);
                 } catch (e: any) {
-                  setEditError(
-                    e?.friendlyMessage || "Не удалось сохранить изменения"
-                  );
+                  setEditError(e?.friendlyMessage || "Не удалось сохранить изменения");
                 } finally {
                   setEditBusy(false);
                 }
@@ -359,15 +319,10 @@ export default function Restaurants() {
           setDeleteError(null);
           try {
             await deleteRestaurant(deleteTarget.id);
-            setRestaurants((prev) =>
-              prev.filter((item) => item.id !== deleteTarget.id)
-            );
+            setRestaurants((prev) => prev.filter((item) => item.id !== deleteTarget.id));
             setDeleteTarget(null);
           } catch (e: any) {
-            setDeleteError(
-              e?.friendlyMessage ||
-                "Нельзя удалить ресторан, пока в нём есть другие участники"
-            );
+            setDeleteError(e?.friendlyMessage || "Нельзя удалить ресторан, пока в нём есть другие участники");
           } finally {
             setDeleteBusy(false);
           }

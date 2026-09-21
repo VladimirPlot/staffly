@@ -164,6 +164,54 @@ class SchedulePreferenceLifecycleServiceTest {
     }
 
     @Test
+    void invitationReopenAdvancesNotificationCycleButPreservesAuthoritativePreferenceInput() {
+        Instant deadline = Instant.now().plusSeconds(3600);
+        SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder()
+                .id(70L).positionIds(new LinkedHashSet<>(List.of(20L))).build();
+        schedule.setStatus(ScheduleStatus.PREFERENCES_CLOSED);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.SHIFT_OPTIONS);
+        schedule.setPreferenceCollectionStartedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        schedule.setPreferenceClosedAt(Instant.parse("2026-01-02T00:00:00Z"));
+        schedule.setPreferenceAllSubmittedNotifiedAt(Instant.parse("2026-01-02T00:00:00Z"));
+        schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
+
+        service.prepareInvitationWithLocksHeld(schedule, false, deadline, 50L, "invitation");
+
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.COLLECTING_PREFERENCES);
+        assertThat(schedule.getPreferenceCollectionCycle()).isEqualTo(2);
+        assertThat(schedule.getPreferenceCollectionStartedAt()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"));
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).containsExactly(snapshot);
+        assertThat(schedule.getPreferenceAllSubmittedNotifiedAt()).isNull();
+        verifyNoInteractions(submissions, participations, creator);
+    }
+
+    @Test
+    void invitationRebuildReopenRemovesOnlyGeneratedResultAndPreservesPreferenceInput() {
+        Instant deadline = Instant.now().plusSeconds(3600);
+        SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder().id(70L).build();
+        ScheduleRow row = ScheduleRow.builder().schedule(schedule).cells(new ArrayList<>()).build();
+        row.getCells().add(cell(row, ScheduleCellSource.AUTO_BUILD));
+        row.getCells().add(cell(row, ScheduleCellSource.MANUAL));
+        row.getCells().add(cell(row, ScheduleCellSource.PREFERENCE_HINT));
+        schedule.getRows().add(row);
+        schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.SHIFT_OPTIONS);
+        schedule.setPreferenceCollectionStartedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        schedule.setPreferenceAppliedAt(Instant.parse("2026-01-03T00:00:00Z"));
+        schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
+
+        service.prepareInvitationWithLocksHeld(schedule, true, deadline, 50L, "invitation rebuild");
+
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.COLLECTING_PREFERENCES);
+        assertThat(schedule.getPreferenceAppliedAt()).isNull();
+        assertThat(schedule.getPreferenceCollectionCycle()).isEqualTo(2);
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).containsExactly(snapshot);
+        assertThat(row.getCells()).extracting(ScheduleCell::getSource)
+                .containsExactly(ScheduleCellSource.MANUAL, ScheduleCellSource.PREFERENCE_HINT);
+        verifyNoInteractions(submissions, participations, creator);
+    }
+
+    @Test
     void invalidationClearsPreferenceStateAndOnlyAutoBuildCells() {
         ScheduleRow row = ScheduleRow.builder().schedule(schedule).memberId(30L).cells(new ArrayList<>()).build();
         row.getCells().add(cell(row, ScheduleCellSource.AUTO_BUILD));
