@@ -105,10 +105,15 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (req == null) throw new BadRequestException("Invitation request is required");
         String contact = invitationImpactService.validateCandidateIsNotMember(restaurantId, req.phone());
 
-        // уже есть активный инвайт?
-        if (invitations.existsInviteForContact(restaurantId, contact, InvitationStatus.PENDING)) {
-            throw new ConflictException("Invite already sent to: " + contact);
-        }
+        Instant now = TimeProvider.now();
+        invitations.findPendingForUpdateByContact(restaurantId, contact, InvitationStatus.PENDING)
+                .ifPresent(existing -> {
+                    if (existing.getExpiresAt().isAfter(now)) {
+                        throw new ConflictException("Invite already sent to: " + contact);
+                    }
+                    existing.setStatus(InvitationStatus.EXPIRED);
+                    invitations.saveAndFlush(existing);
+                });
 
         Position desiredPosition = invitationImpactService.validatePosition(restaurantId, req.positionId(), currentUserId);
 
@@ -139,7 +144,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .phoneOrEmail(contact)
                 .token(token)
                 .status(InvitationStatus.PENDING)
-                .expiresAt(TimeProvider.now().plus(INVITE_TTL))
+                .expiresAt(now.plus(INVITE_TTL))
                 .invitedBy(users.findById(currentUserId)
                         .orElseThrow(() -> new NotFoundException("Inviter not found: " + currentUserId)))
                 .desiredRole(desiredRole)
@@ -214,7 +219,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     @Override
-    @Transactional
+    @Transactional(dontRollbackOn = InvitationExpiredException.class)
     public void cancelInvite(Long restaurantId, Long currentUserId, String token) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
@@ -226,6 +231,11 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
         if (inv.getStatus() != InvitationStatus.PENDING) {
             return; // идемпотентно
+        }
+        if (!inv.getExpiresAt().isAfter(TimeProvider.now())) {
+            inv.setStatus(InvitationStatus.EXPIRED);
+            invitations.saveAndFlush(inv);
+            throw new InvitationExpiredException();
         }
         inv.setStatus(InvitationStatus.CANCELED);
         invitations.save(inv);
@@ -257,7 +267,7 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new ConflictException("Invite not intended for this user");
         }
 
-        if (TimeProvider.now().isAfter(inv.getExpiresAt())) {
+        if (!inv.getExpiresAt().isAfter(TimeProvider.now())) {
             inv.setStatus(InvitationStatus.EXPIRED);
             invitations.saveAndFlush(inv);
             throw new InvitationExpiredException();
