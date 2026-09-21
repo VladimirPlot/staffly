@@ -1,0 +1,193 @@
+package ru.staffly.member.service.impl;
+
+import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import ru.staffly.common.time.RestaurantTimeService;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.invite.exception.InvitationInvalidatedException;
+import ru.staffly.invite.exception.InvitationExpiredException;
+import ru.staffly.invite.mapper.InvitationMapper;
+import ru.staffly.invite.model.*;
+import ru.staffly.invite.repository.InvitationRepository;
+import ru.staffly.invite.repository.InvitationScheduleIntentRepository;
+import ru.staffly.invite.service.InvitationImpactService;
+import ru.staffly.member.mapper.MemberMapper;
+import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.model.RestaurantRole;
+import ru.staffly.restaurant.repository.RestaurantRepository;
+import ru.staffly.schedule.model.*;
+import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.service.SchedulePreferenceLifecycleService;
+import ru.staffly.security.SecurityService;
+import ru.staffly.training.service.CertificationAudienceSyncService;
+import ru.staffly.user.model.User;
+import ru.staffly.user.repository.UserRepository;
+
+import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class EmployeeServiceImplAcceptanceTest {
+    @Mock InvitationRepository invitations;
+    @Mock RestaurantMemberRepository members;
+    @Mock RestaurantRepository restaurants;
+    @Mock UserRepository users;
+    @Mock ScheduleRepository schedules;
+    @Mock InvitationScheduleIntentRepository intents;
+    @Mock InvitationImpactService impactService;
+    @Mock SchedulePreferenceLifecycleService lifecycle;
+    @Mock RestaurantTimeService restaurantTime;
+    @Mock InvitationMapper invitationMapper;
+    @Mock MemberMapper memberMapper;
+    @Mock SecurityService security;
+    @Mock CertificationAudienceSyncService certificationSync;
+    @InjectMocks EmployeeServiceImpl service;
+
+    private Restaurant restaurant;
+    private Position position;
+    private User user;
+    private Invitation invitation;
+
+    @BeforeEach
+    void setUp() {
+        restaurant = Restaurant.builder().id(3L).build();
+        position = Position.builder().id(5L).restaurant(restaurant).active(true).level(RestaurantRole.STAFF).build();
+        user = User.builder().id(9L).phone("+79991112233").build();
+        invitation = Invitation.builder().id(7L).token("token").restaurant(restaurant)
+                .phoneOrEmail("+79991112233").status(InvitationStatus.PENDING)
+                .expiresAt(Instant.now().plusSeconds(3600)).desiredRole(RestaurantRole.STAFF)
+                .position(position).build();
+        when(invitations.findForUpdateByToken("token")).thenReturn(Optional.of(invitation));
+        lenient().when(users.findById(9L)).thenReturn(Optional.of(user));
+    }
+
+    @Test
+    void allSnapshotsValidateBeforeMembershipAndAllAddIntentsApply() {
+        Schedule first = schedule(11L, PreferenceCollectionMode.DAY_LEVEL);
+        Schedule second = schedule(12L, PreferenceCollectionMode.DAY_LEVEL);
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(7L))
+                .thenReturn(List.of(intent(first, InvitationScheduleIntentAction.ADD_TO_COLLECTION),
+                        intent(second, InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION)));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(3L, List.of(11L, 12L)))
+                .thenReturn(List.of(first, second));
+        when(members.save(any())).thenAnswer(call -> call.getArgument(0));
+
+        service.acceptInvite("token", 9L);
+
+        verify(members).save(any(RestaurantMember.class));
+        verify(lifecycle).addParticipantWithLocksHeld(eq(first), any(), eq(9L), anyString());
+        verify(lifecycle).addParticipantWithLocksHeld(eq(second), any(), eq(9L), anyString());
+        verify(certificationSync).syncRestaurantAudience(3L);
+        assertEquals(InvitationStatus.ACCEPTED, invitation.getStatus());
+    }
+
+    @Test
+    void oneStaleSnapshotInvalidatesWithoutAnyAcceptanceMutation() {
+        Schedule first = schedule(11L, PreferenceCollectionMode.DAY_LEVEL);
+        Schedule stale = schedule(12L, PreferenceCollectionMode.DAY_LEVEL);
+        InvitationScheduleIntent staleIntent = intent(stale, InvitationScheduleIntentAction.DO_NOT_ADD);
+        stale.setVersion(3L);
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(7L)).thenReturn(List.of(
+                intent(first, InvitationScheduleIntentAction.ADD_TO_COLLECTION), staleIntent));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(3L, List.of(11L, 12L)))
+                .thenReturn(List.of(first, stale));
+
+        assertInvalidatedWithoutMutation();
+    }
+
+    @Test
+    void deletedScheduleInvalidatesEvenForInformationOnlyIntent() {
+        Schedule deleted = schedule(11L, PreferenceCollectionMode.DAY_LEVEL);
+        InvitationScheduleIntent intent = intent(deleted, InvitationScheduleIntentAction.INFORMATION_ONLY);
+        intent.setSchedule(null);
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(7L)).thenReturn(List.of(intent));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(3L, List.of(11L))).thenReturn(List.of());
+
+        assertInvalidatedWithoutMutation();
+    }
+
+    @Test
+    void inactivePositionInvalidatesBeforeSchedulesAreLocked() {
+        position.setActive(false);
+        assertInvalidatedWithoutMutation();
+        verifyNoInteractions(schedules);
+    }
+
+    @Test
+    void missingFrozenShiftOptionsInvalidatesWithoutParticipation() {
+        Schedule schedule = schedule(11L, PreferenceCollectionMode.SHIFT_OPTIONS);
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(7L))
+                .thenReturn(List.of(intent(schedule, InvitationScheduleIntentAction.ADD_TO_COLLECTION)));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(3L, List.of(11L)))
+                .thenReturn(List.of(schedule));
+
+        assertInvalidatedWithoutMutation();
+    }
+
+    @Test
+    void terminalInvitationCannotBeAcceptedTwice() {
+        invitation.setStatus(InvitationStatus.ACCEPTED);
+        assertThrows(RuntimeException.class, () -> service.acceptInvite("token", 9L));
+        verifyNoInteractions(members, lifecycle, certificationSync);
+    }
+
+    @Test
+    void expiredInvitationCommitsTerminalOutcomeWithoutAcceptanceEffects() {
+        invitation.setExpiresAt(Instant.now().minusSeconds(1));
+
+        assertThrows(InvitationExpiredException.class, () -> service.acceptInvite("token", 9L));
+
+        assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
+        verify(invitations).saveAndFlush(invitation);
+        verifyNoInteractions(schedules, intents, lifecycle, certificationSync);
+        verify(members, never()).save(any());
+    }
+
+    @Test
+    void onlyExplicitTerminalOutcomesAreExcludedFromAcceptanceRollback() throws Exception {
+        Transactional transaction = EmployeeServiceImpl.class
+                .getMethod("acceptInvite", String.class, Long.class)
+                .getAnnotation(Transactional.class);
+
+        org.assertj.core.api.Assertions.assertThat(transaction.dontRollbackOn())
+                .containsExactlyInAnyOrder(InvitationInvalidatedException.class, InvitationExpiredException.class);
+    }
+
+    private void assertInvalidatedWithoutMutation() {
+        assertThrows(InvitationInvalidatedException.class, () -> service.acceptInvite("token", 9L));
+        assertEquals(InvitationStatus.INVALIDATED, invitation.getStatus());
+        verify(invitations).saveAndFlush(invitation);
+        verify(members, never()).save(any());
+        verifyNoInteractions(lifecycle, certificationSync);
+    }
+
+    private Schedule schedule(Long id, PreferenceCollectionMode mode) {
+        return Schedule.builder().id(id).version(2L).restaurant(restaurant)
+                .positions(new LinkedHashSet<>(List.of(position)))
+                .status(ScheduleStatus.COLLECTING_PREFERENCES).preferenceCollectionCycle(4L)
+                .preferenceDeadline(Instant.parse("2099-09-21T16:00:00Z"))
+                .preferenceCollectionMode(mode).build();
+    }
+
+    private InvitationScheduleIntent intent(Schedule schedule, InvitationScheduleIntentAction action) {
+        return InvitationScheduleIntent.builder().invitation(invitation).schedule(schedule)
+                .expectedScheduleId(schedule.getId()).selectedAction(action)
+                .expectedScheduleVersion(2L).expectedScheduleStatus(ScheduleStatus.COLLECTING_PREFERENCES)
+                .expectedCollectionCycle(4L).expectedPreferenceDeadline(schedule.getPreferenceDeadline())
+                .expectedPreferenceMode(schedule.getPreferenceCollectionMode()).build();
+    }
+}

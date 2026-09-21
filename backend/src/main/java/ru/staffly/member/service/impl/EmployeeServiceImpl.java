@@ -20,6 +20,8 @@ import ru.staffly.invite.model.InvitationScheduleIntentAction;
 import ru.staffly.invite.repository.InvitationRepository;
 import ru.staffly.invite.repository.InvitationScheduleIntentRepository;
 import ru.staffly.invite.exception.InvitationImpactPlanStaleException;
+import ru.staffly.invite.exception.InvitationInvalidatedException;
+import ru.staffly.invite.exception.InvitationExpiredException;
 import ru.staffly.invite.dto.InvitationImpactPlan;
 import ru.staffly.invite.service.InvitationImpactService;
 import ru.staffly.member.dto.MemberDto;
@@ -35,6 +37,10 @@ import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.model.PreferenceCollectionMode;
+import ru.staffly.schedule.model.SchedulePositionIds;
+import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.service.SchedulePreferenceLifecycleService;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.training.service.CertificationAudienceSyncService;
 
@@ -62,6 +68,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final ScheduleRepository schedules;
     private final InvitationScheduleIntentRepository invitationIntents;
     private final InvitationImpactService invitationImpactService;
+    private final SchedulePreferenceLifecycleService preferenceLifecycle;
     private final RestaurantTimeService restaurantTime;
 
     private final InvitationMapper invitationMapper;
@@ -142,15 +149,27 @@ public class EmployeeServiceImpl implements EmployeeService {
         inv = invitations.save(inv);
         for (Schedule schedule : relevant) {
             InviteRequest.ScheduleDecision decision = decisions.get(schedule.getId());
+            if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_TO_COLLECTION
+                    && decision.requestedDeadline() != null) {
+                preferenceLifecycle.extendInvitationDeadlineWithLocksHeld(schedule, decision.requestedDeadline());
+            } else if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION) {
+                preferenceLifecycle.prepareInvitationWithLocksHeld(schedule, false, decision.requestedDeadline(),
+                        currentUserId, "Новое приглашение сотрудника");
+            } else if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD) {
+                preferenceLifecycle.prepareInvitationWithLocksHeld(schedule, true, decision.requestedDeadline(),
+                        currentUserId, "Новое приглашение сотрудника");
+            }
             invitationIntents.save(InvitationScheduleIntent.builder()
                     .invitation(inv).schedule(schedule).expectedScheduleId(schedule.getId())
                     .selectedAction(decision.selectedAction())
                     .requestedDeadline(decision.requestedDeadline())
-                    .expectedScheduleVersion(decision.expectedScheduleVersion())
-                    .expectedScheduleStatus(decision.expectedScheduleStatus())
-                    .expectedCollectionCycle(decision.expectedCollectionCycle())
-                    .expectedPreferenceDeadline(decision.expectedPreferenceDeadline())
-                    .expectedPreferenceMode(decision.expectedPreferenceMode()).build());
+                    // Snapshot the authoritative post-invitation state. Reopen/deadline decisions
+                    // are immediate effects and must never be repeated by acceptance.
+                    .expectedScheduleVersion(schedule.getVersion())
+                    .expectedScheduleStatus(schedule.getStatus())
+                    .expectedCollectionCycle(schedule.getPreferenceCollectionCycle())
+                    .expectedPreferenceDeadline(schedule.getPreferenceDeadline())
+                    .expectedPreferenceMode(schedule.getPreferenceCollectionMode()).build());
         }
         return invitationMapper.toResponse(inv);
     }
@@ -213,7 +232,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     @Override
-    @Transactional
+    @Transactional(dontRollbackOn = {InvitationInvalidatedException.class, InvitationExpiredException.class})
     public MemberDto acceptInvite(String token, Long currentUserId) {
         Invitation inv = invitations.findForUpdateByToken(token)
                 .orElseThrow(() -> new NotFoundException("Invite not found"));
@@ -221,12 +240,6 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (inv.getStatus() != InvitationStatus.PENDING) {
             throw new ConflictException("Invite is not pending");
         }
-        if (TimeProvider.now().isAfter(inv.getExpiresAt())) {
-            inv.setStatus(InvitationStatus.EXPIRED);
-            invitations.save(inv);
-            throw new BadRequestException("Invite expired");
-        }
-
         User user = users.findById(currentUserId)
                 .orElseThrow(() -> new NotFoundException("User not found: " + currentUserId));
 
@@ -244,23 +257,62 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new ConflictException("Invite not intended for this user");
         }
 
+        if (TimeProvider.now().isAfter(inv.getExpiresAt())) {
+            inv.setStatus(InvitationStatus.EXPIRED);
+            invitations.saveAndFlush(inv);
+            throw new InvitationExpiredException();
+        }
+
         Long restaurantId = inv.getRestaurant().getId();
 
         RestaurantRole roleToAssign = inv.getDesiredRole() != null ? inv.getDesiredRole() : RestaurantRole.STAFF;
         Position positionToAssign = inv.getPosition();
 
         if (members.existsByRestaurantIdAndUserId(restaurantId, currentUserId)) {
-            inv.setStatus(InvitationStatus.ACCEPTED);
-            invitations.save(inv);
-            RestaurantMember m = members.findByUserIdAndRestaurantId(currentUserId, restaurantId).get();
-            return memberMapper.toDto(m);
+            invalidate(inv, "ALREADY_MEMBER");
         }
 
-        // на всякий случай перепроверим согласованность, если инвайт старый
-        if (positionToAssign != null && !isPositionCompatibleWithRole(positionToAssign.getLevel(), roleToAssign)) {
-            throw new ConflictException("Stored invitation position is incompatible with role");
+        if (positionToAssign == null || !positionToAssign.isActive()
+                || !Objects.equals(positionToAssign.getRestaurant().getId(), restaurantId)
+                || !isPositionCompatibleWithRole(positionToAssign.getLevel(), roleToAssign)) {
+            invalidate(inv, "POSITION_UNAVAILABLE");
         }
 
+        List<InvitationScheduleIntent> intents =
+                invitationIntents.findByInvitationIdOrderByExpectedScheduleIdAsc(inv.getId());
+        List<Long> expectedIds = intents.stream().map(InvitationScheduleIntent::getExpectedScheduleId).toList();
+        List<Schedule> lockedSchedules = expectedIds.isEmpty() ? List.of()
+                : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, expectedIds);
+        Map<Long, Schedule> scheduleById = lockedSchedules.stream()
+                .collect(Collectors.toMap(Schedule::getId, Function.identity()));
+
+        for (InvitationScheduleIntent intent : intents) {
+            Schedule schedule = scheduleById.get(intent.getExpectedScheduleId());
+            if (schedule == null || intent.getSchedule() == null
+                    || !Objects.equals(intent.getSchedule().getId(), intent.getExpectedScheduleId())) {
+                invalidate(inv, "SCHEDULE_DELETED");
+            }
+            if (!Objects.equals(schedule.getVersion(), intent.getExpectedScheduleVersion())
+                    || schedule.getStatus() != intent.getExpectedScheduleStatus()
+                    || schedule.getPreferenceCollectionCycle() != intent.getExpectedCollectionCycle()
+                    || !Objects.equals(schedule.getPreferenceDeadline(), intent.getExpectedPreferenceDeadline())
+                    || schedule.getPreferenceCollectionMode() != intent.getExpectedPreferenceMode()) {
+                invalidate(inv, "SCHEDULE_CHANGED");
+            }
+            if (isAddAction(intent.getSelectedAction())) {
+                if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
+                        || !SchedulePositionIds.ids(schedule).contains(positionToAssign.getId())) {
+                    invalidate(inv, "COLLECTION_UNAVAILABLE");
+                }
+                if (schedule.getPreferenceCollectionMode() == PreferenceCollectionMode.SHIFT_OPTIONS
+                        && schedule.getPreferenceShiftOptionSnapshots().stream().noneMatch(
+                        snapshot -> snapshot.getPositionIds().contains(positionToAssign.getId()))) {
+                    invalidate(inv, "FROZEN_SHIFT_OPTIONS_UNAVAILABLE");
+                }
+            }
+        }
+
+        // No acceptance mutation is allowed above this line.
         RestaurantMember m = RestaurantMember.builder()
                 .user(user)
                 .restaurant(inv.getRestaurant())
@@ -269,11 +321,30 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .build();
         m = members.save(m);
 
+        for (InvitationScheduleIntent intent : intents) {
+            if (isAddAction(intent.getSelectedAction())) {
+                preferenceLifecycle.addParticipantWithLocksHeld(
+                        scheduleById.get(intent.getExpectedScheduleId()), m, currentUserId,
+                        "Принятие приглашения");
+            }
+        }
+        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
         inv.setStatus(InvitationStatus.ACCEPTED);
         invitations.save(inv);
-        certificationAudienceSyncService.syncRestaurantAudience(restaurantId);
 
         return memberMapper.toDto(m);
+    }
+
+    private boolean isAddAction(InvitationScheduleIntentAction action) {
+        return action == InvitationScheduleIntentAction.ADD_TO_COLLECTION
+                || action == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                || action == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD;
+    }
+
+    private void invalidate(Invitation invitation, String reason) {
+        invitation.setStatus(InvitationStatus.INVALIDATED);
+        invitations.saveAndFlush(invitation);
+        throw new InvitationInvalidatedException(reason);
     }
 
     @Override
