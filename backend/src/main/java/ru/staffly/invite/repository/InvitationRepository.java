@@ -3,6 +3,8 @@ package ru.staffly.invite.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import ru.staffly.invite.dto.MyInviteDto;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
@@ -14,6 +16,10 @@ import java.util.Optional;
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     Optional<Invitation> findByToken(String token);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Invitation i where i.token = :token")
+    Optional<Invitation> findForUpdateByToken(String token);
 
     List<Invitation> findByRestaurantIdAndStatus(Long restaurantId, InvitationStatus status);
 

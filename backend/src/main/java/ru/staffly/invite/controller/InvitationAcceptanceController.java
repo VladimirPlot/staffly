@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
@@ -54,9 +55,10 @@ public class InvitationAcceptanceController {
     // (опционально) Отклонить — пометим как CANCELED от лица пользователя
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/{token}/decline")
+    @Transactional
     public void decline(@PathVariable String token,
                         @AuthenticationPrincipal UserPrincipal principal) {
-        Invitation inv = invitations.findByToken(token)
+        Invitation inv = invitations.findForUpdateByToken(token)
                 .orElseThrow(() -> new NotFoundException("Invite not found"));
 
         // простой чек соответствия контакта текущему пользователю

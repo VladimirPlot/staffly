@@ -22,6 +22,7 @@ import ru.staffly.training.model.TrainingExam;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.invite.exception.InvitationImpactPlanStaleException;
 
 import java.util.stream.Collectors;
 
@@ -87,6 +88,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("CONFLICT", ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(InvitationImpactPlanStaleException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationImpactPlanStale(InvitationImpactPlanStaleException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(InvitationImpactPlanStaleException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
     }
 
     @ExceptionHandler(ScheduleVersionConflictException.class)

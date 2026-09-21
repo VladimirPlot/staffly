@@ -7,6 +7,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
+import ru.staffly.invite.dto.InvitationImpactPlan;
+import ru.staffly.invite.dto.InvitationImpactRequest;
+import ru.staffly.invite.service.InvitationImpactService;
 import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.dto.ApplyPositionChangeRequest;
 import ru.staffly.member.dto.ApplyPositionChangeResult;
@@ -40,6 +43,15 @@ public class EmployeeController {
     private final PositionChangeApplyService positionChangeApplyService;
     private final EmployeeRemovalImpactService employeeRemovalImpactService;
     private final EmployeeRemovalApplyService employeeRemovalApplyService;
+    private final InvitationImpactService invitationImpactService;
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/invitations/impact")
+    public InvitationImpactPlan invitationImpact(@PathVariable Long restaurantId,
+                                                 @AuthenticationPrincipal UserPrincipal principal,
+                                                 @Valid @RequestBody InvitationImpactRequest request) {
+        return invitationImpactService.calculate(restaurantId, principal.userId(), request);
+    }
 
     // Пригласить по телефону/email (MANAGER/OWNER)
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

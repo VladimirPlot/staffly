@@ -7,17 +7,21 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
-import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
-import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
 import ru.staffly.invite.mapper.InvitationMapper;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
+import ru.staffly.invite.model.InvitationScheduleIntent;
+import ru.staffly.invite.model.InvitationScheduleIntentAction;
 import ru.staffly.invite.repository.InvitationRepository;
+import ru.staffly.invite.repository.InvitationScheduleIntentRepository;
+import ru.staffly.invite.exception.InvitationImpactPlanStaleException;
+import ru.staffly.invite.dto.InvitationImpactPlan;
+import ru.staffly.invite.service.InvitationImpactService;
 import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.RestaurantMember;
@@ -29,6 +33,10 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
+import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.common.time.RestaurantTimeService;
+import ru.staffly.training.service.CertificationAudienceSyncService;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -36,6 +44,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.Objects;
+import java.util.function.Function;
 
 import static ru.staffly.common.util.InviteUtils.*;
 
@@ -47,11 +59,15 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final RestaurantMemberRepository members;
     private final RestaurantRepository restaurants;
     private final UserRepository users;
-    private final PositionRepository positions;
+    private final ScheduleRepository schedules;
+    private final InvitationScheduleIntentRepository invitationIntents;
+    private final InvitationImpactService invitationImpactService;
+    private final RestaurantTimeService restaurantTime;
 
     private final InvitationMapper invitationMapper;
     private final MemberMapper memberMapper;
     private final SecurityService security;
+    private final CertificationAudienceSyncService certificationAudienceSyncService;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -79,38 +95,36 @@ public class EmployeeServiceImpl implements EmployeeService {
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        if (req == null || !isPhone(req.phone())) {
-            throw new BadRequestException("Invalid phone");
-        }
-
-        // нормализуем для консистентности
-        String contact = normalizePhone(req.phone());
+        if (req == null) throw new BadRequestException("Invitation request is required");
+        String contact = invitationImpactService.validateCandidateIsNotMember(restaurantId, req.phone());
 
         // уже есть активный инвайт?
         if (invitations.existsInviteForContact(restaurantId, contact, InvitationStatus.PENDING)) {
             throw new ConflictException("Invite already sent to: " + contact);
         }
 
-        // если контакт уже член ресторана — конфликт
-        users.findByPhone(contact).ifPresent(u -> {
-            if (members.existsByRestaurantIdAndUserId(restaurantId, u.getId())) {
-                throw new ConflictException("User already a member");
-            }
-        });
-
-        Position desiredPosition = positions.findById(req.positionId())
-                .orElseThrow(() -> new NotFoundException("Position not found: " + req.positionId()));
-        if (!desiredPosition.getRestaurant().getId().equals(restaurantId) || !desiredPosition.isActive()) {
-            throw new BadRequestException("Position is not in this restaurant or inactive");
-        }
+        Position desiredPosition = invitationImpactService.validatePosition(restaurantId, req.positionId(), currentUserId);
 
         RestaurantRole desiredRole = desiredPosition.getLevel();
 
-        // права приглашающего: MANAGER может приглашать только STAFF
-        boolean inviterIsAdmin = security.isAdmin(currentUserId, restaurantId);
-        if (!inviterIsAdmin && desiredRole != RestaurantRole.STAFF) {
-            throw new ForbiddenException("Managers can invite only STAFF positions");
+        List<Schedule> discovered = schedules.findByRestaurantIdAndPositionIdAndEndDateGreaterThanEqualOrderByIdAsc(
+                restaurantId, desiredPosition.getId(), restaurantTime.today(restaurant));
+        List<Long> relevantIds = discovered.stream().map(Schedule::getId).sorted().toList();
+        List<Schedule> relevant = relevantIds.isEmpty() ? List.of()
+                : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, relevantIds);
+        if (relevant.size() != relevantIds.size()) throw new InvitationImpactPlanStaleException();
+        Map<Long, InviteRequest.ScheduleDecision> decisions;
+        try {
+            decisions = req.scheduleIntents().stream().collect(Collectors.toMap(
+                    InviteRequest.ScheduleDecision::scheduleId, Function.identity(),
+                    (left, right) -> { throw new IllegalArgumentException(); }, TreeMap::new));
+        } catch (RuntimeException ex) {
+            throw new BadRequestException("Each relevant schedule must have exactly one decision");
         }
+        if (!relevant.stream().map(Schedule::getId).collect(Collectors.toSet()).equals(decisions.keySet())) {
+            throw new InvitationImpactPlanStaleException();
+        }
+        validateDecisions(relevant, decisions, desiredPosition.getId());
 
         String token = genToken(); // дефолт 24 байта
         Invitation inv = Invitation.builder()
@@ -126,7 +140,58 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .build();
 
         inv = invitations.save(inv);
+        for (Schedule schedule : relevant) {
+            InviteRequest.ScheduleDecision decision = decisions.get(schedule.getId());
+            invitationIntents.save(InvitationScheduleIntent.builder()
+                    .invitation(inv).schedule(schedule).expectedScheduleId(schedule.getId())
+                    .selectedAction(decision.selectedAction())
+                    .requestedDeadline(decision.requestedDeadline())
+                    .expectedScheduleVersion(decision.expectedScheduleVersion())
+                    .expectedScheduleStatus(decision.expectedScheduleStatus())
+                    .expectedCollectionCycle(decision.expectedCollectionCycle())
+                    .expectedPreferenceDeadline(decision.expectedPreferenceDeadline())
+                    .expectedPreferenceMode(decision.expectedPreferenceMode()).build());
+        }
         return invitationMapper.toResponse(inv);
+    }
+
+    private void validateDecisions(List<Schedule> relevant, Map<Long, InviteRequest.ScheduleDecision> decisions,
+                                   Long positionId) {
+        Instant now = restaurantTime.nowInstant();
+        for (Schedule schedule : relevant) {
+            InviteRequest.ScheduleDecision decision = decisions.get(schedule.getId());
+            InvitationImpactPlan.ScheduleOpportunity current =
+                    invitationImpactService.opportunity(schedule, positionId, now);
+            if (!Objects.equals(schedule.getVersion(), decision.expectedScheduleVersion())
+                    || schedule.getStatus() != decision.expectedScheduleStatus()
+                    || schedule.getPreferenceCollectionCycle() != decision.expectedCollectionCycle()
+                    || !Objects.equals(schedule.getPreferenceDeadline(), decision.expectedPreferenceDeadline())
+                    || schedule.getPreferenceCollectionMode() != decision.expectedPreferenceMode()
+                    || !current.allowedActions().contains(decision.selectedAction())) {
+                throw new InvitationImpactPlanStaleException();
+            }
+            boolean affirmative = decision.selectedAction() == InvitationScheduleIntentAction.ADD_TO_COLLECTION
+                    || decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                    || decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD;
+            if (affirmative && (!current.targetPositionEligible() || !current.eligibilityProblems().isEmpty())) {
+                throw new InvitationImpactPlanStaleException();
+            }
+            if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_TO_COLLECTION) {
+                if (decision.requestedDeadline() != null
+                        && (!decision.requestedDeadline().isAfter(now)
+                        || schedule.getPreferenceDeadline() == null
+                        || decision.requestedDeadline().isBefore(schedule.getPreferenceDeadline()))) {
+                    throw new BadRequestException("requestedDeadline must be future and cannot shorten the current deadline");
+                }
+            } else if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                    || decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD) {
+                if (decision.requestedDeadline() == null || !decision.requestedDeadline().isAfter(now)) {
+                    throw new BadRequestException("requestedDeadline must be in the future");
+                }
+            } else if (decision.requestedDeadline() != null) {
+                throw new BadRequestException("requestedDeadline is not allowed for this action");
+            }
+        }
     }
 
     @Override
@@ -134,7 +199,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     public void cancelInvite(Long restaurantId, Long currentUserId, String token) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
-        Invitation inv = invitations.findByToken(token)
+        Invitation inv = invitations.findForUpdateByToken(token)
                 .orElseThrow(() -> new NotFoundException("Invite not found"));
 
         if (!inv.getRestaurant().getId().equals(restaurantId)) {
@@ -150,7 +215,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public MemberDto acceptInvite(String token, Long currentUserId) {
-        Invitation inv = invitations.findByToken(token)
+        Invitation inv = invitations.findForUpdateByToken(token)
                 .orElseThrow(() -> new NotFoundException("Invite not found"));
 
         if (inv.getStatus() != InvitationStatus.PENDING) {
