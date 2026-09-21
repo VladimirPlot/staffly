@@ -72,6 +72,7 @@ public class InboxMessageService {
                 .content(command.inboxText())
                 .pushText(command.pushText())
                 .meta(meta)
+                .metadata(command.metadata())
                 .expiresAt(command.expiresAt())
                 .createdBy(command.actor())
                 .build();

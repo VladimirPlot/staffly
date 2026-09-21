@@ -2,6 +2,8 @@ package ru.staffly.inbox.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
@@ -10,6 +12,7 @@ import ru.staffly.user.model.User;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 @Entity
@@ -68,6 +71,11 @@ public class InboxMessage {
 
     @Column(name = "meta", columnDefinition = "text", nullable = false)
     private String meta;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "metadata", columnDefinition = "jsonb", nullable = false)
+    @Builder.Default
+    private Map<String, Object> metadata = Map.of();
 
     @ManyToMany
     @JoinTable(name = "inbox_message_positions",
