@@ -9,8 +9,14 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.member.service.policy.MemberRemovalPolicyService;
+import ru.staffly.inbox.model.BusinessNotificationKind;
+import ru.staffly.inbox.service.BusinessNotificationCommand;
+import ru.staffly.inbox.service.BusinessNotificationOperationId;
+import ru.staffly.inbox.service.InboxMessageService;
+import ru.staffly.schedule.dto.AppliedScheduleOwnershipTransfer;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
 import ru.staffly.schedule.service.ScheduleOwnershipService;
+import ru.staffly.training.dto.AppliedCertificationOwnershipTransfer;
 import ru.staffly.training.dto.CertificationOwnerCandidateDto;
 import ru.staffly.training.dto.OwnedCertificationExamDto;
 import ru.staffly.training.service.TrainingExamOwnershipService;
@@ -22,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -37,6 +44,7 @@ public class MemberResponsibilityHandoffService {
     private final MemberRemovalPolicyService memberRemovalPolicyService;
     private final TrainingExamOwnershipService trainingExamOwnershipService;
     private final ScheduleOwnershipService scheduleOwnershipService;
+    private final InboxMessageService inboxMessages;
 
     @Transactional(readOnly = true)
     public MemberResponsibilityHandoffOptionsDto getHandoffOptions(Long restaurantId, Long memberId, Long actorUserId) {
@@ -132,19 +140,117 @@ public class MemberResponsibilityHandoffService {
         assertExactCoverage(MemberResponsibilityType.CERTIFICATION, expectedCertificationIds, certificationAssignments.keySet());
         assertExactCoverage(MemberResponsibilityType.SCHEDULE, expectedScheduleIds, scheduleAssignments.keySet());
 
+        List<AppliedCertificationOwnershipTransfer> appliedCertifications = List.of();
         if (!certificationAssignments.isEmpty()) {
-            trainingExamOwnershipService.batchReassign(
+            appliedCertifications = trainingExamOwnershipService.batchReassign(
                     restaurantId,
                     actorUserId,
                     targetUserId,
                     certificationAssignments.entrySet().stream().toList()
             );
         }
+        List<AppliedScheduleOwnershipTransfer> appliedSchedules = List.of();
         if (!scheduleAssignments.isEmpty()) {
-            scheduleOwnershipService.reassignOwnedSchedules(
+            appliedSchedules = scheduleOwnershipService.reassignOwnedSchedules(
                     restaurantId, actorUserId, targetUserId, scheduleAssignments, scheduleVersions
             );
         }
+
+        UUID operationId = BusinessNotificationOperationId.generate();
+        createResponsibilityNotifications(
+                targetMember, actorUserId, operationId, appliedSchedules, appliedCertifications);
+    }
+
+    private void createResponsibilityNotifications(
+            RestaurantMember targetMember,
+            Long actorUserId,
+            UUID operationId,
+            List<AppliedScheduleOwnershipTransfer> schedules,
+            List<AppliedCertificationOwnershipTransfer> certifications) {
+        Set<Long> newOwnerUserIds = new HashSet<>();
+        schedules.forEach(transfer -> newOwnerUserIds.add(transfer.newOwnerUserId()));
+        certifications.forEach(transfer -> newOwnerUserIds.add(transfer.newOwnerUserId()));
+        Map<Long, RestaurantMember> recipientsByUserId = newOwnerUserIds.isEmpty()
+                ? Map.of()
+                : members.findByRestaurantIdAndUserIdIn(targetMember.getRestaurant().getId(), newOwnerUserIds).stream()
+                        .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
+
+        var actor = ru.staffly.user.model.User.builder().id(actorUserId).build();
+        schedules.stream()
+                .collect(Collectors.groupingBy(
+                        AppliedScheduleOwnershipTransfer::newOwnerUserId,
+                        java.util.LinkedHashMap::new,
+                        Collectors.toList()))
+                .forEach((ownerUserId, transfers) -> inboxMessages.createBusinessNotification(
+                        new BusinessNotificationCommand(
+                                targetMember.getRestaurant(), operationId, recipientsByUserId.get(ownerUserId), actor,
+                                BusinessNotificationKind.SCHEDULE, scheduleInboxText(transfers),
+                                schedulePushText(transfers), resourceMetadata(transfers.stream()
+                                        .map(AppliedScheduleOwnershipTransfer::scheduleId).toList()), null)));
+
+        certifications.stream()
+                .collect(Collectors.groupingBy(
+                        AppliedCertificationOwnershipTransfer::newOwnerUserId,
+                        java.util.LinkedHashMap::new,
+                        Collectors.toList()))
+                .forEach((ownerUserId, transfers) -> inboxMessages.createBusinessNotification(
+                        new BusinessNotificationCommand(
+                                targetMember.getRestaurant(), operationId, recipientsByUserId.get(ownerUserId), actor,
+                                BusinessNotificationKind.CERTIFICATION, certificationInboxText(transfers),
+                                certificationPushText(transfers), resourceMetadata(transfers.stream()
+                                        .map(AppliedCertificationOwnershipTransfer::certificationId).toList()), null)));
+    }
+
+    private String scheduleInboxText(List<AppliedScheduleOwnershipTransfer> transfers) {
+        if (transfers.size() == 1) {
+            return "Вам передали ответственность за график «" + transfers.get(0).title() + "».";
+        }
+        return "Вам передали ответственность за графики:\n\n" + bulletList(
+                transfers.stream().map(AppliedScheduleOwnershipTransfer::title).toList());
+    }
+
+    private String schedulePushText(List<AppliedScheduleOwnershipTransfer> transfers) {
+        if (transfers.size() == 1) {
+            return "Вам передали ответственность за график «" + transfers.get(0).title() + "».";
+        }
+        return "Вам передали ответственность за " + transfers.size() + " "
+                + russianCountForm(transfers.size(), "график", "графика", "графиков") + ".";
+    }
+
+    private String certificationInboxText(List<AppliedCertificationOwnershipTransfer> transfers) {
+        if (transfers.size() == 1) {
+            return "Вам передали ответственность за аттестацию «" + transfers.get(0).title() + "».";
+        }
+        return "Вам передали ответственность за аттестации:\n\n" + bulletList(
+                transfers.stream().map(AppliedCertificationOwnershipTransfer::title).toList());
+    }
+
+    private String certificationPushText(List<AppliedCertificationOwnershipTransfer> transfers) {
+        if (transfers.size() == 1) {
+            return "Вам передали ответственность за аттестацию «" + transfers.get(0).title() + "».";
+        }
+        return "Вам передали ответственность за " + transfers.size() + " "
+                + russianCountForm(transfers.size(), "аттестацию", "аттестации", "аттестаций") + ".";
+    }
+
+    private String bulletList(List<String> titles) {
+        return titles.stream().map(title -> "• " + title).collect(Collectors.joining("\n"));
+    }
+
+    private Map<String, Object> resourceMetadata(List<Long> resourceIds) {
+        return Map.of("resourceIds", resourceIds.stream().sorted().toList());
+    }
+
+    private String russianCountForm(int count, String singular, String few, String many) {
+        int lastTwo = count % 100;
+        if (lastTwo >= 11 && lastTwo <= 14) {
+            return many;
+        }
+        return switch (count % 10) {
+            case 1 -> singular;
+            case 2, 3, 4 -> few;
+            default -> many;
+        };
     }
 
     @Transactional(readOnly = true)

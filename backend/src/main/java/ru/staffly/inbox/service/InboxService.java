@@ -184,6 +184,7 @@ public class InboxService {
                 message.getExpiresAt(),
                 message.getCreatedAt(),
                 author,
+                message.getMetadata(),
                 recipient.getReadAt() != null,
                 recipient.getArchivedAt() != null,
                 expired
