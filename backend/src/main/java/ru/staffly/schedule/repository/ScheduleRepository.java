@@ -61,6 +61,17 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByRestaurantIdAndPositionId(@Param("restaurantId") Long restaurantId,
                                                    @Param("positionId") Long positionId);
 
+    @EntityGraph(attributePaths = {"positions", "preferenceBuildTemplate", "preferenceShiftOptionSnapshots",
+            "preferenceShiftOptionSnapshots.positionIds"})
+    @Query("""
+            select distinct s from Schedule s join s.positions p
+            where s.restaurant.id = :restaurantId and p.id = :positionId and s.endDate >= :fromDate
+            order by s.id asc
+            """)
+    List<Schedule> findByRestaurantIdAndPositionIdAndEndDateGreaterThanEqualOrderByIdAsc(
+            @Param("restaurantId") Long restaurantId, @Param("positionId") Long positionId,
+            @Param("fromDate") LocalDate fromDate);
+
     @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position"})
     @Query("""
             select distinct s from Schedule s join ScheduleParticipation sp on sp.schedule = s
