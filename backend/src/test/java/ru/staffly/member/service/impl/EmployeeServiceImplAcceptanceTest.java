@@ -20,6 +20,7 @@ import ru.staffly.invite.model.*;
 import ru.staffly.invite.repository.InvitationRepository;
 import ru.staffly.invite.repository.InvitationScheduleIntentRepository;
 import ru.staffly.invite.service.InvitationImpactService;
+import ru.staffly.invite.service.InvitationAcceptanceOwnerNotificationService;
 import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
@@ -29,6 +30,7 @@ import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.SchedulePreferenceLifecycleService;
+import ru.staffly.schedule.dto.AppliedInvitationScheduleEffect;
 import ru.staffly.security.SecurityService;
 import ru.staffly.training.service.CertificationAudienceSyncService;
 import ru.staffly.user.model.User;
@@ -46,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class EmployeeServiceImplAcceptanceTest {
@@ -63,6 +66,7 @@ class EmployeeServiceImplAcceptanceTest {
     @Mock MemberMapper memberMapper;
     @Mock SecurityService security;
     @Mock CertificationAudienceSyncService certificationSync;
+    @Mock InvitationAcceptanceOwnerNotificationService ownerNotifications;
     @InjectMocks EmployeeServiceImpl service;
 
     private Restaurant restaurant;
@@ -82,6 +86,7 @@ class EmployeeServiceImplAcceptanceTest {
                 .position(position).build();
         lenient().when(invitations.findForUpdateByToken("token")).thenReturn(Optional.of(invitation));
         lenient().when(users.findById(9L)).thenReturn(Optional.of(user));
+        lenient().when(certificationSync.syncRestaurantAudience(3L, 9L)).thenReturn(List.of());
     }
 
     @AfterEach
@@ -98,15 +103,46 @@ class EmployeeServiceImplAcceptanceTest {
                         intent(second, InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION)));
         when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(3L, List.of(11L, 12L)))
                 .thenReturn(List.of(first, second));
-        when(members.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(members.save(any())).thenAnswer(call -> {
+            RestaurantMember member = call.getArgument(0);
+            member.setId(21L);
+            return member;
+        });
+        when(lifecycle.addParticipantWithLocksHeld(any(), any(), eq(9L), anyString())).thenReturn(true);
 
         service.acceptInvite("token", 9L);
 
         verify(members).save(any(RestaurantMember.class));
         verify(lifecycle).addParticipantWithLocksHeld(eq(first), any(), eq(9L), anyString());
         verify(lifecycle).addParticipantWithLocksHeld(eq(second), any(), eq(9L), anyString());
-        verify(certificationSync).syncRestaurantAudience(3L);
+        verify(certificationSync).syncRestaurantAudience(3L, 9L);
+        ArgumentCaptor<List<AppliedInvitationScheduleEffect>> effects = ArgumentCaptor.forClass(List.class);
+        verify(ownerNotifications).submit(any(), eq(user), effects.capture(), eq(List.of()));
+        org.assertj.core.api.Assertions.assertThat(effects.getValue())
+                .extracting(AppliedInvitationScheduleEffect::scheduleId)
+                .containsExactly(11L, 12L);
         assertEquals(InvitationStatus.ACCEPTED, invitation.getStatus());
+    }
+
+    @Test
+    void nonAddActionsNeverBecomeAppliedScheduleNotificationEffects() {
+        Schedule first = schedule(11L, PreferenceCollectionMode.DAY_LEVEL);
+        Schedule second = schedule(12L, PreferenceCollectionMode.DAY_LEVEL);
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(7L)).thenReturn(List.of(
+                intent(first, InvitationScheduleIntentAction.DO_NOT_ADD),
+                intent(second, InvitationScheduleIntentAction.INFORMATION_ONLY)));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(3L, List.of(11L, 12L)))
+                .thenReturn(List.of(first, second));
+        when(members.save(any())).thenAnswer(call -> {
+            RestaurantMember member = call.getArgument(0);
+            member.setId(21L);
+            return member;
+        });
+
+        service.acceptInvite("token", 9L);
+
+        verifyNoInteractions(lifecycle);
+        verify(ownerNotifications).submit(any(), eq(user), eq(List.of()), eq(List.of()));
     }
 
     @Test
@@ -157,6 +193,19 @@ class EmployeeServiceImplAcceptanceTest {
         invitation.setStatus(InvitationStatus.ACCEPTED);
         assertThrows(RuntimeException.class, () -> service.acceptInvite("token", 9L));
         verifyNoInteractions(members, lifecycle, certificationSync);
+        verifyNoInteractions(ownerNotifications);
+    }
+
+    @Test
+    void certificationSynchronizationFailurePreventsAcceptedAndOwnerNotificationCollection() {
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(7L)).thenReturn(List.of());
+        when(members.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(certificationSync.syncRestaurantAudience(3L, 9L)).thenThrow(new RuntimeException("sync failed"));
+
+        assertThrows(RuntimeException.class, () -> service.acceptInvite("token", 9L));
+
+        assertEquals(InvitationStatus.PENDING, invitation.getStatus());
+        verifyNoInteractions(ownerNotifications);
     }
 
     @Test
