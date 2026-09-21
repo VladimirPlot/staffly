@@ -9,6 +9,7 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.invite.dto.MyInviteDto;
+import ru.staffly.invite.exception.InvitationExpiredException;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
 import ru.staffly.invite.repository.InvitationRepository;
@@ -55,7 +56,7 @@ public class InvitationAcceptanceController {
     // Explicit employee decision is distinct from manager cancellation.
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/{token}/decline")
-    @Transactional
+    @Transactional(noRollbackFor = InvitationExpiredException.class)
     public void decline(@PathVariable String token,
                         @AuthenticationPrincipal UserPrincipal principal) {
         Invitation inv = invitations.findForUpdateByToken(token)
@@ -73,9 +74,13 @@ public class InvitationAcceptanceController {
 
         if (!ok) throw new BadRequestException("Invite not intended for this user");
 
-        if (inv.getStatus() == InvitationStatus.PENDING) {
-            inv.setStatus(InvitationStatus.DECLINED);
-            invitations.save(inv);
+        if (inv.getStatus() != InvitationStatus.PENDING) return;
+        if (!inv.getExpiresAt().isAfter(TimeProvider.now())) {
+            inv.setStatus(InvitationStatus.EXPIRED);
+            invitations.saveAndFlush(inv);
+            throw new InvitationExpiredException();
         }
+        inv.setStatus(InvitationStatus.DECLINED);
+        invitations.save(inv);
     }
 }

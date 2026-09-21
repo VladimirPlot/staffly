@@ -18,6 +18,11 @@ const invitationDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeStyle: "short",
 });
 
+function isTerminalInvitationError(error: any) {
+  const code = error?.response?.data?.error ?? error?.response?.data?.code ?? error?.response?.data?.meta?.code;
+  return code === "INVITATION_INVALIDATED" || code === "INVITATION_EXPIRED";
+}
+
 export default function Restaurants() {
   const navigate = useNavigate();
 
@@ -124,11 +129,7 @@ export default function Restaurants() {
                           await refreshMe();
                           navigate("/app", { replace: true });
                         } catch (e: any) {
-                          if (
-                            e?.response?.data?.error === "INVITATION_INVALIDATED" ||
-                            e?.response?.data?.code === "INVITATION_INVALIDATED" ||
-                            e?.response?.data?.meta?.code === "INVITATION_INVALIDATED"
-                          ) {
+                          if (isTerminalInvitationError(e)) {
                             // The backend has committed a terminal outcome; authoritative refetch
                             // removes the stale invitation. Acceptance must not be retried.
                             await reload();
@@ -148,6 +149,7 @@ export default function Restaurants() {
                           await declineInvite(inv.token);
                           setInvites((prev) => prev.filter((x) => x.token !== inv.token));
                         } catch (e: any) {
+                          if (isTerminalInvitationError(e)) await reload();
                           alert(e?.friendlyMessage || "Не удалось отклонить");
                         }
                       }}
