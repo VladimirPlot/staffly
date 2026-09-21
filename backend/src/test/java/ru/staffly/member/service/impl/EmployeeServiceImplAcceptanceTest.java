@@ -2,15 +2,19 @@ package ru.staffly.member.service.impl;
 
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.staffly.common.time.RestaurantTimeService;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.invite.exception.InvitationInvalidatedException;
 import ru.staffly.invite.exception.InvitationExpiredException;
+import ru.staffly.common.exception.ConflictException;
+import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.mapper.InvitationMapper;
 import ru.staffly.invite.model.*;
 import ru.staffly.invite.repository.InvitationRepository;
@@ -30,7 +34,10 @@ import ru.staffly.training.service.CertificationAudienceSyncService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +49,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class EmployeeServiceImplAcceptanceTest {
+    private static final Instant NOW = Instant.parse("2026-09-21T12:00:00Z");
     @Mock InvitationRepository invitations;
     @Mock RestaurantMemberRepository members;
     @Mock RestaurantRepository restaurants;
@@ -64,15 +72,21 @@ class EmployeeServiceImplAcceptanceTest {
 
     @BeforeEach
     void setUp() {
+        TimeProvider.setClock(Clock.fixed(NOW, ZoneOffset.UTC));
         restaurant = Restaurant.builder().id(3L).build();
         position = Position.builder().id(5L).restaurant(restaurant).active(true).level(RestaurantRole.STAFF).build();
         user = User.builder().id(9L).phone("+79991112233").build();
         invitation = Invitation.builder().id(7L).token("token").restaurant(restaurant)
                 .phoneOrEmail("+79991112233").status(InvitationStatus.PENDING)
-                .expiresAt(Instant.now().plusSeconds(3600)).desiredRole(RestaurantRole.STAFF)
+                .expiresAt(NOW.plusSeconds(3600)).desiredRole(RestaurantRole.STAFF)
                 .position(position).build();
-        when(invitations.findForUpdateByToken("token")).thenReturn(Optional.of(invitation));
+        lenient().when(invitations.findForUpdateByToken("token")).thenReturn(Optional.of(invitation));
         lenient().when(users.findById(9L)).thenReturn(Optional.of(user));
+    }
+
+    @AfterEach
+    void resetClock() {
+        TimeProvider.setClock(Clock.systemUTC());
     }
 
     @Test
@@ -147,7 +161,7 @@ class EmployeeServiceImplAcceptanceTest {
 
     @Test
     void expiredInvitationCommitsTerminalOutcomeWithoutAcceptanceEffects() {
-        invitation.setExpiresAt(Instant.now().minusSeconds(1));
+        invitation.setExpiresAt(NOW.minusSeconds(1));
 
         assertThrows(InvitationExpiredException.class, () -> service.acceptInvite("token", 9L));
 
@@ -155,6 +169,63 @@ class EmployeeServiceImplAcceptanceTest {
         verify(invitations).saveAndFlush(invitation);
         verifyNoInteractions(schedules, intents, lifecycle, certificationSync);
         verify(members, never()).save(any());
+    }
+
+    @Test
+    void invitationExpiringExactlyNowCommitsExpiredWithoutAcceptanceEffects() {
+        invitation.setExpiresAt(NOW);
+
+        assertThrows(InvitationExpiredException.class, () -> service.acceptInvite("token", 9L));
+
+        assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
+        verify(invitations).saveAndFlush(invitation);
+        verifyNoInteractions(schedules, intents, lifecycle, certificationSync);
+        verify(members, never()).save(any());
+    }
+
+    @Test
+    void cancelExpiredPendingMaterializesExpiredInsteadOfCanceled() {
+        invitation.setExpiresAt(NOW);
+
+        assertThrows(InvitationExpiredException.class, () -> service.cancelInvite(3L, 9L, "token"));
+
+        assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
+        verify(invitations).saveAndFlush(invitation);
+    }
+
+    @Test
+    void reinviteMaterializesExpiredPendingBeforeCreatingReplacement() {
+        invitation.setExpiresAt(NOW);
+        when(restaurants.findById(3L)).thenReturn(Optional.of(restaurant));
+        when(impactService.validateCandidateIsNotMember(3L, "+79991112233")).thenReturn("+79991112233");
+        when(invitations.findPendingForUpdateByContact(3L, "+79991112233", InvitationStatus.PENDING))
+                .thenReturn(Optional.of(invitation));
+        when(impactService.validatePosition(3L, 5L, 9L)).thenReturn(position);
+        when(restaurantTime.today(restaurant)).thenReturn(LocalDate.of(2026, 9, 21));
+        when(schedules.findByRestaurantIdAndPositionIdAndEndDateGreaterThanEqualOrderByIdAsc(anyLong(), anyLong(), any()))
+                .thenReturn(List.of());
+        when(invitations.save(any(Invitation.class))).thenAnswer(call -> call.getArgument(0));
+
+        service.invite(3L, 9L, new InviteRequest("+79991112233", 5L, List.of()));
+
+        assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
+        verify(invitations).saveAndFlush(invitation);
+        verify(invitations).save(argThat(created -> created != invitation
+                && created.getStatus() == InvitationStatus.PENDING
+                && created.getExpiresAt().equals(NOW.plusSeconds(48 * 60 * 60))));
+    }
+
+    @Test
+    void activePendingStillRejectsDuplicateInvitation() {
+        when(restaurants.findById(3L)).thenReturn(Optional.of(restaurant));
+        when(impactService.validateCandidateIsNotMember(3L, "+79991112233")).thenReturn("+79991112233");
+        when(invitations.findPendingForUpdateByContact(3L, "+79991112233", InvitationStatus.PENDING))
+                .thenReturn(Optional.of(invitation));
+
+        assertThrows(ConflictException.class,
+                () -> service.invite(3L, 9L, new InviteRequest("+79991112233", 5L, List.of())));
+
+        verify(invitations, never()).save(any());
     }
 
     @Test

@@ -23,13 +23,14 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     List<Invitation> findByRestaurantIdAndStatus(Long restaurantId, InvitationStatus status);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
-           select (count(i) > 0) from Invitation i
+           select i from Invitation i
            where i.restaurant.id = :restaurantId
              and lower(i.phoneOrEmail) = lower(:contact)
              and i.status = :status
            """)
-    boolean existsInviteForContact(Long restaurantId, String contact, InvitationStatus status);
+    Optional<Invitation> findPendingForUpdateByContact(Long restaurantId, String contact, InvitationStatus status);
 
     @Query("""
        select i from Invitation i
@@ -44,8 +45,11 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
     List<Invitation> findMyPending(String phone, String email, Instant now, InvitationStatus status);
 
     @Modifying
-    @Query("delete from Invitation i where i.status = :status and i.expiresAt < :before")
-    int deleteByStatusAndExpiresAtBefore(InvitationStatus status, Instant before);
+    @Query("""
+           update Invitation i set i.status = :expiredStatus
+           where i.status = :pendingStatus and i.expiresAt <= :now
+           """)
+    int expirePendingAtOrBefore(InvitationStatus pendingStatus, InvitationStatus expiredStatus, Instant now);
 
     @Query("""
    select new ru.staffly.invite.dto.MyInviteDto(
