@@ -12,6 +12,9 @@ import ru.staffly.training.model.*;
 import ru.staffly.training.repository.TrainingExamAssignmentRepository;
 import ru.staffly.training.repository.TrainingExamAttemptRepository;
 import ru.staffly.training.repository.CertificationAssignmentCycleRepository;
+import ru.staffly.training.dto.AppliedCertificationAudienceEffect;
+import ru.staffly.training.dto.CertificationAudienceEffectType;
+import ru.staffly.training.dto.CertificationAudienceSyncResult;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -46,14 +49,19 @@ class CertificationAssignmentService {
 
     @Transactional
     public List<TrainingExamAssignment> syncAudienceAssignments(TrainingExam exam) {
+        return syncAudienceAssignmentsWithEffects(exam).createdAssignments();
+    }
+
+    @Transactional
+    public CertificationAudienceSyncResult syncAudienceAssignmentsWithEffects(TrainingExam exam) {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
-            return List.of();
+            return new CertificationAudienceSyncResult(List.of(), List.of());
         }
 
         if (!exam.isActive()) {
             deactivateAllActiveAssignmentsForHiddenExam(exam);
             syncHiddenAudienceAssignments(exam);
-            return List.of();
+            return new CertificationAudienceSyncResult(List.of(), List.of());
         }
 
         var audience = resolveAudienceMembers(exam);
@@ -69,6 +77,7 @@ class CertificationAssignmentService {
                         this::preferCurrentGeneration));
 
         var createdAssignments = new java.util.ArrayList<TrainingExamAssignment>();
+        var effects = new java.util.ArrayList<AppliedCertificationAudienceEffect>();
         for (var member : audience) {
             var existing = cycleByUserId.get(member.getUser().getId());
             if (existing == null) {
@@ -82,12 +91,15 @@ class CertificationAssignmentService {
                 }
                 if (!inactive.isEmpty()) {
                     reactivateCurrentAudienceAssignment(inactive.get(0), member);
+                    effects.add(effect(exam, member, CertificationAudienceEffectType.REACTIVATED));
                 } else {
                     createdAssignments.add(assignments.save(createAssignment(exam, member, specification, cycle)));
+                    effects.add(effect(exam, member, CertificationAudienceEffectType.CREATED));
                 }
                 continue;
             }
             existing.setAssignedPosition(member.getPosition());
+            effects.add(effect(exam, member, CertificationAudienceEffectType.UNCHANGED));
         }
 
         for (var assignment : cycleByUserId.values()) {
@@ -96,7 +108,14 @@ class CertificationAssignmentService {
                 assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
             }
         }
-        return createdAssignments;
+        return new CertificationAudienceSyncResult(createdAssignments, effects);
+    }
+
+    private AppliedCertificationAudienceEffect effect(TrainingExam exam, RestaurantMember member,
+                                                       CertificationAudienceEffectType type) {
+        return new AppliedCertificationAudienceEffect(
+                exam.getId(), exam.getTitle(), exam.getOwner() == null ? null : exam.getOwner().getId(),
+                member.getUser().getId(), type);
     }
 
     private void deactivateAllActiveAssignmentsForHiddenExam(TrainingExam exam) {
