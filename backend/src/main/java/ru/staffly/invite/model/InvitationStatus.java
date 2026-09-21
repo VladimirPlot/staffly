@@ -1,5 +1,5 @@
 package ru.staffly.invite.model;
 
 public enum InvitationStatus {
-    PENDING, ACCEPTED, EXPIRED, CANCELED
+    PENDING, ACCEPTED, DECLINED, EXPIRED, CANCELED, INVALIDATED
 }

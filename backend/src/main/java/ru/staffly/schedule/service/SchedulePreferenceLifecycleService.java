@@ -272,4 +272,39 @@ public class SchedulePreferenceLifecycleService {
         auditService.record(schedule, actorUserId, ScheduleAuditAction.APPLIED_PREFERENCE_DRAFT_INVALIDATED,
                 details("Применённый результат пожеланий аннулирован", reason));
     }
+
+    /** Applies invitation-time collection changes before an invited membership exists. */
+    public void prepareInvitationWithLocksHeld(Schedule schedule, boolean rebuild, Instant deadline,
+                                                Long actorUserId, String reason) {
+        if (deadline == null || !deadline.isAfter(TimeProvider.now())) {
+            throw new BadRequestException("preferenceDeadline must be in the future");
+        }
+        if (rebuild) {
+            invalidateAppliedPreferenceDraftWithLocksHeld(schedule, actorUserId, reason);
+        }
+        if (schedule.getStatus() != ScheduleStatus.PREFERENCES_CLOSED) {
+            throw new BadRequestException("Only a closed preference collection can be reopened");
+        }
+        schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
+        schedule.setPreferenceDeadline(deadline);
+        schedule.setPreferenceClosedAt(null);
+        schedule.setPreferenceAllSubmittedNotifiedAt(null);
+        schedule.setPreferenceCollectionCycle(schedule.getPreferenceCollectionCycle() + 1);
+        schedule.setUpdatedAt(TimeProvider.now());
+        schedules.saveAndFlush(schedule);
+        auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_COLLECTION_REOPENED,
+                details("Сбор пожеланий открыт повторно для приглашения", reason));
+    }
+
+    public void extendInvitationDeadlineWithLocksHeld(Schedule schedule, Instant deadline) {
+        if (deadline == null || !deadline.isAfter(TimeProvider.now())
+                || schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
+            throw new BadRequestException("Invalid invitation preference deadline");
+        }
+        if (schedule.getPreferenceDeadline() == null || deadline.isAfter(schedule.getPreferenceDeadline())) {
+            schedule.setPreferenceDeadline(deadline);
+            schedule.setUpdatedAt(TimeProvider.now());
+            schedules.saveAndFlush(schedule);
+        }
+    }
 }
