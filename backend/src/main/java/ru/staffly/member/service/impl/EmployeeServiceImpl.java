@@ -46,6 +46,8 @@ import ru.staffly.training.service.CertificationAudienceSyncService;
 import ru.staffly.training.dto.AppliedCertificationAudienceEffect;
 import ru.staffly.schedule.dto.AppliedInvitationScheduleEffect;
 import ru.staffly.invite.service.InvitationAcceptanceOwnerNotificationService;
+import ru.staffly.invite.service.InvitationSenderNotificationService;
+import ru.staffly.inbox.service.BusinessNotificationOperationId;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -57,6 +59,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.Objects;
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.function.Function;
 
 import static ru.staffly.common.util.InviteUtils.*;
@@ -80,6 +83,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final SecurityService security;
     private final CertificationAudienceSyncService certificationAudienceSyncService;
     private final InvitationAcceptanceOwnerNotificationService invitationOwnerNotifications;
+    private final InvitationSenderNotificationService invitationSenderNotifications;
 
     @Value("#{'${app.hide-creator-emails:}'.toLowerCase().split(',')}")
     private List<String> hiddenCreatorEmails;
@@ -118,6 +122,8 @@ public class EmployeeServiceImpl implements EmployeeService {
                     }
                     existing.setStatus(InvitationStatus.EXPIRED);
                     invitations.saveAndFlush(existing);
+                    invitationSenderNotifications.submitExpired(
+                            existing, BusinessNotificationOperationId.generate());
                 });
 
         Position desiredPosition = invitationImpactService.validatePosition(restaurantId, req.positionId(), currentUserId);
@@ -240,10 +246,14 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (!inv.getExpiresAt().isAfter(TimeProvider.now())) {
             inv.setStatus(InvitationStatus.EXPIRED);
             invitations.saveAndFlush(inv);
+            invitationSenderNotifications.submitExpired(inv, BusinessNotificationOperationId.generate());
             throw new InvitationExpiredException();
         }
         inv.setStatus(InvitationStatus.CANCELED);
         invitations.save(inv);
+        User actor = users.findById(currentUserId)
+                .orElseThrow(() -> new NotFoundException("User not found: " + currentUserId));
+        invitationSenderNotifications.submitCanceled(inv, actor, BusinessNotificationOperationId.generate());
     }
 
     @Override
@@ -275,6 +285,7 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (!inv.getExpiresAt().isAfter(TimeProvider.now())) {
             inv.setStatus(InvitationStatus.EXPIRED);
             invitations.saveAndFlush(inv);
+            invitationSenderNotifications.submitExpired(inv, BusinessNotificationOperationId.generate());
             throw new InvitationExpiredException();
         }
 
@@ -284,13 +295,13 @@ public class EmployeeServiceImpl implements EmployeeService {
         Position positionToAssign = inv.getPosition();
 
         if (members.existsByRestaurantIdAndUserId(restaurantId, currentUserId)) {
-            invalidate(inv, "ALREADY_MEMBER");
+            invalidate(inv, user, "ALREADY_MEMBER");
         }
 
         if (positionToAssign == null || !positionToAssign.isActive()
                 || !Objects.equals(positionToAssign.getRestaurant().getId(), restaurantId)
                 || !isPositionCompatibleWithRole(positionToAssign.getLevel(), roleToAssign)) {
-            invalidate(inv, "POSITION_UNAVAILABLE");
+            invalidate(inv, user, "POSITION_UNAVAILABLE");
         }
 
         List<InvitationScheduleIntent> intents =
@@ -305,24 +316,24 @@ public class EmployeeServiceImpl implements EmployeeService {
             Schedule schedule = scheduleById.get(intent.getExpectedScheduleId());
             if (schedule == null || intent.getSchedule() == null
                     || !Objects.equals(intent.getSchedule().getId(), intent.getExpectedScheduleId())) {
-                invalidate(inv, "SCHEDULE_DELETED");
+                invalidate(inv, user, "SCHEDULE_DELETED");
             }
             if (!Objects.equals(schedule.getVersion(), intent.getExpectedScheduleVersion())
                     || schedule.getStatus() != intent.getExpectedScheduleStatus()
                     || schedule.getPreferenceCollectionCycle() != intent.getExpectedCollectionCycle()
                     || !Objects.equals(schedule.getPreferenceDeadline(), intent.getExpectedPreferenceDeadline())
                     || schedule.getPreferenceCollectionMode() != intent.getExpectedPreferenceMode()) {
-                invalidate(inv, "SCHEDULE_CHANGED");
+                invalidate(inv, user, "SCHEDULE_CHANGED");
             }
             if (isAddAction(intent.getSelectedAction())) {
                 if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
                         || !SchedulePositionIds.ids(schedule).contains(positionToAssign.getId())) {
-                    invalidate(inv, "COLLECTION_UNAVAILABLE");
+                    invalidate(inv, user, "COLLECTION_UNAVAILABLE");
                 }
                 if (schedule.getPreferenceCollectionMode() == PreferenceCollectionMode.SHIFT_OPTIONS
                         && schedule.getPreferenceShiftOptionSnapshots().stream().noneMatch(
                         snapshot -> snapshot.getPositionIds().contains(positionToAssign.getId()))) {
-                    invalidate(inv, "FROZEN_SHIFT_OPTIONS_UNAVAILABLE");
+                    invalidate(inv, user, "FROZEN_SHIFT_OPTIONS_UNAVAILABLE");
                 }
             }
         }
@@ -353,7 +364,9 @@ public class EmployeeServiceImpl implements EmployeeService {
                 certificationAudienceSyncService.syncRestaurantAudience(restaurantId, currentUserId);
         inv.setStatus(InvitationStatus.ACCEPTED);
         invitations.save(inv);
-        invitationOwnerNotifications.submit(m, user, appliedScheduleEffects, certificationEffects);
+        UUID operationId = BusinessNotificationOperationId.generate();
+        invitationSenderNotifications.submitAccepted(inv, m, user, operationId);
+        invitationOwnerNotifications.submit(m, user, operationId, appliedScheduleEffects, certificationEffects);
 
         return memberMapper.toDto(m);
     }
@@ -364,9 +377,11 @@ public class EmployeeServiceImpl implements EmployeeService {
                 || action == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD;
     }
 
-    private void invalidate(Invitation invitation, String reason) {
+    private void invalidate(Invitation invitation, User actor, String reason) {
         invitation.setStatus(InvitationStatus.INVALIDATED);
         invitations.saveAndFlush(invitation);
+        invitationSenderNotifications.submitInvalidated(
+                invitation, actor, reason, BusinessNotificationOperationId.generate());
         throw new InvitationInvalidatedException(reason);
     }
 

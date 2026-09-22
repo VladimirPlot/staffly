@@ -20,6 +20,7 @@ import ru.staffly.user.model.User;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class InvitationAcceptanceOwnerNotificationServiceTest {
+    private static final UUID OPERATION_ID = UUID.fromString("10000000-0000-0000-0000-000000000001");
     @Mock RestaurantMemberRepository members;
     @Mock BusinessNotificationAfterCommitService afterCommit;
 
@@ -53,7 +55,7 @@ class InvitationAcceptanceOwnerNotificationServiceTest {
     void groupsByCurrentRecipientAndKindWithOneOperationAndIsolatedSortedMetadata() {
         when(members.findByRestaurantIdAndUserIdIn(eq(1L), anySet())).thenReturn(List.of(ownerOne, ownerTwo));
 
-        service.submit(accepted, actor,
+        service.submit(accepted, actor, OPERATION_ID,
                 List.of(schedule(12L, "Б", 20L), schedule(11L, "А", 20L), schedule(13L, "В", 30L)),
                 List.of(cert(23L, "Три", 20L, CertificationAudienceEffectType.REACTIVATED),
                         cert(21L, "Один", 20L, CertificationAudienceEffectType.CREATED),
@@ -64,7 +66,7 @@ class InvitationAcceptanceOwnerNotificationServiceTest {
         verify(afterCommit).submit(captor.capture());
         List<BusinessNotificationCommand> commands = captor.getValue();
         assertThat(commands).hasSize(4);
-        assertThat(commands).extracting(BusinessNotificationCommand::operationId).containsOnly(commands.get(0).operationId());
+        assertThat(commands).extracting(BusinessNotificationCommand::operationId).containsOnly(OPERATION_ID);
         assertThat(commands).allSatisfy(command -> assertThat(command.actor()).isSameAs(actor));
         assertThat(commands).allSatisfy(command -> {
             assertThat(command.inboxText()).contains("Владимир").doesNotContain("Автор принятия");
@@ -90,7 +92,7 @@ class InvitationAcceptanceOwnerNotificationServiceTest {
     void skipsOwnerlessAndNonMemberOwnersWithoutSuppressingValidResources() {
         when(members.findByRestaurantIdAndUserIdIn(1L, Set.of(20L, 99L))).thenReturn(List.of(ownerOne));
 
-        service.submit(accepted, actor,
+        service.submit(accepted, actor, OPERATION_ID,
                 List.of(schedule(1L, "Без владельца", null), schedule(2L, "Ушедший", 99L),
                         schedule(3L, "Рабочий", 20L)), List.of());
 
@@ -102,7 +104,7 @@ class InvitationAcceptanceOwnerNotificationServiceTest {
 
     @Test
     void noEffectiveOwnedResourcesSchedulesNoBatch() {
-        service.submit(accepted, actor, List.of(), List.of(
+        service.submit(accepted, actor, OPERATION_ID, List.of(), List.of(
                 cert(1L, "Без изменений", 20L, CertificationAudienceEffectType.UNCHANGED)));
         verifyNoInteractions(members, afterCommit);
     }

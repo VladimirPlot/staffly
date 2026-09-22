@@ -6,11 +6,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.invite.exception.InvitationExpiredException;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
 import ru.staffly.invite.repository.InvitationRepository;
+import ru.staffly.invite.service.InvitationSenderNotificationService;
 import ru.staffly.member.service.EmployeeService;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
@@ -24,7 +26,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class InvitationAcceptanceControllerTest {
@@ -33,6 +35,7 @@ class InvitationAcceptanceControllerTest {
     @Mock EmployeeService employees;
     @Mock InvitationRepository invitations;
     @Mock UserRepository users;
+    @Mock InvitationSenderNotificationService senderNotifications;
     @InjectMocks InvitationAcceptanceController controller;
 
     @AfterEach
@@ -54,5 +57,46 @@ class InvitationAcceptanceControllerTest {
 
         assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
         verify(invitations).saveAndFlush(invitation);
+        verify(senderNotifications).submitExpired(eq(invitation), any());
+    }
+
+    @Test
+    void declinePendingRegistersOnlySenderOutcome() {
+        TimeProvider.setClock(Clock.fixed(NOW, ZoneOffset.UTC));
+        Invitation invitation = Invitation.builder().id(7L).token("token").phoneOrEmail("user@example.com")
+                .status(InvitationStatus.PENDING).expiresAt(NOW.plusSeconds(60)).build();
+        User user = User.builder().id(9L).email("user@example.com").build();
+        when(invitations.findForUpdateByToken("token")).thenReturn(Optional.of(invitation));
+        when(users.findById(9L)).thenReturn(Optional.of(user));
+
+        controller.decline("token", new UserPrincipal(9L, null, null, List.of()));
+
+        assertEquals(InvitationStatus.DECLINED, invitation.getStatus());
+        verify(invitations).save(invitation);
+        verify(senderNotifications).submitDeclined(eq(invitation), eq(user), any());
+    }
+
+    @Test
+    void repeatedDeclineDoesNotRegisterAnotherOutcome() {
+        Invitation invitation = Invitation.builder().id(7L).token("token").phoneOrEmail("user@example.com")
+                .status(InvitationStatus.DECLINED).expiresAt(NOW.plusSeconds(60)).build();
+        User user = User.builder().id(9L).email("user@example.com").build();
+        when(invitations.findForUpdateByToken("token")).thenReturn(Optional.of(invitation));
+        when(users.findById(9L)).thenReturn(Optional.of(user));
+
+        controller.decline("token", new UserPrincipal(9L, null, null, List.of()));
+
+        verify(invitations, never()).save(any());
+        verifyNoInteractions(senderNotifications);
+    }
+
+    @Test
+    void declineCommitsObservedExpirationDespiteBusinessException() throws Exception {
+        Transactional transaction = InvitationAcceptanceController.class
+                .getMethod("decline", String.class, UserPrincipal.class)
+                .getAnnotation(Transactional.class);
+
+        org.assertj.core.api.Assertions.assertThat(transaction.noRollbackFor())
+                .containsExactly(InvitationExpiredException.class);
     }
 }
