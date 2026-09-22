@@ -17,6 +17,7 @@ import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
 import ru.staffly.schedule.model.SchedulePreferenceCell;
 import ru.staffly.schedule.model.SchedulePreferenceType;
+import ru.staffly.schedule.model.ScheduleParticipation;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.AssignmentPlan;
