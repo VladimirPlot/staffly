@@ -658,7 +658,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
     }
 
-    private List<Long> buildConfigPositionIds(ScheduleBuildPositionConfig config) {
+    private static List<Long> buildConfigPositionIds(ScheduleBuildPositionConfig config) {
         return config.getPositions() == null ? List.of() : config.getPositions().stream()
                 .map(position -> position.getId())
                 .filter(Objects::nonNull)
