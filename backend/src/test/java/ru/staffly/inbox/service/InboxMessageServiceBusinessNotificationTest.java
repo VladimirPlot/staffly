@@ -50,7 +50,7 @@ class InboxMessageServiceBusinessNotificationTest {
     @Test
     void suppressesActorBeforeCreatingAnyDurableNotificationState() {
         var result = service.createBusinessNotification(command(
-                OPERATION_ID, recipient, recipient.getUser(), BusinessNotificationKind.SCHEDULE));
+                OPERATION_ID, recipient, recipient.getUser(), BusinessNotificationKind.INVITATION));
 
         assertThat(result.status()).isEqualTo(BusinessNotificationResult.Status.SUPPRESSED_ACTOR);
         assertThat(result.message()).isNull();
@@ -64,6 +64,19 @@ class InboxMessageServiceBusinessNotificationTest {
 
         assertThat(result.status()).isEqualTo(BusinessNotificationResult.Status.SUPPRESSED_NO_RECIPIENT);
         verifyNoInteractions(messages, recipients, pushEnqueueService);
+    }
+
+    @Test
+    void systemActorDoesNotTriggerActorSuppression() {
+        when(messages.findByRestaurantIdAndTypeAndMeta(anyLong(), any(), anyString()))
+                .thenReturn(Optional.empty());
+        when(messages.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = service.createBusinessNotification(command(
+                OPERATION_ID, recipient, null, BusinessNotificationKind.INVITATION));
+
+        assertThat(result.status()).isEqualTo(BusinessNotificationResult.Status.CREATED);
+        verify(messages).save(any(InboxMessage.class));
     }
 
     @Test
@@ -106,6 +119,8 @@ class InboxMessageServiceBusinessNotificationTest {
                 7L, OPERATION_ID, 12L, BusinessNotificationKind.SCHEDULE)).isNotEqualTo(baseline);
         assertThat(BusinessNotificationIdentity.meta(
                 7L, OPERATION_ID, 11L, BusinessNotificationKind.CERTIFICATION)).isNotEqualTo(baseline);
+        assertThat(BusinessNotificationIdentity.meta(
+                7L, OPERATION_ID, 11L, BusinessNotificationKind.INVITATION)).isNotEqualTo(baseline);
         assertThat(BusinessNotificationIdentity.meta(
                 7L, UUID.fromString("10000000-0000-0000-0000-000000000002"),
                 11L, BusinessNotificationKind.SCHEDULE)).isNotEqualTo(baseline);

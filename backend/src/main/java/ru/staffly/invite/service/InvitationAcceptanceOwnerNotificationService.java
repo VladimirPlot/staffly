@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import ru.staffly.inbox.model.BusinessNotificationKind;
 import ru.staffly.inbox.service.BusinessNotificationAfterCommitService;
 import ru.staffly.inbox.service.BusinessNotificationCommand;
-import ru.staffly.inbox.service.BusinessNotificationOperationId;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
@@ -32,6 +31,7 @@ public class InvitationAcceptanceOwnerNotificationService {
 
     public void submit(RestaurantMember acceptedMember,
                        User actor,
+                       UUID operationId,
                        List<AppliedInvitationScheduleEffect> scheduleEffects,
                        List<AppliedCertificationAudienceEffect> certificationEffects) {
         List<AppliedInvitationScheduleEffect> schedules = scheduleEffects.stream()
@@ -59,7 +59,6 @@ public class InvitationAcceptanceOwnerNotificationService {
                 log.warn("Skipping invitation resource-owner notification: owner is not a current member "
                         + "(restaurantId={}, ownerUserId={})", restaurantId, id));
 
-        UUID operationId = BusinessNotificationOperationId.generate();
         List<BusinessNotificationCommand> commands = new ArrayList<>();
         schedules.stream().collect(Collectors.groupingBy(
                         AppliedInvitationScheduleEffect::ownerUserId, LinkedHashMap::new, Collectors.toList()))

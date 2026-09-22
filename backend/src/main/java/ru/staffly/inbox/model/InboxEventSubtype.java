@@ -7,5 +7,6 @@ public enum InboxEventSubtype {
     SCHEDULE_PUBLISHED_CHANGED_OWNER,
     TASK,
     REMINDER,
-    CERTIFICATION
+    CERTIFICATION,
+    INVITATION
 }
