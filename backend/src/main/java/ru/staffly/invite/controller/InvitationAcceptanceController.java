@@ -13,6 +13,8 @@ import ru.staffly.invite.exception.InvitationExpiredException;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
 import ru.staffly.invite.repository.InvitationRepository;
+import ru.staffly.invite.service.InvitationSenderNotificationService;
+import ru.staffly.inbox.service.BusinessNotificationOperationId;
 import ru.staffly.member.dto.MemberDto;
 import ru.staffly.member.service.EmployeeService;
 import ru.staffly.security.UserPrincipal;
@@ -31,6 +33,7 @@ public class InvitationAcceptanceController {
     private final EmployeeService employees;
     private final InvitationRepository invitations;
     private final UserRepository users;
+    private final InvitationSenderNotificationService invitationSenderNotifications;
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/my")
@@ -78,9 +81,11 @@ public class InvitationAcceptanceController {
         if (!inv.getExpiresAt().isAfter(TimeProvider.now())) {
             inv.setStatus(InvitationStatus.EXPIRED);
             invitations.saveAndFlush(inv);
+            invitationSenderNotifications.submitExpired(inv, BusinessNotificationOperationId.generate());
             throw new InvitationExpiredException();
         }
         inv.setStatus(InvitationStatus.DECLINED);
         invitations.save(inv);
+        invitationSenderNotifications.submitDeclined(inv, me, BusinessNotificationOperationId.generate());
     }
 }

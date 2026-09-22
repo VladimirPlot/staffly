@@ -21,6 +21,7 @@ import ru.staffly.invite.repository.InvitationRepository;
 import ru.staffly.invite.repository.InvitationScheduleIntentRepository;
 import ru.staffly.invite.service.InvitationImpactService;
 import ru.staffly.invite.service.InvitationAcceptanceOwnerNotificationService;
+import ru.staffly.invite.service.InvitationSenderNotificationService;
 import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
@@ -43,6 +44,7 @@ import java.time.ZoneOffset;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -67,6 +69,7 @@ class EmployeeServiceImplAcceptanceTest {
     @Mock SecurityService security;
     @Mock CertificationAudienceSyncService certificationSync;
     @Mock InvitationAcceptanceOwnerNotificationService ownerNotifications;
+    @Mock InvitationSenderNotificationService senderNotifications;
     @InjectMocks EmployeeServiceImpl service;
 
     private Restaurant restaurant;
@@ -117,7 +120,9 @@ class EmployeeServiceImplAcceptanceTest {
         verify(lifecycle).addParticipantWithLocksHeld(eq(second), any(), eq(9L), anyString());
         verify(certificationSync).syncRestaurantAudience(3L, 9L);
         ArgumentCaptor<List<AppliedInvitationScheduleEffect>> effects = ArgumentCaptor.forClass(List.class);
-        verify(ownerNotifications).submit(any(), eq(user), effects.capture(), eq(List.of()));
+        ArgumentCaptor<UUID> operationId = ArgumentCaptor.forClass(UUID.class);
+        verify(ownerNotifications).submit(any(), eq(user), operationId.capture(), effects.capture(), eq(List.of()));
+        verify(senderNotifications).submitAccepted(eq(invitation), any(), eq(user), eq(operationId.getValue()));
         org.assertj.core.api.Assertions.assertThat(effects.getValue())
                 .extracting(AppliedInvitationScheduleEffect::scheduleId)
                 .containsExactly(11L, 12L);
@@ -142,7 +147,7 @@ class EmployeeServiceImplAcceptanceTest {
         service.acceptInvite("token", 9L);
 
         verifyNoInteractions(lifecycle);
-        verify(ownerNotifications).submit(any(), eq(user), eq(List.of()), eq(List.of()));
+        verify(ownerNotifications).submit(any(), eq(user), any(UUID.class), eq(List.of()), eq(List.of()));
     }
 
     @Test
@@ -194,6 +199,7 @@ class EmployeeServiceImplAcceptanceTest {
         assertThrows(RuntimeException.class, () -> service.acceptInvite("token", 9L));
         verifyNoInteractions(members, lifecycle, certificationSync);
         verifyNoInteractions(ownerNotifications);
+        verifyNoInteractions(senderNotifications);
     }
 
     @Test
@@ -216,6 +222,7 @@ class EmployeeServiceImplAcceptanceTest {
 
         assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
         verify(invitations).saveAndFlush(invitation);
+        verify(senderNotifications).submitExpired(eq(invitation), any(UUID.class));
         verifyNoInteractions(schedules, intents, lifecycle, certificationSync);
         verify(members, never()).save(any());
     }
@@ -228,6 +235,7 @@ class EmployeeServiceImplAcceptanceTest {
 
         assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
         verify(invitations).saveAndFlush(invitation);
+        verify(senderNotifications).submitExpired(eq(invitation), any(UUID.class));
         verifyNoInteractions(schedules, intents, lifecycle, certificationSync);
         verify(members, never()).save(any());
     }
@@ -240,6 +248,7 @@ class EmployeeServiceImplAcceptanceTest {
 
         assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
         verify(invitations).saveAndFlush(invitation);
+        verify(senderNotifications).submitExpired(eq(invitation), any(UUID.class));
     }
 
     @Test
@@ -259,9 +268,29 @@ class EmployeeServiceImplAcceptanceTest {
 
         assertEquals(InvitationStatus.EXPIRED, invitation.getStatus());
         verify(invitations).saveAndFlush(invitation);
+        verify(senderNotifications).submitExpired(eq(invitation), any(UUID.class));
         verify(invitations).save(argThat(created -> created != invitation
                 && created.getStatus() == InvitationStatus.PENDING
                 && created.getExpiresAt().equals(NOW.plusSeconds(48 * 60 * 60))));
+    }
+
+    @Test
+    void cancelPendingRegistersOriginalSenderOutcomeWithCancelingActor() {
+        when(users.findById(9L)).thenReturn(Optional.of(user));
+
+        service.cancelInvite(3L, 9L, "token");
+
+        assertEquals(InvitationStatus.CANCELED, invitation.getStatus());
+        verify(senderNotifications).submitCanceled(eq(invitation), eq(user), any(UUID.class));
+    }
+
+    @Test
+    void repeatedCancelDoesNotRegisterAnotherOutcome() {
+        invitation.setStatus(InvitationStatus.CANCELED);
+
+        service.cancelInvite(3L, 9L, "token");
+
+        verifyNoInteractions(senderNotifications);
     }
 
     @Test
@@ -287,10 +316,22 @@ class EmployeeServiceImplAcceptanceTest {
                 .containsExactlyInAnyOrder(InvitationInvalidatedException.class, InvitationExpiredException.class);
     }
 
+    @Test
+    void cancelCommitsObservedExpirationDespiteBusinessException() throws Exception {
+        Transactional transaction = EmployeeServiceImpl.class
+                .getMethod("cancelInvite", Long.class, Long.class, String.class)
+                .getAnnotation(Transactional.class);
+
+        org.assertj.core.api.Assertions.assertThat(transaction.dontRollbackOn())
+                .containsExactly(InvitationExpiredException.class);
+    }
+
     private void assertInvalidatedWithoutMutation() {
         assertThrows(InvitationInvalidatedException.class, () -> service.acceptInvite("token", 9L));
         assertEquals(InvitationStatus.INVALIDATED, invitation.getStatus());
         verify(invitations).saveAndFlush(invitation);
+        verify(senderNotifications).submitInvalidated(eq(invitation), eq(user), anyString(), any(UUID.class));
+        verifyNoInteractions(ownerNotifications);
         verify(members, never()).save(any());
         verifyNoInteractions(lifecycle, certificationSync);
     }

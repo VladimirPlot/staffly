@@ -3,7 +3,8 @@ package ru.staffly.inbox.model;
 /** Resource-oriented identity used to group new business notifications. */
 public enum BusinessNotificationKind {
     SCHEDULE(InboxEventSubtype.SCHEDULE_DECISION),
-    CERTIFICATION(InboxEventSubtype.CERTIFICATION);
+    CERTIFICATION(InboxEventSubtype.CERTIFICATION),
+    INVITATION(InboxEventSubtype.INVITATION);
 
     private final InboxEventSubtype eventSubtype;
 
