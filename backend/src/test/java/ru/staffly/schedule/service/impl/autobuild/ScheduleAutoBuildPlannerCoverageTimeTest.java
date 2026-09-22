@@ -3,7 +3,6 @@ package ru.staffly.schedule.service.impl.autobuild;
 import org.junit.jupiter.api.Test;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
-import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.CanonicalBusinessInterval;
 import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.model.Schedule;
@@ -11,6 +10,8 @@ import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleParticipation;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
 import ru.staffly.user.model.User;
@@ -166,14 +167,21 @@ class ScheduleAutoBuildPlannerCoverageTimeTest {
                 .positionConfigs(List.of(config))
                 .build();
 
-        RestaurantMemberRepository members = mock(RestaurantMemberRepository.class);
         SchedulePreferenceSubmissionRepository submissions = mock(SchedulePreferenceSubmissionRepository.class);
+        ScheduleParticipationRepository participations = mock(ScheduleParticipationRepository.class);
         List<RestaurantMember> candidates = List.of(
                 member(1L, "One", position), member(2L, "Two", position), member(3L, "Three", position));
-        when(members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(1L, List.of(10L))).thenReturn(candidates);
+        when(participations.findByScheduleIdOrderById(30L)).thenReturn(candidates.stream()
+                .map(candidate -> ScheduleParticipation.builder()
+                        .schedule(schedule)
+                        .member(candidate)
+                        .positionId(10L)
+                        .positionName("Cook")
+                        .build())
+                .toList());
         when(submissions.findWithCellsByScheduleId(30L)).thenReturn(List.of());
 
-        return new ScheduleAutoBuildPlannerImpl(members, submissions).build(1L, schedule, template);
+        return new ScheduleAutoBuildPlannerImpl(submissions, participations).build(1L, schedule, template);
     }
 
     private static RestaurantMember member(Long id, String name, Position position) {

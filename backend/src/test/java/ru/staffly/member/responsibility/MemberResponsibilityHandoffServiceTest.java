@@ -98,7 +98,7 @@ class MemberResponsibilityHandoffServiceTest {
         assertThat(ivanSchedules.inboxText()).contains("• A", "• B").doesNotContain("• C");
         assertThat(ivanSchedules.pushText()).isEqualTo("Вам передали ответственность за 2 графика.");
         assertThat(ivanSchedules.metadata()).containsEntry("resourceIds", List.of(11L, 12L));
-        assertThat((List<?>) ivanSchedules.metadata().get("resourceIds")).doesNotContain(13L, 21L, 22L, 23L);
+        assertThat(resourceIds(ivanSchedules)).doesNotContain(13L, 21L, 22L, 23L);
         assertThat(command(commands, 8L, BusinessNotificationKind.CERTIFICATION).metadata())
                 .containsEntry("resourceIds", List.of(21L));
         assertThat(command(commands, 9L, BusinessNotificationKind.SCHEDULE).metadata())
@@ -106,7 +106,7 @@ class MemberResponsibilityHandoffServiceTest {
         BusinessNotificationCommand georgiyCertifications = command(commands, 9L, BusinessNotificationKind.CERTIFICATION);
         assertThat(georgiyCertifications.inboxText()).contains("• Cert 2", "• Cert 3").doesNotContain("Cert 1");
         assertThat(georgiyCertifications.metadata()).containsEntry("resourceIds", List.of(22L, 23L));
-        assertThat((List<?>) georgiyCertifications.metadata().get("resourceIds")).doesNotContain(11L, 12L, 13L, 21L);
+        assertThat(resourceIds(georgiyCertifications)).doesNotContain(11L, 12L, 13L, 21L);
         assertThat(commands).extracting(command -> command.recipient().getId()).doesNotContain(oldOwner.getId());
         assertThat(commands).allSatisfy(command -> assertThat(command.actor().getId()).isEqualTo(999L));
     }
@@ -226,5 +226,11 @@ class MemberResponsibilityHandoffServiceTest {
                 .filter(command -> command.recipient().getId().equals(recipientMemberId) && command.kind() == kind)
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private List<Long> resourceIds(BusinessNotificationCommand command) {
+        Object value = command.metadata().get("resourceIds");
+        assertThat(value).isInstanceOf(List.class);
+        return ((List<?>) value).stream().map(Long.class::cast).toList();
     }
 }
