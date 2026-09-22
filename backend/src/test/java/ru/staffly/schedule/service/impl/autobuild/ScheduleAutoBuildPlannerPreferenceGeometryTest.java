@@ -1,12 +1,12 @@
 package ru.staffly.schedule.service.impl.autobuild;
 
 import org.junit.jupiter.api.Test;
-import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.CanonicalBusinessInterval;
 import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.model.SchedulePreferenceCell;
 import ru.staffly.schedule.model.SchedulePreferenceType;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 
 import java.time.LocalTime;
 
@@ -15,8 +15,8 @@ import static org.mockito.Mockito.mock;
 
 class ScheduleAutoBuildPlannerPreferenceGeometryTest {
     private final ScheduleAutoBuildPlannerImpl planner = new ScheduleAutoBuildPlannerImpl(
-            mock(RestaurantMemberRepository.class),
-            mock(SchedulePreferenceSubmissionRepository.class)
+            mock(SchedulePreferenceSubmissionRepository.class),
+            mock(ScheduleParticipationRepository.class)
     );
 
     @Test
