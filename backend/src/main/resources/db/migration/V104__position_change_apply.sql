@@ -9,7 +9,7 @@ WHERE r.schedule_id = s.id AND s.status = 'PUBLISHED'
 
 CREATE TABLE position_change_audit (
     id BIGSERIAL PRIMARY KEY,
-    restaurant_id BIGINT NOT NULL REFERENCES restaurant(id),
+    restaurant_id BIGINT NOT NULL REFERENCES restaurants(id),
     actor_user_id BIGINT NOT NULL REFERENCES users(id),
     member_id BIGINT NOT NULL,
     old_position_id BIGINT NOT NULL,
