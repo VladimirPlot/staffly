@@ -8,5 +8,6 @@ public enum InboxEventSubtype {
     TASK,
     REMINDER,
     CERTIFICATION,
+    POSITION_CHANGE,
     INVITATION
 }

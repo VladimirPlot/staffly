@@ -13,6 +13,8 @@ import ru.staffly.member.dto.ApplyPositionChangeRequest;
 import ru.staffly.member.dto.ApplyPositionChangeRequest.ScheduleDecision;
 import ru.staffly.member.dto.ApplyPositionChangeResult;
 import ru.staffly.member.dto.PositionChangeImpactPlan.Action;
+import ru.staffly.member.dto.AppliedPositionChangeScheduleEffect;
+import ru.staffly.member.dto.PositionChangeScheduleEffectType;
 import ru.staffly.member.mapper.MemberMapper;
 import ru.staffly.member.model.PositionChangeAudit;
 import ru.staffly.member.model.RestaurantMember;
@@ -24,6 +26,7 @@ import ru.staffly.schedule.repository.*;
 import ru.staffly.schedule.service.SchedulePreferenceLifecycleService;
 import ru.staffly.security.SecurityService;
 import ru.staffly.training.service.CertificationAudienceSyncService;
+import ru.staffly.inbox.service.BusinessNotificationOperationId;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -48,6 +51,7 @@ public class PositionChangeApplyService {
     private final RestaurantTimeService restaurantTime;
     private final PublishedShiftImpactClassifier shiftClassifier;
     private final CertificationAudienceSyncService certificationAudienceSync;
+    private final PositionChangeNotificationService notifications;
 
     @Transactional
     public ApplyPositionChangeResult apply(Long restaurantId, Long memberId,
@@ -89,35 +93,51 @@ public class PositionChangeApplyService {
         locked.forEach(s -> validateToken(s, decisions.get(s.getId()), memberId, target.getId()));
 
         Long oldPositionId = member.getPosition().getId();
+        String oldPositionName = member.getPosition().getName();
         LocalDateTime localNow = LocalDateTime.ofInstant(restaurantTime.nowInstant(),
                 restaurantTime.zoneFor(member.getRestaurant()));
         int cancelled = 0;
         List<String> cleanup = new ArrayList<>();
+        Map<Long, EnumSet<PositionChangeScheduleEffectType>> applied = new TreeMap<>();
+        Map<Long, Integer> cancelledBySchedule = new HashMap<>();
 
         // Remove old snapshots first. No old participation is ever transformed in place.
         for (Schedule schedule : locked) {
             ScheduleDecision decision = decisions.get(schedule.getId());
             ScheduleParticipation old = participations.findByScheduleIdAndMemberId(schedule.getId(), memberId)
                     .filter(p -> Objects.equals(p.getPositionId(), oldPositionId)).orElse(null);
+            boolean hadSubmission = submissions.findByScheduleIdAndMemberId(schedule.getId(), memberId)
+                    .filter(s -> Objects.equals(s.getPositionId(), oldPositionId)).isPresent();
             ScheduleRow row = oldRow(schedule, memberId, oldPositionId);
-            if (old != null || submissions.findByScheduleIdAndMemberId(schedule.getId(), memberId)
-                    .filter(s -> Objects.equals(s.getPositionId(), oldPositionId)).isPresent()) {
-                lifecycle.removeParticipantWithLocksHeld(schedule, member, actorUserId, "Смена должности");
+            if (old != null || hadSubmission) {
+                var removal = lifecycle.removeParticipantWithLocksHeld(
+                        schedule, member, actorUserId, "Смена должности");
+                if (removal.participationRemoved())
+                    mark(applied, schedule, PositionChangeScheduleEffectType.OLD_PARTICIPATION_REMOVED);
+                if (removal.submissionRemoved())
+                    mark(applied, schedule, PositionChangeScheduleEffectType.PREFERENCE_SUBMISSION_REMOVED);
                 cleanup.add(schedule.getId() + ":participation/preferences removed");
             }
             if (schedule.getStatus() == ScheduleStatus.DRAFT && row != null) {
                 schedule.getRows().remove(row);
+                mark(applied, schedule, PositionChangeScheduleEffectType.DRAFT_EMPLOYEE_REMOVED);
                 cleanup.add(schedule.getId() + ":draft row removed");
             } else if (schedule.getStatus() == ScheduleStatus.PUBLISHED && row != null) {
                 Hibernate.initialize(row.getCells());
                 int count = shiftClassifier.cancelFuture(row.getCells(), localNow);
                 cancelled += count;
+                if (count > 0) {
+                    mark(applied, schedule, PositionChangeScheduleEffectType.PUBLISHED_FUTURE_SHIFTS_CANCELLED);
+                    cancelledBySchedule.put(schedule.getId(), count);
+                }
                 row.setHistorical(true);
                 cleanup.add(schedule.getId() + ":published row historical; future shifts cancelled=" + count);
             } else if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES
                     && decision.action() != Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW) {
-                lifecycle.invalidateAppliedPreferenceDraftWithLocksHeld(
+                boolean invalidated = lifecycle.invalidateAppliedPreferenceDraftWithLocksHeld(
                         schedule, actorUserId, "Смена должности участника");
+                if (invalidated)
+                    mark(applied, schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED);
                 cleanup.add(schedule.getId() + ":preference draft invalidated");
             }
         }
@@ -139,16 +159,27 @@ public class PositionChangeApplyService {
                         requireFuture(decision.newDeadline());
                         schedule.setPreferenceDeadline(decision.newDeadline());
                     }
-                    lifecycle.addParticipantWithLocksHeld(schedule, member, actorUserId, "Смена должности");
+                    if (lifecycle.addParticipantWithLocksHeld(schedule, member, actorUserId, "Смена должности"))
+                        mark(applied, schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
                 }
                 case CHANGE_POSITION_AND_REOPEN_COLLECTION -> {
                     requireStatus(schedule, ScheduleStatus.PREFERENCES_CLOSED);
-                    lifecycle.reopenWithLocksHeld(schedule, member, decision.newDeadline(), actorUserId, "Смена должности");
+                    var result = lifecycle.reopenWithLocksHeld(
+                            schedule, member, decision.newDeadline(), actorUserId, "Смена должности");
+                    if (result.participantCreated())
+                        mark(applied, schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
+                    mark(applied, schedule, PositionChangeScheduleEffectType.COLLECTION_REOPENED);
                     reopened.add(new ApplyPositionChangeResult.ReopenedCollection(schedule.getId(), decision.newDeadline()));
                 }
                 case REOPEN_AND_REBUILD_PREFERENCE_FLOW -> {
                     requireStatus(schedule, ScheduleStatus.DRAFT_FROM_PREFERENCES);
-                    lifecycle.reopenWithLocksHeld(schedule, member, decision.newDeadline(), actorUserId, "Смена должности");
+                    var result = lifecycle.reopenWithLocksHeld(
+                            schedule, member, decision.newDeadline(), actorUserId, "Смена должности");
+                    if (result.participantCreated())
+                        mark(applied, schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
+                    mark(applied, schedule, PositionChangeScheduleEffectType.COLLECTION_REOPENED);
+                    if (result.appliedResultInvalidated())
+                        mark(applied, schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED);
                     reopened.add(new ApplyPositionChangeResult.ReopenedCollection(schedule.getId(), decision.newDeadline()));
                 }
                 case DO_NOT_ADD -> {
@@ -173,8 +204,29 @@ public class PositionChangeApplyService {
         audits.save(PositionChangeAudit.builder().restaurantId(restaurantId).actorUserId(actorUserId)
                 .memberId(memberId).oldPositionId(oldPositionId).newPositionId(target.getId())
                 .occurredAt(restaurantTime.nowInstant()).details(details).build());
-        certificationAudienceSync.syncRestaurantAudience(restaurantId);
+        var certificationEffects = certificationAudienceSync.syncRestaurantAudience(restaurantId, member.getUser().getId());
+        List<AppliedPositionChangeScheduleEffect> scheduleEffects = locked.stream()
+                .filter(schedule -> applied.containsKey(schedule.getId()))
+                .map(schedule -> new AppliedPositionChangeScheduleEffect(schedule.getId(), schedule.getTitle(),
+                        ownerUserId(schedule), memberId, applied.get(schedule.getId()), schedule.getPreferenceDeadline(),
+                        cancelledBySchedule.getOrDefault(schedule.getId(), 0)))
+                .toList();
+        var actor = members.findWithUserByUserIdAndRestaurantId(actorUserId, restaurantId)
+                .orElseThrow(this::stale).getUser();
+        notifications.submit(member, actor, BusinessNotificationOperationId.generate(), oldPositionName,
+                target.getName(), scheduleEffects, certificationEffects);
         return new ApplyPositionChangeResult(memberMapper.toDto(member), List.copyOf(affected), reopened, cancelled);
+    }
+
+    private void mark(Map<Long, EnumSet<PositionChangeScheduleEffectType>> effects, Schedule schedule,
+                      PositionChangeScheduleEffectType type) {
+        effects.computeIfAbsent(schedule.getId(), ignored -> EnumSet.noneOf(PositionChangeScheduleEffectType.class)).add(type);
+    }
+
+    private Long ownerUserId(Schedule schedule) {
+        if (schedule.getOwnerMember() != null && schedule.getOwnerMember().getUser() != null)
+            return schedule.getOwnerMember().getUser().getId();
+        return schedule.getOwnerUser() == null ? null : schedule.getOwnerUser().getId();
     }
 
     private void validateToken(Schedule schedule, ScheduleDecision d, Long memberId, Long targetPositionId) {

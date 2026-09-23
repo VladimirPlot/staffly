@@ -121,6 +121,68 @@ class SchedulePreferenceLifecycleServiceTest {
     }
 
     @Test
+    void removedOldSubmissionThenReAddProducesActualNewParticipation() {
+        when(submissions.deleteByScheduleIdAndMemberId(40L, 30L)).thenReturn(1L);
+        when(participations.deleteByScheduleIdAndMemberId(40L, 30L)).thenReturn(0L);
+        when(participations.findByScheduleIdAndMemberId(40L, 30L)).thenReturn(Optional.empty());
+        ScheduleParticipation replacement = ScheduleParticipation.builder().schedule(schedule).member(member)
+                .positionId(20L).positionName("Cook").build();
+        when(creator.createWithLocksHeld(schedule, member, true))
+                .thenReturn(new ScheduleParticipationCreator.CreationResult(replacement, true));
+
+        var removal = service.removeParticipantWithLocksHeld(
+                schedule, member, 50L, "position change");
+        boolean created = service.addParticipantWithLocksHeld(
+                schedule, member, 50L, "position change");
+
+        assertThat(removal.submissionRemoved()).isTrue();
+        assertThat(removal.participationRemoved()).isFalse();
+        assertThat(removal.changed()).isTrue();
+        assertThat(created).isTrue();
+        verify(participations).deleteByScheduleIdAndMemberId(40L, 30L);
+        verify(creator).createWithLocksHeld(schedule, member, true);
+        verify(audit).record(schedule, 50L, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
+                "Участник сбора пожеланий удалён: position change");
+    }
+
+    @Test
+    void lockedRemovalReportsParticipationAndSubmissionWhenBothDeletesSucceed() {
+        when(submissions.deleteByScheduleIdAndMemberId(40L, 30L)).thenReturn(1L);
+        when(participations.deleteByScheduleIdAndMemberId(40L, 30L)).thenReturn(1L);
+
+        var result = service.removeParticipantWithLocksHeld(schedule, member, 50L, "position change");
+
+        assertThat(result.participationRemoved()).isTrue();
+        assertThat(result.submissionRemoved()).isTrue();
+        assertThat(result.changed()).isTrue();
+        verify(audit, times(1)).record(schedule, 50L, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
+                "Участник сбора пожеланий удалён: position change");
+    }
+
+    @Test
+    void lockedRemovalReportsOnlyParticipationWhenOnlyParticipationDeleteSucceeds() {
+        when(participations.deleteByScheduleIdAndMemberId(40L, 30L)).thenReturn(1L);
+
+        var result = service.removeParticipantWithLocksHeld(schedule, member, 50L, "position change");
+
+        assertThat(result.participationRemoved()).isTrue();
+        assertThat(result.submissionRemoved()).isFalse();
+        assertThat(result.changed()).isTrue();
+        verify(audit, times(1)).record(schedule, 50L, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
+                "Участник сбора пожеланий удалён: position change");
+    }
+
+    @Test
+    void lockedRemovalReportsNoChangeAndDoesNotAuditWhenNeitherDeleteSucceeds() {
+        var result = service.removeParticipantWithLocksHeld(schedule, member, 50L, "position change");
+
+        assertThat(result.participationRemoved()).isFalse();
+        assertThat(result.submissionRemoved()).isFalse();
+        assertThat(result.changed()).isFalse();
+        verifyNoInteractions(audit);
+    }
+
+    @Test
     void reopenPreservesCollectionDataAndOriginalStartButStartsNewNotificationCycle() {
         Instant started = Instant.parse("2026-01-01T00:00:00Z");
         Instant closed = Instant.parse("2026-01-02T00:00:00Z");
@@ -161,6 +223,56 @@ class SchedulePreferenceLifecycleServiceTest {
         verify(creator).createWithLocksHeld(schedule, member, true);
         assertThat(schedule.getPreferenceShiftOptionSnapshots()).containsExactly(snapshot);
         verifyNoInteractions(submissions);
+    }
+
+    @Test
+    void lockedReopenReportsActualParticipantCreationAndAppliedResultInvalidation() {
+        Instant deadline = Instant.now().plusSeconds(3600);
+        schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        schedule.setPreferenceAppliedAt(Instant.parse("2026-01-03T00:00:00Z"));
+        ScheduleRow row = ScheduleRow.builder().schedule(schedule).cells(new ArrayList<>()).build();
+        row.getCells().add(cell(row, ScheduleCellSource.AUTO_BUILD));
+        row.getCells().add(cell(row, ScheduleCellSource.MANUAL));
+        schedule.getRows().add(row);
+        when(participations.findByScheduleIdAndMemberId(40L, 30L)).thenReturn(Optional.empty());
+        when(creator.createWithLocksHeld(schedule, member, true)).thenReturn(
+                new ScheduleParticipationCreator.CreationResult(
+                        ScheduleParticipation.builder().schedule(schedule).member(member).build(), true));
+
+        var result = service.reopenWithLocksHeld(schedule, member, deadline, 50L, "position change");
+
+        assertThat(result.participantCreated()).isTrue();
+        assertThat(result.appliedResultInvalidated()).isTrue();
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.COLLECTING_PREFERENCES);
+        assertThat(schedule.getPreferenceAppliedAt()).isNull();
+        assertThat(row.getCells()).extracting(ScheduleCell::getSource).containsExactly(ScheduleCellSource.MANUAL);
+    }
+
+    @Test
+    void lockedReopenDoesNotReportEffectsThatDidNotOccur() {
+        Instant deadline = Instant.now().plusSeconds(3600);
+        schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        ScheduleParticipation existing = ScheduleParticipation.builder().schedule(schedule).member(member).build();
+        when(participations.findByScheduleIdAndMemberId(40L, 30L)).thenReturn(Optional.of(existing));
+
+        var result = service.reopenWithLocksHeld(schedule, member, deadline, 50L, "position change");
+
+        assertThat(result.participantCreated()).isFalse();
+        assertThat(result.appliedResultInvalidated()).isFalse();
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.COLLECTING_PREFERENCES);
+        verify(creator, never()).createWithLocksHeld(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void rejectedLockedReopenDoesNotMutateSchedule() {
+        schedule.setStatus(ScheduleStatus.DRAFT);
+
+        assertThatThrownBy(() -> service.reopenWithLocksHeld(
+                schedule, member, Instant.now().plusSeconds(3600), 50L, "position change"))
+                .isInstanceOf(BadRequestException.class);
+
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.DRAFT);
+        verifyNoInteractions(participations, creator, audit);
     }
 
     @Test
@@ -257,8 +369,9 @@ class SchedulePreferenceLifecycleServiceTest {
         schedule.setPreferenceCollectionCycle(4);
         schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
 
-        service.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, 50L, "position change");
+        boolean invalidated = service.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, 50L, "position change");
 
+        assertThat(invalidated).isTrue();
         assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.PREFERENCES_CLOSED);
         assertThat(schedule.getPreferenceAppliedAt()).isNull();
         assertThat(schedule.getPreferenceCollectionMode()).isEqualTo(PreferenceCollectionMode.SHIFT_OPTIONS);
@@ -271,6 +384,17 @@ class SchedulePreferenceLifecycleServiceTest {
         verifyNoInteractions(submissions, participations);
         verify(audit).record(schedule, 50L, ScheduleAuditAction.APPLIED_PREFERENCE_DRAFT_INVALIDATED,
                 "Применённый результат пожеланий аннулирован: position change");
+    }
+
+    @Test
+    void appliedDraftTransitionDoesNotClaimInvalidationWithoutAppliedMarkerOrGeneratedCells() {
+        schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
+
+        boolean invalidated = service.invalidateAppliedPreferenceDraftWithLocksHeld(
+                schedule, 50L, "position change");
+
+        assertThat(invalidated).isFalse();
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.PREFERENCES_CLOSED);
     }
 
     @Test

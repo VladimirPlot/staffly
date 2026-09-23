@@ -106,9 +106,18 @@ class CertificationAssignmentService {
             if (assignment.isActive() && !audienceUserIds.contains(assignment.getUser().getId())) {
                 assignment.setActive(false);
                 assignment.setDeactivationReason(TrainingExamAssignmentDeactivationReason.AUDIENCE_REMOVED);
+                effects.add(effect(exam, assignment.getUser().getId(),
+                        CertificationAudienceEffectType.AUDIENCE_REMOVED));
             }
         }
         return new CertificationAudienceSyncResult(createdAssignments, effects);
+    }
+
+    private AppliedCertificationAudienceEffect effect(TrainingExam exam, Long userId,
+                                                       CertificationAudienceEffectType type) {
+        return new AppliedCertificationAudienceEffect(
+                exam.getId(), exam.getTitle(), exam.getOwner() == null ? null : exam.getOwner().getId(),
+                userId, type);
     }
 
     private AppliedCertificationAudienceEffect effect(TrainingExam exam, RestaurantMember member,

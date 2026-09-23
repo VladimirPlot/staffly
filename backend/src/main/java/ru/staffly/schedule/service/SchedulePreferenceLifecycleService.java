@@ -188,15 +188,23 @@ public class SchedulePreferenceLifecycleService {
     public record MutationResult(Schedule schedule, boolean changed) {}
 
     /** Internal orchestration primitive. Caller must hold member then schedule locks. */
-    public boolean removeParticipantWithLocksHeld(Schedule schedule, RestaurantMember member,
-                                                   Long actorUserId, String reason) {
-        boolean hadSubmission = submissions.deleteByScheduleIdAndMemberId(schedule.getId(), member.getId()) > 0;
-        boolean removed = participations.deleteByScheduleIdAndMemberId(schedule.getId(), member.getId()) > 0;
-        if (hadSubmission || removed) {
+    public RemoveParticipantMutationResult removeParticipantWithLocksHeld(
+            Schedule schedule, RestaurantMember member, Long actorUserId, String reason) {
+        boolean submissionRemoved = submissions.deleteByScheduleIdAndMemberId(
+                schedule.getId(), member.getId()) > 0;
+        boolean participationRemoved = participations.deleteByScheduleIdAndMemberId(
+                schedule.getId(), member.getId()) > 0;
+        if (submissionRemoved || participationRemoved) {
             auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
                     details("Участник сбора пожеланий удалён", reason));
         }
-        return hadSubmission || removed;
+        return new RemoveParticipantMutationResult(participationRemoved, submissionRemoved);
+    }
+
+    public record RemoveParticipantMutationResult(boolean participationRemoved, boolean submissionRemoved) {
+        public boolean changed() {
+            return participationRemoved || submissionRemoved;
+        }
     }
 
     /** Internal orchestration primitive. Caller must hold member then schedule locks. */
@@ -212,8 +220,8 @@ public class SchedulePreferenceLifecycleService {
     }
 
     /** Reopens either a closed collection or its applied draft without discarding valid preferences/vocabulary. */
-    public void reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
-                                    Long actorUserId, String reason) {
+    public ReopenMutationResult reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
+                                                     Long actorUserId, String reason) {
         if (deadline == null || !deadline.isAfter(TimeProvider.now())) {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
@@ -221,12 +229,18 @@ public class SchedulePreferenceLifecycleService {
                 && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Only a closed or applied preference collection can be reopened");
         }
+        boolean appliedResultInvalidated = false;
         if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            boolean hadAppliedMarker = schedule.getPreferenceAppliedAt() != null;
+            boolean removedGeneratedCells = schedule.getRows().stream()
+                    .flatMap(row -> row.getCells().stream())
+                    .anyMatch(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD);
             schedule.getRows().forEach(row -> row.getCells()
                     .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
             schedule.setPreferenceAppliedAt(null);
+            appliedResultInvalidated = hadAppliedMarker || removedGeneratedCells;
         }
-        addWithLocksHeld(schedule, member);
+        boolean participantCreated = addWithLocksHeld(schedule, member).created();
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
         schedule.setPreferenceDeadline(deadline);
         schedule.setPreferenceClosedAt(null);
@@ -234,7 +248,11 @@ public class SchedulePreferenceLifecycleService {
         schedule.setPreferenceCollectionCycle(schedule.getPreferenceCollectionCycle() + 1);
         auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_COLLECTION_REOPENED,
                 details("Сбор пожеланий открыт повторно", reason));
+        return new ReopenMutationResult(participantCreated, appliedResultInvalidated);
     }
+
+    /** Facts produced by the reopen mutation, captured before its generated state is cleared. */
+    public record ReopenMutationResult(boolean participantCreated, boolean appliedResultInvalidated) {}
 
     public void invalidatePreferenceCollectionWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
         if (schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
@@ -261,16 +279,21 @@ public class SchedulePreferenceLifecycleService {
      * Invalidates only the generated result of a completed preference collection.
      * The caller holds the schedule lock; collection input remains authoritative and rebuildable.
      */
-    public void invalidateAppliedPreferenceDraftWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
+    public boolean invalidateAppliedPreferenceDraftWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
         if (schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Only an applied preference draft can have its result invalidated");
         }
+        boolean hadAppliedMarker = schedule.getPreferenceAppliedAt() != null;
+        boolean removedGeneratedCells = schedule.getRows().stream()
+                .flatMap(row -> row.getCells().stream())
+                .anyMatch(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD);
         schedule.getRows().forEach(row -> row.getCells()
                 .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
         schedule.setPreferenceAppliedAt(null);
         schedule.setStatus(ScheduleStatus.PREFERENCES_CLOSED);
         auditService.record(schedule, actorUserId, ScheduleAuditAction.APPLIED_PREFERENCE_DRAFT_INVALIDATED,
                 details("Применённый результат пожеланий аннулирован", reason));
+        return hadAppliedMarker || removedGeneratedCells;
     }
 
     /** Applies invitation-time collection changes before an invited membership exists. */
