@@ -114,11 +114,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         submission.setSubmittedAt(now);
         submission.setUpdatedAt(now);
         submission.setPeriodComment(periodComment);
-        submission.getCells().clear();
-        for (SchedulePreferenceCell cell : cells) {
-            cell.setSubmission(submission);
-            submission.getCells().add(cell);
-        }
+        mergeCellsByDay(submission, cells);
 
         SchedulePreferenceSubmission saved = submissions.saveAndFlush(submission);
         notifyOwnerIfAllSubmitted(schedule, now, userId);
@@ -127,6 +123,30 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         schedule.setUpdatedAt(now);
         schedules.flush();
         return toMyResponse(schedule, participation, saved);
+    }
+
+    void mergeCellsByDay(SchedulePreferenceSubmission submission, List<SchedulePreferenceCell> requestedCells) {
+        Map<LocalDate, SchedulePreferenceCell> existingByDay = submission.getCells().stream()
+                .collect(Collectors.toMap(SchedulePreferenceCell::getDay, Function.identity()));
+        Set<LocalDate> requestedDays = requestedCells.stream()
+                .map(SchedulePreferenceCell::getDay)
+                .collect(Collectors.toSet());
+
+        submission.getCells().removeIf(existing -> !requestedDays.contains(existing.getDay()));
+        for (SchedulePreferenceCell requested : requestedCells) {
+            SchedulePreferenceCell existing = existingByDay.get(requested.getDay());
+            if (existing == null) {
+                requested.setSubmission(submission);
+                submission.getCells().add(requested);
+                continue;
+            }
+            existing.setType(requested.getType());
+            existing.setFullDay(requested.isFullDay());
+            existing.setStartTime(requested.getStartTime());
+            existing.setEndTime(requested.getEndTime());
+            existing.setNote(requested.getNote());
+            existing.setSortOrder(requested.getSortOrder());
+        }
     }
 
     private void notifyOwnerIfAllSubmitted(Schedule schedule, Instant now, Long actorUserId) {

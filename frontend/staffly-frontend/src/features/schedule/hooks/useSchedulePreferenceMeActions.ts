@@ -6,6 +6,7 @@ import {
   type SchedulePreferenceMyResponse,
   type UpsertMySchedulePreferenceRequest,
 } from "../api";
+import { completeOwnSchedulePreferenceSubmit } from "../schedulePreferenceSubmitTransition";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseSchedulePreferenceMeActionsParams = {
@@ -86,7 +87,10 @@ export default function useSchedulePreferenceMeActions({
   }, []);
 
   const submitPreference = React.useCallback(
-    async (request: UpsertMySchedulePreferenceRequest): Promise<SchedulePreferenceMyResponse | null> => {
+    async (
+      request: UpsertMySchedulePreferenceRequest,
+      onSuccessBeforePublish: () => void,
+    ): Promise<SchedulePreferenceMyResponse | null> => {
       if (!restaurantId || !preferenceViewScheduleId) return null;
       const requestSequence = ++requestSequenceRef.current;
 
@@ -95,8 +99,13 @@ export default function useSchedulePreferenceMeActions({
       setMessage(null);
       try {
         const data = await upsertMySchedulePreference(restaurantId, preferenceViewScheduleId, request);
-        if (requestSequence !== requestSequenceRef.current) return null;
-        setPreferenceData(data);
+        const published = completeOwnSchedulePreferenceSubmit(
+          data,
+          onSuccessBeforePublish,
+          () => requestSequence === requestSequenceRef.current,
+          setPreferenceData,
+        );
+        if (!published) return null;
         setMessage("Пожелания отправлены");
         try {
           await onPreferenceSubmitted?.();

@@ -13,6 +13,7 @@ import {
   type SchedulePreferenceDraft,
   type SchedulePreferenceDraftIdentity,
 } from "../src/features/schedule/schedulePreferenceDraftStorage.ts";
+import { completeOwnSchedulePreferenceSubmit } from "../src/features/schedule/schedulePreferenceSubmitTransition.ts";
 
 class MemoryStorage {
   values = new Map<string, string>();
@@ -97,11 +98,15 @@ test("restores a draft based on the current revision", () => {
 });
 
 test("uses authoritative state for a revision mismatch", () => {
-  const stale = resolveSchedulePreferenceDraft(response(4), draft);
+  const storage = new MemoryStorage();
+  writeSchedulePreferenceDraft(identity, draft, storage);
+  const stale = resolveSchedulePreferenceDraft(response(4), readSchedulePreferenceDraft(identity, storage));
   assert.equal(stale.reason, "REVISION_MISMATCH");
   assert.equal(stale.baseRevision, 4);
   assert.equal(stale.editableState.periodComment, "");
   assert.equal(stale.editableState.cellsByDay["2026-10-01"]?.type, "NO_PREFERENCE");
+  if (stale.reason === "REVISION_MISMATCH") removeSchedulePreferenceDraft(identity, storage);
+  assert.equal(readSchedulePreferenceDraft(identity, storage), null);
 });
 
 test("corrupted JSON and unknown schema versions are discarded", () => {
@@ -135,6 +140,50 @@ test("successful-submit cleanup removes the draft while failed flow can preserve
   // A failed submit performs no cleanup.
   assert.deepEqual(readSchedulePreferenceDraft(identity, storage), draft);
   removeSchedulePreferenceDraft(identity, storage);
+  assert.equal(readSchedulePreferenceDraft(identity, storage), null);
+});
+
+test("own successful submit removes its draft before publishing the successor revision", () => {
+  const storage = new MemoryStorage();
+  writeSchedulePreferenceDraft(identity, draft, storage);
+  const successor = response(4);
+  const transitions: string[] = [];
+
+  const published = completeOwnSchedulePreferenceSubmit(
+    successor,
+    () => {
+      transitions.push("cleanup");
+      removeSchedulePreferenceDraft(identity, storage);
+    },
+    () => true,
+    (authoritative) => {
+      transitions.push("publish");
+      const resolved = resolveSchedulePreferenceDraft(authoritative, readSchedulePreferenceDraft(identity, storage));
+      assert.equal(resolved.reason, "NO_DRAFT");
+    },
+  );
+
+  assert.equal(published, true);
+  assert.deepEqual(transitions, ["cleanup", "publish"]);
+  assert.equal(readSchedulePreferenceDraft(identity, storage), null);
+});
+
+test("own successful submit cleans its draft even when navigation suppresses publication", () => {
+  const storage = new MemoryStorage();
+  writeSchedulePreferenceDraft(identity, draft, storage);
+  let published = false;
+
+  const current = completeOwnSchedulePreferenceSubmit(
+    response(4),
+    () => removeSchedulePreferenceDraft(identity, storage),
+    () => false,
+    () => {
+      published = true;
+    },
+  );
+
+  assert.equal(current, false);
+  assert.equal(published, false);
   assert.equal(readSchedulePreferenceDraft(identity, storage), null);
 });
 
