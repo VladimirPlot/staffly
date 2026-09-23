@@ -302,6 +302,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
     }
 
     onSubmit({
+      expectedRevision: data.revision,
       cells,
       periodComment: periodComment.trim().length > 0 ? periodComment.trim() : null,
     });

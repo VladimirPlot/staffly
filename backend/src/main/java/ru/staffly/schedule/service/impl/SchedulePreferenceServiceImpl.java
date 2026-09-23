@@ -95,6 +95,14 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                         .revision(0)
                         .build());
 
+        int currentRevision = submission.getId() == null ? 0 : submission.getRevision();
+        if (!Objects.equals(request.expectedRevision(), currentRevision)) {
+            throw new ScheduleDomainConflictException(
+                    "SCHEDULE_PREFERENCE_REVISION_CONFLICT",
+                    "Пожелания были изменены в другой сессии. Обновите данные и повторите изменения."
+            );
+        }
+
         if (submission.getId() == null) {
             submission.setRevision(1);
         } else {
@@ -339,6 +347,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission == null ? null : submission.getSubmittedAt(),
                 submission == null ? null : submission.getUpdatedAt(),
                 submission == null ? 0 : submission.getRevision(),
+                schedule.getPreferenceCollectionCycle(),
                 toMemberDto(participation),
                 allowedShiftOptions(schedule, participation.getPositionId()),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
