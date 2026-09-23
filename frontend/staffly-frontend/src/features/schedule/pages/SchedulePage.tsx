@@ -831,6 +831,7 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && preferenceActions.preferenceViewScheduleId && (
         <SchedulePreferenceMeView
+          restaurantId={restaurantId!}
           timeZone={restaurantTimeZone}
           data={preferenceActions.preferenceData}
           loading={preferenceActions.loading}

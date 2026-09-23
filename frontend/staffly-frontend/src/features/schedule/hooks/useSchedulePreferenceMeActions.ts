@@ -86,8 +86,8 @@ export default function useSchedulePreferenceMeActions({
   }, []);
 
   const submitPreference = React.useCallback(
-    async (request: UpsertMySchedulePreferenceRequest) => {
-      if (!restaurantId || !preferenceViewScheduleId) return;
+    async (request: UpsertMySchedulePreferenceRequest): Promise<SchedulePreferenceMyResponse | null> => {
+      if (!restaurantId || !preferenceViewScheduleId) return null;
       const requestSequence = ++requestSequenceRef.current;
 
       setSaving(true);
@@ -95,13 +95,13 @@ export default function useSchedulePreferenceMeActions({
       setMessage(null);
       try {
         const data = await upsertMySchedulePreference(restaurantId, preferenceViewScheduleId, request);
-        if (requestSequence !== requestSequenceRef.current) return;
+        if (requestSequence !== requestSequenceRef.current) return null;
         setPreferenceData(data);
         setMessage("Пожелания отправлены");
         try {
           await onPreferenceSubmitted?.();
         } catch (reloadError: unknown) {
-          if (requestSequence !== requestSequenceRef.current) return;
+          if (requestSequence !== requestSequenceRef.current) return null;
           setError(
             getFriendlyScheduleErrorMessage(
               reloadError,
@@ -109,9 +109,11 @@ export default function useSchedulePreferenceMeActions({
             ),
           );
         }
+        return data;
       } catch (e: unknown) {
-        if (requestSequence !== requestSequenceRef.current) return;
+        if (requestSequence !== requestSequenceRef.current) return null;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось отправить пожелания"));
+        return null;
       } finally {
         if (requestSequence === requestSequenceRef.current) setSaving(false);
       }
