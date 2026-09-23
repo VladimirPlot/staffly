@@ -180,6 +180,7 @@ export type SchedulePreferenceMyResponse = {
   submittedAt?: string | null;
   updatedAt?: string | null;
   revision: number;
+  preferenceCollectionCycle: number;
   member: SchedulePreferenceMemberDto;
   allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
   cells: SchedulePreferenceCellDto[];
@@ -231,6 +232,7 @@ export type SchedulePreferenceSubmissionsResponse = {
 };
 
 export type UpsertMySchedulePreferenceRequest = {
+  expectedRevision: number;
   cells: SchedulePreferenceCellRequest[];
   periodComment?: string | null;
 };

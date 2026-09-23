@@ -19,6 +19,7 @@ public record SchedulePreferenceMyResponse(
         Instant submittedAt,
         Instant updatedAt,
         int revision,
+        long preferenceCollectionCycle,
         SchedulePreferenceMemberDto member,
         List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions,
         List<SchedulePreferenceCellDto> cells,
