@@ -4,6 +4,9 @@ package ru.staffly.inbox.model;
 public enum BusinessNotificationKind {
     SCHEDULE(InboxEventSubtype.SCHEDULE_DECISION),
     CERTIFICATION(InboxEventSubtype.CERTIFICATION),
+    POSITION_CHANGE(InboxEventSubtype.POSITION_CHANGE),
+    POSITION_CHANGE_PREFERENCES(InboxEventSubtype.SCHEDULE_PREFERENCES),
+    POSITION_CHANGE_SHIFTS(InboxEventSubtype.SCHEDULE_PUBLISHED_CHANGED),
     INVITATION(InboxEventSubtype.INVITATION);
 
     private final InboxEventSubtype eventSubtype;

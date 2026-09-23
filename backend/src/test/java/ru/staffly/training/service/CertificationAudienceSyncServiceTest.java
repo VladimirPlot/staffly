@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 
 class CertificationAudienceSyncServiceTest {
     @Test
-    void returnsCreatedReactivatedAndUnchangedEffectsForRequestedSubject() {
+    void returnsAllFourAuthoritativeEffectsOnlyForRequestedSubject() {
         TrainingExamRepository exams = mock(TrainingExamRepository.class);
         CertificationAssignmentService assignments = mock(CertificationAssignmentService.class);
         TrainingCertificationNotificationService notifications = mock(TrainingCertificationNotificationService.class);
@@ -32,13 +32,14 @@ class CertificationAudienceSyncServiceTest {
         var reactivated = effect(12L, 7L, CertificationAudienceEffectType.REACTIVATED);
         var unchanged = new AppliedCertificationAudienceEffect(
                 12L, "Certification 12", 20L, 7L, CertificationAudienceEffectType.UNCHANGED);
+        var removed = effect(13L, 7L, CertificationAudienceEffectType.AUDIENCE_REMOVED);
         when(assignments.syncAudienceAssignmentsWithEffects(first))
                 .thenReturn(new CertificationAudienceSyncResult(List.of(), List.of(created, otherUser)));
         when(assignments.syncAudienceAssignmentsWithEffects(second))
-                .thenReturn(new CertificationAudienceSyncResult(List.of(), List.of(reactivated, unchanged)));
+                .thenReturn(new CertificationAudienceSyncResult(List.of(), List.of(reactivated, unchanged, removed)));
 
         assertThat(service.syncRestaurantAudience(1L, 7L))
-                .containsExactly(created, reactivated, unchanged);
+                .containsExactly(created, reactivated, unchanged, removed);
     }
 
     private AppliedCertificationAudienceEffect effect(Long examId, Long userId,
