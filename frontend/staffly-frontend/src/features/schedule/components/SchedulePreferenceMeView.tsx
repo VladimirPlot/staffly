@@ -36,7 +36,10 @@ type SchedulePreferenceMeViewProps = {
   error: string | null;
   message: string | null;
   onBack: () => void;
-  onSubmit: (request: UpsertMySchedulePreferenceRequest) => Promise<SchedulePreferenceMyResponse | null>;
+  onSubmit: (
+    request: UpsertMySchedulePreferenceRequest,
+    onSuccessBeforePublish: () => void,
+  ) => Promise<SchedulePreferenceMyResponse | null>;
   timeZone: string;
 };
 
@@ -424,15 +427,18 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         }
       }
     }
-    const response = await onSubmit({
-      expectedRevision: baseRevision,
-      cells: buildPreferenceCellsRequest(data.days, formStateByDay),
-      periodComment: periodComment.trim().length > 0 ? periodComment.trim() : null,
-    });
-    if (!response) return;
-    shouldAutosaveRef.current = false;
     const identity = draftIdentityRef.current;
-    if (identity) removeSchedulePreferenceDraft(identity);
+    await onSubmit(
+      {
+        expectedRevision: baseRevision,
+        cells: buildPreferenceCellsRequest(data.days, formStateByDay),
+        periodComment: periodComment.trim().length > 0 ? periodComment.trim() : null,
+      },
+      () => {
+        shouldAutosaveRef.current = false;
+        if (identity) removeSchedulePreferenceDraft(identity);
+      },
+    );
   }, [baseRevision, data, formStateByDay, onSubmit, periodComment]);
 
   const clearAll = React.useCallback(() => {

@@ -11,6 +11,7 @@ import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.schedule.dto.SchedulePreferenceCellRequest;
 import ru.staffly.schedule.dto.SchedulePreferenceMyResponse;
 import ru.staffly.schedule.dto.UpsertMySchedulePreferenceRequest;
 import ru.staffly.schedule.exception.ScheduleDomainConflictException;
@@ -121,6 +122,51 @@ class SchedulePreferenceRevisionConcurrencyTest {
     }
 
     @Test
+    void matchingRevisionDiffsCellsByDayWithoutReplacingRetainedIdentity() {
+        LocalDate omittedDay = DAY.plusDays(1);
+        LocalDate newDay = DAY.plusDays(2);
+        schedule.setEndDate(newDay);
+        SchedulePreferenceSubmission submission = submission(4, "old");
+        SchedulePreferenceCell retainedCell = submission.getCells().get(0);
+        SchedulePreferenceCell omittedCell = SchedulePreferenceCell.builder()
+                .id(101L).day(omittedDay).type(SchedulePreferenceType.UNAVAILABLE).fullDay(true).build();
+        omittedCell.setSubmission(submission);
+        submission.getCells().add(omittedCell);
+        when(submissions.findForUpdateByScheduleIdAndMemberId(SCHEDULE_ID, MEMBER_ID))
+                .thenReturn(Optional.of(submission));
+
+        SchedulePreferenceMyResponse response = service.upsertMyPreference(
+                RESTAURANT_ID, SCHEDULE_ID, USER_ID,
+                new UpsertMySchedulePreferenceRequest(4, List.of(
+                        cellRequest(DAY, SchedulePreferenceType.PREFER_DAY_OFF, "updated"),
+                        cellRequest(newDay, SchedulePreferenceType.AVAILABLE, "new")
+                ), "new comment"));
+
+        assertThat(response.revision()).isEqualTo(5);
+        assertThat(submission.getCells()).hasSize(2);
+        assertThat(submission.getCells()).extracting(SchedulePreferenceCell::getDay)
+                .containsExactlyInAnyOrder(DAY, newDay);
+        assertThat(submission.getCells()).extracting(SchedulePreferenceCell::getDay).doesNotHaveDuplicates();
+        SchedulePreferenceCell updated = submission.getCells().stream()
+                .filter(cell -> DAY.equals(cell.getDay())).findFirst().orElseThrow();
+        assertThat(updated).isSameAs(retainedCell);
+        assertThat(updated.getId()).isEqualTo(100L);
+        assertThat(updated.getSubmission()).isSameAs(submission);
+        assertThat(updated.getType()).isEqualTo(SchedulePreferenceType.PREFER_DAY_OFF);
+        assertThat(updated.isFullDay()).isTrue();
+        assertThat(updated.getStartTime()).isNull();
+        assertThat(updated.getEndTime()).isNull();
+        assertThat(updated.getNote()).isEqualTo("updated");
+        assertThat(updated.getSortOrder()).isZero();
+        SchedulePreferenceCell added = submission.getCells().stream()
+                .filter(cell -> newDay.equals(cell.getDay())).findFirst().orElseThrow();
+        assertThat(added.getId()).isNull();
+        assertThat(added.getSubmission()).isSameAs(submission);
+        assertThat(added.getSortOrder()).isEqualTo(1);
+        assertThat(submission.getCells()).doesNotContain(omittedCell);
+    }
+
+    @Test
     void staleUpdateCannotMutateSubmissionOrTriggerSideEffects() {
         SchedulePreferenceSubmission submission = submission(5, "authoritative");
         SchedulePreferenceCell originalCell = submission.getCells().get(0);
@@ -208,6 +254,11 @@ class SchedulePreferenceRevisionConcurrencyTest {
 
     private UpsertMySchedulePreferenceRequest request(int expectedRevision, String comment) {
         return new UpsertMySchedulePreferenceRequest(expectedRevision, List.of(), comment);
+    }
+
+    private SchedulePreferenceCellRequest cellRequest(LocalDate day, SchedulePreferenceType type, String note) {
+        return new SchedulePreferenceCellRequest(
+                day.toString(), type, true, null, null, note);
     }
 
     private void assertRevisionConflict(Runnable operation) {
