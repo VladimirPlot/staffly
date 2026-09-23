@@ -126,7 +126,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         List<ScheduleRow> rowEntities = buildRows(
                 saved, requestedRows, request.cellValues(), request.cellShifts(), days, lockedMembers
         );
-        saved.setRows(rowEntities);
+        saved.getRows().addAll(rowEntities);
         saved = schedules.saveAndFlush(saved);
         scheduleAuditService.record(saved, userId, ScheduleAuditAction.CREATED, auditDetails);
         if (status == ScheduleStatus.PUBLISHED) {
