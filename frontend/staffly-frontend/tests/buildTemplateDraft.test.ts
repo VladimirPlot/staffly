@@ -268,7 +268,17 @@ test("marker transport data survives DTO draft request round trip without marker
     ],
   } satisfies ScheduleBuildTemplateDto;
 
-  assert.deepEqual(draftToSaveRequest(templateDtoToDraft(dto)).positionConfigs[0].markers, [
-    { name: "Клуб", memberIds: [12, 18] },
-  ]);
+  const roundTrip = draftToSaveRequest(templateDtoToDraft(dto)).positionConfigs[0];
+  assert.equal(roundTrip.id, 2);
+  assert.deepEqual(roundTrip.markers, [{ id: 7, name: "Клуб", memberIds: [12, 18] }]);
+});
+
+test("new position configs and markers never inherit persistence ids", () => {
+  const config = createPositionConfigDraft();
+  config.markers.push({ name: "Новый", memberIds: [] });
+
+  const request = draftToSaveRequest({ name: "Шаблон", description: "", positionConfigs: [config] });
+
+  assert.equal(request.positionConfigs[0].id, null);
+  assert.equal(request.positionConfigs[0].markers[0].id, null);
 });
