@@ -636,24 +636,27 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (positionIds.isEmpty()) {
                 continue;
             }
-            if (config.getWeekdayRegimes().size() != 1) {
-                throw new BadRequestException("Сбор пожеланий по вариантам смен пока требует один all-week weekday regime");
-            }
-            for (ScheduleBuildShiftOption option : config.getWeekdayRegimes().get(0).getShiftOptions().stream()
-                    .sorted(Comparator.comparing(ScheduleBuildShiftOption::getSortOrder,
-                                    Comparator.nullsLast(Integer::compareTo))
-                            .thenComparing(ScheduleBuildShiftOption::getId))
-                    .toList()) {
-                SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder()
-                        .schedule(schedule)
-                        .sourceShiftOptionId(option.getId())
-                        .label(option.getLabel())
-                        .startTime(option.getStartTime())
-                        .endTime(option.getEndTime())
-                        .sortOrder(order++)
-                        .positionIds(new LinkedHashSet<>(positionIds))
-                        .build();
-                schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
+            for (ScheduleBuildWeekdayRegime regime : config.getWeekdayRegimes().stream()
+                    .sorted(Comparator.comparing(ScheduleBuildWeekdayRegime::getSortOrder,
+                            Comparator.nullsLast(Integer::compareTo)).thenComparing(ScheduleBuildWeekdayRegime::getId,
+                            Comparator.nullsLast(Long::compareTo))).toList()) {
+                for (ScheduleBuildShiftOption option : regime.getShiftOptions().stream()
+                        .sorted(Comparator.comparing(ScheduleBuildShiftOption::getSortOrder,
+                                        Comparator.nullsLast(Integer::compareTo))
+                                .thenComparing(ScheduleBuildShiftOption::getId))
+                        .toList()) {
+                    SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder()
+                            .schedule(schedule)
+                            .sourceShiftOptionId(option.getId())
+                            .label(option.getLabel())
+                            .startTime(option.getStartTime())
+                            .endTime(option.getEndTime())
+                            .sortOrder(order++)
+                            .daysOfWeek(new LinkedHashSet<>(regime.getDaysOfWeek()))
+                            .positionIds(new LinkedHashSet<>(positionIds))
+                            .build();
+                    schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
+                }
             }
         }
     }

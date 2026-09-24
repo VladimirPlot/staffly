@@ -325,7 +325,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 }
                 startTime = parseTime(request.startTime(), "cells[" + i + "].startTime");
                 endTime = parseTime(request.endTime(), "cells[" + i + "].endTime");
-                if (startTime.equals(endTime) || !isApplicableSnapshot(schedule, participationPositionId, startTime, endTime)) {
+                if (startTime.equals(endTime) || !isApplicableSnapshot(schedule, participationPositionId, day, startTime, endTime)) {
                     throw unavailablePreferenceInterval(startTime, endTime);
                 }
             }
@@ -338,10 +338,11 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return cells;
     }
 
-    private boolean isApplicableSnapshot(Schedule schedule, Long positionId,
+    private boolean isApplicableSnapshot(Schedule schedule, Long positionId, LocalDate businessDate,
                                          LocalTime startTime, LocalTime endTime) {
         return positionId != null && schedule.getPreferenceShiftOptionSnapshots().stream()
                 .anyMatch(option -> option.getPositionIds().contains(positionId)
+                        && option.getDaysOfWeek().contains(businessDate.getDayOfWeek())
                         && option.getStartTime().equals(startTime)
                         && option.getEndTime().equals(endTime));
     }
@@ -369,24 +370,29 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 submission == null ? 0 : submission.getRevision(),
                 schedule.getPreferenceCollectionCycle(),
                 toMemberDto(participation),
-                allowedShiftOptions(schedule, participation.getPositionId()),
+                allowedShiftOptionsByDate(schedule, participation.getPositionId()),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
                 submission == null ? null : submission.getPeriodComment()
         );
     }
 
-    private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, Long positionId) {
+    Map<String, List<SchedulePreferenceAllowedShiftOptionDto>> allowedShiftOptionsByDate(
+            Schedule schedule, Long positionId) {
         if (schedule.getPreferenceCollectionMode() != PreferenceCollectionMode.SHIFT_OPTIONS || positionId == null) {
-            return List.of();
+            return Map.of();
         }
-        return schedule.getPreferenceShiftOptionSnapshots().stream()
-                .filter(option -> option.getPositionIds().contains(positionId))
-                .sorted(Comparator.comparing(SchedulePreferenceShiftOptionSnapshot::getSortOrder)
-                        .thenComparing(SchedulePreferenceShiftOptionSnapshot::getId,
-                                Comparator.nullsLast(Long::compareTo)))
-                .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
-                        option.getSourceShiftOptionId(), option.getLabel(), option.getStartTime(), option.getEndTime()))
-                .toList();
+        Map<String, List<SchedulePreferenceAllowedShiftOptionDto>> result = new LinkedHashMap<>();
+        schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).forEach(businessDate ->
+                result.put(businessDate.toString(), schedule.getPreferenceShiftOptionSnapshots().stream()
+                        .filter(option -> option.getPositionIds().contains(positionId)
+                                && option.getDaysOfWeek().contains(businessDate.getDayOfWeek()))
+                        .sorted(Comparator.comparing(SchedulePreferenceShiftOptionSnapshot::getSortOrder)
+                                .thenComparing(SchedulePreferenceShiftOptionSnapshot::getId,
+                                        Comparator.nullsLast(Long::compareTo)))
+                        .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
+                                option.getSourceShiftOptionId(), option.getLabel(), option.getStartTime(), option.getEndTime()))
+                        .toList()));
+        return result;
     }
 
     private boolean canSubmit(Schedule schedule) {

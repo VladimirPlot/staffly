@@ -11,6 +11,7 @@ import ru.staffly.schedule.model.SchedulePreferenceCell;
 import ru.staffly.schedule.model.SchedulePreferenceShiftOptionSnapshot;
 import ru.staffly.schedule.model.SchedulePreferenceType;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SchedulePreferenceSubmissionValidationTest {
 
-    private static final LocalDate DAY = LocalDate.of(2026, 9, 18);
+    private static final LocalDate DAY = LocalDate.of(2026, 9, 16); // Wednesday
     private static final Position EMPLOYEE_POSITION = Position.builder().id(1L).name("Официант").build();
     private static final RestaurantMember MEMBER = RestaurantMember.builder().position(EMPLOYEE_POSITION).build();
 
@@ -52,6 +53,45 @@ class SchedulePreferenceSubmissionValidationTest {
     @Test
     void rejectsShiftOptionsSnapshotForAnotherPosition() {
         assertRejected(shiftOptionsSchedule(2L), request(SchedulePreferenceType.AVAILABLE, false, "10:00", "17:00"));
+    }
+
+    @Test
+    void rejectsShiftOptionFrozenForFridayWhenSubmittedForWednesday() {
+        Schedule schedule = shiftOptionsSchedule(1L);
+        schedule.getPreferenceShiftOptionSnapshots().get(0).setDaysOfWeek(
+                new LinkedHashSet<>(List.of(DayOfWeek.FRIDAY)));
+
+        assertRejected(schedule, request(SchedulePreferenceType.AVAILABLE, false, "10:00", "17:00"));
+    }
+
+    @Test
+    void exposesOnlyTheFrozenVocabularyForEachBusinessDate() {
+        Schedule schedule = shiftOptionsSchedule(1L);
+        schedule.setEndDate(DAY.plusDays(2));
+        SchedulePreferenceShiftOptionSnapshot wednesday = schedule.getPreferenceShiftOptionSnapshots().get(0);
+        wednesday.setSourceShiftOptionId(10L);
+        wednesday.setDaysOfWeek(new LinkedHashSet<>(List.of(DayOfWeek.WEDNESDAY)));
+        schedule.getPreferenceShiftOptionSnapshots().add(SchedulePreferenceShiftOptionSnapshot.builder()
+                .sourceShiftOptionId(20L).startTime(LocalTime.of(17, 0)).endTime(LocalTime.MIDNIGHT)
+                .daysOfWeek(new LinkedHashSet<>(List.of(DayOfWeek.FRIDAY)))
+                .positionIds(new LinkedHashSet<>(List.of(1L))).sortOrder(1).build());
+
+        var vocabulary = service.allowedShiftOptionsByDate(schedule, 1L);
+
+        assertThat(vocabulary.get(DAY.toString())).extracting("id").containsExactly(10L);
+        assertThat(vocabulary.get(DAY.plusDays(2).toString())).extracting("id").containsExactly(20L);
+        assertThat(vocabulary.get(DAY.plusDays(1).toString())).isEmpty();
+    }
+
+    @Test
+    void acceptsOvernightShiftUsingPreferenceBusinessDateWeekday() {
+        Schedule schedule = shiftOptionsSchedule(1L);
+        SchedulePreferenceShiftOptionSnapshot option = schedule.getPreferenceShiftOptionSnapshots().get(0);
+        option.setDaysOfWeek(new LinkedHashSet<>(List.of(DAY.getDayOfWeek())));
+        option.setStartTime(LocalTime.of(21, 0));
+        option.setEndTime(LocalTime.of(6, 0));
+
+        assertAccepted(schedule, request(SchedulePreferenceType.AVAILABLE, false, "21:00", "06:00"));
     }
 
     @Test
@@ -92,6 +132,7 @@ class SchedulePreferenceSubmissionValidationTest {
         schedule.getPreferenceShiftOptionSnapshots().add(SchedulePreferenceShiftOptionSnapshot.builder()
                 .startTime(LocalTime.of(10, 0))
                 .endTime(LocalTime.of(17, 0))
+                .daysOfWeek(new LinkedHashSet<>(List.of(DayOfWeek.values())))
                 .positionIds(new LinkedHashSet<>(List.of(snapshotPositionId)))
                 .sortOrder(0)
                 .build());

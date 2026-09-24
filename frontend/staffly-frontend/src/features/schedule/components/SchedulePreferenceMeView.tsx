@@ -6,7 +6,12 @@ import Card from "../../../shared/ui/Card";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Modal from "../../../shared/ui/Modal";
 import { formatDateFromIso } from "../../../shared/utils/date";
-import type { SchedulePreferenceMyResponse, SchedulePreferenceType, UpsertMySchedulePreferenceRequest } from "../api";
+import type {
+  SchedulePreferenceAllowedShiftOptionDto,
+  SchedulePreferenceMyResponse,
+  SchedulePreferenceType,
+  UpsertMySchedulePreferenceRequest,
+} from "../api";
 import {
   buildPreferenceCellsRequest,
   canAutosaveSchedulePreferenceDraft,
@@ -521,8 +526,20 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   const selectedQuickPatternStartDay = data.days.some((day) => day.date === quickPatternStartDay)
     ? quickPatternStartDay
     : (data.days[0]?.date ?? "");
-  const allowedShiftOptions = data.allowedShiftOptions ?? [];
+  const allowedShiftOptions = editorDay ? (data.allowedShiftOptionsByDate?.[editorDay] ?? []) : [];
   const hasAllowedShiftOptions = allowedShiftOptions.length > 0;
+  const bulkAllowedShiftOptions = Array.from(selectedDays).reduce<SchedulePreferenceAllowedShiftOptionDto[]>(
+    (common, day, index) => {
+      const options = data.allowedShiftOptionsByDate?.[day] ?? [];
+      return index === 0
+        ? options
+        : common.filter((candidate) =>
+            options.some((option) => option.startTime === candidate.startTime && option.endTime === candidate.endTime),
+          );
+    },
+    [],
+  );
+  const hasBulkAllowedShiftOptions = bulkAllowedShiftOptions.length > 0;
 
   return (
     <div className="space-y-4">
@@ -922,7 +939,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               >
                 <option value="FULL_DAY">Могу работать в любое время</option>
                 {data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
-                  allowedShiftOptions.map((option) => {
+                  bulkAllowedShiftOptions.map((option) => {
                     const startTime = normalizeTimeForUi(option.startTime);
                     const endTime = normalizeTimeForUi(option.endTime);
                     return (
@@ -936,7 +953,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
             )}
             {bulkEditorValue?.type === "AVAILABLE" &&
               data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
-              !hasAllowedShiftOptions && (
+              !hasBulkAllowedShiftOptions && (
                 <p className="text-muted text-sm">
                   Для вашей должности не настроены варианты смен. Доступен вариант на весь день.
                 </p>

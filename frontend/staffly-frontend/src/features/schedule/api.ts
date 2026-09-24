@@ -182,7 +182,7 @@ export type SchedulePreferenceMyResponse = {
   revision: number;
   preferenceCollectionCycle: number;
   member: SchedulePreferenceMemberDto;
-  allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
+  allowedShiftOptionsByDate: Record<string, SchedulePreferenceAllowedShiftOptionDto[]>;
   cells: SchedulePreferenceCellDto[];
   periodComment?: string | null;
 };

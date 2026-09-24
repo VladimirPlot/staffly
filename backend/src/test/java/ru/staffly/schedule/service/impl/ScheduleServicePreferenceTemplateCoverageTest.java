@@ -7,7 +7,9 @@ import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleBuildWeekdayRegime;
 
+import java.time.DayOfWeek;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -58,6 +60,44 @@ class ScheduleServicePreferenceTemplateCoverageTest {
         assertThat(schedule.getPreferenceShiftOptionSnapshots()).hasSize(2);
         assertThat(schedule.getPreferenceShiftOptionSnapshots().get(0).getPositionIds()).containsExactly(WAITER.getId());
         assertThat(schedule.getPreferenceShiftOptionSnapshots().get(1).getPositionIds()).containsExactly(BARTENDER.getId());
+    }
+
+    @Test
+    void freezesEachRegimeVocabularyWithItsNonContiguousBusinessWeekdays() {
+        ScheduleBuildPositionConfig config = config(List.of(WAITER), true);
+        ScheduleBuildWeekdayRegime first = config.getWeekdayRegimes().get(0);
+        first.setDaysOfWeek(new LinkedHashSet<>(List.of(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY)));
+        ScheduleBuildWeekdayRegime friday = regime(config, DayOfWeek.FRIDAY);
+        friday.getShiftOptions().add(ScheduleBuildShiftOption.builder().id(2L).weekdayRegime(friday)
+                .startTime(java.time.LocalTime.of(17, 0)).endTime(java.time.LocalTime.MIDNIGHT).sortOrder(0).build());
+        config.getWeekdayRegimes().add(friday);
+        Schedule schedule = schedule(WAITER);
+
+        ScheduleServiceImpl.replacePreferenceShiftOptionSnapshot(schedule, template(config));
+
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).hasSize(2);
+        assertThat(schedule.getPreferenceShiftOptionSnapshots().get(0).getDaysOfWeek())
+                .containsExactlyInAnyOrder(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY);
+        assertThat(schedule.getPreferenceShiftOptionSnapshots().get(1).getDaysOfWeek())
+                .containsExactly(DayOfWeek.FRIDAY);
+    }
+
+    @Test
+    void frozenRegimeVocabularySurvivesLaterTemplateMutation() {
+        ScheduleBuildPositionConfig config = config(List.of(WAITER), true);
+        Schedule schedule = schedule(WAITER);
+        ScheduleServiceImpl.replacePreferenceShiftOptionSnapshot(schedule, template(config));
+
+        ScheduleBuildShiftOption liveOption = config.getWeekdayRegimes().get(0).getShiftOptions().get(0);
+        liveOption.setStartTime(java.time.LocalTime.of(12, 0));
+        liveOption.setLabel("Changed later");
+        config.getWeekdayRegimes().get(0).setDaysOfWeek(new LinkedHashSet<>(List.of(DayOfWeek.FRIDAY)));
+
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).singleElement().satisfies(snapshot -> {
+            assertThat(snapshot.getStartTime()).isEqualTo(java.time.LocalTime.of(10, 0));
+            assertThat(snapshot.getLabel()).isNull();
+            assertThat(snapshot.getDaysOfWeek()).containsExactlyInAnyOrder(DayOfWeek.values());
+        });
     }
 
     @Test
@@ -119,15 +159,22 @@ class ScheduleServicePreferenceTemplateCoverageTest {
     }
 
     private static ScheduleBuildPositionConfig config(List<Position> positions, boolean withShiftOption) {
-        return ScheduleBuildPositionConfig.builder()
+        ScheduleBuildPositionConfig config = ScheduleBuildPositionConfig.builder()
                 .positions(new LinkedHashSet<>(positions))
-                .shiftOptions(withShiftOption
-                        ? new ArrayList<>(List.of(ScheduleBuildShiftOption.builder()
-                                .id(1L)
-                                .sortOrder(0)
-                                .build()))
-                        : new ArrayList<>())
                 .build();
+        ScheduleBuildWeekdayRegime regime = regime(config, DayOfWeek.values());
+        if (withShiftOption) {
+            regime.getShiftOptions().add(ScheduleBuildShiftOption.builder().id(1L).weekdayRegime(regime)
+                    .startTime(java.time.LocalTime.of(10, 0)).endTime(java.time.LocalTime.of(17, 0))
+                    .sortOrder(0).build());
+        }
+        config.getWeekdayRegimes().add(regime);
+        return config;
+    }
+
+    private static ScheduleBuildWeekdayRegime regime(ScheduleBuildPositionConfig config, DayOfWeek... days) {
+        return ScheduleBuildWeekdayRegime.builder().positionConfig(config)
+                .daysOfWeek(new LinkedHashSet<>(List.of(days))).shiftOptions(new ArrayList<>()).sortOrder(0).build();
     }
 
     private static Position position(Long id, String name) {
