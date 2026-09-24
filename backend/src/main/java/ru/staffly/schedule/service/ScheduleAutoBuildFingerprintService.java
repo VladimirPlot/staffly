@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleParticipationRepository;
+import ru.staffly.schedule.service.autobuild.ScheduleMarkerAffinityResolver;
+import ru.staffly.schedule.service.autobuild.ScheduleMarkerAffinityResolver.CandidatePositionIds;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -50,13 +52,13 @@ public class ScheduleAutoBuildFingerprintService {
                 .sorted(Comparator.comparing(participation -> participation.getMember().getId()))
                 .toList();
         Set<Long> candidateIds = new HashSet<>();
-        Map<Long, CandidateState> candidateStates = new HashMap<>();
+        Map<Long, CandidatePositionIds> candidateStates = new HashMap<>();
         for (ScheduleParticipation candidate : candidates) {
             Long memberId = candidate.getMember().getId();
             candidateIds.add(memberId);
             Long currentPositionId = candidate.getMember().getPosition() == null
                     ? null : candidate.getMember().getPosition().getId();
-            candidateStates.put(memberId, new CandidateState(candidate.getPositionId(), currentPositionId));
+            candidateStates.put(memberId, new CandidatePositionIds(candidate.getPositionId(), currentPositionId));
             out.add("candidate", memberId, candidate.getPositionId());
         }
 
@@ -128,7 +130,7 @@ public class ScheduleAutoBuildFingerprintService {
 
     /** Persistence IDs and regime insertion order are deliberately absent. */
     private String configKey(ScheduleBuildPositionConfig config, Set<Long> configPositionIds,
-                             Map<Long, CandidateState> candidateStates) {
+                             Map<Long, CandidatePositionIds> candidateStates) {
         Canonical canonical = new Canonical();
         canonical.add("config", config.getTargetPattern(), config.getMinRestHours(), config.getMinRestMode(),
                 config.getMaxShiftsPerPeriod(), config.getSortOrder());
@@ -140,7 +142,7 @@ public class ScheduleAutoBuildFingerprintService {
     }
 
     private String regimeKey(ScheduleBuildWeekdayRegime regime, Set<Long> configPositionIds,
-                             Map<Long, CandidateState> candidateStates) {
+                             Map<Long, CandidatePositionIds> candidateStates) {
         Canonical canonical = new Canonical();
         canonical.list("days", regime.getDaysOfWeek().stream().map(Enum::name).sorted().toList());
         canonical.add("period", regime.getWorkPeriodStart(), regime.getWorkPeriodEnd());
@@ -152,22 +154,16 @@ public class ScheduleAutoBuildFingerprintService {
     }
 
     private String shiftKey(ScheduleBuildShiftOption option, Set<Long> configPositionIds,
-                            Map<Long, CandidateState> candidateStates) {
+                            Map<Long, CandidatePositionIds> candidateStates) {
         ScheduleBuildMarker marker = option.getMarker();
-        List<Long> effectiveMembers = marker == null ? List.of() : marker.getMembers().stream()
-                .map(member -> member.getId())
-                .filter(Objects::nonNull)
-                .filter(memberId -> {
-                    CandidateState candidate = candidateStates.get(memberId);
-                    return candidate != null
-                            && configPositionIds.contains(candidate.participationPositionId())
-                            && configPositionIds.contains(candidate.currentMemberPositionId());
-                })
-                .sorted().toList();
+        List<Long> effectiveMembers = marker == null ? List.of()
+                : ScheduleMarkerAffinityResolver.resolveEffectiveMemberIds(
+                        configPositionIds,
+                        marker.getMembers().stream().map(member -> member.getId())
+                                .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet()),
+                        candidateStates);
         return key(option.getStartTime(), option.getEndTime(), option.getSortOrder(), marker != null, effectiveMembers);
     }
-
-    private record CandidateState(Long participationPositionId, Long currentMemberPositionId) {}
 
     private String key(Object... values) {
         Canonical canonical = new Canonical();
