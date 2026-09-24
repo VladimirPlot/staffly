@@ -264,20 +264,29 @@ export type ScheduleBuildCoverageDateOverrideDto = {
   requiredCount: number;
 };
 
+export type DayOfWeek = "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+
+export type ScheduleBuildWeekdayRegimeDto = {
+  id: number;
+  daysOfWeek: DayOfWeek[];
+  workPeriodStart: string;
+  workPeriodEnd: string;
+  shiftOptions: ScheduleBuildShiftOptionDto[];
+  coverageRules: ScheduleBuildCoverageRuleDto[];
+  coverageDateOverrides: ScheduleBuildCoverageDateOverrideDto[];
+  sortOrder: number;
+};
+
 export type ScheduleBuildPositionConfigDto = {
   id: number;
   positionIds: number[];
   positionNames: string[];
-  workPeriodStart: string;
-  workPeriodEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours: number | null;
   minRestMode: ScheduleBuildMinRestMode;
   maxShiftsPerPeriod: number | null;
   heavyDaysOfWeek: number[];
-  shiftOptions: ScheduleBuildShiftOptionDto[];
-  coverageRules: ScheduleBuildCoverageRuleDto[];
-  coverageDateOverrides: ScheduleBuildCoverageDateOverrideDto[];
+  weekdayRegimes: ScheduleBuildWeekdayRegimeDto[];
   sortOrder: number;
 };
 
@@ -313,18 +322,24 @@ export type SaveScheduleBuildCoverageDateOverrideRequest = {
   requiredCount: number;
 };
 
-export type SaveScheduleBuildPositionConfigRequest = {
-  positionIds: number[];
+export type SaveScheduleBuildWeekdayRegimeRequest = {
+  daysOfWeek: DayOfWeek[];
   workPeriodStart: string;
   workPeriodEnd: string;
+  shiftOptions: SaveScheduleBuildShiftOptionRequest[];
+  coverageRules: SaveScheduleBuildCoverageRuleRequest[];
+  coverageDateOverrides: SaveScheduleBuildCoverageDateOverrideRequest[];
+  sortOrder: number;
+};
+
+export type SaveScheduleBuildPositionConfigRequest = {
+  positionIds: number[];
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours?: number | null;
   minRestMode?: ScheduleBuildMinRestMode | null;
   maxShiftsPerPeriod?: number | null;
   heavyDaysOfWeek?: number[];
-  shiftOptions: SaveScheduleBuildShiftOptionRequest[];
-  coverageRules: SaveScheduleBuildCoverageRuleRequest[];
-  coverageDateOverrides: SaveScheduleBuildCoverageDateOverrideRequest[];
+  weekdayRegimes: SaveScheduleBuildWeekdayRegimeRequest[];
   sortOrder: number;
 };
 
@@ -572,9 +587,12 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
       ...config,
       positionIds: config.positionIds ?? [],
       positionNames: config.positionNames ?? [],
-      shiftOptions: config.shiftOptions ?? [],
-      coverageRules: config.coverageRules ?? [],
-      coverageDateOverrides: config.coverageDateOverrides ?? [],
+      weekdayRegimes: (config.weekdayRegimes ?? []).map((regime) => ({
+        ...regime,
+        daysOfWeek: regime.daysOfWeek ?? [],
+        shiftOptions: regime.shiftOptions ?? [], coverageRules: regime.coverageRules ?? [],
+        coverageDateOverrides: regime.coverageDateOverrides ?? [],
+      })),
     })),
   };
 }

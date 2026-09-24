@@ -153,46 +153,20 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
         for (PreparedPositionConfig preparedConfig : preparedConfigs) {
             SaveScheduleBuildPositionConfigRequest cfg = preparedConfig.request();
-            CanonicalBusinessInterval canonicalWorkPeriod = validateWorkPeriod(
-                    cfg.workPeriodStart(), cfg.workPeriodEnd());
-            if (cfg.minRestHours() != null && cfg.minRestHours() < 0)
-                throw new BadRequestException("minRestHours must be >= 0");
-            if (cfg.maxShiftsPerPeriod() != null && cfg.maxShiftsPerPeriod() <= 0)
-                throw new BadRequestException("maxShiftsPerPeriod must be > 0");
-            List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional
-                    .ofNullable(cfg.shiftOptions()).orElse(List.of());
-            if (shiftOptions.isEmpty()) throw new BadRequestException("shiftOptions must not be empty");
-            List<CanonicalBusinessInterval> canonicalShiftOptions = new ArrayList<>();
-            for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
-                if (option == null) throw new BadRequestException("shiftOption is required");
-                canonicalShiftOptions.add(validateShiftOption(
-                        option, canonicalWorkPeriod, cfg.workPeriodStart(), cfg.workPeriodEnd()));
+            if (cfg.minRestHours() != null && cfg.minRestHours() < 0) throw new BadRequestException("minRestHours must be >= 0");
+            if (cfg.maxShiftsPerPeriod() != null && cfg.maxShiftsPerPeriod() <= 0) throw new BadRequestException("maxShiftsPerPeriod must be > 0");
+            List<SaveScheduleBuildWeekdayRegimeRequest> regimes = Optional.ofNullable(cfg.weekdayRegimes()).orElse(List.of());
+            if (regimes.isEmpty()) throw new BadRequestException("weekdayRegimes must not be empty");
+            EnumSet<java.time.DayOfWeek> covered = EnumSet.noneOf(java.time.DayOfWeek.class);
+            for (SaveScheduleBuildWeekdayRegimeRequest regime : regimes) {
+                if (regime == null) throw new BadRequestException("weekdayRegime is required");
+                List<java.time.DayOfWeek> days = Optional.ofNullable(regime.daysOfWeek()).orElse(List.of());
+                if (days.isEmpty()) throw new BadRequestException("weekdayRegime.daysOfWeek must not be empty");
+                if (days.stream().anyMatch(Objects::isNull) || new HashSet<>(days).size() != days.size()) throw new BadRequestException("weekdayRegime.daysOfWeek must not contain null or duplicates");
+                for (java.time.DayOfWeek day : days) if (!covered.add(day)) throw new BadRequestException("Weekday must occur in exactly one regime: " + day);
+                validateRegime(regime, new HashSet<>(days));
             }
-            for (SaveScheduleBuildCoverageRuleRequest rule : Optional
-                    .ofNullable(cfg.coverageRules()).orElse(List.of())) {
-                if (rule == null) throw new BadRequestException("coverageRule is required");
-                if (rule.dayOfWeek() == null || rule.dayOfWeek() < 1 || rule.dayOfWeek() > 7)
-                    throw new BadRequestException("coverageRule.dayOfWeek must be 1..7");
-                if (rule.requiredCount() == null || rule.requiredCount() <= 0)
-                    throw new BadRequestException("coverageRule.requiredCount must be > 0");
-                CanonicalBusinessInterval canonicalRule = validateCoverageRule(rule, canonicalWorkPeriod);
-                validateCoverageRuleHasShiftOption(rule, canonicalRule, canonicalShiftOptions);
-            }
-            Set<String> dateOverrideKeys = new HashSet<>();
-            for (SaveScheduleBuildCoverageDateOverrideRequest override : Optional
-                    .ofNullable(cfg.coverageDateOverrides()).orElse(List.of())) {
-                if (override == null) throw new BadRequestException("coverageDateOverride is required");
-                if (override.date() == null) throw new BadRequestException("coverageDateOverride.date is required");
-                if (override.shiftOptionIndex() == null)
-                    throw new BadRequestException("coverageDateOverride.shiftOptionIndex is required");
-                if (override.requiredCount() == null || override.requiredCount() < 0)
-                    throw new BadRequestException("coverageDateOverride.requiredCount must be >= 0");
-                if (override.shiftOptionIndex() < 0 || override.shiftOptionIndex() >= shiftOptions.size())
-                    throw new BadRequestException("coverageDateOverride.shiftOptionIndex must reference a shiftOption from this positionConfig");
-                String key = override.date() + ":" + override.shiftOptionIndex();
-                if (!dateOverrideKeys.add(key))
-                    throw new BadRequestException("Duplicate coverageDateOverride for date and shiftOption");
-            }
+            if (!covered.equals(EnumSet.allOf(java.time.DayOfWeek.class))) throw new BadRequestException("weekdayRegimes must cover all seven weekdays exactly once");
         }
         return new PreparedTemplateRequest(name, trimToNull(request.description()),
                 request.isActive() == null || request.isActive(), List.copyOf(preparedConfigs), positionMap);
@@ -211,8 +185,6 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         int idx = 0;
         for (PreparedPositionConfig preparedConfig : prepared.configs()) {
             SaveScheduleBuildPositionConfigRequest cfg = preparedConfig.request();
-            List<SaveScheduleBuildShiftOptionRequest> shiftOptions = Optional.ofNullable(cfg.shiftOptions()).orElse(List.of());
-
             List<Long> cfgPositionIds = preparedConfig.positionIds();
             ScheduleBuildPositionConfig entity = existingByPositionKey.get(positionKey(cfgPositionIds));
             if (entity == null) {
@@ -223,8 +195,6 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.setTemplate(template);
             entity.getPositions().clear();
             cfgPositionIds.stream().map(prepared.positions()::get).forEach(entity.getPositions()::add);
-            entity.setWorkPeriodStart(cfg.workPeriodStart());
-            entity.setWorkPeriodEnd(cfg.workPeriodEnd());
             entity.setTargetPattern(cfg.targetPattern() == null ? ScheduleBuildPattern.NONE : cfg.targetPattern());
             entity.setMinRestHours(cfg.minRestHours());
             entity.setMinRestMode(cfg.minRestMode() == null ? ScheduleBuildMinRestMode.SOFT : cfg.minRestMode());
@@ -232,41 +202,31 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.getHeavyDaysOfWeek().clear();
             entity.getHeavyDaysOfWeek().addAll(preparedConfig.heavyDaysOfWeek());
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
-
-            entity.getShiftOptions().clear();
-            int so = 0;
-            for (SaveScheduleBuildShiftOptionRequest option : shiftOptions) {
-                ScheduleBuildShiftOption o = new ScheduleBuildShiftOption();
-                o.setPositionConfig(entity);
-                o.setStartTime(option.startTime());
-                o.setEndTime(option.endTime());
-                o.setLabel(trimToNull(option.label()));
-                o.setSortOrder(option.sortOrder() != null ? option.sortOrder() : so++);
-                entity.getShiftOptions().add(o);
-            }
-
-            entity.getCoverageRules().clear();
-            int cro = 0;
-            for (SaveScheduleBuildCoverageRuleRequest rule : Optional.ofNullable(cfg.coverageRules()).orElse(List.of())) {
-                ScheduleBuildCoverageRule r = new ScheduleBuildCoverageRule();
-                r.setPositionConfig(entity);
-                r.setDayOfWeek(rule.dayOfWeek());
-                r.setStartTime(rule.startTime());
-                r.setEndTime(rule.endTime());
-                r.setRequiredCount(rule.requiredCount());
-                r.setSortOrder(rule.sortOrder() != null ? rule.sortOrder() : cro++);
-                entity.getCoverageRules().add(r);
-            }
-
-            entity.getCoverageDateOverrides().clear();
-            for (SaveScheduleBuildCoverageDateOverrideRequest override : Optional.ofNullable(cfg.coverageDateOverrides()).orElse(List.of())) {
-                ScheduleBuildShiftOption shiftOption = entity.getShiftOptions().get(override.shiftOptionIndex());
-                ScheduleBuildCoverageDateOverride dateOverride = new ScheduleBuildCoverageDateOverride();
-                dateOverride.setPositionConfig(entity);
-                dateOverride.setDate(override.date());
-                dateOverride.setShiftOption(shiftOption);
-                dateOverride.setRequiredCount(override.requiredCount());
-                entity.getCoverageDateOverrides().add(dateOverride);
+            entity.getWeekdayRegimes().clear();
+            int regimeOrder = 0;
+            for (SaveScheduleBuildWeekdayRegimeRequest requestRegime : cfg.weekdayRegimes()) {
+                ScheduleBuildWeekdayRegime regime = new ScheduleBuildWeekdayRegime();
+                regime.setPositionConfig(entity);
+                regime.getDaysOfWeek().addAll(requestRegime.daysOfWeek().stream().sorted().toList());
+                regime.setWorkPeriodStart(requestRegime.workPeriodStart()); regime.setWorkPeriodEnd(requestRegime.workPeriodEnd());
+                regime.setSortOrder(requestRegime.sortOrder() == null ? regimeOrder++ : requestRegime.sortOrder());
+                int shiftOrder = 0;
+                for (SaveScheduleBuildShiftOptionRequest option : requestRegime.shiftOptions()) {
+                    ScheduleBuildShiftOption child = new ScheduleBuildShiftOption(); child.setWeekdayRegime(regime);
+                    child.setStartTime(option.startTime()); child.setEndTime(option.endTime()); child.setLabel(trimToNull(option.label()));
+                    child.setSortOrder(option.sortOrder() == null ? shiftOrder++ : option.sortOrder()); regime.getShiftOptions().add(child);
+                }
+                int coverageOrder = 0;
+                for (SaveScheduleBuildCoverageRuleRequest rule : Optional.ofNullable(requestRegime.coverageRules()).orElse(List.of())) {
+                    ScheduleBuildCoverageRule child = new ScheduleBuildCoverageRule(); child.setWeekdayRegime(regime); child.setDayOfWeek(rule.dayOfWeek());
+                    child.setStartTime(rule.startTime()); child.setEndTime(rule.endTime()); child.setRequiredCount(rule.requiredCount());
+                    child.setSortOrder(rule.sortOrder() == null ? coverageOrder++ : rule.sortOrder()); regime.getCoverageRules().add(child);
+                }
+                for (SaveScheduleBuildCoverageDateOverrideRequest override : Optional.ofNullable(requestRegime.coverageDateOverrides()).orElse(List.of())) {
+                    ScheduleBuildCoverageDateOverride child = new ScheduleBuildCoverageDateOverride(); child.setWeekdayRegime(regime); child.setDate(override.date());
+                    child.setShiftOption(regime.getShiftOptions().get(override.shiftOptionIndex())); child.setRequiredCount(override.requiredCount()); regime.getCoverageDateOverrides().add(child);
+                }
+                entity.getWeekdayRegimes().add(regime);
             }
 
             idx++;
@@ -298,6 +258,33 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 .distinct()
                 .sorted()
                 .toList();
+    }
+
+    private void validateRegime(SaveScheduleBuildWeekdayRegimeRequest regime, Set<java.time.DayOfWeek> days) {
+        CanonicalBusinessInterval workPeriod = validateWorkPeriod(regime.workPeriodStart(), regime.workPeriodEnd());
+        List<SaveScheduleBuildShiftOptionRequest> options = Optional.ofNullable(regime.shiftOptions()).orElse(List.of());
+        if (options.isEmpty()) throw new BadRequestException("weekdayRegime.shiftOptions must not be empty");
+        List<CanonicalBusinessInterval> canonicalOptions = new ArrayList<>(); Set<String> geometry = new HashSet<>();
+        for (SaveScheduleBuildShiftOptionRequest option : options) {
+            if (option == null) throw new BadRequestException("shiftOption is required");
+            CanonicalBusinessInterval canonical = validateShiftOption(option, workPeriod, regime.workPeriodStart(), regime.workPeriodEnd());
+            if (!geometry.add(canonical.startMinute() + ":" + canonical.endMinute())) throw new BadRequestException("Duplicate equivalent shiftOption in weekdayRegime");
+            canonicalOptions.add(canonical);
+        }
+        for (SaveScheduleBuildCoverageRuleRequest rule : Optional.ofNullable(regime.coverageRules()).orElse(List.of())) {
+            if (rule == null || rule.dayOfWeek() == null || rule.dayOfWeek() < 1 || rule.dayOfWeek() > 7) throw new BadRequestException("coverageRule.dayOfWeek must be 1..7");
+            if (!days.contains(java.time.DayOfWeek.of(rule.dayOfWeek()))) throw new BadRequestException("coverageRule weekday must belong to its weekdayRegime");
+            if (rule.requiredCount() == null || rule.requiredCount() <= 0) throw new BadRequestException("coverageRule.requiredCount must be > 0");
+            CanonicalBusinessInterval canonical = validateCoverageRule(rule, workPeriod); validateCoverageRuleHasShiftOption(rule, canonical, canonicalOptions);
+        }
+        Set<String> keys = new HashSet<>();
+        for (SaveScheduleBuildCoverageDateOverrideRequest override : Optional.ofNullable(regime.coverageDateOverrides()).orElse(List.of())) {
+            if (override == null || override.date() == null) throw new BadRequestException("coverageDateOverride.date is required");
+            if (!days.contains(override.date().getDayOfWeek())) throw new BadRequestException("coverageDateOverride date must belong to its weekdayRegime");
+            if (override.shiftOptionIndex() == null || override.shiftOptionIndex() < 0 || override.shiftOptionIndex() >= options.size()) throw new BadRequestException("coverageDateOverride.shiftOptionIndex must reference a shiftOption from its weekdayRegime");
+            if (override.requiredCount() == null || override.requiredCount() < 0) throw new BadRequestException("coverageDateOverride.requiredCount must be >= 0");
+            if (!keys.add(override.date() + ":" + override.shiftOptionIndex())) throw new BadRequestException("Duplicate coverageDateOverride for date and shiftOption");
+        }
     }
 
     private CanonicalBusinessInterval validateWorkPeriod(LocalTime start, LocalTime end) {
@@ -398,27 +385,26 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getPositions());
-            Hibernate.initialize(positionConfig.getShiftOptions());
-            Hibernate.initialize(positionConfig.getCoverageRules());
-            Hibernate.initialize(positionConfig.getCoverageDateOverrides());
-            positionConfig.getCoverageDateOverrides().forEach(override -> Hibernate.initialize(override.getShiftOption()));
+            Hibernate.initialize(positionConfig.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules()); Hibernate.initialize(regime.getCoverageDateOverrides());
+                regime.getCoverageDateOverrides().forEach(override -> Hibernate.initialize(override.getShiftOption()));
+            }
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
 
     private ScheduleBuildTemplateDto toDto(ScheduleBuildTemplate t) {
         return new ScheduleBuildTemplateDto(t.getId(), t.getVersion(), t.getName(), t.getDescription(), t.isActive(), t.getCreatedAt(), t.getUpdatedAt(),
-                t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(
-                        pc.getId(), configPositionIds(pc), configPositionNames(pc), pc.getWorkPeriodStart(), pc.getWorkPeriodEnd(),
-                        pc.getTargetPattern(), pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(),
-                        pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
-                        pc.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.getSortOrder())).toList(),
-                        pc.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
-                        pc.getCoverageDateOverrides().stream()
-                                .map(o -> new ScheduleBuildCoverageDateOverrideDto(o.getId(), o.getDate(), shiftOptionIndex(pc, o.getShiftOption()), o.getRequiredCount()))
-                                .filter(o -> o.shiftOptionIndex() != null)
-                                .toList(),
-                        pc.getSortOrder())).toList());
+                t.getPositionConfigs().stream().map(pc -> new ScheduleBuildPositionConfigDto(pc.getId(), configPositionIds(pc), configPositionNames(pc), pc.getTargetPattern(),
+                        pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(), pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
+                        pc.getWeekdayRegimes().stream().map(regime -> new ScheduleBuildWeekdayRegimeDto(regime.getId(), regime.getDaysOfWeek().stream().sorted().toList(),
+                                regime.getWorkPeriodStart(), regime.getWorkPeriodEnd(),
+                                regime.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.getSortOrder())).toList(),
+                                regime.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
+                                regime.getCoverageDateOverrides().stream().map(o -> new ScheduleBuildCoverageDateOverrideDto(o.getId(), o.getDate(), shiftOptionIndex(regime, o.getShiftOption()), o.getRequiredCount())).toList(),
+                                regime.getSortOrder())).toList(), pc.getSortOrder())).toList());
     }
 
     private List<Long> normalizePositionIds(SaveScheduleBuildPositionConfigRequest cfg) {
@@ -446,8 +432,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 .toList();
     }
 
-    private Integer shiftOptionIndex(ScheduleBuildPositionConfig config, ScheduleBuildShiftOption shiftOption) {
-        int index = config.getShiftOptions().indexOf(shiftOption);
+    private Integer shiftOptionIndex(ScheduleBuildWeekdayRegime regime, ScheduleBuildShiftOption shiftOption) {
+        int index = regime.getShiftOptions().indexOf(shiftOption);
         return index < 0 ? null : index;
     }
 

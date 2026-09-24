@@ -39,6 +39,7 @@ export type ScheduleBuildPositionConfigDraft = {
   shiftOptions: ScheduleBuildShiftOptionDraft[];
   coverageRules: ScheduleBuildCoverageRuleDraft[];
   coverageDateOverrides: ScheduleBuildCoverageDateOverrideDraft[];
+  hasMultipleWeekdayRegimes: boolean;
 };
 
 export type ScheduleBuildTemplateDraft = {
@@ -92,15 +93,18 @@ export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft =>
   shiftOptions: [createShiftOptionDraft()],
   coverageRules: [],
   coverageDateOverrides: [],
+  hasMultipleWeekdayRegimes: false,
 });
 
 export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): ScheduleBuildTemplateDraft => ({
   name: template?.name ?? "",
   description: template?.description ?? "",
-  positionConfigs: template?.positionConfigs?.map((config) => ({
+  positionConfigs: template?.positionConfigs?.map((config) => {
+    const regime = config.weekdayRegimes[0];
+    return ({
     positionIds: config.positionIds ?? [],
-    workPeriodStart: config.workPeriodStart,
-    workPeriodEnd: config.workPeriodEnd,
+    workPeriodStart: regime?.workPeriodStart ?? "",
+    workPeriodEnd: regime?.workPeriodEnd ?? "",
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours ?? "",
     minRestMode: config.minRestMode ?? "SOFT",
@@ -109,25 +113,26 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       .filter((day) => day >= 1 && day <= 7)
       .sort((a, b) => a - b),
     sortOrder: config.sortOrder,
-    shiftOptions: (config.shiftOptions ?? []).map((option) => ({
+    shiftOptions: (regime?.shiftOptions ?? []).map((option) => ({
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label ?? "",
       sortOrder: option.sortOrder,
     })),
-    coverageRules: (config.coverageRules ?? []).map((rule) => ({
+    coverageRules: (regime?.coverageRules ?? []).map((rule) => ({
       dayOfWeek: rule.dayOfWeek,
       startTime: rule.startTime,
       endTime: rule.endTime,
       requiredCount: rule.requiredCount,
       sortOrder: rule.sortOrder,
     })),
-    coverageDateOverrides: (config.coverageDateOverrides ?? []).map((override) => ({
+    hasMultipleWeekdayRegimes: config.weekdayRegimes.length > 1,
+    coverageDateOverrides: (regime?.coverageDateOverrides ?? []).map((override) => ({
       date: override.date,
       shiftOptionIndex: override.shiftOptionIndex,
       requiredCount: override.requiredCount,
     })),
-  })) ?? [createPositionConfigDraft()],
+  }); }) ?? [createPositionConfigDraft()],
 });
 
 export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveScheduleBuildTemplateRequest => ({
@@ -135,8 +140,6 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
   description: draft.description.trim() ? draft.description.trim() : null,
   positionConfigs: draft.positionConfigs.map((config, index) => ({
     positionIds: [...new Set(config.positionIds)].sort((a, b) => a - b),
-    workPeriodStart: config.workPeriodStart,
-    workPeriodEnd: config.workPeriodEnd,
     targetPattern: config.targetPattern,
     minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
     minRestMode: config.minRestMode,
@@ -145,7 +148,12 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       .filter((day) => day >= 1 && day <= 7)
       .sort((a, b) => a - b),
     sortOrder: index,
-    shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
+    weekdayRegimes: [{
+      daysOfWeek: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"],
+      workPeriodStart: config.workPeriodStart,
+      workPeriodEnd: config.workPeriodEnd,
+      sortOrder: 0,
+      shiftOptions: config.shiftOptions.map((option, optionIndex) => ({
       startTime: option.startTime,
       endTime: option.endTime,
       label: option.label?.trim() ? option.label.trim() : null,
@@ -168,6 +176,7 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
         shiftOptionIndex: override.shiftOptionIndex,
         requiredCount: Number(override.requiredCount) || 0,
       })),
+    }],
   })),
 });
 
@@ -177,6 +186,9 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
 
   const usedPositionIds = new Set<number>();
   for (let i = 0; i < draft.positionConfigs.length; i++) {
+    if (draft.positionConfigs[i].hasMultipleWeekdayRegimes) {
+      return `Редактирование нескольких режимов будней для должности #${i + 1} будет доступно на следующем этапе`;
+    }
     for (const positionId of draft.positionConfigs[i].positionIds) {
       if (usedPositionIds.has(positionId)) return "Одна должность не может входить в два блока шаблона";
       usedPositionIds.add(positionId);

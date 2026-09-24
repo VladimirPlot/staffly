@@ -11,6 +11,7 @@ import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleBuildWeekdayRegime;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.model.PreferenceCollectionMode;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
@@ -107,8 +108,10 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
                         .filter(schedulePositionIds::contains)
                         .collect(Collectors.toCollection(LinkedHashSet::new))))
                 .filter(scoped -> !scoped.positionIds().isEmpty())
-                .flatMap(scoped -> scoped.config().getShiftOptions().stream().map(option ->
-                        new ShiftVocabularyEntry(scoped.positionIds(), option.getStartTime(), option.getEndTime())))
+                .flatMap(scoped -> scoped.config().getWeekdayRegimes().size() == 1
+                        ? scoped.config().getWeekdayRegimes().get(0).getShiftOptions().stream().map(option ->
+                            new ShiftVocabularyEntry(scoped.positionIds(), option.getStartTime(), option.getEndTime()))
+                        : java.util.stream.Stream.of(new ShiftVocabularyEntry(scoped.positionIds(), null, null)))
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
         return !snapshot.equals(live);
     }
@@ -144,8 +147,11 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getPositions());
-            Hibernate.initialize(positionConfig.getShiftOptions());
-            Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules());
+            }
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
