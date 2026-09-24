@@ -465,7 +465,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
-        // Discover without locking, then acquire the global Member -> Template -> Schedule order.
+        // Discover without locking, then acquire the global Member -> Schedule -> Template order.
         List<Long> discoveredPositionIds = schedules.findPositionIdsByIdAndRestaurantId(scheduleId, restaurantId);
         List<Long> candidateIds = discoveredPositionIds.isEmpty() ? List.of()
                 : members.findByRestaurantIdAndPositionIdIn(restaurantId, discoveredPositionIds).stream()
@@ -478,11 +478,6 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
         Long buildTemplateId = request.buildTemplateId();
         validatePreferenceCollectionModeSelection(mode, buildTemplateId);
-        // Template precedes Schedule so template updates can lock the stable linked-schedule set
-        // without inverting the aggregate lock order.
-        ScheduleBuildTemplate preferenceBuildTemplate = mode == PreferenceCollectionMode.SHIFT_OPTIONS
-                ? lockPreferenceBuildTemplate(restaurantId, buildTemplateId)
-                : null;
         Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, request.version());
@@ -497,6 +492,10 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (!deadline.isAfter(now)) {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
+
+        ScheduleBuildTemplate preferenceBuildTemplate = mode == PreferenceCollectionMode.SHIFT_OPTIONS
+                ? lockPreferenceBuildTemplate(restaurantId, buildTemplateId)
+                : null;
 
         if (preferenceBuildTemplate != null) {
             validatePreferenceTemplatePositionCoverage(schedule, preferenceBuildTemplate);

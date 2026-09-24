@@ -34,6 +34,19 @@ The existing current-position update now locks its `RestaurantMember` row before
 
 Multiple Schedules are locked by a restaurant-scoped, `ORDER BY s.id ASC` repository primitive; callers never rely on `IN` result order.
 
+ScheduleBuildTemplate update first reads an optimistic, non-locking template snapshot and performs
+fail-fast version and request validation. That early version check is an optimization only; the
+snapshot is detached and does not participate in the mutation lock order. The command then discovers
+linked Schedule ids without mutation locks, canonicalizes them, locks those Schedules in ascending id
+order, and only then locks/reloads the template. The expected template version and the complete
+authoritative linked-Schedule set are revalidated after the template lock and before impact planning
+or mutation. Request preparation is repeated against that final locked template, and planning and
+mutation use only the locked aggregate. A changed discovery set produces
+`SCHEDULE_BUILD_TEMPLATE_LINKAGE_CHANGED`; acquisition is not expanded after the template lock and
+there is no automatic retry that could make a stale request succeed. This preserves the global
+`RestaurantMember` → `Schedule` → `ScheduleBuildTemplate` → children order and leaves a member-lock
+phase available for future template membership validation.
+
 ## Mutation audit and normalization
 
 | Path | Before | After |
@@ -106,7 +119,8 @@ All four were corrected. `createWithLocksHeld` / `createMissingWithLocksHeld` no
 | shift-request create | Schedule | Schedule | Correct; participation is checked before row content is used. |
 | shift-request decide/cancel | Schedule, request | Schedule → request | Correct; initial request lookup only discovers parent Schedule id. |
 | Schedule update auto-rejection | Schedule, pending requests | Schedule → request children ascending | Correct. |
-| template mutation | template | Template | Outside Schedule mutation; no Schedule is acquired afterward. |
+| template update | linked Schedules, template | optimistic read/validation → discovery → Schedules ascending → Template | Correct; the read is non-locking and linkage/version are revalidated under the final locks before planning or mutation. |
+| template archive | template | Template | Correct; it acquires no Schedule lock. |
 
 There is no production `Schedule PESSIMISTIC_WRITE → RestaurantMember PESSIMISTIC_WRITE` path. Member reads used by access, notification, preference, shift-request, and ownership code are ordinary reads and do not participate in the member lock order.
 

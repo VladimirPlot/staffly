@@ -74,21 +74,39 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (request == null) {
             throw new BadRequestException("request body is required");
         }
-        ScheduleBuildTemplate template = getEditableTemplate(restaurantId, templateId);
-        assertExpectedVersion(template, request.expectedVersion());
-        PreparedTemplateRequest prepared = prepareRequest(template, restaurantId, request, false);
+        // This snapshot is fail-fast only. It is deliberately not a mutation mutex or a
+        // concurrency authority; the version and all state-dependent decisions are repeated
+        // against the pessimistically locked aggregate below.
+        ScheduleBuildTemplate optimisticTemplate = getTemplate(restaurantId, templateId);
+        assertExpectedVersion(optimisticTemplate, request.expectedVersion());
+        prepareRequest(optimisticTemplate, restaurantId, request, false);
+        // Ensure the later locking query cannot be satisfied by this persistence-context
+        // snapshot. Cascade DETACH removes the initialized aggregate children as well.
+        entityManager.detach(optimisticTemplate);
 
-        List<Long> linkedIds = schedules.findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(
-                restaurantId, templateId);
+        // Discovery is deliberately lock-free and is only an acquisition candidate set.  In
+        // particular, do not load/lock the template before the Schedule aggregate mutexes.
+        List<Long> linkedIds = canonicalIds(schedules
+                .findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(restaurantId, templateId));
         List<Schedule> lockedSchedules = linkedIds.isEmpty() ? List.of()
                 : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, linkedIds);
+
+        ScheduleBuildTemplate template = getEditableTemplate(restaurantId, templateId);
+        assertExpectedVersion(template, request.expectedVersion());
+
+        List<Long> lockedIds = canonicalIds(lockedSchedules.stream().map(Schedule::getId).toList());
         List<Long> authoritativeLinkedIds = schedules
                 .findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(restaurantId, templateId);
-        if (lockedSchedules.size() != linkedIds.size() || !linkedIds.equals(authoritativeLinkedIds)) {
+        authoritativeLinkedIds = canonicalIds(authoritativeLinkedIds);
+        if (!linkedIds.equals(lockedIds) || !linkedIds.equals(authoritativeLinkedIds)) {
             throw new ScheduleDomainConflictException("SCHEDULE_BUILD_TEMPLATE_LINKAGE_CHANGED",
                     "Состав связанных графиков изменился. Повторите действие.");
         }
 
+        // Re-run the existing preparation boundary because name uniqueness is conditional on
+        // current persisted state. The resulting representation belongs to the final locked
+        // aggregate; no mutation decision relies on the optimistic snapshot.
+        PreparedTemplateRequest prepared = prepareRequest(template, restaurantId, request, false);
         ScheduleBuildTemplateImpactPlan plan = impactPlanner.plan(template, request, lockedSchedules);
         boolean parentScalarChange = hasParentScalarChange(template, prepared);
         if (plan.impact() == ru.staffly.schedule.service.ScheduleBuildTemplateChangeImpact.NONE
@@ -364,6 +382,14 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (expectedVersion == null || !Objects.equals(template.getVersion(), expectedVersion)) {
             throw new ScheduleBuildTemplateVersionConflictException(expectedVersion, template.getVersion());
         }
+    }
+
+    private List<Long> canonicalIds(Collection<Long> ids) {
+        return ids == null ? List.of() : ids.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     private void executeConsequences(ScheduleBuildTemplateImpactPlan plan, List<Schedule> lockedSchedules,

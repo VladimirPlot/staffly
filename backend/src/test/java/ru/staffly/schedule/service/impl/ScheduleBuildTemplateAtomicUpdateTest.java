@@ -46,6 +46,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
     @Mock EntityManager entityManager;
 
     ScheduleBuildTemplateServiceImpl service;
+    ScheduleBuildTemplate optimisticTemplate;
     ScheduleBuildTemplate template;
     SaveScheduleBuildTemplateRequest request;
 
@@ -55,10 +56,13 @@ class ScheduleBuildTemplateAtomicUpdateTest {
                 security, access, planner, lifecycle, entityManager);
         Restaurant restaurant = Restaurant.builder().id(1L).build();
         Position position = Position.builder().id(2L).name("Cook").restaurant(restaurant).build();
+        optimisticTemplate = ScheduleBuildTemplate.builder().id(10L).version(4L).restaurant(restaurant)
+                .name("Old").isActive(true).build();
         template = ScheduleBuildTemplate.builder().id(10L).version(4L).restaurant(restaurant)
                 .name("Old").isActive(true).build();
         request = request(false, 4L);
-        when(templates.findForUpdateByIdAndRestaurantId(10L, 1L)).thenReturn(Optional.of(template));
+        lenient().when(templates.findByIdAndRestaurantId(10L, 1L)).thenReturn(Optional.of(optimisticTemplate));
+        lenient().when(templates.findForUpdateByIdAndRestaurantId(10L, 1L)).thenReturn(Optional.of(template));
         lenient().when(positions.findAllById(any())).thenReturn(List.of(position));
         lenient().when(templates.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
     }
@@ -71,7 +75,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
         service.update(1L, 10L, 7L, identical);
 
         verify(templates, never()).saveAndFlush(any());
-        verifyNoInteractions(entityManager);
+        verifyOnlyOptimisticDetach();
         verifyNoInteractions(lifecycle);
         assertThat(template.getName()).isEqualTo("Old");
     }
@@ -84,6 +88,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
 
         assertThat(template.getName()).isEqualTo("New");
         verify(templates).saveAndFlush(template);
+        verify(entityManager).detach(optimisticTemplate);
         verify(entityManager, never()).lock(any(), any());
         verifyNoInteractions(lifecycle);
     }
@@ -106,7 +111,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
         assertThat(template.getName()).isEqualTo("Old");
         verifyNoInteractions(lifecycle);
         verify(templates, never()).saveAndFlush(any());
-        verifyNoInteractions(entityManager);
+        verifyOnlyOptimisticDetach();
     }
 
     @Test
@@ -134,6 +139,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
 
         service.update(1L, 10L, 7L, childOnly);
 
+        verify(entityManager).detach(optimisticTemplate);
         verify(entityManager).lock(template, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
         verify(templates).saveAndFlush(template);
         try {
@@ -150,6 +156,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
 
         service.update(1L, 10L, 7L, request);
 
+        verify(entityManager).detach(optimisticTemplate);
         verify(entityManager, never()).lock(any(), any());
         verify(templates, times(1)).saveAndFlush(template);
     }
@@ -184,40 +191,99 @@ class ScheduleBuildTemplateAtomicUpdateTest {
 
         verifyNoInteractions(planner, lifecycle);
         verifyNoInteractions(entityManager);
-        verify(schedules, never()).findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(any(), any());
+        verifyNoInteractions(schedules);
     }
 
     @Test
-    void locksDiscoveredIdsInRepositoryDeterministicOrderAndPlansOnlyAfterLock() {
+    void staleTemplateVersionFailsBeforeScheduleLocks() {
+        optimisticTemplate.setVersion(5L);
+
+        assertThatThrownBy(() -> service.update(1L, 10L, 7L, request))
+                .isInstanceOf(ScheduleBuildTemplateVersionConflictException.class);
+
+        verifyNoInteractions(schedules, planner, lifecycle, entityManager);
+        verify(templates, never()).findForUpdateByIdAndRestaurantId(any(), any());
+        verify(templates, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void locksCanonicalDiscoveredIdsBeforeTemplateAndPlansOnlyAfterFinalLock() {
         Schedule first = schedule(30L, PREFERENCES_CLOSED);
         Schedule second = schedule(40L, COLLECTING_PREFERENCES);
-        lock(List.of(30L, 40L), List.of(first, second));
+        when(schedules.findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L))
+                .thenReturn(List.of(40L, 30L, 40L), List.of(30L, 40L));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(30L, 40L)))
+                .thenReturn(List.of(first, second));
         when(planner.plan(template, request, List.of(first, second))).thenReturn(plan(PLANNER_AFFECTING,
                 impact(first, KEEP_PREFERENCES), impact(second, KEEP_PREFERENCES)));
 
         service.update(1L, 10L, 7L, request);
 
-        InOrder order = inOrder(schedules, planner);
+        InOrder order = inOrder(schedules, templates, planner);
+        order.verify(templates).findByIdAndRestaurantId(10L, 1L);
         order.verify(schedules).findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L);
         order.verify(schedules).findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(30L, 40L));
+        order.verify(templates).findForUpdateByIdAndRestaurantId(10L, 1L);
+        order.verify(schedules).findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L);
         order.verify(planner).plan(template, request, List.of(first, second));
         verifyNoInteractions(lifecycle);
+    }
+
+    @Test
+    void templateChangingAfterEarlyCheckIsCaughtByAuthoritativeCheck() {
+        Schedule locked = schedule(30L, DRAFT);
+        template.setVersion(5L);
+        when(schedules.findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L))
+                .thenReturn(List.of(30L));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(30L)))
+                .thenReturn(List.of(locked));
+
+        assertThatThrownBy(() -> service.update(1L, 10L, 7L, request))
+                .isInstanceOf(ScheduleBuildTemplateVersionConflictException.class);
+
+        InOrder order = inOrder(schedules, templates);
+        order.verify(templates).findByIdAndRestaurantId(10L, 1L);
+        order.verify(schedules).findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L);
+        order.verify(schedules).findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(30L));
+        order.verify(templates).findForUpdateByIdAndRestaurantId(10L, 1L);
+        verify(schedules, times(1))
+                .findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L);
+        verifyNoInteractions(planner, lifecycle);
+        verifyOnlyOptimisticDetach();
+        verify(templates, never()).saveAndFlush(any());
+        assertThat(template.getName()).isEqualTo("Old");
     }
 
     @Test
     void exactLinkedSetMismatchAfterLocksAbortsBeforePlanningOrMutation() {
         Schedule locked = schedule(30L, DRAFT);
         when(schedules.findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L))
-                .thenReturn(List.of(30L), List.of());
+                .thenReturn(List.of(30L), List.of(30L, 40L));
         when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(30L)))
                 .thenReturn(List.of(locked));
 
         assertThatThrownBy(() -> service.update(1L, 10L, 7L, request))
                 .isInstanceOf(ru.staffly.schedule.exception.ScheduleDomainConflictException.class);
 
-        verifyNoInteractions(planner, lifecycle, entityManager);
+        verifyNoInteractions(planner, lifecycle);
+        verifyOnlyOptimisticDetach();
         verify(templates, never()).saveAndFlush(any());
         assertThat(template.getName()).isEqualTo("Old");
+    }
+
+    @Test
+    void lockedResultMismatchAbortsBeforePlanningOrMutation() {
+        when(schedules.findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L))
+                .thenReturn(List.of(30L));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(30L)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.update(1L, 10L, 7L, request))
+                .isInstanceOf(ru.staffly.schedule.exception.ScheduleDomainConflictException.class);
+
+        verifyNoInteractions(planner, lifecycle);
+        verifyOnlyOptimisticDetach();
+        verify(templates, never()).saveAndFlush(any());
     }
 
     @Test
@@ -255,6 +321,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
 
         assertThat(template.isActive()).isFalse();
         verify(templates).saveAndFlush(template);
+        verify(entityManager).detach(optimisticTemplate);
         verify(entityManager, never()).lock(any(), any());
         verifyNoInteractions(lifecycle);
     }
@@ -273,8 +340,8 @@ class ScheduleBuildTemplateAtomicUpdateTest {
                 .isInstanceOf(ru.staffly.common.exception.BadRequestException.class)
                 .hasMessage("positionIds must not contain duplicates");
 
-        verifyNoInteractions(planner, lifecycle, entityManager);
-        verifyNoInteractions(schedules);
+        verifyNoInteractions(planner, lifecycle, entityManager, schedules);
+        verify(templates, never()).findForUpdateByIdAndRestaurantId(any(), any());
         verify(templates, never()).saveAndFlush(any());
     }
 
@@ -300,6 +367,11 @@ class ScheduleBuildTemplateAtomicUpdateTest {
     private void lock(List<Long> ids, List<Schedule> locked) {
         when(schedules.findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(1L, 10L)).thenReturn(ids);
         when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, ids)).thenReturn(locked);
+    }
+
+    private void verifyOnlyOptimisticDetach() {
+        verify(entityManager).detach(optimisticTemplate);
+        verifyNoMoreInteractions(entityManager);
     }
 
     private SaveScheduleBuildTemplateRequest request(boolean confirmed, Long version) {

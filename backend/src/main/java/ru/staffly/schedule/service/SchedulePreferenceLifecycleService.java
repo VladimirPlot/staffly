@@ -19,7 +19,7 @@ import java.util.*;
 
 /**
  * Authoritative mutation boundary for an active preference collection.
- * Lock order is Member (ascending id) -> Template (when used) -> Schedule -> collection children.
+ * Lock order is Member (ascending id) -> Schedule -> Template (when used) -> collection children.
  */
 @Service
 @RequiredArgsConstructor

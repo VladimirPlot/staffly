@@ -42,7 +42,7 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
     boolean existsByPreferenceBuildTemplateIdAndStatus(Long templateId, ScheduleStatus status);
 
-    /** Authoritative template linkage used by the read-only template impact plan. */
+    /** Ordered template linkage used for update discovery and post-lock revalidation. */
     List<Schedule> findByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(Long restaurantId, Long templateId);
 
     @Query("select s.id from Schedule s where s.restaurant.id = :restaurantId and s.preferenceBuildTemplate.id = :templateId order by s.id")
