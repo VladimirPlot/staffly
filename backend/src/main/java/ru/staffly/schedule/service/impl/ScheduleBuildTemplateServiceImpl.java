@@ -116,11 +116,16 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         // current persisted state. The resulting representation belongs to the final locked
         // aggregate; no mutation decision relies on the optimistic snapshot.
         PreparedTemplateRequest prepared = prepareRequest(template, restaurantId, request, false, lockedMembers, true);
-        ScheduleBuildTemplateImpactPlan plan = impactPlanner.plan(template, request, lockedSchedules);
+        // Classification must see the same authoritative membership that will be applied.  In
+        // particular, preparation can remove a formerly valid member whose current position no
+        // longer belongs to the config.  Keep persistence identity out of the classifier, while
+        // avoiding a raw-request NONE result for that effective cleanup.
+        ScheduleBuildTemplateImpactPlan plan = impactPlanner.plan(
+                template, toEffectiveRequest(request, prepared), lockedSchedules);
         boolean parentScalarChange = hasParentScalarChange(template, prepared);
-        boolean persistenceCorrelationChange = hasPersistenceCorrelationChange(template, prepared);
+        boolean persistenceChange = hasPersistenceChange(template, prepared);
         if (plan.impact() == ru.staffly.schedule.service.ScheduleBuildTemplateChangeImpact.NONE
-                && !parentScalarChange && !persistenceCorrelationChange) {
+                && !parentScalarChange && !persistenceChange) {
             return toDto(template);
         }
         if (plan.hasDestructiveConsequences() && !request.consequencesConfirmed()) {
@@ -390,10 +395,11 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     }
 
     /**
-     * Persistence correlation is deliberately outside semantic classification, but a full-replacement
-     * request containing a null id still has to replace the corresponding persisted child.
+     * Persistence identity is deliberately outside semantic classification.  Correlated child
+     * replacement, effective membership cleanup, and an explicit marker-reference switch still
+     * have to be written even when their current planner projection is equivalent.
      */
-    private boolean hasPersistenceCorrelationChange(ScheduleBuildTemplate template, PreparedTemplateRequest prepared) {
+    private boolean hasPersistenceChange(ScheduleBuildTemplate template, PreparedTemplateRequest prepared) {
         Set<Long> currentConfigIds = template.getPositionConfigs().stream()
                 .map(ScheduleBuildPositionConfig::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         Set<Long> requestedConfigIds = prepared.configs().stream().map(config -> config.request().id())
@@ -411,8 +417,68 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             Set<Long> requestedMarkerIds = config.markers().stream().map(PreparedMarker::id)
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             if (!Objects.equals(currentMarkerIds.get(config.request().id()), requestedMarkerIds)) return true;
+
+            ScheduleBuildPositionConfig currentConfig = template.getPositionConfigs().stream()
+                    .filter(candidate -> Objects.equals(candidate.getId(), config.request().id()))
+                    .findFirst().orElse(null);
+            if (currentConfig == null || hasEffectiveMarkerMembershipChange(currentConfig, config)
+                    || hasMarkerReferenceChange(currentConfig, config)) {
+                return true;
+            }
         }
         return false;
+    }
+
+    private boolean hasEffectiveMarkerMembershipChange(ScheduleBuildPositionConfig current,
+                                                        PreparedPositionConfig prepared) {
+        Map<Long, List<Long>> currentMembers = current.getMarkers().stream()
+                .collect(Collectors.toMap(ScheduleBuildMarker::getId, marker -> marker.getMembers().stream()
+                        .map(RestaurantMember::getId).filter(Objects::nonNull).sorted().toList()));
+        return prepared.markers().stream().anyMatch(marker ->
+                !Objects.equals(currentMembers.get(marker.id()), marker.memberIds()));
+    }
+
+    /**
+     * Marker identity is intentionally absent from semantic classification and fingerprints.
+     * It is nevertheless part of the persisted aggregate: two markers can currently provide
+     * equal planner affinity while an explicit reference switch still has to be stored.
+     */
+    private boolean hasMarkerReferenceChange(ScheduleBuildPositionConfig current,
+                                             PreparedPositionConfig prepared) {
+        List<Long> markerIdsByRequestIndex = prepared.markers().stream().map(PreparedMarker::id).toList();
+        List<String> currentReferences = current.getWeekdayRegimes().stream()
+                .flatMap(regime -> regime.getShiftOptions().stream().map(option -> markerReferenceKey(
+                        regime.getDaysOfWeek(), option.getStartTime(), option.getEndTime(), option.getSortOrder(),
+                        option.getMarker() == null ? null : option.getMarker().getId())))
+                .sorted().toList();
+        List<String> requestedReferences = Optional.ofNullable(prepared.request().weekdayRegimes()).orElse(List.of()).stream()
+                .flatMap(regime -> Optional.ofNullable(regime.shiftOptions()).orElse(List.of()).stream().map(option ->
+                        markerReferenceKey(regime.daysOfWeek(), option.startTime(), option.endTime(), option.sortOrder(),
+                                option.markerIndex() == null ? null : markerIdsByRequestIndex.get(option.markerIndex()))))
+                .sorted().toList();
+        return !currentReferences.equals(requestedReferences);
+    }
+
+    private String markerReferenceKey(Collection<java.time.DayOfWeek> days, LocalTime start, LocalTime end,
+                                      Integer sortOrder, Long markerId) {
+        List<String> canonicalDays = Optional.ofNullable(days).orElse(List.of()).stream()
+                .map(Enum::name).sorted().toList();
+        return Arrays.deepToString(new Object[]{canonicalDays, start, end, sortOrder, markerId});
+    }
+
+    private SaveScheduleBuildTemplateRequest toEffectiveRequest(SaveScheduleBuildTemplateRequest original,
+                                                                 PreparedTemplateRequest prepared) {
+        List<SaveScheduleBuildPositionConfigRequest> configs = prepared.configs().stream().map(config -> {
+            SaveScheduleBuildPositionConfigRequest raw = config.request();
+            List<SaveScheduleBuildMarkerRequest> markers = config.markers().stream()
+                    .map(marker -> new SaveScheduleBuildMarkerRequest(marker.id(), marker.name(), marker.memberIds()))
+                    .toList();
+            return new SaveScheduleBuildPositionConfigRequest(raw.id(), config.positionIds(), raw.targetPattern(),
+                    raw.minRestHours(), raw.minRestMode(), raw.maxShiftsPerPeriod(), config.heavyDaysOfWeek(),
+                    raw.weekdayRegimes(), markers, raw.sortOrder());
+        }).toList();
+        return new SaveScheduleBuildTemplateRequest(prepared.name(), prepared.description(), prepared.active(), configs,
+                original.expectedVersion(), original.confirmConsequences());
     }
 
     private record PreparedTemplateRequest(String name, String description, boolean active,
