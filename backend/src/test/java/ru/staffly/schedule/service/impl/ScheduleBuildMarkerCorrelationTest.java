@@ -66,8 +66,10 @@ class ScheduleBuildMarkerCorrelationTest {
         lenient().when(members.findForUpdateByRestaurantIdAndIdInOrderByIdAsc(eq(1L), any()))
                 .thenAnswer(invocation -> ((List<Long>) invocation.getArgument(1)).stream()
                         .map(memberById::get).filter(Objects::nonNull).toList());
-        lenient().when(planner.plan(any(), any(), any())).thenReturn(
-                new ScheduleBuildTemplateImpactPlan(ScheduleBuildTemplateChangeImpact.NEUTRAL_METADATA, List.of()));
+        ScheduleBuildTemplateChangeClassifier classifier = new ScheduleBuildTemplateChangeClassifier();
+        lenient().when(planner.plan(any(), any(), any())).thenAnswer(invocation ->
+                new ScheduleBuildTemplateImpactPlan(classifier.classify(
+                        invocation.getArgument(0), invocation.getArgument(1)), List.of()));
         lenient().when(templates.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -105,6 +107,66 @@ class ScheduleBuildMarkerCorrelationTest {
 
         assertThat(locked.getPositionConfigs().get(0).getMarkers()).singleElement().isSameAs(existing);
         assertThat(existing.getMembers()).isEmpty();
+    }
+
+    @Test
+    void staleCleanupWithOtherwiseIdenticalRequestIsPersistedForUnusedMarker() {
+        RestaurantMember ivan = member(100L, cook);
+        ScheduleBuildPositionConfig config = config(15L, List.of(waiter), marker(42L, "Клуб", ivan));
+        addRegime(config, null);
+        ScheduleBuildTemplate locked = template(config);
+        arrangeUpdate(locked);
+
+        service.update(1L, 1L, 9L, request(configRequest(15L, List.of(10L), (Integer) null,
+                markerRequest(42L, "Клуб", 100L))));
+
+        assertThat(config.getMarkers().get(0).getMembers()).isEmpty();
+        verify(planner).plan(eq(locked), argThat(proposed -> proposed.positionConfigs().get(0)
+                .markers().get(0).memberIds().isEmpty()), eq(List.of()));
+        verify(templates).saveAndFlush(locked);
+        verify(entityManager).lock(locked, jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+    }
+
+    @Test
+    void staleCleanupWithOtherwiseIdenticalRequestIsPersistedForAttachedMarker() {
+        RestaurantMember ivan = member(100L, cook);
+        ScheduleBuildPositionConfig config = config(15L, List.of(waiter), marker(42L, "Клуб", ivan));
+        addRegime(config, 0);
+        ScheduleBuildTemplate locked = template(config);
+        arrangeUpdate(locked);
+
+        service.update(1L, 1L, 9L, request(configRequest(15L, List.of(10L), 0,
+                markerRequest(42L, "Клуб", 100L))));
+
+        assertThat(config.getMarkers().get(0).getMembers()).isEmpty();
+        assertThat(config.getWeekdayRegimes().get(0).getShiftOptions().get(0).getMarker()).isSameAs(config.getMarkers().get(0));
+        verify(templates).saveAndFlush(locked);
+    }
+
+    @Test
+    void switchesReferenceBetweenMarkersWithEqualMembers() {
+        RestaurantMember ivan = member(100L, waiter);
+        assertEquivalentMarkerReferenceSwitchIsPersisted(ivan);
+    }
+
+    @Test
+    void switchesReferenceBetweenEmptyMarkers() {
+        assertEquivalentMarkerReferenceSwitchIsPersisted();
+    }
+
+    @Test
+    void identicalValidRequestRemainsNoOp() {
+        RestaurantMember ivan = member(100L, waiter);
+        ScheduleBuildPositionConfig config = config(15L, List.of(waiter), marker(42L, "Клуб", ivan));
+        addRegime(config, 0);
+        ScheduleBuildTemplate locked = template(config);
+        arrangeUpdate(locked);
+
+        service.update(1L, 1L, 9L, request(configRequest(15L, List.of(10L), 0,
+                markerRequest(42L, "Клуб", 100L))));
+
+        verify(templates, never()).saveAndFlush(any());
+        verify(entityManager, never()).lock(eq(locked), any());
     }
 
     @Test
@@ -257,7 +319,14 @@ class ScheduleBuildMarkerCorrelationTest {
 
     private SaveScheduleBuildPositionConfigRequest configRequest(Long id, List<Long> positionIds,
                                                                   SaveScheduleBuildMarkerRequest... markers) {
-        var shift = new SaveScheduleBuildShiftOptionRequest(LocalTime.of(9, 0), LocalTime.of(17, 0), null, 0);
+        return configRequest(id, positionIds, null, markers);
+    }
+
+    private SaveScheduleBuildPositionConfigRequest configRequest(Long id, List<Long> positionIds,
+                                                                  Integer markerIndex,
+                                                                  SaveScheduleBuildMarkerRequest... markers) {
+        var shift = new SaveScheduleBuildShiftOptionRequest(
+                LocalTime.of(9, 0), LocalTime.of(17, 0), null, 0, markerIndex);
         var regime = new SaveScheduleBuildWeekdayRegimeRequest(List.of(DayOfWeek.values()),
                 LocalTime.of(9, 0), LocalTime.of(17, 0), List.of(shift), List.of(), List.of(), 0);
         return new SaveScheduleBuildPositionConfigRequest(id, positionIds, ScheduleBuildPattern.NONE,
@@ -292,6 +361,40 @@ class ScheduleBuildMarkerCorrelationTest {
                 .markers(new ArrayList<>(List.of(markers))).sortOrder(0).build();
         config.getMarkers().forEach(marker -> marker.setPositionConfig(config));
         return config;
+    }
+
+    private void addRegime(ScheduleBuildPositionConfig config, Integer markerIndex) {
+        ScheduleBuildWeekdayRegime regime = ScheduleBuildWeekdayRegime.builder()
+                .positionConfig(config).daysOfWeek(EnumSet.allOf(DayOfWeek.class))
+                .workPeriodStart(LocalTime.of(9, 0)).workPeriodEnd(LocalTime.of(17, 0)).sortOrder(0).build();
+        ScheduleBuildShiftOption shift = ScheduleBuildShiftOption.builder().weekdayRegime(regime)
+                .startTime(LocalTime.of(9, 0)).endTime(LocalTime.of(17, 0)).sortOrder(0)
+                .marker(markerIndex == null ? null : config.getMarkers().get(markerIndex)).build();
+        regime.getShiftOptions().add(shift);
+        config.getWeekdayRegimes().add(regime);
+    }
+
+    private void assertEquivalentMarkerReferenceSwitchIsPersisted(RestaurantMember... markerMembers) {
+        ScheduleBuildPositionConfig config = config(15L, List.of(waiter),
+                marker(42L, "Клуб", markerMembers), marker(43L, "Банкет", markerMembers));
+        addRegime(config, 0);
+        ScheduleBuildTemplate locked = template(config);
+        arrangeUpdate(locked);
+
+        ScheduleBuildTemplateDto response = service.update(1L, 1L, 9L,
+                request(configRequest(15L, List.of(10L), 1,
+                        markerRequest(42L, "Клуб", Arrays.stream(markerMembers).map(RestaurantMember::getId).toArray(Long[]::new)),
+                        markerRequest(43L, "Банкет", Arrays.stream(markerMembers).map(RestaurantMember::getId).toArray(Long[]::new)))));
+
+        assertThat(config.getWeekdayRegimes().get(0).getShiftOptions().get(0).getMarker().getId()).isEqualTo(43L);
+        assertThat(response.positionConfigs().get(0).weekdayRegimes().get(0).shiftOptions().get(0).markerId())
+                .isEqualTo(43L);
+        when(templates.findByIdAndRestaurantId(1L, 1L)).thenReturn(Optional.of(locked));
+        ScheduleBuildTemplateDto reread = service.get(1L, 1L, 9L);
+        assertThat(reread.positionConfigs().get(0).weekdayRegimes().get(0).shiftOptions().get(0).markerId())
+                .isEqualTo(43L);
+        verify(templates).saveAndFlush(locked);
+        verify(entityManager).lock(locked, jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT);
     }
 
     private ScheduleBuildTemplate template(ScheduleBuildPositionConfig... configs) {
