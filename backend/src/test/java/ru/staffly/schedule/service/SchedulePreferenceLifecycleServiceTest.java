@@ -3,6 +3,8 @@ package ru.staffly.schedule.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.staffly.common.exception.BadRequestException;
@@ -349,11 +351,63 @@ class SchedulePreferenceLifecycleServiceTest {
         verify(participations).deleteByScheduleId(40L);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = ScheduleStatus.class, names = {
+            "COLLECTING_PREFERENCES", "PREFERENCES_CLOSED", "DRAFT_FROM_PREFERENCES"
+    })
+    void preferenceAffectingTemplateChangeCanReuseFullInvalidationForEveryActivePreferenceState(
+            ScheduleStatus preferenceState) {
+        Instant started = Instant.parse("2026-01-01T00:00:00Z");
+        Instant deadline = Instant.parse("2026-01-10T00:00:00Z");
+        Instant closed = Instant.parse("2026-01-02T00:00:00Z");
+        Instant applied = Instant.parse("2026-01-03T00:00:00Z");
+        Instant allSubmitted = Instant.parse("2026-01-02T01:00:00Z");
+        ScheduleBuildTemplate template = ScheduleBuildTemplate.builder().id(60L).build();
+        ScheduleRow row = ScheduleRow.builder().schedule(schedule).memberId(30L).cells(new ArrayList<>()).build();
+        if (preferenceState == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            row.getCells().add(cell(row, ScheduleCellSource.AUTO_BUILD));
+        }
+        row.getCells().add(cell(row, ScheduleCellSource.MANUAL));
+        row.getCells().add(cell(row, ScheduleCellSource.PREFERENCE_HINT));
+        schedule.getRows().add(row);
+        schedule.setStatus(preferenceState);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.SHIFT_OPTIONS);
+        schedule.setPreferenceBuildTemplate(template);
+        schedule.setPreferenceCollectionStartedAt(started);
+        schedule.setPreferenceDeadline(deadline);
+        schedule.setPreferenceClosedAt(closed);
+        schedule.setPreferenceAppliedAt(applied);
+        schedule.setPreferenceAllSubmittedNotifiedAt(allSubmitted);
+        schedule.setPreferenceCollectionCycle(4);
+        schedule.getPreferenceShiftOptionSnapshots().add(
+                SchedulePreferenceShiftOptionSnapshot.builder().id(70L).build());
+
+        service.invalidatePreferenceCollection(10L, 40L, 7L, 50L,
+                "preference-affecting template change");
+
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.DRAFT);
+        assertThat(schedule.getPreferenceCollectionMode()).isNull();
+        assertThat(schedule.getPreferenceBuildTemplate()).isNull();
+        assertThat(schedule.getPreferenceCollectionStartedAt()).isNull();
+        assertThat(schedule.getPreferenceDeadline()).isNull();
+        assertThat(schedule.getPreferenceClosedAt()).isNull();
+        assertThat(schedule.getPreferenceAppliedAt()).isNull();
+        assertThat(schedule.getPreferenceAllSubmittedNotifiedAt()).isNull();
+        assertThat(schedule.getPreferenceCollectionCycle()).isEqualTo(4);
+        assertThat(schedule.getPreferenceShiftOptionSnapshots()).isEmpty();
+        assertThat(row.getCells()).extracting(ScheduleCell::getSource)
+                .containsExactly(ScheduleCellSource.MANUAL, ScheduleCellSource.PREFERENCE_HINT);
+        verify(submissions).deleteByScheduleId(40L);
+        verify(participations).deleteByScheduleId(40L);
+    }
+
     @Test
-    void appliedResultInvalidationPreservesCollectionInputsAndReturnsToClosedState() {
+    void plannerAffectingTemplateChangeCanReuseNarrowInvalidationAndPreservePreferenceInputs() {
         Instant started = Instant.parse("2026-01-01T00:00:00Z");
         Instant closed = Instant.parse("2026-01-02T00:00:00Z");
         Instant applied = Instant.parse("2026-01-03T00:00:00Z");
+        Instant deadline = Instant.parse("2026-01-10T00:00:00Z");
+        Instant allSubmitted = Instant.parse("2026-01-02T01:00:00Z");
         ScheduleBuildTemplate template = ScheduleBuildTemplate.builder().id(60L).build();
         SchedulePreferenceShiftOptionSnapshot snapshot = SchedulePreferenceShiftOptionSnapshot.builder().id(70L).build();
         ScheduleRow row = ScheduleRow.builder().schedule(schedule).memberId(30L).cells(new ArrayList<>()).build();
@@ -364,12 +418,15 @@ class SchedulePreferenceLifecycleServiceTest {
         schedule.setPreferenceCollectionMode(PreferenceCollectionMode.SHIFT_OPTIONS);
         schedule.setPreferenceBuildTemplate(template);
         schedule.setPreferenceCollectionStartedAt(started);
+        schedule.setPreferenceDeadline(deadline);
         schedule.setPreferenceClosedAt(closed);
         schedule.setPreferenceAppliedAt(applied);
+        schedule.setPreferenceAllSubmittedNotifiedAt(allSubmitted);
         schedule.setPreferenceCollectionCycle(4);
         schedule.getPreferenceShiftOptionSnapshots().add(snapshot);
 
-        boolean invalidated = service.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, 50L, "position change");
+        boolean invalidated = service.invalidateAppliedPreferenceDraftWithLocksHeld(
+                schedule, 50L, "planner-affecting template change");
 
         assertThat(invalidated).isTrue();
         assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.PREFERENCES_CLOSED);
@@ -377,13 +434,15 @@ class SchedulePreferenceLifecycleServiceTest {
         assertThat(schedule.getPreferenceCollectionMode()).isEqualTo(PreferenceCollectionMode.SHIFT_OPTIONS);
         assertThat(schedule.getPreferenceBuildTemplate()).isSameAs(template);
         assertThat(schedule.getPreferenceCollectionStartedAt()).isEqualTo(started);
+        assertThat(schedule.getPreferenceDeadline()).isEqualTo(deadline);
         assertThat(schedule.getPreferenceClosedAt()).isEqualTo(closed);
+        assertThat(schedule.getPreferenceAllSubmittedNotifiedAt()).isEqualTo(allSubmitted);
         assertThat(schedule.getPreferenceCollectionCycle()).isEqualTo(4);
         assertThat(schedule.getPreferenceShiftOptionSnapshots()).containsExactly(snapshot);
         assertThat(row.getCells()).extracting(ScheduleCell::getSource).containsExactly(ScheduleCellSource.MANUAL);
         verifyNoInteractions(submissions, participations);
         verify(audit).record(schedule, 50L, ScheduleAuditAction.APPLIED_PREFERENCE_DRAFT_INVALIDATED,
-                "Применённый результат пожеланий аннулирован: position change");
+                "Применённый результат пожеланий аннулирован: planner-affecting template change");
     }
 
     @Test

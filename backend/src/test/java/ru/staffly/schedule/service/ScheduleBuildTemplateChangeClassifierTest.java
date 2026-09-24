@@ -52,6 +52,22 @@ class ScheduleBuildTemplateChangeClassifierTest {
         assertImpact(withConfig(config(shifts(new SaveScheduleBuildShiftOptionRequest(t("10:30"), t("17:00"), "Day", 0)), coverage(2), overrides(3))), PREFERENCE_AFFECTING);
     }
 
+    @Test void collectedSeventeenToMidnightVocabularyChangingToEighteenIsPreferenceAffecting() {
+        SaveScheduleBuildPositionConfigRequest currentBase = config(
+                shifts(new SaveScheduleBuildShiftOptionRequest(t("17:00"), t("00:00"), "Evening", 0)),
+                List.of(), List.of());
+        SaveScheduleBuildPositionConfigRequest proposedBase = config(
+                shifts(new SaveScheduleBuildShiftOptionRequest(t("18:00"), t("00:00"), "Evening", 0)),
+                List.of(), List.of());
+        SaveScheduleBuildPositionConfigRequest current = copy(currentBase, t("10:00"), t("00:00"), 8,
+                currentBase.shiftOptions(), currentBase.coverageRules(), currentBase.coverageDateOverrides());
+        SaveScheduleBuildPositionConfigRequest proposed = copy(proposedBase, t("10:00"), t("00:00"), 8,
+                proposedBase.shiftOptions(), proposedBase.coverageRules(), proposedBase.coverageDateOverrides());
+
+        assertThat(classifier.classify(template(List.of(current)), withConfig(proposed)))
+                .isEqualTo(PREFERENCE_AFFECTING);
+    }
+
     @Test void shiftEndIsPreferenceAffecting() {
         assertImpact(withConfig(config(shifts(new SaveScheduleBuildShiftOptionRequest(t("10:00"), t("18:00"), "Day", 0)), coverage(2), overrides(3))), PREFERENCE_AFFECTING);
     }
