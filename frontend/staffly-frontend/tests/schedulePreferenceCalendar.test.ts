@@ -6,8 +6,11 @@ import {
   applyPreferenceDayEdit,
   applyPreferenceToSelectedDays,
   getCalendarLeadingSlotCount,
+  getDaysForWeekday,
   getPreferenceCalendarPresentation,
+  hasPreferenceDayNote,
   toggleSelectedDay,
+  toggleWeekdaySelection,
 } from "../src/features/schedule/schedulePreferenceCalendar.ts";
 import type { PreferenceDayDraft } from "../src/features/schedule/schedulePreferenceDraftStorage.ts";
 
@@ -46,6 +49,50 @@ test("presents every preference state compactly", () => {
 test("positions a period beginning away from Monday", () => {
   assert.equal(getCalendarLeadingSlotCount("2026-09-23"), 2);
   assert.equal(getCalendarLeadingSlotCount("2026-09-21"), 0);
+});
+
+test("extracts only real schedule dates for a weekday across partial boundary weeks", () => {
+  const scheduleDays = [
+    "2026-09-23",
+    "2026-09-24",
+    "2026-09-25",
+    "2026-09-26",
+    "2026-09-27",
+    "2026-09-28",
+    "2026-09-29",
+    "2026-09-30",
+    "2026-10-01",
+  ];
+  assert.deepEqual(getDaysForWeekday(scheduleDays, 2), ["2026-09-23", "2026-09-30"]);
+  assert.deepEqual(getDaysForWeekday(scheduleDays, 0), ["2026-09-28"]);
+  assert.deepEqual(getDaysForWeekday(scheduleDays, 1), ["2026-09-29"]);
+});
+
+test("weekday selection selects none or partial matches while preserving other dates", () => {
+  const scheduleDays = ["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-30", "2026-10-01", "2026-10-02"];
+  const fromNone = toggleWeekdaySelection(new Set(), scheduleDays, 2);
+  assert.deepEqual([...fromNone], ["2026-09-23", "2026-09-30"]);
+
+  const fromPartial = toggleWeekdaySelection(new Set(["2026-09-23", "2026-09-25"]), scheduleDays, 2);
+  assert.deepEqual([...fromPartial], ["2026-09-23", "2026-09-25", "2026-09-30"]);
+});
+
+test("weekday selection removes all matching dates and can leave an empty selection", () => {
+  const scheduleDays = ["2026-09-23", "2026-09-24", "2026-09-30", "2026-10-01"];
+  const preservesThursday = toggleWeekdaySelection(
+    new Set(["2026-09-23", "2026-09-24", "2026-09-30"]),
+    scheduleDays,
+    2,
+  );
+  assert.deepEqual([...preservesThursday], ["2026-09-24"]);
+  assert.deepEqual(toggleWeekdaySelection(new Set(["2026-09-23", "2026-09-30"]), scheduleDays, 2), new Set());
+});
+
+test("comment indicator requires a non-empty trimmed note on a preference", () => {
+  assert.equal(hasPreferenceDayNote(day({ type: "AVAILABLE", note: "" })), false);
+  assert.equal(hasPreferenceDayNote(day({ type: "AVAILABLE", note: "   \n" })), false);
+  assert.equal(hasPreferenceDayNote(day({ type: "AVAILABLE", note: "После учёбы" })), true);
+  assert.equal(hasPreferenceDayNote(day({ type: "NO_PREFERENCE", note: "unsupported standalone note" })), false);
 });
 
 test("applying an editor draft replaces only the selected day", () => {
