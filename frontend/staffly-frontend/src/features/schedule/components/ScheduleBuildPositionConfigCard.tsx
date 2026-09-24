@@ -1,18 +1,17 @@
 import React from "react";
 
 import Button from "../../../shared/ui/Button";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
 import type { PositionDto } from "../../dictionaries/api";
 import type { ScheduleBuildMinRestMode, ScheduleBuildTargetPattern } from "../api";
 import {
-  createShiftOptionDraft,
-  SCHEDULE_BUILD_TIME_STEP_SECONDS,
+  deleteWeekdayRegime,
+  splitWeekdayRegime,
   type ScheduleBuildPositionConfigDraft,
 } from "../utils/buildTemplateDraft";
-import ScheduleBuildCoverageDateOverridesEditor from "./ScheduleBuildCoverageDateOverridesEditor";
-import ScheduleBuildCoverageRulesEditor from "./ScheduleBuildCoverageRulesEditor";
-import ScheduleBuildShiftOptionsEditor from "./ScheduleBuildShiftOptionsEditor";
+import ScheduleBuildWeekdayRegimeEditor from "./ScheduleBuildWeekdayRegimeEditor";
 
 const minRestModes: { value: ScheduleBuildMinRestMode; label: string }[] = [
   { value: "SOFT", label: "Мягко" },
@@ -46,7 +45,16 @@ type Props = {
   timeZone: string;
 };
 
-const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, positions, saving, onChange, onRemove, timeZone }) => {
+const ScheduleBuildPositionConfigCard: React.FC<Props> = ({
+  index,
+  config,
+  positions,
+  saving,
+  onChange,
+  onRemove,
+  timeZone,
+}) => {
+  const [deleteRegimeIndex, setDeleteRegimeIndex] = React.useState<number | null>(null);
   const selectedPositions = positions.filter((position) => config.positionIds.includes(position.id));
   const availablePositions = positions.filter(
     (position) => position.active && !config.positionIds.includes(position.id),
@@ -107,32 +115,6 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
             </option>
           ))}
         </DropdownSelect>
-      </div>
-      <div className="space-y-2">
-        <div>
-          <div className="text-sm font-medium">Рабочий период должности</div>
-          <div className="text-muted text-xs">
-            Это общий период, в рамках которого могут быть смены. Автосборка не назначает этот интервал автоматически.
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Input
-            label="С"
-            type="time"
-            step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-            value={config.workPeriodStart}
-            disabled={saving}
-            onChange={(e) => onChange({ ...config, workPeriodStart: e.target.value })}
-          />
-          <Input
-            label="По"
-            type="time"
-            step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-            value={config.workPeriodEnd}
-            disabled={saving}
-            onChange={(e) => onChange({ ...config, workPeriodEnd: e.target.value })}
-          />
-        </div>
       </div>
       <div className="space-y-1">
         <DropdownSelect
@@ -233,36 +215,48 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
         )}
       </div>
 
-      <ScheduleBuildShiftOptionsEditor
-        config={config}
-        saving={saving}
-        onChange={onChange}
-        onAdd={() => onChange({ ...config, shiftOptions: [...config.shiftOptions, createShiftOptionDraft()] })}
-        onRemove={(shiftOptionIndex) => {
-          const shiftOption = config.shiftOptions[shiftOptionIndex];
-          onChange({
-            ...config,
-            shiftOptions: config.shiftOptions.filter((_, idx) => idx !== shiftOptionIndex),
-            coverageRules: shiftOption
-              ? config.coverageRules.filter(
-                  (rule) => rule.startTime !== shiftOption.startTime || rule.endTime !== shiftOption.endTime,
-                )
-              : config.coverageRules,
-            coverageDateOverrides: config.coverageDateOverrides
-              .filter((override) => override.shiftOptionIndex !== shiftOptionIndex)
-              .map((override) => ({
-                ...override,
-                shiftOptionIndex:
-                  override.shiftOptionIndex > shiftOptionIndex
-                    ? override.shiftOptionIndex - 1
-                    : override.shiftOptionIndex,
-              })),
-          });
+      <div className="space-y-4">
+        {config.weekdayRegimes.map((regime, regimeIndex) => (
+          <React.Fragment key={regime.key}>
+            {regimeIndex > 0 && <div className="border-subtle border-t" />}
+            <ScheduleBuildWeekdayRegimeEditor
+              regime={regime}
+              saving={saving}
+              canDelete={regimeIndex > 0}
+              timeZone={timeZone}
+              onDaysCommit={(days) =>
+                onChange({ ...config, weekdayRegimes: splitWeekdayRegime(config.weekdayRegimes, regimeIndex, days) })
+              }
+              onChange={(next) =>
+                onChange({
+                  ...config,
+                  weekdayRegimes: config.weekdayRegimes.map((item, itemIndex) =>
+                    itemIndex === regimeIndex ? next : item,
+                  ),
+                })
+              }
+              onDelete={() => setDeleteRegimeIndex(regimeIndex)}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+      <ConfirmDialog
+        open={deleteRegimeIndex !== null}
+        title="Удалить режим?"
+        description="Настройки этого режима будут потеряны. Дни режима вернутся в основной режим."
+        confirmText="Удалить"
+        cancelText="Отмена"
+        tone="danger"
+        onCancel={() => setDeleteRegimeIndex(null)}
+        onConfirm={() => {
+          if (deleteRegimeIndex !== null)
+            onChange({
+              ...config,
+              weekdayRegimes: deleteWeekdayRegime(config.weekdayRegimes, deleteRegimeIndex),
+            });
+          setDeleteRegimeIndex(null);
         }}
       />
-
-      <ScheduleBuildCoverageRulesEditor config={config} saving={saving} onChange={onChange} />
-      <ScheduleBuildCoverageDateOverridesEditor config={config} saving={saving} onChange={onChange} timeZone={timeZone} />
     </div>
   );
 };

@@ -2,7 +2,7 @@ import React from "react";
 
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import type { ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import type { ScheduleBuildWeekdayRegimeDraft } from "../utils/buildTemplateDraft";
 import { getTodayInTimeZone } from "../utils/date";
 
 const formatTimeShort = (value?: string | null) => (value ? value.slice(0, 5) : "");
@@ -11,13 +11,13 @@ const formatShiftRange = (startTime?: string | null, endTime?: string | null) =>
   `${formatTimeShort(startTime)}–${formatTimeShort(endTime)}`;
 
 type Props = {
-  config: ScheduleBuildPositionConfigDraft;
+  config: ScheduleBuildWeekdayRegimeDraft;
   saving: boolean;
-  onChange: (next: ScheduleBuildPositionConfigDraft) => void;
+  onChange: (next: ScheduleBuildWeekdayRegimeDraft) => void;
   timeZone: string;
 };
 
-const uniqueOverrideDates = (config: ScheduleBuildPositionConfigDraft) =>
+const uniqueOverrideDates = (config: ScheduleBuildWeekdayRegimeDraft) =>
   [...new Set(config.coverageDateOverrides.map((override) => override.date).filter(Boolean))].sort();
 
 const ScheduleBuildCoverageDateOverridesEditor: React.FC<Props> = ({ config, saving, onChange, timeZone }) => {
