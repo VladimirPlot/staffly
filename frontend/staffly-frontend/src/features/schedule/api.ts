@@ -292,7 +292,7 @@ export type ScheduleBuildPositionConfigDto = {
 };
 
 export type ScheduleBuildMarkerDto = { id: number; name: string; memberIds: number[] };
-export type SaveScheduleBuildMarkerRequest = { name: string; memberIds: number[] };
+export type SaveScheduleBuildMarkerRequest = { id: number | null; name: string; memberIds: number[] };
 
 export type ScheduleBuildTemplateDto = {
   id: number;
@@ -337,6 +337,7 @@ export type SaveScheduleBuildWeekdayRegimeRequest = {
 };
 
 export type SaveScheduleBuildPositionConfigRequest = {
+  id: number | null;
   positionIds: number[];
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours?: number | null;

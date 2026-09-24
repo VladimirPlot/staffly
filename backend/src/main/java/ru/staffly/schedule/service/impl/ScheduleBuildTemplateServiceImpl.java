@@ -118,8 +118,9 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         PreparedTemplateRequest prepared = prepareRequest(template, restaurantId, request, false, lockedMembers, true);
         ScheduleBuildTemplateImpactPlan plan = impactPlanner.plan(template, request, lockedSchedules);
         boolean parentScalarChange = hasParentScalarChange(template, prepared);
+        boolean persistenceCorrelationChange = hasPersistenceCorrelationChange(template, prepared);
         if (plan.impact() == ru.staffly.schedule.service.ScheduleBuildTemplateChangeImpact.NONE
-                && !parentScalarChange) {
+                && !parentScalarChange && !persistenceCorrelationChange) {
             return toDto(template);
         }
         if (plan.hasDestructiveConsequences() && !request.consequencesConfirmed()) {
@@ -165,14 +166,26 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         if (configRequests.isEmpty()) throw new BadRequestException("At least one positionConfig is required");
 
         Set<Long> positionIds = new HashSet<>();
+        Set<Long> requestedConfigIds = new HashSet<>();
         List<PreparedPositionConfig> preparedConfigs = new ArrayList<>();
+        Map<Long, ScheduleBuildPositionConfig> existingConfigs = template.getPositionConfigs().stream()
+                .filter(config -> config.getId() != null)
+                .collect(Collectors.toMap(ScheduleBuildPositionConfig::getId, Function.identity()));
         for (SaveScheduleBuildPositionConfigRequest cfg : configRequests) {
             if (cfg == null) throw new BadRequestException("positionConfig is required");
+            if (cfg.id() != null && !requestedConfigIds.add(cfg.id())) {
+                throw new BadRequestException("Duplicate positionConfig id: " + cfg.id());
+            }
+            ScheduleBuildPositionConfig existingConfig = cfg.id() == null ? null : existingConfigs.get(cfg.id());
+            if (validateMarkerMembers && cfg.id() != null && existingConfig == null) {
+                throw new BadRequestException("positionConfig id does not belong to template: " + cfg.id());
+            }
             List<Long> cfgPositionIds = normalizePositionIds(cfg);
             for (Long positionId : cfgPositionIds) {
                 if (!positionIds.add(positionId)) throw new BadRequestException("Duplicate positionId in positionConfigs: " + positionId);
             }
-            List<PreparedMarker> preparedMarkers = prepareMarkers(cfg, cfgPositionIds, lockedMembers, validateMarkerMembers);
+            List<PreparedMarker> preparedMarkers = prepareMarkers(
+                    cfg, cfgPositionIds, existingConfig, lockedMembers, validateMarkerMembers);
             preparedConfigs.add(new PreparedPositionConfig(
                     cfg, cfgPositionIds, normalizeHeavyDaysOfWeek(cfg.heavyDaysOfWeek()), preparedMarkers));
         }
@@ -205,12 +218,24 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
     private List<PreparedMarker> prepareMarkers(SaveScheduleBuildPositionConfigRequest config,
                                                 List<Long> positionIds,
+                                                ScheduleBuildPositionConfig existingConfig,
                                                 Map<Long, RestaurantMember> lockedMembers,
                                                 boolean validateMembers) {
         Set<String> names = new HashSet<>();
+        Set<Long> markerIds = new HashSet<>();
+        Map<Long, ScheduleBuildMarker> existingMarkers = existingConfig == null ? Map.of()
+                : existingConfig.getMarkers().stream().filter(marker -> marker.getId() != null)
+                .collect(Collectors.toMap(ScheduleBuildMarker::getId, Function.identity()));
         List<PreparedMarker> result = new ArrayList<>();
         for (SaveScheduleBuildMarkerRequest marker : Optional.ofNullable(config.markers()).orElse(List.of())) {
             if (marker == null) throw new BadRequestException("marker is required");
+            if (marker.id() != null && !markerIds.add(marker.id())) {
+                throw new BadRequestException("Duplicate marker id: " + marker.id());
+            }
+            ScheduleBuildMarker existingMarker = marker.id() == null ? null : existingMarkers.get(marker.id());
+            if (validateMembers && marker.id() != null && existingMarker == null) {
+                throw new BadRequestException("marker id does not belong to positionConfig: " + marker.id());
+            }
             String name = Optional.ofNullable(marker.name()).map(String::trim).orElse("");
             if (name.isEmpty()) throw new BadRequestException("marker.name is required");
             if (name.length() > 100) throw new BadRequestException("marker.name must not exceed 100 characters");
@@ -218,15 +243,23 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 throw new BadRequestException("Marker names must be unique within a positionConfig (case-insensitive)");
             }
             List<Long> memberIds = normalizeMarkerMemberIds(marker.memberIds());
+            Set<Long> previousMemberIds = existingMarker == null ? Set.of() : existingMarker.getMembers().stream()
+                    .map(RestaurantMember::getId).collect(Collectors.toSet());
+            List<Long> effectiveMemberIds = new ArrayList<>();
             for (Long memberId : validateMembers ? memberIds : List.<Long>of()) {
                 RestaurantMember member = lockedMembers.get(memberId);
                 if (member == null) throw new BadRequestException("All marker memberIds must belong to restaurant");
                 Long currentPositionId = member.getPosition() == null ? null : member.getPosition().getId();
                 if (!positionIds.contains(currentPositionId)) {
+                    if (existingMarker != null && previousMemberIds.contains(memberId)) {
+                        continue;
+                    }
                     throw new BadRequestException("Marker member current position must belong to positionConfig: " + memberId);
                 }
+                effectiveMemberIds.add(memberId);
             }
-            result.add(new PreparedMarker(name, memberIds));
+            result.add(new PreparedMarker(marker.id(), name,
+                    validateMembers ? List.copyOf(effectiveMemberIds) : memberIds));
         }
         return List.copyOf(result);
     }
@@ -270,16 +303,16 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         template.setDescription(prepared.description());
         template.setActive(prepared.active());
 
-        Map<String, ScheduleBuildPositionConfig> existingByPositionKey = template.getPositionConfigs().stream()
-                .filter(config -> !configPositionIds(config).isEmpty())
-                .collect(Collectors.toMap(config -> positionKey(configPositionIds(config)), Function.identity(), (left, right) -> left));
+        Map<Long, ScheduleBuildPositionConfig> existingById = template.getPositionConfigs().stream()
+                .filter(config -> config.getId() != null)
+                .collect(Collectors.toMap(ScheduleBuildPositionConfig::getId, Function.identity()));
         Set<ScheduleBuildPositionConfig> requestedConfigs = new HashSet<>();
 
         int idx = 0;
         for (PreparedPositionConfig preparedConfig : prepared.configs()) {
             SaveScheduleBuildPositionConfigRequest cfg = preparedConfig.request();
             List<Long> cfgPositionIds = preparedConfig.positionIds();
-            ScheduleBuildPositionConfig entity = existingByPositionKey.get(positionKey(cfgPositionIds));
+            ScheduleBuildPositionConfig entity = cfg.id() == null ? null : existingById.get(cfg.id());
             if (entity == null) {
                 entity = new ScheduleBuildPositionConfig();
                 template.getPositionConfigs().add(entity);
@@ -295,14 +328,24 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.getHeavyDaysOfWeek().clear();
             entity.getHeavyDaysOfWeek().addAll(preparedConfig.heavyDaysOfWeek());
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
-            entity.getMarkers().clear();
+            Map<Long, ScheduleBuildMarker> existingMarkers = entity.getMarkers().stream()
+                    .filter(marker -> marker.getId() != null)
+                    .collect(Collectors.toMap(ScheduleBuildMarker::getId, Function.identity()));
+            Set<ScheduleBuildMarker> requestedMarkers = new HashSet<>();
             for (PreparedMarker requestedMarker : preparedConfig.markers()) {
-                ScheduleBuildMarker marker = new ScheduleBuildMarker();
+                ScheduleBuildMarker marker = requestedMarker.id() == null
+                        ? new ScheduleBuildMarker() : existingMarkers.get(requestedMarker.id());
+                if (marker == null) {
+                    throw new IllegalStateException("Prepared marker correlation was not authoritative");
+                }
+                if (requestedMarker.id() == null) entity.getMarkers().add(marker);
+                requestedMarkers.add(marker);
                 marker.setPositionConfig(entity);
                 marker.setName(requestedMarker.name());
+                marker.getMembers().clear();
                 requestedMarker.memberIds().stream().map(prepared.members()::get).forEach(marker.getMembers()::add);
-                entity.getMarkers().add(marker);
             }
+            entity.getMarkers().removeIf(marker -> !requestedMarkers.contains(marker));
             entity.getWeekdayRegimes().clear();
             int regimeOrder = 0;
             for (SaveScheduleBuildWeekdayRegimeRequest requestRegime : cfg.weekdayRegimes()) {
@@ -343,6 +386,32 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 || template.isActive() != prepared.active();
     }
 
+    /**
+     * Persistence correlation is deliberately outside semantic classification, but a full-replacement
+     * request containing a null id still has to replace the corresponding persisted child.
+     */
+    private boolean hasPersistenceCorrelationChange(ScheduleBuildTemplate template, PreparedTemplateRequest prepared) {
+        Set<Long> currentConfigIds = template.getPositionConfigs().stream()
+                .map(ScheduleBuildPositionConfig::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> requestedConfigIds = prepared.configs().stream().map(config -> config.request().id())
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (prepared.configs().stream().anyMatch(config -> config.request().id() == null)
+                || !currentConfigIds.equals(requestedConfigIds)) {
+            return true;
+        }
+        Map<Long, Set<Long>> currentMarkerIds = template.getPositionConfigs().stream()
+                .filter(config -> config.getId() != null)
+                .collect(Collectors.toMap(ScheduleBuildPositionConfig::getId, config -> config.getMarkers().stream()
+                        .map(ScheduleBuildMarker::getId).filter(Objects::nonNull).collect(Collectors.toSet())));
+        for (PreparedPositionConfig config : prepared.configs()) {
+            if (config.markers().stream().anyMatch(marker -> marker.id() == null)) return true;
+            Set<Long> requestedMarkerIds = config.markers().stream().map(PreparedMarker::id)
+                    .filter(Objects::nonNull).collect(Collectors.toSet());
+            if (!Objects.equals(currentMarkerIds.get(config.request().id()), requestedMarkerIds)) return true;
+        }
+        return false;
+    }
+
     private record PreparedTemplateRequest(String name, String description, boolean active,
                                            List<PreparedPositionConfig> configs,
                                            Map<Long, Position> positions,
@@ -350,7 +419,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private record PreparedPositionConfig(SaveScheduleBuildPositionConfigRequest request,
                                           List<Long> positionIds, List<Integer> heavyDaysOfWeek,
                                           List<PreparedMarker> markers) {}
-    private record PreparedMarker(String name, List<Long> memberIds) {}
+    private record PreparedMarker(Long id, String name, List<Long> memberIds) {}
 
     private List<Integer> normalizeHeavyDaysOfWeek(List<Integer> heavyDaysOfWeek) {
         return Optional.ofNullable(heavyDaysOfWeek).orElse(List.of()).stream()
