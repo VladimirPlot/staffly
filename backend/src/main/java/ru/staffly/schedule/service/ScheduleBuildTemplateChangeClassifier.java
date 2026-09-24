@@ -36,7 +36,8 @@ public class ScheduleBuildTemplateChangeClassifier {
                 r.getDaysOfWeek(), r.getWorkPeriodStart(), r.getWorkPeriodEnd(),
                 r.getShiftOptions().stream().map(o -> key(o.getStartTime(), o.getEndTime())).toList())).collect(Collectors.toSet());
         Set<String> regimePlanner = c.getWeekdayRegimes().stream().map(r -> regimePlanner(
-                r.getDaysOfWeek(), r.getShiftOptions().stream().map(o -> key(o.getStartTime(), o.getEndTime(), o.getSortOrder())).toList(),
+                r.getDaysOfWeek(), r.getShiftOptions().stream().map(o -> key(o.getStartTime(), o.getEndTime(), o.getSortOrder(),
+                        markerAffinity(o.getMarker()))).toList(),
                 r.getCoverageRules().stream().map(o -> key(o.getDayOfWeek(), o.getStartTime(), o.getEndTime(), o.getRequiredCount(), o.getSortOrder())).toList(),
                 r.getCoverageDateOverrides().stream().map(o -> key(o.getDate(), ref(o.getShiftOption()), o.getRequiredCount())).toList())).collect(Collectors.toSet());
         String planner = key(c.getTargetPattern(), c.getMinRestHours(), c.getMinRestMode(), c.getMaxShiftsPerPeriod(),
@@ -52,7 +53,8 @@ public class ScheduleBuildTemplateChangeClassifier {
         List<SaveScheduleBuildWeekdayRegimeRequest> regimes = safe(c.weekdayRegimes());
         Set<String> preference = regimes.stream().map(r -> regimePreference(r.daysOfWeek(), r.workPeriodStart(), r.workPeriodEnd(),
                 safe(r.shiftOptions()).stream().map(o -> key(o.startTime(), o.endTime())).toList())).collect(Collectors.toSet());
-        Set<String> regimePlanner = regimes.stream().map(r -> regimePlanner(r.daysOfWeek(), indexed(r.shiftOptions(), o -> key(o.startTime(), o.endTime(), o.sortOrder())),
+        Set<String> regimePlanner = regimes.stream().map(r -> regimePlanner(r.daysOfWeek(), indexed(r.shiftOptions(), o ->
+                        key(o.startTime(), o.endTime(), o.sortOrder(), requestMarkerAffinity(c, o.markerIndex()))),
                 indexed(r.coverageRules(), o -> key(o.dayOfWeek(), o.startTime(), o.endTime(), o.requiredCount(), o.sortOrder())),
                 safe(r.coverageDateOverrides()).stream().map(o -> key(o.date(), requestRef(r, o.shiftOptionIndex()), o.requiredCount())).toList())).collect(Collectors.toSet());
         String planner = key(c.targetPattern(), c.minRestHours(), c.minRestMode(), c.maxShiftsPerPeriod(), sorted(c.heavyDaysOfWeek()), c.sortOrder(), regimePlanner);
@@ -73,6 +75,18 @@ public class ScheduleBuildTemplateChangeClassifier {
         return i == null || i < 0 || i >= options.size() ? null : key(options.get(i).startTime(), options.get(i).endTime(), options.get(i).sortOrder());
     }
     private String ref(ScheduleBuildShiftOption o) { return o == null ? null : key(o.getStartTime(), o.getEndTime(), o.getSortOrder()); }
+    private String markerAffinity(ScheduleBuildMarker marker) {
+        return marker == null ? key(false, List.of()) : key(true, marker.getMembers().stream()
+                .map(member -> member.getId()).filter(Objects::nonNull).sorted().toList());
+    }
+    private String requestMarkerAffinity(SaveScheduleBuildPositionConfigRequest config, Integer markerIndex) {
+        List<SaveScheduleBuildMarkerRequest> markers = safe(config.markers());
+        if (markerIndex == null) return key(false, List.of());
+        if (markerIndex < 0 || markerIndex >= markers.size() || markers.get(markerIndex) == null) {
+            return key("invalid-marker-reference", markerIndex);
+        }
+        return key(true, ids(markers.get(markerIndex).memberIds()));
+    }
     private static List<String> days(Collection<java.time.DayOfWeek> values) { return values == null ? List.of() : values.stream().filter(Objects::nonNull).map(Enum::name).sorted().toList(); }
     private static List<Long> positionIds(Collection<Position> p) { return p == null ? List.of() : p.stream().map(Position::getId).filter(Objects::nonNull).sorted().toList(); }
     private static List<Long> ids(List<Long> p) { return safe(p).stream().filter(Objects::nonNull).distinct().sorted().toList(); }

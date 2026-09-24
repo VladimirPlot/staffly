@@ -37,6 +37,51 @@ class ScheduleBuildTemplateMarkerClassifierTest {
     }
 
     @Test
+    void attachingDetachingAndSwitchingAffinityArePlannerAffecting() {
+        ScheduleBuildTemplate detached = template("Клуб", 100L);
+        assertThat(classifier.classify(detached, requestWithAffinity("Клуб", List.of(100L), 0)))
+                .isEqualTo(PLANNER_AFFECTING);
+
+        ScheduleBuildTemplate attached = template("Клуб", 100L);
+        attached.getPositionConfigs().get(0).getWeekdayRegimes().get(0).getShiftOptions().get(0)
+                .setMarker(attached.getPositionConfigs().get(0).getMarkers().get(0));
+        assertThat(classifier.classify(attached, requestWithAffinity("Клуб", List.of(100L), null)))
+                .isEqualTo(PLANNER_AFFECTING);
+        assertThat(classifier.classify(attached, requestWithTwoMarkers(1)))
+                .isEqualTo(PLANNER_AFFECTING);
+    }
+
+    @Test
+    void attachedMembershipIsPlannerAffectingWhileRenameIsOnlyMetadata() {
+        ScheduleBuildTemplate attached = template("Клуб", 100L);
+        attached.getPositionConfigs().get(0).getWeekdayRegimes().get(0).getShiftOptions().get(0)
+                .setMarker(attached.getPositionConfigs().get(0).getMarkers().get(0));
+
+        assertThat(classifier.classify(attached, requestWithAffinity("Клуб", List.of(101L), 0)))
+                .isEqualTo(PLANNER_AFFECTING);
+        assertThat(classifier.classify(attached, requestWithAffinity("Ночной клуб", List.of(100L), 0)))
+                .isEqualTo(NEUTRAL_METADATA);
+    }
+
+    @Test
+    void geometryStillWinsOverMarkerPlannerChange() {
+        ScheduleBuildTemplate current = template("Клуб", 100L);
+        SaveScheduleBuildTemplateRequest proposed = requestWithAffinity("Клуб", List.of(100L), 0);
+        SaveScheduleBuildShiftOptionRequest changed = new SaveScheduleBuildShiftOptionRequest(
+                LocalTime.of(10, 0), LocalTime.of(17, 0), null, 0, 0);
+        SaveScheduleBuildWeekdayRegimeRequest oldRegime = proposed.positionConfigs().get(0).weekdayRegimes().get(0);
+        SaveScheduleBuildWeekdayRegimeRequest regime = new SaveScheduleBuildWeekdayRegimeRequest(
+                oldRegime.daysOfWeek(), oldRegime.workPeriodStart(), oldRegime.workPeriodEnd(),
+                List.of(changed), List.of(), List.of(), 0);
+        SaveScheduleBuildPositionConfigRequest config = proposed.positionConfigs().get(0);
+        proposed = new SaveScheduleBuildTemplateRequest("Template", null, true, List.of(
+                new SaveScheduleBuildPositionConfigRequest(config.id(), config.positionIds(), config.targetPattern(),
+                        config.minRestHours(), config.minRestMode(), config.maxShiftsPerPeriod(), config.heavyDaysOfWeek(),
+                        List.of(regime), config.markers(), config.sortOrder())));
+        assertThat(classifier.classify(current, proposed)).isEqualTo(PREFERENCE_AFFECTING);
+    }
+
+    @Test
     void stablePositionConfigIdDoesNotHidePositionScopeChange() {
         ScheduleBuildTemplate current = template("Клуб", 100L);
 
@@ -76,5 +121,28 @@ class ScheduleBuildTemplateMarkerClassifierTest {
                 positionIds, ScheduleBuildPattern.NONE, 12, ScheduleBuildMinRestMode.SOFT, 5,
                 List.of(), List.of(regime), List.of(marker), 0);
         return new SaveScheduleBuildTemplateRequest("Template", null, true, List.of(config));
+    }
+
+    private SaveScheduleBuildTemplateRequest requestWithAffinity(String name, List<Long> members, Integer markerIndex) {
+        SaveScheduleBuildShiftOptionRequest shift = new SaveScheduleBuildShiftOptionRequest(
+                LocalTime.of(9, 0), LocalTime.of(17, 0), null, 0, markerIndex);
+        SaveScheduleBuildWeekdayRegimeRequest regime = new SaveScheduleBuildWeekdayRegimeRequest(
+                List.of(DayOfWeek.values()), LocalTime.of(9, 0), LocalTime.of(17, 0),
+                List.of(shift), List.of(), List.of(), 0);
+        SaveScheduleBuildPositionConfigRequest config = new SaveScheduleBuildPositionConfigRequest(15L,
+                List.of(10L), ScheduleBuildPattern.NONE, 12, ScheduleBuildMinRestMode.SOFT, 5,
+                List.of(), List.of(regime), List.of(new SaveScheduleBuildMarkerRequest(42L, name, members)), 0);
+        return new SaveScheduleBuildTemplateRequest("Template", null, true, List.of(config));
+    }
+
+    private SaveScheduleBuildTemplateRequest requestWithTwoMarkers(Integer markerIndex) {
+        SaveScheduleBuildTemplateRequest base = requestWithAffinity("Клуб", List.of(100L), markerIndex);
+        SaveScheduleBuildPositionConfigRequest config = base.positionConfigs().get(0);
+        return new SaveScheduleBuildTemplateRequest("Template", null, true, List.of(
+                new SaveScheduleBuildPositionConfigRequest(config.id(), config.positionIds(), config.targetPattern(),
+                        config.minRestHours(), config.minRestMode(), config.maxShiftsPerPeriod(), config.heavyDaysOfWeek(),
+                        config.weekdayRegimes(), List.of(
+                                new SaveScheduleBuildMarkerRequest(42L, "Клуб", List.of(100L)),
+                                new SaveScheduleBuildMarkerRequest(null, "Бар", List.of(101L))), 0)));
     }
 }

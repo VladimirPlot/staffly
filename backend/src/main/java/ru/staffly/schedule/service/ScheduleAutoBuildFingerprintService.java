@@ -39,19 +39,7 @@ public class ScheduleAutoBuildFingerprintService {
         out.add("template", template.getId());
         List<ScheduleBuildPositionConfig> configs = template.getPositionConfigs().stream()
                 .filter(config -> configPositionIds(config).stream().anyMatch(scheduled::contains))
-                .sorted(Comparator.comparing(this::configKey))
                 .toList();
-        for (ScheduleBuildPositionConfig config : configs) {
-            out.add("config", config.getTargetPattern() == null ? null : config.getTargetPattern().name(),
-                    config.getMinRestHours(), config.getMinRestMode() == null ? null : config.getMinRestMode().name(),
-                    config.getMaxShiftsPerPeriod(), config.getSortOrder());
-            out.list("configPositions", configPositionIds(config));
-            out.list("heavyDays", config.getHeavyDaysOfWeek().stream().sorted().toList());
-            config.getWeekdayRegimes().stream().sorted(Comparator.comparing(this::regimeKey)).forEach(regime -> {
-                out.add("regime", regimeKey(regime));
-            });
-        }
-
         List<Long> relevantPositionIds = configs.stream().flatMap(config -> configPositionIds(config).stream())
                 .filter(scheduled::contains).distinct().sorted().toList();
         Set<Long> relevantPositions = new HashSet<>(relevantPositionIds);
@@ -62,9 +50,31 @@ public class ScheduleAutoBuildFingerprintService {
                 .sorted(Comparator.comparing(participation -> participation.getMember().getId()))
                 .toList();
         Set<Long> candidateIds = new HashSet<>();
+        Map<Long, CandidateState> candidateStates = new HashMap<>();
         for (ScheduleParticipation candidate : candidates) {
-            candidateIds.add(candidate.getMember().getId());
-            out.add("candidate", candidate.getMember().getId(), candidate.getPositionId());
+            Long memberId = candidate.getMember().getId();
+            candidateIds.add(memberId);
+            Long currentPositionId = candidate.getMember().getPosition() == null
+                    ? null : candidate.getMember().getPosition().getId();
+            candidateStates.put(memberId, new CandidateState(candidate.getPositionId(), currentPositionId));
+            out.add("candidate", memberId, candidate.getPositionId());
+        }
+
+        Map<ScheduleBuildPositionConfig, Set<Long>> positionIdsByConfig = new IdentityHashMap<>();
+        configs.forEach(config -> positionIdsByConfig.put(config, new HashSet<>(configPositionIds(config))));
+        for (ScheduleBuildPositionConfig config : configs.stream()
+                .sorted(Comparator.comparing(item -> configKey(
+                        item, positionIdsByConfig.get(item), candidateStates))).toList()) {
+            out.add("config", config.getTargetPattern() == null ? null : config.getTargetPattern().name(),
+                    config.getMinRestHours(), config.getMinRestMode() == null ? null : config.getMinRestMode().name(),
+                    config.getMaxShiftsPerPeriod(), config.getSortOrder());
+            out.list("configPositions", configPositionIds(config));
+            out.list("heavyDays", config.getHeavyDaysOfWeek().stream().sorted().toList());
+            config.getWeekdayRegimes().stream()
+                    .sorted(Comparator.comparing(regime -> regimeKey(
+                            regime, positionIdsByConfig.get(config), candidateStates)))
+                    .forEach(regime -> out.add("regime", regimeKey(
+                            regime, positionIdsByConfig.get(config), candidateStates)));
         }
 
         submissions.findWithCellsByScheduleId(schedule.getId()).stream()
@@ -85,6 +95,8 @@ public class ScheduleAutoBuildFingerprintService {
         for (ScheduleBuildPositionConfig config : template.getPositionConfigs()) {
             Hibernate.initialize(config.getPositions());
             Hibernate.initialize(config.getHeavyDaysOfWeek());
+            Hibernate.initialize(config.getMarkers());
+            config.getMarkers().forEach(marker -> Hibernate.initialize(marker.getMembers()));
             Hibernate.initialize(config.getWeekdayRegimes());
             for (ScheduleBuildWeekdayRegime regime : config.getWeekdayRegimes()) {
                 Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
@@ -115,29 +127,47 @@ public class ScheduleAutoBuildFingerprintService {
     }
 
     /** Persistence IDs and regime insertion order are deliberately absent. */
-    private String configKey(ScheduleBuildPositionConfig config) {
+    private String configKey(ScheduleBuildPositionConfig config, Set<Long> configPositionIds,
+                             Map<Long, CandidateState> candidateStates) {
         Canonical canonical = new Canonical();
         canonical.add("config", config.getTargetPattern(), config.getMinRestHours(), config.getMinRestMode(),
                 config.getMaxShiftsPerPeriod(), config.getSortOrder());
         canonical.list("positions", configPositionIds(config));
         canonical.list("heavyDays", config.getHeavyDaysOfWeek().stream().sorted().toList());
-        canonical.list("regimes", config.getWeekdayRegimes().stream().map(this::regimeKey).sorted().toList());
+        canonical.list("regimes", config.getWeekdayRegimes().stream()
+                .map(regime -> regimeKey(regime, configPositionIds, candidateStates)).sorted().toList());
         return canonical.value();
     }
 
-    private String regimeKey(ScheduleBuildWeekdayRegime regime) {
+    private String regimeKey(ScheduleBuildWeekdayRegime regime, Set<Long> configPositionIds,
+                             Map<Long, CandidateState> candidateStates) {
         Canonical canonical = new Canonical();
         canonical.list("days", regime.getDaysOfWeek().stream().map(Enum::name).sorted().toList());
         canonical.add("period", regime.getWorkPeriodStart(), regime.getWorkPeriodEnd());
-        canonical.list("shifts", regime.getShiftOptions().stream().map(this::shiftKey).sorted().toList());
+        canonical.list("shifts", regime.getShiftOptions().stream()
+                .map(option -> shiftKey(option, configPositionIds, candidateStates)).sorted().toList());
         canonical.list("coverage", regime.getCoverageRules().stream().map(this::coverageKey).sorted().toList());
         canonical.list("overrides", regime.getCoverageDateOverrides().stream().map(this::overrideKey).sorted().toList());
         return canonical.value();
     }
 
-    private String shiftKey(ScheduleBuildShiftOption option) {
-        return key(option.getStartTime(), option.getEndTime(), option.getSortOrder());
+    private String shiftKey(ScheduleBuildShiftOption option, Set<Long> configPositionIds,
+                            Map<Long, CandidateState> candidateStates) {
+        ScheduleBuildMarker marker = option.getMarker();
+        List<Long> effectiveMembers = marker == null ? List.of() : marker.getMembers().stream()
+                .map(member -> member.getId())
+                .filter(Objects::nonNull)
+                .filter(memberId -> {
+                    CandidateState candidate = candidateStates.get(memberId);
+                    return candidate != null
+                            && configPositionIds.contains(candidate.participationPositionId())
+                            && configPositionIds.contains(candidate.currentMemberPositionId());
+                })
+                .sorted().toList();
+        return key(option.getStartTime(), option.getEndTime(), option.getSortOrder(), marker != null, effectiveMembers);
     }
+
+    private record CandidateState(Long participationPositionId, Long currentMemberPositionId) {}
 
     private String key(Object... values) {
         Canonical canonical = new Canonical();

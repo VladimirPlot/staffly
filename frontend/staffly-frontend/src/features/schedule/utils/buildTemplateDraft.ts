@@ -6,7 +6,19 @@ import type {
   ScheduleBuildTemplateDto,
 } from "../api";
 
-export type ScheduleBuildShiftOptionDraft = { startTime: string; endTime: string; label: string; sortOrder: number };
+export type ScheduleBuildShiftOptionDraft = {
+  startTime: string;
+  endTime: string;
+  label: string;
+  sortOrder: number;
+  markerKey?: string | null;
+};
+export type ScheduleBuildMarkerDraft = {
+  key: string;
+  id?: number | null;
+  name: string;
+  memberIds: number[];
+};
 export type ScheduleBuildCoverageDateOverrideDraft = { date: string; shiftOptionIndex: number; requiredCount: number };
 export type ScheduleBuildCoverageRuleDraft = {
   dayOfWeek: number;
@@ -37,7 +49,7 @@ export type ScheduleBuildPositionConfigDraft = {
   heavyDaysOfWeek: number[];
   sortOrder: number;
   weekdayRegimes: ScheduleBuildWeekdayRegimeDraft[];
-  markers: { id?: number | null; name: string; memberIds: number[] }[];
+  markers: ScheduleBuildMarkerDraft[];
 };
 
 export type ScheduleBuildTemplateDraft = {
@@ -69,6 +81,7 @@ const DAY_NUMBER: Record<DayOfWeek, number> = {
 const TIME_MULTIPLE_OF_15_MINUTES_ERROR = "Время должно быть кратно 15 минутам.";
 let nextDraftKey = 0;
 const draftKey = () => `weekday-regime-${++nextDraftKey}`;
+const markerDraftKey = () => `marker-${++nextDraftKey}`;
 
 export const canonicalizeWeekdays = (days: readonly DayOfWeek[]): DayOfWeek[] =>
   WEEKDAYS.filter((day) => days.includes(day));
@@ -162,6 +175,7 @@ export const createShiftOptionDraft = (): ScheduleBuildShiftOptionDraft => ({
   endTime: "",
   label: "",
   sortOrder: 0,
+  markerKey: null,
 });
 export const createCoverageRuleDraft = (): ScheduleBuildCoverageRuleDraft => ({
   dayOfWeek: 1,
@@ -196,66 +210,101 @@ export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft =>
 export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): ScheduleBuildTemplateDraft => ({
   name: template?.name ?? "",
   description: template?.description ?? "",
-  positionConfigs: template?.positionConfigs?.map((config) => ({
-    id: config.id,
-    positionIds: config.positionIds ?? [],
-    targetPattern: config.targetPattern,
-    minRestHours: config.minRestHours ?? "",
-    minRestMode: config.minRestMode ?? "SOFT",
-    maxShiftsPerPeriod: config.maxShiftsPerPeriod ?? "",
-    heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek ?? [])]
-      .filter((day) => day >= 1 && day <= 7)
-      .sort((a, b) => a - b),
-    sortOrder: config.sortOrder,
-    markers: (config.markers ?? []).map((marker) => ({ id: marker.id, name: marker.name, memberIds: [...(marker.memberIds ?? [])] })),
-    weekdayRegimes: (config.weekdayRegimes ?? []).map((regime) => ({
-      key: draftKey(),
-      daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek ?? []),
-      workPeriodStart: regime.workPeriodStart,
-      workPeriodEnd: regime.workPeriodEnd,
-      sortOrder: regime.sortOrder,
-      shiftOptions: (regime.shiftOptions ?? []).map((item) => ({ ...item, label: item.label ?? "" })),
-      coverageRules: (regime.coverageRules ?? []).map((item) => ({ ...item })),
-      coverageDateOverrides: (regime.coverageDateOverrides ?? []).map((item) => ({ ...item })),
-    })),
-  })) ?? [createPositionConfigDraft()],
+  positionConfigs: template?.positionConfigs?.map((config) => {
+    const markers = (config.markers ?? []).map((marker) => ({
+      key: markerDraftKey(),
+      id: marker.id,
+      name: marker.name,
+      memberIds: [...(marker.memberIds ?? [])],
+    }));
+    const markerKeysById = new Map(markers.map((marker) => [marker.id, marker.key]));
+    const markerKey = (markerId: number | null | undefined): string | null => {
+      if (markerId == null) return null;
+      const resolved = markerKeysById.get(markerId);
+      if (resolved === undefined) throw new Error("Shift option response references an unknown marker");
+      return resolved;
+    };
+    return {
+      id: config.id,
+      positionIds: config.positionIds ?? [],
+      targetPattern: config.targetPattern,
+      minRestHours: config.minRestHours ?? "",
+      minRestMode: config.minRestMode ?? "SOFT",
+      maxShiftsPerPeriod: config.maxShiftsPerPeriod ?? "",
+      heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek ?? [])]
+        .filter((day) => day >= 1 && day <= 7)
+        .sort((a, b) => a - b),
+      sortOrder: config.sortOrder,
+      markers,
+      weekdayRegimes: (config.weekdayRegimes ?? []).map((regime) => ({
+        key: draftKey(),
+        daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek ?? []),
+        workPeriodStart: regime.workPeriodStart,
+        workPeriodEnd: regime.workPeriodEnd,
+        sortOrder: regime.sortOrder,
+        shiftOptions: (regime.shiftOptions ?? []).map((item) => ({
+          ...item,
+          label: item.label ?? "",
+          markerKey: markerKey(item.markerId),
+        })),
+        coverageRules: (regime.coverageRules ?? []).map((item) => ({ ...item })),
+        coverageDateOverrides: (regime.coverageDateOverrides ?? []).map((item) => ({ ...item })),
+      })),
+    };
+  }) ?? [createPositionConfigDraft()],
 });
 
 export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveScheduleBuildTemplateRequest => ({
   name: draft.name.trim(),
   description: draft.description.trim() || null,
-  positionConfigs: draft.positionConfigs.map((config, index) => ({
-    id: config.id ?? null,
-    positionIds: [...new Set(config.positionIds)].sort((a, b) => a - b),
-    targetPattern: config.targetPattern,
-    minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
-    minRestMode: config.minRestMode,
-    maxShiftsPerPeriod: config.maxShiftsPerPeriod === "" ? null : Number(config.maxShiftsPerPeriod),
-    heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek)].filter((day) => day >= 1 && day <= 7).sort((a, b) => a - b),
-    sortOrder: index,
-    markers: config.markers.map((marker) => ({ id: marker.id ?? null, name: marker.name, memberIds: [...marker.memberIds] })),
-    weekdayRegimes: config.weekdayRegimes.map((regime, regimeIndex) => ({
-      daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek),
-      workPeriodStart: regime.workPeriodStart,
-      workPeriodEnd: regime.workPeriodEnd,
-      sortOrder: regimeIndex,
-      shiftOptions: regime.shiftOptions.map((item, itemIndex) => ({
-        startTime: item.startTime,
-        endTime: item.endTime,
-        label: item.label.trim() || null,
-        sortOrder: itemIndex,
+  positionConfigs: draft.positionConfigs.map((config, index) => {
+    const markerIndexes = new Map(config.markers.map((marker, markerIndex) => [marker.key, markerIndex]));
+    const markerIndex = (key: string | null | undefined): number | null => {
+      if (key == null) return null;
+      const resolved = markerIndexes.get(key);
+      if (resolved === undefined) throw new Error("Shift option references a marker missing from its position config");
+      return resolved;
+    };
+    return {
+      id: config.id ?? null,
+      positionIds: [...new Set(config.positionIds)].sort((a, b) => a - b),
+      targetPattern: config.targetPattern,
+      minRestHours: config.minRestHours === "" ? null : Number(config.minRestHours),
+      minRestMode: config.minRestMode,
+      maxShiftsPerPeriod: config.maxShiftsPerPeriod === "" ? null : Number(config.maxShiftsPerPeriod),
+      heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek)].filter((day) => day >= 1 && day <= 7).sort((a, b) => a - b),
+      sortOrder: index,
+      markers: config.markers.map((marker) => ({
+        id: marker.id ?? null,
+        name: marker.name,
+        memberIds: [...marker.memberIds],
       })),
-      coverageRules: regime.coverageRules.map((item, itemIndex) => ({
-        ...item,
-        dayOfWeek: Number(item.dayOfWeek),
-        requiredCount: Number(item.requiredCount) || 0,
-        sortOrder: itemIndex,
+      weekdayRegimes: config.weekdayRegimes.map((regime, regimeIndex) => ({
+        daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek),
+        workPeriodStart: regime.workPeriodStart,
+        workPeriodEnd: regime.workPeriodEnd,
+        sortOrder: regimeIndex,
+        shiftOptions: regime.shiftOptions.map((item, itemIndex) => ({
+          startTime: item.startTime,
+          endTime: item.endTime,
+          label: item.label.trim() || null,
+          sortOrder: itemIndex,
+          markerIndex: markerIndex(item.markerKey),
+        })),
+        coverageRules: regime.coverageRules.map((item, itemIndex) => ({
+          ...item,
+          dayOfWeek: Number(item.dayOfWeek),
+          requiredCount: Number(item.requiredCount) || 0,
+          sortOrder: itemIndex,
+        })),
+        coverageDateOverrides: regime.coverageDateOverrides
+          .filter(
+            (item) => item.date && item.shiftOptionIndex >= 0 && item.shiftOptionIndex < regime.shiftOptions.length,
+          )
+          .map((item) => ({ ...item, requiredCount: Number(item.requiredCount) || 0 })),
       })),
-      coverageDateOverrides: regime.coverageDateOverrides
-        .filter((item) => item.date && item.shiftOptionIndex >= 0 && item.shiftOptionIndex < regime.shiftOptions.length)
-        .map((item) => ({ ...item, requiredCount: Number(item.requiredCount) || 0 })),
-    })),
-  })),
+    };
+  }),
 });
 
 export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): string | null => {

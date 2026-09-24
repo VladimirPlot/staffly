@@ -275,10 +275,81 @@ test("marker transport data survives DTO draft request round trip without marker
 
 test("new position configs and markers never inherit persistence ids", () => {
   const config = createPositionConfigDraft();
-  config.markers.push({ name: "Новый", memberIds: [] });
+  config.markers.push({ key: "new-marker", name: "Новый", memberIds: [] });
 
   const request = draftToSaveRequest({ name: "Шаблон", description: "", positionConfigs: [config] });
 
   assert.equal(request.positionConfigs[0].id, null);
   assert.equal(request.positionConfigs[0].markers[0].id, null);
+});
+
+test("marker affinity survives DTO hydration, unrelated edits, and save serialization", () => {
+  const config = completeConfig();
+  const base = draftToSaveRequest({ name: "Шаблон", description: "", positionConfigs: [config] }).positionConfigs[0];
+  const dto = {
+    id: 1,
+    version: 1,
+    name: "Шаблон",
+    description: null,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+    positionConfigs: [
+      {
+        ...base,
+        id: 2,
+        positionNames: ["Официант"],
+        markers: [{ id: 42, name: "Клуб", memberIds: [12] }],
+        weekdayRegimes: base.weekdayRegimes.map((regime, index) => ({
+          ...regime,
+          id: index + 1,
+          shiftOptions: regime.shiftOptions.map((option, childIndex) => ({
+            ...option,
+            id: childIndex + 1,
+            markerId: 42,
+          })),
+          coverageRules: [],
+          coverageDateOverrides: [],
+        })),
+      },
+    ],
+  } satisfies ScheduleBuildTemplateDto;
+
+  const draft = templateDtoToDraft(dto);
+  draft.description = "unrelated";
+  assert.equal(draftToSaveRequest(draft).positionConfigs[0].weekdayRegimes[0].shiftOptions[0].markerIndex, 0);
+});
+
+test("new unpersisted marker can be referenced and marker reordering is resolved at serialization", () => {
+  const config = completeConfig();
+  config.markers = [
+    { key: "a", id: null, name: "A", memberIds: [] },
+    { key: "club", id: null, name: "Клуб", memberIds: [12] },
+  ];
+  config.weekdayRegimes[0].shiftOptions[0].markerKey = "club";
+  config.markers.reverse();
+
+  const request = draftToSaveRequest({ name: "Шаблон", description: "", positionConfigs: [config] });
+  assert.equal(request.positionConfigs[0].markers[0].id, null);
+  assert.equal(request.positionConfigs[0].weekdayRegimes[0].shiftOptions[0].markerIndex, 0);
+});
+
+test("split preserves the same marker affinity without cloning a marker", () => {
+  const config = completeConfig();
+  config.markers = [{ key: "club", id: 42, name: "Клуб", memberIds: [12] }];
+  config.weekdayRegimes[0].shiftOptions[0].markerKey = "club";
+  const split = splitWeekdayRegime(config.weekdayRegimes, 0, ["MONDAY"]);
+  assert.equal(split[0].shiftOptions[0].markerKey, "club");
+  assert.equal(split[1].shiftOptions[0].markerKey, "club");
+  assert.equal(config.markers.length, 1);
+});
+
+test("deleted marker key is rejected instead of silently binding to a reindexed marker", () => {
+  const config = completeConfig();
+  config.markers = [{ key: "other", id: 2, name: "Другой", memberIds: [] }];
+  config.weekdayRegimes[0].shiftOptions[0].markerKey = "deleted";
+  assert.throws(
+    () => draftToSaveRequest({ name: "Шаблон", description: "", positionConfigs: [config] }),
+    /missing from its position config/,
+  );
 });

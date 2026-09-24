@@ -207,7 +207,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 if (days.isEmpty()) throw new BadRequestException("weekdayRegime.daysOfWeek must not be empty");
                 if (days.stream().anyMatch(Objects::isNull) || new HashSet<>(days).size() != days.size()) throw new BadRequestException("weekdayRegime.daysOfWeek must not contain null or duplicates");
                 for (java.time.DayOfWeek day : days) if (!covered.add(day)) throw new BadRequestException("Weekday must occur in exactly one regime: " + day);
-                validateRegime(regime, new HashSet<>(days));
+                validateRegime(regime, new HashSet<>(days), preparedConfig.markers().size());
             }
             if (!covered.equals(EnumSet.allOf(java.time.DayOfWeek.class))) throw new BadRequestException("weekdayRegimes must cover all seven weekdays exactly once");
         }
@@ -332,6 +332,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                     .filter(marker -> marker.getId() != null)
                     .collect(Collectors.toMap(ScheduleBuildMarker::getId, Function.identity()));
             Set<ScheduleBuildMarker> requestedMarkers = new HashSet<>();
+            List<ScheduleBuildMarker> markersByRequestIndex = new ArrayList<>();
             for (PreparedMarker requestedMarker : preparedConfig.markers()) {
                 ScheduleBuildMarker marker = requestedMarker.id() == null
                         ? new ScheduleBuildMarker() : existingMarkers.get(requestedMarker.id());
@@ -340,6 +341,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 }
                 if (requestedMarker.id() == null) entity.getMarkers().add(marker);
                 requestedMarkers.add(marker);
+                markersByRequestIndex.add(marker);
                 marker.setPositionConfig(entity);
                 marker.setName(requestedMarker.name());
                 marker.getMembers().clear();
@@ -358,6 +360,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 for (SaveScheduleBuildShiftOptionRequest option : requestRegime.shiftOptions()) {
                     ScheduleBuildShiftOption child = new ScheduleBuildShiftOption(); child.setWeekdayRegime(regime);
                     child.setStartTime(option.startTime()); child.setEndTime(option.endTime()); child.setLabel(trimToNull(option.label()));
+                    child.setMarker(option.markerIndex() == null ? null : markersByRequestIndex.get(option.markerIndex()));
                     child.setSortOrder(option.sortOrder() == null ? shiftOrder++ : option.sortOrder()); regime.getShiftOptions().add(child);
                 }
                 int coverageOrder = 0;
@@ -433,7 +436,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                 .toList();
     }
 
-    private void validateRegime(SaveScheduleBuildWeekdayRegimeRequest regime, Set<java.time.DayOfWeek> days) {
+    private void validateRegime(SaveScheduleBuildWeekdayRegimeRequest regime, Set<java.time.DayOfWeek> days,
+                                int markerCount) {
         CanonicalBusinessInterval workPeriod = validateWorkPeriod(regime.workPeriodStart(), regime.workPeriodEnd());
         List<SaveScheduleBuildShiftOptionRequest> options = Optional.ofNullable(regime.shiftOptions()).orElse(List.of());
         if (options.isEmpty()) throw new BadRequestException("weekdayRegime.shiftOptions must not be empty");
@@ -441,6 +445,10 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         for (SaveScheduleBuildShiftOptionRequest option : options) {
             if (option == null) throw new BadRequestException("shiftOption is required");
             CanonicalBusinessInterval canonical = validateShiftOption(option, workPeriod, regime.workPeriodStart(), regime.workPeriodEnd());
+            if (option.markerIndex() != null
+                    && (option.markerIndex() < 0 || option.markerIndex() >= markerCount)) {
+                throw new BadRequestException("shiftOption.markerIndex must reference a marker from its positionConfig");
+            }
             if (!geometry.add(canonical.startMinute() + ":" + canonical.endMinute())) throw new BadRequestException("Duplicate equivalent shiftOption in weekdayRegime");
             canonicalOptions.add(canonical);
         }
@@ -584,7 +592,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                         pc.getMinRestHours(), pc.getMinRestMode(), pc.getMaxShiftsPerPeriod(), pc.getHeavyDaysOfWeek() == null ? List.of() : List.copyOf(pc.getHeavyDaysOfWeek()),
                         pc.getWeekdayRegimes().stream().map(regime -> new ScheduleBuildWeekdayRegimeDto(regime.getId(), regime.getDaysOfWeek().stream().sorted().toList(),
                                 regime.getWorkPeriodStart(), regime.getWorkPeriodEnd(),
-                                regime.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.getSortOrder())).toList(),
+                                regime.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.getSortOrder(),
+                                        o.getMarker() == null ? null : o.getMarker().getId())).toList(),
                                 regime.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
                                 regime.getCoverageDateOverrides().stream().map(o -> new ScheduleBuildCoverageDateOverrideDto(o.getId(), o.getDate(), shiftOptionIndex(regime, o.getShiftOption()), o.getRequiredCount())).toList(),
                                 regime.getSortOrder())).toList(),

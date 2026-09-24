@@ -17,6 +17,11 @@ public class ScheduleBuildShiftOption {
     @JoinColumn(name = "weekday_regime_id", nullable = false)
     private ScheduleBuildWeekdayRegime weekdayRegime;
 
+    /** Optional soft-affinity marker owned by the same position configuration. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "marker_id")
+    private ScheduleBuildMarker marker;
+
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
 
