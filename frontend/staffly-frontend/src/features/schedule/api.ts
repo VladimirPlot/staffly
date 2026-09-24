@@ -442,6 +442,36 @@ export type SaveScheduleBuildTemplateRequest = {
   confirmConsequences?: boolean;
 };
 
+export type ScheduleBuildTemplateScheduleAction =
+  | "NO_ACTION"
+  | "KEEP_PREFERENCES"
+  | "INVALIDATE_APPLIED_AUTO_BUILD"
+  | "RESET_PREFERENCE_COLLECTION"
+  | "PUBLISHED_UNCHANGED";
+
+export type ScheduleBuildTemplateScheduleImpact = {
+  scheduleId: number;
+  scheduleTitle: string;
+  status: ScheduleStatus;
+  action: ScheduleBuildTemplateScheduleAction;
+};
+
+export type ScheduleBuildTemplateImpactSummary = {
+  linkedScheduleCount: number;
+  noActionCount: number;
+  keepPreferencesCount: number;
+  invalidateAppliedAutoBuildCount: number;
+  resetPreferenceCollectionCount: number;
+  publishedUnchangedCount: number;
+};
+
+export type ScheduleBuildTemplateConfirmationMeta = {
+  impact: "NONE" | "NEUTRAL_METADATA" | "PLANNER_AFFECTING" | "PREFERENCE_AFFECTING";
+  schedules: ScheduleBuildTemplateScheduleImpact[];
+  summary: ScheduleBuildTemplateImpactSummary;
+  hasDestructiveConsequences: boolean;
+};
+
 function nullableTimestamp(value: string | null | undefined): string | null {
   return value ?? null;
 }
