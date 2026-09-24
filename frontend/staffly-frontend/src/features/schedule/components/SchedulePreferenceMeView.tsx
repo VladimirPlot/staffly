@@ -1,4 +1,5 @@
 import React from "react";
+import { Info } from "lucide-react";
 
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
@@ -23,9 +24,12 @@ import {
   applyPreferenceDayEdit,
   applyPreferenceToSelectedDays,
   getCalendarLeadingSlotCount,
+  getDaysForWeekday,
   getPreferenceCalendarPresentation,
+  hasPreferenceDayNote,
   normalizePreferenceEdit,
   toggleSelectedDay,
+  toggleWeekdaySelection,
 } from "../schedulePreferenceCalendar";
 
 type SchedulePreferenceMeViewProps = {
@@ -54,7 +58,15 @@ const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
 ];
 
 const EMPTY_DAY: PreferenceDayDraft = { type: "NO_PREFERENCE", fullDay: true, startTime: "", endTime: "", note: "" };
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const WEEKDAYS = [
+  { short: "Пн", name: "понедельники" },
+  { short: "Вт", name: "вторники" },
+  { short: "Ср", name: "среды" },
+  { short: "Чт", name: "четверги" },
+  { short: "Пт", name: "пятницы" },
+  { short: "Сб", name: "субботы" },
+  { short: "Вс", name: "воскресенья" },
+];
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
@@ -313,6 +325,24 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
       return next;
     });
   }, []);
+
+  const handleWeekdayClick = React.useCallback(
+    (weekdayIndex: number) => {
+      if (!data?.canSubmit || saving) return;
+      setSelectedDays((previous) => {
+        const next = toggleWeekdaySelection(
+          previous,
+          data.days.map((day) => day.date),
+          weekdayIndex,
+        );
+        const hasSelection = next.size > 0;
+        selectionModeRef.current = hasSelection;
+        setSelectionMode(hasSelection);
+        return next;
+      });
+    },
+    [data, saving],
+  );
 
   const handleCalendarPointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>, day: string) => {
@@ -649,11 +679,30 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 
         <div className="mx-auto w-full max-w-3xl" aria-label="Календарь пожеланий">
           <div className="mb-1 grid grid-cols-7 gap-1">
-            {WEEKDAYS.map((weekday) => (
-              <div key={weekday} className="text-muted py-1 text-center text-[11px] font-semibold">
-                {weekday}
-              </div>
-            ))}
+            {WEEKDAYS.map((weekday, weekdayIndex) => {
+              const weekdayDays = getDaysForWeekday(
+                data.days.map((day) => day.date),
+                weekdayIndex,
+              );
+              const allSelected = weekdayDays.length > 0 && weekdayDays.every((day) => selectedDays.has(day));
+              return (
+                <button
+                  key={weekday.short}
+                  type="button"
+                  disabled={!data.canSubmit || saving || weekdayDays.length === 0}
+                  onClick={() => handleWeekdayClick(weekdayIndex)}
+                  aria-label={`Выбрать все ${weekday.name} в периоде`}
+                  aria-pressed={allSelected}
+                  className={`py-1 text-center text-[11px] font-semibold transition disabled:cursor-default ${
+                    allSelected
+                      ? "text-blue-700 underline decoration-2 underline-offset-2"
+                      : "text-muted enabled:hover:text-[var(--staffly-text)]"
+                  }`}
+                >
+                  {weekday.short}
+                </button>
+              );
+            })}
           </div>
           <div
             className="grid grid-cols-7 gap-1"
@@ -675,6 +724,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                     ? "border-amber-200 bg-amber-50 text-amber-900"
                     : "border-emerald-200 bg-emerald-50 text-emerald-800";
               const isSelected = selectedDays.has(day.date);
+              const hasNote = hasPreferenceDayNote(formStateByDay[day.date]);
               return (
                 <button
                   key={day.date}
@@ -685,8 +735,11 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                   onClick={() => handleDayClick(day.date)}
                   aria-label={`${formatDateFromIso(day.date)}: ${presentation.label}`}
                   aria-pressed={selectionMode ? isSelected : undefined}
-                  className={`${toneClass} ${isSelected ? "ring-2 ring-blue-600 ring-offset-1" : ""} min-w-0 touch-pan-y rounded-lg border px-0.5 py-1.5 text-center transition select-none enabled:hover:brightness-95 enabled:focus-visible:ring-2 enabled:focus-visible:ring-[var(--staffly-ring)] disabled:cursor-default sm:rounded-xl sm:px-1 sm:py-2`}
+                  className={`${toneClass} ${isSelected ? "ring-2 ring-blue-600 ring-offset-1" : ""} relative min-w-0 touch-pan-y rounded-lg border px-0.5 py-1.5 text-center transition select-none enabled:hover:brightness-95 enabled:focus-visible:ring-2 enabled:focus-visible:ring-[var(--staffly-ring)] disabled:cursor-default sm:rounded-xl sm:px-1 sm:py-2`}
                 >
+                  {hasNote && (
+                    <Info aria-hidden="true" className="pointer-events-none absolute top-1 right-1 size-3 opacity-70" />
+                  )}
                   <span className="block text-sm font-bold">{Number(day.date.slice(-2))}</span>
                   <span className="block truncate text-[9px] leading-3 sm:text-[11px]">{presentation.label}</span>
                   {presentation.startTime && presentation.endTime && (

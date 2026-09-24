@@ -25,6 +25,31 @@ export function getCalendarLeadingSlotCount(firstDay: string): number {
   return (sundayBasedDay + 6) % 7;
 }
 
+export function getDaysForWeekday(days: readonly string[], weekdayIndex: number): string[] {
+  return days.filter((day) => getCalendarLeadingSlotCount(day) === weekdayIndex);
+}
+
+export function toggleWeekdaySelection(
+  selectedDays: ReadonlySet<string>,
+  scheduleDays: readonly string[],
+  weekdayIndex: number,
+): Set<string> {
+  const weekdayDays = getDaysForWeekday(scheduleDays, weekdayIndex);
+  const allSelected = weekdayDays.length > 0 && weekdayDays.every((day) => selectedDays.has(day));
+  const next = new Set(selectedDays);
+
+  weekdayDays.forEach((day) => {
+    if (allSelected) next.delete(day);
+    else next.add(day);
+  });
+
+  return next;
+}
+
+export function hasPreferenceDayNote(value?: PreferenceDayDraft): boolean {
+  return value?.type !== "NO_PREFERENCE" && Boolean(value?.note.trim());
+}
+
 export function applyPreferenceDayEdit(
   state: Record<string, PreferenceDayDraft>,
   day: string,
