@@ -19,7 +19,7 @@ import java.util.*;
 
 /**
  * Authoritative mutation boundary for an active preference collection.
- * Lock order is Member (ascending id) -> Schedule -> collection children.
+ * Lock order is Member (ascending id) -> Template (when used) -> Schedule -> collection children.
  */
 @Service
 @RequiredArgsConstructor
@@ -114,25 +114,8 @@ public class SchedulePreferenceLifecycleService {
                 && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Schedule has no preference collection that can be invalidated");
         }
-        submissions.deleteByScheduleId(scheduleId);
-        participations.deleteByScheduleId(scheduleId);
-        schedule.getPreferenceShiftOptionSnapshots().clear();
-        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
-            // Provenance is cell-level: preserve MANUAL/PREFERENCE_HINT cells, remove only AUTO_BUILD output.
-            schedule.getRows().forEach(row -> row.getCells()
-                    .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
-        }
-        schedule.setPreferenceBuildTemplate(null);
-        schedule.setPreferenceCollectionMode(null);
-        schedule.setPreferenceCollectionStartedAt(null);
-        schedule.setPreferenceDeadline(null);
-        schedule.setPreferenceClosedAt(null);
-        schedule.setPreferenceAllSubmittedNotifiedAt(null);
-        schedule.setPreferenceAppliedAt(null);
-        schedule.setStatus(ScheduleStatus.DRAFT);
+        resetPreferenceCollectionWithLocksHeld(schedule, actorUserId, reason);
         touchAndFlush(schedule);
-        auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_COLLECTION_INVALIDATED,
-                details("Сбор пожеланий аннулирован", reason));
         return schedule;
     }
 
@@ -257,6 +240,16 @@ public class SchedulePreferenceLifecycleService {
     public void invalidatePreferenceCollectionWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
         if (schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Only an applied preference draft can be invalidated here");
+        }
+        resetPreferenceCollectionWithLocksHeld(schedule, actorUserId, reason);
+    }
+
+    /** Full reset primitive for orchestration that already owns the schedule lock. */
+    public void resetPreferenceCollectionWithLocksHeld(Schedule schedule, Long actorUserId, String reason) {
+        if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
+                && schedule.getStatus() != ScheduleStatus.PREFERENCES_CLOSED
+                && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+            throw new BadRequestException("Schedule has no preference collection that can be invalidated");
         }
         submissions.deleteByScheduleId(schedule.getId());
         participations.deleteByScheduleId(schedule.getId());

@@ -45,6 +45,10 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     /** Authoritative template linkage used by the read-only template impact plan. */
     List<Schedule> findByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(Long restaurantId, Long templateId);
 
+    @Query("select s.id from Schedule s where s.restaurant.id = :restaurantId and s.preferenceBuildTemplate.id = :templateId order by s.id")
+    List<Long> findIdsByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(
+            @Param("restaurantId") Long restaurantId, @Param("templateId") Long templateId);
+
     @EntityGraph(attributePaths = {"positions", "ownerMember", "ownerMember.user", "ownerMember.position", "ownerUser"})
     List<Schedule> findByRestaurantIdAndOwnerUserIdAndEndDateGreaterThanEqualOrderByStartDateAsc(
             Long restaurantId,

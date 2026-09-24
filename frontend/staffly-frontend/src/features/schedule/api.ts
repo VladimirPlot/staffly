@@ -283,6 +283,7 @@ export type ScheduleBuildPositionConfigDto = {
 
 export type ScheduleBuildTemplateDto = {
   id: number;
+  version: number;
   name: string;
   description: string | null;
   isActive: boolean;
@@ -437,6 +438,8 @@ export type SaveScheduleBuildTemplateRequest = {
   name: string;
   description?: string | null;
   positionConfigs: SaveScheduleBuildPositionConfigRequest[];
+  expectedVersion?: number;
+  confirmConsequences?: boolean;
 };
 
 function nullableTimestamp(value: string | null | undefined): string | null {
