@@ -42,30 +42,14 @@ public class ScheduleAutoBuildFingerprintService {
                 .sorted(Comparator.comparing(this::configKey))
                 .toList();
         for (ScheduleBuildPositionConfig config : configs) {
-            out.add("config", config.getWorkPeriodStart(), config.getWorkPeriodEnd(),
-                    config.getTargetPattern() == null ? null : config.getTargetPattern().name(),
+            out.add("config", config.getTargetPattern() == null ? null : config.getTargetPattern().name(),
                     config.getMinRestHours(), config.getMinRestMode() == null ? null : config.getMinRestMode().name(),
                     config.getMaxShiftsPerPeriod(), config.getSortOrder());
             out.list("configPositions", configPositionIds(config));
             out.list("heavyDays", config.getHeavyDaysOfWeek().stream().sorted().toList());
-
-            config.getShiftOptions().stream()
-                    .sorted(Comparator.comparing(this::shiftKey))
-                    .forEach(option -> out.add("shift", option.getStartTime(), option.getEndTime(),
-                            option.getSortOrder()));
-            config.getCoverageRules().stream()
-                    .sorted(Comparator.comparing(this::coverageKey))
-                    .forEach(rule -> out.add("coverage", rule.getDayOfWeek(), rule.getStartTime(), rule.getEndTime(),
-                            rule.getRequiredCount(), rule.getSortOrder()));
-            config.getCoverageDateOverrides().stream()
-                    .sorted(Comparator.comparing(this::overrideKey))
-                    .forEach(override -> {
-                        ScheduleBuildShiftOption option = override.getShiftOption();
-                        out.add("override", override.getDate(),
-                                option == null ? null : option.getStartTime(), option == null ? null : option.getEndTime(),
-                                option == null ? null : option.getSortOrder(),
-                                override.getRequiredCount());
-                    });
+            config.getWeekdayRegimes().stream().sorted(Comparator.comparing(this::regimeKey)).forEach(regime -> {
+                out.add("regime", regimeKey(regime));
+            });
         }
 
         List<Long> relevantPositionIds = configs.stream().flatMap(config -> configPositionIds(config).stream())
@@ -101,10 +85,12 @@ public class ScheduleAutoBuildFingerprintService {
         for (ScheduleBuildPositionConfig config : template.getPositionConfigs()) {
             Hibernate.initialize(config.getPositions());
             Hibernate.initialize(config.getHeavyDaysOfWeek());
-            Hibernate.initialize(config.getShiftOptions());
-            Hibernate.initialize(config.getCoverageRules());
-            Hibernate.initialize(config.getCoverageDateOverrides());
-            config.getCoverageDateOverrides().forEach(override -> Hibernate.initialize(override.getShiftOption()));
+            Hibernate.initialize(config.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : config.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules()); Hibernate.initialize(regime.getCoverageDateOverrides());
+                regime.getCoverageDateOverrides().forEach(override -> Hibernate.initialize(override.getShiftOption()));
+            }
         }
     }
 
@@ -128,16 +114,24 @@ public class ScheduleAutoBuildFingerprintService {
                 cell.getStartTime(), cell.getEndTime());
     }
 
-    /** Persistence IDs are deliberately absent: this is the complete planner-semantic config projection. */
+    /** Persistence IDs and regime insertion order are deliberately absent. */
     private String configKey(ScheduleBuildPositionConfig config) {
         Canonical canonical = new Canonical();
-        canonical.add("config", config.getWorkPeriodStart(), config.getWorkPeriodEnd(), config.getTargetPattern(),
-                config.getMinRestHours(), config.getMinRestMode(), config.getMaxShiftsPerPeriod(), config.getSortOrder());
+        canonical.add("config", config.getTargetPattern(), config.getMinRestHours(), config.getMinRestMode(),
+                config.getMaxShiftsPerPeriod(), config.getSortOrder());
         canonical.list("positions", configPositionIds(config));
         canonical.list("heavyDays", config.getHeavyDaysOfWeek().stream().sorted().toList());
-        canonical.list("shifts", config.getShiftOptions().stream().map(this::shiftKey).sorted().toList());
-        canonical.list("coverage", config.getCoverageRules().stream().map(this::coverageKey).sorted().toList());
-        canonical.list("overrides", config.getCoverageDateOverrides().stream().map(this::overrideKey).sorted().toList());
+        canonical.list("regimes", config.getWeekdayRegimes().stream().map(this::regimeKey).sorted().toList());
+        return canonical.value();
+    }
+
+    private String regimeKey(ScheduleBuildWeekdayRegime regime) {
+        Canonical canonical = new Canonical();
+        canonical.list("days", regime.getDaysOfWeek().stream().map(Enum::name).sorted().toList());
+        canonical.add("period", regime.getWorkPeriodStart(), regime.getWorkPeriodEnd());
+        canonical.list("shifts", regime.getShiftOptions().stream().map(this::shiftKey).sorted().toList());
+        canonical.list("coverage", regime.getCoverageRules().stream().map(this::coverageKey).sorted().toList());
+        canonical.list("overrides", regime.getCoverageDateOverrides().stream().map(this::overrideKey).sorted().toList());
         return canonical.value();
     }
 

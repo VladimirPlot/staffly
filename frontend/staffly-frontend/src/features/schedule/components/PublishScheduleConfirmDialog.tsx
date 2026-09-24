@@ -116,11 +116,12 @@ function getPublishSummary(
         return (
           total +
           relevantPositionConfigs.reduce((dateTotal, config) => {
-            const dateOverrides = config.coverageDateOverrides.filter((override) => override.date === day.date);
-            const requiredCounts =
-              dateOverrides.length > 0
-                ? dateOverrides.map((override) => override.requiredCount)
-                : config.coverageRules.filter((rule) => rule.dayOfWeek === dayOfWeek).map((rule) => rule.requiredCount);
+            const weekdayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+            const regime = config.weekdayRegimes.find((candidate) => candidate.daysOfWeek.includes(weekdayNames[dayOfWeek - 1]));
+            const dateOverrides = regime?.coverageDateOverrides.filter((override) => override.date === day.date) ?? [];
+            const requiredCounts = dateOverrides.length > 0
+              ? dateOverrides.map((override) => override.requiredCount)
+              : regime?.coverageRules.filter((rule) => rule.dayOfWeek === dayOfWeek).map((rule) => rule.requiredCount) ?? [];
 
             return dateTotal + requiredCounts.reduce((sum, count) => sum + Math.max(0, count), 0);
           }, 0)

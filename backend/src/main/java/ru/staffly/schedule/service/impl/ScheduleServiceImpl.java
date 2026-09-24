@@ -605,7 +605,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         List<Position> withoutShiftOptions = schedulePositions.stream()
                 .filter(position -> {
                     ScheduleBuildPositionConfig owner = ownersByPositionId.get(position.getId()).get(0);
-                    return owner.getShiftOptions() == null || owner.getShiftOptions().isEmpty();
+                    return owner.getWeekdayRegimes() == null || owner.getWeekdayRegimes().stream().anyMatch(regime -> regime.getShiftOptions().isEmpty());
                 })
                 .toList();
         if (!withoutShiftOptions.isEmpty()) {
@@ -636,7 +636,10 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (positionIds.isEmpty()) {
                 continue;
             }
-            for (ScheduleBuildShiftOption option : config.getShiftOptions().stream()
+            if (config.getWeekdayRegimes().size() != 1) {
+                throw new BadRequestException("Сбор пожеланий по вариантам смен пока требует один all-week weekday regime");
+            }
+            for (ScheduleBuildShiftOption option : config.getWeekdayRegimes().get(0).getShiftOptions().stream()
                     .sorted(Comparator.comparing(ScheduleBuildShiftOption::getSortOrder,
                                     Comparator.nullsLast(Integer::compareTo))
                             .thenComparing(ScheduleBuildShiftOption::getId))
@@ -658,7 +661,10 @@ public class ScheduleServiceImpl implements ScheduleService {
     private void initializeBuildTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig config : template.getPositionConfigs()) {
             Hibernate.initialize(config.getPositions());
-            Hibernate.initialize(config.getShiftOptions());
+            Hibernate.initialize(config.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : config.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+            }
         }
     }
 

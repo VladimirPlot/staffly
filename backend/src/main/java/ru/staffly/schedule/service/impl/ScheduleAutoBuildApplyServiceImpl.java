@@ -21,6 +21,7 @@ import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleBuildWeekdayRegime;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleRow;
@@ -265,7 +266,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         if (start.equals(end)) {
             throw new BadRequestException("Начало и конец смены не должны совпадать: " + assignment.day());
         }
-        boolean allowedShift = safeShiftOptions(config).stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
+        boolean allowedShift = safeShiftOptions(config, day).stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
         if (!allowedShift) {
             throw new BadRequestException("Интервал назначения не входит в варианты смен для должности: " + assignment.day());
         }
@@ -278,8 +279,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
     private record ValidAdjustedAssignment(RestaurantMember member, ScheduleBuildPositionConfig config) {}
 
-    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config) {
-        return config.getShiftOptions() == null ? List.of() : config.getShiftOptions();
+    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config, LocalDate day) {
+        return config.regimeFor(day.getDayOfWeek()).getShiftOptions();
     }
 
     private boolean shiftMatches(ScheduleBuildShiftOption option, LocalTime start, LocalTime end, Long shiftOptionId) {
@@ -321,8 +322,11 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getPositions());
-            Hibernate.initialize(positionConfig.getShiftOptions());
-            Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules());
+            }
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
@@ -417,8 +421,10 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             ScheduleAutoBuildPlanner.AssignmentPlan assignment
     ) {
         try {
+            LocalDate businessDay = parseDay(assignment.day());
+            ScheduleBuildWeekdayRegime regime = config.regimeFor(businessDay.getDayOfWeek());
             CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
-                    config.getWorkPeriodStart(), config.getWorkPeriodEnd());
+                    regime.getWorkPeriodStart(), regime.getWorkPeriodEnd());
             return CanonicalBusinessIntervalResolver.resolveInside(workPeriod,
                     parseTime(assignment.startTime(), "startTime"),
                     parseTime(assignment.endTime(), "endTime"));

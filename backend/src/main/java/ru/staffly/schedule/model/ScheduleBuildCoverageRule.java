@@ -8,7 +8,7 @@ import java.time.LocalTime;
 @Entity
 @Table(name = "schedule_build_coverage_rule",
         indexes = {
-                @Index(name = "idx_sbcr_position_config", columnList = "position_config_id"),
+                @Index(name = "idx_sbcr_weekday_regime", columnList = "weekday_regime_id"),
                 @Index(name = "idx_sbcr_day_of_week", columnList = "day_of_week")
         })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -18,8 +18,8 @@ public class ScheduleBuildCoverageRule {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "position_config_id", nullable = false)
-    private ScheduleBuildPositionConfig positionConfig;
+    @JoinColumn(name = "weekday_regime_id", nullable = false)
+    private ScheduleBuildWeekdayRegime weekdayRegime;
 
     @Column(name = "day_of_week", nullable = false)
     private Integer dayOfWeek;

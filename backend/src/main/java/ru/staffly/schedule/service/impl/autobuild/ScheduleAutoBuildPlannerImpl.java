@@ -15,6 +15,7 @@ import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleBuildWeekdayRegime;
 import ru.staffly.schedule.model.SchedulePreferenceCell;
 import ru.staffly.schedule.model.SchedulePreferenceType;
 import ru.staffly.schedule.model.ScheduleParticipation;
@@ -143,9 +144,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState
     ) {
-        CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
-                config.getWorkPeriodStart(), config.getWorkPeriodEnd());
-        plannerState.registerCanonicalOptions(workPeriod, safeShiftOptions(config));
+        for (ScheduleBuildWeekdayRegime regime : config.getWeekdayRegimes()) {
+            plannerState.registerCanonicalOptions(CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                    regime.getWorkPeriodStart(), regime.getWorkPeriodEnd()), regime.getShiftOptions());
+        }
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
@@ -154,12 +156,17 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
         double targetShiftsPerCandidate = targetShiftsPerCandidate(schedule, config, candidates);
-        DemandLookup demandLookup = buildDemandLookup(config);
+
 
         for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
+            ScheduleBuildWeekdayRegime regime = config.regimeFor(day.getDayOfWeek());
+            CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                    regime.getWorkPeriodStart(), regime.getWorkPeriodEnd());
+            DemandLookup demandLookup = buildDemandLookup(regime);
             DayBuildResult dayResult = buildAssignmentsForDay(
                     day,
                     config,
+                    regime,
                     workPeriod,
                     demandLookup,
                     candidates,
@@ -224,6 +231,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private DayBuildResult buildAssignmentsForDay(
             LocalDate day,
             ScheduleBuildPositionConfig config,
+            ScheduleBuildWeekdayRegime regime,
             CanonicalBusinessInterval workPeriod,
             DemandLookup demandLookup,
             List<RestaurantMember> candidates,
@@ -238,11 +246,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
 
-        List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(config, day, demandLookup);
+        List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(regime, day, demandLookup);
         if (!demandLookup.hasWeeklyRules()
                 && coverageRules.isEmpty()
                 && !demandLookup.overridesByDate().containsKey(day)) {
-            return buildLegacyAssignmentsForDay(day, config, candidates, preferencesByMemberAndDay, plannerState);
+            return buildLegacyAssignmentsForDay(day, config, regime, candidates, preferencesByMemberAndDay, plannerState);
         }
 
         for (ScheduleBuildCoverageRule rule : coverageRules) {
@@ -287,7 +295,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int negativeAssignmentsCount = 0;
 
         int requiredCount = safeRequiredCount(rule);
-        List<ScheduleBuildShiftOption> shiftOptions = safeShiftOptions(config);
+        List<ScheduleBuildShiftOption> shiftOptions = rule.getWeekdayRegime().getShiftOptions();
         ScheduleBuildShiftOption singleOption = findExactShiftOption(shiftOptions, canonicalRule, plannerState);
 
         for (int index = 0; index < requiredCount; index++) {
@@ -927,8 +935,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         }
 
         int totalRequiredAssignments = 0;
-        List<ScheduleBuildCoverageRule> coverageRules = safeCoverageRules(config);
         for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
+            List<ScheduleBuildCoverageRule> coverageRules = config.regimeFor(day.getDayOfWeek()).getCoverageRules();
             int dayOfWeek = day.getDayOfWeek().getValue();
             totalRequiredAssignments += coverageRules.stream()
                     .filter(rule -> rule.getDayOfWeek() == dayOfWeek)
@@ -1314,8 +1322,12 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : safePositionConfigs(template)) {
             Hibernate.initialize(positionConfig.getPositions());
-            Hibernate.initialize(positionConfig.getShiftOptions());
-            Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules()); Hibernate.initialize(regime.getCoverageDateOverrides());
+                regime.getCoverageDateOverrides().forEach(o -> Hibernate.initialize(o.getShiftOption()));
+            }
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
@@ -1356,14 +1368,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return template.getPositionConfigs();
     }
 
-    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config) {
+    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildWeekdayRegime config) {
         if (config.getShiftOptions() == null) {
             return List.of();
         }
         return config.getShiftOptions();
     }
 
-    private DemandLookup buildDemandLookup(ScheduleBuildPositionConfig config) {
+    private DemandLookup buildDemandLookup(ScheduleBuildWeekdayRegime config) {
         Map<LocalDate, List<ScheduleBuildCoverageDateOverride>> overridesByDate = new HashMap<>();
         for (ScheduleBuildCoverageDateOverride dateOverride : safeCoverageDateOverrides(config)) {
             overridesByDate.computeIfAbsent(dateOverride.getDate(), ignored -> new ArrayList<>()).add(dateOverride);
@@ -1379,7 +1391,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
     private List<ScheduleBuildCoverageRule> effectiveCoverageRulesForDate(
-            ScheduleBuildPositionConfig config,
+            ScheduleBuildWeekdayRegime config,
             LocalDate day,
             DemandLookup demandLookup
     ) {
@@ -1387,7 +1399,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return demandLookup.overridesByDate().get(day).stream()
                     .filter(override -> override.getShiftOption() != null)
                     .map(override -> ScheduleBuildCoverageRule.builder()
-                            .positionConfig(config)
+                            .weekdayRegime(config)
                             .dayOfWeek(day.getDayOfWeek().getValue())
                             .startTime(override.getShiftOption().getStartTime())
                             .endTime(override.getShiftOption().getEndTime())
@@ -1399,14 +1411,14 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return demandLookup.weeklyRulesByDayOfWeek().getOrDefault(day.getDayOfWeek().getValue(), List.of());
     }
 
-    private List<ScheduleBuildCoverageDateOverride> safeCoverageDateOverrides(ScheduleBuildPositionConfig config) {
+    private List<ScheduleBuildCoverageDateOverride> safeCoverageDateOverrides(ScheduleBuildWeekdayRegime config) {
         if (config.getCoverageDateOverrides() == null) {
             return List.of();
         }
         return config.getCoverageDateOverrides();
     }
 
-    private List<ScheduleBuildCoverageRule> safeCoverageRules(ScheduleBuildPositionConfig config) {
+    private List<ScheduleBuildCoverageRule> safeCoverageRules(ScheduleBuildWeekdayRegime config) {
         if (config.getCoverageRules() == null) {
             return List.of();
         }
@@ -1431,6 +1443,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private DayBuildResult buildLegacyAssignmentsForDay(
             LocalDate day,
             ScheduleBuildPositionConfig config,
+            ScheduleBuildWeekdayRegime regime,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState
@@ -1440,7 +1453,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         List<RejectionHintPlan> rejectionHints = new ArrayList<>();
         int negativeAssignmentsCount = 0;
 
-        for (ScheduleBuildShiftOption option : safeShiftOptions(config)) {
+        for (ScheduleBuildShiftOption option : safeShiftOptions(regime)) {
             CandidateSelectionResult selection = pickMember(candidates, preferencesByMemberAndDay, day, option, config, plannerState, 0);
             if (selection.selected() == null) {
                 rejectionHints.addAll(selection.rejectionHints());

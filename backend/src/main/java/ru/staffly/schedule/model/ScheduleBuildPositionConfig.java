@@ -5,7 +5,6 @@ import lombok.*;
 import org.hibernate.annotations.BatchSize;
 import ru.staffly.dictionary.model.Position;
 
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,12 +32,6 @@ public class ScheduleBuildPositionConfig {
     )
     @Builder.Default
     private Set<Position> positions = new LinkedHashSet<>();
-
-    @Column(name = "work_period_start", nullable = false)
-    private LocalTime workPeriodStart;
-
-    @Column(name = "work_period_end", nullable = false)
-    private LocalTime workPeriodEnd;
 
     @Column(name = "min_rest_hours")
     private Integer minRestHours;
@@ -74,17 +67,10 @@ public class ScheduleBuildPositionConfig {
     @OrderBy("sortOrder ASC, id ASC")
     @BatchSize(size = 64)
     @Builder.Default
-    private List<ScheduleBuildShiftOption> shiftOptions = new ArrayList<>();
+    private List<ScheduleBuildWeekdayRegime> weekdayRegimes = new ArrayList<>();
 
-    @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("dayOfWeek ASC, sortOrder ASC, id ASC")
-    @BatchSize(size = 64)
-    @Builder.Default
-    private List<ScheduleBuildCoverageRule> coverageRules = new ArrayList<>();
-
-    @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("date ASC, id ASC")
-    @BatchSize(size = 64)
-    @Builder.Default
-    private List<ScheduleBuildCoverageDateOverride> coverageDateOverrides = new ArrayList<>();
+    public ScheduleBuildWeekdayRegime regimeFor(java.time.DayOfWeek day) {
+        return weekdayRegimes.stream().filter(regime -> regime.appliesTo(day)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("No weekday regime for " + day));
+    }
 }
