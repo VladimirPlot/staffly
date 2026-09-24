@@ -12,6 +12,7 @@ import jakarta.persistence.EntityManager;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.SaveScheduleBuildCoverageRuleRequest;
@@ -43,6 +44,7 @@ class ScheduleBuildTemplateServiceImplTest {
     @Mock private ScheduleRepository schedules;
     @Mock private RestaurantRepository restaurants;
     @Mock private PositionRepository positions;
+    @Mock private RestaurantMemberRepository members;
     @Mock private SecurityService securityService;
     @Mock private ScheduleAccessService scheduleAccessService;
     @Mock private ScheduleBuildTemplateImpactPlanner impactPlanner;
@@ -54,7 +56,7 @@ class ScheduleBuildTemplateServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new ScheduleBuildTemplateServiceImpl(
-                templates, schedules, restaurants, positions, securityService, scheduleAccessService,
+                templates, schedules, restaurants, positions, members, securityService, scheduleAccessService,
                 impactPlanner, preferenceLifecycle, entityManager
         );
         Restaurant restaurant = Restaurant.builder().id(1L).build();

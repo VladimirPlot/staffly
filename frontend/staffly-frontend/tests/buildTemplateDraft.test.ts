@@ -239,3 +239,36 @@ test("malformed partition blocks save; single all-week regime remains compatible
   config.weekdayRegimes[0].daysOfWeek = ["MONDAY"];
   assert.match(validateBuildTemplateDraft(draft)!, /семь/);
 });
+
+test("marker transport data survives DTO draft request round trip without marker UI", () => {
+  const config = completeConfig();
+  const request = draftToSaveRequest({ name: "Шаблон", description: "", positionConfigs: [config] });
+  const dto = {
+    id: 1,
+    version: 1,
+    name: "Шаблон",
+    description: null,
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+    positionConfigs: [
+      {
+        ...request.positionConfigs[0],
+        id: 2,
+        positionNames: ["Официант"],
+        markers: [{ id: 7, name: "Клуб", memberIds: [12, 18] }],
+        weekdayRegimes: request.positionConfigs[0].weekdayRegimes.map((regime, index) => ({
+          ...regime,
+          id: index + 1,
+          shiftOptions: regime.shiftOptions.map((option, optionIndex) => ({ ...option, id: optionIndex + 1 })),
+          coverageRules: [],
+          coverageDateOverrides: [],
+        })),
+      },
+    ],
+  } satisfies ScheduleBuildTemplateDto;
+
+  assert.deepEqual(draftToSaveRequest(templateDtoToDraft(dto)).positionConfigs[0].markers, [
+    { name: "Клуб", memberIds: [12, 18] },
+  ]);
+});

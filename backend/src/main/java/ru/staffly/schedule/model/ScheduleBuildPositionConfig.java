@@ -69,6 +69,12 @@ public class ScheduleBuildPositionConfig {
     @Builder.Default
     private List<ScheduleBuildWeekdayRegime> weekdayRegimes = new ArrayList<>();
 
+    @OneToMany(mappedBy = "positionConfig", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    @BatchSize(size = 64)
+    @Builder.Default
+    private List<ScheduleBuildMarker> markers = new ArrayList<>();
+
     public ScheduleBuildWeekdayRegime regimeFor(java.time.DayOfWeek day) {
         return weekdayRegimes.stream().filter(regime -> regime.appliesTo(day)).findFirst()
                 .orElseThrow(() -> new IllegalStateException("No weekday regime for " + day));

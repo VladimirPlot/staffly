@@ -10,6 +10,8 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
@@ -40,6 +42,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private final ScheduleRepository schedules;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
+    private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
     private final ScheduleBuildTemplateImpactPlanner impactPlanner;
@@ -63,9 +66,10 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     public ScheduleBuildTemplateDto create(Long restaurantId, Long actorUserId, SaveScheduleBuildTemplateRequest request) {
         assertManageAccess(restaurantId, actorUserId);
         Restaurant restaurant = restaurants.findById(restaurantId).orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
+        Map<Long, RestaurantMember> lockedMembers = lockRequestedMembers(restaurantId, extractMarkerMemberIds(request));
         ScheduleBuildTemplate template = new ScheduleBuildTemplate();
         template.setRestaurant(restaurant);
-        applyPreparedRequest(template, prepareRequest(template, restaurantId, request, true));
+        applyPreparedRequest(template, prepareRequest(template, restaurantId, request, true, lockedMembers, true));
         return toDto(templates.save(template));
     }
     @Override
@@ -79,10 +83,15 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         // against the pessimistically locked aggregate below.
         ScheduleBuildTemplate optimisticTemplate = getTemplate(restaurantId, templateId);
         assertExpectedVersion(optimisticTemplate, request.expectedVersion());
-        prepareRequest(optimisticTemplate, restaurantId, request, false);
+        List<Long> requestedMemberIds = extractMarkerMemberIds(request);
+        prepareRequest(optimisticTemplate, restaurantId, request, false, Map.of(), false);
         // Ensure the later locking query cannot be satisfied by this persistence-context
         // snapshot. Cascade DETACH removes the initialized aggregate children as well.
         entityManager.detach(optimisticTemplate);
+
+        // Global mutation order starts with RestaurantMember. These row locks make current
+        // restaurant/position authoritative until marker membership has been persisted.
+        Map<Long, RestaurantMember> lockedMembers = lockRequestedMembers(restaurantId, requestedMemberIds);
 
         // Discovery is deliberately lock-free and is only an acquisition candidate set.  In
         // particular, do not load/lock the template before the Schedule aggregate mutexes.
@@ -106,7 +115,7 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
         // Re-run the existing preparation boundary because name uniqueness is conditional on
         // current persisted state. The resulting representation belongs to the final locked
         // aggregate; no mutation decision relies on the optimistic snapshot.
-        PreparedTemplateRequest prepared = prepareRequest(template, restaurantId, request, false);
+        PreparedTemplateRequest prepared = prepareRequest(template, restaurantId, request, false, lockedMembers, true);
         ScheduleBuildTemplateImpactPlan plan = impactPlanner.plan(template, request, lockedSchedules);
         boolean parentScalarChange = hasParentScalarChange(template, prepared);
         if (plan.impact() == ru.staffly.schedule.service.ScheduleBuildTemplateChangeImpact.NONE
@@ -141,7 +150,9 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     }
 
     private PreparedTemplateRequest prepareRequest(ScheduleBuildTemplate template, Long restaurantId,
-                                                    SaveScheduleBuildTemplateRequest request, boolean creating) {
+                                                    SaveScheduleBuildTemplateRequest request, boolean creating,
+                                                    Map<Long, RestaurantMember> lockedMembers,
+                                                    boolean validateMarkerMembers) {
         if (request == null) {
             throw new BadRequestException("request body is required");
         }
@@ -161,8 +172,9 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             for (Long positionId : cfgPositionIds) {
                 if (!positionIds.add(positionId)) throw new BadRequestException("Duplicate positionId in positionConfigs: " + positionId);
             }
+            List<PreparedMarker> preparedMarkers = prepareMarkers(cfg, cfgPositionIds, lockedMembers, validateMarkerMembers);
             preparedConfigs.add(new PreparedPositionConfig(
-                    cfg, cfgPositionIds, normalizeHeavyDaysOfWeek(cfg.heavyDaysOfWeek())));
+                    cfg, cfgPositionIds, normalizeHeavyDaysOfWeek(cfg.heavyDaysOfWeek()), preparedMarkers));
         }
         Map<Long, Position> positionMap = positions.findAllById(positionIds).stream()
                 .filter(p -> p.getRestaurant() != null && restaurantId.equals(p.getRestaurant().getId()))
@@ -187,7 +199,70 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             if (!covered.equals(EnumSet.allOf(java.time.DayOfWeek.class))) throw new BadRequestException("weekdayRegimes must cover all seven weekdays exactly once");
         }
         return new PreparedTemplateRequest(name, trimToNull(request.description()),
-                request.isActive() == null || request.isActive(), List.copyOf(preparedConfigs), positionMap);
+                request.isActive() == null || request.isActive(), List.copyOf(preparedConfigs), positionMap,
+                Map.copyOf(lockedMembers));
+    }
+
+    private List<PreparedMarker> prepareMarkers(SaveScheduleBuildPositionConfigRequest config,
+                                                List<Long> positionIds,
+                                                Map<Long, RestaurantMember> lockedMembers,
+                                                boolean validateMembers) {
+        Set<String> names = new HashSet<>();
+        List<PreparedMarker> result = new ArrayList<>();
+        for (SaveScheduleBuildMarkerRequest marker : Optional.ofNullable(config.markers()).orElse(List.of())) {
+            if (marker == null) throw new BadRequestException("marker is required");
+            String name = Optional.ofNullable(marker.name()).map(String::trim).orElse("");
+            if (name.isEmpty()) throw new BadRequestException("marker.name is required");
+            if (name.length() > 100) throw new BadRequestException("marker.name must not exceed 100 characters");
+            if (!names.add(name.toLowerCase(Locale.ROOT))) {
+                throw new BadRequestException("Marker names must be unique within a positionConfig (case-insensitive)");
+            }
+            List<Long> memberIds = normalizeMarkerMemberIds(marker.memberIds());
+            for (Long memberId : validateMembers ? memberIds : List.<Long>of()) {
+                RestaurantMember member = lockedMembers.get(memberId);
+                if (member == null) throw new BadRequestException("All marker memberIds must belong to restaurant");
+                Long currentPositionId = member.getPosition() == null ? null : member.getPosition().getId();
+                if (!positionIds.contains(currentPositionId)) {
+                    throw new BadRequestException("Marker member current position must belong to positionConfig: " + memberId);
+                }
+            }
+            result.add(new PreparedMarker(name, memberIds));
+        }
+        return List.copyOf(result);
+    }
+
+    private List<Long> extractMarkerMemberIds(SaveScheduleBuildTemplateRequest request) {
+        if (request == null) throw new BadRequestException("request body is required");
+        List<Long> result = new ArrayList<>();
+        for (SaveScheduleBuildPositionConfigRequest config : Optional.ofNullable(request.positionConfigs()).orElse(List.of())) {
+            if (config == null) continue;
+            for (SaveScheduleBuildMarkerRequest marker : Optional.ofNullable(config.markers()).orElse(List.of())) {
+                if (marker == null) continue;
+                result.addAll(normalizeMarkerMemberIds(marker.memberIds()));
+            }
+        }
+        return canonicalIds(result);
+    }
+
+    private List<Long> normalizeMarkerMemberIds(List<Long> rawIds) {
+        List<Long> raw = Optional.ofNullable(rawIds).orElse(List.of());
+        if (raw.stream().anyMatch(Objects::isNull)) throw new BadRequestException("marker.memberIds must not contain null");
+        List<Long> normalized = raw.stream().distinct().sorted().toList();
+        if (normalized.size() != raw.size()) throw new BadRequestException("marker.memberIds must not contain duplicates");
+        return normalized;
+    }
+
+    private Map<Long, RestaurantMember> lockRequestedMembers(Long restaurantId, List<Long> memberIds) {
+        if (memberIds.isEmpty()) return Map.of();
+        List<RestaurantMember> locked = members.findForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, memberIds);
+        if (locked.size() != memberIds.size()) {
+            throw new BadRequestException("All marker memberIds must exist and belong to restaurant");
+        }
+        List<Long> lockedIds = locked.stream().map(RestaurantMember::getId).toList();
+        if (!lockedIds.equals(memberIds)) {
+            throw new IllegalStateException("RestaurantMember lock query must return requested rows in ascending order");
+        }
+        return locked.stream().collect(Collectors.toMap(RestaurantMember::getId, Function.identity()));
     }
 
     private void applyPreparedRequest(ScheduleBuildTemplate template, PreparedTemplateRequest prepared) {
@@ -220,6 +295,14 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
             entity.getHeavyDaysOfWeek().clear();
             entity.getHeavyDaysOfWeek().addAll(preparedConfig.heavyDaysOfWeek());
             entity.setSortOrder(cfg.sortOrder() != null ? cfg.sortOrder() : idx);
+            entity.getMarkers().clear();
+            for (PreparedMarker requestedMarker : preparedConfig.markers()) {
+                ScheduleBuildMarker marker = new ScheduleBuildMarker();
+                marker.setPositionConfig(entity);
+                marker.setName(requestedMarker.name());
+                requestedMarker.memberIds().stream().map(prepared.members()::get).forEach(marker.getMembers()::add);
+                entity.getMarkers().add(marker);
+            }
             entity.getWeekdayRegimes().clear();
             int regimeOrder = 0;
             for (SaveScheduleBuildWeekdayRegimeRequest requestRegime : cfg.weekdayRegimes()) {
@@ -262,9 +345,12 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
 
     private record PreparedTemplateRequest(String name, String description, boolean active,
                                            List<PreparedPositionConfig> configs,
-                                           Map<Long, Position> positions) {}
+                                           Map<Long, Position> positions,
+                                           Map<Long, RestaurantMember> members) {}
     private record PreparedPositionConfig(SaveScheduleBuildPositionConfigRequest request,
-                                          List<Long> positionIds, List<Integer> heavyDaysOfWeek) {}
+                                          List<Long> positionIds, List<Integer> heavyDaysOfWeek,
+                                          List<PreparedMarker> markers) {}
+    private record PreparedMarker(String name, List<Long> memberIds) {}
 
     private List<Integer> normalizeHeavyDaysOfWeek(List<Integer> heavyDaysOfWeek) {
         return Optional.ofNullable(heavyDaysOfWeek).orElse(List.of()).stream()
@@ -411,6 +497,8 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getPositions());
+            Hibernate.initialize(positionConfig.getMarkers());
+            positionConfig.getMarkers().forEach(marker -> Hibernate.initialize(marker.getMembers()));
             Hibernate.initialize(positionConfig.getWeekdayRegimes());
             for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
                 Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
@@ -430,7 +518,10 @@ public class ScheduleBuildTemplateServiceImpl implements ScheduleBuildTemplateSe
                                 regime.getShiftOptions().stream().map(o -> new ScheduleBuildShiftOptionDto(o.getId(), o.getStartTime(), o.getEndTime(), o.getLabel(), o.getSortOrder())).toList(),
                                 regime.getCoverageRules().stream().map(r -> new ScheduleBuildCoverageRuleDto(r.getId(), r.getDayOfWeek(), r.getStartTime(), r.getEndTime(), r.getRequiredCount(), r.getSortOrder())).toList(),
                                 regime.getCoverageDateOverrides().stream().map(o -> new ScheduleBuildCoverageDateOverrideDto(o.getId(), o.getDate(), shiftOptionIndex(regime, o.getShiftOption()), o.getRequiredCount())).toList(),
-                                regime.getSortOrder())).toList(), pc.getSortOrder())).toList());
+                                regime.getSortOrder())).toList(),
+                        pc.getMarkers().stream().map(marker -> new ScheduleBuildMarkerDto(marker.getId(), marker.getName(),
+                                marker.getMembers().stream().map(RestaurantMember::getId).sorted().toList())).toList(),
+                        pc.getSortOrder())).toList());
     }
 
     private List<Long> normalizePositionIds(SaveScheduleBuildPositionConfigRequest cfg) {

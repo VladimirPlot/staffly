@@ -10,6 +10,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
@@ -39,6 +40,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
     @Mock ScheduleRepository schedules;
     @Mock RestaurantRepository restaurants;
     @Mock PositionRepository positions;
+    @Mock RestaurantMemberRepository members;
     @Mock SecurityService security;
     @Mock ScheduleAccessService access;
     @Mock ScheduleBuildTemplateImpactPlanner planner;
@@ -52,7 +54,7 @@ class ScheduleBuildTemplateAtomicUpdateTest {
 
     @BeforeEach
     void setUp() {
-        service = new ScheduleBuildTemplateServiceImpl(templates, schedules, restaurants, positions,
+        service = new ScheduleBuildTemplateServiceImpl(templates, schedules, restaurants, positions, members,
                 security, access, planner, lifecycle, entityManager);
         Restaurant restaurant = Restaurant.builder().id(1L).build();
         Position position = Position.builder().id(2L).name("Cook").restaurant(restaurant).build();
