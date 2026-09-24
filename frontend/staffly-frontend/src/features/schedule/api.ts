@@ -244,6 +244,7 @@ export type ScheduleBuildShiftOptionDto = {
   endTime: string;
   label: string | null;
   sortOrder: number;
+  markerId?: number | null;
 };
 
 export type ScheduleBuildCoverageRuleDto = {
@@ -310,6 +311,7 @@ export type SaveScheduleBuildShiftOptionRequest = {
   endTime: string;
   label?: string | null;
   sortOrder: number;
+  markerIndex?: number | null;
 };
 
 export type SaveScheduleBuildCoverageRuleRequest = {

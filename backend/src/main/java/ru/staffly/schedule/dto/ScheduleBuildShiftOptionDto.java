@@ -7,5 +7,11 @@ public record ScheduleBuildShiftOptionDto(
         LocalTime startTime,
         LocalTime endTime,
         String label,
-        Integer sortOrder
-) {}
+        Integer sortOrder,
+        Long markerId
+) {
+    public ScheduleBuildShiftOptionDto(Long id, LocalTime startTime, LocalTime endTime,
+                                       String label, Integer sortOrder) {
+        this(id, startTime, endTime, label, sortOrder, null);
+    }
+}
