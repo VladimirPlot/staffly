@@ -26,6 +26,7 @@ public class ScheduleBuildTemplateChangeClassifier {
             if (!a.preference.equals(b.preference)) impact = impact.combine(ScheduleBuildTemplateChangeImpact.PREFERENCE_AFFECTING);
             if (!a.planner.equals(b.planner)) impact = impact.combine(ScheduleBuildTemplateChangeImpact.PLANNER_AFFECTING);
             if (!a.labels.equals(b.labels)) impact = impact.combine(ScheduleBuildTemplateChangeImpact.NEUTRAL_METADATA);
+            if (!a.markers.equals(b.markers)) impact = impact.combine(ScheduleBuildTemplateChangeImpact.NEUTRAL_METADATA);
         }
         return impact;
     }
@@ -42,7 +43,9 @@ public class ScheduleBuildTemplateChangeClassifier {
                 sorted(c.getHeavyDaysOfWeek()), c.getSortOrder(), regimePlanner);
         Map<String,Long> labels = bag(c.getWeekdayRegimes().stream().flatMap(r -> r.getShiftOptions().stream())
                 .map(o -> key(days(o.getWeekdayRegime().getDaysOfWeek()), o.getStartTime(), o.getEndTime(), o.getSortOrder(), text(o.getLabel()))).toList());
-        return new Snapshot(preference, planner, labels);
+        return new Snapshot(preference, planner, labels, markerKeys(c.getMarkers().stream()
+                .map(marker -> key(text(marker.getName()), marker.getMembers().stream()
+                        .map(member -> member.getId()).filter(Objects::nonNull).sorted().toList())).toList()));
     }
 
     private Snapshot snapshot(SaveScheduleBuildPositionConfigRequest c) {
@@ -55,7 +58,8 @@ public class ScheduleBuildTemplateChangeClassifier {
         String planner = key(c.targetPattern(), c.minRestHours(), c.minRestMode(), c.maxShiftsPerPeriod(), sorted(c.heavyDaysOfWeek()), c.sortOrder(), regimePlanner);
         Map<String,Long> labels = bag(regimes.stream().flatMap(r -> safe(r.shiftOptions()).stream().map(o ->
                 key(days(r.daysOfWeek()), o.startTime(), o.endTime(), o.sortOrder(), text(o.label())))).toList());
-        return new Snapshot(preference, planner, labels);
+        return new Snapshot(preference, planner, labels, markerKeys(safe(c.markers()).stream()
+                .filter(Objects::nonNull).map(marker -> key(text(marker.name()), ids(marker.memberIds()))).toList()));
     }
 
     private String regimePreference(Collection<java.time.DayOfWeek> days, Object start, Object end, List<String> shifts) {
@@ -77,6 +81,7 @@ public class ScheduleBuildTemplateChangeClassifier {
     private static String key(Object... values) { return Arrays.deepToString(values); }
     private static <T> List<T> safe(List<T> v) { return v == null ? List.of() : v; }
     private static <T> Map<T,Long> bag(List<T> v) { return v.stream().collect(Collectors.groupingBy(Function.identity(), Collectors.counting())); }
+    private static List<String> markerKeys(List<String> values) { return values.stream().sorted().toList(); }
     private static <T> List<String> indexed(List<T> v, Function<T,String> mapper) { return safe(v).stream().map(mapper).toList(); }
-    private record Snapshot(Set<String> preference, String planner, Map<String,Long> labels) {}
+    private record Snapshot(Set<String> preference, String planner, Map<String,Long> labels, List<String> markers) {}
 }

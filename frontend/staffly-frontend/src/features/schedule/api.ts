@@ -287,8 +287,12 @@ export type ScheduleBuildPositionConfigDto = {
   maxShiftsPerPeriod: number | null;
   heavyDaysOfWeek: number[];
   weekdayRegimes: ScheduleBuildWeekdayRegimeDto[];
+  markers: ScheduleBuildMarkerDto[];
   sortOrder: number;
 };
+
+export type ScheduleBuildMarkerDto = { id: number; name: string; memberIds: number[] };
+export type SaveScheduleBuildMarkerRequest = { name: string; memberIds: number[] };
 
 export type ScheduleBuildTemplateDto = {
   id: number;
@@ -340,6 +344,7 @@ export type SaveScheduleBuildPositionConfigRequest = {
   maxShiftsPerPeriod?: number | null;
   heavyDaysOfWeek?: number[];
   weekdayRegimes: SaveScheduleBuildWeekdayRegimeRequest[];
+  markers: SaveScheduleBuildMarkerRequest[];
   sortOrder: number;
 };
 
@@ -587,10 +592,12 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
       ...config,
       positionIds: config.positionIds ?? [],
       positionNames: config.positionNames ?? [],
+      markers: (config.markers ?? []).map((marker) => ({ ...marker, memberIds: marker.memberIds ?? [] })),
       weekdayRegimes: (config.weekdayRegimes ?? []).map((regime) => ({
         ...regime,
         daysOfWeek: regime.daysOfWeek ?? [],
-        shiftOptions: regime.shiftOptions ?? [], coverageRules: regime.coverageRules ?? [],
+        shiftOptions: regime.shiftOptions ?? [],
+        coverageRules: regime.coverageRules ?? [],
         coverageDateOverrides: regime.coverageDateOverrides ?? [],
       })),
     })),
@@ -663,7 +670,11 @@ export async function startPreferenceCollection(
   return mapSchedule(data);
 }
 
-export async function closePreferenceCollection(restaurantId: number, scheduleId: number, version: number): Promise<ScheduleData> {
+export async function closePreferenceCollection(
+  restaurantId: number,
+  scheduleId: number,
+  version: number,
+): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/close`,
     { version },
@@ -671,7 +682,11 @@ export async function closePreferenceCollection(restaurantId: number, scheduleId
   return mapSchedule(data);
 }
 
-export async function applySchedulePreferencesSimple(restaurantId: number, scheduleId: number, version: number): Promise<ScheduleData> {
+export async function applySchedulePreferencesSimple(
+  restaurantId: number,
+  scheduleId: number,
+  version: number,
+): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/apply-simple`,
     { version },
@@ -733,10 +748,17 @@ export async function applyScheduleAutoBuild(
   return mapSchedule(data);
 }
 
-export async function publishSchedule(restaurantId: number, scheduleId: number, version: number): Promise<ScheduleData> {
-  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`, {
-    version,
-  });
+export async function publishSchedule(
+  restaurantId: number,
+  scheduleId: number,
+  version: number,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`,
+    {
+      version,
+    },
+  );
   return mapSchedule(data);
 }
 
@@ -745,10 +767,7 @@ export async function fetchSchedule(restaurantId: number, scheduleId: number): P
   return mapSchedule(data);
 }
 
-export async function getScheduleChanges(
-  restaurantId: number,
-  scheduleId: number,
-): Promise<ScheduleChangeDto[]> {
+export async function getScheduleChanges(restaurantId: number, scheduleId: number): Promise<ScheduleChangeDto[]> {
   const { data } = await api.get<ScheduleChangeDto[]>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/changes`,
   );

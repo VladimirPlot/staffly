@@ -15,5 +15,6 @@ public record ScheduleBuildPositionConfigDto(
         Integer maxShiftsPerPeriod,
         List<Integer> heavyDaysOfWeek,
         List<ScheduleBuildWeekdayRegimeDto> weekdayRegimes,
+        List<ScheduleBuildMarkerDto> markers,
         Integer sortOrder
 ) {}

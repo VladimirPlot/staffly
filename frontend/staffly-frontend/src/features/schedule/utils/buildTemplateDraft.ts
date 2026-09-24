@@ -36,6 +36,7 @@ export type ScheduleBuildPositionConfigDraft = {
   heavyDaysOfWeek: number[];
   sortOrder: number;
   weekdayRegimes: ScheduleBuildWeekdayRegimeDraft[];
+  markers: { name: string; memberIds: number[] }[];
 };
 
 export type ScheduleBuildTemplateDraft = {
@@ -187,6 +188,7 @@ export const createPositionConfigDraft = (): ScheduleBuildPositionConfigDraft =>
   heavyDaysOfWeek: [],
   sortOrder: 0,
   weekdayRegimes: [createWeekdayRegimeDraft()],
+  markers: [],
 });
 
 export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): ScheduleBuildTemplateDraft => ({
@@ -202,6 +204,7 @@ export const templateDtoToDraft = (template: ScheduleBuildTemplateDto | null): S
       .filter((day) => day >= 1 && day <= 7)
       .sort((a, b) => a - b),
     sortOrder: config.sortOrder,
+    markers: (config.markers ?? []).map((marker) => ({ name: marker.name, memberIds: [...(marker.memberIds ?? [])] })),
     weekdayRegimes: (config.weekdayRegimes ?? []).map((regime) => ({
       key: draftKey(),
       daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek ?? []),
@@ -226,6 +229,7 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
     maxShiftsPerPeriod: config.maxShiftsPerPeriod === "" ? null : Number(config.maxShiftsPerPeriod),
     heavyDaysOfWeek: [...new Set(config.heavyDaysOfWeek)].filter((day) => day >= 1 && day <= 7).sort((a, b) => a - b),
     sortOrder: index,
+    markers: config.markers.map((marker) => ({ name: marker.name, memberIds: [...marker.memberIds] })),
     weekdayRegimes: config.weekdayRegimes.map((regime, regimeIndex) => ({
       daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek),
       workPeriodStart: regime.workPeriodStart,
