@@ -1,7 +1,7 @@
 import React from "react";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import ScheduleInfoButton from "./ScheduleInfoButton";
-import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } from "../api";
+import type { ScheduleAutoBuildRejectionHintDto, ScheduleBuildTemplateDto, SchedulePreferenceCellDto } from "../api";
 import type {
   ScheduleCellChangeOptions,
   ScheduleCellKey,
@@ -33,6 +33,7 @@ import {
   parseTimeValue,
   type TimeValue,
 } from "../utils/timeValues";
+import { getWeekdayRegimeIndicator } from "../utils/weekdayRegimeIndicator";
 
 const HOURS = Array.from({ length: 25 }, (_, index) => index);
 
@@ -80,6 +81,7 @@ type Props = {
   rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
   showCellDiagnostics?: boolean;
   zoomScale?: number;
+  buildTemplate?: ScheduleBuildTemplateDto | null;
 };
 
 type CellValues = EditableScheduleData["cellValues"];
@@ -109,6 +111,7 @@ type ScheduleTableRowProps = {
   preferenceCommentsByMemberId?: Record<number, string>;
   rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
   showCellDiagnostics: boolean;
+  buildTemplate?: ScheduleBuildTemplateDto | null;
 };
 
 type ScheduleCellEditorProps = {
@@ -162,6 +165,7 @@ const ScheduleTable: React.FC<Props> = ({
   rejectionHintsByCellKey,
   showCellDiagnostics = false,
   zoomScale = 1,
+  buildTemplate,
 }) => {
   const shiftMode = data?.config.shiftMode ?? "FULL";
   const days = data?.days ?? EMPTY_DAYS;
@@ -248,6 +252,7 @@ const ScheduleTable: React.FC<Props> = ({
             preferenceCommentsByMemberId={showCellDiagnostics ? preferenceCommentsByMemberId : undefined}
             rejectionHintsByCellKey={showCellDiagnostics ? rejectionHintsByCellKey : undefined}
             showCellDiagnostics={showCellDiagnostics}
+            buildTemplate={buildTemplate}
           />
         ))}
 
@@ -385,6 +390,7 @@ const ScheduleTableRow = React.memo(
     preferenceCommentsByMemberId,
     rejectionHintsByCellKey,
     showCellDiagnostics,
+    buildTemplate,
   }: ScheduleTableRowProps) {
     return (
       <>
@@ -420,21 +426,42 @@ const ScheduleTableRow = React.memo(
 
         {days.map((day) => {
           const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
+          const regimeIndicator = getWeekdayRegimeIndicator({
+            template: buildTemplate,
+            positionId: row.positionId,
+            businessDate: day.date,
+          });
           return (
-            <ScheduleCellEditor
-              key={key}
-              memberId={row.memberId}
-              day={day.date}
-              value={cellValues[key] ?? ""}
-              source={showCellDiagnostics ? (cellSources[key] ?? "MANUAL") : undefined}
-              shiftMode={shiftMode}
-              placeholder={placeholder}
-              readOnly={readOnly}
-              onCellValueChange={onCellValueChange}
-              hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
-              rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
-              showCellDiagnostics={showCellDiagnostics}
-            />
+            <div key={key} className="border-subtle border-b border-l">
+              {regimeIndicator && (
+                <div className="flex justify-center px-1 pt-1">
+                  <span
+                    className={[
+                      "border-subtle bg-app text-muted max-w-full truncate rounded-full border font-medium",
+                      scheduleZoomCss.badgePadding,
+                      scheduleZoomCss.badgeText,
+                    ].join(" ")}
+                    title={regimeIndicator.title}
+                    aria-label={regimeIndicator.title}
+                  >
+                    {regimeIndicator.label}
+                  </span>
+                </div>
+              )}
+              <ScheduleCellEditor
+                memberId={row.memberId}
+                day={day.date}
+                value={cellValues[key] ?? ""}
+                source={showCellDiagnostics ? (cellSources[key] ?? "MANUAL") : undefined}
+                shiftMode={shiftMode}
+                placeholder={placeholder}
+                readOnly={readOnly}
+                onCellValueChange={onCellValueChange}
+                hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
+                rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
+                showCellDiagnostics={showCellDiagnostics}
+              />
+            </div>
           );
         })}
 
@@ -454,7 +481,8 @@ const ScheduleTableRow = React.memo(
       prev.cellSources !== next.cellSources ||
       prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey ||
       prev.preferenceCommentsByMemberId !== next.preferenceCommentsByMemberId ||
-      prev.showCellDiagnostics !== next.showCellDiagnostics
+      prev.showCellDiagnostics !== next.showCellDiagnostics ||
+      prev.buildTemplate !== next.buildTemplate
     ) {
       return false;
     }
@@ -530,7 +558,6 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   return (
     <div
       className={[
-        "border-subtle border-b border-l",
         scheduleZoomCss.cellPadding,
         "text-[max(0.7rem,calc(0.875rem*var(--schedule-zoom)))]",
         hasConflict ? "bg-amber-50/80 ring-1 ring-amber-200 ring-inset" : "",
