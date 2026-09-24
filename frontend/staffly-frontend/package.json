@@ -13,7 +13,8 @@
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "test:drafts": "node --test --experimental-strip-types tests/schedulePreferenceDraftStorage.test.ts",
-    "test:preference-calendar": "node --test --experimental-strip-types tests/schedulePreferenceCalendar.test.ts"
+    "test:preference-calendar": "node --test --experimental-strip-types tests/schedulePreferenceCalendar.test.ts",
+    "test:build-template": "node --test --experimental-strip-types tests/buildTemplateDraft.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

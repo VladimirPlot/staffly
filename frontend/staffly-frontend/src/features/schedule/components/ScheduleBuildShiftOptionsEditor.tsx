@@ -2,12 +2,12 @@ import React from "react";
 
 import Button from "../../../shared/ui/Button";
 import Input from "../../../shared/ui/Input";
-import { SCHEDULE_BUILD_TIME_STEP_SECONDS, type ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import { SCHEDULE_BUILD_TIME_STEP_SECONDS, type ScheduleBuildWeekdayRegimeDraft } from "../utils/buildTemplateDraft";
 
 type Props = {
-  config: ScheduleBuildPositionConfigDraft;
+  config: ScheduleBuildWeekdayRegimeDraft;
   saving: boolean;
-  onChange: (next: ScheduleBuildPositionConfigDraft) => void;
+  onChange: (next: ScheduleBuildWeekdayRegimeDraft) => void;
   onAdd: () => void;
   onRemove: (index: number) => void;
 };
