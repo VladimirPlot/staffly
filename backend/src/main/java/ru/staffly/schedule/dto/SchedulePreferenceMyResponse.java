@@ -5,6 +5,7 @@ import ru.staffly.schedule.model.PreferenceCollectionMode;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 public record SchedulePreferenceMyResponse(
         Long scheduleId,
@@ -21,7 +22,7 @@ public record SchedulePreferenceMyResponse(
         int revision,
         long preferenceCollectionCycle,
         SchedulePreferenceMemberDto member,
-        List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions,
+        Map<String, List<SchedulePreferenceAllowedShiftOptionDto>> allowedShiftOptionsByDate,
         List<SchedulePreferenceCellDto> cells,
         String periodComment
 ) {}

@@ -57,7 +57,7 @@ function response(revision = 3, canSubmit = true): SchedulePreferenceMyResponse 
     revision,
     preferenceCollectionCycle: 4,
     member: { memberId: 10 },
-    allowedShiftOptions: [],
+    allowedShiftOptionsByDate: {},
     cells: [],
     periodComment: null,
   };

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
 
+import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -37,6 +38,15 @@ public class SchedulePreferenceShiftOptionSnapshot {
 
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder;
+
+    /** Frozen business weekdays on which this semantic option was offered. */
+    @ElementCollection
+    @CollectionTable(name = "schedule_preference_shift_option_snapshot_day",
+            joinColumns = @JoinColumn(name = "snapshot_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_of_week", nullable = false, length = 9)
+    @Builder.Default
+    private Set<DayOfWeek> daysOfWeek = new LinkedHashSet<>();
 
     @ElementCollection
     @BatchSize(size = 64)
