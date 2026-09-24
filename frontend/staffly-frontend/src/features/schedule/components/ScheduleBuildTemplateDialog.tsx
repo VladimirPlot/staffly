@@ -49,7 +49,10 @@ const ScheduleBuildTemplateDialog: React.FC<Props> = ({ open, template, position
 
     setError(null);
     try {
-      const result = await onSubmit(draftToSaveRequest(draft), template?.id);
+      const result = await onSubmit({
+        ...draftToSaveRequest(draft),
+        expectedVersion: template?.version,
+      }, template?.id);
       if (result !== null) {
         onClose();
       } else {

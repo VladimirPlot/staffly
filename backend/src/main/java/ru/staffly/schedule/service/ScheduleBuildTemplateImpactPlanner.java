@@ -24,10 +24,18 @@ public class ScheduleBuildTemplateImpactPlanner {
             ScheduleBuildTemplate current,
             SaveScheduleBuildTemplateRequest proposed
     ) {
+        return plan(current, proposed, schedules
+                .findByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(restaurantId, current.getId()));
+    }
+
+    /** Pure planning path for callers that already hold locks on the authoritative schedules. */
+    public ScheduleBuildTemplateImpactPlan plan(
+            ScheduleBuildTemplate current,
+            SaveScheduleBuildTemplateRequest proposed,
+            List<Schedule> lockedSchedules
+    ) {
         ScheduleBuildTemplateChangeImpact impact = classifier.classify(current, proposed);
-        List<ScheduleBuildTemplateScheduleImpact> scheduleImpacts = schedules
-                .findByRestaurantIdAndPreferenceBuildTemplateIdOrderByIdAsc(restaurantId, current.getId())
-                .stream()
+        List<ScheduleBuildTemplateScheduleImpact> scheduleImpacts = lockedSchedules.stream()
                 .map(schedule -> toImpact(schedule, impact))
                 .toList();
         return new ScheduleBuildTemplateImpactPlan(impact, scheduleImpacts);

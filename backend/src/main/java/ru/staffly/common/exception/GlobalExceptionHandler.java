@@ -21,6 +21,8 @@ import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.exception.ScheduleDomainConflictException;
+import ru.staffly.schedule.exception.ScheduleBuildTemplateConfirmationRequiredException;
+import ru.staffly.schedule.exception.ScheduleBuildTemplateVersionConflictException;
 import ru.staffly.invite.exception.InvitationInvalidatedException;
 import ru.staffly.invite.exception.InvitationExpiredException;
 import ru.staffly.schedule.model.Schedule;
@@ -120,6 +122,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleScheduleDomainConflict(ScheduleDomainConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(ScheduleBuildTemplateConfirmationRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleTemplateConfirmationRequired(
+            ScheduleBuildTemplateConfirmationRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(ScheduleBuildTemplateVersionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleTemplateVersionConflict(
+            ScheduleBuildTemplateVersionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.ERROR_CODE, ex.getMessage(), ex.getMeta()));
     }
 
     @ExceptionHandler(StaleExamRevisionException.class)

@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import jakarta.persistence.EntityManager;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
@@ -21,6 +22,8 @@ import ru.staffly.schedule.dto.ScheduleBuildTemplateDto;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
+import ru.staffly.schedule.service.ScheduleBuildTemplateImpactPlanner;
+import ru.staffly.schedule.service.SchedulePreferenceLifecycleService;
 import ru.staffly.security.SecurityService;
 
 import java.time.LocalTime;
@@ -42,13 +45,17 @@ class ScheduleBuildTemplateServiceImplTest {
     @Mock private PositionRepository positions;
     @Mock private SecurityService securityService;
     @Mock private ScheduleAccessService scheduleAccessService;
+    @Mock private ScheduleBuildTemplateImpactPlanner impactPlanner;
+    @Mock private SchedulePreferenceLifecycleService preferenceLifecycle;
+    @Mock private EntityManager entityManager;
 
     private ScheduleBuildTemplateServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new ScheduleBuildTemplateServiceImpl(
-                templates, schedules, restaurants, positions, securityService, scheduleAccessService
+                templates, schedules, restaurants, positions, securityService, scheduleAccessService,
+                impactPlanner, preferenceLifecycle, entityManager
         );
         Restaurant restaurant = Restaurant.builder().id(1L).build();
         Position position = Position.builder().id(2L).restaurant(restaurant).name("Cook").build();
