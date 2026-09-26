@@ -30,48 +30,48 @@ class DayConfigCoverageSearchTest {
     @Test
     void wholeTargetAndCountVectorsPrecedeOneOffAndRestAndKeepMultiplicity() {
         TargetContext target = TargetContext.of(20, 4);
-        var a = solution(List.of(rankedChoice(1, target, 6, false, 0),
-                rankedChoice(2, target, 4, false, 0)));
-        var b = solution(List.of(rankedChoice(90, target, 6, true, 1),
-                rankedChoice(91, target, 2, true, 1)));
+        var a = solution(List.of(rankedChoice(1, target, 6, 0, 0),
+                rankedChoice(2, target, 4, 0, 0)));
+        var b = solution(List.of(rankedChoice(90, target, 6, 1, 1),
+                rankedChoice(91, target, 2, 1, 1)));
         assertTrue(DayConfigCoverageSearch.compare(b, a) < 0);
 
-        var repeated = solution(List.of(rankedChoice(1, target, 6, false, 0),
-                rankedChoice(2, target, 6, false, 0)));
-        var lowerSecond = solution(List.of(rankedChoice(90, target, 6, true, 1),
-                rankedChoice(91, target, 5, true, 1)));
+        var repeated = solution(List.of(rankedChoice(1, target, 6, 0, 0),
+                rankedChoice(2, target, 6, 0, 0)));
+        var lowerSecond = solution(List.of(rankedChoice(90, target, 6, 1, 1),
+                rankedChoice(91, target, 5, 1, 1)));
         assertTrue(DayConfigCoverageSearch.compare(lowerSecond, repeated) < 0);
     }
 
     @Test
     void countVectorPrecedesMinutesAndMinutesVectorPrecedesOneOff() {
-        var fewerShifts = solution(List.of(workloadChoice(9, 5, 3_000, true, 1)));
-        var fewerMinutes = solution(List.of(workloadChoice(1, 6, 2_100, false, 0)));
+        var fewerShifts = solution(List.of(workloadChoice(9, 5, 3_000, 1, 1)));
+        var fewerMinutes = solution(List.of(workloadChoice(1, 6, 2_100, 0, 0)));
         assertTrue(DayConfigCoverageSearch.compare(fewerShifts, fewerMinutes) < 0);
 
-        var repeated = solution(List.of(workloadChoice(1, 2, 600, false, 0),
-                workloadChoice(2, 2, 600, false, 0)));
-        var lowerSecondDespiteOneOff = solution(List.of(workloadChoice(90, 2, 600, true, 1),
-                workloadChoice(91, 2, 540, true, 1)));
+        var repeated = solution(List.of(workloadChoice(1, 2, 600, 0, 0),
+                workloadChoice(2, 2, 600, 0, 0)));
+        var lowerSecondDespiteOneOff = solution(List.of(workloadChoice(90, 2, 600, 1, 1),
+                workloadChoice(91, 2, 540, 1, 1)));
         assertTrue(DayConfigCoverageSearch.compare(lowerSecondDespiteOneOff, repeated) < 0);
 
-        var lowerMaximum = solution(List.of(workloadChoice(1, 2, 900, false, 0),
-                workloadChoice(2, 2, 300, false, 0)));
-        var largerSum = solution(List.of(workloadChoice(90, 2, 660, true, 1),
-                workloadChoice(91, 2, 600, true, 1)));
+        var lowerMaximum = solution(List.of(workloadChoice(1, 2, 900, 0, 0),
+                workloadChoice(2, 2, 300, 0, 0)));
+        var largerSum = solution(List.of(workloadChoice(90, 2, 660, 1, 1),
+                workloadChoice(91, 2, 600, 1, 1)));
         assertTrue(DayConfigCoverageSearch.compare(largerSum, lowerMaximum) < 0);
     }
 
     @Test
     void heavyDayVectorFollowsWholeMinutesVectorAndPrecedesOneOff() {
-        var repeated = solution(List.of(heavyChoice(1, 3, false, 0), heavyChoice(2, 3, false, 0)));
-        var lowerSecond = solution(List.of(heavyChoice(90, 3, true, 1),
-                heavyChoice(91, 2, true, 1)));
+        var repeated = solution(List.of(heavyChoice(1, 3, 0, 0), heavyChoice(2, 3, 0, 0)));
+        var lowerSecond = solution(List.of(heavyChoice(90, 3, 1, 1),
+                heavyChoice(91, 2, 1, 1)));
         assertTrue(DayConfigCoverageSearch.compare(lowerSecond, repeated) < 0);
 
-        var lowerMaximum = solution(List.of(heavyChoice(1, 4, false, 0), heavyChoice(2, 1, false, 0)));
-        var largerSum = solution(List.of(heavyChoice(90, 3, true, 1),
-                heavyChoice(91, 3, true, 1)));
+        var lowerMaximum = solution(List.of(heavyChoice(1, 4, 0, 0), heavyChoice(2, 1, 0, 0)));
+        var largerSum = solution(List.of(heavyChoice(90, 3, 1, 1),
+                heavyChoice(91, 3, 1, 1)));
         assertTrue(DayConfigCoverageSearch.compare(largerSum, lowerMaximum) < 0);
     }
 
@@ -107,8 +107,8 @@ class DayConfigCoverageSearchTest {
     @Test
     void heavyProjectionParticipatesInSymmetryBeforeTechnicalEmployeeKey() {
         var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 720, 1);
-        var laterButLighter = employee(90, heavyChoice(90, 1, false, 0));
-        var earlierButHeavier = employee(1, heavyChoice(1, 2, false, 0));
+        var laterButLighter = employee(90, heavyChoice(90, 1, 0, 0));
+        var earlierButHeavier = employee(1, heavyChoice(1, 2, 0, 0));
         var winner = new DayConfigCoverageSearch(List.of(requirement),
                 List.of(earlierButHeavier, laterButLighter)).solve();
         assertEquals(List.of(90L), winner.choices().stream().map(DayConfigCoverageSearch.Choice::memberId).toList());
@@ -116,25 +116,25 @@ class DayConfigCoverageSearchTest {
 
     @Test
     void wholeWorkStreakVectorFollowsHeavyAndPrecedesOneOffAndTechnicalKeys() {
-        var shorterDespiteOneOff = solution(List.of(oneOffChoice(90, 1, 1, false)));
-        var longer = solution(List.of(oneOffChoice(1, 2, 0, false)));
+        var shorterDespiteOneOff = solution(List.of(oneOffChoice(90, 1, 1, 0)));
+        var longer = solution(List.of(oneOffChoice(1, 2, 0, 0)));
         assertTrue(DayConfigCoverageSearch.compare(shorterDespiteOneOff, longer) < 0);
         assertTrue(DayConfigCoverageSearch.compare(longer, shorterDespiteOneOff) > 0);
 
-        var repeated = solution(List.of(streakChoice(1, 3, false), streakChoice(2, 3, false)));
-        var lowerSecond = solution(List.of(streakChoice(90, 3, true), streakChoice(91, 2, true)));
+        var repeated = solution(List.of(streakChoice(1, 3, 0), streakChoice(2, 3, 0)));
+        var lowerSecond = solution(List.of(streakChoice(90, 3, 1), streakChoice(91, 2, 1)));
         assertTrue(DayConfigCoverageSearch.compare(lowerSecond, repeated) < 0);
 
-        var maximumFour = solution(List.of(streakChoice(1, 4, false), streakChoice(2, 1, false)));
-        var twoThrees = solution(List.of(streakChoice(90, 3, true), streakChoice(91, 3, true)));
+        var maximumFour = solution(List.of(streakChoice(1, 4, 0), streakChoice(2, 1, 0)));
+        var twoThrees = solution(List.of(streakChoice(90, 3, 1), streakChoice(91, 3, 1)));
         assertTrue(DayConfigCoverageSearch.compare(twoThrees, maximumFour) < 0);
     }
 
     @Test
     void workStreakSeparatesSymmetryGroupsBeforeTechnicalKey() {
         var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 720, 1);
-        var earlierLonger = streakChoice(1, 2, false);
-        var laterShorter = streakChoice(90, 1, false);
+        var earlierLonger = streakChoice(1, 2, 0);
+        var laterShorter = streakChoice(90, 1, 0);
         assertEquals(earlierLonger.workloadKey().scaledTargetOvershoot(),
                 laterShorter.workloadKey().scaledTargetOvershoot());
         assertEquals(earlierLonger.workloadKey().resultingShiftCount(),
@@ -143,8 +143,8 @@ class DayConfigCoverageSearchTest {
                 laterShorter.workloadKey().resultingAssignedMinutes());
         assertEquals(earlierLonger.workloadKey().heavyDaysForRanking(),
                 laterShorter.workloadKey().heavyDaysForRanking());
-        assertEquals(earlierLonger.workloadKey().minRestViolation(),
-                laterShorter.workloadKey().minRestViolation());
+        assertEquals(earlierLonger.workloadKey().minRestDeficitMinutes(),
+                laterShorter.workloadKey().minRestDeficitMinutes());
         assertEquals(earlierLonger.workloadKey().oneOffPatternPenalty(),
                 laterShorter.workloadKey().oneOffPatternPenalty());
         assertEquals(earlierLonger.optionId(), laterShorter.optionId());
@@ -171,29 +171,60 @@ class DayConfigCoverageSearchTest {
 
     @Test
     void oneOffVectorFollowsStreakPreservesMultiplicityAndPrecedesSoftRest() {
-        var noOneOffWithRest = solution(List.of(oneOffChoice(90, 1, 0, true)));
-        var oneOffWithoutRest = solution(List.of(oneOffChoice(1, 1, 1, false)));
+        var noOneOffWithRest = solution(List.of(oneOffChoice(90, 1, 0, 1)));
+        var oneOffWithoutRest = solution(List.of(oneOffChoice(1, 1, 1, 0)));
         assertTrue(DayConfigCoverageSearch.compare(noOneOffWithRest, oneOffWithoutRest) < 0);
 
-        var twoPenalties = solution(List.of(oneOffChoice(1, 1, 1, false), oneOffChoice(2, 1, 1, false)));
-        var onePenalty = solution(List.of(oneOffChoice(90, 1, 1, false), oneOffChoice(91, 1, 0, false)));
-        var noPenalties = solution(List.of(oneOffChoice(92, 1, 0, false), oneOffChoice(93, 1, 0, false)));
+        var twoPenalties = solution(List.of(oneOffChoice(1, 1, 1, 0), oneOffChoice(2, 1, 1, 0)));
+        var onePenalty = solution(List.of(oneOffChoice(90, 1, 1, 0), oneOffChoice(91, 1, 0, 0)));
+        var noPenalties = solution(List.of(oneOffChoice(92, 1, 0, 0), oneOffChoice(93, 1, 0, 0)));
         assertTrue(DayConfigCoverageSearch.compare(onePenalty, twoPenalties) < 0);
         assertTrue(DayConfigCoverageSearch.compare(noPenalties, onePenalty) < 0);
 
-        var shorterWithOneOff = solution(List.of(oneOffChoice(1, 1, 1, false)));
-        var longerWithoutOneOff = solution(List.of(oneOffChoice(90, 2, 0, false)));
+        var shorterWithOneOff = solution(List.of(oneOffChoice(1, 1, 1, 0)));
+        var longerWithoutOneOff = solution(List.of(oneOffChoice(90, 2, 0, 0)));
         assertTrue(DayConfigCoverageSearch.compare(shorterWithOneOff, longerWithoutOneOff) < 0);
     }
 
     @Test
     void oneOffProjectionSeparatesSymmetryGroupsBeforeTechnicalKeyForBothInputOrders() {
         var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 720, 1);
-        var earlierPenalized = oneOffChoice(1, 1, 1, false);
-        var laterUnpenalized = oneOffChoice(90, 1, 0, false);
+        var earlierPenalized = oneOffChoice(1, 1, 1, 0);
+        var laterUnpenalized = oneOffChoice(90, 1, 0, 0);
         for (List<DayConfigCoverageSearch.Employee> input : List.of(
                 List.of(employee(1, earlierPenalized), employee(90, laterUnpenalized)),
                 List.of(employee(90, laterUnpenalized), employee(1, earlierPenalized)))) {
+            var winner = new DayConfigCoverageSearch(List.of(requirement), input).solve();
+            assertEquals(90L, winner.choices().get(0).memberId());
+        }
+    }
+
+    @Test
+    void quantitativeRestVectorIsWorstFirstAndPreservesMultiplicity() {
+        assertTrue(DayConfigCoverageSearch.compare(
+                solution(List.of(streakChoice(90, 1, 60))),
+                solution(List.of(streakChoice(1, 1, 180)))) < 0);
+        assertTrue(DayConfigCoverageSearch.compare(
+                solution(List.of(streakChoice(90, 1, 0))),
+                solution(List.of(streakChoice(1, 1, 1)))) < 0);
+
+        var lowerSecond = solution(List.of(streakChoice(90, 1, 120), streakChoice(91, 1, 60)));
+        var repeated = solution(List.of(streakChoice(1, 1, 120), streakChoice(2, 1, 120)));
+        assertTrue(DayConfigCoverageSearch.compare(lowerSecond, repeated) < 0);
+
+        var balanced = solution(List.of(streakChoice(90, 1, 120), streakChoice(91, 1, 120)));
+        var worseMaximum = solution(List.of(streakChoice(1, 1, 180), streakChoice(2, 1, 0)));
+        assertTrue(DayConfigCoverageSearch.compare(balanced, worseMaximum) < 0);
+    }
+
+    @Test
+    void exactRestDeficitSeparatesSymmetryGroupsBeforeTechnicalKeyForBothInputOrders() {
+        var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 720, 1);
+        var earlierWorse = streakChoice(1, 1, 180);
+        var laterBetter = streakChoice(90, 1, 60);
+        for (List<DayConfigCoverageSearch.Employee> input : List.of(
+                List.of(employee(1, earlierWorse), employee(90, laterBetter)),
+                List.of(employee(90, laterBetter), employee(1, earlierWorse)))) {
             var winner = new DayConfigCoverageSearch(List.of(requirement), input).solve();
             assertEquals(90L, winner.choices().get(0).memberId());
         }
@@ -464,48 +495,48 @@ class DayConfigCoverageSearchTest {
                                                                   int oneOff, long hard) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 1, 0, 0, 1, oneOff, false), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 1, 0, 0, 1, oneOff, 0), 1, 0,
                 start, end, requirement, hard, 0, null);
     }
     private static DayConfigCoverageSearch.Choice rankedChoice(long id, TargetContext target, int count,
-                                                                boolean rest, int oneOff) {
+                                                                long restDeficitMinutes, int oneOff) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, 0, 0, 1, oneOff, rest), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, 0, 0, 1, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
-                                                                  boolean rest, int oneOff) {
+                                                                  long restDeficitMinutes, int oneOff) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, 1, oneOff, rest), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, 1, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
                                                                   int start, int end, int requirement) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, 1, 0, false), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, 1, 0, 0), 1, 0,
                 start, end, requirement, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice heavyChoice(long id, int heavyDays,
-                                                               boolean rest, int oneOff) {
+                                                               long restDeficitMinutes, int oneOff) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 4, 1680, heavyDays, 1, oneOff, rest), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 4, 1680, heavyDays, 1, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
-    private static DayConfigCoverageSearch.Choice streakChoice(long id, int streak, boolean rest) {
+    private static DayConfigCoverageSearch.Choice streakChoice(long id, int streak, long restDeficitMinutes) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 5, 2100, 0, streak, 0, rest), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 5, 2100, 0, streak, 0, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
-    private static DayConfigCoverageSearch.Choice oneOffChoice(long id, int streak, int oneOff, boolean rest) {
+    private static DayConfigCoverageSearch.Choice oneOffChoice(long id, int streak, int oneOff, long restDeficitMinutes) {
         if (oneOff > 0) assertEquals(1, streak);
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 5, 2100, 0, streak, oneOff, rest), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 5, 2100, 0, streak, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice projectedChoice(long id, TargetContext target, int count,
@@ -517,7 +548,7 @@ class DayConfigCoverageSearchTest {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
                 new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, minutes,
-                        heavyDays, streak, 0, false), 1, 0,
+                        heavyDays, streak, 0, 0), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
 }

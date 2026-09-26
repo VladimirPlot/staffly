@@ -8,6 +8,7 @@ import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleBuildCoverageDateOverride;
 import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
+import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
@@ -261,6 +262,93 @@ class ScheduleAutoBuildPlannerTargetTest {
     }
 
     @Test
+    void buildRanksSoftRestByDeficitMinutesInsteadOfViolationBoolean() {
+        Fixture fixture = fixture(MONDAY, MONDAY.plusDays(1), 2);
+        fixture.config().setMinRestHours(12);
+        fixture.config().setMinRestMode(ScheduleBuildMinRestMode.SOFT);
+        fixture.config().setMaxShiftsPerPeriod(2);
+        fixture.config().setHeavyDaysOfWeek(new ArrayList<>());
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY),
+                option(1, "11:00", "19:00"), option(2, "13:00", "21:00"),
+                option(3, "06:00", "14:00"));
+        regime.setWorkPeriodStart(time("06:00"));
+        regime.setWorkPeriodEnd(time("22:00"));
+        addRule(regime, DayOfWeek.MONDAY, 1, "11:00", "19:00");
+        addRule(regime, DayOfWeek.MONDAY, 1, "13:00", "21:00");
+        addRule(regime, DayOfWeek.TUESDAY, 1, "06:00", "14:00");
+        fixture.attach(List.of(regime));
+
+        RestaurantMember earlier = fixture.members().get(0); // member 1, worse 180-minute deficit
+        RestaurantMember later = fixture.members().get(1); // member 2, better 60-minute deficit
+        fixture.submissions().add(submission(fixture.schedule(), later, List.of(
+                interval(MONDAY, "11:00", "19:00"), interval(MONDAY.plusDays(1), "06:00", "14:00"))));
+        fixture.submissions().add(submission(fixture.schedule(), earlier, List.of(
+                interval(MONDAY, "13:00", "21:00"), interval(MONDAY.plusDays(1), "06:00", "14:00"))));
+
+        Observation observation = build(fixture);
+        ScheduleAutoBuildPlan plan = observation.plan();
+        List<AssignmentPlan> assignments = plan.positions().get(0).cells();
+        assertTarget(observation, 3, 2);
+        assertEquals(List.of("2:2026-09-14:11:00-19:00", "1:2026-09-14:13:00-21:00",
+                        "2:2026-09-15:06:00-14:00"),
+                assignments.stream().map(a -> a.memberId() + ":" + a.day() + ":"
+                        + a.startTime() + "-" + a.endTime()).toList());
+        assertEquals(3, plan.totalAssignments());
+        assertEquals(0, plan.unfilledCount());
+        assertTrue(plan.uncoveredSlots().isEmpty());
+        assertEquals(Map.of(1L, 1L, 2L, 2L), assignments.stream()
+                .collect(Collectors.groupingBy(AssignmentPlan::memberId, Collectors.counting())));
+        assertEquals(3, assignments.stream().map(a -> a.memberId() + ":" + a.day()).distinct().count());
+        AssignmentPlan tuesday = assignments.stream().filter(a -> a.day().equals("2026-09-15")).findFirst().orElseThrow();
+        assertTrue(tuesday.warnings().contains("Мало отдыха"));
+        assertEquals("Между сменами меньше 12 часов отдыха.", tuesday.warningMessage());
+    }
+
+    @Test
+    void strictMinRestRejectsOneMinuteDeficitInRealBuild() {
+        Observation observation = build(minuteBoundaryFixture(ScheduleBuildMinRestMode.STRICT, "18:01"));
+        ScheduleAutoBuildPlan plan = observation.plan();
+        assertTarget(observation, 2, 1);
+        assertEquals(1, plan.totalAssignments());
+        assertEquals(1, plan.unfilledCount());
+        assertEquals(List.of("2026-09-14:10:00-18:01"), plan.positions().get(0).cells().stream()
+                .map(a -> a.day() + ":" + a.startTime() + "-" + a.endTime()).toList());
+        assertEquals(1, plan.uncoveredSlots().size());
+        assertEquals("2026-09-15", plan.uncoveredSlots().get(0).date());
+        assertEquals("06:00", plan.uncoveredSlots().get(0).startTime());
+        assertEquals("14:00", plan.uncoveredSlots().get(0).endTime());
+    }
+
+    @Test
+    void strictMinRestAllowsExactTwelveHourBoundaryInRealBuild() {
+        Observation observation = build(minuteBoundaryFixture(ScheduleBuildMinRestMode.STRICT, "18:00"));
+        assertTarget(observation, 2, 1);
+        assertEquals(2, observation.plan().totalAssignments());
+        assertEquals(0, observation.plan().unfilledCount());
+        assertTrue(observation.plan().uncoveredSlots().isEmpty());
+        assertEquals(List.of("2026-09-14:10:00-18:00", "2026-09-15:06:00-14:00"),
+                observation.plan().positions().get(0).cells().stream()
+                        .map(a -> a.day() + ":" + a.startTime() + "-" + a.endTime()).toList());
+    }
+
+    @Test
+    void softMinRestKeepsOneMinuteDeficitEligibleAndWarns() {
+        Observation observation = build(minuteBoundaryFixture(ScheduleBuildMinRestMode.SOFT, "18:01"));
+        ScheduleAutoBuildPlan plan = observation.plan();
+        assertTarget(observation, 2, 1);
+        assertEquals(2, plan.totalAssignments());
+        assertEquals(0, plan.unfilledCount());
+        assertTrue(plan.uncoveredSlots().isEmpty());
+        AssignmentPlan tuesday = plan.positions().get(0).cells().stream()
+                .filter(a -> a.day().equals("2026-09-15")).findFirst().orElseThrow();
+        assertEquals(1L, tuesday.memberId());
+        assertEquals("06:00", tuesday.startTime());
+        assertEquals("14:00", tuesday.endTime());
+        assertTrue(tuesday.warnings().contains("Мало отдыха"));
+        assertEquals("Между сменами меньше 12 часов отдыха.", tuesday.warningMessage());
+    }
+
+    @Test
     void heavyDayFactorPrecedesResidualStreakInARealBuild() {
         assertHeavyFridayWinner(List.of(DayOfWeek.FRIDAY.getValue()), 2L);
     }
@@ -497,6 +585,25 @@ class ScheduleAutoBuildPlannerTargetTest {
         return fixture;
     }
 
+    private static Fixture minuteBoundaryFixture(ScheduleBuildMinRestMode mode, String mondayEnd) {
+        Fixture fixture = fixture(MONDAY, MONDAY.plusDays(1), 1);
+        fixture.config().setMinRestHours(12);
+        fixture.config().setMinRestMode(mode);
+        fixture.config().setMaxShiftsPerPeriod(2);
+        fixture.config().setHeavyDaysOfWeek(new ArrayList<>());
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY),
+                option(1, "10:00", mondayEnd), option(2, "06:00", "14:00"));
+        regime.setWorkPeriodStart(time("06:00"));
+        regime.setWorkPeriodEnd(time("22:00"));
+        addRule(regime, DayOfWeek.MONDAY, 1, "10:00", mondayEnd);
+        addRule(regime, DayOfWeek.TUESDAY, 1, "06:00", "14:00");
+        fixture.attach(List.of(regime));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(0), List.of(
+                fullDay(MONDAY, SchedulePreferenceType.AVAILABLE),
+                fullDay(MONDAY.plusDays(1), SchedulePreferenceType.AVAILABLE))));
+        return fixture;
+    }
+
     private static Fixture fixture(LocalDate start, LocalDate end, int memberCount) {
         Schedule schedule = Schedule.builder().id(30L).startDate(start).endDate(end)
                 .positions(new LinkedHashSet<>(List.of(POSITION))).build();
@@ -576,6 +683,11 @@ class ScheduleAutoBuildPlannerTargetTest {
 
     private static SchedulePreferenceCell fullDay(LocalDate day, SchedulePreferenceType type) {
         return SchedulePreferenceCell.builder().day(day).type(type).fullDay(true).build();
+    }
+
+    private static SchedulePreferenceCell interval(LocalDate day, String start, String end) {
+        return SchedulePreferenceCell.builder().day(day).type(SchedulePreferenceType.AVAILABLE).fullDay(false)
+                .startTime(time(start)).endTime(time(end)).build();
     }
 
     private static SchedulePreferenceSubmission submission(Schedule schedule, RestaurantMember member,

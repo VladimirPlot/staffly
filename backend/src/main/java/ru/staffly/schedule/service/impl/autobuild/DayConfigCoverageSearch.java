@@ -17,10 +17,10 @@ final class DayConfigCoverageSearch {
     }
     record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount, long resultingAssignedMinutes,
                        int heavyDaysForRanking, int resultingWorkStreak,
-                       int oneOffPatternPenalty, boolean minRestViolation)
+                       int oneOffPatternPenalty, long minRestDeficitMinutes)
             implements Comparable<WorkloadKey> {
         @Override public int compareTo(WorkloadKey other) {
-            return Boolean.compare(minRestViolation, other.minRestViolation);
+            return Long.compare(minRestDeficitMinutes, other.minRestDeficitMinutes);
         }
     }
     record EmployeeKey(String displayName, long memberId) implements Comparable<EmployeeKey> {
@@ -281,7 +281,7 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = compareLists(heavyDaysForRanking(left), heavyDaysForRanking(right));
         if (value == 0) value = compareLists(resultingWorkStreaks(left), resultingWorkStreaks(right));
         if (value == 0) value = compareLists(oneOffPatternPenalties(left), oneOffPatternPenalties(right));
-        if (value == 0) value = compareLists(workloads(left), workloads(right));
+        if (value == 0) value = compareLists(minRestDeficitMinutes(left), minRestDeficitMinutes(right));
         if (value == 0) value = compareLists(employeeKeys(left), employeeKeys(right));
         if (value == 0) value = compareGeometry(left.choices, right.choices);
         return value;
@@ -312,8 +312,9 @@ final class DayConfigCoverageSearch {
                 .sorted(Comparator.reverseOrder()).toList();
     }
 
-    private static List<WorkloadKey> workloads(Solution solution) {
-        return solution.choices.stream().map(Choice::workloadKey).sorted(Comparator.reverseOrder()).toList();
+    private static List<Long> minRestDeficitMinutes(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.minRestDeficitMinutes)
+                .sorted(Comparator.reverseOrder()).toList();
     }
     private static List<EmployeeKey> employeeKeys(Solution solution) {
         return solution.choices.stream().map(Choice::employeeKey).distinct().sorted().toList();
