@@ -301,6 +301,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                             new DayConfigCoverageSearch.WorkloadKey(evaluation.scaledTargetOvershoot(),
                                     evaluation.resultingShiftCount(), evaluation.resultingAssignedMinutes(),
                                     evaluation.heavyDaysForRanking(),
+                                    evaluation.resultingWorkStreak(),
                                     evaluation.minRestViolation(),
                                     evaluation.residualFairnessScore()),
                             option.getId() == null ? Long.MAX_VALUE : option.getId(),
@@ -904,6 +905,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int resultingHeavyDaysCount = priorHeavyDaysCount + (heavyToday ? 1 : 0);
         // Historical state remains stored on ordinary days; only a heavy business date activates ranking.
         int heavyDaysForRanking = heavyToday ? resultingHeavyDaysCount : 0;
+        int resultingWorkStreak = resultingWorkStreak(
+                day, plannerState.assignedIntervals(member.getId()));
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
@@ -930,6 +933,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     targetContext.scaledOvershoot(resultingShiftCount),
                     resultingAssignedMinutes,
                     heavyDaysForRanking,
+                    resultingWorkStreak,
                     displayName,
                     residualFairnessScore(member, day, plannerState),
                     false,
@@ -946,6 +950,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 targetContext.scaledOvershoot(resultingShiftCount),
                 resultingAssignedMinutes,
                 heavyDaysForRanking,
+                resultingWorkStreak,
                 displayName,
                 residualFairnessScore(member, day, plannerState),
                 true,
@@ -1117,13 +1122,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         int score = 0;
 
-        int previousConsecutiveDays = previousConsecutiveWorkDays(member, day, plannerState);
-        if (previousConsecutiveDays == 2) {
-            score += 20;
-        } else if (previousConsecutiveDays >= 3) {
-            score += 60 + (previousConsecutiveDays - 3) * 20;
-        }
-
         if (hasAssignmentOnDay(member, plannerState, day.minusDays(2))
                 && !hasAssignmentOnDay(member, plannerState, day.minusDays(1))) {
             score += 10;
@@ -1132,14 +1130,24 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return score;
     }
 
-    private int previousConsecutiveWorkDays(RestaurantMember member, LocalDate day, PlannerState plannerState) {
-        int count = 0;
-        LocalDate cursor = day.minusDays(1);
-        while (hasAssignmentOnDay(member, plannerState, cursor)) {
+    static int resultingWorkStreak(LocalDate businessDate, List<AssignedInterval> existingAssignments) {
+        int count = 1;
+        LocalDate cursor = businessDate.minusDays(1);
+        while (hasAssignmentOnBusinessDate(existingAssignments, cursor)) {
             count++;
             cursor = cursor.minusDays(1);
         }
         return count;
+    }
+
+    private static boolean hasAssignmentOnBusinessDate(
+            List<AssignedInterval> existingAssignments,
+            LocalDate businessDate
+    ) {
+        for (AssignedInterval interval : existingAssignments) {
+            if (businessDate.equals(interval.day())) return true;
+        }
+        return false;
     }
 
     private boolean isHeavyDay(ScheduleBuildPositionConfig config, LocalDate day) {
@@ -1175,6 +1183,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     int byHeavyDays = Integer.compare(
                             left.heavyDaysForRanking(), right.heavyDaysForRanking());
                     if (byHeavyDays != 0) return byHeavyDays;
+
+                    int byWorkStreak = Integer.compare(
+                            left.resultingWorkStreak(), right.resultingWorkStreak());
+                    if (byWorkStreak != 0) return byWorkStreak;
 
                     int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
                     if (byMinRestViolation != 0) {
@@ -1935,6 +1947,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             long scaledTargetOvershoot,
             long resultingAssignedMinutes,
             int heavyDaysForRanking,
+            int resultingWorkStreak,
             String displayName,
             int residualFairnessScore,
             boolean eligible,
