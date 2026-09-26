@@ -288,9 +288,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     if (!intervals.get(r).contains(optionInterval) || optionInterval.endMinute() <= optionInterval.startMinute()) continue;
                     if (!evaluation.eligible()) {
                         if (evaluation.rejectionReason() == CandidateRejectionReason.MAX_SHIFTS) {
+                            final int requirementIndex = r;
                             toMaxShiftsRejectionHint(evaluation, preferencesByMemberAndDay, day, option, config)
                                     .ifPresent(hint -> rejectionEvidence.add(new CoverageRejectionEvidence(
-                                            r, optionInterval.startMinute(), optionInterval.endMinute(), hint)));
+                                            requirementIndex, optionInterval.startMinute(), optionInterval.endMinute(), hint)));
                         }
                         continue;
                     }
