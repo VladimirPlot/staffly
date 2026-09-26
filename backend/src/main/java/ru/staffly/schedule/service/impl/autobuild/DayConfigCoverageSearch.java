@@ -16,7 +16,8 @@ final class DayConfigCoverageSearch {
         }
     }
     record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount, long resultingAssignedMinutes,
-                       int heavyDaysForRanking, boolean minRestViolation, int residualFairnessScore)
+                       int heavyDaysForRanking, int resultingWorkStreak,
+                       boolean minRestViolation, int residualFairnessScore)
             implements Comparable<WorkloadKey> {
         @Override public int compareTo(WorkloadKey other) {
             int value = Boolean.compare(minRestViolation, other.minRestViolation);
@@ -128,6 +129,8 @@ final class DayConfigCoverageSearch {
                     other.workload.resultingAssignedMinutes);
             if (value == 0) value = Integer.compare(workload.heavyDaysForRanking,
                     other.workload.heavyDaysForRanking);
+            if (value == 0) value = Integer.compare(workload.resultingWorkStreak,
+                    other.workload.resultingWorkStreak);
             if (value == 0) value = workload.compareTo(other.workload);
             if (value == 0) value = Long.compare(optionId, other.optionId);
             if (value == 0) value = Integer.compare(optionSortOrder, other.optionSortOrder);
@@ -276,6 +279,7 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = compareLists(resultingShiftCounts(left), resultingShiftCounts(right));
         if (value == 0) value = compareLists(resultingAssignedMinutes(left), resultingAssignedMinutes(right));
         if (value == 0) value = compareLists(heavyDaysForRanking(left), heavyDaysForRanking(right));
+        if (value == 0) value = compareLists(resultingWorkStreaks(left), resultingWorkStreaks(right));
         if (value == 0) value = compareLists(workloads(left), workloads(right));
         if (value == 0) value = compareLists(employeeKeys(left), employeeKeys(right));
         if (value == 0) value = compareGeometry(left.choices, right.choices);
@@ -296,6 +300,10 @@ final class DayConfigCoverageSearch {
     }
     private static List<Integer> heavyDaysForRanking(Solution solution) {
         return solution.choices.stream().map(c -> c.workloadKey.heavyDaysForRanking)
+                .sorted(Comparator.reverseOrder()).toList();
+    }
+    private static List<Integer> resultingWorkStreaks(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.resultingWorkStreak)
                 .sorted(Comparator.reverseOrder()).toList();
     }
 
