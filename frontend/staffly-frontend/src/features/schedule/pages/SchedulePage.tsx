@@ -134,13 +134,12 @@ const SchedulePage: React.FC = () => {
     restaurantTimeZone,
     setSavedSchedules,
     reloadSavedSchedules,
-  } =
-    useScheduleInitialData({
-      restaurantId,
-      userRoles: user?.roles,
-      onRestaurantMissing: handleRestaurantMissing,
-      onBeforeLoad: handleBeforeInitialLoad,
-    });
+  } = useScheduleInitialData({
+    restaurantId,
+    userRoles: user?.roles,
+    onRestaurantMissing: handleRestaurantMissing,
+    onBeforeLoad: handleBeforeInitialLoad,
+  });
 
   const access = React.useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
@@ -794,6 +793,7 @@ const SchedulePage: React.FC = () => {
           saving={buildTemplatesActions.saving}
           deletingId={buildTemplatesActions.deletingId}
           positions={positions}
+          members={members}
           onLoad={loadBuildTemplatesIfNeeded}
           onRetry={() => void buildTemplatesActions.loadTemplates()}
           onCreate={(request) => buildTemplatesActions.createTemplate(request)}

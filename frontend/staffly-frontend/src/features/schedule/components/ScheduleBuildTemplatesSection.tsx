@@ -2,6 +2,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import type { PositionDto } from "../../dictionaries/api";
+import type { MemberDto } from "../../employees/api";
 import type { SaveScheduleBuildTemplateRequest, ScheduleBuildTemplateDto } from "../api";
 import ScheduleBuildTemplateDialog from "./ScheduleBuildTemplateDialog";
 
@@ -12,6 +13,7 @@ type Props = {
   saving: boolean;
   deletingId: number | null;
   positions: PositionDto[];
+  members: MemberDto[];
   onLoad: () => void;
   onRetry: () => void;
   onCreate: (request: SaveScheduleBuildTemplateRequest) => Promise<ScheduleBuildTemplateDto | null>;
@@ -27,6 +29,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
   saving,
   deletingId,
   positions,
+  members,
   onLoad,
   onRetry,
   onCreate,
@@ -99,6 +102,7 @@ const ScheduleBuildTemplatesSection: React.FC<Props> = ({
         open={open}
         template={editing}
         positions={positions}
+        members={members}
         saving={saving}
         timeZone={timeZone}
         onClose={() => setOpen(false)}

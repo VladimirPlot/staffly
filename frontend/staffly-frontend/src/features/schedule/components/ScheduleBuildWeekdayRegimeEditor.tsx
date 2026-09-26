@@ -8,6 +8,7 @@ import type { DayOfWeek } from "../api";
 import {
   createShiftOptionDraft,
   SCHEDULE_BUILD_TIME_STEP_SECONDS,
+  type ScheduleBuildMarkerDraft,
   type ScheduleBuildWeekdayRegimeDraft,
 } from "../utils/buildTemplateDraft";
 import ScheduleBuildCoverageDateOverridesEditor from "./ScheduleBuildCoverageDateOverridesEditor";
@@ -17,6 +18,7 @@ import ScheduleBuildWeekdaySelector from "./ScheduleBuildWeekdaySelector";
 
 type Props = {
   regime: ScheduleBuildWeekdayRegimeDraft;
+  markers: ScheduleBuildMarkerDraft[];
   saving: boolean;
   canDelete: boolean;
   onChange: (next: ScheduleBuildWeekdayRegimeDraft) => void;
@@ -27,6 +29,7 @@ type Props = {
 
 const ScheduleBuildWeekdayRegimeEditor: React.FC<Props> = ({
   regime,
+  markers,
   saving,
   canDelete,
   onChange,
@@ -75,6 +78,7 @@ const ScheduleBuildWeekdayRegimeEditor: React.FC<Props> = ({
     </div>
     <ScheduleBuildShiftOptionsEditor
       config={regime}
+      markers={markers}
       saving={saving}
       onChange={onChange}
       onAdd={() => onChange({ ...regime, shiftOptions: [...regime.shiftOptions, createShiftOptionDraft()] })}

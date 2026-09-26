@@ -83,6 +83,13 @@ let nextDraftKey = 0;
 const draftKey = () => `weekday-regime-${++nextDraftKey}`;
 const markerDraftKey = () => `marker-${++nextDraftKey}`;
 
+export const createMarkerDraft = (): ScheduleBuildMarkerDraft => ({
+  key: markerDraftKey(),
+  id: null,
+  name: "",
+  memberIds: [],
+});
+
 export const canonicalizeWeekdays = (days: readonly DayOfWeek[]): DayOfWeek[] =>
   WEEKDAYS.filter((day) => days.includes(day));
 
@@ -276,8 +283,8 @@ export const draftToSaveRequest = (draft: ScheduleBuildTemplateDraft): SaveSched
       sortOrder: index,
       markers: config.markers.map((marker) => ({
         id: marker.id ?? null,
-        name: marker.name,
-        memberIds: [...marker.memberIds],
+        name: marker.name.trim(),
+        memberIds: [...new Set(marker.memberIds)].sort((a, b) => a - b),
       })),
       weekdayRegimes: config.weekdayRegimes.map((regime, regimeIndex) => ({
         daysOfWeek: canonicalizeWeekdays(regime.daysOfWeek),
@@ -318,6 +325,17 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
       if (used.has(id)) return "Одна должность не может входить в два блока шаблона";
       used.add(id);
     }
+    const markerNames = new Set<string>();
+    const markerKeys = new Set<string>();
+    for (const marker of config.markers) {
+      const markerName = marker.name.trim();
+      if (!markerName) return `Укажите название маркера для должности #${i + 1}`;
+      if (markerName.length > 100) return "Название маркера не должно быть длиннее 100 символов";
+      const normalizedName = markerName.toLocaleLowerCase("ru-RU");
+      if (markerNames.has(normalizedName)) return `Названия маркеров в блоке #${i + 1} не должны повторяться`;
+      markerNames.add(normalizedName);
+      markerKeys.add(marker.key);
+    }
     const partitionError = validateWeekdayPartition(config.weekdayRegimes);
     if (partitionError) return `${partitionError} для должности #${i + 1}`;
     for (const regime of config.weekdayRegimes) {
@@ -327,6 +345,9 @@ export const validateBuildTemplateDraft = (draft: ScheduleBuildTemplateDraft): s
       if (!regime.shiftOptions.length) return `Добавьте хотя бы одну смену для должности #${i + 1}`;
       for (const option of regime.shiftOptions)
         if (!option.startTime || !option.endTime) return `Заполните время смены для должности #${i + 1}`;
+      for (const option of regime.shiftOptions)
+        if (option.markerKey != null && !markerKeys.has(option.markerKey))
+          return `Выбранный маркер смены отсутствует в блоке #${i + 1}`;
       for (const option of regime.shiftOptions)
         if (!isTimeMultipleOf15Minutes(option.startTime) || !isTimeMultipleOf15Minutes(option.endTime))
           return TIME_MULTIPLE_OF_15_MINUTES_ERROR;
