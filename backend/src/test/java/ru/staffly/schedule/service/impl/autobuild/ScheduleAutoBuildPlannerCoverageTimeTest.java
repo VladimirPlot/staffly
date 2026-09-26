@@ -68,11 +68,14 @@ class ScheduleAutoBuildPlannerCoverageTimeTest {
     }
 
     @Test
-    void treatsOverlappingOvernightOptionsAsCompleteCoverage() {
+    void rejectsOverstaffingFromOverlappingOptionsAndKeepsBestPartial() {
         ScheduleAutoBuildPlan plan = build("10:00", "06:00", "18:00", "06:00",
                 option("18:00", "02:00", 1), option("00:00", "06:00", 2));
 
-        assertComplete(plan, 2);
+        assertEquals(1, plan.totalAssignments());
+        assertEquals(1, plan.unfilledCount());
+        assertEquals("02:00", plan.uncoveredSlots().get(0).startTime());
+        assertEquals("06:00", plan.uncoveredSlots().get(0).endTime());
     }
 
     @Test
@@ -84,8 +87,7 @@ class ScheduleAutoBuildPlannerCoverageTimeTest {
     }
 
     @Test
-    void transitionalNonNegativeSplitFiltersNegativeWinnerBeforeSelectingAllowedFallback() {
-        // Step 3A characterization: whole-solution ordering remains deferred to Step 3B.
+    void wholeSolutionOrderingPrefersLowerTotalConflictAcrossTheSplit() {
         Position position = Position.builder().id(10L).name("Cook").build();
         Schedule schedule = Schedule.builder()
                 .id(30L)
@@ -127,7 +129,7 @@ class ScheduleAutoBuildPlannerCoverageTimeTest {
         ScheduleAutoBuildPlan plan = new ScheduleAutoBuildPlannerImpl(submissions, participations)
                 .build(1L, schedule, template);
 
-        assertEquals(List.of(1L, 2L), plan.positions().get(0).cells().stream()
+        assertEquals(List.of(1L, 3L), plan.positions().get(0).cells().stream()
                 .map(assignment -> assignment.memberId())
                 .toList());
         assertEquals(List.of("10:00", "17:00"), plan.positions().get(0).cells().stream()
