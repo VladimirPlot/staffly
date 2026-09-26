@@ -51,6 +51,26 @@ class ScheduleAutoBuildPlannerPhysicalTimeTest {
     }
 
     @Test
+    void calculatesMinutePreciseWorstRestDeficitOnEitherSide() {
+        var candidate = physical("2026-09-15T10:00", "2026-09-15T18:00");
+        assertEquals(0, deficit(candidate));
+        assertEquals(0, deficit(candidate, physical("2026-09-14T14:00", "2026-09-14T22:00")));
+        assertEquals(1, deficit(candidate, physical("2026-09-14T20:00", "2026-09-14T22:01")));
+        assertEquals(60, deficit(candidate, physical("2026-09-14T20:00", "2026-09-14T23:00")));
+        assertEquals(180, deficit(candidate, physical("2026-09-14T20:00", "2026-09-15T01:00")));
+        assertEquals(480, deficit(candidate, physical("2026-09-15T00:00", "2026-09-15T06:00")));
+        var future = physical("2026-09-16T05:00", "2026-09-16T13:00");
+        assertEquals(60, deficit(candidate, future));
+
+        var previous = physical("2026-09-14T16:00", "2026-09-15T00:00");
+        var closeFuture = physical("2026-09-16T02:00", "2026-09-16T10:00");
+        assertEquals(240, deficit(candidate, previous, closeFuture));
+        assertEquals(240, deficit(candidate, closeFuture, previous));
+        assertEquals(0, ScheduleAutoBuildPlannerImpl.minRestDeficitMinutes(List.of(previous), candidate, null));
+        assertEquals(0, ScheduleAutoBuildPlannerImpl.minRestDeficitMinutes(List.of(previous), candidate, 0));
+    }
+
+    @Test
     void detectsPhysicalCollisionAcrossDifferentBusinessDays() {
         CanonicalBusinessInterval fridayWorkPeriod = workPeriod("10:00", "06:00");
         ScheduleAutoBuildPlannerImpl.AssignedInterval friday = assigned(
@@ -105,6 +125,20 @@ class ScheduleAutoBuildPlannerPhysicalTimeTest {
             CanonicalBusinessInterval interval
     ) {
         return new ScheduleAutoBuildPlannerImpl.AssignedInterval(day, interval);
+    }
+
+    private static long deficit(ScheduleAutoBuildPlannerImpl.AssignedInterval candidate,
+                                ScheduleAutoBuildPlannerImpl.AssignedInterval... existing) {
+        return ScheduleAutoBuildPlannerImpl.minRestDeficitMinutes(List.of(existing), candidate, 12);
+    }
+
+    private static ScheduleAutoBuildPlannerImpl.AssignedInterval physical(String start, String end) {
+        LocalDateTime physicalStart = LocalDateTime.parse(start);
+        LocalDateTime physicalEnd = LocalDateTime.parse(end);
+        int endDayOffset = physicalEnd.toLocalDate().equals(physicalStart.toLocalDate()) ? 0 : 1;
+        return new ScheduleAutoBuildPlannerImpl.AssignedInterval(physicalStart.toLocalDate(),
+                new CanonicalBusinessInterval(physicalStart.toLocalTime(), 0,
+                        physicalEnd.toLocalTime(), endDayOffset));
     }
 
     private static CanonicalBusinessInterval workPeriod(String start, String end) {

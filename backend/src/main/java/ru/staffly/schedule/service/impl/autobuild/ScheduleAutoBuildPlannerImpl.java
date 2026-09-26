@@ -303,7 +303,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                                     evaluation.heavyDaysForRanking(),
                                     evaluation.resultingWorkStreak(),
                                     evaluation.oneOffPatternPenalty(),
-                                    evaluation.minRestViolation()),
+                                    evaluation.minRestDeficitMinutes()),
                             option.getId() == null ? Long.MAX_VALUE : option.getId(),
                             Optional.ofNullable(option.getSortOrder()).orElse(0),
                             optionInterval.startMinute(), optionInterval.endMinute(), r,
@@ -324,7 +324,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CandidateEvaluation evaluation = prepared.evaluation();
             AssignmentBuildResult built = createAssignment(prepared.member(),
                     resultingState.participationPosition(prepared.member().getId()), day, prepared.option(),
-                    evaluation.preferenceEvaluation().status(), evaluation.minRestViolation(), config.getMinRestHours());
+                    evaluation.preferenceEvaluation().status(), evaluation.minRestDeficitMinutes() > 0,
+                    config.getMinRestHours());
             assignments.add(built.assignment());
             if (isNegativeGrade(built.grade())) negativeAssignments++;
             registerAssignment(resultingState, prepared.member(), day, prepared.option(), config);
@@ -606,7 +607,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config
     ) {
         RestaurantMember selected = selectedEvaluation.member();
-        boolean minRestViolation = !isStrictMinRest(config) && violatesMinRest(selected, config, plannerState, day, option);
+        boolean minRestViolation = !isStrictMinRest(config)
+                && selectedEvaluation.minRestDeficitMinutes() > 0;
         AssignmentBuildResult assignmentResult = createAssignment(
                 selected,
                 plannerState.participationPosition(selected.getId()),
@@ -898,8 +900,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         int shiftsCount = plannerState.shiftsCount(member.getId());
         int resultingShiftCount = shiftsCount + 1;
+        AssignedInterval candidateInterval = new AssignedInterval(day, plannerState.canonicalInterval(option));
         long resultingAssignedMinutes = plannerState.assignedMinutes(member.getId())
-                + new AssignedInterval(day, plannerState.canonicalInterval(option)).durationMinutes();
+                + candidateInterval.durationMinutes();
         boolean heavyToday = isHeavyDay(config, day);
         int priorHeavyDaysCount = plannerState.heavyDaysCount(member.getId(), configKey(config));
         int resultingHeavyDaysCount = priorHeavyDaysCount + (heavyToday ? 1 : 0);
@@ -909,7 +912,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int resultingWorkStreak = resultingWorkStreak(day, history);
         int oneOffPatternPenalty = createsOneOffPattern(day, history) ? 1 : 0;
         String displayName = displayName(member);
-        boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
+        long minRestDeficitMinutes = minRestDeficitMinutes(history, candidateInterval, config.getMinRestHours());
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
         PreferenceEvaluation preferenceEvaluation = preferenceEvaluationFor(
                 preferenceCell,
@@ -922,7 +925,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 option,
                 config,
                 plannerState,
-                minRestViolation
+                minRestDeficitMinutes
         );
 
         if (rejectionReason != CandidateRejectionReason.NONE) {
@@ -936,7 +939,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     heavyDaysForRanking,
                     resultingWorkStreak,
                     oneOffPatternPenalty,
-                    minRestViolation,
+                    minRestDeficitMinutes,
                     displayName,
                     false,
                     rejectionReason
@@ -953,7 +956,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 heavyDaysForRanking,
                 resultingWorkStreak,
                 oneOffPatternPenalty,
-                minRestViolation,
+                minRestDeficitMinutes,
                 displayName,
                 true,
                 CandidateRejectionReason.NONE
@@ -1003,7 +1006,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
-            boolean minRestViolation
+            long minRestDeficitMinutes
     ) {
         if (violatesMaxShifts(member, config, plannerState)) {
             return CandidateRejectionReason.MAX_SHIFTS;
@@ -1014,7 +1017,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (overlapsExistingAssignment(member, plannerState, day, option)) {
             return CandidateRejectionReason.OVERLAP;
         }
-        if (isStrictMinRest(config) && minRestViolation) {
+        if (isStrictMinRest(config) && minRestDeficitMinutes > 0) {
             return CandidateRejectionReason.MIN_REST;
         }
         return CandidateRejectionReason.NONE;
@@ -1054,46 +1057,34 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 .anyMatch(candidate::overlaps);
     }
 
-    private boolean violatesMinRest(
-            RestaurantMember member,
-            ScheduleBuildPositionConfig config,
-            PlannerState plannerState,
-            LocalDate day,
-            ScheduleBuildShiftOption option
-    ) {
-        Integer minRestHours = config.getMinRestHours();
-        if (minRestHours == null || minRestHours <= 0) {
-            return false;
-        }
-        return !hasEnoughRest(
-                plannerState.assignedIntervals(member.getId()),
-                new AssignedInterval(day, plannerState.canonicalInterval(option)),
-                minRestHours
-        );
-    }
-
     static boolean hasEnoughRest(
             List<AssignedInterval> existingAssignments,
             AssignedInterval candidate,
             int minRestHours
     ) {
-        Duration requiredRest = Duration.ofHours(minRestHours);
+        return minRestDeficitMinutes(existingAssignments, candidate, minRestHours) == 0;
+    }
 
+    static long minRestDeficitMinutes(
+            List<AssignedInterval> existingAssignments,
+            AssignedInterval candidate,
+            Integer minRestHours
+    ) {
+        if (minRestHours == null || minRestHours <= 0) return 0;
+        long requiredRestMinutes = Math.max(0L, (long) minRestHours * 60L);
+        long worstDeficit = 0;
         for (AssignedInterval interval : existingAssignments) {
-            if (!candidate.physicalStart().isBefore(interval.physicalEnd())) {
-                Duration rest = Duration.between(interval.physicalEnd(), candidate.physicalStart());
-                if (rest.compareTo(requiredRest) < 0) {
-                    return false;
-                }
-            } else if (!interval.physicalStart().isBefore(candidate.physicalEnd())) {
-                Duration rest = Duration.between(candidate.physicalEnd(), interval.physicalStart());
-                if (rest.compareTo(requiredRest) < 0) {
-                    return false;
-                }
+            long actualRestMinutes;
+            if (!interval.physicalEnd().isAfter(candidate.physicalStart())) {
+                actualRestMinutes = Duration.between(interval.physicalEnd(), candidate.physicalStart()).toMinutes();
+            } else if (!candidate.physicalEnd().isAfter(interval.physicalStart())) {
+                actualRestMinutes = Duration.between(candidate.physicalEnd(), interval.physicalStart()).toMinutes();
+            } else {
+                continue; // Physical overlap is a separate hard constraint.
             }
+            worstDeficit = Math.max(worstDeficit, Math.max(0L, requiredRestMinutes - actualRestMinutes));
         }
-
-        return true;
+        return worstDeficit;
     }
 
     TargetContext targetContext(
@@ -1183,9 +1174,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                             left.oneOffPatternPenalty(), right.oneOffPatternPenalty());
                     if (byOneOffPattern != 0) return byOneOffPattern;
 
-                    int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
-                    if (byMinRestViolation != 0) {
-                        return byMinRestViolation;
+                    int byMinRestDeficit = Long.compare(
+                            left.minRestDeficitMinutes(), right.minRestDeficitMinutes());
+                    if (byMinRestDeficit != 0) {
+                        return byMinRestDeficit;
                     }
 
                     int byDisplayName = left.displayName().compareToIgnoreCase(right.displayName());
@@ -1939,7 +1931,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             int heavyDaysForRanking,
             int resultingWorkStreak,
             int oneOffPatternPenalty,
-            boolean minRestViolation,
+            long minRestDeficitMinutes,
             String displayName,
             boolean eligible,
             CandidateRejectionReason rejectionReason
