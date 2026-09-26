@@ -27,6 +27,15 @@ class ScheduleAutoBuildPlannerPhysicalTimeTest {
     }
 
     @Test
+    void calculatesAssignedMinutesFromCanonicalPhysicalInterval() {
+        assertEquals(420, assigned(FRIDAY, resolve(workPeriod("10:00", "10:00"), "10:00", "17:00")).durationMinutes());
+        assertEquals(300, assigned(FRIDAY, resolve(workPeriod("10:00", "10:00"), "21:00", "02:00")).durationMinutes());
+        assertEquals(360, assigned(FRIDAY, resolve(workPeriod("00:00", "00:00"), "00:00", "06:00")).durationMinutes());
+        assertEquals(361, assigned(FRIDAY, resolve(workPeriod("10:00", "10:00"), "10:00", "16:01")).durationMinutes());
+        assertEquals(1440, assigned(FRIDAY, resolve(workPeriod("10:00", "10:00"), "10:00", "10:00")).durationMinutes());
+    }
+
+    @Test
     void preservesResolverRejectionForOvernightShiftInsideMidnightFullDay() {
         CanonicalBusinessInterval workPeriod = workPeriod("00:00", "00:00");
 

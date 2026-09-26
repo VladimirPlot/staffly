@@ -151,6 +151,32 @@ class ScheduleAutoBuildPlannerTargetTest {
         assertEquals(2, observed.plan().positions().get(0).cells().stream().map(cell -> cell.memberId()).distinct().count());
     }
 
+    @Test
+    void buildCarriesAssignedMinutesAcrossDaysBeforeResidualAndTechnicalKeys() {
+        Fixture fixture = fixture(MONDAY, MONDAY.plusDays(2), 2);
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.allOf(DayOfWeek.class),
+                option(1, "10:00", "16:00"), option(2, "10:00", "20:00"),
+                option(3, "17:00", "21:00"));
+        addRule(regime, MONDAY.getDayOfWeek(), 1, "10:00", "16:00");
+        addRule(regime, MONDAY.plusDays(1).getDayOfWeek(), 1, "10:00", "20:00");
+        addRule(regime, MONDAY.plusDays(2).getDayOfWeek(), 1, "17:00", "21:00");
+        fixture.attach(List.of(regime));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(1),
+                fullDay(MONDAY, SchedulePreferenceType.AVAILABLE)));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(0),
+                fullDay(MONDAY, SchedulePreferenceType.PREFER_DAY_OFF)));
+
+        ScheduleAutoBuildPlan plan = build(fixture).plan();
+        var assignments = plan.positions().get(0).cells();
+        assertEquals(List.of("2:2026-09-14:10:00-16:00", "1:2026-09-15:10:00-20:00",
+                        "2:2026-09-16:17:00-21:00"),
+                assignments.stream().map(a -> a.memberId() + ":" + a.day() + ":"
+                        + a.startTime() + "-" + a.endTime()).toList());
+        assertEquals(Map.of(1L, 1L, 2L, 2L), assignments.stream()
+                .collect(Collectors.groupingBy(a -> a.memberId(), Collectors.counting())));
+        assertEquals(0, plan.unfilledCount());
+    }
+
     private static Fixture singleRegimeFixture(LocalDate start, LocalDate end, int weekly, Integer override,
                                                 int memberCount) {
         Fixture fixture = fixture(start, end, memberCount);

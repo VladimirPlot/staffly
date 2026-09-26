@@ -15,7 +15,7 @@ final class DayConfigCoverageSearch {
             if (start >= end || count < 0) throw new IllegalArgumentException("Invalid requirement");
         }
     }
-    record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount,
+    record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount, long resultingAssignedMinutes,
                        boolean minRestViolation, int residualFairnessScore)
             implements Comparable<WorkloadKey> {
         @Override public int compareTo(WorkloadKey other) {
@@ -124,6 +124,8 @@ final class DayConfigCoverageSearch {
         @Override public int compareTo(ChoiceSignature other) {
             int value = Long.compare(workload.scaledTargetOvershoot, other.workload.scaledTargetOvershoot);
             if (value == 0) value = Integer.compare(workload.resultingShiftCount, other.workload.resultingShiftCount);
+            if (value == 0) value = Long.compare(workload.resultingAssignedMinutes,
+                    other.workload.resultingAssignedMinutes);
             if (value == 0) value = workload.compareTo(other.workload);
             if (value == 0) value = Long.compare(optionId, other.optionId);
             if (value == 0) value = Integer.compare(optionSortOrder, other.optionSortOrder);
@@ -270,6 +272,7 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = Integer.compare(left.distinctEmployeeCount, right.distinctEmployeeCount);
         if (value == 0) value = compareLists(targetOvershoots(left), targetOvershoots(right));
         if (value == 0) value = compareLists(resultingShiftCounts(left), resultingShiftCounts(right));
+        if (value == 0) value = compareLists(resultingAssignedMinutes(left), resultingAssignedMinutes(right));
         if (value == 0) value = compareLists(workloads(left), workloads(right));
         if (value == 0) value = compareLists(employeeKeys(left), employeeKeys(right));
         if (value == 0) value = compareGeometry(left.choices, right.choices);
@@ -282,6 +285,10 @@ final class DayConfigCoverageSearch {
     }
     private static List<Integer> resultingShiftCounts(Solution solution) {
         return solution.choices.stream().map(c -> c.workloadKey.resultingShiftCount)
+                .sorted(Comparator.reverseOrder()).toList();
+    }
+    private static List<Long> resultingAssignedMinutes(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.resultingAssignedMinutes)
                 .sorted(Comparator.reverseOrder()).toList();
     }
 

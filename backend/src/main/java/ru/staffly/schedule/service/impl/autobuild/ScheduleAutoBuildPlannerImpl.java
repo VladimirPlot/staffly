@@ -299,7 +299,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     choices.add(new DayConfigCoverageSearch.Choice(member.getId(),
                             new DayConfigCoverageSearch.EmployeeKey(evaluation.displayName(), member.getId()),
                             new DayConfigCoverageSearch.WorkloadKey(evaluation.scaledTargetOvershoot(),
-                                    evaluation.resultingShiftCount(), evaluation.minRestViolation(),
+                                    evaluation.resultingShiftCount(), evaluation.resultingAssignedMinutes(),
+                                    evaluation.minRestViolation(),
                                     evaluation.residualFairnessScore()),
                             option.getId() == null ? Long.MAX_VALUE : option.getId(),
                             Optional.ofNullable(option.getSortOrder()).orElse(0),
@@ -895,6 +896,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     ) {
         int shiftsCount = plannerState.shiftsCount(member.getId());
         int resultingShiftCount = shiftsCount + 1;
+        long resultingAssignedMinutes = plannerState.assignedMinutes(member.getId())
+                + new AssignedInterval(day, plannerState.canonicalInterval(option)).durationMinutes();
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
@@ -919,6 +922,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     shiftsCount,
                     resultingShiftCount,
                     targetContext.scaledOvershoot(resultingShiftCount),
+                    resultingAssignedMinutes,
                     displayName,
                     residualFairnessScore(member, day, config, plannerState),
                     false,
@@ -933,6 +937,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 shiftsCount,
                 resultingShiftCount,
                 targetContext.scaledOvershoot(resultingShiftCount),
+                resultingAssignedMinutes,
                 displayName,
                 residualFairnessScore(member, day, config, plannerState),
                 true,
@@ -1159,6 +1164,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
                     int byResultingCount = Integer.compare(left.resultingShiftCount(), right.resultingShiftCount());
                     if (byResultingCount != 0) return byResultingCount;
+
+                    int byResultingMinutes = Long.compare(
+                            left.resultingAssignedMinutes(), right.resultingAssignedMinutes());
+                    if (byResultingMinutes != 0) return byResultingMinutes;
 
                     int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
                     if (byMinRestViolation != 0) {
@@ -1781,6 +1790,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return assignedIntervalsByMember.getOrDefault(memberId, List.of());
         }
 
+        private long assignedMinutes(Long memberId) {
+            return assignedIntervals(memberId).stream().mapToLong(AssignedInterval::durationMinutes).sum();
+        }
+
         private int heavyDaysCount(Long memberId, String configKey) {
             if (configKey == null) {
                 return 0;
@@ -1862,6 +1875,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return physicalEnd;
         }
 
+        long durationMinutes() {
+            return Duration.between(physicalStart, physicalEnd).toMinutes();
+        }
+
         boolean overlaps(AssignedInterval other) {
             return physicalStart.isBefore(other.physicalEnd)
                     && other.physicalStart.isBefore(physicalEnd);
@@ -1909,6 +1926,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             int shiftsCount,
             int resultingShiftCount,
             long scaledTargetOvershoot,
+            long resultingAssignedMinutes,
             String displayName,
             int residualFairnessScore,
             boolean eligible,
