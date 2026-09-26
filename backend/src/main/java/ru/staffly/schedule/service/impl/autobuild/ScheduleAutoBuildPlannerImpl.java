@@ -252,29 +252,154 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 && !demandLookup.overridesByDate().containsKey(day)) {
             return buildLegacyAssignmentsForDay(day, config, regime, candidates, preferencesByMemberAndDay, plannerState);
         }
+        return searchCoverageDay(day, config, regime, workPeriod, coverageRules, candidates,
+                preferencesByMemberAndDay, plannerState, targetShiftsPerCandidate);
+    }
 
-        for (ScheduleBuildCoverageRule rule : coverageRules) {
-            CoverageRuleResult ruleResult = buildAssignmentForCoverageRule(
-                    day,
-                    config,
-                    CanonicalBusinessIntervalResolver.resolveInside(
-                            workPeriod, rule.getStartTime(), rule.getEndTime()),
-                    rule,
-                    candidates,
-                    preferencesByMemberAndDay,
-                    plannerState,
-                    targetShiftsPerCandidate
-            );
-
-            assignments.addAll(ruleResult.assignments());
-            warnings.addAll(ruleResult.warnings());
-            uncoveredSlots.addAll(ruleResult.uncoveredSlots());
-            rejectionHints.addAll(ruleResult.rejectionHints());
-            unfilledCount += ruleResult.unfilledCount();
-            negativeAssignmentsCount += ruleResult.negativeAssignmentsCount();
+    private DayBuildResult searchCoverageDay(
+            LocalDate day, ScheduleBuildPositionConfig config, ScheduleBuildWeekdayRegime regime,
+            CanonicalBusinessInterval workPeriod, List<ScheduleBuildCoverageRule> rules,
+            List<RestaurantMember> candidates,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
+            PlannerState baselineState, double targetShiftsPerCandidate
+    ) {
+        List<ScheduleBuildCoverageRule> positiveRules = rules.stream().filter(r -> safeRequiredCount(r) > 0).toList();
+        List<DayConfigCoverageSearch.Requirement> requirements = new ArrayList<>();
+        List<CanonicalBusinessInterval> intervals = new ArrayList<>();
+        for (int i = 0; i < positiveRules.size(); i++) {
+            ScheduleBuildCoverageRule rule = positiveRules.get(i);
+            CanonicalBusinessInterval interval = CanonicalBusinessIntervalResolver.resolveInside(
+                    workPeriod, rule.getStartTime(), rule.getEndTime());
+            intervals.add(interval);
+            requirements.add(new DayConfigCoverageSearch.Requirement(
+                    rule.getId() == null ? 0 : rule.getId(), interval.startMinute(), interval.endMinute(),
+                    safeRequiredCount(rule), Optional.ofNullable(rule.getSortOrder()).orElse(0)));
         }
 
-        return new DayBuildResult(assignments, warnings, uncoveredSlots, rejectionHints, unfilledCount, negativeAssignmentsCount);
+        List<DayConfigCoverageSearch.Employee> employees = new ArrayList<>();
+        List<CoverageRejectionEvidence> rejectionEvidence = new ArrayList<>();
+        for (RestaurantMember member : candidates) {
+            List<DayConfigCoverageSearch.Choice> choices = new ArrayList<>();
+            for (ScheduleBuildShiftOption option : safeShiftOptions(regime)) {
+                CandidateEvaluation evaluation = evaluateCandidate(member, preferencesByMemberAndDay, day, option,
+                        config, baselineState, targetShiftsPerCandidate);
+                CanonicalBusinessInterval optionInterval = baselineState.canonicalInterval(option);
+                for (int r = 0; r < intervals.size(); r++) {
+                    if (!intervals.get(r).contains(optionInterval) || optionInterval.endMinute() <= optionInterval.startMinute()) continue;
+                    if (!evaluation.eligible()) {
+                        if (evaluation.rejectionReason() == CandidateRejectionReason.MAX_SHIFTS) {
+                            toMaxShiftsRejectionHint(evaluation, preferencesByMemberAndDay, day, option, config)
+                                    .ifPresent(hint -> rejectionEvidence.add(new CoverageRejectionEvidence(
+                                            r, optionInterval.startMinute(), optionInterval.endMinute(), hint)));
+                        }
+                        continue;
+                    }
+                    PreparedCoverageChoice payload = new PreparedCoverageChoice(member, option, evaluation, r);
+                    choices.add(new DayConfigCoverageSearch.Choice(member.getId(),
+                            new DayConfigCoverageSearch.EmployeeKey(evaluation.displayName(), member.getId()),
+                            new DayConfigCoverageSearch.WorkloadKey(evaluation.minRestViolation(),
+                                    evaluation.fairnessScore(), evaluation.shiftsCount()),
+                            option.getId() == null ? Long.MAX_VALUE : option.getId(),
+                            Optional.ofNullable(option.getSortOrder()).orElse(0),
+                            optionInterval.startMinute(), optionInterval.endMinute(), r,
+                            evaluation.preferenceEvaluation().hardConflictMinutes(),
+                            evaluation.preferenceEvaluation().softConflictMinutes(), payload));
+                }
+            }
+            employees.add(new DayConfigCoverageSearch.Employee(member.getId(), choices));
+        }
+
+        DayConfigCoverageSearch search = new DayConfigCoverageSearch(requirements, employees);
+        DayConfigCoverageSearch.Solution winner = search.solve();
+        PlannerState resultingState = baselineState.copy();
+        List<AssignmentPlan> assignments = new ArrayList<>();
+        int negativeAssignments = 0;
+        for (DayConfigCoverageSearch.Choice choice : winner.choices()) {
+            PreparedCoverageChoice prepared = (PreparedCoverageChoice) choice.payload();
+            CandidateEvaluation evaluation = prepared.evaluation();
+            AssignmentBuildResult built = createAssignment(prepared.member(),
+                    resultingState.participationPosition(prepared.member().getId()), day, prepared.option(),
+                    evaluation.preferenceEvaluation().status(), evaluation.minRestViolation(), config.getMinRestHours());
+            assignments.add(built.assignment());
+            if (isNegativeGrade(built.grade())) negativeAssignments++;
+            registerAssignment(resultingState, prepared.member(), day, prepared.option(), config);
+        }
+        baselineState.replaceWith(resultingState);
+
+        List<UncoveredSlotPlan> uncovered = materializeUncovered(day, config, search.requirements(), winner.choices());
+        List<RejectionHintPlan> relevantHints = deduplicateRejectionHints(rejectionEvidence.stream()
+                .filter(evidence -> rejectionIntersectsUncovered(evidence, requirements,
+                        search.requirements(), winner.choices()))
+                .map(CoverageRejectionEvidence::hint)
+                .sorted(Comparator.comparing(RejectionHintPlan::startTime)
+                        .thenComparing(RejectionHintPlan::endTime)
+                        .thenComparing(RejectionHintPlan::memberId))
+                .toList());
+        List<String> dayWarnings = uncovered.isEmpty() ? List.of()
+                : List.of("Недостаточно сотрудников для полного покрытия " + day);
+        return new DayBuildResult(assignments, dayWarnings, uncovered, relevantHints,
+                winner.unfilledCount(), negativeAssignments);
+    }
+
+    private int canonicalRequirementIndex(List<DayConfigCoverageSearch.Requirement> original,
+                                          List<DayConfigCoverageSearch.Requirement> canonical, int originalIndex) {
+        DayConfigCoverageSearch.Requirement target = original.get(originalIndex);
+        for (int i = 0; i < canonical.size(); i++) if (canonical.get(i) == target) return i;
+        for (int i = 0; i < canonical.size(); i++) if (canonical.get(i).equals(target)) return i;
+        throw new IllegalStateException("Coverage requirement normalization lost attribution");
+    }
+
+    private boolean rejectionIntersectsUncovered(CoverageRejectionEvidence evidence,
+                                                  List<DayConfigCoverageSearch.Requirement> original,
+                                                  List<DayConfigCoverageSearch.Requirement> canonical,
+                                                  List<DayConfigCoverageSearch.Choice> choices) {
+        int r = canonicalRequirementIndex(original, canonical, evidence.requirementIndex());
+        DayConfigCoverageSearch.Requirement requirement = canonical.get(r);
+        for (int minute = evidence.start(); minute < evidence.end(); minute++) {
+            int assigned = 0;
+            for (DayConfigCoverageSearch.Choice choice : choices)
+                if (choice.requirementIndex() == r && choice.start() <= minute && minute < choice.end()) assigned++;
+            if (assigned < requirement.count()) return true;
+        }
+        return false;
+    }
+
+    private List<UncoveredSlotPlan> materializeUncovered(
+            LocalDate day, ScheduleBuildPositionConfig config,
+            List<DayConfigCoverageSearch.Requirement> requirements,
+            List<DayConfigCoverageSearch.Choice> choices
+    ) {
+        List<UncoveredSlotPlan> result = new ArrayList<>();
+        for (int r = 0; r < requirements.size(); r++) {
+            DayConfigCoverageSearch.Requirement requirement = requirements.get(r);
+            List<Integer> boundaries = new ArrayList<>(List.of(requirement.start(), requirement.end()));
+            for (DayConfigCoverageSearch.Choice choice : choices) if (choice.requirementIndex() == r) {
+                boundaries.add(choice.start()); boundaries.add(choice.end());
+            }
+            List<Integer> sorted = boundaries.stream().distinct().sorted().toList();
+            int openStart = -1, openAssigned = -1;
+            for (int i = 0; i < sorted.size() - 1; i++) {
+                int start = sorted.get(i), end = sorted.get(i + 1);
+                int assigned = 0;
+                for (DayConfigCoverageSearch.Choice choice : choices)
+                    if (choice.requirementIndex() == r && choice.start() <= start && choice.end() >= end) assigned++;
+                if (assigned >= requirement.count()) {
+                    if (openStart >= 0) addUncovered(result, day, config, openStart, start, requirement.count(), openAssigned);
+                    openStart = -1;
+                } else if (openStart < 0 || assigned != openAssigned) {
+                    if (openStart >= 0) addUncovered(result, day, config, openStart, start, requirement.count(), openAssigned);
+                    openStart = start; openAssigned = assigned;
+                }
+            }
+            if (openStart >= 0) addUncovered(result, day, config, openStart, requirement.end(), requirement.count(), openAssigned);
+        }
+        return result;
+    }
+
+    private void addUncovered(List<UncoveredSlotPlan> target, LocalDate day,
+                              ScheduleBuildPositionConfig config, int start, int end, int required, int assigned) {
+        target.add(toUncoveredSlot(day, config.getId(), configPositionIds(config), configDisplayName(config),
+                minuteToTime(start), minuteToTime(end), required, assigned));
     }
 
     private CoverageRuleResult buildAssignmentForCoverageRule(
@@ -1705,6 +1830,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             );
         }
     }
+
+    private record PreparedCoverageChoice(RestaurantMember member, ScheduleBuildShiftOption option,
+            CandidateEvaluation evaluation, int requirementIndex) { }
+
+    private record CoverageRejectionEvidence(int requirementIndex, int start, int end, RejectionHintPlan hint) { }
 
     private record CandidatePopulation(List<RestaurantMember> members, Map<Long, Long> positionByMember) {
     }
