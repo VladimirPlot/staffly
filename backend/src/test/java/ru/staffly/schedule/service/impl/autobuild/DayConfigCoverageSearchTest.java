@@ -62,6 +62,58 @@ class DayConfigCoverageSearchTest {
     }
 
     @Test
+    void heavyDayVectorFollowsWholeMinutesVectorAndPrecedesResidual() {
+        var repeated = solution(List.of(heavyChoice(1, 3, false, 0), heavyChoice(2, 3, false, 0)));
+        var lowerSecond = solution(List.of(heavyChoice(90, 3, true, 10_000),
+                heavyChoice(91, 2, true, 10_000)));
+        assertTrue(DayConfigCoverageSearch.compare(lowerSecond, repeated) < 0);
+
+        var lowerMaximum = solution(List.of(heavyChoice(1, 4, false, 0), heavyChoice(2, 1, false, 0)));
+        var largerSum = solution(List.of(heavyChoice(90, 3, true, 10_000),
+                heavyChoice(91, 3, true, 10_000)));
+        assertTrue(DayConfigCoverageSearch.compare(largerSum, lowerMaximum) < 0);
+    }
+
+    @Test
+    void wholeMinutesVectorPrecedesHeavyDayVector() {
+        TargetContext singleTarget = TargetContext.of(8, 2);
+        var fewerMinutesChoice = projectedChoice(90, singleTarget, 4, 540, 4);
+        var fewerHeavyDaysChoice = projectedChoice(1, singleTarget, 4, 1680, 1);
+        assertEquals(fewerMinutesChoice.workloadKey().scaledTargetOvershoot(),
+                fewerHeavyDaysChoice.workloadKey().scaledTargetOvershoot());
+        assertEquals(fewerMinutesChoice.workloadKey().resultingShiftCount(),
+                fewerHeavyDaysChoice.workloadKey().resultingShiftCount());
+        assertTrue(fewerMinutesChoice.workloadKey().resultingAssignedMinutes()
+                < fewerHeavyDaysChoice.workloadKey().resultingAssignedMinutes());
+        assertTrue(fewerMinutesChoice.workloadKey().heavyDaysForRanking()
+                > fewerHeavyDaysChoice.workloadKey().heavyDaysForRanking());
+        var fewerMinutes = solution(List.of(fewerMinutesChoice));
+        var fewerHeavyDays = solution(List.of(fewerHeavyDaysChoice));
+        assertTrue(DayConfigCoverageSearch.compare(fewerMinutes, fewerHeavyDays) < 0);
+        assertTrue(DayConfigCoverageSearch.compare(fewerHeavyDays, fewerMinutes) > 0);
+
+        TargetContext compoundTarget = TargetContext.of(16, 4);
+        var lowerSecondMinute = solution(List.of(
+                projectedChoice(90, compoundTarget, 4, 1680, 4),
+                projectedChoice(91, compoundTarget, 4, 540, 4)));
+        var lighterHeavyVector = solution(List.of(
+                projectedChoice(1, compoundTarget, 4, 1680, 1),
+                projectedChoice(2, compoundTarget, 4, 600, 1)));
+        assertTrue(DayConfigCoverageSearch.compare(lowerSecondMinute, lighterHeavyVector) < 0);
+        assertTrue(DayConfigCoverageSearch.compare(lighterHeavyVector, lowerSecondMinute) > 0);
+    }
+
+    @Test
+    void heavyProjectionParticipatesInSymmetryBeforeTechnicalEmployeeKey() {
+        var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 720, 1);
+        var laterButLighter = employee(90, heavyChoice(90, 1, false, 0));
+        var earlierButHeavier = employee(1, heavyChoice(1, 2, false, 0));
+        var winner = new DayConfigCoverageSearch(List.of(requirement),
+                List.of(earlierButHeavier, laterButLighter)).solve();
+        assertEquals(List.of(90L), winner.choices().stream().map(DayConfigCoverageSearch.Choice::memberId).toList());
+    }
+
+    @Test
     void optionSpecificResultingMinutesChooseBalancedAllocation() {
         var requirements = List.of(new DayConfigCoverageSearch.Requirement(1, 600, 720, 1),
                 new DayConfigCoverageSearch.Requirement(2, 600, 1080, 1));
@@ -317,28 +369,43 @@ class DayConfigCoverageSearchTest {
                                                                   int fairness, long hard) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 1, 0, false, fairness), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 1, 0, 0, false, fairness), 1, 0,
                 start, end, requirement, hard, 0, null);
     }
     private static DayConfigCoverageSearch.Choice rankedChoice(long id, TargetContext target, int count,
                                                                 boolean rest, int residual) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, 0, rest, residual), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, 0, 0, rest, residual), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
                                                                   boolean rest, int residual) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, rest, residual), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, rest, residual), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
                                                                   int start, int end, int requirement) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, false, 0), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, false, 0), 1, 0,
                 start, end, requirement, 0, 0, null);
+    }
+    private static DayConfigCoverageSearch.Choice heavyChoice(long id, int heavyDays,
+                                                               boolean rest, int residual) {
+        return new DayConfigCoverageSearch.Choice(id,
+                new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
+                new DayConfigCoverageSearch.WorkloadKey(0, 4, 1680, heavyDays, rest, residual), 1, 0,
+                600, 720, 0, 0, 0, null);
+    }
+    private static DayConfigCoverageSearch.Choice projectedChoice(long id, TargetContext target, int count,
+                                                                   long minutes, int heavyDays) {
+        return new DayConfigCoverageSearch.Choice(id,
+                new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
+                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, minutes,
+                        heavyDays, false, 0), 1, 0,
+                600, 720, 0, 0, 0, null);
     }
 }

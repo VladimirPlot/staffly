@@ -3,6 +3,8 @@ package ru.staffly.schedule.service.impl.autobuild;
 import org.junit.jupiter.api.Test;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.schedule.model.CanonicalBusinessInterval;
+import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleBuildCoverageDateOverride;
 import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
@@ -21,6 +23,7 @@ import ru.staffly.user.model.User;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -177,6 +180,150 @@ class ScheduleAutoBuildPlannerTargetTest {
         assertEquals(0, plan.unfilledCount());
     }
 
+    @Test
+    void heavyDayFactorPrecedesResidualStreakInARealBuild() {
+        assertHeavyFridayWinner(List.of(DayOfWeek.FRIDAY.getValue()), 2L);
+    }
+
+    @Test
+    void emptyHeavyDaySettingLeavesResidualStreakAsTieBreaker() {
+        assertHeavyFridayWinner(List.of(), 1L);
+    }
+
+    @Test
+    void ordinaryDayDoesNotRankStoredHeavyHistory() {
+        LocalDate friday = LocalDate.of(2026, 9, 18);
+        Fixture fixture = fixture(friday, friday.plusDays(3), 2);
+        fixture.config().setHeavyDaysOfWeek(new ArrayList<>(List.of(DayOfWeek.FRIDAY.getValue())));
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.allOf(DayOfWeek.class));
+        for (DayOfWeek day : List.of(DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.MONDAY))
+            addRule(regime, day, 1, "10:00", "17:00");
+        fixture.attach(List.of(regime));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(0),
+                fullDay(friday, SchedulePreferenceType.AVAILABLE)));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(1),
+                fullDay(friday, SchedulePreferenceType.PREFER_DAY_OFF)));
+
+        var assignments = build(fixture).plan().positions().get(0).cells();
+        assertEquals(List.of("1:2026-09-18", "2:2026-09-19", "1:2026-09-21"), assignments.stream()
+                .map(a -> a.memberId() + ":" + a.day()).toList());
+    }
+
+    @Test
+    void overnightEndDateDoesNotChangeHeavyBusinessDate() {
+        assertOvernightBusinessDateRanking("21:00", "06:00", 540);
+    }
+
+    @Test
+    void postMidnightPhysicalStartKeepsHeavyBusinessDate() {
+        assertOvernightBusinessDateRanking("00:00", "06:00", 360);
+    }
+
+    private static void assertOvernightBusinessDateRanking(String start, String end, long durationMinutes) {
+        assertOvernightBusinessDateRanking(start, end, durationMinutes,
+                List.of(DayOfWeek.FRIDAY.getValue()), List.of(2L, 1L, 2L));
+        assertOvernightBusinessDateRanking(start, end, durationMinutes, List.of(), List.of(2L, 1L, 1L));
+    }
+
+    private static void assertOvernightBusinessDateRanking(String start, String end, long durationMinutes,
+                                                            List<Integer> heavyDays, List<Long> expectedMembers) {
+        LocalDate firstFriday = LocalDate.of(2026, 9, 18);
+        LocalDate firstThursday = firstFriday.minusDays(1);
+        LocalDate lastFriday = firstFriday.plusDays(7);
+        Fixture fixture = fixture(firstThursday, lastFriday, 2);
+        fixture.config().setHeavyDaysOfWeek(new ArrayList<>(heavyDays));
+        ScheduleBuildShiftOption overnight = option(1, start, end);
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.allOf(DayOfWeek.class), overnight);
+        regime.setWorkPeriodStart(time("10:00"));
+        regime.setWorkPeriodEnd(time("06:00"));
+        addRule(regime, DayOfWeek.FRIDAY, 1, start, end);
+        addOverride(regime, firstThursday, 1);
+        fixture.attach(List.of(regime));
+
+        RestaurantMember b = fixture.members().get(0); // member 1, earlier technical key
+        RestaurantMember a = fixture.members().get(1); // member 2, later technical key
+        fixture.submissions().add(submission(fixture.schedule(), a, List.of(
+                fullDay(firstThursday, SchedulePreferenceType.AVAILABLE),
+                fullDay(firstFriday, SchedulePreferenceType.AVAILABLE),
+                fullDay(lastFriday, SchedulePreferenceType.AVAILABLE))));
+        fixture.submissions().add(submission(fixture.schedule(), b, List.of(
+                fullDay(firstThursday, SchedulePreferenceType.PREFER_DAY_OFF),
+                fullDay(firstFriday, SchedulePreferenceType.AVAILABLE),
+                fullDay(lastFriday, SchedulePreferenceType.AVAILABLE))));
+
+        Observation observation = build(fixture);
+        ScheduleAutoBuildPlan plan = observation.plan();
+        var assignments = plan.positions().get(0).cells().stream()
+                .sorted(java.util.Comparator.comparing(cell -> cell.day())).toList();
+        assertTarget(observation, 3, 2);
+        assertEquals(3, plan.totalAssignments());
+        assertEquals(0, plan.unfilledCount());
+        assertTrue(plan.uncoveredSlots().isEmpty());
+        assertEquals(List.of(firstThursday.toString(), firstFriday.toString(), lastFriday.toString()),
+                assignments.stream().map(cell -> cell.day()).toList());
+        assertEquals(expectedMembers, assignments.stream().map(cell -> cell.memberId()).toList());
+        assertEquals(List.of(start, start, start), assignments.stream().map(cell -> cell.startTime()).toList());
+        assertEquals(List.of(end, end, end), assignments.stream().map(cell -> cell.endTime()).toList());
+        assertEquals(3, assignments.stream()
+                .map(cell -> cell.memberId() + ":" + cell.day()).distinct().count());
+        assertEquals(Map.of(1L, expectedMembers.stream().filter(id -> id == 1L).count(),
+                        2L, expectedMembers.stream().filter(id -> id == 2L).count()),
+                assignments.stream().collect(Collectors.groupingBy(cell -> cell.memberId(), Collectors.counting())));
+        CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                time("10:00"), time("06:00"));
+        CanonicalBusinessInterval canonicalOption = CanonicalBusinessIntervalResolver.resolveInside(
+                workPeriod, time(start), time(end));
+        List<LocalDateTime> expectedPhysicalStarts = start.equals("21:00")
+                ? List.of(LocalDateTime.parse("2026-09-17T21:00"), LocalDateTime.parse("2026-09-18T21:00"),
+                        LocalDateTime.parse("2026-09-25T21:00"))
+                : List.of(LocalDateTime.parse("2026-09-18T00:00"), LocalDateTime.parse("2026-09-19T00:00"),
+                        LocalDateTime.parse("2026-09-26T00:00"));
+        List<LocalDateTime> expectedPhysicalEnds = List.of(LocalDateTime.parse("2026-09-18T06:00"),
+                LocalDateTime.parse("2026-09-19T06:00"), LocalDateTime.parse("2026-09-26T06:00"));
+        List<ScheduleAutoBuildPlannerImpl.AssignedInterval> physicalIntervals = assignments.stream()
+                .map(cell -> new ScheduleAutoBuildPlannerImpl.AssignedInterval(
+                        LocalDate.parse(cell.day()), canonicalOption)).toList();
+        assertEquals(expectedPhysicalStarts,
+                physicalIntervals.stream().map(ScheduleAutoBuildPlannerImpl.AssignedInterval::physicalStart).toList());
+        assertEquals(expectedPhysicalEnds,
+                physicalIntervals.stream().map(ScheduleAutoBuildPlannerImpl.AssignedInterval::physicalEnd).toList());
+        assertEquals(List.of(durationMinutes, durationMinutes, durationMinutes), physicalIntervals.stream()
+                .map(ScheduleAutoBuildPlannerImpl.AssignedInterval::durationMinutes).toList());
+    }
+
+    private static void assertHeavyFridayWinner(List<Integer> heavyDays, long finalWinner) {
+        LocalDate friday = LocalDate.of(2026, 9, 18);
+        Fixture fixture = fixture(friday, friday.plusDays(7), 2);
+        fixture.config().setHeavyDaysOfWeek(new ArrayList<>(heavyDays));
+        fixture.config().setMaxShiftsPerPeriod(5);
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.allOf(DayOfWeek.class));
+        for (DayOfWeek day : List.of(DayOfWeek.FRIDAY, DayOfWeek.SATURDAY, DayOfWeek.SUNDAY,
+                DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY))
+            addRule(regime, day, 1, "10:00", "17:00");
+        fixture.attach(List.of(regime));
+        List<SchedulePreferenceCell> a = new ArrayList<>(), b = new ArrayList<>();
+        for (int offset : List.of(0, 1, 2)) {
+            a.add(fullDay(friday.plusDays(offset), SchedulePreferenceType.AVAILABLE));
+            b.add(fullDay(friday.plusDays(offset), SchedulePreferenceType.PREFER_DAY_OFF));
+        }
+        for (int offset : List.of(4, 5, 6)) {
+            a.add(fullDay(friday.plusDays(offset), SchedulePreferenceType.PREFER_DAY_OFF));
+            b.add(fullDay(friday.plusDays(offset), SchedulePreferenceType.AVAILABLE));
+        }
+        a.add(fullDay(friday.plusDays(7), SchedulePreferenceType.AVAILABLE));
+        b.add(fullDay(friday.plusDays(7), SchedulePreferenceType.AVAILABLE));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(0), a));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(1), b));
+
+        ScheduleAutoBuildPlan plan = build(fixture).plan();
+        var assignments = plan.positions().get(0).cells();
+        assertEquals(List.of(1L, 1L, 1L, 2L, 2L, 2L, finalWinner),
+                assignments.stream().map(aCell -> aCell.memberId()).toList());
+        assertEquals(7, plan.totalAssignments());
+        assertEquals(0, plan.unfilledCount());
+        assertEquals(7, assignments.stream().map(aCell -> aCell.memberId() + ":" + aCell.day()).distinct().count());
+    }
+
     private static Fixture singleRegimeFixture(LocalDate start, LocalDate end, int weekly, Integer override,
                                                 int memberCount) {
         Fixture fixture = fixture(start, end, memberCount);
@@ -278,9 +425,14 @@ class ScheduleAutoBuildPlannerTargetTest {
 
     private static SchedulePreferenceSubmission submission(Schedule schedule, RestaurantMember member,
                                                              SchedulePreferenceCell cell) {
+        return submission(schedule, member, List.of(cell));
+    }
+
+    private static SchedulePreferenceSubmission submission(Schedule schedule, RestaurantMember member,
+                                                             List<SchedulePreferenceCell> cells) {
         SchedulePreferenceSubmission submission = SchedulePreferenceSubmission.builder().schedule(schedule)
-                .member(member).cells(List.of(cell)).build();
-        cell.setSubmission(submission);
+                .member(member).cells(cells).build();
+        cells.forEach(cell -> cell.setSubmission(submission));
         return submission;
     }
 
