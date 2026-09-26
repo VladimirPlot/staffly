@@ -311,7 +311,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         targetShiftsPerCandidate
                 );
                 CandidateEvaluation selectedSingle = singleSelection.selected();
-                if (selectedSingle != null && isGoodSingleMatch(selectedSingle.matchStatus())) {
+                if (selectedSingle != null && isGoodSingleMatch(selectedSingle.preferenceEvaluation())) {
                     AssignmentBuildResult assignmentResult = assignSelected(
                             assignments,
                             plannerState,
@@ -482,7 +482,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 plannerState.participationPosition(selected.getId()),
                 day,
                 option,
-                selectedEvaluation.matchStatus(),
+                selectedEvaluation.preferenceEvaluation().status(),
                 minRestViolation,
                 config.getMinRestHours()
         );
@@ -514,16 +514,16 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             if (optionStart > cursor || optionEnd <= cursor) {
                 continue;
             }
-            CandidateSelectionResult selection = pickMember(candidates, preferencesByMemberAndDay, day, option, config, plannerState, targetShiftsPerCandidate);
-            if (!allowNegativeAssignments && selection.selected() != null && isNegativeGrade(selection.selected().grade())) {
-                selection = new CandidateSelectionResult(
-                        null,
-                        selection.maxShiftsRejectedCount(),
-                        selection.minRestRejectedCount(),
-                        selection.overlapRejectedCount(),
-                        selection.rejectionHints()
-                );
-            }
+            CandidateSelectionResult selection = pickMember(
+                    candidates,
+                    preferencesByMemberAndDay,
+                    day,
+                    option,
+                    config,
+                    plannerState,
+                    targetShiftsPerCandidate,
+                    allowNegativeAssignments
+            );
             if (selection.selected() == null) {
                 best = best == null ? new SplitOptionSelection(option, selection) : best;
                 continue;
@@ -557,9 +557,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (byExactStart != 0) {
             return byExactStart;
         }
-        int byMatchStatus = Integer.compare(candidateRank(leftCandidate), candidateRank(rightCandidate));
-        if (byMatchStatus != 0) {
-            return byMatchStatus;
+        int byPreference = comparePreference(leftCandidate.preferenceEvaluation(), rightCandidate.preferenceEvaluation());
+        if (byPreference != 0) {
+            return byPreference;
         }
         int leftEnd = plannerState.canonicalInterval(left.option()).endMinute();
         int rightEnd = plannerState.canonicalInterval(right.option()).endMinute();
@@ -584,29 +584,15 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     }
 
 
-    private int candidateRank(CandidateEvaluation candidate) {
-        return matchStatusRank(candidate.matchStatus());
+    int comparePreference(PreferenceEvaluation left, PreferenceEvaluation right) {
+        int byHardConflict = Long.compare(left.hardConflictMinutes(), right.hardConflictMinutes());
+        return byHardConflict != 0
+                ? byHardConflict
+                : Long.compare(left.softConflictMinutes(), right.softConflictMinutes());
     }
 
-    private int matchStatusRank(MatchStatus matchStatus) {
-        // FULL_DAY_POSITIVE and NO_PREFERENCE intentionally share one
-        // availability priority group: fairness, not the status itself, chooses
-        // between "can work all day" and "no preference" candidates.
-        return switch (matchStatus) {
-            case EXACT_INTERVAL_PREFERENCE -> 0;
-            case COVERING_INTERVAL_PREFERENCE -> 1;
-            case FULL_DAY_POSITIVE, NO_PREFERENCE -> 2;
-            case PARTIAL_INTERVAL_FALLBACK -> 3;
-            case SOFT_NEGATIVE_FALLBACK -> 4;
-            case HARD_NEGATIVE_FALLBACK -> 5;
-        };
-    }
-
-    private boolean isGoodSingleMatch(MatchStatus matchStatus) {
-        return matchStatus == MatchStatus.EXACT_INTERVAL_PREFERENCE
-                || matchStatus == MatchStatus.COVERING_INTERVAL_PREFERENCE
-                || matchStatus == MatchStatus.FULL_DAY_POSITIVE
-                || matchStatus == MatchStatus.NO_PREFERENCE;
+    private boolean isGoodSingleMatch(PreferenceEvaluation preference) {
+        return preference.hardConflictMinutes() == 0 && preference.softConflictMinutes() == 0;
     }
 
     private boolean isNegativeGrade(PreferenceGrade grade) {
@@ -660,12 +646,20 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 option.getStartTime().toString(),
                 option.getEndTime().toString(),
                 reason,
-                matchStatus.name(),
+                previewMatchStatus(matchStatus),
                 warningMessage,
                 cellWarnings
         );
 
         return new AssignmentBuildResult(assignment, grade);
+    }
+
+    private String previewMatchStatus(MatchStatus matchStatus) {
+        // The preview API has no disjoint-availability value yet; retain its existing
+        // availability-window fallback presentation while keeping the internal reason distinct.
+        return matchStatus == MatchStatus.DISJOINT_AVAILABLE_FALLBACK
+                ? MatchStatus.PARTIAL_INTERVAL_FALLBACK.name()
+                : matchStatus.name();
     }
 
     private PositionCounters buildPositionCounters(
@@ -696,6 +690,28 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             PlannerState plannerState,
             double targetShiftsPerCandidate
     ) {
+        return pickMember(
+                candidates,
+                preferencesByMemberAndDay,
+                day,
+                option,
+                config,
+                plannerState,
+                targetShiftsPerCandidate,
+                true
+        );
+    }
+
+    private CandidateSelectionResult pickMember(
+            List<RestaurantMember> candidates,
+            Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
+            LocalDate day,
+            ScheduleBuildShiftOption option,
+            ScheduleBuildPositionConfig config,
+            PlannerState plannerState,
+            double targetShiftsPerCandidate,
+            boolean allowNegativeAssignments
+    ) {
         List<CandidateEvaluation> eligibleCandidates = new ArrayList<>();
         int maxShiftsRejectedCount = 0;
         int minRestRejectedCount = 0;
@@ -725,7 +741,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 continue;
             }
 
-            eligibleCandidates.add(evaluation);
+            if (allowNegativeAssignments || !isNegativeGrade(evaluation.preferenceEvaluation().grade())) {
+                eligibleCandidates.add(evaluation);
+            }
         }
 
         CandidateEvaluation selected = selectBestCandidate(eligibleCandidates);
@@ -752,8 +770,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
-        MatchStatus matchStatus = matchStatusFor(preferenceCell, option, plannerState);
-        PreferenceGrade memberGrade = grade(matchStatus);
+        PreferenceEvaluation preferenceEvaluation = preferenceEvaluationFor(
+                preferenceCell,
+                plannerState.workPeriod(option),
+                plannerState.canonicalInterval(option)
+        );
         CandidateRejectionReason rejectionReason = hardConstraintRejectionReason(
                 member,
                 day,
@@ -766,8 +787,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (rejectionReason != CandidateRejectionReason.NONE) {
             return new CandidateEvaluation(
                     member,
-                    matchStatus,
-                    memberGrade,
+                    preferenceEvaluation,
                     shiftsCount,
                     displayName,
                     fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
@@ -779,8 +799,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         return new CandidateEvaluation(
                 member,
-                matchStatus,
-                memberGrade,
+                preferenceEvaluation,
                 shiftsCount,
                 displayName,
                 fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
@@ -801,7 +820,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (hasNegativePreferenceOnDay(preferenceCell)) {
             return Optional.empty();
         }
-        if (evaluation.grade() != PreferenceGrade.POSITIVE && evaluation.grade() != PreferenceGrade.NONE) {
+        PreferenceGrade grade = evaluation.preferenceEvaluation().grade();
+        if (grade != PreferenceGrade.POSITIVE && grade != PreferenceGrade.NONE) {
             return Optional.empty();
         }
 
@@ -1004,13 +1024,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private CandidateEvaluation selectBestCandidate(List<CandidateEvaluation> candidates) {
         return candidates.stream()
                 .min((left, right) -> {
-                    int byMatchStatus = Integer.compare(candidateRank(left), candidateRank(right));
-                    if (byMatchStatus != 0) {
-                        return byMatchStatus;
+                    int byPreference = comparePreference(left.preferenceEvaluation(), right.preferenceEvaluation());
+                    if (byPreference != 0) {
+                        return byPreference;
                     }
 
                     // Keep conflict severity as the primary boundary: min-rest and fairness
-                    // only break ties within the same match status priority group.
+                    // only break ties between equal hard/soft conflict projections.
                     int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
                     if (byMinRestViolation != 0) {
                         return byMinRestViolation;
@@ -1079,6 +1099,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 warnings.add("Назначение частично выходит за пределы пожелания сотрудника");
                 yield "Частично вне пожелания сотрудника.";
             }
+            case DISJOINT_AVAILABLE_FALLBACK -> {
+                warnings.add("Назначение находится вне указанного окна доступности сотрудника");
+                yield "Вне указанного окна доступности сотрудника.";
+            }
             case SOFT_NEGATIVE_FALLBACK -> {
                 warnings.add("Сотрудник предпочитал выходной в это время");
                 yield "Поставлен несмотря на пожелание выходного — не хватило сотрудников.";
@@ -1094,6 +1118,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private String warningMessageFor(MatchStatus matchStatus) {
         if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
             return "Назначение частично выходит за пределы пожелания сотрудника.";
+        }
+        if (matchStatus == MatchStatus.DISJOINT_AVAILABLE_FALLBACK) {
+            return "Назначение находится вне указанного окна доступности сотрудника.";
         }
         if (matchStatus == MatchStatus.SOFT_NEGATIVE_FALLBACK) {
             return "Сотрудник предпочитал выходной в это время.";
@@ -1113,6 +1140,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (matchStatus == MatchStatus.PARTIAL_INTERVAL_FALLBACK) {
             return PreferenceGrade.FALLBACK;
         }
+        if (matchStatus == MatchStatus.DISJOINT_AVAILABLE_FALLBACK) {
+            return PreferenceGrade.HARD_NEGATIVE;
+        }
         if (matchStatus == MatchStatus.SOFT_NEGATIVE_FALLBACK) {
             return PreferenceGrade.SOFT_NEGATIVE;
         }
@@ -1127,11 +1157,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildShiftOption option,
             PlannerState plannerState
     ) {
-        return matchStatusFor(
+        return preferenceEvaluationFor(
                 cell,
                 plannerState.workPeriod(option),
                 plannerState.canonicalInterval(option)
-        );
+        ).status();
     }
 
     MatchStatus matchStatusFor(
@@ -1139,37 +1169,60 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CanonicalBusinessInterval workPeriod,
             CanonicalBusinessInterval canonicalShift
     ) {
+        return preferenceEvaluationFor(cell, workPeriod, canonicalShift).status();
+    }
+
+    PreferenceEvaluation preferenceEvaluationFor(
+            SchedulePreferenceCell cell,
+            CanonicalBusinessInterval workPeriod,
+            CanonicalBusinessInterval canonicalShift
+    ) {
+        long assignmentDuration = canonicalShift.endMinute() - canonicalShift.startMinute();
         if (cell == null) {
-            return MatchStatus.NO_PREFERENCE;
+            return preferenceEvaluation(MatchStatus.NO_PREFERENCE, 0, 0);
         }
 
         CanonicalBusinessInterval canonicalPreference = canonicalPreference(cell, workPeriod);
 
         if (isHardNegativeForShift(cell, canonicalPreference, canonicalShift)) {
-            return MatchStatus.HARD_NEGATIVE_FALLBACK;
+            return preferenceEvaluation(MatchStatus.HARD_NEGATIVE_FALLBACK, assignmentDuration, 0);
         }
 
         if (isExactPositiveForShift(cell, canonicalPreference, canonicalShift)) {
-            return MatchStatus.EXACT_INTERVAL_PREFERENCE;
+            return preferenceEvaluation(MatchStatus.EXACT_INTERVAL_PREFERENCE, 0, 0);
         }
 
         if (isCoveringPositiveForShift(cell, canonicalPreference, canonicalShift)) {
-            return MatchStatus.COVERING_INTERVAL_PREFERENCE;
+            return preferenceEvaluation(MatchStatus.COVERING_INTERVAL_PREFERENCE, 0, 0);
         }
 
         if (isFullDayPositive(cell)) {
-            return MatchStatus.FULL_DAY_POSITIVE;
+            return preferenceEvaluation(MatchStatus.FULL_DAY_POSITIVE, 0, 0);
         }
 
         if (hasPartialPositiveOverlap(cell, canonicalPreference, canonicalShift)) {
-            return MatchStatus.PARTIAL_INTERVAL_FALLBACK;
+            long overlap = overlapMinutes(canonicalPreference, canonicalShift);
+            return preferenceEvaluation(MatchStatus.PARTIAL_INTERVAL_FALLBACK, assignmentDuration - overlap, 0);
+        }
+
+        if (isPositiveType(cell.getType()) && canonicalPreference != null) {
+            return preferenceEvaluation(MatchStatus.DISJOINT_AVAILABLE_FALLBACK, assignmentDuration, 0);
         }
 
         if (isSoftNegativeForShift(cell, canonicalPreference, canonicalShift)) {
-            return MatchStatus.SOFT_NEGATIVE_FALLBACK;
+            return preferenceEvaluation(MatchStatus.SOFT_NEGATIVE_FALLBACK, 0, assignmentDuration);
         }
 
-        return MatchStatus.NO_PREFERENCE;
+        return preferenceEvaluation(MatchStatus.NO_PREFERENCE, 0, 0);
+    }
+
+    private PreferenceEvaluation preferenceEvaluation(MatchStatus status, long hardConflict, long softConflict) {
+        return new PreferenceEvaluation(status, grade(status), hardConflict, softConflict);
+    }
+
+    private long overlapMinutes(CanonicalBusinessInterval left, CanonicalBusinessInterval right) {
+        return Math.max(0, Math.min(left.endMinute(), right.endMinute())
+                - Math.max(left.startMinute(), right.startMinute()));
     }
 
     private boolean isFullDayPositive(SchedulePreferenceCell cell) {
@@ -1464,7 +1517,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember selected = selectedEvaluation.member();
             AssignmentBuildResult assignmentResult = createAssignment(
                     selected, plannerState.participationPosition(selected.getId()), day, option,
-                    selectedEvaluation.matchStatus(), false, null);
+                    selectedEvaluation.preferenceEvaluation().status(), false, null);
             assignments.add(assignmentResult.assignment());
             if (isNegativeGrade(assignmentResult.grade())) {
                 negativeAssignmentsCount++;
@@ -1706,15 +1759,23 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         FULL_DAY_POSITIVE,
         NO_PREFERENCE,
         PARTIAL_INTERVAL_FALLBACK,
+        DISJOINT_AVAILABLE_FALLBACK,
         SOFT_NEGATIVE_FALLBACK,
         HARD_NEGATIVE_FALLBACK
     }
 
 
+    record PreferenceEvaluation(
+            MatchStatus status,
+            PreferenceGrade grade,
+            long hardConflictMinutes,
+            long softConflictMinutes
+    ) {
+    }
+
     private record CandidateEvaluation(
             RestaurantMember member,
-            MatchStatus matchStatus,
-            PreferenceGrade grade,
+            PreferenceEvaluation preferenceEvaluation,
             int shiftsCount,
             String displayName,
             int fairnessScore,
