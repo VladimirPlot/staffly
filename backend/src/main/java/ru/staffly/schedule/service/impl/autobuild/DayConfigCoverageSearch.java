@@ -17,12 +17,10 @@ final class DayConfigCoverageSearch {
     }
     record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount, long resultingAssignedMinutes,
                        int heavyDaysForRanking, int resultingWorkStreak,
-                       boolean minRestViolation, int residualFairnessScore)
+                       int oneOffPatternPenalty, boolean minRestViolation)
             implements Comparable<WorkloadKey> {
         @Override public int compareTo(WorkloadKey other) {
-            int value = Boolean.compare(minRestViolation, other.minRestViolation);
-            if (value == 0) value = Integer.compare(residualFairnessScore, other.residualFairnessScore);
-            return value;
+            return Boolean.compare(minRestViolation, other.minRestViolation);
         }
     }
     record EmployeeKey(String displayName, long memberId) implements Comparable<EmployeeKey> {
@@ -131,6 +129,8 @@ final class DayConfigCoverageSearch {
                     other.workload.heavyDaysForRanking);
             if (value == 0) value = Integer.compare(workload.resultingWorkStreak,
                     other.workload.resultingWorkStreak);
+            if (value == 0) value = Integer.compare(workload.oneOffPatternPenalty,
+                    other.workload.oneOffPatternPenalty);
             if (value == 0) value = workload.compareTo(other.workload);
             if (value == 0) value = Long.compare(optionId, other.optionId);
             if (value == 0) value = Integer.compare(optionSortOrder, other.optionSortOrder);
@@ -280,6 +280,7 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = compareLists(resultingAssignedMinutes(left), resultingAssignedMinutes(right));
         if (value == 0) value = compareLists(heavyDaysForRanking(left), heavyDaysForRanking(right));
         if (value == 0) value = compareLists(resultingWorkStreaks(left), resultingWorkStreaks(right));
+        if (value == 0) value = compareLists(oneOffPatternPenalties(left), oneOffPatternPenalties(right));
         if (value == 0) value = compareLists(workloads(left), workloads(right));
         if (value == 0) value = compareLists(employeeKeys(left), employeeKeys(right));
         if (value == 0) value = compareGeometry(left.choices, right.choices);
@@ -304,6 +305,10 @@ final class DayConfigCoverageSearch {
     }
     private static List<Integer> resultingWorkStreaks(Solution solution) {
         return solution.choices.stream().map(c -> c.workloadKey.resultingWorkStreak)
+                .sorted(Comparator.reverseOrder()).toList();
+    }
+    private static List<Integer> oneOffPatternPenalties(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.oneOffPatternPenalty)
                 .sorted(Comparator.reverseOrder()).toList();
     }
 

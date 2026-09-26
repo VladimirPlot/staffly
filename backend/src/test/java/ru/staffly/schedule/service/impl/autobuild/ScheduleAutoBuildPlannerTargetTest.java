@@ -150,7 +150,7 @@ class ScheduleAutoBuildPlannerTargetTest {
     }
 
     @Test
-    void buildBreaksStreakOnNoDemandDayAndKeepsOneOffPenalty() {
+    void buildOneOffPatternBreaksEqualStreakTieAfterNoDemandDay() {
         Fixture fixture = fixture(MONDAY, MONDAY.plusDays(3), 2);
         ScheduleBuildWeekdayRegime regime = regime(EnumSet.allOf(DayOfWeek.class));
         for (LocalDate day : List.of(MONDAY, MONDAY.plusDays(1), MONDAY.plusDays(3)))
@@ -164,6 +164,25 @@ class ScheduleAutoBuildPlannerTargetTest {
         assertCompleteAssignments(observation.plan(), assignments, List.of(2L, 1L, 2L),
                 List.of(MONDAY, MONDAY.plusDays(1), MONDAY.plusDays(3)), "10:00", "17:00");
         assertTrue(assignments.stream().noneMatch(cell -> cell.day().equals(MONDAY.plusDays(2).toString())));
+    }
+
+    @Test
+    void buildDoesNotTreatOneOffPatternAsHardConstraint() {
+        Fixture fixture = fixture(MONDAY, MONDAY.plusDays(2), 1);
+        ScheduleBuildWeekdayRegime regime = regime(EnumSet.allOf(DayOfWeek.class));
+        addRule(regime, DayOfWeek.MONDAY, 1, "10:00", "17:00");
+        addRule(regime, DayOfWeek.WEDNESDAY, 1, "10:00", "17:00");
+        fixture.attach(List.of(regime));
+        fixture.submissions().add(submission(fixture.schedule(), fixture.members().get(0), List.of(
+                fullDay(MONDAY, SchedulePreferenceType.AVAILABLE),
+                fullDay(MONDAY.plusDays(2), SchedulePreferenceType.AVAILABLE))));
+
+        Observation observation = build(fixture);
+        var assignments = observation.plan().positions().get(0).cells();
+        assertTarget(observation, 2, 1);
+        assertCompleteAssignments(observation.plan(), assignments, List.of(1L, 1L),
+                List.of(MONDAY, MONDAY.plusDays(2)), "10:00", "17:00");
+        assertTrue(assignments.stream().noneMatch(cell -> cell.day().equals(MONDAY.plusDays(1).toString())));
     }
 
     @Test
