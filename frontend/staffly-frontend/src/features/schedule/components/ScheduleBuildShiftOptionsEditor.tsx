@@ -1,18 +1,24 @@
 import React from "react";
 
 import Button from "../../../shared/ui/Button";
+import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
-import { SCHEDULE_BUILD_TIME_STEP_SECONDS, type ScheduleBuildWeekdayRegimeDraft } from "../utils/buildTemplateDraft";
+import {
+  SCHEDULE_BUILD_TIME_STEP_SECONDS,
+  type ScheduleBuildMarkerDraft,
+  type ScheduleBuildWeekdayRegimeDraft,
+} from "../utils/buildTemplateDraft";
 
 type Props = {
   config: ScheduleBuildWeekdayRegimeDraft;
+  markers: ScheduleBuildMarkerDraft[];
   saving: boolean;
   onChange: (next: ScheduleBuildWeekdayRegimeDraft) => void;
   onAdd: () => void;
   onRemove: (index: number) => void;
 };
 
-const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, saving, onChange, onAdd, onRemove }) => (
+const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, markers, saving, onChange, onAdd, onRemove }) => (
   <div className="space-y-2">
     <div>
       <div className="text-sm font-medium">Варианты смен</div>
@@ -63,6 +69,26 @@ const ScheduleBuildShiftOptionsEditor: React.FC<Props> = ({ config, saving, onCh
             })
           }
         />
+        <DropdownSelect
+          label="Маркер"
+          value={option.markerKey ?? ""}
+          disabled={saving}
+          onChange={(e) =>
+            onChange({
+              ...config,
+              shiftOptions: config.shiftOptions.map((item, idx) =>
+                idx === optionIndex ? { ...item, markerKey: e.target.value || null } : item,
+              ),
+            })
+          }
+        >
+          <option value="">Без маркера</option>
+          {markers.map((marker) => (
+            <option key={marker.key} value={marker.key}>
+              {marker.name}
+            </option>
+          ))}
+        </DropdownSelect>
         <Button variant="outline" disabled={saving} onClick={() => onRemove(optionIndex)}>
           Удалить смену
         </Button>

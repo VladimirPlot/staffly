@@ -6,6 +6,7 @@ import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
 import Textarea from "../../../shared/ui/Textarea";
 import type { PositionDto } from "../../dictionaries/api";
+import type { MemberDto } from "../../employees/api";
 import type {
   SaveScheduleBuildTemplateRequest,
   ScheduleBuildTemplateConfirmationMeta,
@@ -31,6 +32,7 @@ type Props = {
   open: boolean;
   template: ScheduleBuildTemplateDto | null;
   positions: PositionDto[];
+  members: MemberDto[];
   saving: boolean;
   onClose: () => void;
   onSubmit: (req: SaveScheduleBuildTemplateRequest, id?: number) => Promise<ScheduleBuildTemplateDto | null>;
@@ -41,6 +43,7 @@ const ScheduleBuildTemplateDialog: React.FC<Props> = ({
   open,
   template,
   positions,
+  members,
   saving,
   onClose,
   onSubmit,
@@ -168,6 +171,7 @@ const ScheduleBuildTemplateDialog: React.FC<Props> = ({
             index={idx}
             config={config}
             positions={positions}
+            members={members}
             saving={saving}
             timeZone={timeZone}
             onChange={(next) =>
