@@ -3,6 +3,7 @@ package ru.staffly.schedule.service.autobuild;
 import org.junit.jupiter.api.Test;
 import ru.staffly.schedule.service.autobuild.ScheduleMarkerAffinityResolver.CandidatePositionIds;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,6 +30,29 @@ class ScheduleMarkerAffinityResolverTest {
 
         assertThat(resolve(Set.of(WAITER), Set.of(100L, 102L, 103L, 104L, 105L, 999L), candidates))
                 .containsExactly(100L);
+    }
+
+    @Test
+    void rejectsMissingParticipationPositionForDifferentPositionSetImplementations() {
+        assertMissingPositionIsRejected(candidate(null, WAITER));
+    }
+
+    @Test
+    void rejectsMissingCurrentPositionForDifferentPositionSetImplementations() {
+        assertMissingPositionIsRejected(candidate(WAITER, null));
+    }
+
+    @Test
+    void rejectsBothMissingPositionsForDifferentPositionSetImplementations() {
+        assertMissingPositionIsRejected(candidate(null, null));
+    }
+
+    private void assertMissingPositionIsRejected(CandidatePositionIds candidate) {
+        for (Set<Long> positions : positionSetImplementations()) {
+            assertThat(resolve(positions, Set.of(100L), Map.of(100L, candidate)))
+                    .as("missing position IDs with %s", positions.getClass().getName())
+                    .isEmpty();
+        }
     }
 
     @Test
@@ -117,5 +141,13 @@ class ScheduleMarkerAffinityResolverTest {
 
     private CandidatePositionIds candidate(Long participationPositionId, Long currentMemberPositionId) {
         return new CandidatePositionIds(participationPositionId, currentMemberPositionId);
+    }
+
+    private List<Set<Long>> positionSetImplementations() {
+        return List.of(
+                Set.of(WAITER),
+                Set.copyOf(List.of(WAITER)),
+                new HashSet<>(List.of(WAITER)),
+                new LinkedHashSet<>(List.of(WAITER)));
     }
 }

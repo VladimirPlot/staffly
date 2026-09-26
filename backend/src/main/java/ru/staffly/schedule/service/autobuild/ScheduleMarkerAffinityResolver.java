@@ -19,9 +19,16 @@ public final class ScheduleMarkerAffinityResolver {
                 .filter(Objects::nonNull)
                 .filter(memberId -> {
                     CandidatePositionIds candidate = candidatesByMemberId.get(memberId);
-                    return candidate != null
-                            && configPositionIds.contains(candidate.participationPositionId())
-                            && configPositionIds.contains(candidate.currentMemberPositionId());
+                    if (candidate == null) {
+                        return false;
+                    }
+
+                    Long participationPositionId = candidate.participationPositionId();
+                    Long currentMemberPositionId = candidate.currentMemberPositionId();
+                    return participationPositionId != null
+                            && currentMemberPositionId != null
+                            && configPositionIds.contains(participationPositionId)
+                            && configPositionIds.contains(currentMemberPositionId);
                 })
                 .sorted()
                 .toList();
