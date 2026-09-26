@@ -155,7 +155,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
 
         int unfilledCount = 0;
         int negativeAssignmentsCount = 0;
-        double targetShiftsPerCandidate = targetShiftsPerCandidate(schedule, config, candidates);
+        TargetContext targetContext = targetContext(schedule, config, candidates);
 
 
         for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
@@ -172,7 +172,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     candidates,
                     preferencesByMemberAndDay,
                     plannerState,
-                    targetShiftsPerCandidate
+                    targetContext
             );
             assignments.addAll(dayResult.assignments());
             warnings.addAll(dayResult.warnings());
@@ -237,7 +237,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
-            double targetShiftsPerCandidate
+            TargetContext targetContext
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -253,7 +253,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             return buildLegacyAssignmentsForDay(day, config, regime, candidates, preferencesByMemberAndDay, plannerState);
         }
         return searchCoverageDay(day, config, regime, workPeriod, coverageRules, candidates,
-                preferencesByMemberAndDay, plannerState, targetShiftsPerCandidate);
+                preferencesByMemberAndDay, plannerState, targetContext);
     }
 
     private DayBuildResult searchCoverageDay(
@@ -261,7 +261,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             CanonicalBusinessInterval workPeriod, List<ScheduleBuildCoverageRule> rules,
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
-            PlannerState baselineState, double targetShiftsPerCandidate
+            PlannerState baselineState, TargetContext targetContext
     ) {
         List<ScheduleBuildCoverageRule> positiveRules = rules.stream().filter(r -> safeRequiredCount(r) > 0).toList();
         List<DayConfigCoverageSearch.Requirement> requirements = new ArrayList<>();
@@ -282,7 +282,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<DayConfigCoverageSearch.Choice> choices = new ArrayList<>();
             for (ScheduleBuildShiftOption option : safeShiftOptions(regime)) {
                 CandidateEvaluation evaluation = evaluateCandidate(member, preferencesByMemberAndDay, day, option,
-                        config, baselineState, targetShiftsPerCandidate);
+                        config, baselineState, targetContext);
                 CanonicalBusinessInterval optionInterval = baselineState.canonicalInterval(option);
                 for (int r = 0; r < intervals.size(); r++) {
                     if (!intervals.get(r).contains(optionInterval) || optionInterval.endMinute() <= optionInterval.startMinute()) continue;
@@ -298,8 +298,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     PreparedCoverageChoice payload = new PreparedCoverageChoice(member, option, evaluation, r);
                     choices.add(new DayConfigCoverageSearch.Choice(member.getId(),
                             new DayConfigCoverageSearch.EmployeeKey(evaluation.displayName(), member.getId()),
-                            new DayConfigCoverageSearch.WorkloadKey(evaluation.minRestViolation(),
-                                    evaluation.fairnessScore(), evaluation.shiftsCount()),
+                            new DayConfigCoverageSearch.WorkloadKey(evaluation.scaledTargetOvershoot(),
+                                    evaluation.resultingShiftCount(), evaluation.minRestViolation(),
+                                    evaluation.residualFairnessScore()),
                             option.getId() == null ? Long.MAX_VALUE : option.getId(),
                             Optional.ofNullable(option.getSortOrder()).orElse(0),
                             optionInterval.startMinute(), optionInterval.endMinute(), r,
@@ -411,7 +412,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<RestaurantMember> candidates,
             Map<Long, Map<LocalDate, SchedulePreferenceCell>> preferencesByMemberAndDay,
             PlannerState plannerState,
-            double targetShiftsPerCandidate
+            TargetContext targetContext
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -434,7 +435,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         singleOption,
                         config,
                         plannerState,
-                        targetShiftsPerCandidate
+                        targetContext
                 );
                 CandidateEvaluation selectedSingle = singleSelection.selected();
                 if (selectedSingle != null && isGoodSingleMatch(selectedSingle.preferenceEvaluation())) {
@@ -463,7 +464,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     shiftOptions,
                     false,
                     true,
-                    targetShiftsPerCandidate
+                    targetContext
             );
             if (positiveSplitResult.isComplete()) {
                 assignments.addAll(positiveSplitResult.assignments());
@@ -499,7 +500,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     shiftOptions,
                     true,
                     false,
-                    targetShiftsPerCandidate
+                    targetContext
             );
             assignments.addAll(layerResult.assignments());
             warnings.addAll(layerResult.warnings());
@@ -522,7 +523,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             List<ScheduleBuildShiftOption> shiftOptions,
             boolean allowNegativeAssignments,
             boolean requireComplete,
-            double targetShiftsPerCandidate
+            TargetContext targetContext
     ) {
         List<AssignmentPlan> assignments = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -547,7 +548,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     config,
                     workingState,
                     allowNegativeAssignments,
-                    targetShiftsPerCandidate
+                    targetContext
             );
 
             if (splitSelection.option() == null || splitSelection.selection().selected() == null) {
@@ -627,7 +628,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
             boolean allowNegativeAssignments,
-            double targetShiftsPerCandidate
+            TargetContext targetContext
     ) {
         SplitOptionSelection best = null;
         for (ScheduleBuildShiftOption option : shiftOptions) {
@@ -647,7 +648,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     option,
                     config,
                     plannerState,
-                    targetShiftsPerCandidate,
+                    targetContext,
                     allowNegativeAssignments
             );
             if (selection.selected() == null) {
@@ -814,7 +815,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
-            double targetShiftsPerCandidate
+            TargetContext targetContext
     ) {
         return pickMember(
                 candidates,
@@ -823,7 +824,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 option,
                 config,
                 plannerState,
-                targetShiftsPerCandidate,
+                targetContext,
                 true
         );
     }
@@ -835,7 +836,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
-            double targetShiftsPerCandidate,
+            TargetContext targetContext,
             boolean allowNegativeAssignments
     ) {
         List<CandidateEvaluation> eligibleCandidates = new ArrayList<>();
@@ -852,7 +853,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     option,
                     config,
                     plannerState,
-                    targetShiftsPerCandidate
+                    targetContext
             );
             if (!evaluation.eligible()) {
                 if (evaluation.rejectionReason() == CandidateRejectionReason.MAX_SHIFTS) {
@@ -890,9 +891,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             ScheduleBuildShiftOption option,
             ScheduleBuildPositionConfig config,
             PlannerState plannerState,
-            double targetShiftsPerCandidate
+            TargetContext targetContext
     ) {
         int shiftsCount = plannerState.shiftsCount(member.getId());
+        int resultingShiftCount = shiftsCount + 1;
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
@@ -915,8 +917,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     member,
                     preferenceEvaluation,
                     shiftsCount,
+                    resultingShiftCount,
+                    targetContext.scaledOvershoot(resultingShiftCount),
                     displayName,
-                    fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
+                    residualFairnessScore(member, day, config, plannerState),
                     false,
                     minRestViolation,
                     rejectionReason
@@ -927,8 +931,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 member,
                 preferenceEvaluation,
                 shiftsCount,
+                resultingShiftCount,
+                targetContext.scaledOvershoot(resultingShiftCount),
                 displayName,
-                fairnessScore(member, day, config, plannerState, targetShiftsPerCandidate),
+                residualFairnessScore(member, day, config, plannerState),
                 true,
                 minRestViolation,
                 CandidateRejectionReason.NONE
@@ -1071,40 +1077,33 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return true;
     }
 
-    private double targetShiftsPerCandidate(
+    TargetContext targetContext(
             Schedule schedule,
             ScheduleBuildPositionConfig config,
             List<RestaurantMember> candidates
     ) {
-        if (candidates.isEmpty()) {
-            return 0;
-        }
-
-        int totalRequiredAssignments = 0;
+        long totalRequiredAssignments = 0;
+        boolean explicitDemand = false;
         for (LocalDate day = schedule.getStartDate(); !day.isAfter(schedule.getEndDate()); day = day.plusDays(1)) {
-            List<ScheduleBuildCoverageRule> coverageRules = config.regimeFor(day.getDayOfWeek()).getCoverageRules();
-            int dayOfWeek = day.getDayOfWeek().getValue();
+            ScheduleBuildWeekdayRegime regime = config.regimeFor(day.getDayOfWeek());
+            DemandLookup lookup = buildDemandLookup(regime);
+            explicitDemand |= lookup.hasWeeklyRules() || lookup.overridesByDate().containsKey(day);
+            List<ScheduleBuildCoverageRule> coverageRules = effectiveCoverageRulesForDate(regime, day, lookup);
             totalRequiredAssignments += coverageRules.stream()
-                    .filter(rule -> rule.getDayOfWeek() == dayOfWeek)
-                    .mapToInt(this::safeRequiredCount)
+                    .mapToLong(this::safeRequiredCount)
                     .sum();
         }
-
-        return (double) totalRequiredAssignments / candidates.size();
+        int participantCount = (int) candidates.stream().map(RestaurantMember::getId).distinct().count();
+        return explicitDemand ? TargetContext.of(totalRequiredAssignments, participantCount) : TargetContext.none();
     }
 
-    private int fairnessScore(
+    private int residualFairnessScore(
             RestaurantMember member,
             LocalDate day,
             ScheduleBuildPositionConfig config,
-            PlannerState plannerState,
-            double targetShiftsPerCandidate
+            PlannerState plannerState
     ) {
-        int shiftsCount = plannerState.shiftsCount(member.getId());
-        int score = shiftsCount * 100;
-        if (targetShiftsPerCandidate > 0 && shiftsCount >= targetShiftsPerCandidate) {
-            score += 75 + (int) Math.round((shiftsCount - targetShiftsPerCandidate) * 25);
-        }
+        int score = 0;
 
         int previousConsecutiveDays = previousConsecutiveWorkDays(member, day, plannerState);
         if (previousConsecutiveDays == 2) {
@@ -1155,21 +1154,20 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                         return byPreference;
                     }
 
-                    // Keep conflict severity as the primary boundary: min-rest and fairness
-                    // only break ties between equal hard/soft conflict projections.
+                    int byTarget = Long.compare(left.scaledTargetOvershoot(), right.scaledTargetOvershoot());
+                    if (byTarget != 0) return byTarget;
+
+                    int byResultingCount = Integer.compare(left.resultingShiftCount(), right.resultingShiftCount());
+                    if (byResultingCount != 0) return byResultingCount;
+
                     int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
                     if (byMinRestViolation != 0) {
                         return byMinRestViolation;
                     }
 
-                    int byFairnessScore = Integer.compare(left.fairnessScore(), right.fairnessScore());
+                    int byFairnessScore = Integer.compare(left.residualFairnessScore(), right.residualFairnessScore());
                     if (byFairnessScore != 0) {
                         return byFairnessScore;
-                    }
-
-                    int byShiftsCount = Integer.compare(left.shiftsCount(), right.shiftsCount());
-                    if (byShiftsCount != 0) {
-                        return byShiftsCount;
                     }
 
                     int byDisplayName = left.displayName().compareToIgnoreCase(right.displayName());
@@ -1633,7 +1631,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int negativeAssignmentsCount = 0;
 
         for (ScheduleBuildShiftOption option : safeShiftOptions(regime)) {
-            CandidateSelectionResult selection = pickMember(candidates, preferencesByMemberAndDay, day, option, config, plannerState, 0);
+            CandidateSelectionResult selection = pickMember(candidates, preferencesByMemberAndDay, day, option,
+                    config, plannerState, TargetContext.none());
             if (selection.selected() == null) {
                 rejectionHints.addAll(selection.rejectionHints());
                 continue;
@@ -1908,8 +1907,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             RestaurantMember member,
             PreferenceEvaluation preferenceEvaluation,
             int shiftsCount,
+            int resultingShiftCount,
+            long scaledTargetOvershoot,
             String displayName,
-            int fairnessScore,
+            int residualFairnessScore,
             boolean eligible,
             boolean minRestViolation,
             CandidateRejectionReason rejectionReason

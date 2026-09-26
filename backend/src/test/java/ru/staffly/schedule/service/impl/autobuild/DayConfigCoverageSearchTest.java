@@ -11,6 +11,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DayConfigCoverageSearchTest {
     @Test
+    void targetArithmeticIsExactAndUsesResultingCount() {
+        TargetContext integer = TargetContext.of(5, 1);
+        assertEquals(0, integer.scaledOvershoot(3));
+        assertEquals(0, integer.scaledOvershoot(5));
+        assertEquals(1, integer.scaledOvershoot(6));
+        assertEquals(2, integer.scaledOvershoot(7));
+        assertEquals(4, integer.scaledOvershoot(9));
+
+        TargetContext fractional = TargetContext.of(11, 2);
+        assertEquals(0, fractional.scaledOvershoot(5));
+        assertEquals(1, fractional.scaledOvershoot(6));
+        assertEquals(3, fractional.scaledOvershoot(7));
+        assertEquals(0, TargetContext.of(11, 0).scaledOvershoot(100));
+    }
+
+    @Test
+    void wholeTargetAndCountVectorsPrecedeResidualWorkloadAndKeepMultiplicity() {
+        TargetContext target = TargetContext.of(20, 4);
+        var a = solution(List.of(rankedChoice(1, target, 6, false, 0),
+                rankedChoice(2, target, 4, false, 0)));
+        var b = solution(List.of(rankedChoice(90, target, 6, true, 10_000),
+                rankedChoice(91, target, 2, true, 10_000)));
+        assertTrue(DayConfigCoverageSearch.compare(b, a) < 0);
+
+        var repeated = solution(List.of(rankedChoice(1, target, 6, false, 0),
+                rankedChoice(2, target, 6, false, 0)));
+        var lowerSecond = solution(List.of(rankedChoice(90, target, 6, true, 10_000),
+                rankedChoice(91, target, 5, true, 10_000)));
+        assertTrue(DayConfigCoverageSearch.compare(lowerSecond, repeated) < 0);
+    }
+
+    @Test
     void equivalentEmployeesRemainAvailableForTwoPieceSplit() {
         var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 1440, 1);
         var first = employee(1, choice(1, 600, 1020, 0), choice(1, 1020, 1440, 0));
@@ -254,7 +286,14 @@ class DayConfigCoverageSearchTest {
                                                                   int fairness, long hard) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(false, fairness, 0), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 1, false, fairness), 1, 0,
                 start, end, requirement, hard, 0, null);
+    }
+    private static DayConfigCoverageSearch.Choice rankedChoice(long id, TargetContext target, int count,
+                                                                boolean rest, int residual) {
+        return new DayConfigCoverageSearch.Choice(id,
+                new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
+                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, rest, residual), 1, 0,
+                600, 720, 0, 0, 0, null);
     }
 }

@@ -15,12 +15,12 @@ final class DayConfigCoverageSearch {
             if (start >= end || count < 0) throw new IllegalArgumentException("Invalid requirement");
         }
     }
-    record WorkloadKey(boolean minRestViolation, int fairnessScore, int priorShiftCount)
+    record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount,
+                       boolean minRestViolation, int residualFairnessScore)
             implements Comparable<WorkloadKey> {
         @Override public int compareTo(WorkloadKey other) {
             int value = Boolean.compare(minRestViolation, other.minRestViolation);
-            if (value == 0) value = Integer.compare(fairnessScore, other.fairnessScore);
-            if (value == 0) value = Integer.compare(priorShiftCount, other.priorShiftCount);
+            if (value == 0) value = Integer.compare(residualFairnessScore, other.residualFairnessScore);
             return value;
         }
     }
@@ -122,7 +122,9 @@ final class DayConfigCoverageSearch {
                     choice.hardConflictMinutes, choice.softConflictMinutes);
         }
         @Override public int compareTo(ChoiceSignature other) {
-            int value = workload.compareTo(other.workload);
+            int value = Long.compare(workload.scaledTargetOvershoot, other.workload.scaledTargetOvershoot);
+            if (value == 0) value = Integer.compare(workload.resultingShiftCount, other.workload.resultingShiftCount);
+            if (value == 0) value = workload.compareTo(other.workload);
             if (value == 0) value = Long.compare(optionId, other.optionId);
             if (value == 0) value = Integer.compare(optionSortOrder, other.optionSortOrder);
             if (value == 0) value = Integer.compare(start, other.start);
@@ -266,10 +268,21 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = Long.compare(left.hardConflictMinutes, right.hardConflictMinutes);
         if (value == 0) value = Long.compare(left.softConflictMinutes, right.softConflictMinutes);
         if (value == 0) value = Integer.compare(left.distinctEmployeeCount, right.distinctEmployeeCount);
+        if (value == 0) value = compareLists(targetOvershoots(left), targetOvershoots(right));
+        if (value == 0) value = compareLists(resultingShiftCounts(left), resultingShiftCounts(right));
         if (value == 0) value = compareLists(workloads(left), workloads(right));
         if (value == 0) value = compareLists(employeeKeys(left), employeeKeys(right));
         if (value == 0) value = compareGeometry(left.choices, right.choices);
         return value;
+    }
+
+    private static List<Long> targetOvershoots(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.scaledTargetOvershoot)
+                .sorted(Comparator.reverseOrder()).toList();
+    }
+    private static List<Integer> resultingShiftCounts(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.resultingShiftCount)
+                .sorted(Comparator.reverseOrder()).toList();
     }
 
     private static List<WorkloadKey> workloads(Solution solution) {
