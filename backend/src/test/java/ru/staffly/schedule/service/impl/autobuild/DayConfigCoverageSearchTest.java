@@ -43,6 +43,37 @@ class DayConfigCoverageSearchTest {
     }
 
     @Test
+    void countVectorPrecedesMinutesAndMinutesVectorPrecedesResidual() {
+        var fewerShifts = solution(List.of(workloadChoice(9, 5, 3_000, true, 10_000)));
+        var fewerMinutes = solution(List.of(workloadChoice(1, 6, 2_100, false, 0)));
+        assertTrue(DayConfigCoverageSearch.compare(fewerShifts, fewerMinutes) < 0);
+
+        var repeated = solution(List.of(workloadChoice(1, 2, 600, false, 0),
+                workloadChoice(2, 2, 600, false, 0)));
+        var lowerSecondDespiteResidual = solution(List.of(workloadChoice(90, 2, 600, true, 10_000),
+                workloadChoice(91, 2, 540, true, 10_000)));
+        assertTrue(DayConfigCoverageSearch.compare(lowerSecondDespiteResidual, repeated) < 0);
+
+        var lowerMaximum = solution(List.of(workloadChoice(1, 2, 900, false, 0),
+                workloadChoice(2, 2, 300, false, 0)));
+        var largerSum = solution(List.of(workloadChoice(90, 2, 660, true, 10_000),
+                workloadChoice(91, 2, 600, true, 10_000)));
+        assertTrue(DayConfigCoverageSearch.compare(largerSum, lowerMaximum) < 0);
+    }
+
+    @Test
+    void optionSpecificResultingMinutesChooseBalancedAllocation() {
+        var requirements = List.of(new DayConfigCoverageSearch.Requirement(1, 600, 720, 1),
+                new DayConfigCoverageSearch.Requirement(2, 600, 1080, 1));
+        var a = employee(2, workloadChoice(2, 2, 720, 600, 720, 0),
+                workloadChoice(2, 2, 1080, 600, 1080, 1));
+        var b = employee(1, workloadChoice(1, 2, 240, 600, 720, 0),
+                workloadChoice(1, 2, 600, 600, 1080, 1));
+        var winner = new DayConfigCoverageSearch(requirements, List.of(a, b)).solve();
+        assertEquals(List.of("1:600-1080", "2:600-720"), semanticChoices(winner));
+    }
+
+    @Test
     void equivalentEmployeesRemainAvailableForTwoPieceSplit() {
         var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 1440, 1);
         var first = employee(1, choice(1, 600, 1020, 0), choice(1, 1020, 1440, 0));
@@ -286,14 +317,28 @@ class DayConfigCoverageSearchTest {
                                                                   int fairness, long hard) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 1, false, fairness), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 1, 0, false, fairness), 1, 0,
                 start, end, requirement, hard, 0, null);
     }
     private static DayConfigCoverageSearch.Choice rankedChoice(long id, TargetContext target, int count,
                                                                 boolean rest, int residual) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, rest, residual), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, 0, rest, residual), 1, 0,
                 600, 720, 0, 0, 0, null);
+    }
+    private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
+                                                                  boolean rest, int residual) {
+        return new DayConfigCoverageSearch.Choice(id,
+                new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
+                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, rest, residual), 1, 0,
+                600, 720, 0, 0, 0, null);
+    }
+    private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
+                                                                  int start, int end, int requirement) {
+        return new DayConfigCoverageSearch.Choice(id,
+                new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
+                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, false, 0), 1, 0,
+                start, end, requirement, 0, 0, null);
     }
 }
