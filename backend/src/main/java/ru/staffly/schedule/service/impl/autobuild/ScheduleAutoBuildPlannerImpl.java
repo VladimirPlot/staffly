@@ -12,6 +12,7 @@ import ru.staffly.schedule.model.ScheduleBuildCoverageRule;
 import ru.staffly.schedule.model.CanonicalBusinessInterval;
 import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
 import ru.staffly.schedule.model.ScheduleBuildMinRestMode;
+import ru.staffly.schedule.model.ScheduleBuildMarker;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
@@ -27,6 +28,8 @@ import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAu
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.UncoveredSlotPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.RejectionHintPlan;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
+import ru.staffly.schedule.service.autobuild.ScheduleMarkerAffinityResolver;
+import ru.staffly.schedule.service.autobuild.ScheduleMarkerAffinityResolver.CandidatePositionIds;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -92,6 +95,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         CandidatePopulation candidatePopulation = loadCandidates(schedule.getId(), relevantPositionIds);
         PlannerState plannerState = new PlannerState();
         plannerState.registerParticipationPositions(candidatePopulation.positionByMember());
+        plannerState.registerMarkerAffinities(positionConfigs, candidatePopulation);
         List<PositionPlan> positions = new ArrayList<>();
         List<UncoveredSlotPlan> uncoveredSlots = new ArrayList<>();
         List<RejectionHintPlan> rejectionHints = new ArrayList<>();
@@ -298,7 +302,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     PreparedCoverageChoice payload = new PreparedCoverageChoice(member, option, evaluation, r);
                     choices.add(new DayConfigCoverageSearch.Choice(member.getId(),
                             new DayConfigCoverageSearch.EmployeeKey(evaluation.displayName(), member.getId()),
-                            new DayConfigCoverageSearch.WorkloadKey(evaluation.scaledTargetOvershoot(),
+                            new DayConfigCoverageSearch.WorkloadKey(evaluation.markerMismatchPenalty(),
+                                    evaluation.scaledTargetOvershoot(),
                                     evaluation.resultingShiftCount(), evaluation.resultingAssignedMinutes(),
                                     evaluation.heavyDaysForRanking(),
                                     evaluation.resultingWorkStreak(),
@@ -693,6 +698,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         if (byPreference != 0) {
             return byPreference;
         }
+        int byMarker = Integer.compare(leftCandidate.markerMismatchPenalty(), rightCandidate.markerMismatchPenalty());
+        if (byMarker != 0) return byMarker;
         int leftEnd = plannerState.canonicalInterval(left.option()).endMinute();
         int rightEnd = plannerState.canonicalInterval(right.option()).endMinute();
         int leftExtraCoverage = Math.max(0, cursor - leftStart) + Math.max(0, leftEnd - ruleEnd);
@@ -919,6 +926,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 plannerState.workPeriod(option),
                 plannerState.canonicalInterval(option)
         );
+        int markerMismatchPenalty = plannerState.markerMismatchPenalty(option, member.getId());
         CandidateRejectionReason rejectionReason = hardConstraintRejectionReason(
                 member,
                 day,
@@ -934,6 +942,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     preferenceEvaluation,
                     shiftsCount,
                     resultingShiftCount,
+                    markerMismatchPenalty,
                     targetContext.scaledOvershoot(resultingShiftCount),
                     resultingAssignedMinutes,
                     heavyDaysForRanking,
@@ -951,6 +960,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 preferenceEvaluation,
                 shiftsCount,
                 resultingShiftCount,
+                markerMismatchPenalty,
                 targetContext.scaledOvershoot(resultingShiftCount),
                 resultingAssignedMinutes,
                 heavyDaysForRanking,
@@ -1151,6 +1161,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     if (byPreference != 0) {
                         return byPreference;
                     }
+
+                    int byMarker = Integer.compare(left.markerMismatchPenalty(), right.markerMismatchPenalty());
+                    if (byMarker != 0) return byMarker;
 
                     int byTarget = Long.compare(left.scaledTargetOvershoot(), right.scaledTargetOvershoot());
                     if (byTarget != 0) return byTarget;
@@ -1509,9 +1522,15 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : safePositionConfigs(template)) {
             Hibernate.initialize(positionConfig.getPositions());
+            Hibernate.initialize(positionConfig.getMarkers());
+            positionConfig.getMarkers().forEach(marker -> Hibernate.initialize(marker.getMembers()));
             Hibernate.initialize(positionConfig.getWeekdayRegimes());
             for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
                 Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                regime.getShiftOptions().forEach(option -> {
+                    Hibernate.initialize(option.getMarker());
+                    if (option.getMarker() != null) Hibernate.initialize(option.getMarker().getMembers());
+                });
                 Hibernate.initialize(regime.getCoverageRules()); Hibernate.initialize(regime.getCoverageDateOverrides());
                 regime.getCoverageDateOverrides().forEach(o -> Hibernate.initialize(o.getShiftOption()));
             }
@@ -1745,6 +1764,42 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> canonicalIntervalsByOption = new IdentityHashMap<>();
         private final Map<ScheduleBuildShiftOption, CanonicalBusinessInterval> workPeriodsByOption = new IdentityHashMap<>();
 
+        private final Map<ScheduleBuildShiftOption, Set<Long>> markerMembersByOption = new IdentityHashMap<>();
+
+        private void registerMarkerAffinities(List<ScheduleBuildPositionConfig> configs,
+                                              CandidatePopulation population) {
+            Map<Long, CandidatePositionIds> candidatePositions = new HashMap<>();
+            for (RestaurantMember member : population.members()) {
+                Long currentPositionId = member.getPosition() == null ? null : member.getPosition().getId();
+                candidatePositions.put(member.getId(), new CandidatePositionIds(
+                        population.positionByMember().get(member.getId()), currentPositionId));
+            }
+            for (ScheduleBuildPositionConfig config : configs) {
+                Set<Long> blockPositions = Set.copyOf(config.getPositions().stream()
+                        .map(Position::getId).filter(java.util.Objects::nonNull).toList());
+                Map<ScheduleBuildMarker, Set<Long>> resolved = new IdentityHashMap<>();
+                for (ScheduleBuildWeekdayRegime regime : config.getWeekdayRegimes()) {
+                    for (ScheduleBuildShiftOption option : regime.getShiftOptions()) {
+                        ScheduleBuildMarker marker = option.getMarker();
+                        if (marker == null) continue;
+                        Set<Long> members = resolved.computeIfAbsent(marker, ignored -> Set.copyOf(
+                                ScheduleMarkerAffinityResolver.resolveEffectiveMemberIds(
+                                        blockPositions,
+                                        marker.getMembers().stream().map(RestaurantMember::getId)
+                                                .collect(Collectors.toSet()),
+                                        candidatePositions)));
+                        markerMembersByOption.put(option, members);
+                    }
+                }
+            }
+        }
+
+        private int markerMismatchPenalty(ScheduleBuildShiftOption option, Long memberId) {
+            if (option.getMarker() == null) return 0;
+            return markerMembersByOption.getOrDefault(option, Set.of()).contains(memberId) ? 0 : 1;
+        }
+
+
         private void registerParticipationPositions(Map<Long, Long> positions) {
             participationPositionByMember.putAll(positions);
         }
@@ -1822,6 +1877,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             copy.shiftsCountByMember.putAll(shiftsCountByMember);
             copy.canonicalIntervalsByOption.putAll(canonicalIntervalsByOption);
             copy.workPeriodsByOption.putAll(workPeriodsByOption);
+            copy.markerMembersByOption.putAll(markerMembersByOption);
             assignedIntervalsByMember.forEach((memberId, intervals) ->
                     copy.assignedIntervalsByMember.put(memberId, new ArrayList<>(intervals))
             );
@@ -1926,6 +1982,7 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             PreferenceEvaluation preferenceEvaluation,
             int shiftsCount,
             int resultingShiftCount,
+            int markerMismatchPenalty,
             long scaledTargetOvershoot,
             long resultingAssignedMinutes,
             int heavyDaysForRanking,

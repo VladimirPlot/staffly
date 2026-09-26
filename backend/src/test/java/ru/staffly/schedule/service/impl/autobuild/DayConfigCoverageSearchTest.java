@@ -12,6 +12,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DayConfigCoverageSearchTest {
     @Test
+    void markerRankingRespectsUpperBoundariesAndPrecedesAllWorkloadFairness() {
+        var mismatchNoConflict = rankedSolution(List.of(markerChoice(1, 1)));
+        var matchingHardConflict = rankedSolution(List.of(markerConflictChoice(90, 0, 1, 0)));
+        assertTrue(DayConfigCoverageSearch.compare(mismatchNoConflict, matchingHardConflict) < 0);
+
+        var matchingSoftConflict = rankedSolution(List.of(markerConflictChoice(90, 0, 0, 1)));
+        assertTrue(DayConfigCoverageSearch.compare(mismatchNoConflict, matchingSoftConflict) < 0);
+
+        var matchingWorseFairness = rankedSolution(List.of(markerTargetChoice(90, 0, 1)));
+        var mismatchBetterFairness = rankedSolution(List.of(markerTargetChoice(1, 1, 0)));
+        assertTrue(DayConfigCoverageSearch.compare(matchingWorseFairness, mismatchBetterFairness) < 0);
+
+        var oneMismatchedEmployee = rankedSolution(List.of(markerChoice(1, 1)));
+        var twoMatchingEmployees = rankedSolution(List.of(markerChoice(90, 0), markerChoice(91, 0)));
+        assertTrue(DayConfigCoverageSearch.compare(oneMismatchedEmployee, twoMatchingEmployees) < 0);
+    }
+
+    @Test
+    void markerVectorKeepsMultiplicityAndSymmetryKeepsMatchingEmployee() {
+        assertTrue(DayConfigCoverageSearch.compare(
+                rankedSolution(List.of(markerChoice(1, 1), markerChoice(2, 0))),
+                rankedSolution(List.of(markerChoice(3, 1), markerChoice(4, 1)))) < 0);
+        assertTrue(DayConfigCoverageSearch.compare(
+                rankedSolution(List.of(markerChoice(1, 0), markerChoice(2, 0))),
+                rankedSolution(List.of(markerChoice(3, 1), markerChoice(4, 0)))) < 0);
+
+        var requirement = new DayConfigCoverageSearch.Requirement(1, 600, 720, 1);
+        for (List<Long> order : List.of(List.of(1L, 90L), List.of(90L, 1L))) {
+            List<DayConfigCoverageSearch.Employee> employees = order.stream()
+                    .map(id -> employee(id, markerChoice(id, id == 90 ? 0 : 1)))
+                    .toList();
+            assertEquals(90, new DayConfigCoverageSearch(List.of(requirement), employees)
+                    .solve().choices().get(0).memberId());
+        }
+    }
+
+    @Test
     void targetArithmeticIsExactAndUsesResultingCount() {
         TargetContext integer = TargetContext.of(5, 1);
         assertEquals(0, integer.scaledOvershoot(3));
@@ -409,6 +446,12 @@ class DayConfigCoverageSearchTest {
     private static DayConfigCoverageSearch.Solution solution(List<DayConfigCoverageSearch.Choice> choices) {
         return new DayConfigCoverageSearch.Solution(choices, 0, 0, 0, choices.size(), 0, null);
     }
+    private static DayConfigCoverageSearch.Solution rankedSolution(List<DayConfigCoverageSearch.Choice> choices) {
+        return new DayConfigCoverageSearch.Solution(choices, 0,
+                choices.stream().mapToLong(DayConfigCoverageSearch.Choice::hardConflictMinutes).sum(),
+                choices.stream().mapToLong(DayConfigCoverageSearch.Choice::softConflictMinutes).sum(),
+                (int) choices.stream().map(DayConfigCoverageSearch.Choice::memberId).distinct().count(), 0, null);
+    }
 
     private static long exhaustiveBestUncovered(List<DayConfigCoverageSearch.Employee> employees,
                                                  int start, int end, int required) {
@@ -495,48 +538,80 @@ class DayConfigCoverageSearchTest {
                                                                   int oneOff, long hard) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 1, 0, 0, 1, oneOff, 0), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 0, 1, 0, 0, 1, oneOff, 0), 1, 0,
                 start, end, requirement, hard, 0, null);
+    }
+    private static DayConfigCoverageSearch.Choice markerChoice(long id, int markerMismatch) {
+        return markerProjectionChoice(id, markerMismatch, 0, 1, 420, 0, 1, 0, 0, 0, 0);
+    }
+    private static DayConfigCoverageSearch.Choice markerTargetChoice(long id, int markerMismatch,
+                                                                      long targetOvershoot) {
+        return markerProjectionChoice(id, markerMismatch, targetOvershoot, 1, 420, 0, 1, 0, 0, 0, 0);
+    }
+    private static DayConfigCoverageSearch.Choice markerConflictChoice(long id, int markerMismatch,
+                                                                        long hard, long soft) {
+        return markerProjectionChoice(id, markerMismatch, 0, 1, 420, 0, 1, 0, 0, hard, soft);
+    }
+    private static DayConfigCoverageSearch.Choice markerProjectionChoice(
+            long id, int markerMismatch, long targetOvershoot, int resultingCount, long resultingMinutes,
+            int heavyDays, int streak, int oneOff, long restDeficit, long hard, long soft) {
+        var key = new DayConfigCoverageSearch.WorkloadKey(markerMismatch, targetOvershoot, resultingCount,
+                resultingMinutes, heavyDays, streak, oneOff, restDeficit);
+        assertValidMarkerProjection(key);
+        return new DayConfigCoverageSearch.Choice(id,
+                new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
+                key,
+                1, 0, 600, 720, 0, hard, soft, null);
+    }
+    private static void assertValidMarkerProjection(DayConfigCoverageSearch.WorkloadKey key) {
+        assertTrue(key.markerMismatchPenalty() == 0 || key.markerMismatchPenalty() == 1);
+        assertTrue(key.resultingShiftCount() >= 1);
+        assertTrue(key.resultingAssignedMinutes() > 0);
+        assertTrue(key.heavyDaysForRanking() >= 0);
+        assertTrue(key.resultingWorkStreak() >= 1);
+        assertTrue(key.oneOffPatternPenalty() == 0 || key.oneOffPatternPenalty() == 1);
+        assertTrue(key.oneOffPatternPenalty() == 0 || key.resultingWorkStreak() == 1);
+        assertTrue(key.minRestDeficitMinutes() >= 0);
     }
     private static DayConfigCoverageSearch.Choice rankedChoice(long id, TargetContext target, int count,
                                                                 long restDeficitMinutes, int oneOff) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, 0, 0, 1, oneOff, restDeficitMinutes), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, target.scaledOvershoot(count), count, 0, 0, 1, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
                                                                   long restDeficitMinutes, int oneOff) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, 1, oneOff, restDeficitMinutes), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 0, count, minutes, 0, 1, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice workloadChoice(long id, int count, long minutes,
                                                                   int start, int end, int requirement) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, count, minutes, 0, 1, 0, 0), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 0, count, minutes, 0, 1, 0, 0), 1, 0,
                 start, end, requirement, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice heavyChoice(long id, int heavyDays,
                                                                long restDeficitMinutes, int oneOff) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 4, 1680, heavyDays, 1, oneOff, restDeficitMinutes), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 0, 4, 1680, heavyDays, 1, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice streakChoice(long id, int streak, long restDeficitMinutes) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 5, 2100, 0, streak, 0, restDeficitMinutes), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 0, 5, 2100, 0, streak, 0, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice oneOffChoice(long id, int streak, int oneOff, long restDeficitMinutes) {
         if (oneOff > 0) assertEquals(1, streak);
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(0, 5, 2100, 0, streak, oneOff, restDeficitMinutes), 1, 0,
+                new DayConfigCoverageSearch.WorkloadKey(0, 0, 5, 2100, 0, streak, oneOff, restDeficitMinutes), 1, 0,
                 600, 720, 0, 0, 0, null);
     }
     private static DayConfigCoverageSearch.Choice projectedChoice(long id, TargetContext target, int count,
@@ -547,7 +622,7 @@ class DayConfigCoverageSearchTest {
                                                                    long minutes, int heavyDays, int streak) {
         return new DayConfigCoverageSearch.Choice(id,
                 new DayConfigCoverageSearch.EmployeeKey("Employee " + id, id),
-                new DayConfigCoverageSearch.WorkloadKey(target.scaledOvershoot(count), count, minutes,
+                new DayConfigCoverageSearch.WorkloadKey(0, target.scaledOvershoot(count), count, minutes,
                         heavyDays, streak, 0, 0), 1, 0,
                 600, 720, 0, 0, 0, null);
     }

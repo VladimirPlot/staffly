@@ -15,7 +15,7 @@ final class DayConfigCoverageSearch {
             if (start >= end || count < 0) throw new IllegalArgumentException("Invalid requirement");
         }
     }
-    record WorkloadKey(long scaledTargetOvershoot, int resultingShiftCount, long resultingAssignedMinutes,
+    record WorkloadKey(int markerMismatchPenalty, long scaledTargetOvershoot, int resultingShiftCount, long resultingAssignedMinutes,
                        int heavyDaysForRanking, int resultingWorkStreak,
                        int oneOffPatternPenalty, long minRestDeficitMinutes)
             implements Comparable<WorkloadKey> {
@@ -121,7 +121,8 @@ final class DayConfigCoverageSearch {
                     choice.hardConflictMinutes, choice.softConflictMinutes);
         }
         @Override public int compareTo(ChoiceSignature other) {
-            int value = Long.compare(workload.scaledTargetOvershoot, other.workload.scaledTargetOvershoot);
+            int value = Integer.compare(workload.markerMismatchPenalty, other.workload.markerMismatchPenalty);
+            if (value == 0) value = Long.compare(workload.scaledTargetOvershoot, other.workload.scaledTargetOvershoot);
             if (value == 0) value = Integer.compare(workload.resultingShiftCount, other.workload.resultingShiftCount);
             if (value == 0) value = Long.compare(workload.resultingAssignedMinutes,
                     other.workload.resultingAssignedMinutes);
@@ -275,6 +276,7 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = Long.compare(left.hardConflictMinutes, right.hardConflictMinutes);
         if (value == 0) value = Long.compare(left.softConflictMinutes, right.softConflictMinutes);
         if (value == 0) value = Integer.compare(left.distinctEmployeeCount, right.distinctEmployeeCount);
+        if (value == 0) value = compareLists(markerMismatchPenalties(left), markerMismatchPenalties(right));
         if (value == 0) value = compareLists(targetOvershoots(left), targetOvershoots(right));
         if (value == 0) value = compareLists(resultingShiftCounts(left), resultingShiftCounts(right));
         if (value == 0) value = compareLists(resultingAssignedMinutes(left), resultingAssignedMinutes(right));
@@ -285,6 +287,11 @@ final class DayConfigCoverageSearch {
         if (value == 0) value = compareLists(employeeKeys(left), employeeKeys(right));
         if (value == 0) value = compareGeometry(left.choices, right.choices);
         return value;
+    }
+
+    private static List<Integer> markerMismatchPenalties(Solution solution) {
+        return solution.choices.stream().map(c -> c.workloadKey.markerMismatchPenalty)
+                .sorted(Comparator.reverseOrder()).toList();
     }
 
     private static List<Long> targetOvershoots(Solution solution) {
