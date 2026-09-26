@@ -302,8 +302,8 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                                     evaluation.resultingShiftCount(), evaluation.resultingAssignedMinutes(),
                                     evaluation.heavyDaysForRanking(),
                                     evaluation.resultingWorkStreak(),
-                                    evaluation.minRestViolation(),
-                                    evaluation.residualFairnessScore()),
+                                    evaluation.oneOffPatternPenalty(),
+                                    evaluation.minRestViolation()),
                             option.getId() == null ? Long.MAX_VALUE : option.getId(),
                             Optional.ofNullable(option.getSortOrder()).orElse(0),
                             optionInterval.startMinute(), optionInterval.endMinute(), r,
@@ -905,8 +905,9 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         int resultingHeavyDaysCount = priorHeavyDaysCount + (heavyToday ? 1 : 0);
         // Historical state remains stored on ordinary days; only a heavy business date activates ranking.
         int heavyDaysForRanking = heavyToday ? resultingHeavyDaysCount : 0;
-        int resultingWorkStreak = resultingWorkStreak(
-                day, plannerState.assignedIntervals(member.getId()));
+        List<AssignedInterval> history = plannerState.assignedIntervals(member.getId());
+        int resultingWorkStreak = resultingWorkStreak(day, history);
+        int oneOffPatternPenalty = createsOneOffPattern(day, history) ? 1 : 0;
         String displayName = displayName(member);
         boolean minRestViolation = violatesMinRest(member, config, plannerState, day, option);
         SchedulePreferenceCell preferenceCell = preferenceFor(preferencesByMemberAndDay, member.getId(), day);
@@ -934,10 +935,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                     resultingAssignedMinutes,
                     heavyDaysForRanking,
                     resultingWorkStreak,
-                    displayName,
-                    residualFairnessScore(member, day, plannerState),
-                    false,
+                    oneOffPatternPenalty,
                     minRestViolation,
+                    displayName,
+                    false,
                     rejectionReason
             );
         }
@@ -951,10 +952,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                 resultingAssignedMinutes,
                 heavyDaysForRanking,
                 resultingWorkStreak,
-                displayName,
-                residualFairnessScore(member, day, plannerState),
-                true,
+                oneOffPatternPenalty,
                 minRestViolation,
+                displayName,
+                true,
                 CandidateRejectionReason.NONE
         );
     }
@@ -1115,21 +1116,6 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
         return explicitDemand ? TargetContext.of(totalRequiredAssignments, participantCount) : TargetContext.none();
     }
 
-    private int residualFairnessScore(
-            RestaurantMember member,
-            LocalDate day,
-            PlannerState plannerState
-    ) {
-        int score = 0;
-
-        if (hasAssignmentOnDay(member, plannerState, day.minusDays(2))
-                && !hasAssignmentOnDay(member, plannerState, day.minusDays(1))) {
-            score += 10;
-        }
-
-        return score;
-    }
-
     static int resultingWorkStreak(LocalDate businessDate, List<AssignedInterval> existingAssignments) {
         int count = 1;
         LocalDate cursor = businessDate.minusDays(1);
@@ -1138,6 +1124,11 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             cursor = cursor.minusDays(1);
         }
         return count;
+    }
+
+    static boolean createsOneOffPattern(LocalDate businessDate, List<AssignedInterval> existingAssignments) {
+        return hasAssignmentOnBusinessDate(existingAssignments, businessDate.minusDays(2))
+                && !hasAssignmentOnBusinessDate(existingAssignments, businessDate.minusDays(1));
     }
 
     private static boolean hasAssignmentOnBusinessDate(
@@ -1188,14 +1179,13 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
                             left.resultingWorkStreak(), right.resultingWorkStreak());
                     if (byWorkStreak != 0) return byWorkStreak;
 
+                    int byOneOffPattern = Integer.compare(
+                            left.oneOffPatternPenalty(), right.oneOffPatternPenalty());
+                    if (byOneOffPattern != 0) return byOneOffPattern;
+
                     int byMinRestViolation = Boolean.compare(left.minRestViolation(), right.minRestViolation());
                     if (byMinRestViolation != 0) {
                         return byMinRestViolation;
-                    }
-
-                    int byFairnessScore = Integer.compare(left.residualFairnessScore(), right.residualFairnessScore());
-                    if (byFairnessScore != 0) {
-                        return byFairnessScore;
                     }
 
                     int byDisplayName = left.displayName().compareToIgnoreCase(right.displayName());
@@ -1948,10 +1938,10 @@ public class ScheduleAutoBuildPlannerImpl implements ScheduleAutoBuildPlanner {
             long resultingAssignedMinutes,
             int heavyDaysForRanking,
             int resultingWorkStreak,
-            String displayName,
-            int residualFairnessScore,
-            boolean eligible,
+            int oneOffPatternPenalty,
             boolean minRestViolation,
+            String displayName,
+            boolean eligible,
             CandidateRejectionReason rejectionReason
     ) {
     }
