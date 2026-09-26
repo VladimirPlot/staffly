@@ -68,6 +68,5 @@ create index idx_sbcdo_weekday_regime on schedule_build_coverage_date_override(w
 alter table schedule_build_shift_option drop column position_config_id;
 alter table schedule_build_coverage_rule drop column position_config_id;
 alter table schedule_build_coverage_date_override drop column position_config_id;
-alter table schedule_build_position_config drop constraint chk_sbpc_work_period_interval;
 alter table schedule_build_position_config drop column work_period_start;
 alter table schedule_build_position_config drop column work_period_end;
