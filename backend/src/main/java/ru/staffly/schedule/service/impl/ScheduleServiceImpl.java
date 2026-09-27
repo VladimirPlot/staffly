@@ -31,6 +31,7 @@ import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleChangeService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.schedule.service.ScheduleParticipationCreator;
+import ru.staffly.schedule.service.ScheduleRowMaterializer;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
@@ -58,6 +59,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final SchedulePreferenceSubmissionRepository preferenceSubmissions;
     private final ScheduleParticipationRepository participations;
     private final ScheduleParticipationCreator participationCreator;
+    private final ScheduleRowMaterializer rowMaterializer;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -524,7 +526,10 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (!revalidatedCandidateIds.equals(lockedEligibleCandidateIds)) {
             throw new ConflictException("Состав подходящих сотрудников изменился. Повторите начало сбора пожеланий");
         }
-        ensureParticipations(schedule, eligibleLockedCandidates);
+        Map<Long, ScheduleParticipation> participationByMemberId =
+                ensureParticipations(schedule, eligibleLockedCandidates);
+        eligibleLockedCandidates.forEach(member -> rowMaterializer.ensureRowWithLocksHeld(
+                schedule, member, Objects.requireNonNull(participationByMemberId.get(member.getId()))));
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
         schedule.setPreferenceCollectionMode(mode);
         schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
