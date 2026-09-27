@@ -117,6 +117,21 @@ function isValidPreferenceTimeInterval(startTime: string, endTime: string): bool
   return startMinutes < endMinutes;
 }
 
+function isAllowedShiftOptionPreference(
+  startTime: string,
+  endTime: string,
+  allowedOptions: SchedulePreferenceAllowedShiftOptionDto[],
+): boolean {
+  const normalizedStartTime = normalizeTimeForUi(startTime);
+  const normalizedEndTime = normalizeTimeForUi(endTime);
+
+  return allowedOptions.some(
+    (option) =>
+      normalizeTimeForUi(option.startTime) === normalizedStartTime &&
+      normalizeTimeForUi(option.endTime) === normalizedEndTime,
+  );
+}
+
 function buildReadonlyMessage(data: SchedulePreferenceMyResponse): string {
   if (data.status !== "COLLECTING_PREFERENCES") {
     return "Сбор закрыт. Отправка пожеланий больше недоступна.";
@@ -452,11 +467,23 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
           setFormError(`Заполните время для ${formatDateFromIso(day.date)}.`);
           return;
         }
-        if (parseTimeToMinutes(value.startTime) === parseTimeToMinutes(value.endTime)) {
+        const startMinutes = parseTimeToMinutes(value.startTime);
+        const endMinutes = parseTimeToMinutes(value.endTime);
+        if (startMinutes === null || endMinutes === null) {
+          setFormError(`Заполните корректное время для ${formatDateFromIso(day.date)}.`);
+          return;
+        }
+        if (startMinutes === endMinutes) {
           setFormError(`Время начала и окончания не должно совпадать (${formatDateFromIso(day.date)}).`);
           return;
         }
-        if (!isValidPreferenceTimeInterval(value.startTime, value.endTime)) {
+        if (data.preferenceCollectionMode === "SHIFT_OPTIONS") {
+          const allowedOptions = data.allowedShiftOptionsByDate?.[day.date] ?? [];
+          if (!isAllowedShiftOptionPreference(value.startTime, value.endTime, allowedOptions)) {
+            setFormError(`Выбранный вариант смены больше недоступен (${formatDateFromIso(day.date)}).`);
+            return;
+          }
+        } else if (!isValidPreferenceTimeInterval(value.startTime, value.endTime)) {
           setFormError(`Время начала должно быть раньше окончания (${formatDateFromIso(day.date)}).`);
           return;
         }
