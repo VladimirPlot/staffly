@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "schedule_build_shift_option", indexes = @Index(name = "idx_sbso_position_config", columnList = "position_config_id"))
+@Table(name = "schedule_build_shift_option", indexes = @Index(name = "idx_sbso_weekday_regime", columnList = "weekday_regime_id"))
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ScheduleBuildShiftOption {
     @Id
@@ -14,8 +14,13 @@ public class ScheduleBuildShiftOption {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "position_config_id", nullable = false)
-    private ScheduleBuildPositionConfig positionConfig;
+    @JoinColumn(name = "weekday_regime_id", nullable = false)
+    private ScheduleBuildWeekdayRegime weekdayRegime;
+
+    /** Optional soft-affinity marker owned by the same position configuration. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "marker_id")
+    private ScheduleBuildMarker marker;
 
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
@@ -25,10 +30,6 @@ public class ScheduleBuildShiftOption {
 
     @Column(name = "label", length = 150)
     private String label;
-
-    @Column(name = "is_full_shift", nullable = false)
-    @Builder.Default
-    private boolean isFullShift = false;
 
     @Column(name = "sort_order", nullable = false)
     @Builder.Default

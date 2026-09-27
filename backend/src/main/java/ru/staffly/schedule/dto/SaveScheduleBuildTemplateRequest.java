@@ -6,5 +6,16 @@ public record SaveScheduleBuildTemplateRequest(
         String name,
         String description,
         Boolean isActive,
-        List<SaveScheduleBuildPositionConfigRequest> positionConfigs
-) {}
+        List<SaveScheduleBuildPositionConfigRequest> positionConfigs,
+        Long expectedVersion,
+        Boolean confirmConsequences
+) {
+    public SaveScheduleBuildTemplateRequest(String name, String description, Boolean isActive,
+                                            List<SaveScheduleBuildPositionConfigRequest> positionConfigs) {
+        this(name, description, isActive, positionConfigs, null, false);
+    }
+
+    public boolean consequencesConfirmed() {
+        return Boolean.TRUE.equals(confirmConsequences);
+    }
+}

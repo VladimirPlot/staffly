@@ -1,8 +1,10 @@
 package ru.staffly.invite.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import ru.staffly.invite.dto.MyInviteDto;
 import ru.staffly.invite.model.Invitation;
 import ru.staffly.invite.model.InvitationStatus;
@@ -15,15 +17,31 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     Optional<Invitation> findByToken(String token);
 
-    List<Invitation> findByRestaurantIdAndStatus(Long restaurantId, InvitationStatus status);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Invitation i where i.token = :token")
+    Optional<Invitation> findForUpdateByToken(String token);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Invitation i where i.id = :id")
+    Optional<Invitation> findForUpdateById(Long id);
 
     @Query("""
-           select (count(i) > 0) from Invitation i
+           select i.id from Invitation i
+           where i.status = :status and i.expiresAt <= :now
+           order by i.id asc
+           """)
+    List<Long> findExpiredPendingIds(InvitationStatus status, Instant now, Pageable pageable);
+
+    List<Invitation> findByRestaurantIdAndStatus(Long restaurantId, InvitationStatus status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+           select i from Invitation i
            where i.restaurant.id = :restaurantId
              and lower(i.phoneOrEmail) = lower(:contact)
              and i.status = :status
            """)
-    boolean existsInviteForContact(Long restaurantId, String contact, InvitationStatus status);
+    Optional<Invitation> findPendingForUpdateByContact(Long restaurantId, String contact, InvitationStatus status);
 
     @Query("""
        select i from Invitation i
@@ -36,10 +54,6 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
        order by i.expiresAt asc
     """)
     List<Invitation> findMyPending(String phone, String email, Instant now, InvitationStatus status);
-
-    @Modifying
-    @Query("delete from Invitation i where i.status = :status and i.expiresAt < :before")
-    int deleteByStatusAndExpiresAtBefore(InvitationStatus status, Instant before);
 
     @Query("""
    select new ru.staffly.invite.dto.MyInviteDto(

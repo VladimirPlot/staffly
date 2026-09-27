@@ -10,6 +10,7 @@ type UseSavedScheduleActionsParams = {
   restaurantId: number | null;
   canManage: boolean;
   scheduleId: number | null;
+  savedSchedules: ScheduleSummary[];
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   loadShiftRequests: (scheduleId?: number | null) => Promise<void>;
   onScheduleChanged: (schedule: ScheduleData | null) => void;
@@ -26,6 +27,7 @@ export default function useSavedScheduleActions({
   restaurantId,
   canManage,
   scheduleId,
+  savedSchedules,
   prepareSchedule,
   loadShiftRequests,
   onScheduleChanged,
@@ -40,8 +42,10 @@ export default function useSavedScheduleActions({
   const [selectedSavedId, setSelectedSavedId] = React.useState<number | null>(null);
   const [scheduleLoading, setScheduleLoading] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
+  const openSequenceRef = React.useRef(0);
 
   React.useEffect(() => {
+    openSequenceRef.current += 1;
     setSelectedSavedId(null);
     setScheduleLoading(false);
     setDeletingId(null);
@@ -56,6 +60,7 @@ export default function useSavedScheduleActions({
   const openSavedSchedule = React.useCallback(
     async (id: number) => {
       if (!restaurantId) return;
+      const requestSequence = ++openSequenceRef.current;
 
       onAutoTabReset();
       setSelectedSavedId(id);
@@ -65,17 +70,19 @@ export default function useSavedScheduleActions({
       onClearScheduleNotices();
       try {
         const data = await fetchSchedule(restaurantId, id);
+        if (requestSequence !== openSequenceRef.current) return;
         const prepared = prepareSchedule(data);
         onScheduleChanged(prepared);
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
       } catch (e: unknown) {
+        if (requestSequence !== openSequenceRef.current) return;
         setSelectedSavedId(null);
         onScheduleChanged(null);
         onScheduleReadOnlyChanged(false);
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить график"));
       } finally {
-        setScheduleLoading(false);
+        if (requestSequence === openSequenceRef.current) setScheduleLoading(false);
       }
     },
     [
@@ -92,6 +99,7 @@ export default function useSavedScheduleActions({
   );
 
   const closeSavedSchedule = React.useCallback(() => {
+    openSequenceRef.current += 1;
     onScheduleChanged(null);
     setSelectedSavedId(null);
     onScheduleReadOnlyChanged(false);
@@ -103,6 +111,7 @@ export default function useSavedScheduleActions({
   const editSavedSchedule = React.useCallback(
     async (id: number) => {
       if (!restaurantId || !canManage) return;
+      const requestSequence = ++openSequenceRef.current;
 
       onAutoTabReset();
       if (scheduleId === id) {
@@ -119,17 +128,19 @@ export default function useSavedScheduleActions({
       onClearScheduleNotices();
       try {
         const data = await fetchSchedule(restaurantId, id);
+        if (requestSequence !== openSequenceRef.current) return;
         const prepared = prepareSchedule(data);
         onScheduleChanged(prepared);
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
         await loadShiftRequests(id);
       } catch (e: unknown) {
+        if (requestSequence !== openSequenceRef.current) return;
         setSelectedSavedId(null);
         onScheduleChanged(null);
         onScheduleReadOnlyChanged(false);
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить график"));
       } finally {
-        setScheduleLoading(false);
+        if (requestSequence === openSequenceRef.current) setScheduleLoading(false);
       }
     },
     [
@@ -150,13 +161,18 @@ export default function useSavedScheduleActions({
   const deleteSavedSchedule = React.useCallback(
     async (id: number) => {
       if (!canManage || !restaurantId) return;
+      const version = savedSchedules.find((item) => item.id === id)?.version;
+      if (version == null) {
+        onScheduleError("Обновите список графиков перед удалением");
+        return;
+      }
       if (!window.confirm("Удалить этот график? Действие нельзя отменить.")) {
         return;
       }
       setDeletingId(id);
       onClearScheduleNotices();
       try {
-        await deleteSchedule(restaurantId, id);
+        await deleteSchedule(restaurantId, id, version);
         const savedList = await listSavedSchedules(restaurantId);
         onSavedSchedulesChanged(savedList);
         if (scheduleId === id) {
@@ -181,6 +197,7 @@ export default function useSavedScheduleActions({
       onScheduleReadOnlyChanged,
       restaurantId,
       scheduleId,
+      savedSchedules,
     ],
   );
 

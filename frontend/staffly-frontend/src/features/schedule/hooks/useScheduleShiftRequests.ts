@@ -39,6 +39,7 @@ export default function useScheduleShiftRequests({
   const [requests, setRequests] = React.useState<ShiftRequestDto[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const requestSequenceRef = React.useRef(0);
 
   const currentMemberId = currentMember?.id ?? null;
 
@@ -46,22 +47,26 @@ export default function useScheduleShiftRequests({
     async (targetScheduleId?: number | null) => {
       const scheduleForLoad = targetScheduleId ?? scheduleId;
       if (!restaurantId || !scheduleForLoad) {
+        requestSequenceRef.current += 1;
         setRequests([]);
         setError(null);
         setLoading(false);
         return;
       }
+      const requestSequence = ++requestSequenceRef.current;
 
       setLoading(true);
       setError(null);
       try {
         const data = await listShiftRequests(restaurantId, scheduleForLoad);
+        if (requestSequence !== requestSequenceRef.current) return;
         setRequests(data);
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить заявки"));
         setRequests([]);
       } finally {
-        setLoading(false);
+        if (requestSequence === requestSequenceRef.current) setLoading(false);
       }
     },
     [restaurantId, scheduleId],
@@ -73,6 +78,7 @@ export default function useScheduleShiftRequests({
 
   React.useEffect(() => {
     if (!restaurantId || !scheduleId) {
+      requestSequenceRef.current += 1;
       setRequests([]);
       setError(null);
       setLoading(false);
@@ -112,6 +118,9 @@ export default function useScheduleShiftRequests({
         await load(scheduleId);
         onSuccessMessage(accepted ? "Заявка одобрена" : "Заявка отклонена");
       } catch (e: unknown) {
+        // The server is authoritative: another manager may have decided the
+        // request while this tab still displayed PENDING_MANAGER.
+        await load(scheduleId);
         onErrorMessage(getFriendlyScheduleErrorMessage(e, "Не удалось обработать заявку"));
       }
     },

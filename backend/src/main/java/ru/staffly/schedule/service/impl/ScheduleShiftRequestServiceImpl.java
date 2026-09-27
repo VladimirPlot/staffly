@@ -15,6 +15,7 @@ import ru.staffly.schedule.dto.CreateReplacementShiftRequest;
 import ru.staffly.schedule.dto.CreateSwapShiftRequest;
 import ru.staffly.schedule.dto.ShiftRequestDto;
 import ru.staffly.schedule.dto.ShiftRequestMemberDto;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleCell;
@@ -24,6 +25,7 @@ import ru.staffly.schedule.model.ScheduleShiftRequestStatus;
 import ru.staffly.schedule.model.ScheduleShiftRequestType;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.ScheduleShiftRequestRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
@@ -49,6 +51,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
     private final ScheduleRepository schedules;
     private final ScheduleShiftRequestRepository requests;
+    private final ScheduleParticipationRepository participations;
     private final RestaurantMemberRepository members;
     private final InboxMessageService inboxMessages;
     private final SecurityService securityService;
@@ -58,14 +61,17 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     @Override
     public ShiftRequestDto createReplacement(Long restaurantId, Long scheduleId, Long userId, CreateReplacementShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
-        Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
+        assertParticipant(scheduleId, initiator.getId());
+        Long targetMemberId = Objects.requireNonNull(request.toMemberId());
+        assertParticipant(scheduleId, targetMemberId);
 
         LocalDate day = parseDate(request.day(), "day");
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
                 .orElseThrow(() -> new BadRequestException("У вас нет смен в этом графике"));
-        ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.toMemberId()))
+        ScheduleRow toRow = findRowForMember(schedule, targetMemberId)
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
         String value = normalizeValue(findCellValue(fromRow, day)
@@ -93,6 +99,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        touchSchedule(schedule);
         scheduleAuditService.record(
                 schedule,
                 userId,
@@ -106,16 +113,19 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     @Override
     public ShiftRequestDto createSwap(Long restaurantId, Long scheduleId, Long userId, CreateSwapShiftRequest request) {
         RestaurantMember initiator = requireMember(userId, restaurantId);
-        Schedule schedule = loadSchedule(scheduleId, restaurantId);
+        Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
         scheduleAccessService.assertCanViewSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
+        assertParticipant(scheduleId, initiator.getId());
+        Long targetMemberId = Objects.requireNonNull(request.targetMemberId());
+        assertParticipant(scheduleId, targetMemberId);
 
         LocalDate myDay = parseDate(request.myDay(), "myDay");
         LocalDate targetDay = parseDate(request.targetDay(), "targetDay");
 
         ScheduleRow fromRow = findRowForMember(schedule, initiator.getId())
                 .orElseThrow(() -> new BadRequestException("У вас нет смен в этом графике"));
-        ScheduleRow toRow = findRowForMember(schedule, Objects.requireNonNull(request.targetMemberId()))
+        ScheduleRow toRow = findRowForMember(schedule, targetMemberId)
                 .orElseThrow(() -> new BadRequestException("Сотрудник не найден в графике"));
 
         String fromValue = normalizeValue(findCellValue(fromRow, myDay)
@@ -149,6 +159,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 .build();
 
         ScheduleShiftRequest saved = requests.save(entity);
+        touchSchedule(schedule);
         scheduleAuditService.record(
                 schedule,
                 userId,
@@ -160,15 +171,18 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     @Override
-    public ShiftRequestDto decideAsManager(Long restaurantId, Long requestId, Long userId, boolean accepted) {
+    public ShiftRequestDto decideAsManager(Long restaurantId, Long scheduleId, Long requestId, Long userId, boolean accepted) {
         securityService.assertAtLeastManager(userId, restaurantId);
 
-        ScheduleShiftRequest entity = loadRequest(requestId, restaurantId);
+        ScheduleShiftRequest entity = loadRequestForDecision(requestId, restaurantId);
+        if (!Objects.equals(entity.getSchedule().getId(), scheduleId)) {
+            throw new NotFoundException("Запрос не найден");
+        }
         if (entity.getStatus() != ScheduleShiftRequestStatus.PENDING_MANAGER) {
-            throw new BadRequestException("Заявка не требует решения менеджера");
+            throw alreadyDecided();
         }
 
-        Schedule schedule = loadSchedule(entity.getSchedule().getId(), restaurantId);
+        Schedule schedule = entity.getSchedule();
         scheduleAccessService.assertCanManageSchedule(userId, schedule);
         assertPublishedSchedule(schedule);
         ScheduleRow fromRow = requireRow(schedule, entity.getFromRow().getId());
@@ -185,13 +199,14 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             entity.setDecidedByUserId(userId);
             entity.setDecidedAt(now);
             entity.setDecisionComment(null);
+            touchSchedule(schedule);
             scheduleAuditService.record(
                     schedule,
                     userId,
                     ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
                     "Заявка на смену отклонена"
             );
-            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false, userId);
             return toDto(entity);
         }
 
@@ -201,13 +216,14 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             entity.setDecidedByUserId(userId);
             entity.setDecidedAt(now);
             entity.setDecisionComment(staleReason);
+            touchSchedule(schedule);
             scheduleAuditService.record(
                     schedule,
                     userId,
                     ScheduleAuditAction.SHIFT_REQUEST_REJECTED,
                     staleReason
             );
-            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false);
+            notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, false, userId);
             return toDto(entity);
         }
 
@@ -220,6 +236,10 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             swapShifts(fromRow, toRow, dayFrom, dayTo);
         }
 
+        // Cell mutations belong to the Schedule aggregate even though they are persisted
+        // through child entities. Dirty the root so its optimistic-lock revision advances.
+        touchSchedule(schedule);
+
         entity.setStatus(ScheduleShiftRequestStatus.APPROVED);
         entity.setDecidedByUserId(userId);
         entity.setDecidedAt(now);
@@ -230,7 +250,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                 ScheduleAuditAction.SHIFT_REQUEST_APPROVED,
                 "Заявка на смену одобрена"
         );
-        notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true);
+        notifyParticipantsOnDecision(entity, fromShiftValue, toShiftValue, true, userId);
         return toDto(entity);
     }
 
@@ -261,8 +281,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     public void cancelOwn(Long restaurantId, Long scheduleId, Long userId, Long requestId) {
         RestaurantMember member = requireMember(userId, restaurantId);
 
-        ScheduleShiftRequest request = requests.findByIdAndScheduleRestaurantId(requestId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Заявка не найдена"));
+        ScheduleShiftRequest request = loadRequestForDecision(requestId, restaurantId);
 
         if (!Objects.equals(request.getSchedule().getId(), scheduleId)) {
             throw new BadRequestException("Заявка не относится к этому графику");
@@ -275,19 +294,46 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
 
         if (request.getStatus() != ScheduleShiftRequestStatus.PENDING_MANAGER) {
-            throw new BadRequestException("Можно отменить только заявку, ожидающую решения менеджера");
+            throw alreadyDecided();
         }
 
         requests.delete(request);
+        touchSchedule(request.getSchedule());
     }
 
-    private ScheduleShiftRequest loadRequest(Long requestId, Long restaurantId) {
-        return requests.findByIdAndScheduleRestaurantId(requestId, restaurantId)
+    /**
+     * All request state transitions use the global order Schedule -> ShiftRequest.
+     * The first non-locking lookup only discovers the parent id; all validation uses
+     * the subsequently locked entities.
+     */
+    private ScheduleShiftRequest loadRequestForDecision(Long requestId, Long restaurantId) {
+        Long scheduleId = requests.findScheduleIdByIdAndRestaurantId(requestId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Запрос не найден"));
+        Schedule schedule = loadScheduleForUpdate(scheduleId, restaurantId);
+        ScheduleShiftRequest locked = requests.findForUpdateByIdAndRestaurantId(requestId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Запрос не найден"));
+        if (!Objects.equals(locked.getSchedule().getId(), schedule.getId())) {
+            throw new NotFoundException("Запрос не найден");
+        }
+        return locked;
+    }
+
+    private ScheduleDomainConflictException alreadyDecided() {
+        return new ScheduleDomainConflictException(
+                "SHIFT_REQUEST_ALREADY_DECIDED",
+                "Заявка уже обработана другим пользователем. Обновите список заявок."
+        );
     }
 
     private Schedule loadSchedule(Long scheduleId, Long restaurantId) {
         Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("График не найден"));
+        schedule.getRows().forEach(row -> row.getCells().size());
+        return schedule;
+    }
+
+    private Schedule loadScheduleForUpdate(Long scheduleId, Long restaurantId) {
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("График не найден"));
         schedule.getRows().forEach(row -> row.getCells().size());
         return schedule;
@@ -304,6 +350,17 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
     }
 
+    private void assertParticipant(Long scheduleId, Long memberId) {
+        if (!participations.existsByScheduleIdAndMemberId(scheduleId, memberId)) {
+            throw new BadRequestException("Сотрудник не участвует в этом графике");
+        }
+    }
+
+    private void touchSchedule(Schedule schedule) {
+        schedule.setUpdatedAt(TimeProvider.now());
+        schedules.flush();
+    }
+
 
     private void ensureNoActiveRequest(Long scheduleId, Long memberId, LocalDate day) {
         requests.findActiveByScheduleAndFromMemberAndDay(scheduleId, memberId, day, ACTIVE_STATUSES)
@@ -315,16 +372,19 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     private void notifyParticipantsOnDecision(ScheduleShiftRequest request,
                                               String fromShiftValue,
                                               String toShiftValue,
-                                              boolean accepted) {
-        RestaurantMember initiator = members.findById(request.getInitiatorMemberId()).orElse(null);
+                                              boolean accepted,
+                                              Long actorUserId) {
         RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
         RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
+        RestaurantMember actor = members.findByUserIdAndRestaurantId(
+                actorUserId, request.getSchedule().getRestaurant().getId()).orElse(null);
 
         List<RestaurantMember> targets = Stream.of(fromMember, toMember)
                 .filter(Objects::nonNull)
                 .filter(member -> member.getUser() != null)
+                .filter(member -> !Objects.equals(member.getUser().getId(), actorUserId))
                 .collect(Collectors.collectingAndThen(
-                        Collectors.toMap(RestaurantMember::getId, m -> m, (a, b) -> a, LinkedHashMap::new),
+                        Collectors.toMap(member -> member.getUser().getId(), m -> m, (a, b) -> a, LinkedHashMap::new),
                         map -> new ArrayList<>(map.values())
                 ));
         if (targets.isEmpty()) {
@@ -336,13 +396,12 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
         inboxMessages.createEvent(
                 request.getSchedule().getRestaurant(),
-                initiator != null ? initiator.getUser() : fromMember.getUser(),
+                actor == null ? null : actor.getUser(),
                 content,
                 InboxEventSubtype.SCHEDULE_DECISION,
                 "scheduleRequest:decision:" + request.getId() + ":" + decision,
                 targets,
-                Optional.ofNullable(request.getSchedule().getEndDate())
-                        .orElse(request.getSchedule().getStartDate())
+                null
         );
     }
 
@@ -389,9 +448,6 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         }
         if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
             return members.findByUserIdAndRestaurantId(schedule.getOwnerUser().getId(), schedule.getRestaurant().getId()).orElse(null);
-        }
-        if (schedule.getCreatedByUser() != null && schedule.getCreatedByUser().getId() != null) {
-            return members.findByUserIdAndRestaurantId(schedule.getCreatedByUser().getId(), schedule.getRestaurant().getId()).orElse(null);
         }
         return null;
     }
@@ -440,7 +496,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     private void transferShift(ScheduleRow fromRow, ScheduleRow toRow, LocalDate day) {
-        String value = removeCell(fromRow, day)
+        ScheduleCell removed = removeCell(fromRow, day)
                 .orElseThrow(() -> new BadRequestException("Смена отсутствует"));
 
         if (findCellValue(toRow, day).isPresent()) {
@@ -450,40 +506,48 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         ScheduleCell newCell = ScheduleCell.builder()
                 .row(toRow)
                 .day(day)
-                .value(value)
+                .value(removed.getValue())
+                .source(removed.getSource())
                 .build();
+        removed.structuredShift().ifPresent(newCell::setStructuredShift);
         toRow.getCells().add(newCell);
     }
 
     private void swapShifts(ScheduleRow fromRow, ScheduleRow toRow, LocalDate dayFrom, LocalDate dayTo) {
-        String fromValue = removeCell(fromRow, dayFrom)
+        ScheduleCell fromCell = removeCell(fromRow, dayFrom)
                 .orElseThrow(() -> new BadRequestException("Смена сотрудника не найдена"));
-        String toValue = removeCell(toRow, dayTo)
+        ScheduleCell toCell = removeCell(toRow, dayTo)
                 .orElseThrow(() -> new BadRequestException("Смена коллеги не найдена"));
 
         if (findCellValue(fromRow, dayTo).isPresent() || findCellValue(toRow, dayFrom).isPresent()) {
             throw new BadRequestException("Одна из дат уже занята");
         }
 
-        fromRow.getCells().add(ScheduleCell.builder()
+        ScheduleCell movedToFrom = ScheduleCell.builder()
                 .row(fromRow)
                 .day(dayTo)
-                .value(toValue)
-                .build());
-        toRow.getCells().add(ScheduleCell.builder()
+                .value(toCell.getValue())
+                .source(toCell.getSource())
+                .build();
+        toCell.structuredShift().ifPresent(movedToFrom::setStructuredShift);
+        fromRow.getCells().add(movedToFrom);
+        ScheduleCell movedToTo = ScheduleCell.builder()
                 .row(toRow)
                 .day(dayFrom)
-                .value(fromValue)
-                .build());
+                .value(fromCell.getValue())
+                .source(fromCell.getSource())
+                .build();
+        fromCell.structuredShift().ifPresent(movedToTo::setStructuredShift);
+        toRow.getCells().add(movedToTo);
     }
 
-    private Optional<String> removeCell(ScheduleRow row, LocalDate day) {
+    private Optional<ScheduleCell> removeCell(ScheduleRow row, LocalDate day) {
         List<ScheduleCell> cells = new ArrayList<>(row.getCells());
         Optional<ScheduleCell> target = cells.stream()
                 .filter(cell -> day.equals(cell.getDay()))
                 .findFirst();
         target.ifPresent(cell -> row.getCells().remove(cell));
-        return target.map(ScheduleCell::getValue);
+        return target;
     }
 
     private LocalDate parseDate(String value, String field) {

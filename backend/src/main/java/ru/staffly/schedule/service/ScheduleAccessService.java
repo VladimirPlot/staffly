@@ -7,8 +7,10 @@ import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.security.SecurityService;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -16,6 +18,7 @@ public class ScheduleAccessService {
 
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
+    private final ScheduleParticipationRepository participations;
 
     public boolean canManageSchedules(Long userId, Long restaurantId) {
         if (securityService.hasAtLeastManager(userId, restaurantId)) {
@@ -53,14 +56,10 @@ public class ScheduleAccessService {
     }
 
     private boolean staffCanViewScheduleWithStatuses(Long userId, Schedule schedule, ScheduleStatus... allowedStatuses) {
-        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
-            return false;
-        }
         return members.findByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
                 .map(member -> member.getRole() == RestaurantRole.STAFF
                         && matchesAnyStatus(schedule.getStatus(), allowedStatuses)
-                        && member.getPosition() != null
-                        && schedule.getPositionIds().contains(member.getPosition().getId()))
+                        && participations.existsByScheduleIdAndMemberId(schedule.getId(), member.getId()))
                 .orElse(false);
     }
 

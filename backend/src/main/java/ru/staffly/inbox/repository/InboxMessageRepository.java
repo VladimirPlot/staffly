@@ -13,6 +13,17 @@ import java.util.Optional;
 
 public interface InboxMessageRepository extends JpaRepository<InboxMessage, Long> {
 
+    /**
+     * Serializes creation attempts for one canonical business-notification identity until the
+     * surrounding transaction completes. Hash collisions only serialize unrelated identities;
+     * the inbox unique constraint remains the final identity guard.
+     */
+    @Query(value = """
+        select true
+        from pg_advisory_xact_lock(hashtextextended(cast(:identity as text), cast(0 as bigint)))
+        """, nativeQuery = true)
+    boolean lockBusinessNotificationIdentity(@Param("identity") String identity);
+
     Optional<InboxMessage> findByIdAndRestaurantId(Long id, Long restaurantId);
 
     List<InboxMessage> findByRestaurantIdAndTypeOrderByCreatedAtDesc(Long restaurantId, InboxMessageType type);

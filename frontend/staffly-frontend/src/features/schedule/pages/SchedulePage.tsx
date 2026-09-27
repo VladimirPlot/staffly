@@ -42,7 +42,7 @@ import useSchedulePreferenceManagerActions from "../hooks/useSchedulePreferenceM
 import useSchedulePreferenceHints from "../hooks/useSchedulePreferenceHints";
 import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
-import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import type { EditableScheduleData, ScheduleData, ScheduleOwnerDto } from "../types";
 import type { AdjustedScheduleAutoBuildAssignment, ScheduleSummary } from "../api";
 import { addScheduleMember, getAddableScheduleMembers, type AddableScheduleMember } from "../api";
 import { buildMemberDisplayNameMap } from "../utils/names";
@@ -86,7 +86,7 @@ const SchedulePage: React.FC = () => {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
 
-  const [schedule, setSchedule] = React.useState<ScheduleData | null>(null);
+  const [schedule, setSchedule] = React.useState<EditableScheduleData | null>(null);
   const [scheduleReadOnly, setScheduleReadOnly] = React.useState(false);
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
@@ -124,13 +124,22 @@ const SchedulePage: React.FC = () => {
     clearScheduleNotices();
   }, [clearScheduleNotices]);
 
-  const { loading, error, myRole, positions, members, savedSchedules, setSavedSchedules, reloadSavedSchedules } =
-    useScheduleInitialData({
-      restaurantId,
-      userRoles: user?.roles,
-      onRestaurantMissing: handleRestaurantMissing,
-      onBeforeLoad: handleBeforeInitialLoad,
-    });
+  const {
+    loading,
+    error,
+    myRole,
+    positions,
+    members,
+    savedSchedules,
+    restaurantTimeZone,
+    setSavedSchedules,
+    reloadSavedSchedules,
+  } = useScheduleInitialData({
+    restaurantId,
+    userRoles: user?.roles,
+    onRestaurantMissing: handleRestaurantMissing,
+    onBeforeLoad: handleBeforeInitialLoad,
+  });
 
   const access = React.useMemo(() => resolveRestaurantAccess(user?.roles, myRole), [user?.roles, myRole]);
 
@@ -262,9 +271,9 @@ const SchedulePage: React.FC = () => {
     const submissions = preferenceHints.submissions?.submissions ?? [];
     submissions.forEach((submission) => {
       const memberId = submission.member?.memberId;
-      const comment = (submission.periodComment ?? submission.comment ?? "").trim();
-      if (!memberId || !comment) return;
-      map[memberId] = comment;
+      const periodComment = (submission.periodComment ?? "").trim();
+      if (!memberId || !periodComment) return;
+      map[memberId] = periodComment;
     });
     return map;
   }, [canInspectScheduleDiagnostics, preferenceHints.submissions]);
@@ -281,6 +290,7 @@ const SchedulePage: React.FC = () => {
     members,
     canManage,
     positionFilter,
+    restaurantTimeZone,
   });
 
   const prepareSchedule = React.useCallback(
@@ -317,16 +327,19 @@ const SchedulePage: React.FC = () => {
 
   const handleAddScheduleMember = React.useCallback(
     async (memberId: number) => {
-      if (!restaurantId || !scheduleId) return;
+      if (!restaurantId || !scheduleId || schedule?.version == null) return;
       setAddingMemberId(memberId);
       setAddMemberError(null);
       try {
-        const updated = prepareSchedule(await addScheduleMember(restaurantId, scheduleId, memberId));
+        const requestedScheduleId = scheduleId;
+        const updated = prepareSchedule(
+          await addScheduleMember(restaurantId, requestedScheduleId, memberId, schedule.version),
+        );
         const addedRow = updated.rows.find((row) => row.memberId === memberId);
         if (addedRow) {
           setSchedule((current) =>
-            current && !current.rows.some((row) => row.memberId === memberId)
-              ? { ...current, rows: [...current.rows, addedRow] }
+            current?.id === requestedScheduleId && !current.rows.some((row) => row.memberId === memberId)
+              ? { ...current, version: updated.version, rows: [...current.rows, addedRow] }
               : current,
           );
         }
@@ -339,7 +352,7 @@ const SchedulePage: React.FC = () => {
         setAddingMemberId(null);
       }
     },
-    [prepareSchedule, restaurantId, scheduleId],
+    [prepareSchedule, restaurantId, schedule?.version, scheduleId],
   );
 
   const handleScheduleOwnerUpdated = React.useCallback((updatedSchedule: ScheduleData) => {
@@ -347,8 +360,10 @@ const SchedulePage: React.FC = () => {
   }, []);
 
   const handleSavedScheduleOwnerUpdated = React.useCallback(
-    (updatedScheduleId: number, owner: ScheduleOwnerDto | null) => {
-      setSavedSchedules((prev) => prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner } : item)));
+    (updatedScheduleId: number, owner: ScheduleOwnerDto | null, version: number) => {
+      setSavedSchedules((prev) =>
+        prev.map((item) => (item.id === updatedScheduleId ? { ...item, owner, version } : item)),
+      );
     },
     [setSavedSchedules],
   );
@@ -445,6 +460,7 @@ const SchedulePage: React.FC = () => {
     restaurantId,
     canManage,
     scheduleId,
+    savedSchedules,
     prepareSchedule,
     loadShiftRequests,
     onScheduleChanged: setSchedule,
@@ -492,6 +508,7 @@ const SchedulePage: React.FC = () => {
   const autoBuildApplyActions = useScheduleAutoBuildApplyActions({
     restaurantId,
     scheduleId,
+    scheduleVersion: schedule?.version ?? null,
     prepareSchedule,
     onScheduleChanged: setSchedule,
     onSavedSchedulesChanged: setSavedSchedules,
@@ -500,10 +517,12 @@ const SchedulePage: React.FC = () => {
     onClearScheduleNotices: clearScheduleNotices,
     onScheduleMessage: setScheduleMessage,
     onScheduleError: setScheduleError,
+    onPreviewStale: autoBuildPreviewActions.clearPreview,
   });
 
   const lifecycleActions = useScheduleLifecycleActions({
     restaurantId,
+    restaurantTimeZone,
     canManage,
     schedule,
     prepareSchedule,
@@ -605,8 +624,12 @@ const SchedulePage: React.FC = () => {
   );
 
   const handleApplyAutoBuild = React.useCallback(
-    async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
-      const ok = await autoBuildApplyActions.applyAutoBuild(templateId, adjustedAssignments);
+    async (
+      templateId: number,
+      previewToken: string,
+      adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[],
+    ): Promise<boolean> => {
+      const ok = await autoBuildApplyActions.applyAutoBuild(templateId, previewToken, adjustedAssignments);
       if (ok) {
         setApplyPreferencesDialogOpen(false);
         autoBuildPreviewActions.clearPreview();
@@ -763,12 +786,14 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && showTemplatesTabContent && (
         <ScheduleBuildTemplatesSection
+          timeZone={restaurantTimeZone}
           templates={buildTemplatesActions.templates}
           loading={buildTemplatesActions.loading}
           error={buildTemplatesActions.error}
           saving={buildTemplatesActions.saving}
           deletingId={buildTemplatesActions.deletingId}
           positions={positions}
+          members={members}
           onLoad={loadBuildTemplatesIfNeeded}
           onRetry={() => void buildTemplatesActions.loadTemplates()}
           onCreate={(request) => buildTemplatesActions.createTemplate(request)}
@@ -806,6 +831,8 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && preferenceActions.preferenceViewScheduleId && (
         <SchedulePreferenceMeView
+          restaurantId={restaurantId!}
+          timeZone={restaurantTimeZone}
           data={preferenceActions.preferenceData}
           loading={preferenceActions.loading}
           saving={preferenceActions.saving}
@@ -882,10 +909,13 @@ const SchedulePage: React.FC = () => {
             />
           )}
 
-          {activeTab === "table" && scheduleReadOnly && <ScheduleHistoryBlock history={schedule.history} />}
+          {activeTab === "table" && scheduleReadOnly && (
+            <ScheduleHistoryBlock history={schedule.history} timeZone={restaurantTimeZone} />
+          )}
 
           {activeTab === "requests" && (
             <ShiftRequestsSection
+              timeZone={restaurantTimeZone}
               canManage={canManage}
               loading={shiftRequests.loading}
               error={shiftRequests.error}
@@ -946,6 +976,7 @@ const SchedulePage: React.FC = () => {
       />
 
       <SchedulePreferenceManagerDialog
+        timeZone={restaurantTimeZone}
         open={preferenceManagerActions.open}
         loading={preferenceManagerActions.loading}
         error={preferenceManagerActions.error}
@@ -958,12 +989,15 @@ const SchedulePage: React.FC = () => {
       <StartPreferenceCollectionDialog
         open={lifecycleActions.preferenceDialogOpen}
         deadline={lifecycleActions.preferenceDeadline}
+        mode={lifecycleActions.preferenceCollectionMode}
         buildTemplateId={lifecycleActions.preferenceBuildTemplateId}
         buildTemplates={buildTemplatesActions.templates}
         templatesLoading={buildTemplatesActions.loading}
         error={lifecycleActions.preferenceDeadlineError}
+        templateError={lifecycleActions.preferenceBuildTemplateError}
         saving={lifecycleActions.pendingAction === "startPreferences"}
         onDeadlineChange={lifecycleActions.setPreferenceDeadline}
+        onModeChange={lifecycleActions.setPreferenceCollectionMode}
         onBuildTemplateChange={lifecycleActions.setPreferenceBuildTemplateId}
         onLoadTemplates={loadBuildTemplatesIfNeeded}
         onClose={lifecycleActions.closePreferenceDialog}

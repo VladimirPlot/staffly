@@ -5,6 +5,7 @@ import java.util.List;
 
 public record ScheduleBuildTemplateDto(
         Long id,
+        Long version,
         String name,
         String description,
         boolean isActive,

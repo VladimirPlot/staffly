@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
@@ -11,7 +12,9 @@ import ru.staffly.user.model.User;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "schedule",
@@ -31,6 +34,10 @@ public class Schedule {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
@@ -57,16 +64,27 @@ public class Schedule {
     @Column(name = "show_full_name", nullable = false)
     private boolean showFullName;
 
-    @Column(name = "position_ids", columnDefinition = "text")
-    @Convert(converter = PositionIdsConverter.class)
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "schedule_position",
+            joinColumns = @JoinColumn(name = "schedule_id", nullable = false),
+            inverseJoinColumns = @JoinColumn(name = "position_id", nullable = false),
+            uniqueConstraints = @UniqueConstraint(
+                    name = "uq_schedule_position_schedule_position",
+                    columnNames = {"schedule_id", "position_id"}
+            ))
+    @OrderBy("id ASC")
     @Builder.Default
-    private List<Long> positionIds = new ArrayList<>();
+    private Set<Position> positions = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
     @BatchSize(size = 64)
     @Builder.Default
     private List<ScheduleRow> rows = new ArrayList<>();
+
+    @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ScheduleParticipation> participations = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_user_id")
@@ -92,9 +110,19 @@ public class Schedule {
     @Column(name = "preference_deadline")
     private Instant preferenceDeadline;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preference_collection_mode", length = 32)
+    private PreferenceCollectionMode preferenceCollectionMode;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "preference_build_template_id")
     private ScheduleBuildTemplate preferenceBuildTemplate;
+
+    @OneToMany(mappedBy = "schedule", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC, id ASC")
+    @BatchSize(size = 64)
+    @Builder.Default
+    private List<SchedulePreferenceShiftOptionSnapshot> preferenceShiftOptionSnapshots = new ArrayList<>();
 
     @Column(name = "preference_closed_at")
     private Instant preferenceClosedAt;
@@ -104,6 +132,11 @@ public class Schedule {
 
     @Column(name = "preference_all_submitted_notified_at")
     private Instant preferenceAllSubmittedNotifiedAt;
+
+    /** Notification/deduplication identity only; preference records are not versioned by this value. */
+    @Column(name = "preference_collection_cycle", nullable = false)
+    @Builder.Default
+    private long preferenceCollectionCycle = 0;
 
     @PrePersist
     void prePersist() {

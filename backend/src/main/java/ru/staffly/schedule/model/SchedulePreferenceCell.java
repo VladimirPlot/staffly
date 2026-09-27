@@ -12,6 +12,9 @@ import java.time.LocalTime;
                 @Index(name = "idx_schedule_pref_cell_submission", columnList = "submission_id"),
                 @Index(name = "idx_schedule_pref_cell_day", columnList = "day"),
                 @Index(name = "idx_schedule_pref_cell_type", columnList = "type")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_schedule_preference_cell_submission_day", columnNames = {"submission_id", "day"})
         })
 @Getter
 @Setter

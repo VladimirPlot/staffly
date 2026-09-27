@@ -1,6 +1,7 @@
 import api from "../../shared/api/apiClient";
 import type {
   ScheduleCellSource,
+  ScheduleCellShift,
   ScheduleConfig,
   ScheduleData,
   ScheduleDay,
@@ -38,6 +39,7 @@ export type ScheduleLifecycleDto = ScheduleLifecycleFields;
 
 export type ScheduleSummary = ScheduleLifecycleDto & {
   id: number;
+  version: number;
   title: string;
   startDate: string;
   endDate: string;
@@ -62,12 +64,14 @@ type ScheduleRowResponse = {
 
 type ScheduleResponse = ScheduleLifecycleDto & {
   id: number;
+  version: number;
   title: string;
   config: ScheduleConfig;
   days: ScheduleData["days"];
   rows: ScheduleRowResponse[];
   cellValues: Record<string, string>;
   cellSources?: Record<string, ScheduleCellSource>;
+  cellShifts?: Record<string, ScheduleCellShift>;
   owner?: ScheduleOwnerDto | null;
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];
@@ -78,6 +82,26 @@ export type ScheduleDto = Omit<ScheduleData, "id" | "status"> &
     id: number;
   };
 
+export type ScheduleChangeItemDto = {
+  memberId: number | null;
+  rowId: number | null;
+  memberName: string;
+  day: string;
+  oldValue: string | null;
+  newValue: string | null;
+  oldSource: ScheduleCellSource | null;
+  newSource: ScheduleCellSource | null;
+  isPastDate: boolean;
+};
+
+export type ScheduleChangeDto = {
+  changeId: number;
+  actorUserId: number;
+  actorName: string;
+  createdAt: string;
+  items: ScheduleChangeItemDto[];
+};
+
 export type AddableScheduleMember = {
   memberId: number;
   displayName: string;
@@ -85,23 +109,24 @@ export type AddableScheduleMember = {
   positionName: string;
 };
 
-export type SaveSchedulePayload = {
+type SchedulePayloadFields = {
   title: string;
   config: ScheduleConfig;
   rows: {
     memberId: number;
-    displayName: string;
-    positionId: number | null;
-    positionName: string | null;
   }[];
   cellValues: Record<string, string>;
-  cellSources?: Record<string, ScheduleCellSource>;
+  cellShifts: Record<string, ScheduleCellShift>;
 };
 
-export type CreateDraftScheduleRequest = SaveSchedulePayload;
+export type CreateSchedulePayload = SchedulePayloadFields & { ownerUserId?: number | null };
+export type UpdateSchedulePayload = SchedulePayloadFields & { version: number };
+export type CreateDraftScheduleRequest = CreateSchedulePayload;
 
 export type StartPreferenceCollectionRequest = {
+  version: number;
   preferenceDeadline: string;
+  mode: "DAY_LEVEL" | "SHIFT_OPTIONS";
   buildTemplateId?: number | null;
 };
 
@@ -149,15 +174,16 @@ export type SchedulePreferenceMyResponse = {
   endDate: string;
   days: ScheduleDay[];
   status: ScheduleStatus;
+  preferenceCollectionMode: "DAY_LEVEL" | "SHIFT_OPTIONS";
   preferenceDeadline?: string | null;
   canSubmit: boolean;
   submittedAt?: string | null;
   updatedAt?: string | null;
   revision: number;
+  preferenceCollectionCycle: number;
   member: SchedulePreferenceMemberDto;
-  allowedShiftOptions: SchedulePreferenceAllowedShiftOptionDto[];
+  allowedShiftOptionsByDate: Record<string, SchedulePreferenceAllowedShiftOptionDto[]>;
   cells: SchedulePreferenceCellDto[];
-  comment?: string | null;
   periodComment?: string | null;
 };
 
@@ -193,7 +219,6 @@ export type SchedulePreferenceSubmissionDto = {
   submittedAt?: string | null;
   updatedAt?: string | null;
   revision: number;
-  comment?: string | null;
   periodComment?: string | null;
   cells: SchedulePreferenceCellDto[];
 };
@@ -207,8 +232,8 @@ export type SchedulePreferenceSubmissionsResponse = {
 };
 
 export type UpsertMySchedulePreferenceRequest = {
+  expectedRevision: number;
   cells: SchedulePreferenceCellRequest[];
-  comment?: string | null;
   periodComment?: string | null;
 };
 export type ScheduleBuildTargetPattern = "NONE" | "TWO_TWO" | "THREE_THREE" | "FIVE_TWO";
@@ -218,8 +243,8 @@ export type ScheduleBuildShiftOptionDto = {
   startTime: string;
   endTime: string;
   label: string | null;
-  isFullShift: boolean;
   sortOrder: number;
+  markerId?: number | null;
 };
 
 export type ScheduleBuildCoverageRuleDto = {
@@ -240,25 +265,39 @@ export type ScheduleBuildCoverageDateOverrideDto = {
   requiredCount: number;
 };
 
-export type ScheduleBuildPositionConfigDto = {
+export type DayOfWeek = "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY" | "SUNDAY";
+
+export type ScheduleBuildWeekdayRegimeDto = {
   id: number;
-  positionIds: number[];
-  positionNames: string[];
-  fullShiftStart: string;
-  fullShiftEnd: string;
-  targetPattern: ScheduleBuildTargetPattern;
-  minRestHours: number | null;
-  minRestMode: ScheduleBuildMinRestMode;
-  maxShiftsPerPeriod: number | null;
-  heavyDaysOfWeek: number[];
+  daysOfWeek: DayOfWeek[];
+  workPeriodStart: string;
+  workPeriodEnd: string;
   shiftOptions: ScheduleBuildShiftOptionDto[];
   coverageRules: ScheduleBuildCoverageRuleDto[];
   coverageDateOverrides: ScheduleBuildCoverageDateOverrideDto[];
   sortOrder: number;
 };
 
+export type ScheduleBuildPositionConfigDto = {
+  id: number;
+  positionIds: number[];
+  positionNames: string[];
+  targetPattern: ScheduleBuildTargetPattern;
+  minRestHours: number | null;
+  minRestMode: ScheduleBuildMinRestMode;
+  maxShiftsPerPeriod: number | null;
+  heavyDaysOfWeek: number[];
+  weekdayRegimes: ScheduleBuildWeekdayRegimeDto[];
+  markers: ScheduleBuildMarkerDto[];
+  sortOrder: number;
+};
+
+export type ScheduleBuildMarkerDto = { id: number; name: string; memberIds: number[] };
+export type SaveScheduleBuildMarkerRequest = { id: number | null; name: string; memberIds: number[] };
+
 export type ScheduleBuildTemplateDto = {
   id: number;
+  version: number;
   name: string;
   description: string | null;
   isActive: boolean;
@@ -271,12 +310,11 @@ export type SaveScheduleBuildShiftOptionRequest = {
   startTime: string;
   endTime: string;
   label?: string | null;
-  isFullShift: boolean;
   sortOrder: number;
+  markerIndex?: number | null;
 };
 
 export type SaveScheduleBuildCoverageRuleRequest = {
-  id?: number;
   dayOfWeek: number;
   startTime: string;
   endTime: string;
@@ -290,19 +328,26 @@ export type SaveScheduleBuildCoverageDateOverrideRequest = {
   requiredCount: number;
 };
 
+export type SaveScheduleBuildWeekdayRegimeRequest = {
+  daysOfWeek: DayOfWeek[];
+  workPeriodStart: string;
+  workPeriodEnd: string;
+  shiftOptions: SaveScheduleBuildShiftOptionRequest[];
+  coverageRules: SaveScheduleBuildCoverageRuleRequest[];
+  coverageDateOverrides: SaveScheduleBuildCoverageDateOverrideRequest[];
+  sortOrder: number;
+};
+
 export type SaveScheduleBuildPositionConfigRequest = {
-  id?: number;
+  id: number | null;
   positionIds: number[];
-  fullShiftStart: string;
-  fullShiftEnd: string;
   targetPattern: ScheduleBuildTargetPattern;
   minRestHours?: number | null;
   minRestMode?: ScheduleBuildMinRestMode | null;
   maxShiftsPerPeriod?: number | null;
   heavyDaysOfWeek?: number[];
-  shiftOptions: SaveScheduleBuildShiftOptionRequest[];
-  coverageRules: SaveScheduleBuildCoverageRuleRequest[];
-  coverageDateOverrides: SaveScheduleBuildCoverageDateOverrideRequest[];
+  weekdayRegimes: SaveScheduleBuildWeekdayRegimeRequest[];
+  markers: SaveScheduleBuildMarkerRequest[];
   sortOrder: number;
 };
 
@@ -327,7 +372,9 @@ export type AdjustedScheduleAutoBuildAssignment = {
 };
 
 export type ApplyScheduleAutoBuildRequest = {
+  version: number;
   templateId: number;
+  previewToken: string;
   adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[];
 };
 
@@ -398,6 +445,7 @@ export type ScheduleAutoBuildPreviewResponse = {
   scheduleId: number;
   templateId: number;
   effectiveBuildTemplateId?: number | null;
+  previewToken: string;
   templateName: string;
   positions: ScheduleAutoBuildPositionPreviewDto[];
   warnings: string[];
@@ -413,6 +461,38 @@ export type SaveScheduleBuildTemplateRequest = {
   name: string;
   description?: string | null;
   positionConfigs: SaveScheduleBuildPositionConfigRequest[];
+  expectedVersion?: number;
+  confirmConsequences?: boolean;
+};
+
+export type ScheduleBuildTemplateScheduleAction =
+  | "NO_ACTION"
+  | "KEEP_PREFERENCES"
+  | "INVALIDATE_APPLIED_AUTO_BUILD"
+  | "RESET_PREFERENCE_COLLECTION"
+  | "PUBLISHED_UNCHANGED";
+
+export type ScheduleBuildTemplateScheduleImpact = {
+  scheduleId: number;
+  scheduleTitle: string;
+  status: ScheduleStatus;
+  action: ScheduleBuildTemplateScheduleAction;
+};
+
+export type ScheduleBuildTemplateImpactSummary = {
+  linkedScheduleCount: number;
+  noActionCount: number;
+  keepPreferencesCount: number;
+  invalidateAppliedAutoBuildCount: number;
+  resetPreferenceCollectionCount: number;
+  publishedUnchangedCount: number;
+};
+
+export type ScheduleBuildTemplateConfirmationMeta = {
+  impact: "NONE" | "NEUTRAL_METADATA" | "PLANNER_AFFECTING" | "PREFERENCE_AFFECTING";
+  schedules: ScheduleBuildTemplateScheduleImpact[];
+  summary: ScheduleBuildTemplateImpactSummary;
+  hasDestructiveConsequences: boolean;
 };
 
 function nullableTimestamp(value: string | null | undefined): string | null {
@@ -426,6 +506,7 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
     preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
     preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
     preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+    preferenceCollectionMode: data.preferenceCollectionMode ?? null,
     preferenceBuildTemplateId: data.preferenceBuildTemplateId ?? null,
   };
 }
@@ -433,6 +514,7 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
 function mapSchedule(data: ScheduleResponse): ScheduleData {
   return {
     id: data.id,
+    version: data.version,
     ...mapLifecycle(data),
     title: data.title,
     config: data.config,
@@ -446,6 +528,7 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
     })),
     cellValues: data.cellValues ?? {},
     cellSources: data.cellSources ?? {},
+    cellShifts: data.cellShifts ?? {},
     owner: data.owner ?? null,
     createdBy: data.createdBy ?? null,
     history: data.history ?? [],
@@ -472,7 +555,6 @@ function mapPreferenceMyResponse(data: SchedulePreferenceMyResponse): SchedulePr
     updatedAt: nullableTimestamp(data.updatedAt),
     days: data.days ?? [],
     cells: data.cells ?? [],
-    comment: data.comment ?? null,
   };
 }
 
@@ -498,7 +580,6 @@ function mapPreferenceSubmissionsResponse(
       ...submission,
       submittedAt: nullableTimestamp(submission.submittedAt),
       updatedAt: nullableTimestamp(submission.updatedAt),
-      comment: submission.comment ?? null,
       cells: submission.cells ?? [],
     })),
   };
@@ -514,14 +595,19 @@ function mapScheduleBuildTemplate(data: ScheduleBuildTemplateDto): ScheduleBuild
       ...config,
       positionIds: config.positionIds ?? [],
       positionNames: config.positionNames ?? [],
-      shiftOptions: config.shiftOptions ?? [],
-      coverageRules: config.coverageRules ?? [],
-      coverageDateOverrides: config.coverageDateOverrides ?? [],
+      markers: (config.markers ?? []).map((marker) => ({ ...marker, memberIds: marker.memberIds ?? [] })),
+      weekdayRegimes: (config.weekdayRegimes ?? []).map((regime) => ({
+        ...regime,
+        daysOfWeek: regime.daysOfWeek ?? [],
+        shiftOptions: regime.shiftOptions ?? [],
+        coverageRules: regime.coverageRules ?? [],
+        coverageDateOverrides: regime.coverageDateOverrides ?? [],
+      })),
     })),
   };
 }
 
-export async function createSchedule(restaurantId: number, payload: SaveSchedulePayload): Promise<ScheduleData> {
+export async function createSchedule(restaurantId: number, payload: CreateSchedulePayload): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules`, payload);
   return mapSchedule(data);
 }
@@ -529,7 +615,7 @@ export async function createSchedule(restaurantId: number, payload: SaveSchedule
 export async function updateSchedule(
   restaurantId: number,
   scheduleId: number,
-  payload: SaveSchedulePayload,
+  payload: UpdateSchedulePayload,
 ): Promise<ScheduleData> {
   const { data } = await api.put<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, payload);
   return mapSchedule(data);
@@ -549,15 +635,17 @@ export async function addScheduleMember(
   restaurantId: number,
   scheduleId: number,
   memberId: number,
+  version: number,
 ): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/rows`, {
+    version,
     memberId,
   });
   return mapSchedule(data);
 }
 
-export async function deleteSchedule(restaurantId: number, scheduleId: number): Promise<void> {
-  await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`);
+export async function deleteSchedule(restaurantId: number, scheduleId: number, version: number): Promise<void> {
+  await api.delete(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`, { params: { version } });
 }
 
 export async function listSavedSchedules(restaurantId: number): Promise<ScheduleSummary[]> {
@@ -585,16 +673,26 @@ export async function startPreferenceCollection(
   return mapSchedule(data);
 }
 
-export async function closePreferenceCollection(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+export async function closePreferenceCollection(
+  restaurantId: number,
+  scheduleId: number,
+  version: number,
+): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/close`,
+    { version },
   );
   return mapSchedule(data);
 }
 
-export async function applySchedulePreferencesSimple(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
+export async function applySchedulePreferencesSimple(
+  restaurantId: number,
+  scheduleId: number,
+  version: number,
+): Promise<ScheduleData> {
   const { data } = await api.post<ScheduleResponse>(
     `/api/restaurants/${restaurantId}/schedules/${scheduleId}/preferences/apply-simple`,
+    { version },
   );
   return mapSchedule(data);
 }
@@ -612,7 +710,8 @@ export async function previewScheduleAutoBuild(
   return {
     scheduleId: data.scheduleId,
     templateId: data.templateId,
-    effectiveBuildTemplateId: data.effectiveBuildTemplateId ?? data.templateId ?? null,
+    effectiveBuildTemplateId: data.effectiveBuildTemplateId,
+    previewToken: data.previewToken,
     templateName: data.templateName,
     positions: (data.positions ?? []).map((position: ScheduleAutoBuildPositionPreviewDto) => ({
       ...position,
@@ -652,14 +751,30 @@ export async function applyScheduleAutoBuild(
   return mapSchedule(data);
 }
 
-export async function publishSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
-  const { data } = await api.post<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`);
+export async function publishSchedule(
+  restaurantId: number,
+  scheduleId: number,
+  version: number,
+): Promise<ScheduleData> {
+  const { data } = await api.post<ScheduleResponse>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/publish`,
+    {
+      version,
+    },
+  );
   return mapSchedule(data);
 }
 
 export async function fetchSchedule(restaurantId: number, scheduleId: number): Promise<ScheduleData> {
   const { data } = await api.get<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}`);
   return mapSchedule(data);
+}
+
+export async function getScheduleChanges(restaurantId: number, scheduleId: number): Promise<ScheduleChangeDto[]> {
+  const { data } = await api.get<ScheduleChangeDto[]>(
+    `/api/restaurants/${restaurantId}/schedules/${scheduleId}/changes`,
+  );
+  return data ?? [];
 }
 
 export async function getScheduleOwnerCandidates(
@@ -676,8 +791,10 @@ export async function changeScheduleOwner(
   restaurantId: number,
   scheduleId: number,
   ownerUserId: number,
+  version: number,
 ): Promise<ScheduleData> {
   const { data } = await api.patch<ScheduleResponse>(`/api/restaurants/${restaurantId}/schedules/${scheduleId}/owner`, {
+    version,
     ownerUserId,
   });
   return mapSchedule(data);
@@ -778,16 +895,6 @@ export async function listScheduleBuildTemplates(restaurantId: number): Promise<
     `/api/restaurants/${restaurantId}/schedules/build-templates`,
   );
   return (data ?? []).map(mapScheduleBuildTemplate);
-}
-
-export async function getScheduleBuildTemplate(
-  restaurantId: number,
-  templateId: number,
-): Promise<ScheduleBuildTemplateDto> {
-  const { data } = await api.get<ScheduleBuildTemplateDto>(
-    `/api/restaurants/${restaurantId}/schedules/build-templates/${templateId}`,
-  );
-  return mapScheduleBuildTemplate(data);
 }
 
 export async function createScheduleBuildTemplate(

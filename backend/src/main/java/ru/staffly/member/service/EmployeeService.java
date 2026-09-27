@@ -14,5 +14,4 @@ public interface EmployeeService {
     List<MemberDto> listMembers(Long restaurantId, Long currentUserId);
     MemberDto updateRole(Long restaurantId, Long memberId, RestaurantRole newRole, Long currentUserId);
     MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId);
-    void removeMember(Long restaurantId, Long memberId, Long currentUserId);
 }

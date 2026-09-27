@@ -5,8 +5,7 @@ import type { ScheduleAutoBuildRejectionHintDto, SchedulePreferenceCellDto } fro
 import type {
   ScheduleCellChangeOptions,
   ScheduleCellKey,
-  ScheduleCellSource,
-  ScheduleData,
+  EditableScheduleData,
   ScheduleDay,
   SchedulePreferenceHintsByCellKey,
   ScheduleRejectionHintsByCellKey,
@@ -17,10 +16,9 @@ import { normalizeCellValue } from "../utils/cellFormatting";
 import {
   canApplyPreferenceHint,
   formatPreferenceHintTime,
-  getAutoBuildPreferenceAssignmentBadge,
+  getCellConflictSeverity,
   getPreferenceHintLabel,
   getPreferenceHintTone,
-  hasNegativePreferenceConflict,
 } from "../utils/preferenceHints";
 import {
   MINUTE_STEPS,
@@ -72,7 +70,7 @@ const scheduleZoomCss = {
 };
 
 type Props = {
-  data: ScheduleData | null | undefined;
+  data: EditableScheduleData | null | undefined;
   onChange: (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => void;
   readOnly?: boolean;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
@@ -82,13 +80,11 @@ type Props = {
   zoomScale?: number;
 };
 
-type CellValues = ScheduleData["cellValues"];
-type CellSources = NonNullable<ScheduleData["cellSources"]>;
+type CellValues = EditableScheduleData["cellValues"];
 
 const EMPTY_DAYS: ScheduleDay[] = [];
 const EMPTY_ROWS: ScheduleRow[] = [];
 const EMPTY_CELL_VALUES: CellValues = {};
-const EMPTY_CELL_SOURCES: CellSources = {};
 
 type ScheduleTableHeaderProps = {
   title: string;
@@ -99,7 +95,6 @@ type ScheduleTableRowProps = {
   row: ScheduleRow;
   days: ScheduleDay[];
   cellValues: CellValues;
-  cellSources: CellSources;
   memberShiftCount: number;
   readOnly: boolean;
   shiftMode: ShiftMode;
@@ -115,7 +110,6 @@ type ScheduleCellEditorProps = {
   memberId: number;
   day: string;
   value: string;
-  source?: ScheduleCellSource;
   shiftMode: ShiftMode;
   placeholder: string;
   readOnly: boolean;
@@ -167,7 +161,6 @@ const ScheduleTable: React.FC<Props> = ({
   const days = data?.days ?? EMPTY_DAYS;
   const rows = data?.rows ?? EMPTY_ROWS;
   const cellValues = data?.cellValues ?? EMPTY_CELL_VALUES;
-  const cellSources = data?.cellSources ?? EMPTY_CELL_SOURCES;
 
   const { memberShiftCounts, dayShiftCounts, totalShifts } = React.useMemo(() => {
     const nextMemberShiftCounts = rows.map(() => 0);
@@ -238,7 +231,6 @@ const ScheduleTable: React.FC<Props> = ({
             row={row}
             days={days}
             cellValues={cellValues}
-            cellSources={cellSources}
             memberShiftCount={memberShiftCounts[rowIndex] ?? 0}
             readOnly={readOnly}
             shiftMode={shiftMode}
@@ -375,7 +367,6 @@ const ScheduleTableRow = React.memo(
     row,
     days,
     cellValues,
-    cellSources,
     memberShiftCount,
     readOnly,
     shiftMode,
@@ -421,20 +412,20 @@ const ScheduleTableRow = React.memo(
         {days.map((day) => {
           const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
           return (
-            <ScheduleCellEditor
-              key={key}
-              memberId={row.memberId}
-              day={day.date}
-              value={cellValues[key] ?? ""}
-              source={showCellDiagnostics ? (cellSources[key] ?? "MANUAL") : undefined}
-              shiftMode={shiftMode}
-              placeholder={placeholder}
-              readOnly={readOnly}
-              onCellValueChange={onCellValueChange}
-              hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
-              rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
-              showCellDiagnostics={showCellDiagnostics}
-            />
+            <div key={key} className="border-subtle border-b border-l">
+              <ScheduleCellEditor
+                memberId={row.memberId}
+                day={day.date}
+                value={cellValues[key] ?? ""}
+                shiftMode={shiftMode}
+                placeholder={placeholder}
+                readOnly={readOnly}
+                onCellValueChange={onCellValueChange}
+                hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
+                rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
+                showCellDiagnostics={showCellDiagnostics}
+              />
+            </div>
           );
         })}
 
@@ -451,7 +442,6 @@ const ScheduleTableRow = React.memo(
       prev.shiftMode !== next.shiftMode ||
       prev.placeholder !== next.placeholder ||
       prev.onCellValueChange !== next.onCellValueChange ||
-      prev.cellSources !== next.cellSources ||
       prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey ||
       prev.preferenceCommentsByMemberId !== next.preferenceCommentsByMemberId ||
       prev.showCellDiagnostics !== next.showCellDiagnostics
@@ -461,10 +451,7 @@ const ScheduleTableRow = React.memo(
 
     return prev.days.every((day) => {
       const key: ScheduleCellKey = `${prev.row.memberId}:${day.date}`;
-      return (
-        (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "") &&
-        (prev.cellSources[key] ?? "MANUAL") === (next.cellSources[key] ?? "MANUAL")
-      );
+      return (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "");
     });
   },
 );
@@ -473,7 +460,6 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   memberId,
   day,
   value,
-  source,
   shiftMode,
   placeholder,
   readOnly,
@@ -506,37 +492,28 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   const missingEnd = shiftMode === "FULL" && hasStartWithoutEndValue(value);
   const diagnosticHints = showCellDiagnostics ? hints : undefined;
   const maxShiftHints = showCellDiagnostics ? (rejectionHints ?? []) : [];
-  const hasConflict = diagnosticHints
-    ? hasNegativePreferenceConflict({
+  const conflictSeverity = diagnosticHints
+    ? getCellConflictSeverity({
         value,
         hints: diagnosticHints,
         shiftMode,
       })
-    : false;
-  const preferenceAssignmentBadge =
-    source === "AUTO_BUILD"
-      ? getAutoBuildPreferenceAssignmentBadge({
-          value,
-          hints: diagnosticHints ?? [],
-          shiftMode,
-        })
-      : null;
+    : "NONE";
   const conflictLabel =
-    preferenceAssignmentBadge?.status === "SOFT_NEGATIVE_FALLBACK" ||
-    preferenceAssignmentBadge?.status === "HARD_NEGATIVE_FALLBACK"
-      ? preferenceAssignmentBadge.title
-      : "Заполненная смена конфликтует с пожеланием сотрудника";
+    conflictSeverity === "SOFT"
+      ? "Смена назначена несмотря на пожелание выходного"
+      : "Смена конфликтует с доступностью сотрудника";
 
   return (
     <div
       className={[
-        "border-subtle border-b border-l",
         scheduleZoomCss.cellPadding,
         "text-[max(0.7rem,calc(0.875rem*var(--schedule-zoom)))]",
-        hasConflict ? "bg-amber-50/80 ring-1 ring-amber-200 ring-inset" : "",
+        conflictSeverity === "SOFT" ? "bg-amber-50/80 ring-1 ring-amber-200 ring-inset" : "",
+        conflictSeverity === "HARD" ? "bg-red-50/80 ring-1 ring-red-200 ring-inset" : "",
       ].join(" ")}
-      title={hasConflict ? conflictLabel : undefined}
-      aria-label={hasConflict ? conflictLabel : undefined}
+      title={conflictSeverity !== "NONE" ? conflictLabel : undefined}
+      aria-label={conflictSeverity !== "NONE" ? conflictLabel : undefined}
     >
       {readOnly ? (
         <ReadonlyCell value={value} shiftMode={shiftMode} showCellDiagnostics={showCellDiagnostics} />
@@ -563,22 +540,6 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
             title={maxShiftHints.map((hint) => hint.message).join("; ")}
           >
             Лимит смен
-          </span>
-        </div>
-      )}
-      {(hasConflict || preferenceAssignmentBadge) && (
-        <div className="mt-1 flex justify-center">
-          <span
-            className={[
-              "rounded-full border font-semibold",
-              scheduleZoomCss.badgePadding,
-              scheduleZoomCss.badgeText,
-              preferenceAssignmentBadge?.className ?? "border-amber-300 bg-amber-100 text-amber-900",
-            ].join(" ")}
-            aria-label={preferenceAssignmentBadge?.title ?? conflictLabel}
-            title={preferenceAssignmentBadge?.title ?? conflictLabel}
-          >
-            {preferenceAssignmentBadge?.label ?? "Конфликт"}
           </span>
         </div>
       )}

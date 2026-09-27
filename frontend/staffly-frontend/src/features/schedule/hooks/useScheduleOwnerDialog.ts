@@ -1,17 +1,17 @@
 import React from "react";
 
 import { changeScheduleOwner, getScheduleOwnerCandidates } from "../api";
-import type { ScheduleData, ScheduleOwnerDto } from "../types";
+import type { EditableScheduleData, ScheduleData, ScheduleOwnerDto } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseScheduleOwnerDialogParams = {
   restaurantId: number | null;
   canManage: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   scheduleId: number | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   onScheduleUpdated: (schedule: ScheduleData) => void;
-  onSavedScheduleOwnerUpdated: (scheduleId: number, owner: ScheduleOwnerDto | null) => void;
+  onSavedScheduleOwnerUpdated: (scheduleId: number, owner: ScheduleOwnerDto | null, version: number) => void;
   onSuccessMessage: (message: string) => void;
   onClearScheduleError: () => void;
 };
@@ -33,10 +33,12 @@ export default function useScheduleOwnerDialog({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [selectedOwnerUserId, setSelectedOwnerUserId] = React.useState<number | null>(null);
+  const requestSequenceRef = React.useRef(0);
 
   const currentOwnerUserId = schedule?.owner?.userId ?? null;
 
   const reset = React.useCallback(() => {
+    requestSequenceRef.current += 1;
     setOpen(false);
     setCandidates([]);
     setLoading(false);
@@ -51,6 +53,7 @@ export default function useScheduleOwnerDialog({
 
   const closeDialog = React.useCallback(() => {
     if (saving) return;
+    requestSequenceRef.current += 1;
     setOpen(false);
     setCandidates([]);
     setLoading(false);
@@ -60,6 +63,7 @@ export default function useScheduleOwnerDialog({
 
   const openDialog = React.useCallback(async () => {
     if (!canManage || !restaurantId || !scheduleId) return;
+    const requestSequence = ++requestSequenceRef.current;
 
     setOpen(true);
     setCandidates([]);
@@ -68,38 +72,43 @@ export default function useScheduleOwnerDialog({
     setLoading(true);
     try {
       const nextCandidates = await getScheduleOwnerCandidates(restaurantId, scheduleId);
+      if (requestSequence !== requestSequenceRef.current) return;
       setCandidates(nextCandidates);
       const firstAvailable = nextCandidates.find(
         (candidate) => candidate.userId != null && candidate.userId !== currentOwnerUserId
       );
       setSelectedOwnerUserId(firstAvailable?.userId ?? null);
     } catch (e: unknown) {
+      if (requestSequence !== requestSequenceRef.current) return;
       setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить кандидатов для смены ответственного"));
     } finally {
-      setLoading(false);
+      if (requestSequence === requestSequenceRef.current) setLoading(false);
     }
   }, [canManage, currentOwnerUserId, restaurantId, scheduleId]);
 
   const submit = React.useCallback(async () => {
-    if (!canManage || !restaurantId || !scheduleId || selectedOwnerUserId == null) return;
+    if (!canManage || !restaurantId || !scheduleId || schedule?.version == null || selectedOwnerUserId == null) return;
     if (selectedOwnerUserId === currentOwnerUserId) return;
+    const requestSequence = ++requestSequenceRef.current;
 
     setSaving(true);
     setError(null);
     try {
-      const updated = await changeScheduleOwner(restaurantId, scheduleId, selectedOwnerUserId);
+      const updated = await changeScheduleOwner(restaurantId, scheduleId, selectedOwnerUserId, schedule.version);
+      if (requestSequence !== requestSequenceRef.current) return;
       const prepared = prepareSchedule(updated);
       onScheduleUpdated(prepared);
-      onSavedScheduleOwnerUpdated(scheduleId, prepared.owner ?? null);
+      onSavedScheduleOwnerUpdated(scheduleId, prepared.owner ?? null, prepared.version);
       onSuccessMessage("Ответственный изменён");
       onClearScheduleError();
       setOpen(false);
       setCandidates([]);
       setSelectedOwnerUserId(null);
     } catch (e: unknown) {
+      if (requestSequence !== requestSequenceRef.current) return;
       setError(getFriendlyScheduleErrorMessage(e, "Не удалось сменить ответственного"));
     } finally {
-      setSaving(false);
+      if (requestSequence === requestSequenceRef.current) setSaving(false);
     }
   }, [
     canManage,
@@ -111,6 +120,7 @@ export default function useScheduleOwnerDialog({
     prepareSchedule,
     restaurantId,
     scheduleId,
+    schedule?.version,
     selectedOwnerUserId,
   ]);
 

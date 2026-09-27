@@ -1,18 +1,19 @@
 import React from "react";
 
 import Button from "../../../shared/ui/Button";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Input from "../../../shared/ui/Input";
 import type { PositionDto } from "../../dictionaries/api";
-import type { ScheduleBuildMinRestMode, ScheduleBuildTargetPattern } from "../api";
+import type { MemberDto } from "../../employees/api";
+import type { ScheduleBuildMinRestMode } from "../api";
 import {
-  createShiftOptionDraft,
-  SCHEDULE_BUILD_TIME_STEP_SECONDS,
+  deleteWeekdayRegime,
+  splitWeekdayRegime,
   type ScheduleBuildPositionConfigDraft,
 } from "../utils/buildTemplateDraft";
-import ScheduleBuildCoverageDateOverridesEditor from "./ScheduleBuildCoverageDateOverridesEditor";
-import ScheduleBuildCoverageRulesEditor from "./ScheduleBuildCoverageRulesEditor";
-import ScheduleBuildShiftOptionsEditor from "./ScheduleBuildShiftOptionsEditor";
+import ScheduleBuildWeekdayRegimeEditor from "./ScheduleBuildWeekdayRegimeEditor";
+import ScheduleBuildMarkersEditor from "./ScheduleBuildMarkersEditor";
 
 const minRestModes: { value: ScheduleBuildMinRestMode; label: string }[] = [
   { value: "SOFT", label: "Мягко" },
@@ -29,23 +30,28 @@ const daysOfWeek = [
   { value: 7, label: "Вс" },
 ];
 
-const patterns: { value: ScheduleBuildTargetPattern; label: string }[] = [
-  { value: "NONE", label: "Без шаблона" },
-  { value: "TWO_TWO", label: "2/2" },
-  { value: "THREE_THREE", label: "3/3" },
-  { value: "FIVE_TWO", label: "5/2" },
-];
-
 type Props = {
   index: number;
   config: ScheduleBuildPositionConfigDraft;
   positions: PositionDto[];
+  members: MemberDto[];
   saving: boolean;
   onChange: (next: ScheduleBuildPositionConfigDraft) => void;
   onRemove: () => void;
+  timeZone: string;
 };
 
-const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, positions, saving, onChange, onRemove }) => {
+const ScheduleBuildPositionConfigCard: React.FC<Props> = ({
+  index,
+  config,
+  positions,
+  members,
+  saving,
+  onChange,
+  onRemove,
+  timeZone,
+}) => {
+  const [deleteRegimeIndex, setDeleteRegimeIndex] = React.useState<number | null>(null);
   const selectedPositions = positions.filter((position) => config.positionIds.includes(position.id));
   const availablePositions = positions.filter(
     (position) => position.active && !config.positionIds.includes(position.id),
@@ -77,9 +83,22 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
                   type="button"
                   disabled={saving}
                   className="text-muted-foreground hover:text-foreground"
-                  onClick={() =>
-                    onChange({ ...config, positionIds: config.positionIds.filter((id) => id !== position.id) })
-                  }
+                  onClick={() => {
+                    const nextPositionIds = config.positionIds.filter((id) => id !== position.id);
+                    const eligibleMemberIds = new Set(
+                      members
+                        .filter((member) => member.positionId != null && nextPositionIds.includes(member.positionId))
+                        .map((member) => member.id),
+                    );
+                    onChange({
+                      ...config,
+                      positionIds: nextPositionIds,
+                      markers: config.markers.map((marker) => ({
+                        ...marker,
+                        memberIds: marker.memberIds.filter((memberId) => eligibleMemberIds.has(memberId)),
+                      })),
+                    });
+                  }}
                 >
                   ×
                 </button>
@@ -106,48 +125,6 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
             </option>
           ))}
         </DropdownSelect>
-      </div>
-      <div className="space-y-2">
-        <div>
-          <div className="text-sm font-medium">Рабочий диапазон должности</div>
-          <div className="text-muted text-xs">
-            Это общий период, в рамках которого могут быть смены. Автосборка не назначает этот интервал автоматически.
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Input
-            label="С"
-            type="time"
-            step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-            value={config.fullShiftStart}
-            disabled={saving}
-            onChange={(e) => onChange({ ...config, fullShiftStart: e.target.value })}
-          />
-          <Input
-            label="По"
-            type="time"
-            step={SCHEDULE_BUILD_TIME_STEP_SECONDS}
-            value={config.fullShiftEnd}
-            disabled={saving}
-            onChange={(e) => onChange({ ...config, fullShiftEnd: e.target.value })}
-          />
-        </div>
-      </div>
-      <div className="space-y-1">
-        <DropdownSelect
-          value={config.targetPattern}
-          disabled={saving}
-          onChange={(e) => onChange({ ...config, targetPattern: e.target.value as ScheduleBuildTargetPattern })}
-        >
-          {patterns.map((pattern) => (
-            <option key={pattern.value} value={pattern.value}>
-              {pattern.label}
-            </option>
-          ))}
-        </DropdownSelect>
-        <div className="text-muted text-xs">
-          Ограничение/ориентир для будущей автосборки. Если не уверены — оставьте «Без шаблона».
-        </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Input
@@ -232,36 +209,57 @@ const ScheduleBuildPositionConfigCard: React.FC<Props> = ({ index, config, posit
         )}
       </div>
 
-      <ScheduleBuildShiftOptionsEditor
+      <ScheduleBuildMarkersEditor
         config={config}
+        members={members}
+        positions={positions}
         saving={saving}
         onChange={onChange}
-        onAdd={() => onChange({ ...config, shiftOptions: [...config.shiftOptions, createShiftOptionDraft()] })}
-        onRemove={(shiftOptionIndex) => {
-          const shiftOption = config.shiftOptions[shiftOptionIndex];
-          onChange({
-            ...config,
-            shiftOptions: config.shiftOptions.filter((_, idx) => idx !== shiftOptionIndex),
-            coverageRules: shiftOption
-              ? config.coverageRules.filter(
-                  (rule) => rule.startTime !== shiftOption.startTime || rule.endTime !== shiftOption.endTime,
-                )
-              : config.coverageRules,
-            coverageDateOverrides: config.coverageDateOverrides
-              .filter((override) => override.shiftOptionIndex !== shiftOptionIndex)
-              .map((override) => ({
-                ...override,
-                shiftOptionIndex:
-                  override.shiftOptionIndex > shiftOptionIndex
-                    ? override.shiftOptionIndex - 1
-                    : override.shiftOptionIndex,
-              })),
-          });
-        }}
       />
 
-      <ScheduleBuildCoverageRulesEditor config={config} saving={saving} onChange={onChange} />
-      <ScheduleBuildCoverageDateOverridesEditor config={config} saving={saving} onChange={onChange} />
+      <div className="space-y-4">
+        {config.weekdayRegimes.map((regime, regimeIndex) => (
+          <React.Fragment key={regime.key}>
+            {regimeIndex > 0 && <div className="border-subtle border-t" />}
+            <ScheduleBuildWeekdayRegimeEditor
+              regime={regime}
+              markers={config.markers}
+              saving={saving}
+              canDelete={regimeIndex > 0}
+              timeZone={timeZone}
+              onDaysCommit={(days) =>
+                onChange({ ...config, weekdayRegimes: splitWeekdayRegime(config.weekdayRegimes, regimeIndex, days) })
+              }
+              onChange={(next) =>
+                onChange({
+                  ...config,
+                  weekdayRegimes: config.weekdayRegimes.map((item, itemIndex) =>
+                    itemIndex === regimeIndex ? next : item,
+                  ),
+                })
+              }
+              onDelete={() => setDeleteRegimeIndex(regimeIndex)}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+      <ConfirmDialog
+        open={deleteRegimeIndex !== null}
+        title="Удалить режим?"
+        description="Настройки этого режима будут потеряны. Дни режима вернутся в основной режим."
+        confirmText="Удалить"
+        cancelText="Отмена"
+        tone="danger"
+        onCancel={() => setDeleteRegimeIndex(null)}
+        onConfirm={() => {
+          if (deleteRegimeIndex !== null)
+            onChange({
+              ...config,
+              weekdayRegimes: deleteWeekdayRegime(config.weekdayRegimes, deleteRegimeIndex),
+            });
+          setDeleteRegimeIndex(null);
+        }}
+      />
     </div>
   );
 };

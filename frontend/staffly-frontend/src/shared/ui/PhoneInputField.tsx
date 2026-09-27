@@ -102,7 +102,12 @@ function PhoneCountryDropdown({
       mobileSheetSubtitle="Выберите код страны"
       mobileSheetClassName="bg-surface/98"
       mobileBackdropClassName="bg-black/15"
-      trigger={({ onClick, "aria-expanded": ariaExpanded, "aria-haspopup": ariaHasPopup, "aria-controls": ariaControls }) => (
+      trigger={({
+        onClick,
+        "aria-expanded": ariaExpanded,
+        "aria-haspopup": ariaHasPopup,
+        "aria-controls": ariaControls,
+      }) => (
         <button
           type="button"
           aria-label="Страна номера"
@@ -123,10 +128,10 @@ function PhoneCountryDropdown({
               <span>{selectedCountry}</span>
             </span>
           ) : (
-            <span className="staffly-phone-countryValue min-w-0 flex-1 text-muted">Страна</span>
+            <span className="staffly-phone-countryValue text-muted min-w-0 flex-1">Страна</span>
           )}
 
-          <ChevronDown className="pointer-events-none h-3.5 w-3.5 shrink-0 text-muted" strokeWidth={2.5} />
+          <ChevronDown className="text-muted pointer-events-none h-3.5 w-3.5 shrink-0" strokeWidth={2.5} />
         </button>
       )}
     >
@@ -142,8 +147,8 @@ function PhoneCountryDropdown({
                 role="menuitemradio"
                 aria-checked={checked}
                 className={[
-                  "text-default hover:bg-app flex w-full items-center justify-between rounded-2xl text-left text-sm outline-none transition",
-                  isMobile ? "min-h-10 px-4 py-2.5 active:bg-app/80" : "px-3 py-2",
+                  "text-default hover:bg-app flex w-full items-center justify-between rounded-2xl text-left text-sm transition outline-none",
+                  isMobile ? "active:bg-app/80 min-h-10 px-4 py-2.5" : "px-3 py-2",
                   checked ? "bg-app" : "",
                 ].join(" ")}
                 onClick={() => {
@@ -152,7 +157,7 @@ function PhoneCountryDropdown({
                 }}
               >
                 <span className="staffly-phone-countryOption min-w-0 flex-1 truncate">{option.label}</span>
-                {checked && <Check className="ml-3 h-4 w-4 shrink-0 text-default" />}
+                {checked && <Check className="text-default ml-3 h-4 w-4 shrink-0" />}
               </button>
             );
           })}
@@ -199,11 +204,7 @@ export default function PhoneInputField({
       return;
     }
 
-    if (
-      analysis.shouldAutoSwitchCountry &&
-      analysis.selectedCountry &&
-      analysis.selectedCountry !== country
-    ) {
+    if (analysis.shouldAutoSwitchCountry && analysis.selectedCountry && analysis.selectedCountry !== country) {
       onCountryChange?.(analysis.selectedCountry, { manual: false, locked: false });
     }
   }, [analysis.selectedCountry, analysis.shouldAutoSwitchCountry, country, onCountryChange, value]);
@@ -229,8 +230,9 @@ export default function PhoneInputField({
 
     const nextAnalysis = analyzePhoneNumber(nextRawValue, effectiveCountry, !!countryLocked);
     const nextDraft = parseIncompletePhoneNumber(nextRawValue);
-    pendingCaretRef.current = caret;
-    setDisplayValue(nextAnalysis.inputValue || nextRawValue);
+    const nextDisplayValue = nextAnalysis.inputValue || nextRawValue;
+    pendingCaretRef.current = accountForInsertedCallingCode(nextRawValue, nextDisplayValue, caret);
+    setDisplayValue(nextDisplayValue);
     onChange(nextDraft || undefined);
 
     if (!nextRawValue) {
@@ -331,9 +333,7 @@ export default function PhoneInputField({
       </div>
 
       {helperText && (
-        <span className={`mt-1 block text-xs ${error ? "text-red-600" : "text-amber-600"}`}>
-          {helperText}
-        </span>
+        <span className={`mt-1 block text-xs ${error ? "text-red-600" : "text-amber-600"}`}>{helperText}</span>
       )}
     </div>
   );
@@ -364,6 +364,19 @@ function getCaretSnapshot(value: string, caret: number) {
 
 function countDigitsBeforeCaret(value: string, caret: number) {
   return value.slice(0, caret).replace(/\D/g, "").length;
+}
+
+function accountForInsertedCallingCode(
+  rawValue: string,
+  formattedValue: string,
+  caret: { digits: number; keepPlus: boolean },
+) {
+  const insertedDigits = Math.max(
+    0,
+    countDigitsBeforeCaret(formattedValue, formattedValue.length) - countDigitsBeforeCaret(rawValue, rawValue.length),
+  );
+
+  return insertedDigits ? { ...caret, digits: caret.digits + insertedDigits } : caret;
 }
 
 function findCaretPosition(value: string, caret: { digits: number; keepPlus: boolean }) {

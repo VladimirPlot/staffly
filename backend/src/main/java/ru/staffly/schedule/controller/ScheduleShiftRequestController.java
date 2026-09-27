@@ -54,7 +54,7 @@ public class ScheduleShiftRequestController {
                                            @PathVariable Long id,
                                            @AuthenticationPrincipal UserPrincipal principal,
                                            @Valid @RequestBody ShiftDecisionRequest request) {
-        return service.decideAsManager(restaurantId, id, principal.userId(), request.accepted());
+        return service.decideAsManager(restaurantId, scheduleId, id, principal.userId(), request.accepted());
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")

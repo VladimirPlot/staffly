@@ -14,6 +14,7 @@ type ScheduleRange = { start: string; end: string } | null;
 type UseScheduleAutoBuildApplyActionsParams = {
   restaurantId: number | null;
   scheduleId: number | null;
+  scheduleVersion: number | null;
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   onScheduleChanged: (schedule: ScheduleData | null) => void;
   onSavedSchedulesChanged: (items: ScheduleSummary[]) => void;
@@ -22,11 +23,13 @@ type UseScheduleAutoBuildApplyActionsParams = {
   onClearScheduleNotices: () => void;
   onScheduleMessage: (message: string) => void;
   onScheduleError: (message: string | null) => void;
+  onPreviewStale: () => void;
 };
 
 export default function useScheduleAutoBuildApplyActions({
   restaurantId,
   scheduleId,
+  scheduleVersion,
   prepareSchedule,
   onScheduleChanged,
   onSavedSchedulesChanged,
@@ -35,31 +38,56 @@ export default function useScheduleAutoBuildApplyActions({
   onClearScheduleNotices,
   onScheduleMessage,
   onScheduleError,
+  onPreviewStale,
 }: UseScheduleAutoBuildApplyActionsParams) {
   const [applying, setApplying] = React.useState(false);
+  const activeScheduleIdRef = React.useRef(scheduleId);
+  activeScheduleIdRef.current = scheduleId;
+  const activeContextRef = React.useRef(`${restaurantId}:${scheduleId}`);
+  activeContextRef.current = `${restaurantId}:${scheduleId}`;
 
   const applyAutoBuild = React.useCallback(
-    async (templateId: number, adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[]): Promise<boolean> => {
-      if (!restaurantId || !scheduleId || !templateId) return false;
+    async (
+      templateId: number,
+      previewToken: string,
+      adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[],
+    ): Promise<boolean> => {
+      if (!restaurantId || !scheduleId || scheduleVersion == null || !templateId || !previewToken) return false;
+      const requestContext = `${restaurantId}:${scheduleId}`;
       setApplying(true);
       onClearScheduleNotices();
       try {
-        const updated = await applyScheduleAutoBuild(restaurantId, scheduleId, { templateId, adjustedAssignments });
+        const updated = await applyScheduleAutoBuild(restaurantId, scheduleId, {
+          version: scheduleVersion,
+          templateId,
+          previewToken,
+          adjustedAssignments,
+        });
+        if (updated.id !== activeScheduleIdRef.current || requestContext !== activeContextRef.current) return false;
         const prepared = prepareSchedule(updated);
         onScheduleChanged(prepared);
         onScheduleReadOnlyChanged(true);
         onLastRangeChanged({ start: prepared.config.startDate, end: prepared.config.endDate });
 
         const savedList = await listSavedSchedules(restaurantId);
+        if (requestContext !== activeContextRef.current) return false;
         onSavedSchedulesChanged(savedList);
 
         onScheduleMessage("Автосборка применена. Проверьте черновик и при необходимости отредактируйте смены вручную.");
         return true;
       } catch (e: unknown) {
+        if (requestContext !== activeContextRef.current) return false;
+        if (
+          typeof e === "object" &&
+          e != null &&
+          (e as { response?: { data?: { error?: unknown } } }).response?.data?.error === "AUTO_BUILD_PREVIEW_STALE"
+        ) {
+          onPreviewStale();
+        }
         onScheduleError(getFriendlyScheduleErrorMessage(e, "Не удалось применить автосборку"));
         return false;
       } finally {
-        setApplying(false);
+        if (requestContext === activeContextRef.current) setApplying(false);
       }
     },
     [
@@ -68,11 +96,13 @@ export default function useScheduleAutoBuildApplyActions({
       onSavedSchedulesChanged,
       onScheduleChanged,
       onScheduleError,
+      onPreviewStale,
       onScheduleMessage,
       onScheduleReadOnlyChanged,
       prepareSchedule,
       restaurantId,
       scheduleId,
+      scheduleVersion,
     ],
   );
 

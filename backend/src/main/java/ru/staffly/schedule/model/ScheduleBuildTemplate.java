@@ -3,6 +3,7 @@ package ru.staffly.schedule.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.OptimisticLock;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.restaurant.model.Restaurant;
 
@@ -18,6 +19,10 @@ public class ScheduleBuildTemplate {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
@@ -42,6 +47,7 @@ public class ScheduleBuildTemplate {
     @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC, id ASC")
     @BatchSize(size = 64)
+    @OptimisticLock(excluded = true)
     @Builder.Default
     private List<ScheduleBuildPositionConfig> positionConfigs = new ArrayList<>();
 

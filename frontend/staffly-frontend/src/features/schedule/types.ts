@@ -5,10 +5,19 @@ export type ShiftMode = "ARRIVAL_ONLY" | "FULL" | "NONE";
 
 export type ScheduleCellSource = "MANUAL" | "PREFERENCE_HINT" | "AUTO_BUILD";
 
+export type ScheduleCellShift = {
+  startTime: string;
+  startDayOffset: 0 | 1;
+  endTime: string;
+  endDayOffset: 0 | 1;
+};
+
 export type ScheduleCellChangeOptions = {
   commit?: boolean;
   source?: ScheduleCellSource;
 };
+
+export type PreferenceCollectionMode = "DAY_LEVEL" | "SHIFT_OPTIONS";
 
 export type ScheduleStatus =
   | "DRAFT"
@@ -23,6 +32,7 @@ export type ScheduleLifecycleFields = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
 };
 
@@ -72,12 +82,14 @@ export type ScheduleRow = {
 };
 
 export type ScheduleData = {
-  id?: number;
+  id: number;
+  version: number;
   status?: ScheduleStatus;
   preferenceCollectionStartedAt?: string | null;
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
   title: string;
   config: ScheduleConfig;
@@ -85,10 +97,19 @@ export type ScheduleData = {
   rows: ScheduleRow[];
   cellValues: Record<string, string>;
   cellSources?: Record<string, ScheduleCellSource>;
+  cellShifts?: Record<string, ScheduleCellShift>;
   owner?: ScheduleOwnerDto | null;
   createdBy?: ScheduleCreatedByDto | null;
   history?: ScheduleAuditLogDto[];
 };
+
+export type UnsavedScheduleData = Omit<ScheduleData, "id" | "version" | "status"> & {
+  id?: undefined;
+  version?: undefined;
+  status?: ScheduleStatus;
+};
+
+export type EditableScheduleData = ScheduleData | UnsavedScheduleData;
 
 export type ScheduleCellKey = `${number}:${string}`;
 

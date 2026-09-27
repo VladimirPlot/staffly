@@ -3,9 +3,11 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 import Card from "../../../shared/ui/Card";
 import type { ScheduleAuditLogDto } from "../types";
+import { formatInstantInTimeZone } from "../utils/date";
 
 type ScheduleHistoryBlockProps = {
   history?: ScheduleAuditLogDto[] | null;
+  timeZone: string;
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -28,24 +30,12 @@ function formatScheduleAuditAction(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function getCreatedAtTime(value: string): number {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-function ScheduleHistoryEntry({ entry }: { entry: ScheduleAuditLogDto }) {
+function ScheduleHistoryEntry({ entry, timeZone }: { entry: ScheduleAuditLogDto; timeZone: string }) {
   const label = formatScheduleAuditAction(entry.action);
   const mainText = entry.details?.trim() || label;
   const actor = entry.actorDisplayName?.trim() || "Система";
@@ -55,13 +45,13 @@ function ScheduleHistoryEntry({ entry }: { entry: ScheduleAuditLogDto }) {
       <div className="text-strong font-medium">{mainText}</div>
       {entry.details?.trim() && <div className="text-muted mt-1 text-xs">{label}</div>}
       <div className="text-muted mt-1 text-xs">
-        {actor} · {formatDateTime(entry.createdAt)}
+        {actor} · {formatInstantInTimeZone(entry.createdAt, timeZone)}
       </div>
     </div>
   );
 }
 
-const ScheduleHistoryBlock: React.FC<ScheduleHistoryBlockProps> = ({ history }) => {
+const ScheduleHistoryBlock: React.FC<ScheduleHistoryBlockProps> = ({ history, timeZone }) => {
   const [showFullHistory, setShowFullHistory] = React.useState(false);
   const entries = React.useMemo(
     () => [...(history ?? [])].sort((a, b) => getCreatedAtTime(b.createdAt) - getCreatedAtTime(a.createdAt)),
@@ -97,7 +87,7 @@ const ScheduleHistoryBlock: React.FC<ScheduleHistoryBlockProps> = ({ history }) 
       </div>
       <div className="mt-3 space-y-3">
         {visibleEntries.map((entry) => (
-          <ScheduleHistoryEntry key={entry.id} entry={entry} />
+          <ScheduleHistoryEntry key={entry.id} entry={entry} timeZone={timeZone} />
         ))}
       </div>
     </Card>

@@ -2,6 +2,7 @@ package ru.staffly.schedule.dto;
 
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.PreferenceCollectionMode;
 
 import java.time.Instant;
 import java.util.List;
@@ -9,12 +10,14 @@ import java.util.Map;
 
 public record ScheduleDto(
         Long id,
+        Long version,
         String title,
         ScheduleConfigDto config,
         List<ScheduleDayDto> days,
         List<ScheduleRowDto> rows,
         Map<String, String> cellValues,
         Map<String, ScheduleCellSource> cellSources,
+        Map<String, ScheduleCellShiftDto> cellShifts,
         ScheduleOwnerDto owner,
         ScheduleCreatedByDto createdBy,
         List<ScheduleAuditLogDto> history,
@@ -23,5 +26,6 @@ public record ScheduleDto(
         Instant preferenceDeadline,
         Instant preferenceClosedAt,
         Instant preferenceAppliedAt,
+        PreferenceCollectionMode preferenceCollectionMode,
         Long preferenceBuildTemplateId
 ) {}

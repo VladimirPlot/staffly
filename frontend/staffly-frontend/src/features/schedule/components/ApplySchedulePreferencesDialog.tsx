@@ -34,6 +34,7 @@ type ApplySchedulePreferencesDialogProps = {
   onPreviewAutoBuild: (templateId: number) => Promise<boolean> | boolean;
   onApplyAutoBuild: (
     templateId: number,
+    previewToken: string,
     adjustedAssignments?: AdjustedScheduleAutoBuildAssignment[],
   ) => Promise<boolean> | void;
 };
@@ -435,7 +436,9 @@ const ApplySchedulePreferencesDialog: React.FC<ApplySchedulePreferencesDialogPro
                 onClick={() => {
                   const templateId =
                     preview?.effectiveBuildTemplateId ?? preview?.templateId ?? selectedTemplateNumericId;
-                  if (templateId) void onApplyAutoBuild(templateId, adjustedAssignments);
+                  if (templateId && preview?.previewToken) {
+                    void onApplyAutoBuild(templateId, preview.previewToken, adjustedAssignments);
+                  }
                 }}
                 disabled={!canApplyAutoBuild}
               >

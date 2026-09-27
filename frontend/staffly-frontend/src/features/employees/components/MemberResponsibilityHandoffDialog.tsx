@@ -20,6 +20,7 @@ type MemberResponsibilityHandoffDialogProps = {
   onSelect: (key: string, ownerUserId: number | null) => void;
   onClose: () => void;
   onSubmit: () => void;
+  isSelf?: boolean;
 };
 
 export function getMemberResponsibilityItemKey(type: string, resourceId: number): string {
@@ -36,6 +37,7 @@ export default function MemberResponsibilityHandoffDialog({
   onSelect,
   onClose,
   onSubmit,
+  isSelf = false,
 }: MemberResponsibilityHandoffDialogProps) {
   const groups = options?.groups ?? [];
   const items = groups.flatMap((group) => group.items);
@@ -51,7 +53,11 @@ export default function MemberResponsibilityHandoffDialog({
       open={open}
       onClose={onClose}
       title="Переназначить ответственности"
-      description="Сотрудник отвечает за активные объекты. Перед удалением выберите новых ответственных для всех объектов."
+      description={
+        isSelf
+          ? "Перед выходом передайте все объекты, за которые вы отвечаете. Для каждого объекта явно выберите нового ответственного."
+          : "Сотрудник отвечает за активные объекты. Перед удалением выберите новых ответственных для всех объектов."
+      }
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={saving}>
@@ -101,8 +107,9 @@ export default function MemberResponsibilityHandoffDialog({
 
                     {item.candidates.length === 0 ? (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                        Нет доступных кандидатов для переназначения. Добавьте подходящего участника или измените
-                        настройки объекта.
+                        {isSelf
+                          ? "Сейчас вы не можете покинуть ресторан: для этого объекта нет доступного нового ответственного."
+                          : "Нет доступных кандидатов для переназначения. Добавьте подходящего участника или измените настройки объекта."}
                       </div>
                     ) : (
                       <SelectField

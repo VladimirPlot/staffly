@@ -7,6 +7,7 @@ import java.util.List;
 
 public record ScheduleSummaryDto(
         Long id,
+        Long version,
         String title,
         String startDate,
         String endDate,

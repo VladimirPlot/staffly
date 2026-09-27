@@ -1,7 +1,7 @@
 import React from "react";
 
 import { fetchSchedule } from "../api";
-import type { ScheduleData } from "../types";
+import type { EditableScheduleData } from "../types";
 import { exportScheduleToJpeg, exportScheduleToXlsx } from "../utils/exporters";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
@@ -9,7 +9,7 @@ type DownloadingSchedule = { id: number; type: "xlsx" | "jpg" } | null;
 
 type UseScheduleExportActionsParams = {
   restaurantId: number | null;
-  currentSchedule: ScheduleData | null;
+  currentSchedule: EditableScheduleData | null;
   onError: (message: string) => void;
 };
 

@@ -8,11 +8,14 @@ import org.springframework.web.bind.annotation.*;
 import ru.staffly.schedule.dto.ChangeScheduleOwnerRequest;
 import ru.staffly.schedule.dto.AddScheduleMemberRequest;
 import ru.staffly.schedule.dto.AddableScheduleMemberDto;
-import ru.staffly.schedule.dto.SaveScheduleRequest;
+import ru.staffly.schedule.dto.CreateScheduleRequest;
+import ru.staffly.schedule.dto.UpdateScheduleRequest;
 import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.schedule.dto.ScheduleOwnerDto;
 import ru.staffly.schedule.dto.ScheduleSummaryDto;
 import ru.staffly.schedule.dto.StartPreferenceCollectionRequest;
+import ru.staffly.schedule.dto.ScheduleVersionRequest;
+import ru.staffly.schedule.dto.ScheduleChangeDto;
 import ru.staffly.schedule.service.ScheduleOwnershipService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.security.UserPrincipal;
@@ -31,7 +34,7 @@ public class ScheduleController {
     @PostMapping("/schedules")
     public ScheduleDto create(@PathVariable Long restaurantId,
                               @AuthenticationPrincipal UserPrincipal principal,
-                              @Valid @RequestBody SaveScheduleRequest request) {
+                              @Valid @RequestBody CreateScheduleRequest request) {
         return schedules.create(restaurantId, principal.userId(), request);
     }
 
@@ -39,7 +42,7 @@ public class ScheduleController {
     @PostMapping("/schedules/drafts")
     public ScheduleDto createDraft(@PathVariable Long restaurantId,
                                    @AuthenticationPrincipal UserPrincipal principal,
-                                   @Valid @RequestBody SaveScheduleRequest request) {
+                                   @Valid @RequestBody CreateScheduleRequest request) {
         return schedules.createDraft(restaurantId, principal.userId(), request);
     }
 
@@ -63,8 +66,16 @@ public class ScheduleController {
     public ScheduleDto update(@PathVariable Long restaurantId,
                               @PathVariable Long scheduleId,
                               @AuthenticationPrincipal UserPrincipal principal,
-                              @Valid @RequestBody SaveScheduleRequest request) {
+                              @Valid @RequestBody UpdateScheduleRequest request) {
         return schedules.update(restaurantId, scheduleId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/schedules/{scheduleId}/changes")
+    public List<ScheduleChangeDto> getChanges(@PathVariable Long restaurantId,
+                                              @PathVariable Long scheduleId,
+                                              @AuthenticationPrincipal UserPrincipal principal) {
+        return schedules.getChanges(restaurantId, scheduleId, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -81,7 +92,7 @@ public class ScheduleController {
                                  @PathVariable Long scheduleId,
                                  @AuthenticationPrincipal UserPrincipal principal,
                                  @Valid @RequestBody AddScheduleMemberRequest request) {
-        return schedules.addMember(restaurantId, scheduleId, principal.userId(), request.memberId());
+        return schedules.addMember(restaurantId, scheduleId, principal.userId(), request.version(), request.memberId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -97,24 +108,27 @@ public class ScheduleController {
     @PostMapping("/schedules/{scheduleId}/preferences/close")
     public ScheduleDto closePreferenceCollection(@PathVariable Long restaurantId,
                                                  @PathVariable Long scheduleId,
-                                                 @AuthenticationPrincipal UserPrincipal principal) {
-        return schedules.closePreferenceCollection(restaurantId, scheduleId, principal.userId());
+                                                 @AuthenticationPrincipal UserPrincipal principal,
+                                                 @Valid @RequestBody ScheduleVersionRequest request) {
+        return schedules.closePreferenceCollection(restaurantId, scheduleId, principal.userId(), request.version());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/schedules/{scheduleId}/preferences/apply-simple")
     public ScheduleDto applyPreferencesSimple(@PathVariable Long restaurantId,
                                               @PathVariable Long scheduleId,
-                                              @AuthenticationPrincipal UserPrincipal principal) {
-        return schedules.applyPreferencesSimple(restaurantId, scheduleId, principal.userId());
+                                              @AuthenticationPrincipal UserPrincipal principal,
+                                              @Valid @RequestBody ScheduleVersionRequest request) {
+        return schedules.applyPreferencesSimple(restaurantId, scheduleId, principal.userId(), request.version());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/schedules/{scheduleId}/publish")
     public ScheduleDto publish(@PathVariable Long restaurantId,
                                @PathVariable Long scheduleId,
-                               @AuthenticationPrincipal UserPrincipal principal) {
-        return schedules.publish(restaurantId, scheduleId, principal.userId());
+                               @AuthenticationPrincipal UserPrincipal principal,
+                               @Valid @RequestBody ScheduleVersionRequest request) {
+        return schedules.publish(restaurantId, scheduleId, principal.userId(), request.version());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -131,7 +145,9 @@ public class ScheduleController {
                                    @PathVariable Long scheduleId,
                                    @AuthenticationPrincipal UserPrincipal principal,
                                    @Valid @RequestBody ChangeScheduleOwnerRequest request) {
-        scheduleOwnershipService.changeOwner(restaurantId, principal.userId(), scheduleId, request.ownerUserId());
+        scheduleOwnershipService.changeOwner(
+                restaurantId, principal.userId(), scheduleId, request.version(), request.ownerUserId()
+        );
         return schedules.get(restaurantId, scheduleId, principal.userId());
     }
 
@@ -140,7 +156,8 @@ public class ScheduleController {
     @DeleteMapping("/schedules/{scheduleId}")
     public void delete(@PathVariable Long restaurantId,
                        @PathVariable Long scheduleId,
-                       @AuthenticationPrincipal UserPrincipal principal) {
-        schedules.delete(restaurantId, scheduleId, principal.userId());
+                       @AuthenticationPrincipal UserPrincipal principal,
+                       @RequestParam Long version) {
+        schedules.delete(restaurantId, scheduleId, principal.userId(), version);
     }
 }

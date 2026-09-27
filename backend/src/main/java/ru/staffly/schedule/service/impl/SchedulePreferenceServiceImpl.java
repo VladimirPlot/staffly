@@ -12,8 +12,10 @@ import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.dto.*;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
 import ru.staffly.schedule.model.*;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.SchedulePreferenceService;
@@ -38,10 +40,10 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private static final int MAX_CELLS_PER_DAY = 8;
     private static final int MAX_PERIOD_COMMENT_LENGTH = 1000;
     private static final int MAX_CELL_NOTE_LENGTH = 500;
-    private static final LocalTime END_OF_DAY_TIME = LocalTime.MIDNIGHT;
 
     private final ScheduleRepository schedules;
     private final SchedulePreferenceSubmissionRepository submissions;
+    private final ScheduleParticipationRepository participations;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -58,25 +60,32 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             throw new BadRequestException("Пожелания доступны только в режиме сбора или после закрытия сбора");
         }
-        RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
+        ScheduleParticipation participation = loadParticipation(restaurantId, schedule, userId);
+        RestaurantMember member = participation.getMember();
         SchedulePreferenceSubmission submission = submissions.findWithCellsByScheduleIdAndMemberId(scheduleId, member.getId()).orElse(null);
-        return toMyResponse(schedule, member, submission);
+        return toMyResponse(schedule, participation, submission);
     }
 
     @Override
     public SchedulePreferenceMyResponse upsertMyPreference(Long restaurantId, Long scheduleId, Long userId, UpsertMySchedulePreferenceRequest request) {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
-        Schedule schedule = loadSchedule(restaurantId, scheduleId);
+        // The Schedule row is the mutex for the whole preference collection cycle.
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         Instant now = TimeProvider.now();
         if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES) {
-            throw new BadRequestException("Отправить пожелания можно только во время сбора пожеланий");
+            throw new ScheduleDomainConflictException(
+                    "SCHEDULE_PREFERENCE_COLLECTION_CLOSED",
+                    "Сбор пожеланий уже закрыт. Обновите график."
+            );
         }
         if (schedule.getPreferenceDeadline() == null || !now.isBefore(schedule.getPreferenceDeadline())) {
             throw new BadRequestException("Срок отправки пожеланий истёк");
         }
-        RestaurantMember member = loadEligibleMember(restaurantId, schedule, userId);
-        List<SchedulePreferenceCell> cells = buildCells(schedule, member, request == null ? null : request.cells());
-        String comment = normalizeText(request == null ? null : firstNonBlank(request.periodComment(), request.comment()), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
+        ScheduleParticipation participation = loadParticipation(restaurantId, schedule, userId);
+        RestaurantMember member = participation.getMember();
+        List<SchedulePreferenceCell> cells = buildCells(schedule, participation.getPositionId(), request == null ? null : request.cells());
+        String periodComment = normalizeText(request == null ? null : request.periodComment(), MAX_PERIOD_COMMENT_LENGTH, "periodComment");
 
         SchedulePreferenceSubmission submission = submissions.findForUpdateByScheduleIdAndMemberId(scheduleId, member.getId())
                 .orElseGet(() -> SchedulePreferenceSubmission.builder()
@@ -86,39 +95,71 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                         .revision(0)
                         .build());
 
+        int currentRevision = submission.getId() == null ? 0 : submission.getRevision();
+        if (!Objects.equals(request.expectedRevision(), currentRevision)) {
+            throw new ScheduleDomainConflictException(
+                    "SCHEDULE_PREFERENCE_REVISION_CONFLICT",
+                    "Пожелания были изменены в другой сессии. Обновите данные и повторите изменения."
+            );
+        }
+
         if (submission.getId() == null) {
             submission.setRevision(1);
         } else {
             submission.setRevision(submission.getRevision() + 1);
         }
         submission.setUserId(member.getUser() == null ? null : member.getUser().getId());
-        submission.setPositionId(member.getPosition() == null ? null : member.getPosition().getId());
-        submission.setPositionName(member.getPosition() == null ? null : member.getPosition().getName());
+        submission.setPositionId(participation.getPositionId());
+        submission.setPositionName(participation.getPositionName());
         submission.setSubmittedAt(now);
         submission.setUpdatedAt(now);
-        submission.setPeriodComment(comment);
-        submission.getCells().clear();
-        for (SchedulePreferenceCell cell : cells) {
-            cell.setSubmission(submission);
-            submission.getCells().add(cell);
-        }
+        submission.setPeriodComment(periodComment);
+        mergeCellsByDay(submission, cells);
 
-        SchedulePreferenceSubmission saved = submissions.save(submission);
-        notifyManagersIfAllSubmitted(schedule, now);
-        return toMyResponse(schedule, member, saved);
+        SchedulePreferenceSubmission saved = submissions.saveAndFlush(submission);
+        notifyOwnerIfAllSubmitted(schedule, now, userId);
+        // Preference submissions are children of the locked Schedule aggregate;
+        // invalidate Schedule-versioned clients even when this is not the last submission.
+        schedule.setUpdatedAt(now);
+        schedules.flush();
+        return toMyResponse(schedule, participation, saved);
     }
 
-    private void notifyManagersIfAllSubmitted(Schedule schedule, Instant now) {
+    void mergeCellsByDay(SchedulePreferenceSubmission submission, List<SchedulePreferenceCell> requestedCells) {
+        Map<LocalDate, SchedulePreferenceCell> existingByDay = submission.getCells().stream()
+                .collect(Collectors.toMap(SchedulePreferenceCell::getDay, Function.identity()));
+        Set<LocalDate> requestedDays = requestedCells.stream()
+                .map(SchedulePreferenceCell::getDay)
+                .collect(Collectors.toSet());
+
+        submission.getCells().removeIf(existing -> !requestedDays.contains(existing.getDay()));
+        for (SchedulePreferenceCell requested : requestedCells) {
+            SchedulePreferenceCell existing = existingByDay.get(requested.getDay());
+            if (existing == null) {
+                requested.setSubmission(submission);
+                submission.getCells().add(requested);
+                continue;
+            }
+            existing.setType(requested.getType());
+            existing.setFullDay(requested.isFullDay());
+            existing.setStartTime(requested.getStartTime());
+            existing.setEndTime(requested.getEndTime());
+            existing.setNote(requested.getNote());
+            existing.setSortOrder(requested.getSortOrder());
+        }
+    }
+
+    private void notifyOwnerIfAllSubmitted(Schedule schedule, Instant now, Long actorUserId) {
         if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
                 || schedule.getPreferenceAllSubmittedNotifiedAt() != null) {
             return;
         }
-        List<RestaurantMember> participants = loadParticipants(schedule.getRestaurant().getId(), schedule);
+        List<ScheduleParticipation> participants = loadParticipations(schedule);
         int totalParticipants = participants.size();
         if (totalParticipants <= 0) {
             return;
         }
-        Set<Long> participantIds = participants.stream().map(RestaurantMember::getId).collect(Collectors.toSet());
+        Set<Long> participantIds = participants.stream().map(value -> value.getMember().getId()).collect(Collectors.toSet());
         long submittedCount = submissions.findByScheduleIdWithMember(schedule.getId()).stream()
                 .map(SchedulePreferenceSubmission::getMember)
                 .filter(Objects::nonNull)
@@ -130,25 +171,20 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
             return;
         }
 
-        LinkedHashSet<Long> managerUserIds = new LinkedHashSet<>();
-        if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
-            managerUserIds.add(schedule.getOwnerUser().getId());
-        }
-        if (schedule.getCreatedByUser() != null && schedule.getCreatedByUser().getId() != null) {
-            managerUserIds.add(schedule.getCreatedByUser().getId());
-        }
-        if (managerUserIds.isEmpty()) {
+        Long ownerUserId = schedule.getOwnerUser() == null ? null : schedule.getOwnerUser().getId();
+        if (ownerUserId == null || Objects.equals(ownerUserId, actorUserId)) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
         }
-        List<RestaurantMember> managerTargets = deduplicateMembersByUserId(
-                members.findByRestaurantIdAndUserIdIn(schedule.getRestaurant().getId(), managerUserIds)
-        );
-        if (managerTargets.isEmpty()) {
+        RestaurantMember owner = schedule.getOwnerMember();
+        if (owner == null || owner.getUser() == null || !Objects.equals(owner.getUser().getId(), ownerUserId)) {
+            owner = members.findByUserIdAndRestaurantId(ownerUserId, schedule.getRestaurant().getId()).orElse(null);
+        }
+        if (owner == null || owner.getUser() == null) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
             return;
         }
-        User creator = users.findById(managerUserIds.iterator().next()).orElse(null);
+        User creator = users.findById(actorUserId).orElse(null);
         String content = "Все сотрудники отправили пожелания по графику «" + schedule.getTitle()
                 + "» за период " + schedule.getStartDate() + " — " + schedule.getEndDate() + ".";
         inboxMessages.createEvent(
@@ -156,11 +192,16 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 creator,
                 content,
                 InboxEventSubtype.SCHEDULE_PREFERENCES,
-                "schedulePreferences:allSubmitted:restaurant:" + schedule.getRestaurant().getId() + ":schedule:" + schedule.getId(),
-                managerTargets,
-                schedule.getEndDate()
+                allSubmittedMeta(schedule),
+                List.of(owner),
+                null
         );
         schedule.setPreferenceAllSubmittedNotifiedAt(now);
+    }
+
+    static String allSubmittedMeta(Schedule schedule) {
+        return "schedulePreferences:allSubmitted:restaurant:" + schedule.getRestaurant().getId()
+                + ":schedule:" + schedule.getId() + ":cycle:" + schedule.getPreferenceCollectionCycle();
     }
 
 
@@ -184,15 +225,15 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         Schedule schedule = loadSchedule(restaurantId, scheduleId);
-        List<RestaurantMember> participants = loadParticipants(restaurantId, schedule);
+        List<ScheduleParticipation> participants = loadParticipations(schedule);
         Map<Long, SchedulePreferenceSubmission> byMemberId = submissions.findWithCellsByScheduleId(scheduleId).stream()
                 .collect(Collectors.toMap(s -> s.getMember().getId(), Function.identity(), (a, b) -> a));
 
         List<SchedulePreferenceParticipantDto> participantDtos = participants.stream()
-                .sorted(Comparator.comparing(this::displayName, Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
-                .map(member -> {
-                    SchedulePreferenceSubmission submission = byMemberId.get(member.getId());
-                    return toParticipantDto(member, submission);
+                .sorted(Comparator.comparing(value -> displayName(value.getMember()), Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
+                .map(participation -> {
+                    SchedulePreferenceSubmission submission = byMemberId.get(participation.getMember().getId());
+                    return toParticipantDto(participation, submission);
                 })
                 .toList();
         long submittedCount = participantDtos.stream().filter(SchedulePreferenceParticipantDto::submitted).count();
@@ -232,114 +273,88 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
     }
 
-    private RestaurantMember loadEligibleMember(Long restaurantId, Schedule schedule, Long userId) {
+    private ScheduleParticipation loadParticipation(Long restaurantId, Schedule schedule, Long userId) {
         RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
-        if (schedule.getPositionIds() == null
-                || member.getPosition() == null
-                || !schedule.getPositionIds().contains(member.getPosition().getId())) {
-            throw new ForbiddenException("Должность сотрудника не входит в позиции графика");
-        }
-        return member;
+        return participations.findByScheduleIdAndMemberId(schedule.getId(), member.getId())
+                .orElseThrow(() -> new ForbiddenException("Сотрудник не участвует в этом графике"));
     }
 
 
-    private List<RestaurantMember> loadParticipants(Long restaurantId, Schedule schedule) {
-        if (schedule.getPositionIds() == null || schedule.getPositionIds().isEmpty()) {
-            return List.of();
-        }
-        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(restaurantId, schedule.getPositionIds());
+    private List<ScheduleParticipation> loadParticipations(Schedule schedule) {
+        return participations.findByScheduleIdOrderById(schedule.getId());
     }
 
-    private List<SchedulePreferenceCell> buildCells(Schedule schedule, RestaurantMember member, List<SchedulePreferenceCellRequest> requests) {
+    List<SchedulePreferenceCell> buildCells(Schedule schedule, Long participationPositionId, List<SchedulePreferenceCellRequest> requests) {
         List<SchedulePreferenceCellRequest> safeRequests = requests == null ? List.of() : requests;
         long daysCount = schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).count();
         int maxCells = Math.toIntExact(daysCount * MAX_CELLS_PER_DAY);
         if (safeRequests.size() > maxCells) {
             throw new BadRequestException("Too many preference cells");
         }
+        if (schedule.getPreferenceCollectionMode() == null) {
+            throw new BadRequestException("Способ сбора пожеланий не настроен");
+        }
 
-        Set<CellKey> seen = new HashSet<>();
+        Set<LocalDate> seenDays = new HashSet<>();
         List<SchedulePreferenceCell> cells = new ArrayList<>(safeRequests.size());
         for (int i = 0; i < safeRequests.size(); i++) {
             SchedulePreferenceCellRequest request = safeRequests.get(i);
-            if (request == null) {
-                throw new BadRequestException("cells[" + i + "] is required");
-            }
+            if (request == null) throw new BadRequestException("cells[" + i + "] is required");
             LocalDate day = parseDay(request.day(), i);
+            if (!seenDays.add(day)) throw new BadRequestException("На один день можно указать только одно пожелание");
             if (day.isBefore(schedule.getStartDate()) || day.isAfter(schedule.getEndDate())) {
                 throw new BadRequestException("cells[" + i + "].day must be inside schedule range");
             }
-            if (request.type() == null) {
-                throw new BadRequestException("cells[" + i + "].type is required");
-            }
-            if (request.fullDay() == null) {
-                throw new BadRequestException("cells[" + i + "].fullDay is required");
-            }
+            if (request.type() == null) throw new BadRequestException("cells[" + i + "].type is required");
+            if (request.fullDay() == null) throw new BadRequestException("cells[" + i + "].fullDay is required");
+
             boolean fullDay = request.fullDay();
             LocalTime startTime = null;
             LocalTime endTime = null;
             if (fullDay) {
                 if (!isBlank(request.startTime()) || !isBlank(request.endTime())) {
-                    throw new BadRequestException("Full-day preference cannot have startTime or endTime");
+                    throw new BadRequestException("Пожелание на весь день не может содержать время");
                 }
             } else {
+                if (request.type() != SchedulePreferenceType.AVAILABLE) {
+                    throw new BadRequestException("Время можно указать только для пожелания «Могу работать»");
+                }
+                if (schedule.getPreferenceCollectionMode() != PreferenceCollectionMode.SHIFT_OPTIONS) {
+                    throw new BadRequestException("В этом сборе пожеланий нельзя выбирать время");
+                }
                 startTime = parseTime(request.startTime(), "cells[" + i + "].startTime");
                 endTime = parseTime(request.endTime(), "cells[" + i + "].endTime");
-                if (!isValidPreferenceInterval(startTime, endTime)) {
-                    throw new BadRequestException("cells[" + i + "].startTime must be before endTime");
+                if (startTime.equals(endTime) || !isApplicableSnapshot(schedule, participationPositionId, day, startTime, endTime)) {
+                    throw unavailablePreferenceInterval(startTime, endTime);
                 }
-                if (!isAllowedShiftOption(schedule, member, startTime, endTime)) {
-                    throw new BadRequestException("cells[" + i + "] interval is not available for member position");
-                }
-            }
-            CellKey key = new CellKey(day, request.type(), fullDay, startTime, endTime);
-            if (!seen.add(key)) {
-                throw new BadRequestException("Duplicate preference cell");
             }
             cells.add(SchedulePreferenceCell.builder()
-                    .day(day)
-                    .type(request.type())
-                    .fullDay(fullDay)
-                    .startTime(startTime)
-                    .endTime(endTime)
+                    .day(day).type(request.type()).fullDay(fullDay)
+                    .startTime(startTime).endTime(endTime)
                     .note(normalizeText(request.note(), MAX_CELL_NOTE_LENGTH, "cells[" + i + "].note"))
-                    .sortOrder(i)
-                    .build());
+                    .sortOrder(i).build());
         }
         return cells;
     }
 
-    private boolean isAllowedShiftOption(Schedule schedule,
-                                         RestaurantMember member,
-                                         LocalTime startTime,
-                                         LocalTime endTime) {
-        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
-        if (template == null) {
-            return true;
-        }
-        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
-        if (positionId == null) {
-            return false;
-        }
-        return template.getPositionConfigs().stream()
-                .filter(config -> configPositionIds(config).contains(positionId))
-                .findFirst()
-                .map(config -> config.getShiftOptions().stream()
-                        .anyMatch(option -> Objects.equals(option.getStartTime(), startTime)
-                                && Objects.equals(option.getEndTime(), endTime)))
-                .orElse(false);
+    private boolean isApplicableSnapshot(Schedule schedule, Long positionId, LocalDate businessDate,
+                                         LocalTime startTime, LocalTime endTime) {
+        return positionId != null && schedule.getPreferenceShiftOptionSnapshots().stream()
+                .anyMatch(option -> option.getPositionIds().contains(positionId)
+                        && option.getDaysOfWeek().contains(businessDate.getDayOfWeek())
+                        && option.getStartTime().equals(startTime)
+                        && option.getEndTime().equals(endTime));
     }
 
-    private List<Long> configPositionIds(ScheduleBuildPositionConfig config) {
-        return config.getPositions() == null ? List.of() : config.getPositions().stream()
-                .map(position -> position.getId())
-                .filter(Objects::nonNull)
-                .sorted()
-                .toList();
+    private BadRequestException unavailablePreferenceInterval(LocalTime startTime, LocalTime endTime) {
+        return new BadRequestException("Выбранный интервал " + startTime + "–" + endTime
+                + " недоступен для этого рабочего дня");
     }
 
-    private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, RestaurantMember member, SchedulePreferenceSubmission submission) {
+
+    private SchedulePreferenceMyResponse toMyResponse(Schedule schedule, ScheduleParticipation participation, SchedulePreferenceSubmission submission) {
+        RestaurantMember member = participation.getMember();
         return new SchedulePreferenceMyResponse(
                 schedule.getId(),
                 schedule.getTitle(),
@@ -347,42 +362,37 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 schedule.getEndDate().toString(),
                 collectDays(schedule.getStartDate(), schedule.getEndDate()).stream().map(this::toDayDto).toList(),
                 schedule.getStatus(),
+                schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceDeadline(),
                 canSubmit(schedule),
                 submission == null ? null : submission.getSubmittedAt(),
                 submission == null ? null : submission.getUpdatedAt(),
                 submission == null ? 0 : submission.getRevision(),
-                toMemberDto(member),
-                allowedShiftOptions(schedule, member),
+                schedule.getPreferenceCollectionCycle(),
+                toMemberDto(participation),
+                allowedShiftOptionsByDate(schedule, participation.getPositionId()),
                 submission == null ? List.of() : toCellDtos(submission.getCells()),
-                submission == null ? null : submission.getPeriodComment(),
                 submission == null ? null : submission.getPeriodComment()
         );
     }
 
-    private List<SchedulePreferenceAllowedShiftOptionDto> allowedShiftOptions(Schedule schedule, RestaurantMember member) {
-        ScheduleBuildTemplate template = schedule.getPreferenceBuildTemplate();
-        Long positionId = member.getPosition() == null ? null : member.getPosition().getId();
-        if (template == null || positionId == null) {
-            return List.of();
+    Map<String, List<SchedulePreferenceAllowedShiftOptionDto>> allowedShiftOptionsByDate(
+            Schedule schedule, Long positionId) {
+        if (schedule.getPreferenceCollectionMode() != PreferenceCollectionMode.SHIFT_OPTIONS || positionId == null) {
+            return Map.of();
         }
-        return template.getPositionConfigs().stream()
-                .filter(config -> configPositionIds(config).contains(positionId))
-                .findFirst()
-                .map(config -> config.getShiftOptions().stream()
-                        .sorted(Comparator.comparing(
-                                        ScheduleBuildShiftOption::getSortOrder,
-                                        Comparator.nullsLast(Integer::compareTo)
-                                )
-                                .thenComparing(option -> option.getId() == null ? Long.MAX_VALUE : option.getId()))
+        Map<String, List<SchedulePreferenceAllowedShiftOptionDto>> result = new LinkedHashMap<>();
+        schedule.getStartDate().datesUntil(schedule.getEndDate().plusDays(1)).forEach(businessDate ->
+                result.put(businessDate.toString(), schedule.getPreferenceShiftOptionSnapshots().stream()
+                        .filter(option -> option.getPositionIds().contains(positionId)
+                                && option.getDaysOfWeek().contains(businessDate.getDayOfWeek()))
+                        .sorted(Comparator.comparing(SchedulePreferenceShiftOptionSnapshot::getSortOrder)
+                                .thenComparing(SchedulePreferenceShiftOptionSnapshot::getId,
+                                        Comparator.nullsLast(Long::compareTo)))
                         .map(option -> new SchedulePreferenceAllowedShiftOptionDto(
-                                option.getId(),
-                                option.getLabel(),
-                                option.getStartTime(),
-                                option.getEndTime()
-                        ))
-                        .toList())
-                .orElseGet(List::of);
+                                option.getSourceShiftOptionId(), option.getLabel(), option.getStartTime(), option.getEndTime()))
+                        .toList()));
+        return result;
     }
 
     private boolean canSubmit(Schedule schedule) {
@@ -391,13 +401,14 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
                 && TimeProvider.now().isBefore(schedule.getPreferenceDeadline());
     }
 
-    private SchedulePreferenceParticipantDto toParticipantDto(RestaurantMember member, SchedulePreferenceSubmission submission) {
+    private SchedulePreferenceParticipantDto toParticipantDto(ScheduleParticipation participation, SchedulePreferenceSubmission submission) {
+        RestaurantMember member = participation.getMember();
         return new SchedulePreferenceParticipantDto(
                 member.getId(),
                 member.getUser() == null ? null : member.getUser().getId(),
                 displayName(member),
-                member.getPosition() == null ? null : member.getPosition().getId(),
-                member.getPosition() == null ? null : member.getPosition().getName(),
+                participation.getPositionId(),
+                participation.getPositionName(),
                 submission != null,
                 submission == null ? null : submission.getSubmittedAt(),
                 submission == null ? null : submission.getUpdatedAt(),
@@ -409,26 +420,33 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     private SchedulePreferenceSubmissionDto toSubmissionDto(SchedulePreferenceSubmission submission) {
         return new SchedulePreferenceSubmissionDto(
                 submission.getId(),
-                toMemberDto(submission.getMember()),
+                toMemberDto(submission),
                 submission.getPositionId(),
                 submission.getPositionName(),
                 submission.getSubmittedAt(),
                 submission.getUpdatedAt(),
                 submission.getRevision(),
                 submission.getPeriodComment(),
-                submission.getPeriodComment(),
                 toCellDtos(submission.getCells())
         );
     }
 
-    private SchedulePreferenceMemberDto toMemberDto(RestaurantMember member) {
+    private SchedulePreferenceMemberDto toMemberDto(ScheduleParticipation participation) {
+        RestaurantMember member = participation.getMember();
         return new SchedulePreferenceMemberDto(
                 member.getId(),
                 member.getUser() == null ? null : member.getUser().getId(),
                 displayName(member),
-                member.getPosition() == null ? null : member.getPosition().getId(),
-                member.getPosition() == null ? null : member.getPosition().getName()
+                participation.getPositionId(),
+                participation.getPositionName()
         );
+    }
+
+    private SchedulePreferenceMemberDto toMemberDto(SchedulePreferenceSubmission submission) {
+        RestaurantMember member = submission.getMember();
+        return new SchedulePreferenceMemberDto(member.getId(),
+                member.getUser() == null ? null : member.getUser().getId(), displayName(member),
+                submission.getPositionId(), submission.getPositionName());
     }
 
     private List<SchedulePreferenceCellDto> toCellDtos(List<SchedulePreferenceCell> cells) {
@@ -494,10 +512,6 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
     }
 
-    private String firstNonBlank(String first, String fallback) {
-        return isBlank(first) ? fallback : first;
-    }
-
     private String normalizeText(String value, int maxLength, String fieldName) {
         String normalized = trimToNull(value);
         if (normalized != null && normalized.length() > maxLength) {
@@ -516,15 +530,4 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         return value == null || value.isBlank();
     }
 
-    private boolean isValidPreferenceInterval(LocalTime startTime, LocalTime endTime) {
-        if (startTime.equals(endTime)) {
-            return false;
-        }
-        if (startTime.isBefore(endTime)) {
-            return true;
-        }
-        return endTime.equals(END_OF_DAY_TIME);
-    }
-
-    private record CellKey(LocalDate day, SchedulePreferenceType type, boolean fullDay, LocalTime startTime, LocalTime endTime) {}
 }

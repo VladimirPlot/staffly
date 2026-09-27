@@ -5,6 +5,7 @@ import ru.staffly.inbox.model.InboxMessageType;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Map;
 
 public record InboxMessageDto(
         Long id,
@@ -14,6 +15,7 @@ public record InboxMessageDto(
         LocalDate expiresAt,
         Instant createdAt,
         InboxAuthorDto createdBy,
+        Map<String, Object> metadata,
         boolean isRead,
         boolean isHidden,
         boolean isExpired

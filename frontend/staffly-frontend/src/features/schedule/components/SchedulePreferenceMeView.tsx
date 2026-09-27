@@ -1,79 +1,79 @@
 import React from "react";
+import { Info } from "lucide-react";
 
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
+import Modal from "../../../shared/ui/Modal";
 import { formatDateFromIso } from "../../../shared/utils/date";
 import type {
-  SchedulePreferenceCellRequest,
+  SchedulePreferenceAllowedShiftOptionDto,
   SchedulePreferenceMyResponse,
   SchedulePreferenceType,
   UpsertMySchedulePreferenceRequest,
 } from "../api";
+import {
+  buildPreferenceCellsRequest,
+  canAutosaveSchedulePreferenceDraft,
+  readSchedulePreferenceDraft,
+  removeSchedulePreferenceDraft,
+  resolveSchedulePreferenceDraft,
+  writeSchedulePreferenceDraft,
+  type PreferenceDayDraft,
+  type SchedulePreferenceDraftIdentity,
+} from "../schedulePreferenceDraftStorage";
 import { getScheduleStatusLabel } from "../utils/status";
+import { formatInstantInTimeZone } from "../utils/date";
+import {
+  addDayDuringDrag,
+  applyPreferenceDayEdit,
+  applyPreferenceToSelectedDays,
+  getCalendarLeadingSlotCount,
+  getDaysForWeekday,
+  getPreferenceCalendarPresentation,
+  hasPreferenceDayNote,
+  normalizePreferenceEdit,
+  toggleSelectedDay,
+  toggleWeekdaySelection,
+} from "../schedulePreferenceCalendar";
 
 type SchedulePreferenceMeViewProps = {
+  restaurantId: number;
   data: SchedulePreferenceMyResponse | null;
   loading: boolean;
   saving: boolean;
   error: string | null;
   message: string | null;
   onBack: () => void;
-  onSubmit: (request: UpsertMySchedulePreferenceRequest) => void;
+  onSubmit: (
+    request: UpsertMySchedulePreferenceRequest,
+    onSuccessBeforePublish: () => void,
+  ) => Promise<SchedulePreferenceMyResponse | null>;
+  timeZone: string;
 };
 
-type PreferenceSelectValue = "" | SchedulePreferenceType;
-
-type PreferenceFormValue = {
-  type: PreferenceSelectValue;
-  fullDay: boolean;
-  startTime: string;
-  endTime: string;
-  note: string;
-};
-
-type PreferenceFormState = Record<string, PreferenceFormValue>;
+type PreferenceSelectValue = "NO_PREFERENCE" | SchedulePreferenceType;
+type PreferenceFormState = Record<string, PreferenceDayDraft>;
 
 const PREFERENCE_OPTIONS: { value: PreferenceSelectValue; label: string }[] = [
-  { value: "", label: "Без пожелания" },
-  { value: "AVAILABLE", label: "Могу работать" },
+  { value: "NO_PREFERENCE", label: "Без пожеланий" },
   { value: "UNAVAILABLE", label: "Не могу работать" },
   { value: "PREFER_DAY_OFF", label: "Предпочитаю выходной" },
+  { value: "AVAILABLE", label: "Могу работать" },
 ];
 
-function getIntervalToggleLabel(type: PreferenceSelectValue): string {
-  if (type === "AVAILABLE") return "Указать смену, когда могу";
-  if (type === "PREFER_DAY_OFF") return "Указать смену, когда предпочитаю выходной";
-  if (type === "UNAVAILABLE") return "Указать смену, когда не могу";
-  return "Указать время";
-}
-
-function getIntervalSelectLabel(type: PreferenceSelectValue): string {
-  if (type === "AVAILABLE") return "Когда можете работать";
-  if (type === "PREFER_DAY_OFF") return "Когда лучше не ставить";
-  if (type === "UNAVAILABLE") return "Когда точно не можете";
-  return "Выберите вариант смены";
-}
-
-function getFullDayHelp(type: PreferenceSelectValue): string | null {
-  if (type === "AVAILABLE") return "Без времени: могу весь день.";
-  if (type === "PREFER_DAY_OFF") return "Без времени: предпочитаю выходной весь день.";
-  if (type === "UNAVAILABLE") return "Без времени: не могу весь день.";
-  return null;
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+const EMPTY_DAY: PreferenceDayDraft = { type: "NO_PREFERENCE", fullDay: true, startTime: "", endTime: "", note: "" };
+const WEEKDAYS = [
+  { short: "Пн", name: "понедельники" },
+  { short: "Вт", name: "вторники" },
+  { short: "Ср", name: "среды" },
+  { short: "Чт", name: "четверги" },
+  { short: "Пт", name: "пятницы" },
+  { short: "Сб", name: "субботы" },
+  { short: "Вс", name: "воскресенья" },
+];
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 function normalizeTimeForUi(value: string | null | undefined): string {
   if (!value) return "";
@@ -117,25 +117,19 @@ function isValidPreferenceTimeInterval(startTime: string, endTime: string): bool
   return startMinutes < endMinutes;
 }
 
-function getInitialFormState(data: SchedulePreferenceMyResponse): PreferenceFormState {
-  const result: PreferenceFormState = {};
-  const sortedCells = [...data.cells].sort((a, b) => {
-    if (a.day !== b.day) return a.day.localeCompare(b.day);
-    if ((a.sortOrder ?? 0) !== (b.sortOrder ?? 0)) return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-    return (a.id ?? 0) - (b.id ?? 0);
-  });
+function isAllowedShiftOptionPreference(
+  startTime: string,
+  endTime: string,
+  allowedOptions: SchedulePreferenceAllowedShiftOptionDto[],
+): boolean {
+  const normalizedStartTime = normalizeTimeForUi(startTime);
+  const normalizedEndTime = normalizeTimeForUi(endTime);
 
-  sortedCells.forEach((cell) => {
-    result[cell.day] = {
-      type: cell.type,
-      fullDay: cell.fullDay,
-      startTime: cell.fullDay ? "" : normalizeTimeForUi(cell.startTime),
-      endTime: cell.fullDay ? "" : normalizeTimeForUi(cell.endTime),
-      note: cell.note ?? "",
-    };
-  });
-
-  return result;
+  return allowedOptions.some(
+    (option) =>
+      normalizeTimeForUi(option.startTime) === normalizedStartTime &&
+      normalizeTimeForUi(option.endTime) === normalizedEndTime,
+  );
 }
 
 function buildReadonlyMessage(data: SchedulePreferenceMyResponse): string {
@@ -192,6 +186,7 @@ function fillAll(
 }
 
 const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
+  restaurantId,
   data,
   loading,
   saving,
@@ -199,127 +194,341 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   message,
   onBack,
   onSubmit,
+  timeZone,
 }) => {
   const [formStateByDay, setFormStateByDay] = React.useState<PreferenceFormState>({});
   const [formError, setFormError] = React.useState<string | null>(null);
-  const [comment, setComment] = React.useState("");
+  const [periodComment, setPeriodComment] = React.useState("");
   const [quickPatternStartDay, setQuickPatternStartDay] = React.useState("");
+  const [baseRevision, setBaseRevision] = React.useState<number | null>(null);
+  const [draftNotice, setDraftNotice] = React.useState<string | null>(null);
+  const [editorDay, setEditorDay] = React.useState<string | null>(null);
+  const [editorValue, setEditorValue] = React.useState<PreferenceDayDraft | null>(null);
+  const [selectedDays, setSelectedDays] = React.useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = React.useState(false);
+  const [bulkEditorOpen, setBulkEditorOpen] = React.useState(false);
+  const [bulkEditorValue, setBulkEditorValue] = React.useState<PreferenceDayDraft | null>(null);
+  const hydratedRef = React.useRef(false);
+  const shouldAutosaveRef = React.useRef(false);
+  const draftIdentityRef = React.useRef<SchedulePreferenceDraftIdentity | null>(null);
+  const selectionModeRef = React.useRef(false);
+  const longPressTimerRef = React.useRef<number | null>(null);
+  const pointerRef = React.useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    originDay: string;
+    activeDrag: boolean;
+    movedDuringDrag: boolean;
+    visited: Set<string>;
+    captureTarget: HTMLButtonElement;
+  } | null>(null);
+  const suppressClickRef = React.useRef(false);
+
+  const clearLongPressTimer = React.useCallback(() => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }, []);
+
+  const clearSelection = React.useCallback(() => {
+    clearLongPressTimer();
+    pointerRef.current = null;
+    selectionModeRef.current = false;
+    setSelectionMode(false);
+    setSelectedDays(new Set());
+    setBulkEditorOpen(false);
+    setBulkEditorValue(null);
+  }, [clearLongPressTimer]);
+
+  React.useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
+
+  React.useEffect(() => {
+    selectionModeRef.current = selectionMode;
+  }, [selectionMode]);
 
   React.useEffect(() => {
     if (!data) {
+      hydratedRef.current = false;
+      shouldAutosaveRef.current = false;
+      draftIdentityRef.current = null;
       setFormStateByDay({});
       setFormError(null);
-      setComment("");
+      setPeriodComment("");
       setQuickPatternStartDay("");
+      setBaseRevision(null);
+      setDraftNotice(null);
       return;
     }
-
-    setFormStateByDay(getInitialFormState(data));
+    const identity = {
+      restaurantId,
+      memberId: data.member.memberId,
+      scheduleId: data.scheduleId,
+      preferenceCollectionCycle: data.preferenceCollectionCycle,
+    };
+    const storedDraft = readSchedulePreferenceDraft(identity);
+    const resolved = resolveSchedulePreferenceDraft(data, storedDraft);
+    if (resolved.reason === "REVISION_MISMATCH" || resolved.reason === "COLLECTION_CLOSED") {
+      removeSchedulePreferenceDraft(identity);
+    }
+    draftIdentityRef.current = identity;
+    shouldAutosaveRef.current = resolved.reason === "RESTORED";
+    setFormStateByDay(resolved.editableState.cellsByDay);
+    setBaseRevision(resolved.baseRevision);
     setFormError(null);
-    setComment(data.periodComment ?? data.comment ?? "");
+    setEditorDay(null);
+    setEditorValue(null);
+    clearSelection();
+    setPeriodComment(resolved.editableState.periodComment);
     setQuickPatternStartDay(data.days[0]?.date ?? "");
-  }, [data]);
+    setDraftNotice(
+      resolved.reason === "REVISION_MISMATCH"
+        ? "Ваши сохранённые пожелания изменились в другой сессии. Локальный черновик не был восстановлен."
+        : null,
+    );
+    hydratedRef.current = true;
+  }, [clearSelection, data, restaurantId]);
 
-  const handleSelectionChange = React.useCallback((day: string, value: string) => {
-    setFormError(null);
-    setFormStateByDay((prev) => ({
-      ...prev,
-      [day]: {
-        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
-        type: value as PreferenceSelectValue,
-        fullDay: value ? (prev[day]?.fullDay ?? true) : true,
-      },
-    }));
+  React.useEffect(() => {
+    const identity = draftIdentityRef.current;
+    if (!canAutosaveSchedulePreferenceDraft(hydratedRef.current, shouldAutosaveRef.current, identity, baseRevision)) {
+      return;
+    }
+    if (baseRevision === null) return;
+    writeSchedulePreferenceDraft(identity, {
+      schemaVersion: 1,
+      baseRevision,
+      savedAt: new Date().toISOString(),
+      cellsByDay: formStateByDay,
+      periodComment,
+    });
+  }, [baseRevision, formStateByDay, periodComment]);
+
+  const markEdited = React.useCallback(() => {
+    shouldAutosaveRef.current = true;
   }, []);
 
-  const handleUseTimeToggle = React.useCallback((day: string, checked: boolean) => {
-    setFormError(null);
-    setFormStateByDay((prev) => ({
-      ...prev,
-      [day]: {
-        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
-        fullDay: !checked,
-      },
-    }));
+  const openDayEditor = React.useCallback(
+    (day: string) => {
+      setEditorDay(day);
+      setEditorValue({ ...(formStateByDay[day] ?? EMPTY_DAY) });
+    },
+    [formStateByDay],
+  );
+
+  const closeDayEditor = React.useCallback(() => {
+    setEditorDay(null);
+    setEditorValue(null);
   }, []);
 
-  const handleShiftOptionChange = React.useCallback((day: string, value: string) => {
-    const [rawStartTime = "", rawEndTime = ""] = value.split("|");
-    const startTime = normalizeTimeForUi(rawStartTime);
-    const endTime = normalizeTimeForUi(rawEndTime);
+  React.useEffect(() => {
+    if (data?.canSubmit) return;
+    clearSelection();
+    closeDayEditor();
+  }, [clearSelection, closeDayEditor, data?.canSubmit]);
+
+  const applyDayEditor = React.useCallback(() => {
+    if (!data?.canSubmit || saving || !editorDay || !editorValue) return;
+    const normalized = normalizePreferenceEdit(editorValue);
+    markEdited();
     setFormError(null);
-    setFormStateByDay((prev) => ({
-      ...prev,
-      [day]: {
-        ...(prev[day] ?? { type: "", fullDay: false, startTime: "", endTime: "", note: "" }),
-        fullDay: false,
-        startTime,
-        endTime,
-      },
-    }));
+    setFormStateByDay((previous) => applyPreferenceDayEdit(previous, editorDay, normalized));
+    closeDayEditor();
+  }, [closeDayEditor, data?.canSubmit, editorDay, editorValue, markEdited, saving]);
+
+  const toggleSelection = React.useCallback((day: string) => {
+    setSelectedDays((previous) => {
+      const next = toggleSelectedDay(previous, day);
+      if (next.size === 0) {
+        selectionModeRef.current = false;
+        setSelectionMode(false);
+      }
+      return next;
+    });
   }, []);
 
-  const handleNoteChange = React.useCallback((day: string, note: string) => {
+  const handleWeekdayClick = React.useCallback(
+    (weekdayIndex: number) => {
+      if (!data?.canSubmit || saving) return;
+      setSelectedDays((previous) => {
+        const next = toggleWeekdaySelection(
+          previous,
+          data.days.map((day) => day.date),
+          weekdayIndex,
+        );
+        const hasSelection = next.size > 0;
+        selectionModeRef.current = hasSelection;
+        setSelectionMode(hasSelection);
+        return next;
+      });
+    },
+    [data, saving],
+  );
+
+  const handleCalendarPointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>, day: string) => {
+      if (!data?.canSubmit || saving || event.button !== 0) return;
+      clearLongPressTimer();
+      pointerRef.current = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originDay: day,
+        activeDrag: selectionModeRef.current,
+        movedDuringDrag: false,
+        visited: new Set([day]),
+        captureTarget: event.currentTarget,
+      };
+      if (selectionModeRef.current) return;
+      longPressTimerRef.current = window.setTimeout(() => {
+        const pointer = pointerRef.current;
+        if (!pointer || pointer.id !== event.pointerId || !data.canSubmit) return;
+        pointer.activeDrag = true;
+        pointer.captureTarget.setPointerCapture(pointer.id);
+        selectionModeRef.current = true;
+        suppressClickRef.current = true;
+        setSelectionMode(true);
+        setSelectedDays((previous) => {
+          const next = new Set(previous);
+          next.add(day);
+          return next;
+        });
+      }, LONG_PRESS_MS);
+    },
+    [clearLongPressTimer, data?.canSubmit, saving],
+  );
+
+  const handleCalendarPointerMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const pointer = pointerRef.current;
+      if (!pointer || pointer.id !== event.pointerId) return;
+      if (!pointer.activeDrag) {
+        if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > LONG_PRESS_MOVE_TOLERANCE_PX) {
+          clearLongPressTimer();
+          pointerRef.current = null;
+        }
+        return;
+      }
+      event.preventDefault();
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-preference-day]");
+      const day = target?.dataset.preferenceDay;
+      if (!day || pointer.visited.has(day)) return;
+      pointer.movedDuringDrag = true;
+      suppressClickRef.current = true;
+      setSelectedDays((previous) => addDayDuringDrag(previous, pointer.visited, day));
+    },
+    [clearLongPressTimer],
+  );
+
+  const finishCalendarPointer = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (pointerRef.current?.id !== event.pointerId) return;
+      clearLongPressTimer();
+      pointerRef.current = null;
+    },
+    [clearLongPressTimer],
+  );
+
+  const handleDayClick = React.useCallback(
+    (day: string) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return;
+      }
+      if (selectionModeRef.current) toggleSelection(day);
+      else openDayEditor(day);
+    },
+    [openDayEditor, toggleSelection],
+  );
+
+  const applyBulkEditor = React.useCallback(() => {
+    if (!data?.canSubmit || saving || !bulkEditorValue || selectedDays.size === 0) return;
+    markEdited();
     setFormError(null);
-    setFormStateByDay((prev) => ({
-      ...prev,
-      [day]: {
-        ...(prev[day] ?? { type: "", fullDay: true, startTime: "", endTime: "", note: "" }),
-        note,
-      },
-    }));
-  }, []);
+    setFormStateByDay((previous) => applyPreferenceToSelectedDays(previous, selectedDays, bulkEditorValue));
+    clearSelection();
+  }, [bulkEditorValue, clearSelection, data?.canSubmit, markEdited, saving, selectedDays]);
 
   const handleQuickPatternStartDayChange = React.useCallback((value: string) => {
     setQuickPatternStartDay(value);
   }, []);
 
-  const handleSubmit = React.useCallback(() => {
-    if (!data || !data.canSubmit) return;
-
-    const cells: SchedulePreferenceCellRequest[] = [];
+  const handleSubmit = React.useCallback(async () => {
+    if (!data || !data.canSubmit || baseRevision === null) return;
 
     for (const day of data.days) {
       const value = formStateByDay[day.date];
-      const type = value?.type ?? "";
-      if (!type) continue;
+      const type = value?.type ?? "NO_PREFERENCE";
+      if (type === "NO_PREFERENCE") continue;
 
       if (!value.fullDay) {
         if (!value.startTime || !value.endTime) {
           setFormError(`Заполните время для ${formatDateFromIso(day.date)}.`);
           return;
         }
-        if (parseTimeToMinutes(value.startTime) === parseTimeToMinutes(value.endTime)) {
+        const startMinutes = parseTimeToMinutes(value.startTime);
+        const endMinutes = parseTimeToMinutes(value.endTime);
+        if (startMinutes === null || endMinutes === null) {
+          setFormError(`Заполните корректное время для ${formatDateFromIso(day.date)}.`);
+          return;
+        }
+        if (startMinutes === endMinutes) {
           setFormError(`Время начала и окончания не должно совпадать (${formatDateFromIso(day.date)}).`);
           return;
         }
-        if (!isValidPreferenceTimeInterval(value.startTime, value.endTime)) {
+        if (data.preferenceCollectionMode === "SHIFT_OPTIONS") {
+          const allowedOptions = data.allowedShiftOptionsByDate?.[day.date] ?? [];
+          if (!isAllowedShiftOptionPreference(value.startTime, value.endTime, allowedOptions)) {
+            setFormError(`Выбранный вариант смены больше недоступен (${formatDateFromIso(day.date)}).`);
+            return;
+          }
+        } else if (!isValidPreferenceTimeInterval(value.startTime, value.endTime)) {
           setFormError(`Время начала должно быть раньше окончания (${formatDateFromIso(day.date)}).`);
           return;
         }
       }
-
-      cells.push({
-        day: day.date,
-        type,
-        fullDay: value.fullDay,
-        startTime: value.fullDay ? null : value.startTime,
-        endTime: value.fullDay ? null : value.endTime,
-        note: value.note.trim().length > 0 ? value.note.trim() : null,
-      });
     }
-
-    onSubmit({
-      cells,
-      comment: comment.trim().length > 0 ? comment.trim() : null,
-      periodComment: comment.trim().length > 0 ? comment.trim() : null,
-    });
-  }, [comment, data, formStateByDay, onSubmit]);
+    const identity = draftIdentityRef.current;
+    await onSubmit(
+      {
+        expectedRevision: baseRevision,
+        cells: buildPreferenceCellsRequest(data.days, formStateByDay),
+        periodComment: periodComment.trim().length > 0 ? periodComment.trim() : null,
+      },
+      () => {
+        shouldAutosaveRef.current = false;
+        if (identity) removeSchedulePreferenceDraft(identity);
+      },
+    );
+  }, [baseRevision, data, formStateByDay, onSubmit, periodComment]);
 
   const clearAll = React.useCallback(() => {
-    setFormStateByDay({});
+    markEdited();
+    setFormStateByDay((previous) =>
+      Object.fromEntries(
+        Object.keys(previous).map((day) => [
+          day,
+          {
+            type: "NO_PREFERENCE",
+            fullDay: true,
+            startTime: "",
+            endTime: "",
+            note: "",
+          },
+        ]),
+      ),
+    );
     setFormError(null);
-  }, []);
+  }, [markEdited]);
+
+  const replaceAllDays = React.useCallback(
+    (next: PreferenceFormState) => {
+      markEdited();
+      setFormStateByDay(next);
+    },
+    [markEdited],
+  );
 
   if (loading && !data) {
     return <Card>Загрузка пожеланий…</Card>;
@@ -344,8 +553,20 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
   const selectedQuickPatternStartDay = data.days.some((day) => day.date === quickPatternStartDay)
     ? quickPatternStartDay
     : (data.days[0]?.date ?? "");
-  const allowedShiftOptions = data.allowedShiftOptions ?? [];
+  const allowedShiftOptions = editorDay ? (data.allowedShiftOptionsByDate?.[editorDay] ?? []) : [];
   const hasAllowedShiftOptions = allowedShiftOptions.length > 0;
+  const bulkAllowedShiftOptions = Array.from(selectedDays).reduce<SchedulePreferenceAllowedShiftOptionDto[]>(
+    (common, day, index) => {
+      const options = data.allowedShiftOptionsByDate?.[day] ?? [];
+      return index === 0
+        ? options
+        : common.filter((candidate) =>
+            options.some((option) => option.startTime === candidate.startTime && option.endTime === candidate.endTime),
+          );
+    },
+    [],
+  );
+  const hasBulkAllowedShiftOptions = bulkAllowedShiftOptions.length > 0;
 
   return (
     <div className="space-y-4">
@@ -362,7 +583,9 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
             <div className="text-default text-sm">
               Период: {formatDateFromIso(data.startDate)} — {formatDateFromIso(data.endDate)}
             </div>
-            <div className="text-muted text-sm">Дедлайн: {formatDateTime(data.preferenceDeadline)}</div>
+            <div className="text-muted text-sm">
+              Дедлайн: {formatInstantInTimeZone(data.preferenceDeadline, timeZone)}
+            </div>
           </div>
           <Button variant="outline" onClick={onBack}>
             Назад к графикам
@@ -371,7 +594,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
 
         {data.submittedAt && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            Пожелания отправлены: {formatDateTime(data.submittedAt)} · ревизия {data.revision}
+            Пожелания отправлены: {formatInstantInTimeZone(data.submittedAt, timeZone)} · ревизия {data.revision}
           </div>
         )}
 
@@ -387,6 +610,11 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         {message && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             {message}
+          </div>
+        )}
+        {draftNotice && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {draftNotice}
           </div>
         )}
       </Card>
@@ -418,7 +646,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 2, 2, selectedQuickPatternStartDay))}
+              onClick={() => replaceAllDays(buildRepeatingPattern(data.days, 2, 2, selectedQuickPatternStartDay))}
             >
               2/2
             </Button>
@@ -426,7 +654,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 3, 3, selectedQuickPatternStartDay))}
+              onClick={() => replaceAllDays(buildRepeatingPattern(data.days, 3, 3, selectedQuickPatternStartDay))}
             >
               3/3
             </Button>
@@ -434,7 +662,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(buildRepeatingPattern(data.days, 5, 2, selectedQuickPatternStartDay))}
+              onClick={() => replaceAllDays(buildRepeatingPattern(data.days, 5, 2, selectedQuickPatternStartDay))}
             >
               5/2
             </Button>
@@ -442,7 +670,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(fillAll(data.days, "AVAILABLE"))}
+              onClick={() => replaceAllDays(fillAll(data.days, "AVAILABLE"))}
             >
               Все дни могу работать
             </Button>
@@ -450,7 +678,7 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
               type="button"
               variant="outline"
               disabled={!data.canSubmit || saving}
-              onClick={() => setFormStateByDay(fillAll(data.days, "UNAVAILABLE"))}
+              onClick={() => replaceAllDays(fillAll(data.days, "UNAVAILABLE"))}
             >
               Все дни не могу работать
             </Button>
@@ -463,25 +691,143 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
         <div className="space-y-1">
           <h3 className="text-strong text-base font-semibold">Дни</h3>
           <p className="text-muted text-sm">
-            Выберите пожелание на день. При необходимости можно указать конкретное время из вариантов смен.
+            {data.preferenceCollectionMode === "SHIFT_OPTIONS"
+              ? "Выберите пожелание на день. Для «Могу работать» можно указать вариант смены."
+              : "Выберите пожелание на день без указания времени."}
           </p>
         </div>
 
-        <div className="divide-subtle overflow-hidden rounded-2xl border border-[var(--staffly-border)]">
-          {data.days.map((day) => (
-            <div
-              key={day.date}
-              className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] sm:items-center"
-            >
-              <div className="flex items-baseline gap-1.5 whitespace-nowrap">
-                <span className="text-default text-sm font-medium">{formatDateFromIso(day.date)}</span>
-                <span className="text-muted text-xs">· {day.weekdayLabel}</span>
-              </div>
+        {selectionMode && data.canSubmit && (
+          <div className="border-subtle bg-app flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-3 py-2">
+            <span className="text-default text-sm font-semibold">Выбрано: {selectedDays.size} дн.</span>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={selectedDays.size === 0 || saving}
+                onClick={() => {
+                  setBulkEditorValue(null);
+                  setBulkEditorOpen(true);
+                }}
+                aria-haspopup="dialog"
+                data-open-bulk-editor
+              >
+                Изменить
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={clearSelection}>
+                Отменить выбор
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div className="mx-auto w-full max-w-3xl" aria-label="Календарь пожеланий">
+          <div className="mb-1 grid grid-cols-7 gap-1">
+            {WEEKDAYS.map((weekday, weekdayIndex) => {
+              const weekdayDays = getDaysForWeekday(
+                data.days.map((day) => day.date),
+                weekdayIndex,
+              );
+              const allSelected = weekdayDays.length > 0 && weekdayDays.every((day) => selectedDays.has(day));
+              return (
+                <button
+                  key={weekday.short}
+                  type="button"
+                  disabled={!data.canSubmit || saving || weekdayDays.length === 0}
+                  onClick={() => handleWeekdayClick(weekdayIndex)}
+                  aria-label={`Выбрать все ${weekday.name} в периоде`}
+                  aria-pressed={allSelected}
+                  className={`py-1 text-center text-[11px] font-semibold transition disabled:cursor-default ${
+                    allSelected
+                      ? "text-blue-700 underline decoration-2 underline-offset-2"
+                      : "text-muted enabled:hover:text-[var(--staffly-text)]"
+                  }`}
+                >
+                  {weekday.short}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            className="grid grid-cols-7 gap-1"
+            onPointerMove={handleCalendarPointerMove}
+            onPointerUp={finishCalendarPointer}
+            onPointerCancel={finishCalendarPointer}
+          >
+            {Array.from({ length: getCalendarLeadingSlotCount(data.days[0]?.date ?? data.startDate) }).map(
+              (_, index) => (
+                <div key={`leading-${index}`} aria-hidden="true" />
+              ),
+            )}
+            {data.days.map((day) => {
+              const presentation = getPreferenceCalendarPresentation(formStateByDay[day.date]);
+              const toneClass =
+                presentation.tone === "red"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : presentation.tone === "amber"
+                    ? "border-amber-200 bg-amber-50 text-amber-900"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-800";
+              const isSelected = selectedDays.has(day.date);
+              const hasNote = hasPreferenceDayNote(formStateByDay[day.date]);
+              return (
+                <button
+                  key={day.date}
+                  type="button"
+                  disabled={!data.canSubmit || saving}
+                  data-preference-day={day.date}
+                  onPointerDown={(event) => handleCalendarPointerDown(event, day.date)}
+                  onClick={() => handleDayClick(day.date)}
+                  aria-label={`${formatDateFromIso(day.date)}: ${presentation.label}`}
+                  aria-pressed={selectionMode ? isSelected : undefined}
+                  className={`${toneClass} ${isSelected ? "ring-2 ring-blue-600 ring-offset-1" : ""} relative min-w-0 touch-pan-y rounded-lg border px-0.5 py-1.5 text-center transition select-none enabled:hover:brightness-95 enabled:focus-visible:ring-2 enabled:focus-visible:ring-[var(--staffly-ring)] disabled:cursor-default sm:rounded-xl sm:px-1 sm:py-2`}
+                >
+                  {hasNote && (
+                    <Info aria-hidden="true" className="pointer-events-none absolute top-1 right-1 size-3 opacity-70" />
+                  )}
+                  <span className="block text-sm font-bold">{Number(day.date.slice(-2))}</span>
+                  <span className="block truncate text-[9px] leading-3 sm:text-[11px]">{presentation.label}</span>
+                  {presentation.startTime && presentation.endTime && (
+                    <span className="mt-0.5 block text-[10px] leading-3 font-semibold tabular-nums">
+                      {presentation.startTime}
+                      <br />
+                      {presentation.endTime}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <Modal
+          open={editorDay !== null && editorValue !== null}
+          title={editorDay ? formatDateFromIso(editorDay) : "Пожелание на день"}
+          description={data.days.find((day) => day.date === editorDay)?.weekdayLabel}
+          onClose={closeDayEditor}
+          headerCloseButton
+          className="max-w-lg"
+          footer={
+            <>
+              <Button type="button" variant="outline" onClick={closeDayEditor}>
+                Отменить
+              </Button>
+              <Button type="button" onClick={applyDayEditor}>
+                Применить
+              </Button>
+            </>
+          }
+        >
+          {editorValue && (
+            <div className="space-y-4 p-2 sm:p-0">
               <DropdownSelect
-                aria-label={`Пожелание на ${formatDateFromIso(day.date)}`}
-                value={formStateByDay[day.date]?.type ?? ""}
-                onChange={(event) => handleSelectionChange(day.date, event.target.value)}
-                disabled={!data.canSubmit || saving}
+                label="Текущее пожелание"
+                value={editorValue.type}
+                onChange={(event) => {
+                  const type = event.target.value as PreferenceSelectValue;
+                  setEditorValue(
+                    (previous) => previous && { ...previous, type, fullDay: true, startTime: "", endTime: "" },
+                  );
+                }}
               >
                 {PREFERENCE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -489,73 +835,180 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
                   </option>
                 ))}
               </DropdownSelect>
-              {(formStateByDay[day.date]?.type ?? "") !== "" && (
-                <div className="space-y-2 sm:col-start-2">
-                  <label className="text-muted flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={!(formStateByDay[day.date]?.fullDay ?? true)}
-                      onChange={(event) => handleUseTimeToggle(day.date, event.target.checked)}
-                      disabled={!data.canSubmit || saving}
-                    />
-                    {getIntervalToggleLabel(formStateByDay[day.date]?.type ?? "")}
-                  </label>
-                  {(formStateByDay[day.date]?.fullDay ?? true) &&
-                  getFullDayHelp(formStateByDay[day.date]?.type ?? "") ? (
-                    <div className="text-muted text-xs">{getFullDayHelp(formStateByDay[day.date]?.type ?? "")}</div>
-                  ) : null}
-                  {!(formStateByDay[day.date]?.fullDay ?? true) && (
-                    <div className="space-y-2">
-                      {hasAllowedShiftOptions ? (
-                        <DropdownSelect
-                          aria-label={`Вариант смены на ${formatDateFromIso(day.date)}`}
-                          value={`${normalizeTimeForUi(formStateByDay[day.date]?.startTime)}|${normalizeTimeForUi(
-                            formStateByDay[day.date]?.endTime,
-                          )}`}
-                          onChange={(event) => handleShiftOptionChange(day.date, event.target.value)}
-                          disabled={!data.canSubmit || saving}
-                        >
-                          <option value="|">{getIntervalSelectLabel(formStateByDay[day.date]?.type ?? "")}</option>
-                          {allowedShiftOptions.map((option) => {
-                            const startTime = normalizeTimeForUi(option.startTime);
-                            const endTime = normalizeTimeForUi(option.endTime);
-                            const interval = `${startTime}–${endTime}`;
-                            return (
-                              <option key={option.id} value={`${startTime}|${endTime}`}>
-                                {option.label ? `${option.label} ${interval}` : interval}
-                              </option>
-                            );
-                          })}
-                        </DropdownSelect>
-                      ) : (
-                        <div className="text-muted rounded-xl border border-dashed border-[var(--staffly-border)] px-3 py-2 text-sm">
-                          Для вашей должности не настроены варианты смен. Оставьте пожелание на весь день.
-                          {formStateByDay[day.date]?.startTime && formStateByDay[day.date]?.endTime ? (
-                            <span className="block text-xs">
-                              Ранее отправленный интервал: {formStateByDay[day.date]?.startTime}–
-                              {formStateByDay[day.date]?.endTime}
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <label className="block space-y-1">
-                    <span className="text-muted text-xs font-medium">Комментарий к дню</span>
-                    <textarea
-                      className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-16 w-full rounded-xl border px-3 py-2 text-xs transition outline-none focus:ring-2 disabled:cursor-not-allowed"
-                      value={formStateByDay[day.date]?.note ?? ""}
-                      onChange={(event) => handleNoteChange(day.date, event.target.value)}
-                      disabled={!data.canSubmit || saving}
-                      maxLength={500}
-                      placeholder="Например: только после пары или не ставить закрытие"
-                    />
-                  </label>
-                </div>
+              {editorValue.type === "AVAILABLE" && (
+                <DropdownSelect
+                  label="Когда можете работать"
+                  value={editorValue.fullDay ? "FULL_DAY" : `${editorValue.startTime}|${editorValue.endTime}`}
+                  onChange={(event) => {
+                    if (event.target.value === "FULL_DAY") {
+                      setEditorValue(
+                        (previous) => previous && { ...previous, fullDay: true, startTime: "", endTime: "" },
+                      );
+                      return;
+                    }
+                    const [startTime, endTime] = event.target.value.split("|");
+                    setEditorValue((previous) => previous && { ...previous, fullDay: false, startTime, endTime });
+                  }}
+                >
+                  <option value="FULL_DAY">Могу работать в любое время</option>
+                  {data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
+                    allowedShiftOptions.map((option) => {
+                      const startTime = normalizeTimeForUi(option.startTime);
+                      const endTime = normalizeTimeForUi(option.endTime);
+                      return (
+                        <option key={option.id} value={`${startTime}|${endTime}`}>
+                          {option.label ? `${option.label} · ` : ""}
+                          {startTime}–{endTime}
+                        </option>
+                      );
+                    })}
+                </DropdownSelect>
               )}
+              {editorValue.type === "AVAILABLE" &&
+                data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
+                !hasAllowedShiftOptions && (
+                  <p className="text-muted text-sm">
+                    Для вашей должности не настроены варианты смен. Доступен вариант на весь день.
+                  </p>
+                )}
+              <label className="block space-y-1">
+                <span className="text-muted text-sm font-medium">Комментарий к дню</span>
+                <textarea
+                  className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-24 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                  value={editorValue.type === "NO_PREFERENCE" ? "" : editorValue.note}
+                  onChange={(event) =>
+                    setEditorValue((previous) => previous && { ...previous, note: event.target.value })
+                  }
+                  disabled={editorValue.type === "NO_PREFERENCE"}
+                  maxLength={500}
+                  placeholder={
+                    editorValue.type === "NO_PREFERENCE"
+                      ? "Комментарий доступен для явного пожелания"
+                      : "Комментарий к этому дню"
+                  }
+                />
+                {editorValue.type === "NO_PREFERENCE" && (
+                  <span className="text-muted block text-xs">
+                    Без пожелания не создаёт запись дня, поэтому комментарий не сохраняется.
+                  </span>
+                )}
+              </label>
             </div>
-          ))}
-        </div>
+          )}
+        </Modal>
+
+        <Modal
+          open={selectionMode && bulkEditorOpen}
+          title={`${selectedDays.size} дней выбрано`}
+          description="Новое пожелание будет применено ко всем выбранным дням."
+          onClose={() => {
+            setBulkEditorOpen(false);
+            setBulkEditorValue(null);
+          }}
+          headerCloseButton
+          className="max-w-lg"
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setBulkEditorOpen(false);
+                  setBulkEditorValue(null);
+                }}
+              >
+                Отменить
+              </Button>
+              <Button type="button" onClick={applyBulkEditor} disabled={!bulkEditorValue || !data.canSubmit || saving}>
+                Применить
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4 p-2 sm:p-0">
+            <fieldset className="space-y-2">
+              <legend className="text-muted mb-1 text-sm font-medium">Новое пожелание</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {PREFERENCE_OPTIONS.map((option) => (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    variant={bulkEditorValue?.type === option.value ? "primary" : "outline"}
+                    onClick={() =>
+                      setBulkEditorValue({
+                        type: option.value,
+                        fullDay: true,
+                        startTime: "",
+                        endTime: "",
+                        note: bulkEditorValue?.note ?? "",
+                      })
+                    }
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </fieldset>
+            {bulkEditorValue?.type === "AVAILABLE" && (
+              <DropdownSelect
+                label="Когда можете работать"
+                value={bulkEditorValue.fullDay ? "FULL_DAY" : `${bulkEditorValue.startTime}|${bulkEditorValue.endTime}`}
+                onChange={(event) => {
+                  if (event.target.value === "FULL_DAY") {
+                    setBulkEditorValue(
+                      (previous) => previous && { ...previous, fullDay: true, startTime: "", endTime: "" },
+                    );
+                    return;
+                  }
+                  const [startTime, endTime] = event.target.value.split("|");
+                  setBulkEditorValue((previous) => previous && { ...previous, fullDay: false, startTime, endTime });
+                }}
+              >
+                <option value="FULL_DAY">Могу работать в любое время</option>
+                {data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
+                  bulkAllowedShiftOptions.map((option) => {
+                    const startTime = normalizeTimeForUi(option.startTime);
+                    const endTime = normalizeTimeForUi(option.endTime);
+                    return (
+                      <option key={option.id} value={`${startTime}|${endTime}`}>
+                        {option.label ? `${option.label} · ` : ""}
+                        {startTime}–{endTime}
+                      </option>
+                    );
+                  })}
+              </DropdownSelect>
+            )}
+            {bulkEditorValue?.type === "AVAILABLE" &&
+              data.preferenceCollectionMode === "SHIFT_OPTIONS" &&
+              !hasBulkAllowedShiftOptions && (
+                <p className="text-muted text-sm">
+                  Для вашей должности не настроены варианты смен. Доступен вариант на весь день.
+                </p>
+              )}
+            <label className="block space-y-1">
+              <span className="text-muted text-sm font-medium">Комментарий для выбранных дней</span>
+              <textarea
+                className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-24 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
+                value={bulkEditorValue?.type === "NO_PREFERENCE" ? "" : (bulkEditorValue?.note ?? "")}
+                onChange={(event) =>
+                  setBulkEditorValue((previous) => previous && { ...previous, note: event.target.value })
+                }
+                disabled={!bulkEditorValue || bulkEditorValue.type === "NO_PREFERENCE"}
+                maxLength={500}
+                placeholder={
+                  bulkEditorValue?.type === "NO_PREFERENCE"
+                    ? "Комментарий доступен для явного пожелания"
+                    : "Один комментарий для каждого выбранного дня"
+                }
+              />
+              {bulkEditorValue?.type === "NO_PREFERENCE" && (
+                <span className="text-muted block text-xs">
+                  Без пожелания не создаёт запись дня, поэтому комментарий не сохраняется.
+                </span>
+              )}
+            </label>
+          </div>
+        </Modal>
 
         {formError && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</div>
@@ -565,8 +1018,11 @@ const SchedulePreferenceMeView: React.FC<SchedulePreferenceMeViewProps> = ({
           <span className="text-muted text-sm font-medium">Комментарий к периоду</span>
           <textarea
             className="border-subtle bg-surface text-default focus:ring-default disabled:bg-app disabled:text-muted min-h-28 w-full rounded-2xl border px-4 py-3 text-sm transition outline-none focus:ring-2 disabled:cursor-not-allowed"
-            value={comment}
-            onChange={(event) => setComment(event.target.value)}
+            value={periodComment}
+            onChange={(event) => {
+              markEdited();
+              setPeriodComment(event.target.value);
+            }}
             disabled={!data.canSubmit || saving}
             maxLength={1000}
             placeholder="Например: могу работать только после 17:00 из-за учёбы"

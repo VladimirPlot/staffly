@@ -25,7 +25,7 @@ public class PushPayloadFactory {
         InboxMessageType type = message.getType();
 
         String title = resolveTitle(message);
-        String body = resolveBody(type, message.getContent());
+        String body = resolveBody(type, preferredPushText(message));
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("title", title);
@@ -67,6 +67,12 @@ public class PushPayloadFactory {
         }
         String normalized = normalize(content);
         return truncate(normalized, MAX_BODY_LENGTH);
+    }
+
+    private String preferredPushText(InboxMessage message) {
+        return message.getPushText() == null || message.getPushText().isBlank()
+                ? message.getContent()
+                : message.getPushText();
     }
 
     private String normalize(String content) {

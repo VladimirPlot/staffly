@@ -11,6 +11,7 @@ public record MemberResponsibilityHandoffRequest(
     public record Item(
             @NotNull MemberResponsibilityType type,
             @NotNull Long resourceId,
+            Long resourceVersion,
             @NotNull Long newOwnerUserId
     ) {
     }

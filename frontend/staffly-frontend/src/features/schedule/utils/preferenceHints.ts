@@ -4,6 +4,8 @@ import { hasCompleteRangeValue, parseTimeRangeValue, parseTimeValue } from "./ti
 
 export type PreferenceHintTone = "positive" | "negative";
 
+export type CellConflictSeverity = "NONE" | "SOFT" | "HARD";
+
 export type PreferenceAssignmentBadge = {
   status: Extract<
     ScheduleAutoBuildMatchStatus,
@@ -33,9 +35,35 @@ export function getPreferenceHintTone(type: SchedulePreferenceCellDto["type"]): 
 }
 
 export function formatPreferenceHintTime(cell: SchedulePreferenceCellDto): string {
+  if (isNegativePreference(cell.type)) {
+    if (cell.fullDay || !cell.startTime || !cell.endTime) return "";
+    return `${cell.startTime}–${cell.endTime}`;
+  }
   if (cell.fullDay) return "весь день";
   if (!cell.startTime || !cell.endTime) return "интервал не указан";
   return `${cell.startTime}–${cell.endTime}`;
+}
+
+export function getCellConflictSeverity(params: {
+  value: string;
+  hints: SchedulePreferenceCellDto[];
+  shiftMode: ShiftMode;
+}): CellConflictSeverity {
+  const { value, hints, shiftMode } = params;
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return "NONE";
+
+  const hasHardConflict = findNegativePreferenceConflict({
+    value: trimmedValue,
+    hints,
+    shiftMode,
+    type: "UNAVAILABLE",
+  });
+  if (hasHardConflict) return "HARD";
+
+  return findNegativePreferenceConflict({ value: trimmedValue, hints, shiftMode, type: "PREFER_DAY_OFF" })
+    ? "SOFT"
+    : "NONE";
 }
 
 export function canApplyPreferenceHint(params: {

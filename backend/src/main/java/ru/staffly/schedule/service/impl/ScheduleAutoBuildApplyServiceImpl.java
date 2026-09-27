@@ -16,24 +16,34 @@ import ru.staffly.schedule.dto.ScheduleDto;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildShiftOption;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleBuildWeekdayRegime;
 import ru.staffly.schedule.model.ScheduleCell;
 import ru.staffly.schedule.model.ScheduleCellSource;
 import ru.staffly.schedule.model.ScheduleRow;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.CanonicalBusinessInterval;
+import ru.staffly.schedule.model.CanonicalBusinessIntervalResolver;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
+import ru.staffly.schedule.exception.ScheduleVersionConflictException;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleAutoBuildApplyService;
+import ru.staffly.schedule.service.ScheduleAutoBuildFingerprintService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner.ScheduleAutoBuildPlan;
 import ru.staffly.security.SecurityService;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Collections;
@@ -53,9 +63,11 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private final ScheduleRepository schedules;
     private final ScheduleBuildTemplateRepository templates;
     private final RestaurantMemberRepository members;
+    private final ScheduleParticipationRepository participations;
     private final ScheduleAutoBuildPlanner planner;
     private final ScheduleAuditService scheduleAuditService;
     private final ScheduleService scheduleService;
+    private final ScheduleAutoBuildFingerprintService fingerprintService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -67,13 +79,19 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         validateRequest(request);
 
-        Schedule schedule = schedules.findByIdAndRestaurantId(scheduleId, restaurantId)
+        Schedule schedule = schedules.findForUpdateByIdAndRestaurantId(scheduleId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
+        if (!java.util.Objects.equals(schedule.getVersion(), request.version())) {
+            throw new ScheduleVersionConflictException(request.version(), schedule.getVersion());
+        }
         validateScheduleStatus(schedule);
 
         ScheduleBuildTemplate template = resolveEffectiveTemplate(restaurantId, schedule, request.templateId());
         initializeTemplateCollections(template);
         validateTemplateHasSchedulePositions(schedule, template);
+
+        String fingerprintBefore = fingerprintService.fingerprint(restaurantId, schedule, template);
+        assertPreviewTokenMatches(request.previewToken(), fingerprintBefore);
 
         boolean adjustedApply = hasAdjustedAssignments(request);
         ScheduleAutoBuildPlan plan = adjustedApply
@@ -84,13 +102,18 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         }
 
         Map<Long, ScheduleRow> rowsByMember = indexRowsByMember(schedule);
-        clearAffectedCells(schedule, plan.affectedPositionIds());
+        Map<Long, Long> participationPositionByMember = loadParticipationPositionByMember(schedule);
 
-        int skippedAssignments = applyAssignments(schedule, plan, rowsByMember);
+        String fingerprintAfter = fingerprintService.fingerprint(restaurantId, schedule, template);
+        assertPreviewTokenMatches(request.previewToken(), fingerprintAfter);
+
+        clearAffectedCells(schedule, plan.affectedPositionIds(), participationPositionByMember);
+
+        int skippedAssignments = applyAssignments(schedule, plan, rowsByMember, template);
 
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
-        Schedule saved = schedules.save(schedule);
+        Schedule saved = schedules.saveAndFlush(schedule);
 
         scheduleAuditService.record(
                 saved,
@@ -100,6 +123,16 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         );
 
         return scheduleService.get(restaurantId, scheduleId, actorUserId);
+    }
+
+    private void assertPreviewTokenMatches(String previewToken, String currentFingerprint) {
+        if (!MessageDigest.isEqual(previewToken.getBytes(StandardCharsets.UTF_8),
+                currentFingerprint.getBytes(StandardCharsets.UTF_8))) {
+            throw new ScheduleDomainConflictException(
+                    "AUTO_BUILD_PREVIEW_STALE",
+                    "Данные графика изменились после построения предпросмотра. Постройте автосборку заново."
+            );
+        }
     }
 
 
@@ -113,10 +146,11 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             throw new BadRequestException("Переданный предпросмотр не содержит назначений");
         }
 
-        Map<Long, RestaurantMember> membersById = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+        Map<Long, RestaurantMember> membersById = members.findWithUserByRestaurantId(restaurantId).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
+        Map<Long, Long> participationPositionByMember = loadParticipationPositionByMember(schedule);
         Map<Long, ScheduleBuildPositionConfig> configsById = configsById(template);
-        Set<Long> schedulePositions = new HashSet<>(schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds());
+        Set<Long> schedulePositions = new HashSet<>(SchedulePositionIds.ids(schedule));
         Set<Long> affectedPositionIds = configsById.values().stream()
                 .flatMap(config -> configPositionIds(config).stream())
                 .filter(schedulePositions::contains)
@@ -125,13 +159,14 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         Map<Long, List<ScheduleAutoBuildPlanner.AssignmentPlan>> byConfig = new HashMap<>();
 
         for (AdjustedScheduleAutoBuildAssignmentDto assignment : adjustedAssignments) {
-            ValidAdjustedAssignment valid = validateAdjustedAssignment(schedule, configsById, schedulePositions, memberDays, membersById, assignment);
+            ValidAdjustedAssignment valid = validateAdjustedAssignment(schedule, configsById, schedulePositions,
+                    memberDays, membersById, participationPositionByMember, assignment);
             RestaurantMember member = valid.member();
             byConfig.computeIfAbsent(valid.config().getId(), ignored -> new java.util.ArrayList<>()).add(
                     new ScheduleAutoBuildPlanner.AssignmentPlan(
                             assignment.memberId(),
                             hasText(assignment.memberName()) ? assignment.memberName() : memberDisplayName(member),
-                            member.getPosition().getId(),
+                            participationPositionByMember.get(member.getId()),
                             assignment.day(),
                             resolveAdjustedValue(assignment),
                             assignment.shiftOptionId(),
@@ -198,6 +233,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private ValidAdjustedAssignment validateAdjustedAssignment(Schedule schedule, Map<Long, ScheduleBuildPositionConfig> configsById,
                                                         Set<Long> schedulePositions, Set<String> memberDays,
                                                         Map<Long, RestaurantMember> membersById,
+                                                        Map<Long, Long> participationPositionByMember,
                                                         AdjustedScheduleAutoBuildAssignmentDto assignment) {
         if (assignment.memberId() == null || assignment.positionConfigId() == null || assignment.positionId() == null) {
             throw new BadRequestException("Переданное назначение должно содержать memberId, positionConfigId и positionId");
@@ -210,15 +246,15 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         if (member == null) {
             throw new BadRequestException("Сотрудник не принадлежит ресторану: " + assignment.memberId());
         }
-        Long memberPositionId = member.getPosition() == null ? null : member.getPosition().getId();
-        if (memberPositionId == null || !schedulePositions.contains(memberPositionId)) {
-            throw new BadRequestException("Должность сотрудника не входит в график: " + assignment.memberId());
+        Long participationPositionId = participationPositionByMember.get(member.getId());
+        if (participationPositionId == null || !schedulePositions.contains(participationPositionId)) {
+            throw new BadRequestException("Должность участия сотрудника не входит в график: " + assignment.memberId());
         }
-        if (!configPositionIds(config).contains(memberPositionId)) {
+        if (!configPositionIds(config).contains(participationPositionId)) {
             throw new BadRequestException("Сотрудник не входит в блок должностей назначения: " + assignment.memberId());
         }
-        if (!memberPositionId.equals(assignment.positionId())) {
-            throw new BadRequestException("positionId назначения должен совпадать с должностью сотрудника: " + assignment.memberId());
+        if (!participationPositionId.equals(assignment.positionId())) {
+            throw new BadRequestException("positionId назначения должен совпадать с должностью участия: " + assignment.memberId());
         }
 
         LocalDate day = parseDay(assignment.day());
@@ -230,7 +266,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         if (start.equals(end)) {
             throw new BadRequestException("Начало и конец смены не должны совпадать: " + assignment.day());
         }
-        boolean allowedShift = safeShiftOptions(config).stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
+        boolean allowedShift = safeShiftOptions(config, day).stream().anyMatch(option -> shiftMatches(option, start, end, assignment.shiftOptionId()));
         if (!allowedShift) {
             throw new BadRequestException("Интервал назначения не входит в варианты смен для должности: " + assignment.day());
         }
@@ -243,8 +279,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
     private record ValidAdjustedAssignment(RestaurantMember member, ScheduleBuildPositionConfig config) {}
 
-    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config) {
-        return config.getShiftOptions() == null ? List.of() : config.getShiftOptions();
+    private List<ScheduleBuildShiftOption> safeShiftOptions(ScheduleBuildPositionConfig config, LocalDate day) {
+        return config.regimeFor(day.getDayOfWeek()).getShiftOptions();
     }
 
     private boolean shiftMatches(ScheduleBuildShiftOption option, LocalTime start, LocalTime end, Long shiftOptionId) {
@@ -286,15 +322,18 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getPositions());
-            Hibernate.initialize(positionConfig.getShiftOptions());
-            Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules());
+            }
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }
 
     private void validateRequest(ApplyScheduleAutoBuildRequest request) {
-        if (request == null || request.templateId() == null) {
-            throw new BadRequestException("templateId is required");
+        if (request == null || request.templateId() == null || request.previewToken() == null || request.previewToken().isBlank()) {
+            throw new BadRequestException("templateId and previewToken are required");
         }
     }
 
@@ -306,7 +345,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     }
 
     private void validateTemplateHasSchedulePositions(Schedule schedule, ScheduleBuildTemplate template) {
-        List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        List<Long> schedulePositions = SchedulePositionIds.ids(schedule);
         Set<Long> templatePositionIds = template.getPositionConfigs().stream()
                 .flatMap(config -> configPositionIds(config).stream())
                 .collect(Collectors.toSet());
@@ -326,15 +365,22 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         return rowsByMember;
     }
 
-    private int applyAssignments(Schedule schedule, ScheduleAutoBuildPlan plan, Map<Long, ScheduleRow> rowsByMember) {
+    private int applyAssignments(Schedule schedule, ScheduleAutoBuildPlan plan, Map<Long, ScheduleRow> rowsByMember,
+                                 ScheduleBuildTemplate template) {
         int skippedAssignments = 0;
 
         Set<String> appliedMemberDays = new HashSet<>();
         Map<Long, Map<LocalDate, ScheduleCell>> cellsByRowAndDay = indexCellsByRowAndDay(rowsByMember);
+        Map<Long, ScheduleBuildPositionConfig> configs = configsById(template);
 
         for (var position : plan.positions()) {
+            ScheduleBuildPositionConfig config = configs.get(position.positionConfigId());
+            if (config == null) {
+                throw new BadRequestException("Автосборка ссылается на неизвестную конфигурацию позиции");
+            }
             for (var assignment : position.cells()) {
                 validateAssignment(assignment);
+                CanonicalBusinessInterval interval = resolveCanonicalAssignment(config, assignment);
                 String assignmentKey = assignment.memberId() + ":" + assignment.day();
                 if (!appliedMemberDays.add(assignmentKey)) {
                     throw new BadRequestException("Автосборка содержит несколько смен для одного сотрудника в день: " + assignment.day());
@@ -352,6 +398,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 if (existing != null) {
                     existing.setValue(resolveCellValue(assignment));
                     existing.setSource(ScheduleCellSource.AUTO_BUILD);
+                    existing.setStructuredShift(interval);
                 } else {
                     ScheduleCell created = ScheduleCell.builder()
                             .row(row)
@@ -359,6 +406,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                             .value(resolveCellValue(assignment))
                             .source(ScheduleCellSource.AUTO_BUILD)
                             .build();
+                    created.setStructuredShift(interval);
                     row.getCells().add(created);
                     rowCellsByDay.put(day, created);
                 }
@@ -366,6 +414,23 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         }
 
         return skippedAssignments;
+    }
+
+    private CanonicalBusinessInterval resolveCanonicalAssignment(
+            ScheduleBuildPositionConfig config,
+            ScheduleAutoBuildPlanner.AssignmentPlan assignment
+    ) {
+        try {
+            LocalDate businessDay = parseDay(assignment.day());
+            ScheduleBuildWeekdayRegime regime = config.regimeFor(businessDay.getDayOfWeek());
+            CanonicalBusinessInterval workPeriod = CanonicalBusinessIntervalResolver.canonicalizeWorkPeriod(
+                    regime.getWorkPeriodStart(), regime.getWorkPeriodEnd());
+            return CanonicalBusinessIntervalResolver.resolveInside(workPeriod,
+                    parseTime(assignment.startTime(), "startTime"),
+                    parseTime(assignment.endTime(), "endTime"));
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException("Автосборка содержит смену вне рабочего периода: " + assignment.day());
+        }
     }
 
     private Map<Long, Map<LocalDate, ScheduleCell>> indexCellsByRowAndDay(Map<Long, ScheduleRow> rowsByMember) {
@@ -451,7 +516,21 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
                 + ", пропущено без строки: " + skippedAssignments;
     }
 
-    private void clearAffectedCells(Schedule schedule, Set<Long> affectedPositionIds) {
+    private Map<Long, Long> loadParticipationPositionByMember(Schedule schedule) {
+        List<Long> schedulePositionIds = SchedulePositionIds.ids(schedule);
+        if (schedulePositionIds.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> allowed = new HashSet<>(schedulePositionIds);
+        return participations.findByScheduleIdOrderById(schedule.getId()).stream()
+                .filter(participation -> allowed.contains(participation.getPositionId()))
+                .collect(Collectors.toMap(participation -> participation.getMember().getId(),
+                        participation -> participation.getPositionId()));
+    }
+
+    private void clearAffectedCells(Schedule schedule,
+                                    Set<Long> affectedPositionIds,
+                                    Map<Long, Long> participationPositionByMember) {
         if (affectedPositionIds.isEmpty()) {
             return;
         }
@@ -460,7 +539,10 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         LocalDate end = schedule.getEndDate();
 
         for (ScheduleRow row : schedule.getRows()) {
-            if (row.getPositionId() == null || !affectedPositionIds.contains(row.getPositionId())) {
+            Long currentPositionId = row.getMemberId() == null
+                    ? null
+                    : participationPositionByMember.get(row.getMemberId());
+            if (currentPositionId == null || !affectedPositionIds.contains(currentPositionId)) {
                 continue;
             }
             row.getCells().removeIf(cell -> !cell.getDay().isBefore(start) && !cell.getDay().isAfter(end));

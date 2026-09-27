@@ -1,9 +1,10 @@
 import React from "react";
 
 import type { ScheduleSummary } from "../api";
-import type { ScheduleData } from "../types";
+import type { EditableScheduleData } from "../types";
 import type { MemberDto } from "../../employees/api";
 import { monthLabelsBetween } from "../utils/date";
+import { getTodayInTimeZone } from "../utils/date";
 
 type TodayShift = {
   memberId: number;
@@ -13,12 +14,13 @@ type TodayShift = {
 
 type UseScheduleDerivedStateParams = {
   userId: number | null | undefined;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   scheduleId: number | null;
   savedSchedules: ScheduleSummary[];
   members: MemberDto[];
   canManage: boolean;
   positionFilter: number | "all";
+  restaurantTimeZone: string;
 };
 
 export default function useScheduleDerivedState({
@@ -29,6 +31,7 @@ export default function useScheduleDerivedState({
   members,
   canManage,
   positionFilter,
+  restaurantTimeZone,
 }: UseScheduleDerivedStateParams) {
   const currentMember = React.useMemo(() => {
     if (!userId) return null;
@@ -87,9 +90,7 @@ export default function useScheduleDerivedState({
 
   const sortedSavedSchedules = React.useMemo(() => {
     return [...savedSchedules].sort((a, b) => {
-      const endA = new Date(a.endDate).getTime();
-      const endB = new Date(b.endDate).getTime();
-      return endB - endA;
+      return b.endDate.localeCompare(a.endDate);
     });
   }, [savedSchedules]);
 
@@ -100,7 +101,7 @@ export default function useScheduleDerivedState({
     return sortedSavedSchedules.filter((item) => item.positionIds?.includes(positionFilter));
   }, [canManage, positionFilter, sortedSavedSchedules]);
 
-  const todayIso = React.useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todayIso = React.useMemo(() => getTodayInTimeZone(restaurantTimeZone), [restaurantTimeZone]);
 
   const todaysShifts = React.useMemo(() => {
     if (!scheduleDays || !scheduleRows || !scheduleCellValues) return [] as TodayShift[];

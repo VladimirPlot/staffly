@@ -9,6 +9,7 @@ import {
   updateScheduleBuildTemplate,
 } from "../api";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
+import { getTemplateConfirmationMeta } from "../utils/buildTemplateConfirmation";
 
 export default function useScheduleBuildTemplatesActions(restaurantId: number | null) {
   const [templates, setTemplates] = React.useState<ScheduleBuildTemplateDto[]>([]);
@@ -64,7 +65,11 @@ export default function useScheduleBuildTemplatesActions(restaurantId: number | 
         setTemplates((prev) => prev.map((item) => (item.id === templateId ? updated : item)));
         return updated;
       } catch (e: unknown) {
-        setError(getFriendlyScheduleErrorMessage(e, "Не удалось обновить шаблон"));
+        // Confirmation-required is an expected branch owned by the editor dialog,
+        // not a failed operation to surface in the templates section.
+        if (!getTemplateConfirmationMeta(e)) {
+          setError(getFriendlyScheduleErrorMessage(e, "Не удалось обновить шаблон"));
+        }
         throw e;
       } finally {
         setSaving(false);

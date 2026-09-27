@@ -1,7 +1,11 @@
 import React from "react";
 
 import Input from "../../../shared/ui/Input";
-import type { ScheduleBuildCoverageRuleDraft, ScheduleBuildPositionConfigDraft } from "../utils/buildTemplateDraft";
+import {
+  WEEKDAYS,
+  type ScheduleBuildCoverageRuleDraft,
+  type ScheduleBuildWeekdayRegimeDraft,
+} from "../utils/buildTemplateDraft";
 
 const weekdays = [
   { value: 1, label: "Пн" },
@@ -34,12 +38,13 @@ const findRuleIndex = (
   );
 
 type Props = {
-  config: ScheduleBuildPositionConfigDraft;
+  config: ScheduleBuildWeekdayRegimeDraft;
   saving: boolean;
-  onChange: (next: ScheduleBuildPositionConfigDraft) => void;
+  onChange: (next: ScheduleBuildWeekdayRegimeDraft) => void;
 };
 
 const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onChange }) => {
+  const visibleWeekdays = weekdays.filter((_, index) => config.daysOfWeek.includes(WEEKDAYS[index]));
   const handleRequiredCountChange = (shiftOptionIndex: number, dayOfWeek: number, rawValue: string) => {
     const shiftOption = config.shiftOptions[shiftOptionIndex];
     if (!shiftOption) return;
@@ -97,7 +102,7 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
             <thead className="bg-muted/30">
               <tr>
                 <th className="border-subtle w-40 border-b px-3 py-2 text-left font-medium">Смена</th>
-                {weekdays.map((day) => (
+                {visibleWeekdays.map((day) => (
                   <th key={day.value} className="border-subtle border-b px-1 py-2 text-center font-medium">
                     {day.label}
                   </th>
@@ -115,7 +120,7 @@ const ScheduleBuildCoverageRulesEditor: React.FC<Props> = ({ config, saving, onC
                       {formatShiftRange(shiftOption.startTime, shiftOption.endTime) || "—"}
                     </div>
                   </th>
-                  {weekdays.map((day) => {
+                  {visibleWeekdays.map((day) => {
                     const rule = config.coverageRules.find(
                       (item) =>
                         item.dayOfWeek === day.value &&

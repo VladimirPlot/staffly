@@ -8,19 +8,28 @@ import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.schedule.dto.*;
 import ru.staffly.schedule.model.Schedule;
+import ru.staffly.schedule.model.SchedulePositionIds;
 import ru.staffly.schedule.model.ScheduleBuildPositionConfig;
 import ru.staffly.schedule.model.ScheduleBuildTemplate;
+import ru.staffly.schedule.model.ScheduleBuildWeekdayRegime;
 import ru.staffly.schedule.model.ScheduleStatus;
+import ru.staffly.schedule.model.PreferenceCollectionMode;
 import ru.staffly.schedule.repository.ScheduleBuildTemplateRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.schedule.service.ScheduleAccessService;
 import ru.staffly.schedule.service.ScheduleAutoBuildPreviewService;
+import ru.staffly.schedule.service.ScheduleAutoBuildFingerprintService;
 import ru.staffly.schedule.service.autobuild.ScheduleAutoBuildPlanner;
 import ru.staffly.security.SecurityService;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +40,7 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     private final ScheduleRepository schedules;
     private final ScheduleBuildTemplateRepository templates;
     private final ScheduleAutoBuildPlanner planner;
+    private final ScheduleAutoBuildFingerprintService fingerprintService;
 
     @Override
     public ScheduleAutoBuildPreviewResponse preview(Long restaurantId, Long scheduleId, Long actorUserId, PreviewScheduleAutoBuildRequest request) {
@@ -48,31 +58,80 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
         initializeTemplateCollections(template);
 
         Set<Long> templatePositions = template.getPositionConfigs().stream().flatMap(pc -> configPositionIds(pc).stream()).collect(java.util.stream.Collectors.toSet());
-        List<Long> schedulePositions = schedule.getPositionIds() == null ? List.of() : schedule.getPositionIds();
+        List<Long> schedulePositions = SchedulePositionIds.ids(schedule);
         if (Collections.disjoint(templatePositions, schedulePositions)) {
             throw new BadRequestException("Шаблон не содержит конфигураций для позиций графика");
         }
 
+        String previewToken = fingerprintService.fingerprint(restaurantId, schedule, template);
         var plan = planner.build(restaurantId, schedule, template);
+        String verifiedToken = fingerprintService.fingerprint(restaurantId, schedule, template);
+        if (!previewToken.equals(verifiedToken)) {
+            throw new ru.staffly.schedule.exception.ScheduleDomainConflictException(
+                    "AUTO_BUILD_PREVIEW_STALE",
+                    "Данные графика изменились во время построения предпросмотра. Постройте автосборку заново."
+            );
+        }
+        boolean vocabularyChanged = hasShiftVocabularyChanged(schedule, template);
+        List<String> warnings = new ArrayList<>(plan.warnings());
+        if (vocabularyChanged) {
+            warnings.add("Набор смен в шаблоне изменился после сбора пожеланий. Проверьте пожелания сотрудников перед применением автосборки.");
+        }
         return new ScheduleAutoBuildPreviewResponse(
                 plan.scheduleId(),
                 plan.templateId(),
                 plan.templateId(),
+                previewToken,
                 plan.templateName(),
                 plan.positions().stream().map(this::toPositionDto).toList(),
-                plan.warnings(),
+                warnings,
                 plan.uncoveredSlots().stream().map(this::toUncoveredSlotDto).toList(),
                 plan.rejectionHints().stream().map(this::toRejectionHintDto).toList(),
                 plan.totalAssignments(),
-                plan.warningsCount(),
+                plan.warningsCount() + (vocabularyChanged ? 1 : 0),
                 plan.unfilledCount(),
                 plan.negativeAssignmentsCount()
         );
     }
 
-    private ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
+    private boolean hasShiftVocabularyChanged(Schedule schedule, ScheduleBuildTemplate template) {
+        if (schedule.getPreferenceBuildTemplate() == null) {
+            return false;
+        }
+        Map<ShiftVocabularyEntry, Long> snapshot = schedule.getPreferenceShiftOptionSnapshots().stream()
+                .map(option -> new ShiftVocabularyEntry(new LinkedHashSet<>(option.getPositionIds()),
+                        option.getStartTime(), option.getEndTime()))
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        Set<Long> schedulePositionIds = new java.util.HashSet<>(SchedulePositionIds.ids(schedule));
+        Map<ShiftVocabularyEntry, Long> live = template.getPositionConfigs().stream()
+                .map(config -> new ScopedPositionConfig(config, configPositionIds(config).stream()
+                        .filter(schedulePositionIds::contains)
+                        .collect(Collectors.toCollection(LinkedHashSet::new))))
+                .filter(scoped -> !scoped.positionIds().isEmpty())
+                .flatMap(scoped -> scoped.config().getWeekdayRegimes().size() == 1
+                        ? scoped.config().getWeekdayRegimes().get(0).getShiftOptions().stream().map(option ->
+                            new ShiftVocabularyEntry(scoped.positionIds(), option.getStartTime(), option.getEndTime()))
+                        : java.util.stream.Stream.of(new ShiftVocabularyEntry(scoped.positionIds(), null, null)))
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+        return !snapshot.equals(live);
+    }
+
+    // Label and planner-only configuration are intentionally cosmetic/outside this vocabulary comparison.
+    private record ShiftVocabularyEntry(Set<Long> positionIds, java.time.LocalTime startTime,
+                                        java.time.LocalTime endTime) { }
+
+    private record ScopedPositionConfig(ScheduleBuildPositionConfig config, Set<Long> positionIds) { }
+
+    ScheduleBuildTemplate resolveEffectiveTemplate(Long restaurantId, Schedule schedule, Long requestedTemplateId) {
+        PreferenceCollectionMode mode = schedule.getPreferenceCollectionMode();
+        if (mode == null) {
+            throw new BadRequestException("Автосборка доступна только после проведения сбора пожеланий");
+        }
         ScheduleBuildTemplate preferenceTemplate = schedule.getPreferenceBuildTemplate();
-        if (preferenceTemplate != null) {
+        if (mode == PreferenceCollectionMode.SHIFT_OPTIONS) {
+            if (preferenceTemplate == null) {
+                throw new BadRequestException("Для сбора с вариантами смен не сохранён шаблон сборки");
+            }
             Long preferenceTemplateId = preferenceTemplate.getId();
             if (requestedTemplateId != null && !preferenceTemplateId.equals(requestedTemplateId)) {
                 throw new BadRequestException("Автосборка использует шаблон, выбранный при сборе пожеланий. Передан другой templateId: " + requestedTemplateId);
@@ -88,8 +147,11 @@ public class ScheduleAutoBuildPreviewServiceImpl implements ScheduleAutoBuildPre
     private void initializeTemplateCollections(ScheduleBuildTemplate template) {
         for (ScheduleBuildPositionConfig positionConfig : template.getPositionConfigs()) {
             Hibernate.initialize(positionConfig.getPositions());
-            Hibernate.initialize(positionConfig.getShiftOptions());
-            Hibernate.initialize(positionConfig.getCoverageRules());
+            Hibernate.initialize(positionConfig.getWeekdayRegimes());
+            for (ScheduleBuildWeekdayRegime regime : positionConfig.getWeekdayRegimes()) {
+                Hibernate.initialize(regime.getDaysOfWeek()); Hibernate.initialize(regime.getShiftOptions());
+                Hibernate.initialize(regime.getCoverageRules());
+            }
             Hibernate.initialize(positionConfig.getHeavyDaysOfWeek());
         }
     }

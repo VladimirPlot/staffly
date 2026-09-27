@@ -19,6 +19,14 @@ import jakarta.persistence.OptimisticLockException;
 import ru.staffly.training.exception.StaleExamRevisionException;
 import ru.staffly.training.exception.MaterialChangeRequiresNewCycleException;
 import ru.staffly.training.model.TrainingExam;
+import ru.staffly.schedule.exception.ScheduleVersionConflictException;
+import ru.staffly.schedule.exception.ScheduleDomainConflictException;
+import ru.staffly.schedule.exception.ScheduleBuildTemplateConfirmationRequiredException;
+import ru.staffly.schedule.exception.ScheduleBuildTemplateVersionConflictException;
+import ru.staffly.invite.exception.InvitationInvalidatedException;
+import ru.staffly.invite.exception.InvitationExpiredException;
+import ru.staffly.schedule.model.Schedule;
+import ru.staffly.invite.exception.InvitationImpactPlanStaleException;
 
 import java.util.stream.Collectors;
 
@@ -86,6 +94,50 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("CONFLICT", ex.getMessage(), ex.getMeta()));
     }
 
+    @ExceptionHandler(InvitationImpactPlanStaleException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationImpactPlanStale(InvitationImpactPlanStaleException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(InvitationImpactPlanStaleException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(InvitationInvalidatedException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationInvalidated(InvitationInvalidatedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(InvitationInvalidatedException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(InvitationExpiredException.class)
+    public ResponseEntity<ErrorResponse> handleInvitationExpired(InvitationExpiredException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(InvitationExpiredException.ERROR_CODE, ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(ScheduleVersionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleScheduleVersionConflict(ScheduleVersionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ScheduleVersionConflictException.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(ScheduleDomainConflictException.class)
+    public ResponseEntity<ErrorResponse> handleScheduleDomainConflict(ScheduleDomainConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.getErrorCode(), ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(ScheduleBuildTemplateConfirmationRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleTemplateConfirmationRequired(
+            ScheduleBuildTemplateConfirmationRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
+    @ExceptionHandler(ScheduleBuildTemplateVersionConflictException.class)
+    public ResponseEntity<ErrorResponse> handleTemplateVersionConflict(
+            ScheduleBuildTemplateVersionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse(ex.ERROR_CODE, ex.getMessage(), ex.getMeta()));
+    }
+
     @ExceptionHandler(StaleExamRevisionException.class)
     public ResponseEntity<ErrorResponse> handleStaleExamRevision(StaleExamRevisionException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -107,7 +159,23 @@ public class GlobalExceptionHandler {
                     null
             ));
         }
+        if (isScheduleOptimisticLock(ex)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                    ScheduleVersionConflictException.ERROR_CODE,
+                    ScheduleVersionConflictException.MESSAGE,
+                    null
+            ));
+        }
         return buildResponse("Задача была изменена другим пользователем. Обновите страницу.", HttpStatus.CONFLICT);
+    }
+
+    private boolean isScheduleOptimisticLock(Exception ex) {
+        if (ex instanceof ObjectOptimisticLockingFailureException lockingFailure) {
+            return lockingFailure.getPersistentClass() != null
+                    && Schedule.class.isAssignableFrom(lockingFailure.getPersistentClass());
+        }
+        return ex instanceof OptimisticLockException lockingFailure
+                && lockingFailure.getEntity() instanceof Schedule;
     }
 
     private boolean isTrainingExamOptimisticLock(Exception ex) {

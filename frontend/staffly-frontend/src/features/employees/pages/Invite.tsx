@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
@@ -21,13 +21,20 @@ import { useMemberFilteringSorting } from "../hooks/useMemberFilteringSorting";
 import { useMemberRemoval } from "../hooks/useMemberRemoval";
 import { useMembers } from "../hooks/useMembers";
 import { usePositions } from "../hooks/usePositions";
+import Toast from "../../home/components/Toast";
+import { fetchRestaurant } from "../../restaurants/api";
 
 export default function InvitePage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
   const currentUserId = user?.id ?? null;
   const [avatarPreviewMember, setAvatarPreviewMember] = useState<MemberDto | null>(null);
+  const [restaurantTimeZone, setRestaurantTimeZone] = useState("Europe/Moscow");
+  useEffect(() => {
+    if (!restaurantId) return;
+    void fetchRestaurant(restaurantId).then((restaurant) => setRestaurantTimeZone(restaurant.timezone));
+  }, [restaurantId]);
 
   const membersState = useMembers(restaurantId);
   const positionsState = usePositions(restaurantId);
@@ -49,7 +56,7 @@ export default function InvitePage() {
     [access.isAdminLike, positionsState.activePositions],
   );
 
-  const inviteForm = useInviteForm(restaurantId, { isManagerLike: canInvite }, invitablePositions);
+  const inviteForm = useInviteForm(restaurantId, { isManagerLike: canInvite }, invitablePositions, restaurantTimeZone);
 
   const { positionOptions, sortedMembers, positionFilter, setPositionFilter } = useMemberFilteringSorting(
     membersState.members,
@@ -58,8 +65,10 @@ export default function InvitePage() {
   const editPositionState = useMemberEditPosition({
     restaurantId,
     allPositions: positionsState.allPositions,
-    updateRole: membersState.patchMemberRole,
-    updatePosition: membersState.patchMemberPosition,
+    restaurantTimeZone,
+    onApplied: async () => {
+      await membersState.refresh();
+    },
   });
 
   const removalState = useMemberRemoval({
@@ -68,8 +77,11 @@ export default function InvitePage() {
     currentUserId,
     members: membersState.members,
     myRole: membersState.myRole,
-    removeMember: membersState.removeMember,
-    onSelfRemoved: () => membersState.setMyRole(null),
+    refreshMembers: membersState.refresh,
+    onSelfRemoved: () => {
+      membersState.setMyRole(null);
+      void refreshMe().finally(() => navigate("/restaurants", { replace: true }));
+    },
   });
 
   const handleOpenAvatarPreview = useCallback((member: MemberDto) => {
@@ -119,8 +131,13 @@ export default function InvitePage() {
             loadingPositions={positionsState.loading}
             positionId={inviteForm.positionId}
             error={inviteForm.error}
+            impact={inviteForm.impact}
+            decisions={inviteForm.decisions}
+            deadlines={inviteForm.deadlines}
+            restaurantTimeZone={restaurantTimeZone}
             submitting={inviteForm.submitting}
             isSubmitDisabled={inviteForm.isSubmitDisabled}
+            isConfirmDisabled={!inviteForm.allRequiredScheduleDecisionsSelected || inviteForm.submitting}
             onChangePhone={inviteForm.setPhone}
             onChangePhoneCountry={(country, meta) => {
               inviteForm.setPhoneCountry(country);
@@ -128,6 +145,10 @@ export default function InvitePage() {
             }}
             onChangePositionId={inviteForm.setPositionId}
             onSubmit={inviteForm.submit}
+            onConfirm={inviteForm.confirm}
+            onBack={inviteForm.backToDetails}
+            onChangeDecision={inviteForm.setDecision}
+            onChangeDeadline={inviteForm.setDeadline}
             onCancel={() => inviteForm.setInviteOpen(false)}
             onResetDone={() => inviteForm.resetForm()}
           />
@@ -165,23 +186,32 @@ export default function InvitePage() {
         positionsError={positionsState.error}
         options={editPositionState.editOptions}
         value={editPositionState.editPositionId}
-        memberDescription={editPositionState.description}
+        plan={editPositionState.plan}
+        decisions={editPositionState.decisions}
+        restaurantTimeZone={restaurantTimeZone}
         saving={editPositionState.saving}
+        loadingImpact={editPositionState.loadingImpact}
         error={editPositionState.error}
         onClose={editPositionState.close}
-        onSave={editPositionState.save}
+        onPreview={editPositionState.preview}
+        onApply={editPositionState.apply}
         onChangeValue={editPositionState.setEditPositionId}
+        onDecision={(id, decision) => editPositionState.setDecisions((current) => ({ ...current, [id]: decision }))}
       />
+      <Toast message={editPositionState.success} onClose={() => editPositionState.setSuccess(null)} />
 
       <RemoveMemberDialog
         open={Boolean(removalState.memberToRemove)}
-        title={removalState.title}
-        description={removalState.description}
-        confirmText={removalState.confirmText}
+        plan={removalState.plan}
+        loading={removalState.loadingImpact}
         confirming={removalState.removing}
+        error={removalState.error}
+        notice={removalState.notice}
+        isSelf={removalState.memberToRemove?.userId === currentUserId}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
       />
+      <Toast message={removalState.success} onClose={() => removalState.setSuccess(null)} />
 
       <MemberResponsibilityHandoffDialog
         open={Boolean(removalState.pendingHandoffMember)}
@@ -193,6 +223,7 @@ export default function InvitePage() {
         onSelect={removalState.selectHandoffOwner}
         onClose={removalState.closeHandoff}
         onSubmit={removalState.confirmHandoff}
+        isSelf={removalState.pendingHandoffMember?.userId === currentUserId}
       />
 
       <EmployeeAvatarPreviewModal

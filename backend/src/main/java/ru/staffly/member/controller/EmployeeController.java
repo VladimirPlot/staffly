@@ -7,13 +7,26 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
+import ru.staffly.invite.dto.InvitationImpactPlan;
+import ru.staffly.invite.dto.InvitationImpactRequest;
+import ru.staffly.invite.service.InvitationImpactService;
 import ru.staffly.member.dto.MemberDto;
-import ru.staffly.member.dto.UpdateMemberPositionRequest;
+import ru.staffly.member.dto.ApplyPositionChangeRequest;
+import ru.staffly.member.dto.ApplyPositionChangeResult;
+import ru.staffly.member.dto.PositionChangeImpactPlan;
+import ru.staffly.member.dto.PositionChangeImpactRequest;
 import ru.staffly.member.dto.UpdateMemberRoleRequest;
+import ru.staffly.member.dto.EmployeeRemovalImpactPlan;
+import ru.staffly.member.dto.ApplyEmployeeRemovalRequest;
+import ru.staffly.member.dto.ApplyEmployeeRemovalResult;
 import ru.staffly.member.responsibility.MemberResponsibilityHandoffOptionsDto;
 import ru.staffly.member.responsibility.MemberResponsibilityHandoffRequest;
 import ru.staffly.member.responsibility.MemberResponsibilityHandoffService;
 import ru.staffly.member.service.EmployeeService;
+import ru.staffly.member.service.EmployeeRemovalImpactService;
+import ru.staffly.member.service.EmployeeRemovalApplyService;
+import ru.staffly.member.service.PositionChangeImpactService;
+import ru.staffly.member.service.PositionChangeApplyService;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.security.UserPrincipal;
 
@@ -26,6 +39,19 @@ public class EmployeeController {
 
     private final EmployeeService employees;
     private final MemberResponsibilityHandoffService responsibilityHandoffService;
+    private final PositionChangeImpactService positionChangeImpactService;
+    private final PositionChangeApplyService positionChangeApplyService;
+    private final EmployeeRemovalImpactService employeeRemovalImpactService;
+    private final EmployeeRemovalApplyService employeeRemovalApplyService;
+    private final InvitationImpactService invitationImpactService;
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/invitations/impact")
+    public InvitationImpactPlan invitationImpact(@PathVariable Long restaurantId,
+                                                 @AuthenticationPrincipal UserPrincipal principal,
+                                                 @Valid @RequestBody InvitationImpactRequest request) {
+        return invitationImpactService.calculate(restaurantId, principal.userId(), request);
+    }
 
     // Пригласить по телефону/email (MANAGER/OWNER)
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -64,14 +90,40 @@ public class EmployeeController {
         return employees.updateRole(restaurantId, memberId, newRole, principal.userId());
     }
 
-    // Обновить должность (MANAGER/OWNER)
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PatchMapping("/members/{memberId}/position")
-    public MemberDto updatePosition(@PathVariable Long restaurantId,
-                                    @PathVariable Long memberId,
-                                    @AuthenticationPrincipal UserPrincipal principal,
-                                    @RequestBody UpdateMemberPositionRequest req) {
-        return employees.updatePosition(restaurantId, memberId, req.positionId(), principal.userId());
+    @PostMapping("/members/{memberId}/position-change-impact")
+    public PositionChangeImpactPlan positionChangeImpact(@PathVariable Long restaurantId,
+                                                          @PathVariable Long memberId,
+                                                          @AuthenticationPrincipal UserPrincipal principal,
+                                                          @Valid @RequestBody PositionChangeImpactRequest request) {
+        return positionChangeImpactService.calculate(restaurantId, memberId, request.targetPositionId(),
+                principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @PostMapping("/members/{memberId}/position-change")
+    public ApplyPositionChangeResult applyPositionChange(@PathVariable Long restaurantId,
+                                                          @PathVariable Long memberId,
+                                                          @AuthenticationPrincipal UserPrincipal principal,
+                                                          @Valid @RequestBody ApplyPositionChangeRequest request) {
+        return positionChangeApplyService.apply(restaurantId, memberId, request, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @PostMapping("/members/{memberId}/removal-impact")
+    public EmployeeRemovalImpactPlan removalImpact(@PathVariable Long restaurantId,
+                                                    @PathVariable Long memberId,
+                                                    @AuthenticationPrincipal UserPrincipal principal) {
+        return employeeRemovalImpactService.calculate(restaurantId, memberId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
+    @PostMapping("/members/{memberId}/remove")
+    public ApplyEmployeeRemovalResult remove(@PathVariable Long restaurantId,
+                                              @PathVariable Long memberId,
+                                              @AuthenticationPrincipal UserPrincipal principal,
+                                              @Valid @RequestBody ApplyEmployeeRemovalRequest request) {
+        return employeeRemovalApplyService.apply(restaurantId, memberId, request, principal.userId());
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -91,12 +143,4 @@ public class EmployeeController {
         responsibilityHandoffService.handoff(restaurantId, memberId, principal.userId(), request);
     }
 
-    // Удалить участника (правила зависят от роли — проверяются в сервисе)
-    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @DeleteMapping("/members/{memberId}")
-    public void remove(@PathVariable Long restaurantId,
-                       @PathVariable Long memberId,
-                       @AuthenticationPrincipal UserPrincipal principal) {
-        employees.removeMember(restaurantId, memberId, principal.userId());
-    }
 }

@@ -11,6 +11,9 @@ import java.util.List;
 @Table(name = "schedule_row",
         indexes = {
                 @Index(name = "idx_schedule_row_schedule", columnList = "schedule_id")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_schedule_row_schedule_member", columnNames = {"schedule_id", "member_id"})
         })
 @Getter
 @Setter
@@ -41,6 +44,11 @@ public class ScheduleRow {
 
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
+
+    /** Explicitly retained published history; never treated as active participation. */
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean historical = false;
 
     @OneToMany(mappedBy = "row", cascade = CascadeType.ALL, orphanRemoval = true)
     @BatchSize(size = 128)

@@ -3,13 +3,13 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Modal from "../../../shared/ui/Modal";
 import type { ScheduleBuildTemplateDto } from "../api";
-import type { ScheduleCellKey, ScheduleData, SchedulePreferenceHintsByCellKey } from "../types";
+import type { ScheduleCellKey, EditableScheduleData, SchedulePreferenceHintsByCellKey } from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
 import { hasStartWithoutEndValue } from "../utils/timeValues";
 
 type PublishScheduleConfirmDialogProps = {
   open: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   buildTemplate?: ScheduleBuildTemplateDto | null;
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey;
   publishing: boolean;
@@ -63,7 +63,7 @@ const WarningBox: React.FC<{ children: React.ReactNode; high?: boolean }> = ({ c
 );
 
 function getPublishSummary(
-  schedule: ScheduleData | null,
+  schedule: EditableScheduleData | null,
   buildTemplate?: ScheduleBuildTemplateDto | null,
   preferenceHintsByCellKey?: SchedulePreferenceHintsByCellKey,
 ): PublishSummary {
@@ -116,11 +116,12 @@ function getPublishSummary(
         return (
           total +
           relevantPositionConfigs.reduce((dateTotal, config) => {
-            const dateOverrides = config.coverageDateOverrides.filter((override) => override.date === day.date);
-            const requiredCounts =
-              dateOverrides.length > 0
-                ? dateOverrides.map((override) => override.requiredCount)
-                : config.coverageRules.filter((rule) => rule.dayOfWeek === dayOfWeek).map((rule) => rule.requiredCount);
+            const weekdayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+            const regime = config.weekdayRegimes.find((candidate) => candidate.daysOfWeek.includes(weekdayNames[dayOfWeek - 1]));
+            const dateOverrides = regime?.coverageDateOverrides.filter((override) => override.date === day.date) ?? [];
+            const requiredCounts = dateOverrides.length > 0
+              ? dateOverrides.map((override) => override.requiredCount)
+              : regime?.coverageRules.filter((rule) => rule.dayOfWeek === dayOfWeek).map((rule) => rule.requiredCount) ?? [];
 
             return dateTotal + requiredCounts.reduce((sum, count) => sum + Math.max(0, count), 0);
           }, 0)

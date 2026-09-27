@@ -1,24 +1,25 @@
 import React from "react";
+import { formatDateFromIso } from "../../../shared/utils/date";
 
 import Modal from "../../../shared/ui/Modal";
 import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Textarea from "../../../shared/ui/Textarea";
 import type { MemberDto } from "../../employees/api";
-import type { ScheduleData } from "../types";
+import type { EditableScheduleData } from "../types";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  schedule: ScheduleData;
+  schedule: EditableScheduleData;
   currentMember: MemberDto | null;
   members: MemberDto[];
   onSubmit: (payload: { day: string; toMemberId: number; reason?: string }) => Promise<void>;
 };
 
-function hasShift(schedule: ScheduleData, memberId: number, day: string): string | null {
+function hasShift(schedule: EditableScheduleData, memberId: number, day: string): string | null {
   const value = schedule.cellValues[`${memberId}:${day}`];
   if (!value) return null;
   const trimmed = value.trim();
@@ -89,7 +90,7 @@ const ShiftReplacementDialog: React.FC<Props> = ({ open, onClose, schedule, curr
 
   const formatLabel = React.useCallback(
     (item: { date: string; value: string | null }) => {
-      const dateLabel = new Date(item.date).toLocaleDateString("ru-RU");
+      const dateLabel = formatDateFromIso(item.date);
       return `${dateLabel} — ${item.value ?? ""}`;
     },
     []

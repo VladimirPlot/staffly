@@ -6,6 +6,7 @@ import {
   type SchedulePreferenceMyResponse,
   type UpsertMySchedulePreferenceRequest,
 } from "../api";
+import { completeOwnSchedulePreferenceSubmit } from "../schedulePreferenceSubmitTransition";
 import { getFriendlyScheduleErrorMessage } from "../utils/errorMessages";
 
 type UseSchedulePreferenceMeActionsParams = {
@@ -27,8 +28,10 @@ export default function useSchedulePreferenceMeActions({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
+  const requestSequenceRef = React.useRef(0);
 
   React.useEffect(() => {
+    requestSequenceRef.current += 1;
     setPreferenceViewScheduleId(null);
     setPreferenceData(null);
     setLoading(false);
@@ -40,18 +43,21 @@ export default function useSchedulePreferenceMeActions({
   const loadPreference = React.useCallback(
     async (scheduleId: number) => {
       if (!restaurantId) return;
+      const requestSequence = ++requestSequenceRef.current;
 
       setLoading(true);
       setError(null);
       setMessage(null);
       try {
         const data = await getMySchedulePreference(restaurantId, scheduleId);
+        if (requestSequence !== requestSequenceRef.current) return;
         setPreferenceData(data);
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return;
         setPreferenceData(null);
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось загрузить пожелания"));
       } finally {
-        setLoading(false);
+        if (requestSequence === requestSequenceRef.current) setLoading(false);
       }
     },
     [restaurantId],
@@ -71,6 +77,7 @@ export default function useSchedulePreferenceMeActions({
   );
 
   const closePreferenceView = React.useCallback(() => {
+    requestSequenceRef.current += 1;
     setPreferenceViewScheduleId(null);
     setPreferenceData(null);
     setLoading(false);
@@ -80,19 +87,30 @@ export default function useSchedulePreferenceMeActions({
   }, []);
 
   const submitPreference = React.useCallback(
-    async (request: UpsertMySchedulePreferenceRequest) => {
-      if (!restaurantId || !preferenceViewScheduleId) return;
+    async (
+      request: UpsertMySchedulePreferenceRequest,
+      onSuccessBeforePublish: () => void,
+    ): Promise<SchedulePreferenceMyResponse | null> => {
+      if (!restaurantId || !preferenceViewScheduleId) return null;
+      const requestSequence = ++requestSequenceRef.current;
 
       setSaving(true);
       setError(null);
       setMessage(null);
       try {
         const data = await upsertMySchedulePreference(restaurantId, preferenceViewScheduleId, request);
-        setPreferenceData(data);
+        const published = completeOwnSchedulePreferenceSubmit(
+          data,
+          onSuccessBeforePublish,
+          () => requestSequence === requestSequenceRef.current,
+          setPreferenceData,
+        );
+        if (!published) return null;
         setMessage("Пожелания отправлены");
         try {
           await onPreferenceSubmitted?.();
         } catch (reloadError: unknown) {
+          if (requestSequence !== requestSequenceRef.current) return null;
           setError(
             getFriendlyScheduleErrorMessage(
               reloadError,
@@ -100,10 +118,13 @@ export default function useSchedulePreferenceMeActions({
             ),
           );
         }
+        return data;
       } catch (e: unknown) {
+        if (requestSequence !== requestSequenceRef.current) return null;
         setError(getFriendlyScheduleErrorMessage(e, "Не удалось отправить пожелания"));
+        return null;
       } finally {
-        setSaving(false);
+        if (requestSequence === requestSequenceRef.current) setSaving(false);
       }
     },
     [onPreferenceSubmitted, preferenceViewScheduleId, restaurantId],

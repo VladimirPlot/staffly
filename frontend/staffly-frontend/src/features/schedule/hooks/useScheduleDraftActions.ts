@@ -5,10 +5,10 @@ import {
   createSchedule,
   listSavedSchedules,
   updateSchedule,
-  type SaveSchedulePayload,
+  type CreateSchedulePayload,
   type ScheduleSummary,
 } from "../api";
-import type { ScheduleCellSource, ScheduleConfig, ScheduleData } from "../types";
+import type { EditableScheduleData, ScheduleConfig, ScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { daysBetween, formatDayNumber, formatWeekdayShort, monthLabelsBetween } from "../utils/date";
 import { buildMemberDisplayNameMap, memberDisplayName } from "../utils/names";
@@ -22,12 +22,12 @@ type ScheduleRange = { start: string; end: string } | null;
 type UseScheduleDraftActionsParams = {
   restaurantId: number | null;
   canManage: boolean;
-  schedule: ScheduleData | null;
+  schedule: EditableScheduleData | null;
   members: MemberDto[];
   positions: PositionDto[];
   prepareSchedule: (schedule: ScheduleData) => ScheduleData;
   loadShiftRequests: (scheduleId?: number | null) => Promise<void>;
-  onScheduleChanged: (schedule: ScheduleData | null) => void;
+  onScheduleChanged: (schedule: EditableScheduleData | null) => void;
   onScheduleReadOnlyChanged: (value: boolean) => void;
   onSavedSchedulesChanged: (items: ScheduleSummary[]) => void;
   onLastRangeChanged: (value: ScheduleRange) => void;
@@ -79,6 +79,8 @@ export default function useScheduleDraftActions({
   onScheduleError,
   onAutoTabReset,
 }: UseScheduleDraftActionsParams) {
+  const activeScheduleIdRef = React.useRef(schedule?.id);
+  activeScheduleIdRef.current = schedule?.id;
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [savingDraft, setSavingDraft] = React.useState(false);
@@ -175,7 +177,7 @@ export default function useScheduleDraftActions({
     ],
   );
 
-  const buildPayload = React.useCallback((): SaveSchedulePayload | null => {
+  const buildPayload = React.useCallback((): CreateSchedulePayload | null => {
     if (!schedule) return null;
 
     const normalizedCells: Record<string, string> = {};
@@ -186,25 +188,14 @@ export default function useScheduleDraftActions({
       }
     });
 
-    const normalizedSources: Record<string, ScheduleCellSource> = {};
-    Object.keys(normalizedCells).forEach((key) => {
-      const source = schedule.cellSources?.[key];
-      if (source && source !== "MANUAL") {
-        normalizedSources[key] = source;
-      }
-    });
-
     return {
       title: schedule.title,
       config: schedule.config,
       rows: schedule.rows.map((row) => ({
         memberId: row.memberId,
-        displayName: row.displayName,
-        positionId: row.positionId ?? null,
-        positionName: row.positionName ?? null,
       })),
       cellValues: normalizedCells,
-      cellSources: normalizedSources,
+      cellShifts: schedule.cellShifts ?? {},
     };
   }, [schedule]);
 
@@ -233,9 +224,11 @@ export default function useScheduleDraftActions({
       const payload = buildPayload();
       if (!payload) return;
 
-      const saved = schedule.id
-        ? await updateSchedule(restaurantId, schedule.id, payload)
+      const requestedScheduleId = schedule.id;
+      const saved = schedule.id != null
+        ? await updateSchedule(restaurantId, schedule.id, { ...payload, version: schedule.version })
         : await createSchedule(restaurantId, payload);
+      if (requestedScheduleId && activeScheduleIdRef.current !== requestedScheduleId) return;
       const prepared = prepareSchedule(saved);
       onScheduleChanged(prepared);
       onScheduleReadOnlyChanged(true);

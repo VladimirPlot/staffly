@@ -1,4 +1,4 @@
-import type { ScheduleData } from "../types";
+import type { EditableScheduleData } from "../types";
 
 function sanitizeFileName(name: string, extension: string): string {
   const fallback = "График";
@@ -41,7 +41,7 @@ function createRowXml(rowIndex: number, values: string[]): string {
   return `<row r="${rowIndex}">${cells}</row>`;
 }
 
-function buildSheetXml(schedule: ScheduleData): string {
+function buildSheetXml(schedule: EditableScheduleData): string {
   const title = schedule.title?.trim() || "График";
   const columnCount = Math.max(1, schedule.days.length + 1);
   const lastColumn = columnLetter(columnCount);
@@ -321,7 +321,7 @@ function downloadBlob(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function exportScheduleToXlsx(schedule: ScheduleData): void {
+export function exportScheduleToXlsx(schedule: EditableScheduleData): void {
   if (typeof document === "undefined") {
     throw new Error("Экспорт доступен только в браузере");
   }
@@ -412,7 +412,7 @@ function drawRow(
   });
 }
 
-export async function exportScheduleToJpeg(schedule: ScheduleData): Promise<void> {
+export async function exportScheduleToJpeg(schedule: EditableScheduleData): Promise<void> {
   if (typeof document === "undefined") {
     throw new Error("Экспорт доступен только в браузере");
   }
