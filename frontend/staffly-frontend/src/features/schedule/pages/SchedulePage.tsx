@@ -906,13 +906,6 @@ const SchedulePage: React.FC = () => {
                 setAddMemberDialogOpen(true);
               }}
               onCellChange={cellEditing.changeCell}
-              buildTemplate={
-                canManage
-                  ? (buildTemplatesActions.templates.find(
-                      (template) => template.id === schedule.preferenceBuildTemplateId,
-                    ) ?? null)
-                  : null
-              }
             />
           )}
 

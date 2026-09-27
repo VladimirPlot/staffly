@@ -12,7 +12,6 @@ import {
   type ScheduleRejectionHintsByCellKey,
 } from "../types";
 import { hasNegativePreferenceConflict } from "../utils/preferenceHints";
-import type { ScheduleBuildTemplateDto } from "../api";
 
 type ScheduleTableSectionProps = {
   schedule: EditableScheduleData;
@@ -36,7 +35,6 @@ type ScheduleTableSectionProps = {
   preferenceCommentsByMemberId?: Record<number, string>;
   rejectionHintsByCellKey?: ScheduleRejectionHintsByCellKey;
   showCellDiagnostics?: boolean;
-  buildTemplate?: ScheduleBuildTemplateDto | null;
 };
 
 const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
@@ -61,7 +59,6 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
   preferenceCommentsByMemberId,
   rejectionHintsByCellKey,
   showCellDiagnostics = false,
-  buildTemplate,
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const showTableZoomControls = schedule.rows.length > 0 && !loading && !error && !scheduleLoading;
@@ -224,7 +221,6 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
                 rejectionHintsByCellKey={showCellDiagnostics ? rejectionHintsByCellKey : undefined}
                 showCellDiagnostics={showCellDiagnostics}
                 zoomScale={zoomScale}
-                buildTemplate={buildTemplate}
               />
             </div>
           </div>
