@@ -29,6 +29,7 @@ public class SchedulePreferenceLifecycleService {
     private final ScheduleParticipationRepository participations;
     private final SchedulePreferenceSubmissionRepository submissions;
     private final ScheduleParticipationCreator participationCreator;
+    private final ScheduleRowMaterializer rowMaterializer;
     private final ScheduleAuditService auditService;
 
     @Transactional
@@ -123,6 +124,7 @@ public class SchedulePreferenceLifecycleService {
         Optional<ScheduleParticipation> existing =
                 participations.findByScheduleIdAndMemberId(schedule.getId(), member.getId());
         if (existing.isPresent()) {
+            rowMaterializer.ensureRowWithLocksHeld(schedule, member, existing.get());
             return new ScheduleParticipationCreator.CreationResult(existing.get(), false);
         }
         participationCreator.validateEligibility(schedule, member, true);
@@ -133,7 +135,10 @@ public class SchedulePreferenceLifecycleService {
                 throw new BadRequestException("No frozen Shift Option vocabulary exists for participant position");
             }
         }
-        return participationCreator.createWithLocksHeld(schedule, member, true);
+        ScheduleParticipationCreator.CreationResult result =
+                participationCreator.createWithLocksHeld(schedule, member, true);
+        rowMaterializer.ensureRowWithLocksHeld(schedule, member, result.participation());
+        return result;
     }
 
     private RestaurantMember lockMember(Long restaurantId, Long memberId) {
