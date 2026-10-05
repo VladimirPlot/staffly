@@ -6,6 +6,7 @@ import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.user.model.User;
+import ru.staffly.member.model.RestaurantMember;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -61,6 +62,11 @@ public class Task {
     @JoinColumn(name = "assigned_user_id")
     private User assignedUser;
 
+    /** Operational identity; unlike User this never follows a future rehire. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_member_id")
+    private RestaurantMember assignedMember;
+
     // Назначенный на должность сотрудник для этой задачи. Должно быть null, если значение assignedToAll равно true.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_position_id")
@@ -73,6 +79,11 @@ public class Task {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id")
     private User createdBy;
+
+    /** Current operational owner. createdBy remains immutable historical author. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "setter_member_id")
+    private RestaurantMember setterMember;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

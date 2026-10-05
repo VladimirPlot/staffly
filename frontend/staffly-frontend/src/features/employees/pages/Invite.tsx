@@ -14,7 +14,6 @@ import MembersFilterByPosition from "../components/MembersFilterByPosition";
 import MembersHeader from "../components/MembersHeader";
 import MembersList from "../components/MembersList";
 import RemoveMemberDialog from "../components/RemoveMemberDialog";
-import MemberResponsibilityHandoffDialog from "../components/MemberResponsibilityHandoffDialog";
 import { useInviteForm } from "../hooks/useInviteForm";
 import { useMemberEditPosition } from "../hooks/useMemberEditPosition";
 import { useMemberFilteringSorting } from "../hooks/useMemberFilteringSorting";
@@ -210,21 +209,12 @@ export default function InvitePage() {
         isSelf={removalState.memberToRemove?.userId === currentUserId}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
+        taskSelections={removalState.taskSelections}
+        onTaskSelection={removalState.selectTaskReplacement}
+        ownershipSelections={removalState.ownershipSelections}
+        onOwnershipSelection={removalState.selectOwnershipReplacement}
       />
       <Toast message={removalState.success} onClose={() => removalState.setSuccess(null)} />
-
-      <MemberResponsibilityHandoffDialog
-        open={Boolean(removalState.pendingHandoffMember)}
-        loading={removalState.handoffLoading}
-        saving={removalState.handoffSaving || removalState.removing}
-        error={removalState.handoffError}
-        options={removalState.handoffOptions}
-        selectedOwnerUserIdsByKey={removalState.handoffSelections}
-        onSelect={removalState.selectHandoffOwner}
-        onClose={removalState.closeHandoff}
-        onSubmit={removalState.confirmHandoff}
-        isSelf={removalState.pendingHandoffMember?.userId === currentUserId}
-      />
 
       <EmployeeAvatarPreviewModal
         open={Boolean(avatarPreviewMember)}
