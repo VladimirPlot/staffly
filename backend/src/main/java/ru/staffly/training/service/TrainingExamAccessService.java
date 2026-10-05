@@ -87,7 +87,7 @@ class TrainingExamAccessService {
     }
 
     private ExamVisibilityContext resolveVisibilityContext(Long restaurantId, Long userId, Boolean managerOverride) {
-        var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+        var member = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a member"));
         boolean memberIsManager = member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER;
         boolean effectiveManager = managerOverride == null ? memberIsManager : managerOverride;

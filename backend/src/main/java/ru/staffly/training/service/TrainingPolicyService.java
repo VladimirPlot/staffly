@@ -220,7 +220,7 @@ public class TrainingPolicyService {
         if (isCreator()) {
             return new TrainingPolicyContext(true, true, true, RestaurantRole.ADMIN);
         }
-        RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a member"));
 
         boolean hasExaminerAuthority = member.getPosition() != null

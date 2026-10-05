@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import ru.staffly.member.model.RestaurantMember;
-import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
@@ -21,7 +21,7 @@ public class DataInitializer {
 
     private final UserRepository userRepository;
     private final RestaurantRepository restaurantRepository;
-    private final RestaurantMemberRepository memberRepository;
+    private final PositionRepository positionRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
@@ -34,7 +34,7 @@ public class DataInitializer {
                             .active(true)
                             .build()));
 
-            User admin = userRepository.findByPhone("+79999999999")
+            userRepository.findByPhone("+79999999999")
                     .orElseGet(() -> userRepository.save(User.builder()
                             .phone("+79999999999")
                             .email("admin@staffly.local")
@@ -44,12 +44,16 @@ public class DataInitializer {
                             .active(true)
                             .build()));
 
-            memberRepository.findByUserIdAndRestaurantId(admin.getId(), restaurant.getId())
-                    .orElseGet(() -> memberRepository.save(RestaurantMember.builder()
-                            .user(admin)
-                            .restaurant(restaurant)
-                            .role(RestaurantRole.ADMIN)
-                            .build()));
+            if (positionRepository.findByRestaurantIdAndActiveTrue(restaurant.getId()).stream()
+                    .noneMatch(position -> position.getLevel() == RestaurantRole.ADMIN)) {
+                positionRepository.save(Position.builder()
+                        .restaurant(restaurant)
+                        .name("Управляющий")
+                        .level(RestaurantRole.ADMIN)
+                        .active(true)
+                        .build());
+            }
+            // The configured CREATOR has global access and is deliberately not an employee.
         };
     }
 }

@@ -51,7 +51,7 @@ public class ReminderServiceImpl implements ReminderService {
     public List<ReminderDto> list(Long restaurantId, Long currentUserId, List<String> globalRoles, Long positionFilterId) {
         security.assertMember(currentUserId, restaurantId);
 
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
         boolean isCreator = hasRole(globalRoles, "CREATOR");
         boolean canManage = isCreator || (member != null && isManagerOrAdmin(member));
         Long myPositionId = member != null && member.getPosition() != null ? member.getPosition().getId() : null;
@@ -72,7 +72,7 @@ public class ReminderServiceImpl implements ReminderService {
 
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
 
         boolean canManage = isManagerOrAdmin(member);
@@ -136,7 +136,7 @@ public class ReminderServiceImpl implements ReminderService {
 
         Reminder reminder = reminders.findByIdAndRestaurantId(reminderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Reminder not found"));
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         boolean canManage = isManagerOrAdmin(member);
         boolean isOwner = reminder.getCreatedByMember() != null
@@ -203,7 +203,7 @@ public class ReminderServiceImpl implements ReminderService {
 
         Reminder reminder = reminders.findByIdAndRestaurantId(reminderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Reminder not found"));
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
 
         boolean canManage = isManagerOrAdmin(member);
@@ -383,7 +383,7 @@ public class ReminderServiceImpl implements ReminderService {
         if (memberId == null) {
             throw new BadRequestException("Укажите сотрудника");
         }
-        RestaurantMember member = members.findById(memberId)
+        RestaurantMember member = members.findByIdAndEndedAtIsNull(memberId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         if (!Objects.equals(member.getRestaurant().getId(), restaurantId)) {
             throw new BadRequestException("Сотрудник не принадлежит ресторану");

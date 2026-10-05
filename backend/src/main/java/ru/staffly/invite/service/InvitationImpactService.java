@@ -76,7 +76,7 @@ public class InvitationImpactService {
         if (!isPhone(rawPhone)) throw new BadRequestException("Invalid phone");
         String phone = normalizePhone(rawPhone);
         users.findByPhone(phone).ifPresent(user -> {
-            if (members.existsByRestaurantIdAndUserId(restaurantId, user.getId())) {
+            if (members.existsByRestaurantIdAndUserIdAndEndedAtIsNull(restaurantId, user.getId())) {
                 throw new ConflictException("User already a member");
             }
         });

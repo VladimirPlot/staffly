@@ -129,7 +129,7 @@ public class CertificationEmployeeAnalyticsService {
     }
 
     private RestaurantMember requireAccessibleMember(Long restaurantId, Long actorUserId, Long userId) {
-        var member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+        var member = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Employee not found"));
 
         if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(

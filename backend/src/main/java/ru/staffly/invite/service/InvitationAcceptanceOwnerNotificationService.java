@@ -52,7 +52,7 @@ public class InvitationAcceptanceOwnerNotificationService {
         }
         Long restaurantId = acceptedMember.getRestaurant().getId();
         Map<Long, RestaurantMember> recipients = members
-                .findByRestaurantIdAndUserIdIn(restaurantId, ownerUserIds).stream()
+                .findActiveByRestaurantIdAndUserIdIn(restaurantId, ownerUserIds).stream()
                 .filter(member -> member.getUser() != null)
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
         ownerUserIds.stream().filter(id -> !recipients.containsKey(id)).forEach(id ->

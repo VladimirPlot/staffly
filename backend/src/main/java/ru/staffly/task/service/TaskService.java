@@ -77,7 +77,7 @@ public class TaskService {
                 today
         );
 
-        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantId(restaurantId)
+        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantIdAndEndedAtIsNull(restaurantId)
                 .stream()
                 .collect(Collectors.toMap(
                         m -> m.getUser().getId(),
@@ -144,7 +144,7 @@ public class TaskService {
         if (assignedUserId != null) {
             assignedUser = users.findById(assignedUserId)
                     .orElseThrow(() -> new BadRequestException("Сотрудник не найден"));
-            RestaurantMember assignedMember = members.findByUserIdAndRestaurantId(assignedUserId, restaurantId)
+            RestaurantMember assignedMember = members.findActiveByUserIdAndRestaurantId(assignedUserId, restaurantId)
                     .orElseThrow(() -> new BadRequestException("Сотрудник не найден в ресторане"));
             targets = List.of(assignedMember);
         } else if (assignedPositionId != null) {
@@ -153,9 +153,9 @@ public class TaskService {
             if (!Objects.equals(assignedPosition.getRestaurant().getId(), restaurantId)) {
                 throw new BadRequestException("Должность принадлежит другому ресторану");
             }
-            targets = members.findByRestaurantIdAndPositionIdIn(restaurantId, List.of(assignedPositionId));
+            targets = members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(restaurantId, List.of(assignedPositionId));
         } else if (assignedToAll) {
-            targets = members.findByRestaurantId(restaurantId);
+            targets = members.findByRestaurantIdAndEndedAtIsNull(restaurantId);
         }
 
         Task task = Task.builder()
@@ -256,7 +256,7 @@ public class TaskService {
                 org.springframework.data.domain.Sort.by("createdAt").ascending()
         );
         var commentPage = comments.findByTaskId(taskId, pageable);
-        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantId(task.getRestaurant().getId())
+        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantIdAndEndedAtIsNull(task.getRestaurant().getId())
                 .stream()
                 .collect(Collectors.toMap(
                         m -> m.getUser().getId(),
@@ -333,7 +333,7 @@ public class TaskService {
     }
 
     private RestaurantMember resolveMember(Long userId, Long restaurantId) {
-        return members.findByUserIdAndRestaurantId(userId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
     }
 
@@ -341,7 +341,7 @@ public class TaskService {
         if (user == null) {
             return null;
         }
-        return members.findByUserIdAndRestaurantId(user.getId(), restaurantId).orElse(null);
+        return members.findActiveByUserIdAndRestaurantId(user.getId(), restaurantId).orElse(null);
     }
 
     private boolean isManager(RestaurantMember member) {

@@ -52,6 +52,7 @@ public class PositionChangeApplyService {
     private final PublishedShiftImpactClassifier shiftClassifier;
     private final CertificationAudienceSyncService certificationAudienceSync;
     private final PositionChangeNotificationService notifications;
+    private final ru.staffly.user.repository.UserRepository users;
 
     @Transactional
     public ApplyPositionChangeResult apply(Long restaurantId, Long memberId,
@@ -61,13 +62,23 @@ public class PositionChangeApplyService {
                 .orElseThrow(this::stale);
         if (member.getPosition() == null
                 || !Objects.equals(member.getPosition().getId(), request.expectedCurrentPositionId())
-                || !Objects.equals(member.getCreatedAt(), request.expectedMemberCreatedAt())) throw stale();
+                || !Objects.equals(member.getStartedAt(), request.expectedMemberCreatedAt())) throw stale();
 
         Position target = positions.findForShareByIdAndRestaurantId(request.targetPositionId(), restaurantId)
                 .orElseThrow(this::stale);
         if (!Objects.equals(target.getRestaurant().getId(), restaurantId) || !target.isActive()
-                || !compatible(target.getLevel(), member.getRole())
                 || Objects.equals(target.getId(), member.getPosition().getId())) throw stale();
+        if (!security.isAdmin(actorUserId, restaurantId)
+                && (member.effectiveRole() != RestaurantRole.STAFF || target.getLevel() != RestaurantRole.STAFF)) {
+            throw new ru.staffly.common.exception.ForbiddenException(
+                    "Managers can move only STAFF employees to STAFF positions");
+        }
+        if (member.effectiveRole() == RestaurantRole.ADMIN
+                && target.getLevel() != RestaurantRole.ADMIN
+                && members.countActiveByRestaurantIdAndPositionLevel(restaurantId, RestaurantRole.ADMIN) <= 1) {
+            throw new ConflictException(
+                    "Нельзя перевести последнего ADMIN на должность с более низким уровнем доступа");
+        }
 
         Map<Long, ScheduleDecision> decisions;
         try {
@@ -94,6 +105,7 @@ public class PositionChangeApplyService {
 
         Long oldPositionId = member.getPosition().getId();
         String oldPositionName = member.getPosition().getName();
+        RestaurantRole oldPositionLevel = member.effectiveRole();
         LocalDateTime localNow = LocalDateTime.ofInstant(restaurantTime.nowInstant(),
                 restaurantTime.zoneFor(member.getRestaurant()));
         int cancelled = 0;
@@ -203,6 +215,8 @@ public class PositionChangeApplyService {
                 .toList() + "; reopened=" + reopened + "; cancelledFutureShifts=" + cancelled;
         audits.save(PositionChangeAudit.builder().restaurantId(restaurantId).actorUserId(actorUserId)
                 .memberId(memberId).oldPositionId(oldPositionId).newPositionId(target.getId())
+                .oldPositionName(oldPositionName).newPositionName(target.getName())
+                .oldPositionLevel(oldPositionLevel).newPositionLevel(target.getLevel())
                 .occurredAt(restaurantTime.nowInstant()).details(details).build());
         var certificationEffects = certificationAudienceSync.syncRestaurantAudience(restaurantId, member.getUser().getId());
         List<AppliedPositionChangeScheduleEffect> scheduleEffects = locked.stream()
@@ -211,8 +225,7 @@ public class PositionChangeApplyService {
                         ownerUserId(schedule), memberId, applied.get(schedule.getId()), schedule.getPreferenceDeadline(),
                         cancelledBySchedule.getOrDefault(schedule.getId(), 0)))
                 .toList();
-        var actor = members.findWithUserByUserIdAndRestaurantId(actorUserId, restaurantId)
-                .orElseThrow(this::stale).getUser();
+        var actor = users.findById(actorUserId).orElseThrow(this::stale);
         notifications.submit(member, actor, BusinessNotificationOperationId.generate(), oldPositionName,
                 target.getName(), scheduleEffects, certificationEffects);
         return new ApplyPositionChangeResult(memberMapper.toDto(member), List.copyOf(affected), reopened, cancelled);

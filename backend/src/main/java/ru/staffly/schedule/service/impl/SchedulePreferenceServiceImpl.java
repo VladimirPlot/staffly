@@ -178,7 +178,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
         }
         RestaurantMember owner = schedule.getOwnerMember();
         if (owner == null || owner.getUser() == null || !Objects.equals(owner.getUser().getId(), ownerUserId)) {
-            owner = members.findByUserIdAndRestaurantId(ownerUserId, schedule.getRestaurant().getId()).orElse(null);
+            owner = members.findActiveByUserIdAndRestaurantId(ownerUserId, schedule.getRestaurant().getId()).orElse(null);
         }
         if (owner == null || owner.getUser() == null) {
             schedule.setPreferenceAllSubmittedNotifiedAt(now);
@@ -274,7 +274,7 @@ public class SchedulePreferenceServiceImpl implements SchedulePreferenceService 
     }
 
     private ScheduleParticipation loadParticipation(Long restaurantId, Schedule schedule, Long userId) {
-        RestaurantMember member = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Not a restaurant member"));
         return participations.findByScheduleIdAndMemberId(schedule.getId(), member.getId())
                 .orElseThrow(() -> new ForbiddenException("Сотрудник не участвует в этом графике"));

@@ -120,7 +120,7 @@ class CertificationAnalyticsService {
         entityManager.flush();
         var rows = loadPermissionFilteredCurrentAssignmentScope(restaurantId, actorUserId, examId);
         var userIds = rows.stream().map(a -> a.getUser().getId()).collect(Collectors.toSet());
-        var memberByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+        var memberByUserId = members.findActiveWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> userIds.contains(member.getUser().getId()))
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
 
@@ -262,7 +262,7 @@ class CertificationAnalyticsService {
     }
 
     private Set<Long> resolveAllowedAnalyticsUserIds(Long restaurantId, Long actorUserId) {
-        return members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+        return members.findActiveWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(
                         actorUserId,
                         restaurantId,
@@ -304,7 +304,7 @@ class CertificationAnalyticsService {
     }
 
     private void assertCanAccessEmployeeByRole(Long restaurantId, Long actorUserId, Long userId) {
-        var member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        var member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Employee not found"));
         if (!trainingPolicyService.canAccessCertificationEmployeeAnalyticsTargetRole(actorUserId, restaurantId, member.getRole())) {
             throw new ForbiddenException("Employee analytics is unavailable for selected employee role.");

@@ -51,7 +51,7 @@ public class ReminderDispatchJob {
             if (dueReminders.isEmpty()) {
                 continue;
             }
-            List<RestaurantMember> memberList = members.findWithUserByRestaurantId(restaurant.getId()).stream()
+            List<RestaurantMember> memberList = members.findActiveWithUserByRestaurantId(restaurant.getId()).stream()
                     .filter(member -> member.getUser() != null)
                     .toList();
             Map<Long, RestaurantMember> memberById = memberList.stream()

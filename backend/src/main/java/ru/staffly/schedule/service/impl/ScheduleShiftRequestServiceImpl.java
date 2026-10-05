@@ -340,7 +340,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     private RestaurantMember requireMember(Long userId, Long restaurantId) {
-        return members.findByUserIdAndRestaurantId(userId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
     }
 
@@ -374,9 +374,9 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
                                               String toShiftValue,
                                               boolean accepted,
                                               Long actorUserId) {
-        RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
-        RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
-        RestaurantMember actor = members.findByUserIdAndRestaurantId(
+        RestaurantMember fromMember = members.findByIdAndEndedAtIsNull(request.getFromMemberId()).orElse(null);
+        RestaurantMember toMember = members.findByIdAndEndedAtIsNull(request.getToMemberId()).orElse(null);
+        RestaurantMember actor = members.findActiveByUserIdAndRestaurantId(
                 actorUserId, request.getSchedule().getRestaurant().getId()).orElse(null);
 
         List<RestaurantMember> targets = Stream.of(fromMember, toMember)
@@ -406,7 +406,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     private void notifyOwnerOnCreate(ScheduleShiftRequest request, User initiatorUser) {
-        RestaurantMember initiatorMember = members.findById(request.getInitiatorMemberId()).orElse(null);
+        RestaurantMember initiatorMember = members.findByIdAndEndedAtIsNull(request.getInitiatorMemberId()).orElse(null);
         RestaurantMember owner = resolveOwnerTarget(request.getSchedule());
         if (owner == null || owner.getUser() == null) {
             return;
@@ -423,7 +423,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
         if (request.getType() == ScheduleShiftRequestType.REPLACEMENT) {
             content = "Создана заявка замены от " + initiatorName + " для графика «" + request.getSchedule().getTitle() + "».";
         } else if (request.getType() == ScheduleShiftRequestType.SWAP) {
-            RestaurantMember secondMember = members.findById(request.getToMemberId()).orElse(null);
+            RestaurantMember secondMember = members.findByIdAndEndedAtIsNull(request.getToMemberId()).orElse(null);
             String secondName = secondMember != null && secondMember.getUser() != null
                     ? secondMember.getUser().getFullName()
                     : "сотрудника";
@@ -447,7 +447,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
             return ownerMember;
         }
         if (schedule.getOwnerUser() != null && schedule.getOwnerUser().getId() != null) {
-            return members.findByUserIdAndRestaurantId(schedule.getOwnerUser().getId(), schedule.getRestaurant().getId()).orElse(null);
+            return members.findActiveByUserIdAndRestaurantId(schedule.getOwnerUser().getId(), schedule.getRestaurant().getId()).orElse(null);
         }
         return null;
     }

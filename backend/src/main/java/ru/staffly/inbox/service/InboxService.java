@@ -52,7 +52,7 @@ public class InboxService {
                              int page,
                              int size) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         LocalDate today = restaurantTime.today(restaurantId);
@@ -83,7 +83,7 @@ public class InboxService {
     @Transactional(readOnly = true)
     public InboxUnreadCountDto unreadCount(Long restaurantId, Long userId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         LocalDate today = restaurantTime.today(restaurantId);
@@ -102,7 +102,7 @@ public class InboxService {
     @Transactional(readOnly = true)
     public InboxMarkerDto markers(Long restaurantId, Long userId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         LocalDate today = restaurantTime.today(restaurantId);
@@ -119,7 +119,7 @@ public class InboxService {
     @Transactional
     public void markRead(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);
@@ -135,7 +135,7 @@ public class InboxService {
     @Transactional
     public void hide(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);
@@ -151,7 +151,7 @@ public class InboxService {
     @Transactional
     public void restore(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);

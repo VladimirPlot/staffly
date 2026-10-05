@@ -53,9 +53,12 @@ public class PositionChangeImpactService {
         if (!target.getRestaurant().getId().equals(restaurantId) || !target.isActive()) {
             throw new BadRequestException("Position is not in this restaurant or inactive");
         }
-        if (!isPositionCompatibleWithRole(target.getLevel(), member.getRole())) {
-            throw new ConflictException("Position level is not compatible with member role");
+        if (!security.isAdmin(currentUserId, restaurantId)
+                && (member.effectiveRole() != RestaurantRole.STAFF || target.getLevel() != RestaurantRole.STAFF)) {
+            throw new ru.staffly.common.exception.ForbiddenException(
+                    "Managers can move only STAFF employees to STAFF positions");
         }
+        assertNotLastAdminDemotion(restaurantId, member, target);
 
         Instant now = restaurantTime.nowInstant();
         LocalDateTime localNow = LocalDateTime.ofInstant(now, restaurantTime.zoneFor(member.getRestaurant()));
@@ -82,8 +85,17 @@ public class PositionChangeImpactService {
         return new PositionChangeImpactPlan(now,
                 new Employee(member.getId(), member.getUser().getFullName(),
                         new PositionChangeImpactPlan.Position(oldPositionId, member.getPosition().getName()),
-                        new PositionChangeImpactPlan.Position(target.getId(), target.getName()), member.getCreatedAt()),
+                        new PositionChangeImpactPlan.Position(target.getId(), target.getName()), member.getStartedAt()),
                 oldImpacts, opportunities);
+    }
+
+    private void assertNotLastAdminDemotion(Long restaurantId, RestaurantMember member, Position target) {
+        if (member.effectiveRole() == RestaurantRole.ADMIN
+                && target.getLevel() != RestaurantRole.ADMIN
+                && members.countActiveByRestaurantIdAndPositionLevel(restaurantId, RestaurantRole.ADMIN) <= 1) {
+            throw new ConflictException(
+                    "Нельзя перевести последнего ADMIN на должность с более низким уровнем доступа");
+        }
     }
 
     private OldPositionImpact oldImpact(Schedule schedule, Long memberId, Long oldPositionId,

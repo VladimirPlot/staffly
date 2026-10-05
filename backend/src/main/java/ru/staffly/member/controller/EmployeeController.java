@@ -15,7 +15,6 @@ import ru.staffly.member.dto.ApplyPositionChangeRequest;
 import ru.staffly.member.dto.ApplyPositionChangeResult;
 import ru.staffly.member.dto.PositionChangeImpactPlan;
 import ru.staffly.member.dto.PositionChangeImpactRequest;
-import ru.staffly.member.dto.UpdateMemberRoleRequest;
 import ru.staffly.member.dto.EmployeeRemovalImpactPlan;
 import ru.staffly.member.dto.ApplyEmployeeRemovalRequest;
 import ru.staffly.member.dto.ApplyEmployeeRemovalResult;
@@ -27,7 +26,6 @@ import ru.staffly.member.service.EmployeeRemovalImpactService;
 import ru.staffly.member.service.EmployeeRemovalApplyService;
 import ru.staffly.member.service.PositionChangeImpactService;
 import ru.staffly.member.service.PositionChangeApplyService;
-import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.security.UserPrincipal;
 
 import java.util.List;
@@ -77,17 +75,6 @@ public class EmployeeController {
     public List<MemberDto> list(@PathVariable Long restaurantId,
                                 @AuthenticationPrincipal UserPrincipal principal) {
         return employees.listMembers(restaurantId, principal.userId());
-    }
-
-    // Обновить роль (MANAGER/OWNER)
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PatchMapping("/members/{memberId}/role")
-    public MemberDto updateRole(@PathVariable Long restaurantId,
-                                @PathVariable Long memberId,
-                                @AuthenticationPrincipal UserPrincipal principal,
-                                @Valid @RequestBody UpdateMemberRoleRequest req) {
-        RestaurantRole newRole = req.role();
-        return employees.updateRole(restaurantId, memberId, newRole, principal.userId());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

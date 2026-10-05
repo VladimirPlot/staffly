@@ -55,7 +55,7 @@ public class EmployeeRemovalImpactService {
         var position = member.getPosition() == null ? null : new EmployeeRemovalImpactPlan.Position(
                 member.getPosition().getId(), member.getPosition().getName());
         var employee = new EmployeeRemovalImpactPlan.Employee(member.getId(), member.getUser().getFullName(),
-                position, member.getCreatedAt());
+                position, member.getStartedAt());
         var impacts = affected.values().stream().map(schedule -> impact(schedule, memberId, localNow)).toList();
         return new EmployeeRemovalImpactPlan(now, employee, impacts);
     }

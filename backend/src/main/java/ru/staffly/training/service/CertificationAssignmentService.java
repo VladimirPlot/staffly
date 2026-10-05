@@ -494,7 +494,7 @@ class CertificationAssignmentService {
         var assignment = lockCurrentForMutation(restaurantId, examId, userId);
         validateAudienceAndState(assignment, true);
 
-        var memberPosition = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+        var memberPosition = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .map(RestaurantMember::getPosition)
                 .orElse(assignment.getAssignedPosition());
         var latestSpecification = specificationService.requireCurrent(assignment.getExam());
@@ -593,7 +593,7 @@ class CertificationAssignmentService {
     }
 
     private List<RestaurantMember> resolveAudienceMembers(TrainingExam exam) {
-        var allMembers = members.findWithUserAndPositionByRestaurantId(exam.getRestaurant().getId());
+        var allMembers = members.findActiveWithUserAndPositionByRestaurantId(exam.getRestaurant().getId());
         var visibilityPositionIds = exam.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet());
         if (visibilityPositionIds.isEmpty()) {
             return List.of();

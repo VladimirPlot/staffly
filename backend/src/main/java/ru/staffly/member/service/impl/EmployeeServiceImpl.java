@@ -293,8 +293,10 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         RestaurantRole roleToAssign = inv.getDesiredRole() != null ? inv.getDesiredRole() : RestaurantRole.STAFF;
         Position positionToAssign = inv.getPosition();
+        // Admission phase TODO: replace desiredRole with an expected Position-level/admission plan.
+        // It is validation metadata only; RestaurantMember persists no independent role.
 
-        if (members.existsByRestaurantIdAndUserId(restaurantId, currentUserId)) {
+        if (members.existsByRestaurantIdAndUserIdAndEndedAtIsNull(restaurantId, currentUserId)) {
             invalidate(inv, user, "ALREADY_MEMBER");
         }
 
@@ -342,7 +344,6 @@ public class EmployeeServiceImpl implements EmployeeService {
         RestaurantMember m = RestaurantMember.builder()
                 .user(user)
                 .restaurant(inv.getRestaurant())
-                .role(roleToAssign)
                 .position(positionToAssign)
                 .build();
         m = members.save(m);
@@ -398,7 +399,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                 })
                 .orElse(false);
 
-        return members.findByRestaurantId(restaurantId)
+        return members.findByRestaurantIdAndEndedAtIsNull(restaurantId)
                 .stream()
                 .filter(m -> {
                     if (viewerIsCreator) return true; // создателю показываем всех
@@ -418,30 +419,6 @@ public class EmployeeServiceImpl implements EmployeeService {
                 })
                 .map(memberMapper::toDto)
                 .toList();
-    }
-
-    @Override
-    @Transactional
-    public MemberDto updateRole(Long restaurantId, Long memberId, RestaurantRole newRole, Long currentUserId) {
-        security.assertAtLeastManager(currentUserId, restaurantId);
-
-        RestaurantMember m = members.findById(memberId)
-                .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
-        if (!m.getRestaurant().getId().equals(restaurantId)) {
-            throw new BadRequestException("Member belongs to another restaurant");
-        }
-
-        // Нельзя понизить последнего ADMIN
-        if (m.getRole() == RestaurantRole.ADMIN && newRole != RestaurantRole.ADMIN) {
-            long admins = members.countByRestaurantIdAndRole(restaurantId, RestaurantRole.ADMIN);
-            if (admins <= 1) {
-                throw new ConflictException("Cannot demote the last ADMIN");
-            }
-        }
-
-        m.setRole(newRole);
-        m = members.save(m);
-        return memberMapper.toDto(m);
     }
 
     @Override

@@ -205,16 +205,6 @@ export async function submitMemberResponsibilityHandoff(
   await api.post(`/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff`, payload);
 }
 
-export async function updateMemberRole(
-  restaurantId: number,
-  memberId: number,
-  role: RestaurantRole,
-): Promise<MemberDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/role`, {
-    role,
-  });
-  return data as MemberDto;
-}
 
 export type PositionChangeAction =
   | "ADD_TO_COLLECTION"

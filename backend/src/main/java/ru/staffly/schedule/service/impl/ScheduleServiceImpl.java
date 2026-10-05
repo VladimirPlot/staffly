@@ -143,7 +143,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
 
         final boolean canManage = scheduleAccessService.canManageSchedules(userId, restaurantId);
-        Optional<RestaurantMember> membership = members.findByUserIdAndRestaurantId(userId, restaurantId);
+        Optional<RestaurantMember> membership = members.findActiveByUserIdAndRestaurantId(userId, restaurantId);
         if (!canManage && membership.isEmpty()) {
             return List.of();
         }
@@ -425,7 +425,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (allowedPositionIds.isEmpty()) {
             return List.of();
         }
-        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+        return members.findActiveWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 schedule.getRestaurant().getId(), allowedPositionIds
         );
     }
@@ -470,7 +470,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         // Discover without locking, then acquire the global Member -> Schedule -> Template order.
         List<Long> discoveredPositionIds = schedules.findPositionIdsByIdAndRestaurantId(scheduleId, restaurantId);
         List<Long> candidateIds = discoveredPositionIds.isEmpty() ? List.of()
-                : members.findByRestaurantIdAndPositionIdIn(restaurantId, discoveredPositionIds).stream()
+                : members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(restaurantId, discoveredPositionIds).stream()
                 .map(RestaurantMember::getId).sorted().toList();
         List<RestaurantMember> lockedCandidates = candidateIds.isEmpty() ? List.of()
                 : members.findForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, candidateIds);
@@ -518,7 +518,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                         && lockedSchedulePositionIds.contains(member.getPosition().getId()))
                 .toList();
         Set<Long> revalidatedCandidateIds = lockedSchedulePositionIds.isEmpty() ? Set.of()
-                : members.findByRestaurantIdAndPositionIdIn(
+                : members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(
                                 restaurantId, lockedSchedulePositionIds.stream().sorted().toList()).stream()
                         .map(RestaurantMember::getId).collect(Collectors.toSet());
         Set<Long> lockedEligibleCandidateIds = eligibleLockedCandidates.stream()
@@ -1222,8 +1222,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                                                ScheduleCellSource oldSource, ScheduleCellSource newSource) {}
 
     private void notifyAutoRejectedRequest(ScheduleShiftRequest request, Long actorUserId) {
-        RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
-        RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
+        RestaurantMember fromMember = members.findByIdAndEndedAtIsNull(request.getFromMemberId()).orElse(null);
+        RestaurantMember toMember = members.findByIdAndEndedAtIsNull(request.getToMemberId()).orElse(null);
         List<RestaurantMember> targets = deduplicateMembersByUserId(Stream.of(fromMember, toMember)
                 .filter(Objects::nonNull)
                 .filter(member -> member.getUser() != null)
@@ -1491,14 +1491,14 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private RestaurantMember resolveOwner(Long restaurantId, Long actorUserId, Long ownerUserId) {
         if (ownerUserId != null) {
-            RestaurantMember owner = members.findByUserIdAndRestaurantId(ownerUserId, restaurantId)
+            RestaurantMember owner = members.findActiveByUserIdAndRestaurantId(ownerUserId, restaurantId)
                     .orElseThrow(() -> new BadRequestException("ownerUserId must belong to the restaurant"));
             if (owner.getRole() != RestaurantRole.ADMIN && owner.getRole() != RestaurantRole.MANAGER) {
                 throw new BadRequestException("owner must be MANAGER or ADMIN");
             }
             return owner;
         }
-        RestaurantMember actorMember = members.findByUserIdAndRestaurantId(actorUserId, restaurantId)
+        RestaurantMember actorMember = members.findActiveByUserIdAndRestaurantId(actorUserId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("ownerUserId is required for CREATOR without membership"));
         if (actorMember.getRole() != RestaurantRole.ADMIN && actorMember.getRole() != RestaurantRole.MANAGER) {
             throw new BadRequestException("ownerUserId is required for STAFF");
