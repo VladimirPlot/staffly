@@ -122,6 +122,7 @@ export type EmployeeRemovalScheduleImpact = {
 };
 export type EmployeeRemovalImpactPlan = {
   calculatedAt: string;
+  mode: "FORCED" | "SELF_LEAVE";
   employee: {
     memberId: number;
     name: string;

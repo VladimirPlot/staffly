@@ -4,10 +4,12 @@ import ru.staffly.schedule.model.ScheduleStatus;
 
 import java.time.Instant;
 import java.util.List;
+import ru.staffly.member.lifecycle.TerminationMode;
 
 /** Authoritative, read-only preview for the later atomic employee-removal command. */
 public record EmployeeRemovalImpactPlan(
         Instant calculatedAt,
+        TerminationMode mode,
         Employee employee,
         List<ScheduleImpact> scheduleImpacts
 ) {

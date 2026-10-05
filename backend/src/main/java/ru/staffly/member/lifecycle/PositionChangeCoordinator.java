@@ -34,6 +34,7 @@ public class PositionChangeCoordinator {
     private final RestaurantTimeService restaurantTime;
     private final PositionChangeNotificationService notifications;
     private final ru.staffly.user.repository.UserRepository users;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Transactional(readOnly = true)
     public PositionChangeImpactPlan preview(Long restaurantId, Long memberId, Long targetPositionId, Long actorUserId) {
@@ -60,6 +61,7 @@ public class PositionChangeCoordinator {
     public ApplyPositionChangeResult apply(Long restaurantId, Long memberId,
             ApplyPositionChangeRequest request, Long actorUserId) {
         security.assertAtLeastManager(actorUserId, restaurantId);
+        lifecycleMutex.lock(restaurantId);
         RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId).orElseThrow(this::stale);
         if (member.getPosition() == null || !Objects.equals(member.getPosition().getId(), request.expectedCurrentPositionId())
                 || !Objects.equals(member.getStartedAt(), request.expectedMemberCreatedAt())) throw stale();
