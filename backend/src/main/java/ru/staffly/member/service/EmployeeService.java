@@ -11,5 +11,4 @@ public interface EmployeeService {
     void cancelInvite(Long restaurantId, Long currentUserId, String token);
     MemberDto acceptInvite(String token, Long currentUserId);
     List<MemberDto> listMembers(Long restaurantId, Long currentUserId);
-    MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId);
 }

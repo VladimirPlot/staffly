@@ -45,6 +45,8 @@ public class SchedulePreferenceLifecycleService {
         if (!removed && !hadSubmission) {
             return new MutationResult(schedule, false);
         }
+        schedule.getRows().removeIf(row -> !row.isHistorical()
+                && Objects.equals(row.getMemberId(), member.getId()));
         // Completion is cycle-scoped and submission-driven. Administrative removal neither
         // reopens an already processed completion nor invokes notification processing.
         touchAndFlush(schedule);
@@ -177,14 +179,14 @@ public class SchedulePreferenceLifecycleService {
 
     /** Internal orchestration primitive. Caller must hold member then schedule locks. */
     public RemoveParticipantMutationResult removeParticipantWithLocksHeld(
-            Schedule schedule, RestaurantMember member, Long actorUserId, String reason) {
+            Schedule schedule, RestaurantMember member, Long actorUserId, String reason, Instant operationNow) {
         boolean submissionRemoved = submissions.deleteByScheduleIdAndMemberId(
                 schedule.getId(), member.getId()) > 0;
         boolean participationRemoved = participations.deleteByScheduleIdAndMemberId(
                 schedule.getId(), member.getId()) > 0;
         if (submissionRemoved || participationRemoved) {
             auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
-                    details("Участник сбора пожеланий удалён", reason));
+                    details("Участник сбора пожеланий удалён", reason), operationNow);
         }
         return new RemoveParticipantMutationResult(participationRemoved, submissionRemoved);
     }
@@ -197,12 +199,12 @@ public class SchedulePreferenceLifecycleService {
 
     /** Internal orchestration primitive. Caller must hold member then schedule locks. */
     public boolean addParticipantWithLocksHeld(Schedule schedule, RestaurantMember member,
-                                                Long actorUserId, String reason) {
+                                                Long actorUserId, String reason, Instant operationNow) {
         ScheduleParticipationCreator.CreationResult result = addWithLocksHeld(schedule, member);
         if (result.created()) {
             schedule.setPreferenceAllSubmittedNotifiedAt(null);
             auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_PARTICIPANT_ADDED,
-                    details("Участник добавлен в сбор пожеланий", reason));
+                    details("Участник добавлен в сбор пожеланий", reason), operationNow);
         }
         return result.created();
     }
@@ -245,10 +247,10 @@ public class SchedulePreferenceLifecycleService {
         boolean appliedResultInvalidated = false;
         if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             boolean hadAppliedMarker = schedule.getPreferenceAppliedAt() != null;
-            boolean removedGeneratedCells = schedule.getRows().stream()
+            boolean removedGeneratedCells = schedule.getRows().stream().filter(row -> !row.isHistorical())
                     .flatMap(row -> row.getCells().stream())
                     .anyMatch(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD);
-            schedule.getRows().forEach(row -> row.getCells()
+            schedule.getRows().stream().filter(row -> !row.isHistorical()).forEach(row -> row.getCells()
                     .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
             schedule.setPreferenceAppliedAt(null);
             schedule.setAutoBuildStaleAt(null);
@@ -262,7 +264,7 @@ public class SchedulePreferenceLifecycleService {
         schedule.setPreferenceAllSubmittedNotifiedAt(null);
         schedule.setPreferenceCollectionCycle(schedule.getPreferenceCollectionCycle() + 1);
         auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_COLLECTION_REOPENED,
-                details("Сбор пожеланий открыт повторно", reason));
+                details("Сбор пожеланий открыт повторно", reason), operationNow);
         return new ReopenMutationResult(participantCreated, appliedResultInvalidated);
     }
 
@@ -284,9 +286,9 @@ public class SchedulePreferenceLifecycleService {
             throw new BadRequestException("Schedule has no preference collection that can be invalidated");
         }
         submissions.deleteByScheduleId(schedule.getId());
-        participations.deleteByScheduleId(schedule.getId());
+        // Participation remains authoritative for the active rows in the resulting DRAFT.
         schedule.getPreferenceShiftOptionSnapshots().clear();
-        schedule.getRows().forEach(row -> row.getCells()
+        schedule.getRows().stream().filter(row -> !row.isHistorical()).forEach(row -> row.getCells()
                 .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
         schedule.setPreferenceBuildTemplate(null);
         schedule.setPreferenceCollectionMode(null);
@@ -309,10 +311,10 @@ public class SchedulePreferenceLifecycleService {
             throw new BadRequestException("Only an applied preference draft can have its result invalidated");
         }
         boolean hadAppliedMarker = schedule.getPreferenceAppliedAt() != null;
-        boolean removedGeneratedCells = schedule.getRows().stream()
+        boolean removedGeneratedCells = schedule.getRows().stream().filter(row -> !row.isHistorical())
                 .flatMap(row -> row.getCells().stream())
                 .anyMatch(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD);
-        schedule.getRows().forEach(row -> row.getCells()
+        schedule.getRows().stream().filter(row -> !row.isHistorical()).forEach(row -> row.getCells()
                 .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
         schedule.setPreferenceAppliedAt(null);
         schedule.setStatus(ScheduleStatus.PREFERENCES_CLOSED);

@@ -360,7 +360,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private Map<Long, ScheduleRow> indexRowsByMember(Schedule schedule) {
         Map<Long, ScheduleRow> rowsByMember = new HashMap<>();
         for (ScheduleRow row : schedule.getRows()) {
-            if (row.getMemberId() != null) {
+            if (row.getMemberId() != null && !row.isHistorical()) {
                 rowsByMember.put(row.getMemberId(), row);
             }
         }
@@ -541,6 +541,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         LocalDate end = schedule.getEndDate();
 
         for (ScheduleRow row : schedule.getRows()) {
+            if (row.isHistorical()) continue;
             Long currentPositionId = row.getMemberId() == null
                     ? null
                     : participationPositionByMember.get(row.getMemberId());

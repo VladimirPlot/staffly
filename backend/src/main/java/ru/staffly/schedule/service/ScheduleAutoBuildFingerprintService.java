@@ -31,10 +31,10 @@ public class ScheduleAutoBuildFingerprintService {
 
         List<Long> schedulePositionIds = SchedulePositionIds.ids(schedule).stream().sorted().toList();
         out.list("schedulePositions", schedulePositionIds);
-        // Apply can only materialize assignments into existing historical rows. Cell contents are deliberately
+        // Apply can only materialize assignments into existing active rows. Cell contents are deliberately
         // excluded: the auto-build flow clears the affected period before applying the plan.
         Hibernate.initialize(schedule.getRows());
-        out.list("rowMembers", schedule.getRows().stream().map(ScheduleRow::getMemberId)
+        out.list("rowMembers", schedule.getRows().stream().filter(row -> !row.isHistorical()).map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull).sorted().toList());
         Set<Long> scheduled = new HashSet<>(schedulePositionIds);
 

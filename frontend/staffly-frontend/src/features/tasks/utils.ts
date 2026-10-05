@@ -49,6 +49,7 @@ export function formatPersonName(
   lastName?: string | null,
   fullName?: string | null
 ): string {
+  if (fullName?.endsWith(" (исключен)")) return fullName;
   if (firstName && lastName) {
     return `${firstName} ${lastName.charAt(0)}.`;
   }

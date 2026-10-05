@@ -32,9 +32,7 @@ import ru.staffly.user.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -257,15 +255,9 @@ public class TaskService {
                 org.springframework.data.domain.Sort.by("createdAt").ascending()
         );
         var commentPage = comments.findByTaskId(taskId, pageable);
-        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantIdAndEndedAtIsNull(task.getRestaurant().getId())
-                .stream()
-                .collect(Collectors.toMap(
-                        m -> m.getUser().getId(),
-                        m -> m,
-                        (first, second) -> first
-                ));
+        // Comments retain User actor identity; never borrow a later employment period.
         List<TaskCommentDto> items = commentPage.stream()
-                .map(comment -> toCommentDto(comment, memberByUser.get(comment.getAuthor().getId())))
+                .map(comment -> toCommentDto(comment, null))
                 .toList();
         return new TaskCommentPageDto(
                 items,
@@ -328,7 +320,7 @@ public class TaskService {
         }
         return new TaskUserDto(
                 user.getId(),
-                user.getFullName(),
+                user.getFullName() + (member != null && !member.isActive() ? " (исключен)" : ""),
                 user.getFirstName(),
                 user.getLastName(),
                 positionId,
@@ -339,13 +331,6 @@ public class TaskService {
     private RestaurantMember resolveMember(Long userId, Long restaurantId) {
         return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
-    }
-
-    private RestaurantMember resolveMemberOrNull(User user, Long restaurantId) {
-        if (user == null) {
-            return null;
-        }
-        return members.findActiveByUserIdAndRestaurantId(user.getId(), restaurantId).orElse(null);
     }
 
     private boolean isManager(RestaurantMember member) {

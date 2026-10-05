@@ -39,11 +39,19 @@ public class TrainingExamOwnershipService {
     public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
         var actorUser = User.builder().id(actorUserId).build();
         exam.setCreatedBy(actorUser);
-        exam.setOwner(actorUser);
+        // Practice owner is a User actor; certification responsibility requires a real current employee.
+        exam.setOwner(exam.getMode() == TrainingExamMode.CERTIFICATION
+                ? members.findActiveByUserIdAndRestaurantIdWithPosition(actorUserId, exam.getRestaurant().getId())
+                    .filter(member -> canRetainOwnership(exam, member.getPosition()))
+                    .map(RestaurantMember::getUser).orElse(null)
+                : actorUser);
     }
 
     public TrainingExam changeOwner(Long restaurantId, Long actorUserId, Long examId, Long newOwnerUserId) {
         lifecycleMutex.lock(restaurantId);
+        var locked = exams.findByIdAndRestaurantIdForUpdate(examId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Exam not found"));
+        entityManager.refresh(locked);
         var exam = requireManageableCertificationExam(restaurantId, actorUserId, examId);
         validateOwnerCandidate(exam, newOwnerUserId);
         exam.setOwner(User.builder().id(newOwnerUserId).build());
@@ -112,15 +120,6 @@ public class TrainingExamOwnershipService {
         );
     }
 
-    public List<AppliedCertificationOwnershipTransfer> batchReassign(
-            Long restaurantId,
-            Long actorUserId,
-            Long ownerUserId,
-            List<Map.Entry<Long, Long>> reassignments) {
-        lifecycleMutex.lock(restaurantId);
-        return batchReassignWithLifecycleLockHeld(restaurantId, actorUserId, ownerUserId, reassignments, Map.of());
-    }
-
     /** Internal primitive: caller already holds RestaurantLifecycleMutex. */
     public List<AppliedCertificationOwnershipTransfer> batchReassignWithLifecycleLockHeld(
             Long restaurantId, Long actorUserId, Long ownerUserId,
@@ -151,7 +150,7 @@ public class TrainingExamOwnershipService {
             }
             if (!expectedRevisions.isEmpty()
                     && !Objects.equals(exam.getEditorRevision(), expectedRevisions.get(exam.getId()))) {
-                throw new ConflictException("EMPLOYEE_REMOVAL_PLAN_STALE");
+                throw new ConflictException("EMPLOYEE_REMOVAL_PLAN_STALE", Map.of("code", "EMPLOYEE_REMOVAL_PLAN_STALE"));
             }
             if (!canActorManageExam(actorUserId, restaurantId, exam)) {
                 throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");

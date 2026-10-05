@@ -58,7 +58,7 @@ const ShiftSwapDialog: React.FC<Props> = ({ open, onClose, schedule, currentMemb
     if (!currentMember) return [] as MemberDto[];
     return schedule.rows
       .filter((row) => row.positionId && schedule.config.positionIds.includes(row.positionId))
-      .filter((row) => row.memberId !== currentMember.id)
+      .filter((row) => !row.historical && row.memberId !== currentMember.id)
       .map((row) => members.find((m) => m.id === row.memberId))
       .filter((item): item is MemberDto => Boolean(item));
   }, [currentMember, members, schedule]);

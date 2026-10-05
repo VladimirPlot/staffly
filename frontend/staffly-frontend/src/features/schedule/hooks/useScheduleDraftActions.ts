@@ -180,8 +180,11 @@ export default function useScheduleDraftActions({
   const buildPayload = React.useCallback((): CreateSchedulePayload | null => {
     if (!schedule) return null;
 
+    const activeMemberIds = new Set(schedule.rows.filter((row) => !row.historical).map((row) => String(row.memberId)));
+    const isActiveCell = (key: string) => activeMemberIds.has(key.split(":")[0]);
     const normalizedCells: Record<string, string> = {};
     Object.entries(schedule.cellValues).forEach(([key, rawValue]) => {
+      if (!isActiveCell(key)) return;
       const normalized = normalizeCellValue(rawValue, schedule.config.shiftMode);
       if (normalized) {
         normalizedCells[key] = normalized;
@@ -197,14 +200,16 @@ export default function useScheduleDraftActions({
           memberId: row.memberId,
         })),
       cellValues: normalizedCells,
-      cellShifts: schedule.cellShifts ?? {},
+      cellShifts: Object.fromEntries(Object.entries(schedule.cellShifts ?? {}).filter(([key]) => isActiveCell(key))),
     };
   }, [schedule]);
 
   const validateScheduleBeforeSave = React.useCallback((): boolean => {
     if (!schedule || schedule.config.shiftMode !== "FULL") return true;
 
-    const hasIncompleteShifts = Object.values(schedule.cellValues).some((value) => hasStartWithoutEndValue(value));
+    const activeMemberIds = new Set(schedule.rows.filter((row) => !row.historical).map((row) => String(row.memberId)));
+    const hasIncompleteShifts = Object.entries(schedule.cellValues).some(([key, value]) =>
+      activeMemberIds.has(key.split(":")[0]) && hasStartWithoutEndValue(value));
     if (hasIncompleteShifts) {
       onScheduleError("Нельзя создать график без времени окончания смены сотрудника");
       return false;

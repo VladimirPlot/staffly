@@ -15,7 +15,7 @@ public class ScheduleRowMaterializer {
 
     public ScheduleRow ensureRowWithLocksHeld(Schedule schedule, RestaurantMember member,
                                                 ScheduleParticipation participation) {
-        return schedule.getRows().stream()
+        ScheduleRow result = schedule.getRows().stream()
                 .filter(row -> Objects.equals(row.getMemberId(), member.getId()) && !row.isHistorical())
                 .findFirst()
                 .orElseGet(() -> {
@@ -34,5 +34,8 @@ public class ScheduleRowMaterializer {
                     schedule.getRows().add(row);
                     return row;
                 });
+        result.setPositionId(participation.getPositionId());
+        result.setPositionName(participation.getPositionName());
+        return result;
     }
 }

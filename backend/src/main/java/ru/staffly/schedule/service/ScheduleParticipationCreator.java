@@ -26,10 +26,10 @@ public class ScheduleParticipationCreator {
 
     public CreationResult createWithLocksHeld(Schedule schedule, RestaurantMember member,
                                                boolean requireSupportedPosition) {
+        validateEligibility(schedule, member, requireSupportedPosition);
         return participations.findByScheduleIdAndMemberId(schedule.getId(), member.getId())
                 .map(existing -> new CreationResult(existing, false))
                 .orElseGet(() -> {
-                    validateEligibility(schedule, member, requireSupportedPosition);
                     return new CreationResult(participations.save(snapshot(schedule, member)), true);
                 });
     }
@@ -40,8 +40,8 @@ public class ScheduleParticipationCreator {
                 .collect(Collectors.toMap(value -> value.getMember().getId(), value -> value,
                         (left, right) -> left, LinkedHashMap::new));
         members.stream().sorted(java.util.Comparator.comparing(RestaurantMember::getId)).forEach(member -> {
+            validateEligibility(schedule, member, requireSupportedPosition);
             if (!byMemberId.containsKey(member.getId())) {
-                validateEligibility(schedule, member, requireSupportedPosition);
                 byMemberId.put(member.getId(), participations.save(snapshot(schedule, member)));
             }
         });
@@ -50,6 +50,9 @@ public class ScheduleParticipationCreator {
 
     /** Validates participation eligibility without persisting any child row. */
     void validateEligibility(Schedule schedule, RestaurantMember member, boolean requireSupportedPosition) {
+        if (!member.isActive()) {
+            throw new BadRequestException("Participant membership has ended");
+        }
         if (!Objects.equals(schedule.getRestaurant().getId(), member.getRestaurant().getId())) {
             throw new BadRequestException("Participant must belong to the Schedule restaurant");
         }

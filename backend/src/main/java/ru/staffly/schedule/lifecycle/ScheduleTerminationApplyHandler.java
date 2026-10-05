@@ -70,7 +70,7 @@ public class ScheduleTerminationApplyHandler {
             ScheduleParticipation participation = participations.findByScheduleIdAndMemberId(schedule.getId(), memberId).orElse(null);
             SchedulePreferenceSubmission submission = submissions.findByScheduleIdAndMemberId(schedule.getId(), memberId).orElse(null);
             if (participation != null || submission != null) {
-                lifecycle.removeParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Удаление сотрудника");
+                lifecycle.removeParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Удаление сотрудника", context.now());
                 removedParticipations += participation == null ? 0 : 1;
                 removedSubmissions += submission == null ? 0 : 1;
                 if (participation != null) participationSchedules.add(schedule.getId());
@@ -99,7 +99,9 @@ public class ScheduleTerminationApplyHandler {
                         historicalSchedules.add(schedule.getId());
                     }
                 }
-                case COLLECTING_PREFERENCES, PREFERENCES_CLOSED -> { }
+                case COLLECTING_PREFERENCES, PREFERENCES_CLOSED -> {
+                    if (row != null) schedule.getRows().remove(row);
+                }
             }
             schedule.setUpdatedAt(context.now());
         }
@@ -126,7 +128,7 @@ public class ScheduleTerminationApplyHandler {
         return ownership.reassignOwnedSchedulesWithLocksHeld(context.restaurantId(), context.actorUserId(), oldOwner,
                 lockedOwned,
                 transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.newOwnerUserId())),
-                transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())));
+                transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())), context.now());
     }
 
     private Set<Long> affectedScheduleIds(Long restaurantId, Long memberId) {

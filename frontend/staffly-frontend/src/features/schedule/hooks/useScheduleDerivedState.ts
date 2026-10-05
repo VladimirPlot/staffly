@@ -7,6 +7,8 @@ import { monthLabelsBetween } from "../utils/date";
 import { getTodayInTimeZone } from "../utils/date";
 
 type TodayShift = {
+  rowKey: string;
+  historical: boolean;
   memberId: number;
   displayName: string;
   shift: string;
@@ -112,6 +114,8 @@ export default function useScheduleDerivedState({
       .map((row) => {
         const value = scheduleCellValues[`${row.historical ? -row.id! : row.memberId}:${todayIso}`];
         return {
+          rowKey: row.historical ? `history:${row.id}` : `member:${row.memberId}`,
+          historical: Boolean(row.historical),
           memberId: row.memberId,
           displayName: row.displayName,
           shift: value?.trim() ?? "",

@@ -78,6 +78,7 @@ public class CertificationEmployeeLifecycleHandler
     @Override public CertificationTerminationResult applyBeforeTermination(TerminationApplyContext context,
             TerminationModuleDecision raw) {
         if (!(raw instanceof CertificationTerminationDecision decision)) throw stale();
+        ownership.lockActiveCertificationExams(context.restaurantId());
         Long oldOwner = context.target().getUser().getId();
         var expected = ownership.findActiveOwnedCertificationExams(context.restaurantId(), oldOwner);
         var expectedIds = expected.stream().map(e -> e.getId()).collect(Collectors.toSet());
@@ -93,7 +94,7 @@ public class CertificationEmployeeLifecycleHandler
     }
     @Override public CertificationTerminationResult applyAfterTermination(TerminationApplyContext context,
             TerminationModuleDecision decision, TerminationModuleResult beforeResult) {
-        audienceSync.syncRestaurantAudience(context.restaurantId());
+        audienceSync.syncRestaurantAudience(context.restaurantId(), context.target().getUser().getId(), false);
         return new CertificationTerminationResult(true, beforeResult instanceof CertificationTerminationResult r ? r.ownershipTransfers() : List.of());
     }
     @Override public CertificationPositionChangeResult applyAfterPositionChange(PositionChangeApplyContext context,

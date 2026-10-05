@@ -7,7 +7,6 @@ import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
-import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.dto.CreateRestaurantRequest;
 import ru.staffly.restaurant.dto.UpdateRestaurantRequest;
@@ -15,8 +14,6 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.restaurant.service.RestaurantService;
-import ru.staffly.user.model.User;
-import ru.staffly.user.repository.UserRepository;
 
 import java.text.Normalizer;
 import java.time.ZoneId;
@@ -28,7 +25,6 @@ import java.util.regex.Pattern;
 public class RestaurantServiceImpl implements RestaurantService {
 
     private final RestaurantRepository restaurants;
-    private final UserRepository users;
     private final RestaurantMemberRepository members;
     private final PositionRepository positions;
 
@@ -99,28 +95,6 @@ public class RestaurantServiceImpl implements RestaurantService {
         }
 
         restaurants.delete(restaurant);
-    }
-
-    @Override
-    @Transactional
-    public void assignAdmin(Long restaurantId, Long userId, Long positionId) {
-        Restaurant r = restaurants.findById(restaurantId)
-                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
-
-        User u = users.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
-
-        if (members.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent()) {
-            throw new ConflictException("User already has an active membership; use position change");
-        }
-        Position adminPosition = positions.findById(positionId)
-                .filter(position -> position.getRestaurant().getId().equals(restaurantId))
-                .filter(Position::isActive)
-                .filter(position -> position.getLevel() == RestaurantRole.ADMIN)
-                .orElseThrow(() -> new ConflictException(
-                        "Selected position must be an active ADMIN position of this restaurant"));
-        members.save(RestaurantMember.builder()
-                .user(u).restaurant(r).position(adminPosition).build());
     }
 
     /* ------- helpers ------- */

@@ -264,6 +264,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, UpdateScheduleRequest request) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -307,6 +308,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         List<ScheduleRowRequest> safeRows = requestedRows;
         Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
         Set<Long> requestedPositionIds = schedulePositions.stream().map(Position::getId).collect(Collectors.toSet());
+        boolean removesParticipantPosition = participations.findByScheduleIdOrderById(scheduleId).stream()
+                .anyMatch(participation -> !requestedPositionIds.contains(participation.getPositionId()));
+        if (removesParticipantPosition) {
+            throw new ConflictException("Нельзя исключить должность действующего участника из графика");
+        }
         Map<Long, RestaurantMember> memberMap = validateAndMapMembers(
                 schedule, safeRows, requestedPositionIds, lockedRequestedMembers);
         Map<String, String> oldValueMap = buildCurrentValueMap(schedule);
@@ -386,6 +392,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     @Override
     @Transactional
     public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion, Long memberId) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -470,6 +477,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                                                  Long scheduleId,
                                                  Long actorUserId,
                                                  StartPreferenceCollectionRequest request) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
@@ -869,6 +877,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .findByScheduleIdOrderById(schedule.getId()).stream()
                 .collect(Collectors.toMap(value -> value.getMember().getId(), value -> value));
         Set<Long> historicalMemberIds = schedule.getRows().stream()
+                .filter(ScheduleRow::isHistorical)
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
@@ -1016,11 +1025,11 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (row == null) {
                 row = ScheduleRow.builder().schedule(schedule).memberId(memberId).build();
                 schedule.getRows().add(row);
-                ScheduleParticipation participation = Objects.requireNonNull(
-                        participationByMemberId.get(memberId), "Active row requires ScheduleParticipation");
-                row.setPositionId(participation.getPositionId());
-                row.setPositionName(participation.getPositionName());
             }
+            ScheduleParticipation participation = Objects.requireNonNull(
+                    participationByMemberId.get(memberId), "Active row requires ScheduleParticipation");
+            row.setPositionId(participation.getPositionId());
+            row.setPositionName(participation.getPositionName());
             activeRows.add(row);
             row.setHistorical(false);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
@@ -1300,6 +1309,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
 
         Set<Long> activeRowMemberIds = schedule.getRows().stream()
+                .filter(row -> !row.isHistorical())
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());

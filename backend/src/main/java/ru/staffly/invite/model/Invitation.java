@@ -65,6 +65,7 @@ public class Invitation {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "desired_role", nullable = false, length = 20)
+    /** Legacy/display snapshot, not authority: access is derived from Position.level. */
     private RestaurantRole desiredRole;
 
     @ManyToOne(fetch = FetchType.LAZY)

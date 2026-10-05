@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -100,89 +99,19 @@ public class ScheduleOwnershipService {
                 .toList();
     }
 
-    public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedules(
-            Long restaurantId,
-            Long actorUserId,
-            Long oldOwnerUserId,
-            Map<Long, Long> ownerUserIdsByScheduleId,
-            Map<Long, Long> expectedVersionsByScheduleId) {
-        lifecycleMutex.lock(restaurantId);
-        securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
-        scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
-        if (ownerUserIdsByScheduleId == null || ownerUserIdsByScheduleId.isEmpty()) {
-            throw new BadRequestException("ownerUserIdsByScheduleId is required");
-        }
-
-        List<Schedule> ownedSchedules = findActiveOrFutureOwnedSchedules(restaurantId, oldOwnerUserId);
-        Set<Long> ownedScheduleIds = ownedSchedules.stream().map(Schedule::getId).collect(Collectors.toSet());
-        Set<Long> requestedScheduleIds = ownerUserIdsByScheduleId.keySet();
-
-        if (!requestedScheduleIds.equals(ownedScheduleIds)) {
-            if (!requestedScheduleIds.containsAll(ownedScheduleIds)) {
-                throw new BadRequestException("Нужно передать нового ответственного для каждого активного или будущего графика");
-            }
-            throw new BadRequestException("Передан scheduleId, который не принадлежит указанному ответственному или ресторану");
-        }
-
-        RestaurantRole oldOwnerRole = resolveOwnerRole(restaurantId, oldOwnerUserId);
-        List<Long> orderedScheduleIds = ownedScheduleIds.stream().sorted().toList();
-        List<Schedule> lockedSchedules = schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(
-                restaurantId, orderedScheduleIds);
-        if (lockedSchedules.size() != orderedScheduleIds.size()
-                || lockedSchedules.stream().anyMatch(schedule -> schedule.getOwnerUser() == null
-                || !Objects.equals(schedule.getOwnerUser().getId(), oldOwnerUserId))) {
-            throw new BadRequestException("Набор графиков ответственного изменился. Обновите данные");
-        }
-        Map<Long, Schedule> schedulesById = lockedSchedules.stream()
-                .collect(Collectors.toMap(Schedule::getId, Function.identity()));
-
-        Map<Long, RestaurantMember> newOwnersByScheduleId = new java.util.HashMap<>();
-        List<AppliedScheduleOwnershipTransfer> appliedTransfers = new java.util.ArrayList<>();
-        for (Long scheduleId : orderedScheduleIds) {
-            Long newOwnerUserId = ownerUserIdsByScheduleId.get(scheduleId);
-            RestaurantMember newOwner = requireOwnerCandidate(restaurantId, newOwnerUserId);
-            if (Objects.equals(newOwner.getUser().getId(), oldOwnerUserId)) {
-                throw new BadRequestException("Новый ответственный должен отличаться от увольняемого сотрудника");
-            }
-            if (!canReplaceOwner(oldOwnerRole, newOwner.getRole())) {
-                throw new BadRequestException("Новый ответственный должен иметь роль не ниже роли текущего ответственного");
-            }
-            Schedule schedule = schedulesById.get(scheduleId);
-            Long expectedVersion = expectedVersionsByScheduleId.get(scheduleId);
-            if (!Objects.equals(schedule.getVersion(), expectedVersion)) {
-                throw new ScheduleVersionConflictException(expectedVersion, schedule.getVersion());
-            }
-            newOwnersByScheduleId.put(scheduleId, newOwner);
-        }
-
-        // The complete set, every candidate and every expected version are valid
-        // before the first aggregate is changed.
-        for (Long scheduleId : orderedScheduleIds) {
-            Schedule schedule = schedulesById.get(scheduleId);
-            RestaurantMember newOwner = newOwnersByScheduleId.get(scheduleId);
-            String details = buildOwnerChangedDetails(schedule.getOwnerMember(), newOwner);
-            schedule.setOwnerUser(newOwner.getUser());
-            schedule.setOwnerMember(newOwner);
-            Schedule saved = schedules.saveAndFlush(schedule);
-            scheduleAuditService.record(saved, actorUserId, ScheduleAuditAction.OWNER_CHANGED, details);
-            appliedTransfers.add(new AppliedScheduleOwnershipTransfer(
-                    saved.getId(), saved.getTitle(), newOwner.getUser().getId()));
-        }
-        return List.copyOf(appliedTransfers);
-    }
-
     /** Termination primitive. Caller owns restaurant/member and every Schedule lock in ascending ID order. */
     public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedulesWithLocksHeld(
             Long restaurantId, Long actorUserId, Long oldOwnerUserId, List<Schedule> lockedOwnedSchedules,
-            Map<Long, Long> ownerUserIdsByScheduleId, Map<Long, Long> expectedVersionsByScheduleId) {
+            Map<Long, Long> ownerUserIdsByScheduleId, Map<Long, Long> expectedVersionsByScheduleId,
+            java.time.Instant operationNow) {
         return reassignOwnedSchedulesWithLocksHeld(restaurantId, actorUserId, oldOwnerUserId, lockedOwnedSchedules,
-                ownerUserIdsByScheduleId, expectedVersionsByScheduleId, resolveOwnerRole(restaurantId, oldOwnerUserId));
+                ownerUserIdsByScheduleId, expectedVersionsByScheduleId, resolveOwnerRole(restaurantId, oldOwnerUserId), operationNow);
     }
 
     public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedulesWithLocksHeld(
             Long restaurantId, Long actorUserId, Long oldOwnerUserId, List<Schedule> lockedOwnedSchedules,
             Map<Long, Long> ownerUserIdsByScheduleId, Map<Long, Long> expectedVersionsByScheduleId,
-            RestaurantRole resultingRole) {
+            RestaurantRole resultingRole, java.time.Instant operationNow) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         Set<Long> expectedIds = lockedOwnedSchedules.stream().map(Schedule::getId).collect(Collectors.toSet());
@@ -200,7 +129,7 @@ public class ScheduleOwnershipService {
             String details = buildOwnerChangedDetails(schedule.getOwnerMember(), replacement);
             schedule.setOwnerUser(replacement.getUser()); schedule.setOwnerMember(replacement);
             scheduleAuditService.record(schedule, actorUserId, ScheduleAuditAction.OWNER_CHANGED,
-                    details);
+                    details, operationNow);
             result.add(new AppliedScheduleOwnershipTransfer(schedule.getId(), schedule.getTitle(), replacement.getUser().getId()));
         }
         return List.copyOf(result);
