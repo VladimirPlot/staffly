@@ -592,6 +592,10 @@ class CertificationAssignmentService {
         return assignment.getAttemptsLimitSnapshot() + assignment.getExtraAttempts();
     }
 
+    public static boolean isPositionInAudience(TrainingExam exam, Long positionId) {
+        return positionId != null && exam.getVisibilityPositions().stream().anyMatch(p -> positionId.equals(p.getId()));
+    }
+
     private List<RestaurantMember> resolveAudienceMembers(TrainingExam exam) {
         var allMembers = members.findActiveWithUserAndPositionByRestaurantId(exam.getRestaurant().getId());
         var visibilityPositionIds = exam.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet());
@@ -599,7 +603,7 @@ class CertificationAssignmentService {
             return List.of();
         }
         return allMembers.stream()
-                .filter(member -> member.getPosition() != null && visibilityPositionIds.contains(member.getPosition().getId()))
+                .filter(member -> member.getPosition() != null && isPositionInAudience(exam, member.getPosition().getId()))
                 .toList();
     }
 

@@ -312,7 +312,7 @@ const SchedulePage: React.FC = () => {
         return {
           ...row,
           member,
-          displayName: displayNames[row.memberId] ?? row.displayName,
+          displayName: row.historical ? row.displayName : (displayNames[row.memberId] ?? row.displayName),
         };
       });
 
@@ -335,10 +335,11 @@ const SchedulePage: React.FC = () => {
         const updated = prepareSchedule(
           await addScheduleMember(restaurantId, requestedScheduleId, memberId, schedule.version),
         );
-        const addedRow = updated.rows.find((row) => row.memberId === memberId);
+        const addedRow = updated.rows.find((row) => row.memberId === memberId && !row.historical);
         if (addedRow) {
           setSchedule((current) =>
-            current?.id === requestedScheduleId && !current.rows.some((row) => row.memberId === memberId)
+            current?.id === requestedScheduleId &&
+            !current.rows.some((row) => row.memberId === memberId && !row.historical)
               ? { ...current, version: updated.version, rows: [...current.rows, addedRow] }
               : current,
           );
@@ -696,8 +697,8 @@ const SchedulePage: React.FC = () => {
       </div>
       {schedule?.status === "DRAFT_FROM_PREFERENCES" && schedule.autoBuildStaleAt && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          После автосборки состав сотрудников изменился. Проверьте график или запустите автосборку повторно.
-          Публикация текущего черновика остаётся доступна.
+          После автосборки состав сотрудников изменился. Проверьте график или запустите автосборку повторно. Публикация
+          текущего черновика остаётся доступна.
         </div>
       )}
       {derived.showLandingHeader && (

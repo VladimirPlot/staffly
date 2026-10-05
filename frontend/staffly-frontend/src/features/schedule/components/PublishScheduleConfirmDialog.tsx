@@ -77,7 +77,7 @@ function getPublishSummary(
 
   schedule.rows.forEach((row) => {
     schedule.days.forEach((day) => {
-      const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
+      const key: ScheduleCellKey = `${row.historical ? -row.id! : row.memberId}:${day.date}`;
       const value = schedule.cellValues[key] ?? "";
       const trimmedValue = value.trim();
       if (!trimmedValue) return;
@@ -116,12 +116,25 @@ function getPublishSummary(
         return (
           total +
           relevantPositionConfigs.reduce((dateTotal, config) => {
-            const weekdayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
-            const regime = config.weekdayRegimes.find((candidate) => candidate.daysOfWeek.includes(weekdayNames[dayOfWeek - 1]));
+            const weekdayNames = [
+              "MONDAY",
+              "TUESDAY",
+              "WEDNESDAY",
+              "THURSDAY",
+              "FRIDAY",
+              "SATURDAY",
+              "SUNDAY",
+            ] as const;
+            const regime = config.weekdayRegimes.find((candidate) =>
+              candidate.daysOfWeek.includes(weekdayNames[dayOfWeek - 1]),
+            );
             const dateOverrides = regime?.coverageDateOverrides.filter((override) => override.date === day.date) ?? [];
-            const requiredCounts = dateOverrides.length > 0
-              ? dateOverrides.map((override) => override.requiredCount)
-              : regime?.coverageRules.filter((rule) => rule.dayOfWeek === dayOfWeek).map((rule) => rule.requiredCount) ?? [];
+            const requiredCounts =
+              dateOverrides.length > 0
+                ? dateOverrides.map((override) => override.requiredCount)
+                : (regime?.coverageRules
+                    .filter((rule) => rule.dayOfWeek === dayOfWeek)
+                    .map((rule) => rule.requiredCount) ?? []);
 
             return dateTotal + requiredCounts.reduce((sum, count) => sum + Math.max(0, count), 0);
           }, 0)
@@ -183,8 +196,8 @@ const PublishScheduleConfirmDialog: React.FC<PublishScheduleConfirmDialogProps> 
       <div className="space-y-4">
         {schedule?.autoBuildStaleAt && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Результат автосборки устарел после изменения состава сотрудников. Вы можете опубликовать текущий график
-            или сначала запустить автосборку повторно.
+            Результат автосборки устарел после изменения состава сотрудников. Вы можете опубликовать текущий график или
+            сначала запустить автосборку повторно.
           </div>
         )}
         <section className="border-subtle bg-app rounded-2xl border p-4">

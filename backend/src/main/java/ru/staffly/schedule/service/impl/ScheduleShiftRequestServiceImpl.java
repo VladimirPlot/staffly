@@ -473,7 +473,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
 
     private Optional<ScheduleRow> findRowForMember(Schedule schedule, Long memberId) {
         return schedule.getRows().stream()
-                .filter(row -> Objects.equals(row.getMemberId(), memberId))
+                .filter(row -> Objects.equals(row.getMemberId(), memberId) && !row.isHistorical())
                 .findFirst();
     }
 

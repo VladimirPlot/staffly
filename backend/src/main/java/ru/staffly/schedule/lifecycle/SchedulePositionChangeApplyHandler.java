@@ -30,6 +30,9 @@ public class SchedulePositionChangeApplyHandler {
     private final SchedulePreferenceLifecycleService lifecycle;
     private final RestaurantTimeService restaurantTime;
     private final PublishedShiftImpactClassifier shiftClassifier;
+    private final ru.staffly.schedule.service.ScheduleOwnershipService ownership;
+    private final jakarta.persistence.EntityManager entityManager;
+    private final ru.staffly.member.repository.RestaurantMemberRepository members;
 
     public SchedulePositionChangePreparation applyBefore(PositionChangeApplyContext context,
                                                           SchedulePositionChangeDecision moduleDecision) {
@@ -42,15 +45,48 @@ public class SchedulePositionChangeApplyHandler {
         } catch (RuntimeException ex) { throw new BadRequestException("Each affected schedule must have exactly one decision"); }
         Set<Long> affected = new TreeSet<>();
         schedules.findByRestaurantIdAndParticipantMemberId(restaurantId, memberId).forEach(s -> affected.add(s.getId()));
-        schedules.findByRestaurantIdAndRowMemberId(restaurantId, memberId).forEach(s -> affected.add(s.getId()));
+        schedules.findByRestaurantIdAndSubmissionMemberId(restaurantId, memberId).forEach(s -> affected.add(s.getId()));
+        schedules.findByRestaurantIdAndRowMemberId(restaurantId, memberId).stream()
+                .filter(s -> oldRow(s, memberId, oldPositionId) != null).forEach(s -> affected.add(s.getId()));
         schedules.findByRestaurantIdAndPositionId(restaurantId, targetPositionId).forEach(s -> affected.add(s.getId()));
         if (!affected.equals(decisions.keySet())) throw stale();
+        var allOwned = ownership.findActiveOrFutureOwnedSchedules(restaurantId, member.getUser().getId());
+        var state = allOwned.stream().map(s -> new PositionChangeImpactPlan.OwnershipState(s.getId(), s.getVersion(), s.getOwnerUser().getId()))
+                .collect(Collectors.toSet());
+        if (moduleDecision.expectedOwnershipState() == null || state.size() != moduleDecision.expectedOwnershipState().size()
+                || !state.equals(new HashSet<>(moduleDecision.expectedOwnershipState()))) throw stale();
+        var owned = ru.staffly.member.lifecycle.PositionChangeSupport.management(context.targetPosition())
+                ? List.<Schedule>of() : allOwned;
+        var transfers = moduleDecision.ownershipTransfers();
+        var ownedIds = owned.stream().map(Schedule::getId).collect(Collectors.toSet());
+        var transferIds = transfers.stream().map(t -> t.resourceId()).collect(Collectors.toSet());
+        if (transferIds.size() != transfers.size() || !ownedIds.equals(transferIds)
+                || transfers.stream().anyMatch(t -> !Objects.equals(t.expectedOwnerUserId(), member.getUser().getId()))) throw stale();
+        Set<Long> allIds = new TreeSet<>(affected); allOwned.forEach(s -> allIds.add(s.getId()));
         // Coordinator owns the member lock; every schedule is then locked in ascending id order.
-        List<Schedule> locked = affected.isEmpty() ? List.of()
-                : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, new ArrayList<>(affected));
-        if (locked.size() != affected.size()) throw stale();
+        List<Schedule> allLocked = allIds.isEmpty() ? List.of()
+                : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, new ArrayList<>(allIds));
+        if (allLocked.size() != allIds.size()) throw stale();
+        allLocked.forEach(entityManager::refresh);
+        var lockedState = allLocked.stream().filter(sch -> Objects.equals(sch.getOwnerUser() == null ? null : sch.getOwnerUser().getId(), member.getUser().getId())
+                && allOwned.stream().anyMatch(o -> Objects.equals(o.getId(), sch.getId())))
+                .map(sch -> new PositionChangeImpactPlan.OwnershipState(sch.getId(), sch.getVersion(), sch.getOwnerUser().getId())).collect(Collectors.toSet());
+        if (!state.equals(lockedState)) throw stale();
+        List<Schedule> locked = allLocked.stream().filter(sch -> affected.contains(sch.getId())).toList();
         locked.forEach(s -> validateToken(s, decisions.get(s.getId()), memberId, targetPositionId));
 
+        for (var transfer : transfers) {
+            var replacement = members.findActiveByUserIdAndRestaurantIdWithPosition(transfer.newOwnerUserId(), restaurantId)
+                    .orElseThrow(this::stale);
+            if (Objects.equals(replacement.getId(), memberId) || replacement.getPosition() == null
+                    || !ru.staffly.member.lifecycle.PositionChangeSupport.management(replacement.getPosition())) throw stale();
+        }
+
+        var ownershipTransfers = transfers.isEmpty() ? List.<ru.staffly.schedule.dto.AppliedScheduleOwnershipTransfer>of()
+                : ownership.reassignOwnedSchedulesWithLocksHeld(restaurantId, context.actorUserId(), member.getUser().getId(),
+                    allLocked.stream().filter(sch -> ownedIds.contains(sch.getId())).toList(),
+                    transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.newOwnerUserId())),
+                    transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())), context.targetPosition().getLevel());
         LocalDateTime localNow = LocalDateTime.ofInstant(context.now(), restaurantTime.zoneFor(member.getRestaurant()));
         int cancelled = 0;
         List<String> cleanup = new ArrayList<>();
@@ -69,7 +105,8 @@ public class SchedulePositionChangeApplyHandler {
                 if (removal.submissionRemoved()) mark(applied, schedule, PositionChangeScheduleEffectType.PREFERENCE_SUBMISSION_REMOVED);
                 cleanup.add(schedule.getId() + ":participation/preferences removed");
             }
-            if (schedule.getStatus() == ScheduleStatus.DRAFT && row != null) {
+            if (row != null && (schedule.getStatus() == ScheduleStatus.DRAFT
+                    || schedule.getStatus() == ScheduleStatus.COLLECTING_PREFERENCES || schedule.getStatus() == ScheduleStatus.PREFERENCES_CLOSED)) {
                 schedule.getRows().remove(row);
                 mark(applied, schedule, PositionChangeScheduleEffectType.DRAFT_EMPLOYEE_REMOVED);
                 cleanup.add(schedule.getId() + ":draft row removed");
@@ -82,16 +119,18 @@ public class SchedulePositionChangeApplyHandler {
                     cancelledBySchedule.put(schedule.getId(), count);
                 }
                 row.setHistorical(true);
+                mark(applied, schedule, PositionChangeScheduleEffectType.PUBLISHED_ROW_BECAME_HISTORICAL);
                 cleanup.add(schedule.getId() + ":published row historical; future shifts cancelled=" + count);
             } else if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES
-                    && decision.action() != Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW) {
-                boolean invalidated = lifecycle.invalidateAppliedPreferenceDraftWithLocksHeld(
-                        schedule, context.actorUserId(), "Смена должности участника");
-                if (invalidated) mark(applied, schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED);
-                cleanup.add(schedule.getId() + ":preference draft invalidated");
+                    && (row != null || old != null || hadSubmission || decision.action() == Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW)) {
+                if (row != null) schedule.getRows().remove(row);
+                schedule.setAutoBuildStaleAt(context.now());
+                schedule.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_POSITION_CHANGED);
+                mark(applied, schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED);
+                cleanup.add(schedule.getId() + ":preference draft retained/stale");
             }
         }
-        return new SchedulePositionChangePreparation(locked, affected, cleanup, applied, cancelledBySchedule, cancelled);
+        return new SchedulePositionChangePreparation(locked, affected, cleanup, applied, cancelledBySchedule, cancelled, ownershipTransfers);
     }
 
     public SchedulePositionChangeResult applyAfter(PositionChangeApplyContext context,
@@ -106,13 +145,16 @@ public class SchedulePositionChangeApplyHandler {
             switch (decision.action()) {
                 case ADD_TO_COLLECTION -> {
                     requireStatus(schedule, ScheduleStatus.COLLECTING_PREFERENCES);
-                    if (decision.newDeadline() != null) { requireFuture(decision.newDeadline(), context.now()); schedule.setPreferenceDeadline(decision.newDeadline()); }
+                    if (decision.newDeadline() != null) { requireFuture(decision.newDeadline(), context.now());
+                        if (schedule.getPreferenceDeadline() != null && decision.newDeadline().isBefore(schedule.getPreferenceDeadline()))
+                            throw new BadRequestException("Preference deadline cannot be shortened");
+                        schedule.setPreferenceDeadline(decision.newDeadline()); }
                     if (lifecycle.addParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Смена должности"))
                         mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
                 }
                 case CHANGE_POSITION_AND_REOPEN_COLLECTION -> {
                     requireStatus(schedule, ScheduleStatus.PREFERENCES_CLOSED);
-                    var result = lifecycle.reopenWithLocksHeld(schedule, member, decision.newDeadline(), context.actorUserId(), "Смена должности");
+                    var result = lifecycle.reopenForPositionChangeWithLocksHeld(schedule, member, decision.newDeadline(), context.actorUserId(), context.now());
                     if (result.participantCreated()) mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
                     mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.COLLECTION_REOPENED);
                     reopened.add(new ApplyPositionChangeResult.ReopenedCollection(schedule.getId(), decision.newDeadline()));
@@ -127,8 +169,7 @@ public class SchedulePositionChangeApplyHandler {
                 }
                 case DO_NOT_ADD -> {
                     if (schedule.getStatus() != ScheduleStatus.COLLECTING_PREFERENCES
-                            && !(decision.expectedStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES
-                            && schedule.getStatus() == ScheduleStatus.PREFERENCES_CLOSED)) throw stale();
+                            && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) throw stale();
                 }
                 case CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE -> requireStatus(schedule, ScheduleStatus.PREFERENCES_CLOSED);
                 case INFORMATION_ONLY -> { if (schedule.getStatus() != ScheduleStatus.DRAFT && schedule.getStatus() != ScheduleStatus.PUBLISHED) throw stale(); }
@@ -142,7 +183,7 @@ public class SchedulePositionChangeApplyHandler {
                         preparation.appliedEffects().get(s.getId()), s.getPreferenceDeadline(),
                         preparation.cancelledBySchedule().getOrDefault(s.getId(), 0))).toList();
         return new SchedulePositionChangeResult(List.copyOf(preparation.affectedScheduleIds()), reopened,
-                preparation.cancelledFutureShiftCount(), preparation.cleanup(), effects, moduleDecision.decisions());
+                preparation.cancelledFutureShiftCount(), preparation.cleanup(), effects, moduleDecision.decisions(), preparation.ownershipTransfers());
     }
 
     private void mark(Map<Long, EnumSet<PositionChangeScheduleEffectType>> effects, Schedule s, PositionChangeScheduleEffectType type) {
@@ -164,7 +205,7 @@ public class SchedulePositionChangeApplyHandler {
         case PREFERENCES_CLOSED -> a==Action.CHANGE_POSITION_AND_REOPEN_COLLECTION||a==Action.CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE;
         case DRAFT_FROM_PREFERENCES -> a==Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW||a==Action.DO_NOT_ADD;
         case DRAFT,PUBLISHED -> a==Action.INFORMATION_ONLY; }; }
-    private ScheduleRow oldRow(Schedule s,Long memberId,Long positionId){return s.getRows().stream().filter(r->Objects.equals(r.getMemberId(),memberId)&&Objects.equals(r.getPositionId(),positionId)).findFirst().orElse(null);}
+    private ScheduleRow oldRow(Schedule s,Long memberId,Long positionId){return s.getRows().stream().filter(r->Objects.equals(r.getMemberId(),memberId)&&Objects.equals(r.getPositionId(),positionId)&&!r.isHistorical()).findFirst().orElse(null);}
     private void requireStatus(Schedule s,ScheduleStatus status){if(s.getStatus()!=status)throw stale();}
     private void requireFuture(Instant deadline,Instant now){if(!deadline.isAfter(now))throw new BadRequestException("preferenceDeadline must be in the future");}
     private ConflictException stale(){return new ConflictException(STALE,Map.of("code","POSITION_CHANGE_PLAN_STALE"));}

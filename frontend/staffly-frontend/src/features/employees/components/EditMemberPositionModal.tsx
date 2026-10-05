@@ -3,7 +3,7 @@ import Button from "../../../shared/ui/Button";
 import SelectField from "../../../shared/ui/SelectField";
 import type { PositionDto } from "../../dictionaries/api";
 import type { NewPositionOpportunity, OldPositionImpact, PositionChangeAction, PositionChangeImpactPlan } from "../api";
-import type { PositionDecision } from "../hooks/useMemberEditPosition";
+import type { PositionDecision, ResponsibilityChoices } from "../hooks/useMemberEditPosition";
 import {
   formatInstantInTimeZone,
   instantToRestaurantLocalDateTime,
@@ -174,6 +174,8 @@ export default function EditMemberPositionModal(props: {
   value: number | null;
   plan: PositionChangeImpactPlan | null;
   decisions: Record<number, PositionDecision>;
+  responsibilities: ResponsibilityChoices;
+  onResponsibility: (key: string, id: number) => void;
   saving: boolean;
   loadingImpact: boolean;
   error: string | null;
@@ -185,7 +187,42 @@ export default function EditMemberPositionModal(props: {
   restaurantTimeZone: string;
 }) {
   const { plan } = props;
+  const groups = plan
+    ? [
+        {
+          key: "schedule",
+          label: "Графики — передача ответственности",
+          resources: (plan.scheduleOwnership ?? []).map((r) => ({
+            id: r.resourceId,
+            title: r.title,
+            candidates: r.candidates,
+          })),
+        },
+        {
+          key: "certification",
+          label: "Аттестации",
+          resources: (plan.certificationOwnership ?? []).map((r) => ({
+            id: r.resourceId,
+            title: r.title,
+            candidates: r.candidates,
+          })),
+        },
+        {
+          key: "task",
+          label: "Задачи — передача ответственности",
+          resources: (plan.taskSetters ?? []).map((r) => ({ id: r.taskId, title: r.title, candidates: r.candidates })),
+        },
+      ]
+    : [];
+  const responsibilityValid = groups.every((g) =>
+    g.resources.every((r) =>
+      r.candidates.some(
+        (c) => (g.key === "task" ? c.memberId : c.userId) === props.responsibilities[g.key + "-" + r.id],
+      ),
+    ),
+  );
   const valid =
+    responsibilityValid &&
     Boolean(plan) &&
     plan!.newPositionOpportunities.every((o) => {
       if (isInformationOnly(o)) return true;
@@ -254,31 +291,86 @@ export default function EditMemberPositionModal(props: {
       ) : (
         <div className="space-y-5">
           <p className="text-sm">
-            Смена должности может повлиять на текущие графики и сборы пожеланий сотрудника. Проверьте изменения перед
-            применением.
+            Смена должности может повлиять на графики, аттестации, задачи и чек-листы сотрудника. Проверьте изменения
+            перед применением.
           </p>
-          <section>
-            <h3 className="mb-2 font-semibold">Что произойдёт с текущими графиками</h3>
-            <div className="space-y-2">
-              {plan.oldPositionImpacts.map((i) => (
-                <OldConsequences key={i.scheduleId} impact={i} position={plan.employee.oldPosition.name} />
-              ))}
-            </div>
-          </section>
-          <section>
-            <h3 className="mb-2 font-semibold">Графики для новой должности</h3>
-            <div className="space-y-2">
-              {plan.newPositionOpportunities.map((o) => (
-                <Opportunity
-                  key={o.scheduleId}
-                  item={o}
-                  decision={props.decisions[o.scheduleId]}
-                  change={(d) => props.onDecision(o.scheduleId, d)}
-                  restaurantTimeZone={props.restaurantTimeZone}
-                />
-              ))}
-            </div>
-          </section>
+          {groups
+            .filter(
+              (g) =>
+                g.resources.length > 0 ||
+                (g.key === "certification" && (plan.certificationAudienceChanges ?? []).length > 0),
+            )
+            .map((g) => (
+              <section key={g.key}>
+                <h3 className="mb-2 font-semibold">{g.label}</h3>
+                {g.key === "certification" &&
+                  (plan.certificationAudienceChanges ?? []).map((c) => (
+                    <p key={c.certificationId} className="mb-2 text-sm">
+                      {c.title}:{" "}
+                      {c.entersAudience
+                        ? "сотрудник войдёт в аудиторию аттестации"
+                        : "сотрудник выйдет из аудитории аттестации"}
+                      . Пройденные результаты и история сохранятся.
+                    </p>
+                  ))}
+                {g.resources.map((r) => (
+                  <div key={r.id} className="border-subtle mb-2 rounded-xl border p-3">
+                    <b>{r.title}</b>
+                    {r.candidates.length === 0 ? (
+                      <p className="mt-2 text-sm text-red-600">
+                        Нет подходящего сотрудника для передачи ответственности.
+                      </p>
+                    ) : (
+                      <SelectField
+                        label="Новый ответственный"
+                        value={props.responsibilities[g.key + "-" + r.id] ?? ""}
+                        onChange={(e) => props.onResponsibility(`${g.key}-${r.id}`, Number(e.target.value))}
+                      >
+                        <option value="">Выберите сотрудника</option>
+                        {r.candidates.map((c) => (
+                          <option key={c.memberId} value={g.key === "task" ? c.memberId : c.userId}>
+                            {c.name}
+                            {c.position ? ` — ${c.position}` : ""}
+                          </option>
+                        ))}
+                      </SelectField>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ))}
+          {plan.reservationsToRelease > 0 && (
+            <section>
+              <h3 className="mb-2 font-semibold">Чек-листы</h3>
+              <p className="text-sm">Будет снято бронирований недоступных чек-листов: {plan.reservationsToRelease}.</p>
+            </section>
+          )}
+          {plan.oldPositionImpacts.length > 0 && (
+            <section>
+              <h3 className="mb-2 font-semibold">Что произойдёт с текущими графиками</h3>
+              <div className="space-y-2">
+                {plan.oldPositionImpacts.map((i) => (
+                  <OldConsequences key={i.scheduleId} impact={i} position={plan.employee.oldPosition.name} />
+                ))}
+              </div>
+            </section>
+          )}
+          {plan.newPositionOpportunities.length > 0 && (
+            <section>
+              <h3 className="mb-2 font-semibold">Графики для новой должности</h3>
+              <div className="space-y-2">
+                {plan.newPositionOpportunities.map((o) => (
+                  <Opportunity
+                    key={o.scheduleId}
+                    item={o}
+                    decision={props.decisions[o.scheduleId]}
+                    change={(d) => props.onDecision(o.scheduleId, d)}
+                    restaurantTimeZone={props.restaurantTimeZone}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
           <section className="bg-subtle rounded-xl p-3 text-sm">
             <b>После применения:</b>
             <ul className="mt-1 list-disc pl-5">

@@ -210,7 +210,17 @@ public class SchedulePreferenceLifecycleService {
     /** Reopens either a closed collection or its applied draft without discarding valid preferences/vocabulary. */
     public ReopenMutationResult reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
                                                      Long actorUserId, String reason) {
-        if (deadline == null || !deadline.isAfter(TimeProvider.now())) {
+        return reopenWithLocksHeld(schedule, member, deadline, actorUserId, reason, TimeProvider.now(), false);
+    }
+
+    public ReopenMutationResult reopenForPositionChangeWithLocksHeld(Schedule schedule, RestaurantMember member,
+            Instant deadline, Long actorUserId, Instant operationNow) {
+        return reopenWithLocksHeld(schedule, member, deadline, actorUserId, "Смена должности", operationNow, true);
+    }
+
+    private ReopenMutationResult reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
+            Long actorUserId, String reason, Instant operationNow, boolean retainDraft) {
+        if (deadline == null || !deadline.isAfter(operationNow)) {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
         if (schedule.getStatus() != ScheduleStatus.PREFERENCES_CLOSED
@@ -218,7 +228,7 @@ public class SchedulePreferenceLifecycleService {
             throw new BadRequestException("Only a closed or applied preference collection can be reopened");
         }
         boolean appliedResultInvalidated = false;
-        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
+        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES && !retainDraft) {
             boolean hadAppliedMarker = schedule.getPreferenceAppliedAt() != null;
             boolean removedGeneratedCells = schedule.getRows().stream()
                     .flatMap(row -> row.getCells().stream())

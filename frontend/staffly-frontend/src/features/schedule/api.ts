@@ -57,6 +57,7 @@ export type ScheduleSummaryDto = ScheduleSummary;
 type ScheduleRowResponse = {
   id: number;
   memberId: number;
+  historical?: boolean;
   displayName: string;
   positionId: number | null;
   positionName: string | null;
@@ -524,6 +525,7 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
     rows: (data.rows ?? []).map((row) => ({
       id: row.id,
       memberId: row.memberId,
+      historical: row.historical ?? false,
       displayName: row.displayName,
       positionId: row.positionId,
       positionName: row.positionName,

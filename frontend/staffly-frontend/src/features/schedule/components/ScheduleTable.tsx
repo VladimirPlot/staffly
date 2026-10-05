@@ -169,7 +169,7 @@ const ScheduleTable: React.FC<Props> = ({
 
     rows.forEach((row, rowIndex) => {
       days.forEach((day, dayIndex) => {
-        const value = cellValues[`${row.memberId}:${day.date}`] ?? "";
+        const value = cellValues[`${row.historical ? -row.id! : row.memberId}:${day.date}`] ?? "";
         if (!hasCompleteRangeValue(value)) return;
         nextMemberShiftCounts[rowIndex] += 1;
         nextDayShiftCounts[dayIndex] += 1;
@@ -410,7 +410,7 @@ const ScheduleTableRow = React.memo(
         </div>
 
         {days.map((day) => {
-          const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
+          const key: ScheduleCellKey = `${row.historical ? -row.id! : row.memberId}:${day.date}`;
           return (
             <div key={key} className="border-subtle border-b border-l">
               <ScheduleCellEditor
@@ -419,7 +419,7 @@ const ScheduleTableRow = React.memo(
                 value={cellValues[key] ?? ""}
                 shiftMode={shiftMode}
                 placeholder={placeholder}
-                readOnly={readOnly}
+                readOnly={readOnly || Boolean(row.historical)}
                 onCellValueChange={onCellValueChange}
                 hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
                 rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
@@ -450,7 +450,7 @@ const ScheduleTableRow = React.memo(
     }
 
     return prev.days.every((day) => {
-      const key: ScheduleCellKey = `${prev.row.memberId}:${day.date}`;
+      const key: ScheduleCellKey = `${prev.row.historical ? -prev.row.id! : prev.row.memberId}:${day.date}`;
       return (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "");
     });
   },
