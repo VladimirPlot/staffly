@@ -70,6 +70,8 @@ public class InvitationCommandService {
 
         Instant now = TimeProvider.now();
         contactLock.lock(restaurantId, contact);
+        // Acceptance holds the same contact lock until commit; the pre-lock check may now be stale.
+        invitationImpactService.validateCandidateIsNotMember(restaurantId, contact);
         invitations.findPendingForUpdateByContact(restaurantId, contact, InvitationStatus.PENDING)
                 .ifPresent(existing -> {
                     existing.setStatus(existing.getExpiresAt().isAfter(now)

@@ -20,12 +20,13 @@ import ru.staffly.user.repository.UserRepository;
 import java.util.*;
 import static ru.staffly.common.util.InviteUtils.*;
 
-/** Lock order: RestaurantLifecycleMutex -> Invitation -> Position share -> Schedule ASC -> Certification ASC. */
+/** Lock order: RestaurantLifecycleMutex -> InvitationContactLock -> Invitation -> Position share -> Schedule ASC -> Certification ASC. */
 @Service
 @RequiredArgsConstructor
 public class AdmissionCoordinator {
     private final List<AdmissionLifecycleHandler> handlers;
     private final RestaurantLifecycleMutex mutex;
+    private final InvitationContactLock contactLock;
     private final InvitationRepository invitations;
     private final PositionRepository positions;
     private final RestaurantMemberRepository members;
@@ -38,9 +39,13 @@ public class AdmissionCoordinator {
     @Transactional(noRollbackFor = {InvitationInvalidatedException.class, InvitationExpiredException.class})
     public MemberDto acceptInvite(String token, Long userId) {
         // Scalar lookup avoids loading stale invitation/position entities before waiting on the mutex.
-        Long restaurantId = invitations.findRestaurantIdByToken(token)
+        var identity = invitations.findAdmissionIdentityByToken(token)
                 .orElseThrow(() -> new NotFoundException("Invite not found"));
+        Long restaurantId = identity.getRestaurantId();
+        String canonicalContact = isEmail(identity.getContact())
+                ? normalizeEmail(identity.getContact()) : normalizePhone(identity.getContact());
         mutex.lock(restaurantId);
+        contactLock.lock(restaurantId, canonicalContact);
         Invitation inv = invitations.findForUpdateByToken(token)
                 .orElseThrow(() -> new NotFoundException("Invite not found"));
         var user = users.findById(userId).orElseThrow(() -> new NotFoundException("User not found"));

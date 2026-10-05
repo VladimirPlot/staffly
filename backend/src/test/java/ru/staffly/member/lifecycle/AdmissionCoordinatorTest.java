@@ -35,6 +35,7 @@ class AdmissionCoordinatorTest {
     final UserRepository users = mock(UserRepository.class);
     final RestaurantTimeService time = mock(RestaurantTimeService.class);
     final RestaurantLifecycleMutex mutex = mock(RestaurantLifecycleMutex.class);
+    final InvitationContactLock contactLock = mock(InvitationContactLock.class);
     final InvitationSenderNotificationService sender = mock(InvitationSenderNotificationService.class);
     final InvitationAcceptanceOwnerNotificationService owners = mock(InvitationAcceptanceOwnerNotificationService.class);
     final Restaurant restaurant = Restaurant.builder().id(1L).build();
@@ -49,13 +50,17 @@ class AdmissionCoordinatorTest {
                 .status(InvitationStatus.PENDING).expiresAt(now.plusSeconds(3600)).build();
     }
     AdmissionCoordinator coordinator(List<AdmissionLifecycleHandler> handlers) {
-        when(invites.findRestaurantIdByToken(anyString())).thenReturn(Optional.of(1L));
+        when(invites.findAdmissionIdentityByToken(anyString())).thenAnswer(a -> Optional.of(
+                new InvitationRepository.AdmissionIdentity() {
+                    public Long getRestaurantId() { return 1L; }
+                    public String getContact() { return invite.getPhoneOrEmail(); }
+                }));
         when(invites.findForUpdateByToken("token")).thenReturn(Optional.of(invite));
         when(users.findById(7L)).thenReturn(Optional.of(user));
         when(positions.findForShareByIdAndRestaurantId(2L, 1L)).thenReturn(Optional.of(position));
         when(time.nowInstant()).thenReturn(now);
         when(members.save(any())).thenAnswer(a -> { RestaurantMember m = a.getArgument(0); m.setId(42L); return m; });
-        var target = new AdmissionCoordinator(handlers, mutex, invites, positions, members, users,
+        var target = new AdmissionCoordinator(handlers, mutex, contactLock, invites, positions, members, users,
                 new MemberMapper(), time, sender, owners);
         var proxy = new ProxyFactory(target);
         proxy.setProxyTargetClass(true);
@@ -75,9 +80,10 @@ class AdmissionCoordinatorTest {
         assertSame(old, task.getSetterMember());
         verify(task, never()).setAssignedMember(any());
         verify(task, never()).setSetterMember(any());
-        var order = inOrder(mutex, invites, members);
-        order.verify(invites).findRestaurantIdByToken("token");
+        var order = inOrder(mutex, contactLock, invites, members);
+        order.verify(invites).findAdmissionIdentityByToken("token");
         order.verify(mutex).lock(1L);
+        order.verify(contactLock).lock(1L, user.getPhone());
         order.verify(invites).findForUpdateByToken("token");
         order.verify(members).existsByRestaurantIdAndUserIdAndEndedAtIsNull(1L, 7L);
         order.verify(members).save(any());
@@ -155,14 +161,74 @@ class AdmissionCoordinatorTest {
             verify(members, times(1)).save(any());
         } finally { executor.shutdownNow(); }
     }
+    @Test void creationWaitsForSameContactAcceptanceCommitThenRejectsActiveMember() throws Exception {
+        var c = coordinator(List.of());
+        var committedMember = new java.util.concurrent.atomic.AtomicBoolean();
+        var acceptanceReady = new CountDownLatch(1);
+        var creationWaitingForContact = new CountDownLatch(1);
+        doAnswer(a -> { tx.mutex.lock(); return null; }).when(mutex).lock(1L);
+        doAnswer(a -> {
+            if (tx.contact.isLocked() && !tx.contact.isHeldByCurrentThread()) creationWaitingForContact.countDown();
+            tx.contact.lock();
+            return null;
+        }).when(contactLock).lock(1L, user.getPhone());
+        when(members.existsByRestaurantIdAndUserIdAndEndedAtIsNull(1L, 7L))
+                .thenAnswer(a -> committedMember.get());
+        doAnswer(a -> {
+            RestaurantMember member = a.getArgument(0);member.setId(42L);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                public void afterCommit() { committedMember.set(true); }
+            });
+            acceptanceReady.countDown();
+            assertTrue(creationWaitingForContact.await(5, TimeUnit.SECONDS), "creation must race before acceptance commits");
+            return member;
+        }).when(members).save(any());
+        var restaurants = mock(ru.staffly.restaurant.repository.RestaurantRepository.class);
+        when(restaurants.findById(1L)).thenReturn(Optional.of(restaurant));
+        when(users.findByCanonicalPhone(user.getPhone())).thenReturn(Optional.of(user));
+        var schedules = mock(ru.staffly.schedule.repository.ScheduleRepository.class);
+        var intents = mock(ru.staffly.invite.repository.InvitationScheduleIntentRepository.class);
+        var impact = new InvitationImpactService(restaurants, positions, schedules, users, members,
+                mock(ru.staffly.security.SecurityService.class), time);
+        var commands = new InvitationCommandService(invites, restaurants, users, schedules, intents, impact, time,
+                new ru.staffly.invite.mapper.InvitationMapper(), mock(ru.staffly.security.SecurityService.class),
+                sender, contactLock, positions);
+        var proxy = new ProxyFactory(commands);proxy.setProxyTargetClass(true);
+        proxy.addAdvice(new TransactionInterceptor(tx, new AnnotationTransactionAttributeSource()));
+        var creation = (InvitationCommandService) proxy.getProxy();
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var accepted = executor.submit(() -> c.acceptInvite("token", 7L));
+            assertTrue(acceptanceReady.await(5, TimeUnit.SECONDS));
+            // Same contact in a different format must wait on acceptance's canonical contact lock.
+            var rejected = executor.submit(() -> assertThrows(ru.staffly.common.exception.ConflictException.class,
+                    () -> creation.invite(1L, 8L, new ru.staffly.invite.dto.InviteRequest(
+                            "+7 (999) 999-99-99", 2L, List.of()))));
+            assertEquals(42L, accepted.get(5, TimeUnit.SECONDS).id());
+            assertEquals("User already a member", rejected.get(5, TimeUnit.SECONDS).getMessage());
+            assertTrue(committedMember.get());assertEquals(InvitationStatus.ACCEPTED, invite.getStatus());
+            assertEquals(1, tx.commits.get());assertEquals(1, tx.rollbacks.get());
+            verify(contactLock, times(2)).lock(1L, user.getPhone());
+            // Acceptance, pre-lock creation check, then authoritative post-lock creation check.
+            verify(members, times(3)).existsByRestaurantIdAndUserIdAndEndedAtIsNull(1L, 7L);
+            verify(invites, never()).findPendingForUpdateByContact(any(), any(), any());
+            verify(invites, never()).save(argThat(i -> i.getStatus() == InvitationStatus.PENDING));
+            verifyNoInteractions(intents, schedules);
+        } finally { executor.shutdownNow(); }
+    }
+
     /** Exercises Spring's real transaction interceptor; repositories are mocks, not a PostgreSQL integration test. */
     static class RecordingTx extends AbstractPlatformTransactionManager {
         final AtomicInteger commits = new AtomicInteger(), rollbacks = new AtomicInteger();
         final ReentrantLock mutex = new ReentrantLock();
+        final ReentrantLock contact = new ReentrantLock();
         protected Object doGetTransaction() { return new Object(); }
         protected void doBegin(Object t, TransactionDefinition d) {}
         protected void doCommit(DefaultTransactionStatus s) { commits.incrementAndGet(); }
         protected void doRollback(DefaultTransactionStatus s) { rollbacks.incrementAndGet(); }
-        protected void doCleanupAfterCompletion(Object t) { if (mutex.isHeldByCurrentThread()) mutex.unlock(); }
+        protected void doCleanupAfterCompletion(Object t) {
+            if (contact.isHeldByCurrentThread()) contact.unlock();
+            if (mutex.isHeldByCurrentThread()) mutex.unlock();
+        }
     }
 }

@@ -16,8 +16,14 @@ import java.util.Optional;
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     Optional<Invitation> findByToken(String token);
-    @Query("select i.restaurant.id from Invitation i where i.token = :token")
-    Optional<Long> findRestaurantIdByToken(String token);
+    /** Scalar projection only: do not load the mutable Invitation before lifecycle/contact locks. */
+    interface AdmissionIdentity {
+        Long getRestaurantId();
+        String getContact();
+    }
+
+    @Query("select i.restaurant.id as restaurantId, i.phoneOrEmail as contact from Invitation i where i.token = :token")
+    Optional<AdmissionIdentity> findAdmissionIdentityByToken(String token);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from Invitation i where i.token = :token")
