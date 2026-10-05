@@ -104,7 +104,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     public PositionDto updatePosition(Long restaurantId, Long currentUserId, Long positionId, PositionDto dto) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
-        Position p = positions.findById(positionId)
+        Position p = positions.findForUpdateByIdAndRestaurantId(positionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
         if (!p.getRestaurant().getId().equals(restaurantId)) {
             throw new NotFoundException("Position not found in this restaurant");
@@ -160,7 +160,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     public void deletePosition(Long restaurantId, Long currentUserId, Long positionId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
-        Position p = positions.findById(positionId)
+        Position p = positions.findForUpdateByIdAndRestaurantId(positionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
         if (!p.getRestaurant().getId().equals(restaurantId)) {
             throw new NotFoundException("Position not found in this restaurant");

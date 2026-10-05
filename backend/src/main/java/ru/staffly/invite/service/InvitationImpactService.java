@@ -1,6 +1,6 @@
 package ru.staffly.invite.service;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
@@ -41,7 +41,7 @@ public class InvitationImpactService {
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
 
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public InvitationImpactPlan calculate(Long restaurantId, Long actorUserId, InvitationImpactRequest request) {
         security.assertAtLeastManager(actorUserId, restaurantId);
         Restaurant restaurant = restaurants.findById(restaurantId)
@@ -75,7 +75,7 @@ public class InvitationImpactService {
     public String validateCandidateIsNotMember(Long restaurantId, String rawPhone) {
         if (!isPhone(rawPhone)) throw new BadRequestException("Invalid phone");
         String phone = normalizePhone(rawPhone);
-        users.findByPhone(phone).ifPresent(user -> {
+        users.findByCanonicalPhone(phone).ifPresent(user -> {
             if (members.existsByRestaurantIdAndUserIdAndEndedAtIsNull(restaurantId, user.getId())) {
                 throw new ConflictException("User already a member");
             }
@@ -110,7 +110,9 @@ public class InvitationImpactService {
                     InvitationScheduleIntentAction.DO_NOT_ADD);
             case DRAFT_FROM_PREFERENCES -> List.of(InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD,
                     InvitationScheduleIntentAction.DO_NOT_ADD);
-            case DRAFT, PUBLISHED -> List.of(InvitationScheduleIntentAction.INFORMATION_ONLY);
+            case DRAFT -> List.of(InvitationScheduleIntentAction.ADD_TO_DRAFT,
+                    InvitationScheduleIntentAction.DO_NOT_ADD_TO_DRAFT);
+            case PUBLISHED -> List.of(InvitationScheduleIntentAction.INFORMATION_ONLY);
         };
         Instant deadline = schedule.getPreferenceDeadline();
         boolean lessThanSixHours = deadline != null && deadline.isAfter(now)

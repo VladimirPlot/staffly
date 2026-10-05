@@ -174,8 +174,10 @@ export default function InvitePanel({
 const ACTION_LABEL: Record<InvitationIntentAction, string> = {
   ADD_TO_COLLECTION: "Добавить в сбор после принятия",
   DO_NOT_ADD: "Не добавлять",
-  ADD_AND_REOPEN_COLLECTION: "Добавить и переоткрыть сбор",
-  ADD_AND_REOPEN_FOR_REBUILD: "Добавить и переоткрыть для новой сборки",
+  ADD_AND_REOPEN_COLLECTION: "Добавить и переоткрыть сбор после принятия",
+  ADD_AND_REOPEN_FOR_REBUILD: "Добавить и переоткрыть для новой сборки после принятия",
+  ADD_TO_DRAFT: "Добавить в черновик после принятия",
+  DO_NOT_ADD_TO_DRAFT: "Не добавлять",
   INFORMATION_ONLY: "Информация",
 };
 
@@ -207,10 +209,10 @@ function ScheduleImpactCard({
       : item.scheduleStatus === "PREFERENCES_CLOSED"
         ? "Сбор пожеланий закрыт. После принятия приглашения его можно открыть повторно; пожелания остальных сотрудников сохранятся."
         : item.scheduleStatus === "DRAFT_FROM_PREFERENCES"
-          ? "График уже собран по пожеланиям. При добавлении сбор откроется повторно, а результат автосборки потребуется собрать заново. Пожелания остальных сотрудников сохранятся."
+          ? "График уже собран по пожеланиям. Если сотрудник примет приглашение, сбор откроется повторно, а результат автосборки потребуется собрать заново. Пожелания остальных сотрудников сохранятся."
           : item.scheduleStatus === "PUBLISHED"
             ? "Сотрудник не будет автоматически добавлен в опубликованный график. После принятия его можно добавить вручную из графика."
-            : "Сотрудник не будет автоматически добавлен в черновик. После принятия его можно добавить вручную.";
+            : "Если сотрудник примет приглашение, его можно добавить в черновик согласно выбранному действию.";
 
   return (
     <div className="border-subtle rounded-xl border bg-[var(--staffly-control)] p-4">
@@ -241,7 +243,7 @@ function ScheduleImpactCard({
       {!informational && (
         <div className="mt-3 grid gap-2">
           {item.allowedActions.map((allowed) => {
-            const disabled = allowed !== "DO_NOT_ADD" && item.eligibilityProblems.length > 0;
+            const disabled = allowed !== "DO_NOT_ADD" && allowed !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0;
             return (
               <label key={allowed} className={`flex items-center gap-2 text-sm ${disabled ? "opacity-50" : ""}`}>
                 <input
