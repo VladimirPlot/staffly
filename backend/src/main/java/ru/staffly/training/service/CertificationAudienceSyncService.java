@@ -46,7 +46,7 @@ public class CertificationAudienceSyncService {
                                                                          boolean sendAssignmentNotifications) {
         var subjectEffects = new ArrayList<AppliedCertificationAudienceEffect>();
         var activeCertificationExams = exams.findActiveCertificationByRestaurantIdWithVisibility(restaurantId);
-        for (var candidate : activeCertificationExams) {
+        for (var candidate : activeCertificationExams.stream().sorted(java.util.Comparator.comparing(TrainingExam::getId)).toList()) {
             // Membership-wide sync joins the same exam -> ordered assignments lock order.
             var exam = exams.findByIdAndRestaurantIdForUpdate(candidate.getId(), restaurantId)
                     .orElseThrow();

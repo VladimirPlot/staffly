@@ -31,6 +31,13 @@ public class Invitation {
     @Column(name = "phone_or_email", nullable = false, length = 255)
     private String phoneOrEmail;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "position_snapshot", columnDefinition = "jsonb", updatable = false)
+    private AdmissionPositionSnapshot positionSnapshot;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "accepted_member_id")
+    private ru.staffly.member.model.RestaurantMember acceptedMember;
+
     // Уникальный токен
     @Column(nullable = false, length = 64, unique = true)
     private String token;

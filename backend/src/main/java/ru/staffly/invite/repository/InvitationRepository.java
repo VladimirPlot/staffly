@@ -16,6 +16,8 @@ import java.util.Optional;
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     Optional<Invitation> findByToken(String token);
+    @Query("select i.restaurant.id from Invitation i where i.token = :token")
+    Optional<Long> findRestaurantIdByToken(String token);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from Invitation i where i.token = :token")
