@@ -1,6 +1,7 @@
 package ru.staffly.member.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Lock;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.Query;
@@ -14,72 +15,82 @@ import java.util.Set;
 
 public interface RestaurantMemberRepository extends JpaRepository<RestaurantMember, Long> {
 
+    @EntityGraph(attributePaths = "position")
+    Optional<RestaurantMember> findByIdAndEndedAtIsNull(Long id);
+
     @Query("""
            select m from RestaurantMember m
            join fetch m.user
            left join fetch m.position
            join fetch m.restaurant
-           where m.id = :memberId and m.restaurant.id = :restaurantId
+           where m.id = :memberId and m.restaurant.id = :restaurantId and m.endedAt is null
            """)
     Optional<RestaurantMember> findWithUserAndPositionByIdAndRestaurantId(@Param("memberId") Long memberId,
                                                                            @Param("restaurantId") Long restaurantId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select m from RestaurantMember m where m.id = :memberId and m.restaurant.id = :restaurantId")
+    @Query("select m from RestaurantMember m where m.id = :memberId and m.restaurant.id = :restaurantId and m.endedAt is null")
     Optional<RestaurantMember> findForUpdateByIdAndRestaurantId(@Param("memberId") Long memberId,
                                                                  @Param("restaurantId") Long restaurantId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
            select m from RestaurantMember m
-           where m.restaurant.id = :restaurantId and m.id in :memberIds
+           where m.restaurant.id = :restaurantId and m.id in :memberIds and m.endedAt is null
            order by m.id asc
            """)
     List<RestaurantMember> findForUpdateByRestaurantIdAndIdInOrderByIdAsc(@Param("restaurantId") Long restaurantId,
                                                                            @Param("memberIds") List<Long> memberIds);
 
-    Optional<RestaurantMember> findByUserIdAndRestaurantId(Long userId, Long restaurantId);
+    @Query("""
+           select m from RestaurantMember m
+           join fetch m.position
+           where m.user.id = :userId and m.restaurant.id = :restaurantId and m.endedAt is null
+           """)
+    Optional<RestaurantMember> findActiveByUserIdAndRestaurantId(Long userId, Long restaurantId);
 
     @Query("""
            select m from RestaurantMember m
            join fetch m.user u
+           join fetch m.position
            where u.id = :userId
-             and m.restaurant.id = :restaurantId
+             and m.restaurant.id = :restaurantId and m.endedAt is null
            """)
-    Optional<RestaurantMember> findWithUserByUserIdAndRestaurantId(Long userId, Long restaurantId);
+    Optional<RestaurantMember> findActiveWithUserByUserIdAndRestaurantId(Long userId, Long restaurantId);
 
-    List<RestaurantMember> findByRestaurantId(Long restaurantId);
+    @EntityGraph(attributePaths = "position")
+    List<RestaurantMember> findByRestaurantIdAndEndedAtIsNull(Long restaurantId);
 
     @Query("""
            select m from RestaurantMember m
            join fetch m.user u
            where m.restaurant.id = :restaurantId
-             and u.id in :userIds
+             and u.id in :userIds and m.endedAt is null
            """)
-    List<RestaurantMember> findByRestaurantIdAndUserIdIn(Long restaurantId, Set<Long> userIds);
+    List<RestaurantMember> findActiveByRestaurantIdAndUserIdIn(Long restaurantId, Set<Long> userIds);
 
     @Query("""
            select distinct m from RestaurantMember m
            left join fetch m.position p
            left join fetch p.specializations
-           where m.user.id = :userId and m.restaurant.id = :restaurantId
+           where m.user.id = :userId and m.restaurant.id = :restaurantId and m.endedAt is null
            """)
-    Optional<RestaurantMember> findByUserIdAndRestaurantIdWithPosition(Long userId, Long restaurantId);
+    Optional<RestaurantMember> findActiveByUserIdAndRestaurantIdWithPosition(Long userId, Long restaurantId);
 
     @Query("""
            select m from RestaurantMember m
            join fetch m.user u
-           where m.restaurant.id = :restaurantId
+           where m.restaurant.id = :restaurantId and m.endedAt is null
            """)
-    List<RestaurantMember> findWithUserByRestaurantId(Long restaurantId);
+    List<RestaurantMember> findActiveWithUserByRestaurantId(Long restaurantId);
 
-    List<RestaurantMember> findByRestaurantIdAndPositionIdIn(Long restaurantId, List<Long> positionIds);
+    List<RestaurantMember> findByRestaurantIdAndPositionIdInAndEndedAtIsNull(Long restaurantId, List<Long> positionIds);
 
     @Query("""
            select m from RestaurantMember m
            left join fetch m.user u
            left join fetch m.position p
-           where m.id in :memberIds
+           where m.id in :memberIds and m.endedAt is null
            """)
     List<RestaurantMember> findWithUserAndPositionByIdIn(@Param("memberIds") Set<Long> memberIds);
 
@@ -88,25 +99,25 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            join fetch m.user u
            join fetch m.position p
            where m.restaurant.id = :restaurantId
-             and p.id in :positionIds
+             and p.id in :positionIds and m.endedAt is null
            """)
-    List<RestaurantMember> findWithUserAndPositionByRestaurantIdAndPositionIdIn(@Param("restaurantId") Long restaurantId, @Param("positionIds") List<Long> positionIds);
+    List<RestaurantMember> findActiveWithUserAndPositionByRestaurantIdAndPositionIdIn(@Param("restaurantId") Long restaurantId, @Param("positionIds") List<Long> positionIds);
 
     @Query("""
            select distinct m from RestaurantMember m
            join fetch m.user u
            left join fetch m.position p
            left join fetch p.specializations
-           where m.restaurant.id = :restaurantId
+           where m.restaurant.id = :restaurantId and m.endedAt is null
            """)
-    List<RestaurantMember> findWithUserAndPositionByRestaurantId(Long restaurantId);
+    List<RestaurantMember> findActiveWithUserAndPositionByRestaurantId(Long restaurantId);
 
     @Query("""
            select distinct m from RestaurantMember m
            join fetch m.user u
            left join fetch m.position p
            where m.restaurant.id = :restaurantId
-             and p.id = :positionId
+             and p.id = :positionId and m.endedAt is null
            """)
     List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndPositionId(Long restaurantId, Long positionId);
 
@@ -114,7 +125,7 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            select distinct m from RestaurantMember m
            join fetch m.user u
            left join fetch m.position p
-           where m.restaurant.id = :restaurantId
+           where m.restaurant.id = :restaurantId and m.endedAt is null
              and (
                   lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
                   or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
@@ -129,7 +140,7 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            join fetch m.user u
            left join fetch m.position p
            where m.restaurant.id = :restaurantId
-             and p.id = :positionId
+             and p.id = :positionId and m.endedAt is null
              and (
                   lower(coalesce(u.firstName, '')) like concat('%', :query, '%')
                   or lower(coalesce(u.lastName, '')) like concat('%', :query, '%')
@@ -139,28 +150,32 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
            """)
     List<RestaurantMember> findAnalyticsEmployeesByRestaurantIdAndPositionIdAndQuery(Long restaurantId, Long positionId, String query);
 
-    long countByRestaurantIdAndRole(Long restaurantId, RestaurantRole role);
+    @Query("select count(m) from RestaurantMember m where m.restaurant.id = :restaurantId and m.endedAt is null and m.position.level = :role")
+    long countActiveByRestaurantIdAndPositionLevel(Long restaurantId, RestaurantRole role);
 
-    boolean existsByRestaurantIdAndUserIdNot(Long restaurantId, Long userId);
+    boolean existsByRestaurantIdAndUserIdNotAndEndedAtIsNull(Long restaurantId, Long userId);
 
-    boolean existsByRestaurantIdAndUserId(Long restaurantId, Long userId);
+    boolean existsByRestaurantIdAndUserIdAndEndedAtIsNull(Long restaurantId, Long userId);
+
+    boolean existsByPositionIdAndEndedAtIsNull(Long positionId);
 
     @Query("""
            select m from RestaurantMember m
            where m.restaurant.id = :restaurantId
-             and (m.role = 'ADMIN' or m.role = 'MANAGER')
+             and m.endedAt is null
+             and m.position.level in ('ADMIN', 'MANAGER')
            """)
     List<RestaurantMember> findAdmins(Long restaurantId);
 
-    List<RestaurantMember> findByUserId(Long userId);
+    List<RestaurantMember> findByUserIdAndEndedAtIsNull(Long userId);
 
     @Query("""
            select distinct m from RestaurantMember m
            join fetch m.restaurant r
            left join fetch m.position p
            left join fetch p.specializations
-           where m.user.id = :userId
+           where m.user.id = :userId and m.endedAt is null
            order by r.id asc
            """)
-    List<RestaurantMember> findMembershipsByUserIdWithRestaurantAndPosition(Long userId);
+    List<RestaurantMember> findActiveMembershipsByUserIdWithRestaurantAndPosition(Long userId);
 }

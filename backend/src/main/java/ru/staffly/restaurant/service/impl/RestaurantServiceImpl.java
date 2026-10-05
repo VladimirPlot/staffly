@@ -93,7 +93,7 @@ public class RestaurantServiceImpl implements RestaurantService {
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        boolean hasOtherMembers = members.existsByRestaurantIdAndUserIdNot(restaurantId, creatorUserId);
+        boolean hasOtherMembers = members.existsByRestaurantIdAndUserIdNotAndEndedAtIsNull(restaurantId, creatorUserId);
         if (hasOtherMembers) {
             throw new ConflictException("Cannot delete restaurant with other participants");
         }
@@ -103,26 +103,24 @@ public class RestaurantServiceImpl implements RestaurantService {
 
     @Override
     @Transactional
-    public void assignAdmin(Long restaurantId, Long userId) {
+    public void assignAdmin(Long restaurantId, Long userId, Long positionId) {
         Restaurant r = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
         User u = users.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User not found: " + userId));
 
-        var existing = members.findByUserIdAndRestaurantId(userId, restaurantId);
-        if (existing.isPresent()) {
-            var m = existing.get();
-            m.setRole(RestaurantRole.ADMIN);
-            members.save(m);
-        } else {
-            var m = RestaurantMember.builder()
-                    .user(u)
-                    .restaurant(r)
-                    .role(RestaurantRole.ADMIN)
-                    .build();
-            members.save(m);
+        if (members.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent()) {
+            throw new ConflictException("User already has an active membership; use position change");
         }
+        Position adminPosition = positions.findById(positionId)
+                .filter(position -> position.getRestaurant().getId().equals(restaurantId))
+                .filter(Position::isActive)
+                .filter(position -> position.getLevel() == RestaurantRole.ADMIN)
+                .orElseThrow(() -> new ConflictException(
+                        "Selected position must be an active ADMIN position of this restaurant"));
+        members.save(RestaurantMember.builder()
+                .user(u).restaurant(r).position(adminPosition).build());
     }
 
     /* ------- helpers ------- */

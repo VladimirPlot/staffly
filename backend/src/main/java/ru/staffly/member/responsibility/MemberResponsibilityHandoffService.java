@@ -54,7 +54,7 @@ public class MemberResponsibilityHandoffService {
         Long targetUserId = targetMember.getUser().getId();
         List<MemberResponsibilityGroupDto> groups = new ArrayList<>();
 
-        Map<Long, RestaurantMember> membersByUserId = members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+        Map<Long, RestaurantMember> membersByUserId = members.findActiveWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> member.getUser() != null)
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (left, right) -> left));
 
@@ -172,7 +172,7 @@ public class MemberResponsibilityHandoffService {
         certifications.forEach(transfer -> newOwnerUserIds.add(transfer.newOwnerUserId()));
         Map<Long, RestaurantMember> recipientsByUserId = newOwnerUserIds.isEmpty()
                 ? Map.of()
-                : members.findByRestaurantIdAndUserIdIn(targetMember.getRestaurant().getId(), newOwnerUserIds).stream()
+                : members.findActiveByRestaurantIdAndUserIdIn(targetMember.getRestaurant().getId(), newOwnerUserIds).stream()
                         .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity()));
 
         var actor = ru.staffly.user.model.User.builder().id(actorUserId).build();
@@ -263,7 +263,7 @@ public class MemberResponsibilityHandoffService {
     }
 
     private RestaurantMember requireTargetMember(Long restaurantId, Long memberId) {
-        RestaurantMember targetMember = members.findById(memberId)
+        RestaurantMember targetMember = members.findByIdAndEndedAtIsNull(memberId)
                 .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));
         if (!targetMember.getRestaurant().getId().equals(restaurantId)) {
             throw new BadRequestException("Member belongs to another restaurant");

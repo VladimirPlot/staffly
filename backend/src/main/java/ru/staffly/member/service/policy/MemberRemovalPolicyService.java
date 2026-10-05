@@ -23,7 +23,7 @@ public class MemberRemovalPolicyService {
             throw new BadRequestException("Member belongs to another restaurant");
         }
 
-        var actor = members.findByUserIdAndRestaurantId(actorUserId, restaurantId);
+        var actor = members.findActiveByUserIdAndRestaurantId(actorUserId, restaurantId);
         if (actor.isEmpty()) {
             if (security.isAdmin(actorUserId, restaurantId)) {
                 return;
@@ -51,7 +51,7 @@ public class MemberRemovalPolicyService {
     public void assertCanCompleteRemoval(Long restaurantId, Long actorUserId, RestaurantMember targetMember) {
         assertCanStartRemoval(restaurantId, actorUserId, targetMember);
         if (targetMember.getRole() == RestaurantRole.ADMIN) {
-            long admins = members.countByRestaurantIdAndRole(restaurantId, RestaurantRole.ADMIN);
+            long admins = members.countActiveByRestaurantIdAndPositionLevel(restaurantId, RestaurantRole.ADMIN);
             if (admins <= 1) {
                 throw new ConflictException("Cannot remove the last ADMIN");
             }

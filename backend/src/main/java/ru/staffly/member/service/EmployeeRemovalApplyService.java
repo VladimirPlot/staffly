@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.time.RestaurantTimeService;
+import ru.staffly.checklist.repository.ChecklistItemRepository;
 import ru.staffly.member.dto.ApplyEmployeeRemovalRequest;
 import ru.staffly.member.dto.ApplyEmployeeRemovalRequest.ScheduleToken;
 import ru.staffly.member.dto.ApplyEmployeeRemovalResult;
@@ -34,6 +35,7 @@ public class EmployeeRemovalApplyService {
     private static final String STALE = "EMPLOYEE_REMOVAL_PLAN_STALE: refresh the impact plan";
 
     private final RestaurantMemberRepository members;
+    private final ru.staffly.user.repository.UserRepository users;
     private final ScheduleRepository schedules;
     private final ScheduleParticipationRepository participations;
     private final SchedulePreferenceSubmissionRepository submissions;
@@ -44,8 +46,9 @@ public class EmployeeRemovalApplyService {
     private final RestaurantTimeService restaurantTime;
     private final EmployeeRemovalAuditRepository audits;
     private final CertificationAudienceSyncService certificationAudienceSync;
+    private final ChecklistItemRepository checklistItems;
 
-    /** The lock, validation, cleanup, member deletion and audit all share this transaction. */
+    /** The lock, validation, cleanup, membership termination and audit all share this transaction. */
     @Transactional
     public ApplyEmployeeRemovalResult apply(Long restaurantId, Long memberId,
                                              ApplyEmployeeRemovalRequest request, Long actorUserId) {
@@ -55,7 +58,7 @@ public class EmployeeRemovalApplyService {
         if (member.getUser() != null) {
             responsibilityHandoff.assertNoBlockingResponsibilities(restaurantId, member.getUser().getId());
         }
-        if (!Objects.equals(member.getCreatedAt(), request.expectedMemberCreatedAt())
+        if (!Objects.equals(member.getStartedAt(), request.expectedMemberCreatedAt())
                 || !Objects.equals(positionId(member), request.expectedCurrentPositionId())) throw stale();
 
         Map<Long, ScheduleToken> tokens;
@@ -122,7 +125,11 @@ public class EmployeeRemovalApplyService {
         schedules.saveAll(locked);
 
         Long previousPositionId = positionId(member);
-        members.delete(member);
+        checklistItems.releaseActiveReservationsForMember(memberId);
+        var actor = users.findById(actorUserId)
+                .orElseThrow(() -> new BadRequestException("Actor user not found"));
+        member.end(actor, restaurantTime.nowInstant());
+        members.save(member);
         audits.save(EmployeeRemovalAudit.builder()
                 .restaurantId(restaurantId).actorUserId(actorUserId).memberId(memberId)
                 .previousPositionId(previousPositionId).occurredAt(restaurantTime.nowInstant())

@@ -55,7 +55,7 @@ public class TrainingExamOwnershipService {
         var currentOwner = exam.getOwner();
 
         List<RestaurantMember> candidateMembers = filterOwnerCandidateMembers(
-                members.findWithUserAndPositionByRestaurantId(restaurantId),
+                members.findActiveWithUserAndPositionByRestaurantId(restaurantId),
                 currentOwner == null ? null : currentOwner.getId()
         );
 
@@ -77,7 +77,7 @@ public class TrainingExamOwnershipService {
             throw new ForbiddenException("Only managers can manage exam ownership");
         }
 
-        RestaurantMember ownerMember = members.findByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
+        RestaurantMember ownerMember = members.findActiveByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         List<TrainingExam> ownedExams = findActiveOwnedCertificationExams(restaurantId, ownerUserId)
                 .stream()
@@ -93,7 +93,7 @@ public class TrainingExamOwnershipService {
         }
 
         List<RestaurantMember> candidateMembers = filterOwnerCandidateMembers(
-                members.findWithUserAndPositionByRestaurantId(restaurantId),
+                members.findActiveWithUserAndPositionByRestaurantId(restaurantId),
                 ownerUserId
         );
 
@@ -166,7 +166,7 @@ public class TrainingExamOwnershipService {
             throw new BadRequestException("ownerUserId is required");
         }
         Long restaurantId = exam.getRestaurant().getId();
-        var candidate = members.findByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
+        var candidate = members.findActiveByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("Owner must be a restaurant member"));
         if (candidate.getUser() == null) {
             throw new BadRequestException("Owner member has no linked user");

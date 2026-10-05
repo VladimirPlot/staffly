@@ -157,7 +157,7 @@ public class AnnouncementService {
         if (positionIds.isEmpty()) {
             return List.of();
         }
-        return members.findByRestaurantIdAndPositionIdIn(restaurantId, positionIds);
+        return members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(restaurantId, positionIds);
     }
 
     private AnnouncementDto toDto(InboxMessage message) {

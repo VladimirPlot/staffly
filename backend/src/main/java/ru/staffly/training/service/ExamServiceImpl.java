@@ -913,7 +913,7 @@ public class ExamServiceImpl implements ExamService {
                                               Instant now) {
         Long positionAtStartId = null;
         if (assignment != null) {
-            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, exam.getRestaurant().getId())
+            var member = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, exam.getRestaurant().getId())
                     .orElseThrow(() -> new ForbiddenException("Not a member"));
             positionAtStartId = member.getPosition() == null ? null : member.getPosition().getId();
         }

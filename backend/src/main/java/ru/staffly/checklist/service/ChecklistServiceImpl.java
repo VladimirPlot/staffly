@@ -85,7 +85,7 @@ public class ChecklistServiceImpl implements ChecklistService {
     ) {
         security.assertMember(currentUserId, restaurantId);
 
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
         boolean isCreator = hasRole(globalRoles, "CREATOR");
         boolean canManage = isCreator || (member != null && isManagerOrAdmin(member));
         Long myPositionId = member != null && member.getPosition() != null ? member.getPosition().getId() : null;
@@ -499,7 +499,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         if (checklist.getKind() != ChecklistKind.TRACKABLE) {
             throw new BadRequestException("Можно работать только с проверяемыми чек-листами");
         }
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         boolean canManage = isManagerOrAdmin(member);
         assertChecklistAccess(checklist, member, canManage);

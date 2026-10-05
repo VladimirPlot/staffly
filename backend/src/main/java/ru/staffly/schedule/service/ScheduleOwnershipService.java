@@ -178,7 +178,7 @@ public class ScheduleOwnershipService {
         if (ownerUserId == null) {
             throw new BadRequestException("ownerUserId is required");
         }
-        RestaurantMember owner = members.findByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
+        RestaurantMember owner = members.findActiveByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("ownerUserId must belong to the restaurant"));
         if (owner.getUser() == null) {
             throw new BadRequestException("Owner member has no linked user");
@@ -190,7 +190,7 @@ public class ScheduleOwnershipService {
     }
 
     private RestaurantRole resolveOwnerRole(Long restaurantId, Long ownerUserId) {
-        return members.findByUserIdAndRestaurantId(ownerUserId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(ownerUserId, restaurantId)
                 .map(RestaurantMember::getRole)
                 .orElse(RestaurantRole.STAFF);
     }
@@ -198,7 +198,7 @@ public class ScheduleOwnershipService {
     private List<RestaurantMember> findOwnerCandidateMembers(Long restaurantId,
                                                              Long excludedUserId,
                                                              RestaurantRole oldOwnerRole) {
-        return members.findWithUserAndPositionByRestaurantId(restaurantId).stream()
+        return members.findActiveWithUserAndPositionByRestaurantId(restaurantId).stream()
                 .filter(member -> member.getUser() != null)
                 .filter(member -> !Objects.equals(member.getUser().getId(), excludedUserId))
                 .filter(member -> isScheduleOwnerRole(member.getRole()))
@@ -254,7 +254,7 @@ public class ScheduleOwnershipService {
                 || Objects.equals(newOwner.getUser().getId(), actorUserId)) {
             return;
         }
-        RestaurantMember actor = members.findByUserIdAndRestaurantId(actorUserId, schedule.getRestaurant().getId())
+        RestaurantMember actor = members.findActiveByUserIdAndRestaurantId(actorUserId, schedule.getRestaurant().getId())
                 .orElse(null);
         inboxMessages.createEvent(
                 schedule.getRestaurant(),

@@ -18,6 +18,8 @@ import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
+import ru.staffly.restaurant.repository.RestaurantRepository;
+import ru.staffly.restaurant.model.RestaurantRole;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -34,6 +36,7 @@ public class MeController {
     private final RestaurantMemberRepository members;
     private final MemberMapper mapper;
     private final UserRepository users;
+    private final RestaurantRepository restaurants;
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping
@@ -71,7 +74,15 @@ public class MeController {
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/memberships")
     public List<MyMembershipDto> memberships(@AuthenticationPrincipal UserPrincipal principal) {
-        return members.findMembershipsByUserIdWithRestaurantAndPosition(principal.userId())
+        if (principal.roles() != null && principal.roles().contains("CREATOR")) {
+            // Compatibility projection for the restaurant selector, not evidence of a persisted membership.
+            return restaurants.findAll().stream()
+                    .map(restaurant -> new MyMembershipDto(restaurant.getId(), restaurant.getName(),
+                            restaurant.getDescription(), restaurant.getTimezone(), restaurant.isLocked(),
+                            RestaurantRole.ADMIN, java.util.Set.of()))
+                    .toList();
+        }
+        return members.findActiveMembershipsByUserIdWithRestaurantAndPosition(principal.userId())
                 .stream()
                 .map(member -> new MyMembershipDto(
                         member.getRestaurant().getId(),

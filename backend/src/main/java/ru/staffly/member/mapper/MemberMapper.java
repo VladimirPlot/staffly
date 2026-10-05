@@ -24,10 +24,7 @@ public class MemberMapper {
                 ? user.getFullName().trim()
                 : joinTwo(last, first);
 
-        String avatar = m.getAvatarUrl();
-        if (avatar == null && user != null) {
-            avatar = user.getAvatarUrl();
-        }
+        String avatar = user == null ? null : user.getAvatarUrl();
         if (avatar != null && user != null) {
             avatar = withBust(avatar, user.getUpdatedAt());
         }

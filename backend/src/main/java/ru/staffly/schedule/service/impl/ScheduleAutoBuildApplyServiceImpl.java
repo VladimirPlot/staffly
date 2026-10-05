@@ -146,7 +146,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             throw new BadRequestException("Переданный предпросмотр не содержит назначений");
         }
 
-        Map<Long, RestaurantMember> membersById = members.findWithUserByRestaurantId(restaurantId).stream()
+        Map<Long, RestaurantMember> membersById = members.findActiveWithUserByRestaurantId(restaurantId).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
         Map<Long, Long> participationPositionByMember = loadParticipationPositionByMember(schedule);
         Map<Long, ScheduleBuildPositionConfig> configsById = configsById(template);

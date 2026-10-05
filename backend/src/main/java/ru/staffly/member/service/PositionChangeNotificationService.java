@@ -62,7 +62,7 @@ public class PositionChangeNotificationService {
                 .forEach(ownerIds::add);
         notifiableCertifications.stream().map(AppliedCertificationAudienceEffect::ownerUserId).forEach(ownerIds::add);
         Map<Long, RestaurantMember> recipients = ownerIds.isEmpty() ? Map.of() : members
-                .findByRestaurantIdAndUserIdIn(subject.getRestaurant().getId(), ownerIds).stream()
+                .findActiveByRestaurantIdAndUserIdIn(subject.getRestaurant().getId(), ownerIds).stream()
                 .collect(Collectors.toMap(m -> m.getUser().getId(), Function.identity(), (a, b) -> a));
         ownerIds.stream().filter(id -> !recipients.containsKey(id)).forEach(id -> log.warn(
                 "Skipping position-change owner notification: owner is not a current member (restaurantId={}, ownerUserId={})",

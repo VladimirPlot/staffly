@@ -186,8 +186,9 @@ public class AuthController {
         Long restaurantId = req.restaurantId();
 
         securityService.assertRestaurantUnlocked(userId, restaurantId);
-        boolean member = memberRepository.findByUserIdAndRestaurantId(userId, restaurantId).isPresent();
-        if (!member) throw new ForbiddenException("Не является сотрудником ресторана");
+        boolean creator = principal.roles() != null && principal.roles().contains("CREATOR");
+        boolean member = memberRepository.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent();
+        if (!creator && !member) throw new ForbiddenException("Не является сотрудником ресторана");
 
         var newPrincipal = new UserPrincipal(
                 userId,
