@@ -46,7 +46,7 @@ export default function useScheduleDerivedState({
 
   const currentMemberInSchedule = React.useMemo(() => {
     if (!scheduleRows || currentMemberId == null) return false;
-    return scheduleRows.some((row) => row.memberId === currentMemberId);
+    return scheduleRows.some((row) => row.memberId === currentMemberId && !row.historical);
   }, [currentMemberId, scheduleRows]);
 
   const hasMyShift = React.useMemo(() => {
@@ -110,7 +110,7 @@ export default function useScheduleDerivedState({
 
     return scheduleRows
       .map((row) => {
-        const value = scheduleCellValues[`${row.memberId}:${todayIso}`];
+        const value = scheduleCellValues[`${row.historical ? -row.id! : row.memberId}:${todayIso}`];
         return {
           memberId: row.memberId,
           displayName: row.displayName,

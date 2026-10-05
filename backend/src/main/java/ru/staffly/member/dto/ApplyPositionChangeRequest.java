@@ -13,8 +13,20 @@ public record ApplyPositionChangeRequest(
         @NotNull Long targetPositionId,
         @NotNull Long expectedCurrentPositionId,
         @NotNull Instant expectedMemberCreatedAt,
-        @NotNull @Valid List<ScheduleDecision> schedules
+        @NotNull @Valid List<ScheduleDecision> schedules,
+        @NotNull @Valid PositionChangeImpactPlan.PositionSnapshot expectedCurrentPosition,
+        @NotNull @Valid PositionChangeImpactPlan.PositionSnapshot expectedTargetPosition,
+        @NotNull List<PositionChangeImpactPlan.OwnershipState> expectedScheduleOwnershipState,
+        @NotNull List<PositionChangeImpactPlan.OwnershipState> expectedCertificationOwnershipState,
+        @Valid List<ApplyEmployeeRemovalRequest.OwnershipTransfer> scheduleOwnershipTransfers,
+        @Valid List<ApplyEmployeeRemovalRequest.OwnershipTransfer> certificationOwnershipTransfers,
+        @Valid List<ApplyEmployeeRemovalRequest.TaskTransfer> taskSetterTransfers
 ) {
+    public ApplyPositionChangeRequest {
+        scheduleOwnershipTransfers = scheduleOwnershipTransfers == null ? List.of() : List.copyOf(scheduleOwnershipTransfers);
+        certificationOwnershipTransfers = certificationOwnershipTransfers == null ? List.of() : List.copyOf(certificationOwnershipTransfers);
+        taskSetterTransfers = taskSetterTransfers == null ? List.of() : List.copyOf(taskSetterTransfers);
+    }
     public record ScheduleDecision(
             @NotNull Long scheduleId,
             @NotNull Long expectedVersion,

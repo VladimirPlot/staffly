@@ -37,8 +37,43 @@ public class CertificationEmployeeLifecycleHandler
                 }).toList())).toList();
         return new CertificationLifecycleImpact(module(), true, impacts);
     }
-    @Override public CertificationLifecycleImpact preview(PositionChangePreviewContext context) {
-        return new CertificationLifecycleImpact(module(), true, List.of());
+    @Override public CertificationPositionChangeImpact preview(PositionChangePreviewContext context) {
+        var exams = ownership.findActiveOwnedCertificationExams(context.restaurantId(), context.member().getUser().getId());
+        var impacts = exams.stream().filter(e -> !ownership.canRetainOwnership(e, context.targetPosition()))
+                .map(e -> new EmployeeRemovalImpactPlan.OwnershipResource(e.getId(), e.getTitle(), e.getEditorRevision(),
+                        context.member().getUser().getId(), ownership.lifecycleCandidates(e, context.member().getId(), context.targetPosition()).stream()
+                        .map(PositionChangeSupport::candidate).toList())).toList();
+        return new CertificationPositionChangeImpact(true, impacts, exams.stream()
+                .map(e -> new ru.staffly.member.dto.PositionChangeImpactPlan.OwnershipState(e.getId(), e.getEditorRevision(), e.getOwner().getId())).toList(),
+                ownership.positionAudienceChanges(context.restaurantId(), context.currentPosition().getId(), context.targetPosition().getId()));
+    }
+    @Override public CertificationPositionChangePreparation applyBeforePositionChange(PositionChangeApplyContext c,
+            PositionChangeModuleDecision raw) {
+        if (!(raw instanceof CertificationPositionChangeDecision d)) throw PositionChangeSupport.stale();
+        ownership.lockActiveCertificationExams(c.restaurantId());
+        Long owner = c.member().getUser().getId();
+        var owned = ownership.findActiveOwnedCertificationExams(c.restaurantId(), owner);
+        var state = owned.stream().map(e -> new ru.staffly.member.dto.PositionChangeImpactPlan.OwnershipState(
+                e.getId(), e.getEditorRevision(), e.getOwner().getId())).collect(Collectors.toSet());
+        if (d.expectedOwnershipState() == null || state.size() != d.expectedOwnershipState().size()
+                || !state.equals(new HashSet<>(d.expectedOwnershipState()))) throw PositionChangeSupport.stale();
+        var required = owned.stream()
+                .filter(e -> !ownership.canRetainOwnership(e, c.targetPosition())).toList();
+        var tokens = new TreeMap<Long, ru.staffly.member.dto.ApplyEmployeeRemovalRequest.OwnershipTransfer>();
+        for (var t : d.transfers()) if (tokens.put(t.resourceId(), t) != null) throw PositionChangeSupport.stale();
+        if (!tokens.keySet().equals(required.stream().map(e -> e.getId()).collect(Collectors.toSet()))) throw PositionChangeSupport.stale();
+        for (var e : required) {
+            var t = tokens.get(e.getId());
+            if (!Objects.equals(t.expectedOwnerUserId(), owner) || t.expectedVersion() != e.getEditorRevision()
+                    || ownership.lifecycleCandidates(e, c.member().getId(), c.targetPosition()).stream()
+                    .noneMatch(m -> Objects.equals(m.getUser().getId(), t.newOwnerUserId()))) throw PositionChangeSupport.stale();
+        }
+        try {
+            return new CertificationPositionChangePreparation(tokens.isEmpty() ? List.of() :
+                    ownership.batchReassignWithLifecycleLockHeld(c.restaurantId(), c.actorUserId(), owner,
+                    tokens.values().stream().map(t -> Map.entry(t.resourceId(), t.newOwnerUserId())).toList(),
+                    tokens.values().stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion()))));
+        } catch (ru.staffly.common.exception.ConflictException ex) { throw PositionChangeSupport.stale(); }
     }
     @Override public CertificationTerminationResult applyBeforeTermination(TerminationApplyContext context,
             TerminationModuleDecision raw) {
@@ -64,7 +99,8 @@ public class CertificationEmployeeLifecycleHandler
     @Override public CertificationPositionChangeResult applyAfterPositionChange(PositionChangeApplyContext context,
             PositionChangeModuleDecision decision, PositionChangeModulePreparation preparation) {
         return new CertificationPositionChangeResult(
-                audienceSync.syncRestaurantAudience(context.restaurantId(), context.member().getUser().getId()));
+                audienceSync.syncRestaurantAudience(context.restaurantId(), context.member().getUser().getId(), false),
+                ((CertificationPositionChangePreparation) preparation).transfers());
     }
     private ConflictException stale() { return new ConflictException("EMPLOYEE_REMOVAL_PLAN_STALE",
             Map.of("code", "EMPLOYEE_REMOVAL_PLAN_STALE")); }

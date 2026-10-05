@@ -175,11 +175,19 @@ public class ScheduleOwnershipService {
     public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedulesWithLocksHeld(
             Long restaurantId, Long actorUserId, Long oldOwnerUserId, List<Schedule> lockedOwnedSchedules,
             Map<Long, Long> ownerUserIdsByScheduleId, Map<Long, Long> expectedVersionsByScheduleId) {
+        return reassignOwnedSchedulesWithLocksHeld(restaurantId, actorUserId, oldOwnerUserId, lockedOwnedSchedules,
+                ownerUserIdsByScheduleId, expectedVersionsByScheduleId, resolveOwnerRole(restaurantId, oldOwnerUserId));
+    }
+
+    public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedulesWithLocksHeld(
+            Long restaurantId, Long actorUserId, Long oldOwnerUserId, List<Schedule> lockedOwnedSchedules,
+            Map<Long, Long> ownerUserIdsByScheduleId, Map<Long, Long> expectedVersionsByScheduleId,
+            RestaurantRole resultingRole) {
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         Set<Long> expectedIds = lockedOwnedSchedules.stream().map(Schedule::getId).collect(Collectors.toSet());
         if (!expectedIds.equals(ownerUserIdsByScheduleId.keySet())) throw new BadRequestException("Набор графиков изменился");
-        RestaurantRole oldOwnerRole = resolveOwnerRole(restaurantId, oldOwnerUserId);
+        RestaurantRole oldOwnerRole = resultingRole;
         List<AppliedScheduleOwnershipTransfer> result = new java.util.ArrayList<>();
         for (Schedule schedule : lockedOwnedSchedules.stream().sorted(Comparator.comparing(Schedule::getId)).toList()) {
             if (schedule.getOwnerUser() == null || !Objects.equals(schedule.getOwnerUser().getId(), oldOwnerUserId)

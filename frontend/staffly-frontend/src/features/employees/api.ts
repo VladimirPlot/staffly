@@ -141,7 +141,10 @@ export type EmployeeRemovalImpactPlan = {
 };
 export type EmployeeRemovalOwnershipImpact = { requiredTransfers: EmployeeRemovalOwnershipResource[] };
 export type EmployeeRemovalOwnershipResource = {
-  resourceId: number; title: string; version: number; expectedOwnerUserId: number;
+  resourceId: number;
+  title: string;
+  version: number;
+  expectedOwnerUserId: number;
   candidates: EmployeeRemovalCandidate[];
 };
 export type EmployeeRemovalCandidate = { memberId: number; userId: number; name: string; position: string | null };
@@ -175,7 +178,10 @@ export type ApplyEmployeeRemovalRequest = {
   };
 };
 export type EmployeeRemovalOwnershipTransfer = {
-  resourceId: number; expectedVersion: number; expectedOwnerUserId: number; newOwnerUserId: number;
+  resourceId: number;
+  expectedVersion: number;
+  expectedOwnerUserId: number;
+  newOwnerUserId: number;
 };
 export type EmployeeRemovalTaskTransfer = {
   taskId: number;
@@ -250,13 +256,14 @@ export async function submitMemberResponsibilityHandoff(
   await api.post(`/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff`, payload);
 }
 
-
 export type PositionChangeAction =
   | "ADD_TO_COLLECTION"
   | "DO_NOT_ADD"
   | "CHANGE_POSITION_AND_REOPEN_COLLECTION"
   | "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE"
   | "REOPEN_AND_REBUILD_PREFERENCE_FLOW"
+  | "ADD_TO_DRAFT"
+  | "DO_NOT_ADD_TO_DRAFT"
   | "INFORMATION_ONLY";
 export type PositionChangeEligibilityProblem = "MISSING_PREFERENCE_MODE" | "MISSING_FROZEN_SHIFT_OPTIONS_FOR_POSITION";
 export type PositionChangePosition = { id: number; name: string };
@@ -286,7 +293,7 @@ export type OldPositionImpact = {
   preferenceSubmissionRevision: number | null;
   preferenceDataWillBeDeleted: boolean;
   progressDenominatorWillChange: boolean;
-  appliedDraftWillBeInvalidated: boolean;
+  autoBuildWillBecomeStale: boolean;
   activeRowWillBeRemoved: boolean;
   publishedRowBecomesHistorical: boolean;
   publishedShiftImpact: PublishedShiftImpact | null;
@@ -314,6 +321,22 @@ export type PositionChangeImpactPlan = {
   employee: PositionChangeEmployee;
   oldPositionImpacts: OldPositionImpact[];
   newPositionOpportunities: NewPositionOpportunity[];
+  currentPositionSnapshot: {
+    name: string;
+    level: "ADMIN" | "MANAGER" | "STAFF";
+    specializations: string[];
+    payType: string;
+    payRate: number | null;
+    normHours: number | null;
+  };
+  scheduleOwnershipState: { resourceId: number; version: number; ownerUserId: number }[];
+  certificationOwnershipState: { resourceId: number; version: number; ownerUserId: number }[];
+  targetPositionSnapshot: PositionChangeImpactPlan["currentPositionSnapshot"];
+  scheduleOwnership: EmployeeRemovalOwnershipResource[];
+  certificationOwnership: EmployeeRemovalOwnershipResource[];
+  taskSetters: EmployeeRemovalTaskResponsibility[];
+  certificationAudienceChanges: { certificationId: number; title: string; entersAudience: boolean }[];
+  reservationsToRelease: number;
 };
 export type ScheduleDecision = {
   scheduleId: number;
@@ -332,6 +355,13 @@ export type ApplyPositionChangeRequest = {
   expectedCurrentPositionId: number;
   expectedMemberCreatedAt: string;
   schedules: ScheduleDecision[];
+  expectedCurrentPosition: PositionChangeImpactPlan["currentPositionSnapshot"];
+  expectedScheduleOwnershipState: PositionChangeImpactPlan["scheduleOwnershipState"];
+  expectedCertificationOwnershipState: PositionChangeImpactPlan["certificationOwnershipState"];
+  expectedTargetPosition: PositionChangeImpactPlan["targetPositionSnapshot"];
+  scheduleOwnershipTransfers: EmployeeRemovalOwnershipTransfer[];
+  certificationOwnershipTransfers: EmployeeRemovalOwnershipTransfer[];
+  taskSetterTransfers: EmployeeRemovalTaskTransfer[];
 };
 export type ApplyPositionChangeResult = {
   member: MemberDto;

@@ -38,6 +38,12 @@ public class CertificationAudienceSyncService {
     /** Returns mutation-produced audience effects for one subject while still synchronizing the whole restaurant. */
     @Transactional
     public List<AppliedCertificationAudienceEffect> syncRestaurantAudience(Long restaurantId, Long subjectUserId) {
+        return syncRestaurantAudience(restaurantId, subjectUserId, true);
+    }
+
+    @Transactional
+    public List<AppliedCertificationAudienceEffect> syncRestaurantAudience(Long restaurantId, Long subjectUserId,
+                                                                         boolean sendAssignmentNotifications) {
         var subjectEffects = new ArrayList<AppliedCertificationAudienceEffect>();
         var activeCertificationExams = exams.findActiveCertificationByRestaurantIdWithVisibility(restaurantId);
         for (var candidate : activeCertificationExams) {
@@ -51,7 +57,7 @@ public class CertificationAudienceSyncService {
                         .forEach(subjectEffects::add);
             }
             try {
-                trainingCertificationNotificationService.notifyAssignmentsCreated(exam, result.createdAssignments());
+                if (sendAssignmentNotifications) trainingCertificationNotificationService.notifyAssignmentsCreated(exam, result.createdAssignments());
             } catch (Exception ex) {
                 log.warn("Failed to notify certification audience sync (restaurantId={}, examId={})",
                         exam.getRestaurant().getId(), exam.getId(), ex);

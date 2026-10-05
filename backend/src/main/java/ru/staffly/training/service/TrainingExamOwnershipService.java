@@ -34,6 +34,7 @@ public class TrainingExamOwnershipService {
     private final TrainingPolicyService trainingPolicyService;
     private final CertificationFolderManagementService certificationFolderManagementService;
     private final RestaurantLifecycleMutex lifecycleMutex;
+    private final jakarta.persistence.EntityManager entityManager;
 
     public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
         var actorUser = User.builder().id(actorUserId).build();
@@ -176,6 +177,37 @@ public class TrainingExamOwnershipService {
                 .toList();
     }
 
+    public List<ru.staffly.member.dto.PositionChangeImpactPlan.CertificationAudienceChange> positionAudienceChanges(
+            Long restaurantId, Long oldPositionId, Long newPositionId) {
+        return exams.findActiveCertificationByRestaurantIdWithVisibility(restaurantId).stream()
+                .filter(e -> CertificationAssignmentService.isPositionInAudience(e, oldPositionId)
+                        != CertificationAssignmentService.isPositionInAudience(e, newPositionId))
+                .map(e -> new ru.staffly.member.dto.PositionChangeImpactPlan.CertificationAudienceChange(e.getId(), e.getTitle(),
+                        CertificationAssignmentService.isPositionInAudience(e, newPositionId))).toList();
+    }
+
+    public List<TrainingExam> lockActiveCertificationExams(Long restaurantId) {
+        return exams.findActiveCertificationByRestaurantIdWithVisibility(restaurantId).stream()
+                .sorted(Comparator.comparing(TrainingExam::getId))
+                .map(e -> {
+                    var locked = exams.findByIdAndRestaurantIdForUpdate(e.getId(), restaurantId)
+                            .orElseThrow(ru.staffly.member.lifecycle.PositionChangeSupport::stale);
+                    entityManager.refresh(locked);
+                    return locked;
+                }).toList();
+    }
+
+    public boolean canRetainOwnership(TrainingExam exam, Position resultingPosition) {
+        return trainingPolicyService.canOwnCertificationAsPosition(resultingPosition, exam.getVisibilityPositions());
+    }
+
+    public List<RestaurantMember> lifecycleCandidates(TrainingExam exam, Long excludedMemberId, Position target) {
+        return members.findActiveWithUserAndPositionByRestaurantId(exam.getRestaurant().getId()).stream()
+                .filter(m -> !Objects.equals(m.getId(), excludedMemberId) && m.getPosition() != null)
+                .filter(m -> canRetainOwnership(exam, m.getPosition()))
+                .sorted(ru.staffly.member.lifecycle.PositionChangeSupport.candidateOrder(target)).toList();
+    }
+
     public void validateOwnerCandidate(TrainingExam exam, Long ownerUserId) {
         if (ownerUserId == null) {
             throw new BadRequestException("ownerUserId is required");
@@ -191,8 +223,9 @@ public class TrainingExamOwnershipService {
             throw new ForbiddenException("Selected owner cannot manage training");
         }
 
-        var visibilityPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
-        trainingPolicyService.assertCanUseExamTargetPositions(ownerUserId, restaurantId, visibilityPositionIds);
+        if (!canRetainOwnership(exam, candidate.getPosition())) {
+            throw new ForbiddenException("Selected owner cannot manage certification visibility");
+        }
 
     }
 

@@ -65,7 +65,12 @@ public class PositionChangeCoordinator {
         return new PositionChangeImpactPlan(now, new PositionChangeImpactPlan.Employee(member.getId(),
                 member.getUser().getFullName(), new PositionChangeImpactPlan.Position(member.getPosition().getId(), member.getPosition().getName()),
                 new PositionChangeImpactPlan.Position(target.getId(), target.getName()), member.getStartedAt()),
-                schedule.oldPositionImpacts(), schedule.newPositionOpportunities());
+                schedule.oldPositionImpacts(), schedule.newPositionOpportunities(), PositionChangeImpactPlan.PositionSnapshot.of(member.getPosition()), PositionChangeImpactPlan.PositionSnapshot.of(target),
+                schedule.ownershipState(), require(impacts, CertificationPositionChangeImpact.class).ownershipState(),
+                schedule.ownership(), require(impacts, CertificationPositionChangeImpact.class).ownership(),
+                require(impacts, ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Impact.class).setters(),
+                require(impacts, CertificationPositionChangeImpact.class).audienceChanges(),
+                require(impacts, ru.staffly.checklist.lifecycle.ChecklistPositionChangeLifecycleHandler.Impact.class).reservationsToRelease());
     }
 
     @Transactional
@@ -76,10 +81,12 @@ public class PositionChangeCoordinator {
         security.assertAtLeastManager(actorUserId, restaurantId);
         RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId).orElseThrow(this::stale);
         if (member.getPosition() == null || !Objects.equals(member.getPosition().getId(), request.expectedCurrentPositionId())
-                || !Objects.equals(member.getStartedAt(), request.expectedMemberCreatedAt())) throw stale();
+                || !Objects.equals(member.getStartedAt(), request.expectedMemberCreatedAt())
+                || !Objects.equals(PositionChangeImpactPlan.PositionSnapshot.of(member.getPosition()), request.expectedCurrentPosition())) throw stale();
         Position target = positions.findForShareByIdAndRestaurantId(request.targetPositionId(), restaurantId).orElseThrow(this::stale);
         if (!Objects.equals(target.getRestaurant().getId(), restaurantId) || !target.isActive()
-                || Objects.equals(target.getId(), member.getPosition().getId())) throw stale();
+                || Objects.equals(target.getId(), member.getPosition().getId())
+                || !Objects.equals(PositionChangeImpactPlan.PositionSnapshot.of(target), request.expectedTargetPosition())) throw stale();
         assertActorAuthority(restaurantId, actorUserId, member, target);
         assertNotLastAdminDemotion(restaurantId, member, target);
         Position oldPosition = member.getPosition();
@@ -89,7 +96,9 @@ public class PositionChangeCoordinator {
         UUID operationId = BusinessNotificationOperationId.generate();
         var context = new PositionChangeApplyContext(restaurantId, actorUserId, member, oldPosition, target, now, operationId);
         Map<LifecycleModule, PositionChangeModuleDecision> decisions = Map.of(
-                LifecycleModule.SCHEDULE, new SchedulePositionChangeDecision(request.schedules()));
+                LifecycleModule.SCHEDULE, new SchedulePositionChangeDecision(request.schedules(), request.scheduleOwnershipTransfers(), request.expectedScheduleOwnershipState()),
+                LifecycleModule.CERTIFICATION, new CertificationPositionChangeDecision(request.certificationOwnershipTransfers(), request.expectedCertificationOwnershipState()),
+                LifecycleModule.TASK, new ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Decision(request.taskSetterTransfers()));
         Map<LifecycleModule, PositionChangeModulePreparation> preparations = new EnumMap<>(LifecycleModule.class);
         for (var handler : handlers) {
             var preparation = handler.applyBeforePositionChange(context, requireDecision(decisions, handler.module()));
@@ -104,16 +113,22 @@ public class PositionChangeCoordinator {
         }
         SchedulePositionChangeResult schedule = require(results.values(), SchedulePositionChangeResult.class);
         CertificationPositionChangeResult certification = require(results.values(), CertificationPositionChangeResult.class);
+        var tasks = require(results.values(), ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Result.class);
+        var checklist = require(results.values(), ru.staffly.checklist.lifecycle.ChecklistPositionChangeLifecycleHandler.Result.class);
         String details = "affected=" + schedule.affectedScheduleIds() + "; cleanup=" + schedule.cleanup()
                 + "; decisions=" + schedule.decisions().stream().sorted(Comparator.comparing(ApplyPositionChangeRequest.ScheduleDecision::scheduleId))
                 .map(d -> d.scheduleId() + ":" + d.action() + (d.newDeadline() == null ? "" : "@" + d.newDeadline())).toList()
+                + "; scheduleOwnerTransfers=" + schedule.ownershipTransfers().size()
+                + "; certificationOwnerTransfers=" + certification.ownershipTransfers().size()
+                + "; taskSetterTransfers=" + tasks.transfers().size() + "; releasedChecklistReservations=" + checklist.releasedReservations()
                 + "; reopened=" + schedule.reopenedCollections() + "; cancelledFutureShifts=" + schedule.cancelledFutureShiftCount();
         audits.save(PositionChangeAudit.builder().restaurantId(restaurantId).actorUserId(actorUserId).memberId(memberId)
                 .oldPositionId(oldPosition.getId()).newPositionId(target.getId()).oldPositionName(oldPositionName)
                 .newPositionName(target.getName()).oldPositionLevel(oldPositionLevel).newPositionLevel(target.getLevel())
                 .occurredAt(now).details(details).build());
         var actor = users.findById(actorUserId).orElseThrow(this::stale);
-        notifications.submit(member, actor, operationId, oldPositionName, target.getName(), schedule.effects(), certification.effects());
+        notifications.submit(member, actor, operationId, oldPositionName, target.getName(), schedule.effects(), certification.effects(),
+                schedule.ownershipTransfers(), certification.ownershipTransfers(), tasks.transfers());
         return new ApplyPositionChangeResult(memberMapper.toDto(member), schedule.affectedScheduleIds(),
                 schedule.reopenedCollections(), schedule.cancelledFutureShiftCount());
     }
@@ -123,6 +138,7 @@ public class PositionChangeCoordinator {
         assertActorAuthority(restaurantId, actorUserId, member, target);
     }
     private void assertActorAuthority(Long restaurantId,Long actorUserId,RestaurantMember member,Position target){
+        if (Objects.equals(member.getUser().getId(), actorUserId)) throw new ForbiddenException("Нельзя менять собственную должность");
         if(!security.isAdmin(actorUserId,restaurantId)&&(member.effectiveRole()!=RestaurantRole.STAFF||target.getLevel()!=RestaurantRole.STAFF))
             throw new ru.staffly.common.exception.ForbiddenException("Managers can move only STAFF employees to STAFF positions");
     }

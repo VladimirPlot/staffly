@@ -230,6 +230,16 @@ public class TrainingPolicyService {
         return new TrainingPolicyContext(hasBaseRoleAuthority || hasExaminerAuthority, false, hasExaminerAuthority, member.getRole());
     }
 
+    /** Evaluate a real resulting position, without the acting CREATOR's bypass. */
+    public boolean canOwnCertificationAsPosition(ru.staffly.dictionary.model.Position position,
+                                                java.util.Collection<ru.staffly.dictionary.model.Position> visibility) {
+        boolean examiner = PositionSpecializations.hasExaminer(position.getSpecializations());
+        boolean management = position.getLevel() == RestaurantRole.ADMIN || position.getLevel() == RestaurantRole.MANAGER;
+        if (!examiner && !management) return false;
+        var context = new TrainingPolicyContext(true, false, examiner, position.getLevel());
+        return visibility.stream().allMatch(p -> allowedLevelsByContext(context, PolicyContext.EXAM_TARGET).contains(p.getLevel()));
+    }
+
     private boolean isCreator() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getAuthorities().stream()

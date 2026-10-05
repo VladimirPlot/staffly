@@ -3,7 +3,7 @@ import Button from "../../../shared/ui/Button";
 import SelectField from "../../../shared/ui/SelectField";
 import type { PositionDto } from "../../dictionaries/api";
 import type { NewPositionOpportunity, OldPositionImpact, PositionChangeAction, PositionChangeImpactPlan } from "../api";
-import type { PositionDecision } from "../hooks/useMemberEditPosition";
+import type { PositionDecision, ResponsibilityChoices } from "../hooks/useMemberEditPosition";
 import {
   formatInstantInTimeZone,
   instantToRestaurantLocalDateTime,
@@ -17,6 +17,8 @@ const labels: Record<PositionChangeAction, string> = {
   CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE: "Сменить должность без добавления",
   REOPEN_AND_REBUILD_PREFERENCE_FLOW: "Переоткрыть сбор и собрать график повторно",
   INFORMATION_ONLY: "Не добавлять автоматически",
+  ADD_TO_DRAFT: "Добавить сотрудника в черновик",
+  DO_NOT_ADD_TO_DRAFT: "Не добавлять в этот график",
 };
 const status: Record<string, string> = {
   COLLECTING_PREFERENCES: "идёт сбор пожеланий",
@@ -28,7 +30,6 @@ const status: Record<string, string> = {
 const reopen = (a?: PositionChangeAction) =>
   a === "CHANGE_POSITION_AND_REOPEN_COLLECTION" || a === "REOPEN_AND_REBUILD_PREFERENCE_FLOW";
 const isInformationOnly = (item: NewPositionOpportunity) =>
-  item.scheduleStatus === "DRAFT" ||
   item.scheduleStatus === "PUBLISHED" ||
   (item.allowedActions.length === 1 && item.allowedActions[0] === "INFORMATION_ONLY");
 
@@ -38,14 +39,26 @@ const eligibilityMessages = {
     "Для новой должности нет сохранённых вариантов смен этого сбора. Добавить сотрудника в сбор с выбором времени сейчас нельзя.",
 } as const;
 
-function OldConsequences({ impact, position }: { impact: OldPositionImpact; position: string }) {
+function OldConsequences({
+  impact,
+  position,
+  rebuild,
+}: {
+  impact: OldPositionImpact;
+  position: string;
+  rebuild: boolean;
+}) {
   const p = impact.publishedShiftImpact;
   const items: string[] = [];
   if (impact.participationWillBeRemoved) items.push(`сотрудник перестанет участвовать в сборе как ${position}`);
   if (impact.preferenceDataWillBeDeleted) items.push("отправленные пожелания сотрудника будут удалены");
   if (impact.progressDenominatorWillChange) items.push("прогресс сбора будет пересчитан");
-  if (impact.appliedDraftWillBeInvalidated) {
-    items.push("текущий результат автосборки станет неактуальным", "график можно будет собрать повторно");
+  if (impact.autoBuildWillBecomeStale) {
+    items.push(
+      rebuild
+        ? "Текущий результат автосборки будет сброшен. После нового сбора график потребуется собрать повторно."
+        : "Результат автосборки станет неактуальным. Текущий график можно проверить вручную или запустить автосборку повторно.",
+    );
   }
   if (impact.activeRowWillBeRemoved) items.push("сотрудник будет удалён из черновика");
   if (impact.publishedRowBecomesHistorical) items.push("данные сотрудника останутся в истории опубликованного графика");
@@ -100,9 +113,8 @@ function Opportunity({
       )}
       {informational && (
         <p className="mt-2 text-sm">
-          {item.scheduleStatus === "DRAFT"
-            ? "Для новой должности существует черновик графика. Сотрудник не будет добавлен автоматически."
-            : "Для новой должности уже есть опубликованный график. Сотрудник не будет добавлен автоматически. При необходимости его можно добавить отдельно в графике."}
+          Для новой должности уже есть опубликованный график. Сотрудник не будет добавлен автоматически. При
+          необходимости его можно добавить отдельно в графике.
         </p>
       )}
       {item.eligibilityProblems.map((problem) => (
@@ -129,7 +141,9 @@ function Opportunity({
           <p className="mt-2 text-sm">
             Сбор пожеланий откроется повторно. Пожелания остальных сотрудников сохранятся и снова станут доступны для
             изменения. Сотрудник сможет отправить пожелания уже для новой должности.
-            {item.scheduleStatus === "DRAFT_FROM_PREFERENCES" ? " Текущий результат нужно будет собрать повторно." : ""}
+            {item.scheduleStatus === "DRAFT_FROM_PREFERENCES"
+              ? " Текущий результат автосборки будет сброшен. После нового сбора график потребуется собрать повторно."
+              : ""}
           </p>
           <label className="mt-2 block text-sm">
             Новый срок
@@ -158,8 +172,9 @@ function Opportunity({
       )}
       {decision?.action === "DO_NOT_ADD" && item.scheduleStatus === "DRAFT_FROM_PREFERENCES" && (
         <p className="mt-2 text-sm">
-          Сотрудник не будет добавлен в график для новой должности. Текущий результат автосборки станет неактуальным.
-          Пожелания остальных сотрудников сохранятся, и график можно будет собрать повторно.
+          Сотрудник не будет добавлен в график для новой должности. Пожелания остальных сотрудников сохранятся.
+          Результат автосборки станет неактуальным. Текущий график можно проверить вручную или запустить автосборку
+          повторно.
         </p>
       )}
     </div>
@@ -174,6 +189,8 @@ export default function EditMemberPositionModal(props: {
   value: number | null;
   plan: PositionChangeImpactPlan | null;
   decisions: Record<number, PositionDecision>;
+  responsibilities: ResponsibilityChoices;
+  onResponsibility: (key: string, id: number) => void;
   saving: boolean;
   loadingImpact: boolean;
   error: string | null;
@@ -185,7 +202,42 @@ export default function EditMemberPositionModal(props: {
   restaurantTimeZone: string;
 }) {
   const { plan } = props;
+  const groups = plan
+    ? [
+        {
+          key: "schedule",
+          label: "Графики — передача ответственности",
+          resources: (plan.scheduleOwnership ?? []).map((r) => ({
+            id: r.resourceId,
+            title: r.title,
+            candidates: r.candidates,
+          })),
+        },
+        {
+          key: "certification",
+          label: "Аттестации",
+          resources: (plan.certificationOwnership ?? []).map((r) => ({
+            id: r.resourceId,
+            title: r.title,
+            candidates: r.candidates,
+          })),
+        },
+        {
+          key: "task",
+          label: "Задачи — передача ответственности",
+          resources: (plan.taskSetters ?? []).map((r) => ({ id: r.taskId, title: r.title, candidates: r.candidates })),
+        },
+      ]
+    : [];
+  const responsibilityValid = groups.every((g) =>
+    g.resources.every((r) =>
+      r.candidates.some(
+        (c) => (g.key === "task" ? c.memberId : c.userId) === props.responsibilities[g.key + "-" + r.id],
+      ),
+    ),
+  );
   const valid =
+    responsibilityValid &&
     Boolean(plan) &&
     plan!.newPositionOpportunities.every((o) => {
       if (isInformationOnly(o)) return true;
@@ -193,7 +245,11 @@ export default function EditMemberPositionModal(props: {
       const deadlineInstant = d?.newDeadline
         ? restaurantLocalDateTimeToInstant(d.newDeadline, props.restaurantTimeZone)
         : null;
-      if (!d || (reopen(d.action) && (!deadlineInstant || new Date(deadlineInstant).getTime() <= Date.now())))
+      if (
+        !d ||
+        !o.allowedActions.includes(d.action) ||
+        (reopen(d.action) && (!deadlineInstant || new Date(deadlineInstant).getTime() <= Date.now()))
+      )
         return false;
       if (
         d.action === "ADD_TO_COLLECTION" &&
@@ -254,31 +310,91 @@ export default function EditMemberPositionModal(props: {
       ) : (
         <div className="space-y-5">
           <p className="text-sm">
-            Смена должности может повлиять на текущие графики и сборы пожеланий сотрудника. Проверьте изменения перед
-            применением.
+            Смена должности может повлиять на графики, аттестации, задачи и чек-листы сотрудника. Проверьте изменения
+            перед применением.
           </p>
-          <section>
-            <h3 className="mb-2 font-semibold">Что произойдёт с текущими графиками</h3>
-            <div className="space-y-2">
-              {plan.oldPositionImpacts.map((i) => (
-                <OldConsequences key={i.scheduleId} impact={i} position={plan.employee.oldPosition.name} />
-              ))}
-            </div>
-          </section>
-          <section>
-            <h3 className="mb-2 font-semibold">Графики для новой должности</h3>
-            <div className="space-y-2">
-              {plan.newPositionOpportunities.map((o) => (
-                <Opportunity
-                  key={o.scheduleId}
-                  item={o}
-                  decision={props.decisions[o.scheduleId]}
-                  change={(d) => props.onDecision(o.scheduleId, d)}
-                  restaurantTimeZone={props.restaurantTimeZone}
-                />
-              ))}
-            </div>
-          </section>
+          {groups
+            .filter(
+              (g) =>
+                g.resources.length > 0 ||
+                (g.key === "certification" && (plan.certificationAudienceChanges ?? []).length > 0),
+            )
+            .map((g) => (
+              <section key={g.key}>
+                <h3 className="mb-2 font-semibold">{g.label}</h3>
+                {g.key === "certification" &&
+                  (plan.certificationAudienceChanges ?? []).map((c) => (
+                    <p key={c.certificationId} className="mb-2 text-sm">
+                      {c.title}:{" "}
+                      {c.entersAudience
+                        ? "сотрудник войдёт в аудиторию аттестации"
+                        : "сотрудник выйдет из аудитории аттестации"}
+                      . Пройденные результаты и история сохранятся.
+                    </p>
+                  ))}
+                {g.resources.map((r) => (
+                  <div key={r.id} className="border-subtle mb-2 rounded-xl border p-3">
+                    <b>{r.title}</b>
+                    {r.candidates.length === 0 ? (
+                      <p className="mt-2 text-sm text-red-600">
+                        Нет подходящего сотрудника для передачи ответственности.
+                      </p>
+                    ) : (
+                      <SelectField
+                        label="Новый ответственный"
+                        value={props.responsibilities[g.key + "-" + r.id] ?? ""}
+                        onChange={(e) => props.onResponsibility(`${g.key}-${r.id}`, Number(e.target.value))}
+                      >
+                        <option value="">Выберите сотрудника</option>
+                        {r.candidates.map((c) => (
+                          <option key={c.memberId} value={g.key === "task" ? c.memberId : c.userId}>
+                            {c.name}
+                            {c.position ? ` — ${c.position}` : ""}
+                          </option>
+                        ))}
+                      </SelectField>
+                    )}
+                  </div>
+                ))}
+              </section>
+            ))}
+          {plan.reservationsToRelease > 0 && (
+            <section>
+              <h3 className="mb-2 font-semibold">Чек-листы</h3>
+              <p className="text-sm">Будет снято бронирований недоступных чек-листов: {plan.reservationsToRelease}.</p>
+            </section>
+          )}
+          {plan.oldPositionImpacts.length > 0 && (
+            <section>
+              <h3 className="mb-2 font-semibold">Что произойдёт с текущими графиками</h3>
+              <div className="space-y-2">
+                {plan.oldPositionImpacts.map((i) => (
+                  <OldConsequences
+                    key={i.scheduleId}
+                    impact={i}
+                    position={plan.employee.oldPosition.name}
+                    rebuild={props.decisions[i.scheduleId]?.action === "REOPEN_AND_REBUILD_PREFERENCE_FLOW"}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {plan.newPositionOpportunities.length > 0 && (
+            <section>
+              <h3 className="mb-2 font-semibold">Графики для новой должности</h3>
+              <div className="space-y-2">
+                {plan.newPositionOpportunities.map((o) => (
+                  <Opportunity
+                    key={o.scheduleId}
+                    item={o}
+                    decision={props.decisions[o.scheduleId]}
+                    change={(d) => props.onDecision(o.scheduleId, d)}
+                    restaurantTimeZone={props.restaurantTimeZone}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
           <section className="bg-subtle rounded-xl p-3 text-sm">
             <b>После применения:</b>
             <ul className="mt-1 list-disc pl-5">
@@ -300,7 +416,7 @@ export default function EditMemberPositionModal(props: {
                       График «{o.scheduleTitle}»: сбор пожеланий будет открыт повторно до{" "}
                       {deadline ? formatInstantInTimeZone(deadline, props.restaurantTimeZone) : "выбранного срока"}
                       {decision.action === "REOPEN_AND_REBUILD_PREFERENCE_FLOW"
-                        ? "; текущий результат автосборки станет неактуальным и потребует новой сборки"
+                        ? "; текущий результат автосборки будет сброшен, после нового сбора потребуется повторная сборка"
                         : ""}
                     </li>
                   );
@@ -309,9 +425,12 @@ export default function EditMemberPositionModal(props: {
                 .filter(
                   (o) =>
                     props.decisions[o.scheduleId] &&
-                    ["DO_NOT_ADD", "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE", "INFORMATION_ONLY"].includes(
-                      props.decisions[o.scheduleId].action,
-                    ),
+                    [
+                      "DO_NOT_ADD",
+                      "DO_NOT_ADD_TO_DRAFT",
+                      "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE",
+                      "INFORMATION_ONLY",
+                    ].includes(props.decisions[o.scheduleId].action),
                 )
                 .map((o) => (
                   <li key={o.scheduleId}>в график «{o.scheduleTitle}» сотрудник добавлен не будет</li>

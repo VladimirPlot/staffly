@@ -401,7 +401,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 || !positionIds.contains(member.getPosition().getId())) {
             throw new BadRequestException("Сотрудник не подходит по должности для этого графика");
         }
-        if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId))) {
+        if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId) && !row.isHistorical())) {
             throw new ConflictException("Сотрудник уже представлен в графике");
         }
 
@@ -922,7 +922,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private Map<String, String> buildCurrentValueMap(Schedule schedule) {
         return schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null)
+                .filter(row -> row.getMemberId() != null && !row.isHistorical())
                 .flatMap(row -> row.getCells().stream()
                         .map(cell -> Map.entry(row.getMemberId() + ":" + cell.getDay(), normalizeCellValue(cell.getValue()))))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -1004,7 +1004,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                                Map<Long, RestaurantMember> memberMap,
                                Map<Long, ScheduleParticipation> participationByMemberId) {
         Map<Long, ScheduleRow> existingByMemberId = schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null)
+                .filter(row -> row.getMemberId() != null && !row.isHistorical())
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, r -> r, (left, right) -> left));
         Set<Long> requestedIds = new LinkedHashSet<>(memberMap.keySet());
         Set<ScheduleRow> activeRows = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -1098,7 +1098,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             List<LocalDate> newDays,
             Map<String, String> requestedValues) {
         Map<Long, ScheduleRow> rowsByMember = schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null && activeMembers.containsKey(row.getMemberId()))
+                .filter(row -> row.getMemberId() != null && !row.isHistorical() && activeMembers.containsKey(row.getMemberId()))
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, row -> row, (left, right) -> left));
         Set<LocalDate> newDaySet = new HashSet<>(newDays);
         List<PublishedScheduleCellChange> result = new ArrayList<>();
@@ -1370,7 +1370,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (cell.getValue() == null || cell.getValue().isBlank()) {
                 return;
             }
-            String key = row.getMemberId() + ":" + cell.getDay();
+            String key = (row.isHistorical() ? -row.getId() : row.getMemberId()) + ":" + cell.getDay();
             cellValues.put(key, cell.getValue());
             cellSources.put(key, cell.getSource() != null ? cell.getSource() : ScheduleCellSource.MANUAL);
             cell.structuredShift().ifPresent(interval -> cellShifts.put(key, ScheduleCellShiftDto.from(interval)));

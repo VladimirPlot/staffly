@@ -11,12 +11,14 @@ import {
 import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 import { restaurantLocalDateTimeToInstant } from "../../schedule/utils/date";
 
+export type ResponsibilityChoices = Record<string, number>;
 export type PositionDecision = { action: PositionChangeAction; newDeadline: string };
 
 export function buildPositionChangeRequest(
   plan: PositionChangeImpactPlan,
   decisions: Record<number, PositionDecision>,
   restaurantTimeZone: string,
+  responsibilities: ResponsibilityChoices = {},
 ): ApplyPositionChangeRequest {
   const oldById = new Map(plan.oldPositionImpacts.map((impact) => [impact.scheduleId, impact]));
   const newById = new Map(plan.newPositionOpportunities.map((opportunity) => [opportunity.scheduleId, opportunity]));
@@ -25,6 +27,28 @@ export function buildPositionChangeRequest(
     targetPositionId: plan.employee.newPosition.id,
     expectedCurrentPositionId: plan.employee.oldPosition.id,
     expectedMemberCreatedAt: plan.employee.memberCreatedAt,
+    expectedCurrentPosition: plan.currentPositionSnapshot,
+    expectedScheduleOwnershipState: plan.scheduleOwnershipState,
+    expectedCertificationOwnershipState: plan.certificationOwnershipState,
+    expectedTargetPosition: plan.targetPositionSnapshot,
+    scheduleOwnershipTransfers: (plan.scheduleOwnership ?? []).map((r) => ({
+      resourceId: r.resourceId,
+      expectedVersion: r.version,
+      expectedOwnerUserId: r.expectedOwnerUserId,
+      newOwnerUserId: responsibilities["schedule-" + r.resourceId],
+    })),
+    certificationOwnershipTransfers: (plan.certificationOwnership ?? []).map((r) => ({
+      resourceId: r.resourceId,
+      expectedVersion: r.version,
+      expectedOwnerUserId: r.expectedOwnerUserId,
+      newOwnerUserId: responsibilities["certification-" + r.resourceId],
+    })),
+    taskSetterTransfers: (plan.taskSetters ?? []).map((r) => ({
+      taskId: r.taskId,
+      expectedVersion: r.version,
+      expectedMemberId: plan.employee.memberId,
+      newMemberId: responsibilities["task-" + r.taskId],
+    })),
     schedules: [...scheduleIds]
       .sort((a, b) => a - b)
       .map((scheduleId) => {
@@ -34,8 +58,7 @@ export function buildPositionChangeRequest(
         const decision = opportunity ? decisions[scheduleId] : undefined;
         const informationOnly = Boolean(
           opportunity &&
-            (opportunity.scheduleStatus === "DRAFT" ||
-              opportunity.scheduleStatus === "PUBLISHED" ||
+            (opportunity.scheduleStatus === "PUBLISHED" ||
               (opportunity.allowedActions.length === 1 && opportunity.allowedActions[0] === "INFORMATION_ONLY")),
         );
         return {
@@ -71,29 +94,34 @@ export function useMemberEditPosition({
   allPositions,
   onApplied,
   restaurantTimeZone,
+  isAdminLike,
 }: {
   restaurantId: number | null;
   allPositions: PositionDto[];
   onApplied: (member: MemberDto) => Promise<void>;
   restaurantTimeZone: string;
+  isAdminLike: boolean;
 }) {
   const [memberToEdit, setMemberToEdit] = useState<MemberDto | null>(null);
   const [editPositionId, setEditPositionId] = useState<number | null>(null);
   const [plan, setPlan] = useState<PositionChangeImpactPlan | null>(null);
   const [decisions, setDecisions] = useState<Record<number, PositionDecision>>({});
+  const [responsibilities, setResponsibilities] = useState<ResponsibilityChoices>({});
   const [saving, setSaving] = useState(false);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const editOptions = useMemo(
-    () => allPositions.filter((p) => p.active && p.level === memberToEdit?.role && p.id !== memberToEdit.positionId),
-    [allPositions, memberToEdit],
+    () =>
+      allPositions.filter((p) => p.active && (isAdminLike || p.level === "STAFF") && p.id !== memberToEdit?.positionId),
+    [allPositions, memberToEdit, isAdminLike],
   );
   const open = (member: MemberDto) => {
     setMemberToEdit(member);
     setEditPositionId(null);
     setPlan(null);
     setDecisions({});
+    setResponsibilities({});
     setError(null);
   };
   const close = () => {
@@ -101,6 +129,7 @@ export function useMemberEditPosition({
       setMemberToEdit(null);
       setPlan(null);
       setDecisions({});
+      setResponsibilities({});
       setError(null);
     }
   };
@@ -111,6 +140,7 @@ export function useMemberEditPosition({
     try {
       setPlan(await getPositionChangeImpact(restaurantId, memberToEdit.id, editPositionId));
       setDecisions({});
+      setResponsibilities({});
     } catch (e) {
       setError(getFriendlyEmployeeErrorMessage(e, "Не удалось проверить последствия"));
     } finally {
@@ -125,12 +155,13 @@ export function useMemberEditPosition({
       const result = await applyPositionChange(
         restaurantId,
         memberToEdit.id,
-        buildPositionChangeRequest(plan, decisions, restaurantTimeZone),
+        buildPositionChangeRequest(plan, decisions, restaurantTimeZone, responsibilities),
       );
       await onApplied(result.member);
       setMemberToEdit(null);
       setPlan(null);
       setDecisions({});
+      setResponsibilities({});
       setSuccess(
         `Должность сотрудника изменена${result.cancelledFutureShiftCount ? `. Отменено будущих смен: ${result.cancelledFutureShiftCount}` : ""}`,
       );
@@ -139,10 +170,14 @@ export function useMemberEditPosition({
         try {
           setPlan(await getPositionChangeImpact(restaurantId, memberToEdit.id, plan.employee.newPosition.id));
           setDecisions({});
+          setResponsibilities({});
           setError(
-            "Данные графиков изменились, пока вы подтверждали смену должности. Мы обновили информацию — проверьте изменения ещё раз.",
+            "Данные изменились, пока вы подтверждали смену должности. Мы обновили информацию — проверьте изменения ещё раз.",
           );
         } catch (refreshError) {
+          setPlan(null);
+          setDecisions({});
+          setResponsibilities({});
           setError(getFriendlyEmployeeErrorMessage(refreshError, "Не удалось обновить информацию"));
         }
       } else setError(getFriendlyEmployeeErrorMessage(e, "Не удалось сменить должность"));
@@ -157,6 +192,8 @@ export function useMemberEditPosition({
     plan,
     decisions,
     setDecisions,
+    responsibilities,
+    setResponsibilities,
     saving,
     loadingImpact,
     error,

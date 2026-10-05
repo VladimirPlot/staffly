@@ -30,6 +30,8 @@ public class SchedulePositionChangePreviewHandler {
     private final ScheduleParticipationRepository participations;
     private final SchedulePreferenceSubmissionRepository submissions;
     private final PublishedShiftImpactClassifier shiftClassifier;
+    private final ru.staffly.schedule.service.ScheduleOwnershipService ownership;
+    private final ru.staffly.member.repository.RestaurantMemberRepository members;
 
     @Transactional(Transactional.TxType.SUPPORTS)
     public SchedulePositionChangeImpact preview(PositionChangePreviewContext context) {
@@ -44,6 +46,8 @@ public class SchedulePositionChangePreviewHandler {
                 .forEach(schedule -> oldCandidates.put(schedule.getId(), schedule));
         schedules.findByRestaurantIdAndRowMemberId(restaurantId, memberId)
                 .forEach(schedule -> oldCandidates.put(schedule.getId(), schedule));
+        schedules.findByRestaurantIdAndSubmissionMemberId(restaurantId, memberId)
+                .forEach(schedule -> oldCandidates.put(schedule.getId(), schedule));
         List<OldPositionImpact> oldImpacts = oldCandidates.values().stream()
                 .map(schedule -> oldImpact(schedule, memberId, oldPositionId, localNow))
                 .filter(Objects::nonNull).toList();
@@ -51,7 +55,19 @@ public class SchedulePositionChangePreviewHandler {
                 .findByRestaurantIdAndPositionId(restaurantId, targetPositionId).stream()
                 .sorted(Comparator.comparing(Schedule::getId))
                 .map(schedule -> newOpportunity(schedule, targetPositionId, context.now())).toList();
-        return new SchedulePositionChangeImpact(oldImpacts, opportunities);
+        var candidates = members.findActiveWithUserAndPositionByRestaurantId(restaurantId).stream()
+                .filter(m -> !Objects.equals(m.getId(), memberId) && m.getPosition() != null
+                        && ru.staffly.member.lifecycle.PositionChangeSupport.management(m.getPosition()))
+                .sorted(ru.staffly.member.lifecycle.PositionChangeSupport.candidateOrder(context.targetPosition()))
+                .map(ru.staffly.member.lifecycle.PositionChangeSupport::candidate).toList();
+        var allOwned = ownership.findActiveOrFutureOwnedSchedules(restaurantId, member.getUser().getId());
+        var owned = ru.staffly.member.lifecycle.PositionChangeSupport.management(context.targetPosition())
+                ? List.<ru.staffly.member.dto.EmployeeRemovalImpactPlan.OwnershipResource>of()
+                : allOwned.stream()
+                    .map(s -> new ru.staffly.member.dto.EmployeeRemovalImpactPlan.OwnershipResource(s.getId(), s.getTitle(),
+                            s.getVersion(), member.getUser().getId(), candidates)).toList();
+        return new SchedulePositionChangeImpact(oldImpacts, opportunities, owned, allOwned.stream()
+                .map(s -> new OwnershipState(s.getId(), s.getVersion(), s.getOwnerUser().getId())).toList());
     }
 
     private OldPositionImpact oldImpact(Schedule schedule, Long memberId, Long oldPositionId,
@@ -60,12 +76,11 @@ public class SchedulePositionChangePreviewHandler {
         ScheduleParticipation participation = participations.findByScheduleIdAndMemberId(schedule.getId(), memberId)
                 .filter(value -> oldPositionId.equals(value.getPositionId())).orElse(null);
         ScheduleRow row = schedule.getRows().stream()
-                .filter(value -> memberId.equals(value.getMemberId()) && oldPositionId.equals(value.getPositionId()))
+                .filter(value -> memberId.equals(value.getMemberId()) && oldPositionId.equals(value.getPositionId()) && !value.isHistorical())
                 .findFirst().orElse(null);
-        if (participation == null && row == null) return null;
-
         SchedulePreferenceSubmission submission = submissions.findByScheduleIdAndMemberId(schedule.getId(), memberId)
                 .filter(value -> oldPositionId.equals(value.getPositionId())).orElse(null);
+        if (participation == null && row == null && submission == null) return null;
         ScheduleStatus status = schedule.getStatus();
         boolean preferenceLifecycle = status == ScheduleStatus.COLLECTING_PREFERENCES
                 || status == ScheduleStatus.PREFERENCES_CLOSED
@@ -83,12 +98,15 @@ public class SchedulePositionChangePreviewHandler {
                 preferenceLifecycle && submission != null,
                 status == ScheduleStatus.COLLECTING_PREFERENCES && participation != null,
                 status == ScheduleStatus.DRAFT_FROM_PREFERENCES,
-                status == ScheduleStatus.DRAFT && row != null, published && row != null, shiftImpact);
+                (status == ScheduleStatus.DRAFT || status == ScheduleStatus.DRAFT_FROM_PREFERENCES
+                        || status == ScheduleStatus.COLLECTING_PREFERENCES || status == ScheduleStatus.PREFERENCES_CLOSED) && row != null, published && row != null, shiftImpact);
     }
 
     private NewPositionOpportunity newOpportunity(Schedule schedule, Long targetPositionId, Instant now) {
         Hibernate.initialize(schedule.getPreferenceShiftOptionSnapshots());
-        boolean shiftOptionsRequired = schedule.getPreferenceCollectionMode() == PreferenceCollectionMode.SHIFT_OPTIONS;
+        boolean shiftOptionsRequired = schedule.getStatus() != ScheduleStatus.DRAFT
+                && schedule.getStatus() != ScheduleStatus.PUBLISHED
+                && schedule.getPreferenceCollectionMode() == PreferenceCollectionMode.SHIFT_OPTIONS;
         List<Long> applicableSnapshotIds = schedule.getPreferenceShiftOptionSnapshots().stream()
                 .filter(snapshot -> {
                     Hibernate.initialize(snapshot.getPositionIds());
@@ -108,7 +126,8 @@ public class SchedulePositionChangePreviewHandler {
             case PREFERENCES_CLOSED -> List.of(Action.CHANGE_POSITION_AND_REOPEN_COLLECTION,
                     Action.CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE);
             case DRAFT_FROM_PREFERENCES -> List.of(Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW, Action.DO_NOT_ADD);
-            case DRAFT, PUBLISHED -> List.of(Action.INFORMATION_ONLY);
+            case DRAFT -> List.of(Action.ADD_TO_DRAFT, Action.DO_NOT_ADD_TO_DRAFT);
+            case PUBLISHED -> List.of(Action.INFORMATION_ONLY);
         };
         Instant deadline = schedule.getPreferenceDeadline();
         boolean lessThanSixHours = deadline != null && deadline.isAfter(now)

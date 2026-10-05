@@ -52,16 +52,10 @@ function buildSheetXml(schedule: EditableScheduleData): string {
   const firstRow = [title, ...Array(columnCount - 1).fill("")];
   rows.push(createRowXml(1, firstRow));
 
-  const weekdayRow = [
-    "",
-    ...schedule.days.map((day) => day.weekdayLabel),
-  ];
+  const weekdayRow = ["", ...schedule.days.map((day) => day.weekdayLabel)];
   rows.push(createRowXml(2, weekdayRow));
 
-  const dayRow = [
-    "",
-    ...schedule.days.map((day) => day.dayNumber),
-  ];
+  const dayRow = ["", ...schedule.days.map((day) => day.dayNumber)];
   rows.push(createRowXml(3, dayRow));
 
   schedule.rows.forEach((row, index) => {
@@ -71,7 +65,9 @@ ${row.positionName}`
       : row.displayName;
     const values = [
       display,
-      ...schedule.days.map((day) => schedule.cellValues[`${row.memberId}:${day.date}`] ?? ""),
+      ...schedule.days.map(
+        (day) => schedule.cellValues[`${row.historical ? -row.id! : row.memberId}:${day.date}`] ?? "",
+      ),
     ];
     rows.push(createRowXml(index + 4, values));
   });
@@ -361,14 +357,13 @@ function drawText(
   height: number,
   align: CanvasTextAlign,
   lineHeight: number,
-  padding: number
+  padding: number,
 ): void {
   const content = text ? text.split(/\r?\n/) : [""];
   const visibleLines = content.length > 0 ? content : [""];
   const totalHeight = lineHeight * visibleLines.length;
   let currentY = y + height / 2 - totalHeight / 2 + lineHeight / 2;
-  const offsetX =
-    align === "left" ? x + padding : align === "right" ? x + width - padding : x + width / 2;
+  const offsetX = align === "left" ? x + padding : align === "right" ? x + width - padding : x + width / 2;
 
   ctx.textAlign = align;
   ctx.textBaseline = "middle";
@@ -387,7 +382,7 @@ function drawRow(
   height: number,
   columnWidths: number[],
   values: string[],
-  options: RowOptions = {}
+  options: RowOptions = {},
 ): void {
   let currentX = startX;
   values.forEach((value, index) => {
@@ -454,34 +449,18 @@ export async function exportScheduleToJpeg(schedule: EditableScheduleData): Prom
 
   currentY += titleHeight;
 
-  drawRow(
-    ctx,
-    originX,
-    currentY,
-    rowHeights[1],
-    columnWidths,
-    ["", ...days.map((day) => day.weekdayLabel)],
-    {
-      background: (index) => (index === 0 ? "#ffffff" : "#f4f4f5"),
-      font: () => "600 14px 'Inter', 'Arial', sans-serif",
-      lineHeight: () => 18,
-    }
-  );
+  drawRow(ctx, originX, currentY, rowHeights[1], columnWidths, ["", ...days.map((day) => day.weekdayLabel)], {
+    background: (index) => (index === 0 ? "#ffffff" : "#f4f4f5"),
+    font: () => "600 14px 'Inter', 'Arial', sans-serif",
+    lineHeight: () => 18,
+  });
 
   currentY += rowHeights[1];
 
-  drawRow(
-    ctx,
-    originX,
-    currentY,
-    rowHeights[2],
-    columnWidths,
-    ["", ...days.map((day) => day.dayNumber)],
-    {
-      font: (index) => (index === 0 ? "12px 'Inter', 'Arial', sans-serif" : "14px 'Inter', 'Arial', sans-serif"),
-      lineHeight: () => 18,
-    }
-  );
+  drawRow(ctx, originX, currentY, rowHeights[2], columnWidths, ["", ...days.map((day) => day.dayNumber)], {
+    font: (index) => (index === 0 ? "12px 'Inter', 'Arial', sans-serif" : "14px 'Inter', 'Arial', sans-serif"),
+    lineHeight: () => 18,
+  });
 
   currentY += rowHeights[2];
 
@@ -492,22 +471,14 @@ ${row.positionName}`
       : row.displayName;
     const values = [
       label,
-      ...days.map((day) => schedule.cellValues[`${row.memberId}:${day.date}`] ?? ""),
+      ...days.map((day) => schedule.cellValues[`${row.historical ? -row.id! : row.memberId}:${day.date}`] ?? ""),
     ];
-    drawRow(
-      ctx,
-      originX,
-      currentY,
-      rowHeights[rowIndex + 3],
-      columnWidths,
-      values,
-      {
-        font: (index) => (index === 0 ? "14px 'Inter', 'Arial', sans-serif" : "14px 'Inter', 'Arial', sans-serif"),
-        background: () => (rowIndex % 2 === 0 ? "#ffffff" : "#f9fafb"),
-        lineHeight: () => 20,
-        padding: (index) => (index === 0 ? 18 : 12),
-      }
-    );
+    drawRow(ctx, originX, currentY, rowHeights[rowIndex + 3], columnWidths, values, {
+      font: (index) => (index === 0 ? "14px 'Inter', 'Arial', sans-serif" : "14px 'Inter', 'Arial', sans-serif"),
+      background: () => (rowIndex % 2 === 0 ? "#ffffff" : "#f9fafb"),
+      lineHeight: () => 20,
+      padding: (index) => (index === 0 ? 18 : 12),
+    });
     currentY += rowHeights[rowIndex + 3];
   });
 

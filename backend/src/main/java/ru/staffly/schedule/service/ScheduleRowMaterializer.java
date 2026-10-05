@@ -16,7 +16,7 @@ public class ScheduleRowMaterializer {
     public ScheduleRow ensureRowWithLocksHeld(Schedule schedule, RestaurantMember member,
                                                 ScheduleParticipation participation) {
         return schedule.getRows().stream()
-                .filter(row -> Objects.equals(row.getMemberId(), member.getId()))
+                .filter(row -> Objects.equals(row.getMemberId(), member.getId()) && !row.isHistorical())
                 .findFirst()
                 .orElseGet(() -> {
                     int nextSortOrder = schedule.getRows().stream()

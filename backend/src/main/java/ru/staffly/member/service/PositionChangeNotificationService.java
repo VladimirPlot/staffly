@@ -29,7 +29,10 @@ public class PositionChangeNotificationService {
     public void submit(RestaurantMember subject, User actor, UUID operationId,
                        String oldPositionName, String newPositionName,
                        List<AppliedPositionChangeScheduleEffect> scheduleEffects,
-                       List<AppliedCertificationAudienceEffect> certificationEffects) {
+                       List<AppliedCertificationAudienceEffect> certificationEffects,
+                       List<ru.staffly.schedule.dto.AppliedScheduleOwnershipTransfer> scheduleTransfers,
+                       List<ru.staffly.training.dto.AppliedCertificationOwnershipTransfer> certificationTransfers,
+                       List<ru.staffly.task.lifecycle.TaskTerminationResult.Transfer> taskTransfers) {
         List<BusinessNotificationCommand> commands = new ArrayList<>();
         commands.add(command(subject, actor, operationId, subject, BusinessNotificationKind.POSITION_CHANGE,
                 "Ваша должность в ресторане изменена с «" + oldPositionName + "» на «" + newPositionName + "».",
@@ -54,6 +57,11 @@ public class PositionChangeNotificationService {
                     metadata(subject, cancelled.stream().map(AppliedPositionChangeScheduleEffect::scheduleId).toList())));
         }
 
+        var newAssignments = certificationEffects.stream().filter(e -> e.effectType() == CertificationAudienceEffectType.CREATED
+                || e.effectType() == CertificationAudienceEffectType.REACTIVATED).toList();
+        if (!newAssignments.isEmpty()) commands.add(command(subject, actor, operationId, subject, BusinessNotificationKind.CERTIFICATION,
+                "После смены должности вам назначены аттестации: " + newAssignments.stream().map(e -> e.certificationTitle()).collect(Collectors.joining(", ")),
+                "После смены должности вам назначены аттестации.", metadata(subject, newAssignments.stream().map(e -> e.certificationId()).toList())));
         var notifiableCertifications = certificationEffects.stream()
                 .filter(e -> e.effectType() != CertificationAudienceEffectType.UNCHANGED)
                 .filter(e -> e.ownerUserId() != null).toList();
@@ -91,7 +99,30 @@ public class PositionChangeNotificationService {
                             "Смена должности сотрудника повлияла на " + sorted.size() + " аттестацию(и).",
                             metadata(subject, sorted.stream().map(AppliedCertificationAudienceEffect::certificationId).toList())));
                 });
-        afterCommit.submit(commands);
+        scheduleTransfers.stream().collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((id, values) ->
+                addTransferCommand(commands, subject, actor, operationId, id, BusinessNotificationKind.SCHEDULE,
+                        "Вам передали ответственность за графики: " + values.stream().map(t -> t.title()).collect(Collectors.joining(", "))));
+        certificationTransfers.stream().collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((id, values) ->
+                addTransferCommand(commands, subject, actor, operationId, id, BusinessNotificationKind.CERTIFICATION,
+                        "Вам передали ответственность за аттестации: " + values.stream().map(t -> t.title()).collect(Collectors.joining(", "))));
+        taskTransfers.stream().collect(Collectors.groupingBy(t -> t.memberId())).forEach((id, values) -> {
+            var recipient = members.findByIdAndEndedAtIsNull(id).orElse(null);
+            if (recipient != null) commands.add(command(subject, actor, operationId, recipient, BusinessNotificationKind.TASK_RESPONSIBILITY,
+                    "Вам передали ответственность за задачи: " + values.stream().map(t -> t.title()).collect(Collectors.joining(", ")),
+                    "Вам передали ответственность за задачи.", metadata(subject, values.stream().map(t -> t.taskId()).toList())));
+        });
+        // Merge handoff and audience/row effects into one notification per user/module.
+        Map<String, BusinessNotificationCommand> grouped = new LinkedHashMap<>();
+        for (var c : commands) grouped.merge(c.recipient().getId() + ":" + c.kind(), c, (a, next) ->
+                new BusinessNotificationCommand(a.restaurant(), a.operationId(), a.recipient(), a.actor(), a.kind(),
+                        a.inboxText() + "\n" + next.inboxText(), a.pushText(), a.metadata(), null));
+        afterCommit.submit(List.copyOf(grouped.values()));
+    }
+
+    private void addTransferCommand(List<BusinessNotificationCommand> commands, RestaurantMember subject, User actor,
+                                    UUID operationId, Long userId, BusinessNotificationKind kind, String text) {
+        var recipient = members.findActiveByUserIdAndRestaurantId(userId, subject.getRestaurant().getId()).orElse(null);
+        if (recipient != null) commands.add(command(subject, actor, operationId, recipient, kind, text, text, Map.of()));
     }
 
     private boolean requiresPreferenceAction(AppliedPositionChangeScheduleEffect e) {
@@ -115,9 +146,11 @@ public class PositionChangeNotificationService {
             case PREFERENCE_SUBMISSION_REMOVED -> "прежние пожелания удалены";
             case NEW_PARTICIPATION_CREATED -> "участие обновлено";
             case COLLECTION_REOPENED -> "сбор пожеланий открыт повторно";
-            case AUTO_BUILD_RESULT_INVALIDATED -> "автоматический результат требует повторной сборки";
+            case AUTO_BUILD_RESULT_STALE -> "результат автосборки устарел, график стоит проверить";
+            case AUTO_BUILD_RESULT_INVALIDATED -> "результат автосборки сброшен, после сбора пожеланий потребуется повторная сборка";
             case DRAFT_EMPLOYEE_REMOVED -> "сотрудник удалён из черновика";
             case PUBLISHED_FUTURE_SHIFTS_CANCELLED -> "будущие смены отменены";
+            case PUBLISHED_ROW_BECAME_HISTORICAL -> "строка прежней должности сохранена в истории";
         };
     }
     private String certMeaning(CertificationAudienceEffectType type) {

@@ -10,6 +10,12 @@ import java.util.List;
 
 public interface ChecklistItemRepository extends JpaRepository<ChecklistItem, Long> {
 
+    List<ChecklistItem> findByReservedById(Long memberId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from ChecklistItem i where i.reservedBy.id = :memberId order by i.id")
+    List<ChecklistItem> findReservedForUpdate(@Param("memberId") Long memberId);
+
     List<ChecklistItem> findByChecklistIdOrderByItemOrderAsc(Long checklistId);
 
     @Query("select count(i) from ChecklistItem i where i.reservedBy.id = :memberId")

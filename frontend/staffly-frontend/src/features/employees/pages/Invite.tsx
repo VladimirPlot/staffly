@@ -45,7 +45,7 @@ export default function InvitePage() {
 
   const isStaffInCurrentRestaurant = membersState.myRole === "STAFF";
   const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
-  const canEditMembers = membersState.myRole === "ADMIN";
+  const canEditMembers = access.isManagerLike;
 
   const invitablePositions = useMemo(
     () =>
@@ -64,6 +64,7 @@ export default function InvitePage() {
   const editPositionState = useMemberEditPosition({
     restaurantId,
     allPositions: positionsState.allPositions,
+    isAdminLike: access.isAdminLike,
     restaurantTimeZone,
     onApplied: async () => {
       await membersState.refresh();
@@ -166,6 +167,7 @@ export default function InvitePage() {
           loading={membersState.loading}
           error={membersState.error}
           canEditMembers={canEditMembers}
+          canEditMember={(member) => member.userId !== currentUserId && (access.isAdminLike || member.role === "STAFF")}
           isSavingEditMemberId={
             editPositionState.saving && editPositionState.memberToEdit ? editPositionState.memberToEdit.id : null
           }
@@ -187,6 +189,8 @@ export default function InvitePage() {
         value={editPositionState.editPositionId}
         plan={editPositionState.plan}
         decisions={editPositionState.decisions}
+        responsibilities={editPositionState.responsibilities}
+        onResponsibility={(key, id) => editPositionState.setResponsibilities((current) => ({ ...current, [key]: id }))}
         restaurantTimeZone={restaurantTimeZone}
         saving={editPositionState.saving}
         loadingImpact={editPositionState.loadingImpact}
