@@ -63,7 +63,12 @@ public class ScheduleTerminationApplyHandler {
             switch (schedule.getStatus()) {
                 case DRAFT -> { if (row != null) schedule.getRows().remove(row); }
                 case DRAFT_FROM_PREFERENCES -> {
-                    lifecycle.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, context.actorUserId(), "Удаление участника");
+                    // Keep the useful applied draft and manual edits. Only the ending
+                    // membership's row is operationally removed; provenance records
+                    // that the remaining draft is no longer a fresh auto-build result.
+                    if (row != null) schedule.getRows().remove(row);
+                    schedule.setAutoBuildStaleAt(context.now());
+                    schedule.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_TERMINATED);
                     invalidatedDrafts++;
                 }
                 case PUBLISHED -> {

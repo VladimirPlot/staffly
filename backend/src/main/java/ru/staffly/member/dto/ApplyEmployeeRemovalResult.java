@@ -9,5 +9,10 @@ public record ApplyEmployeeRemovalResult(
         int historicalPublishedRowCount,
         int removedPreferenceSubmissionCount,
         int removedParticipationCount,
-        int invalidatedAppliedPreferenceDraftCount
+        int invalidatedAppliedPreferenceDraftCount,
+        int taskAssigneeTransferCount,
+        int taskOrphanedCount,
+        int taskSetterTransferCount,
+        int checklistReservationsReleased,
+        int remindersDetached
 ) { }

@@ -55,6 +55,7 @@ export function useMemberRemoval({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [taskSelections, setTaskSelections] = useState<Record<string, number | null>>({});
   const [pendingHandoffMember, setPendingHandoffMember] = useState<MemberDto | null>(null);
   const [handoffOptions, setHandoffOptions] = useState<MemberResponsibilityHandoffOptionsDto | null>(null);
   const [handoffSelections, setHandoffSelections] = useState<Record<string, number | null>>({});
@@ -89,7 +90,16 @@ export function useMemberRemoval({
     setError(null);
     setPlan(null);
     try {
-      setPlan(await getEmployeeRemovalImpact(restaurantId, member.id));
+      const impact = await getEmployeeRemovalImpact(restaurantId, member.id);
+      setPlan(impact);
+      const selections: Record<string, number | null> = {};
+      if (impact.mode === "FORCED") impact.taskImpact.assigneeResponsibilities.forEach((task) => {
+        selections[`assignee:${task.taskId}`] = task.candidates[0]?.memberId ?? null;
+      });
+      impact.taskImpact.setterResponsibilities.forEach((task) => {
+        selections[`setter:${task.taskId}`] = task.candidates[0]?.memberId ?? null;
+      });
+      setTaskSelections(selections);
       setNotice(
         stale
           ? "Данные сотрудника или связанных графиков изменились. Мы обновили последствия удаления. Проверьте их ещё раз."
@@ -159,6 +169,16 @@ export function useMemberRemoval({
       expectedPreferenceSubmissionId: schedule.preferenceSubmissionId,
       expectedPreferenceSubmissionRevision: schedule.preferenceSubmissionRevision,
     })),
+    tasks: {
+      assignees: source.taskImpact.assigneeResponsibilities.map((task) => ({
+        taskId: task.taskId, expectedVersion: task.version, expectedMemberId: source.employee.memberId,
+        newMemberId: source.mode === "FORCED" ? taskSelections[`assignee:${task.taskId}`]! : null,
+      })),
+      setters: source.taskImpact.setterResponsibilities.map((task) => ({
+        taskId: task.taskId, expectedVersion: task.version, expectedMemberId: source.employee.memberId,
+        newMemberId: taskSelections[`setter:${task.taskId}`]!,
+      })),
+    },
   });
   const confirmRemove = async () => {
     if (!restaurantId || !memberToRemove || !plan || removing) return;
@@ -176,6 +196,11 @@ export function useMemberRemoval({
         result.invalidatedAppliedPreferenceDraftCount
           ? `Графики, требующие повторной сборки: ${result.invalidatedAppliedPreferenceDraftCount}.`
           : null,
+        result.taskAssigneeTransferCount ? `Передано задач: ${result.taskAssigneeTransferCount}.` : null,
+        result.taskOrphanedCount ? `Задач без исполнителя: ${result.taskOrphanedCount}.` : null,
+        result.taskSetterTransferCount ? `Передано постановщиков: ${result.taskSetterTransferCount}.` : null,
+        result.checklistReservationsReleased ? `Освобождено бронирований: ${result.checklistReservationsReleased}.` : null,
+        result.remindersDetached ? `Остановлено напоминаний: ${result.remindersDetached}.` : null,
       ]
         .filter(Boolean)
         .join(" ");
@@ -239,6 +264,9 @@ export function useMemberRemoval({
     open,
     close,
     confirmRemove,
+    taskSelections,
+    selectTaskReplacement: (key: string, memberId: number) =>
+      setTaskSelections((current) => ({ ...current, [key]: memberId })),
     pendingHandoffMember,
     handoffOptions,
     handoffSelections,

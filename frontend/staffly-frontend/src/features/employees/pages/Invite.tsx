@@ -210,6 +210,8 @@ export default function InvitePage() {
         isSelf={removalState.memberToRemove?.userId === currentUserId}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
+        taskSelections={removalState.taskSelections}
+        onTaskSelection={removalState.selectTaskReplacement}
       />
       <Toast message={removalState.success} onClose={() => removalState.setSuccess(null)} />
 

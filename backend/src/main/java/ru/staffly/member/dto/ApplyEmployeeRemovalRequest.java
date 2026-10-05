@@ -11,8 +11,13 @@ import java.util.List;
 public record ApplyEmployeeRemovalRequest(
         @NotNull Instant expectedMemberCreatedAt,
         Long expectedCurrentPositionId,
-        @NotNull @Valid List<ScheduleToken> schedules
+        @NotNull @Valid List<ScheduleToken> schedules,
+        @NotNull @Valid TaskDecisions tasks
 ) {
+    public record TaskDecisions(@NotNull List<TaskTransfer> assignees,
+                                @NotNull List<TaskTransfer> setters) { }
+    public record TaskTransfer(@NotNull Long taskId, long expectedVersion,
+                               @NotNull Long expectedMemberId, Long newMemberId) { }
     public record ScheduleToken(
             @NotNull Long scheduleId,
             @NotNull Long expectedVersion,

@@ -122,6 +122,7 @@ export type EmployeeRemovalScheduleImpact = {
 };
 export type EmployeeRemovalImpactPlan = {
   calculatedAt: string;
+  mode: "FORCED" | "SELF_LEAVE";
   employee: {
     memberId: number;
     name: string;
@@ -129,6 +130,21 @@ export type EmployeeRemovalImpactPlan = {
     memberCreatedAt: string;
   };
   scheduleImpacts: EmployeeRemovalScheduleImpact[];
+  taskImpact: {
+    assigneeResponsibilities: EmployeeRemovalTaskResponsibility[];
+    setterResponsibilities: EmployeeRemovalTaskResponsibility[];
+  };
+  checklistImpact: { affectedCount: number };
+  reminderImpact: { affectedCount: number };
+};
+export type EmployeeRemovalCandidate = { memberId: number; userId: number; name: string; position: string | null };
+export type EmployeeRemovalTaskResponsibility = {
+  taskId: number;
+  version: number;
+  title: string;
+  dueDate: string | null;
+  replacementRequired: boolean;
+  candidates: EmployeeRemovalCandidate[];
 };
 export type EmployeeRemovalScheduleToken = {
   scheduleId: number;
@@ -144,6 +160,16 @@ export type ApplyEmployeeRemovalRequest = {
   expectedMemberCreatedAt: string;
   expectedCurrentPositionId: number | null;
   schedules: EmployeeRemovalScheduleToken[];
+  tasks: {
+    assignees: EmployeeRemovalTaskTransfer[];
+    setters: EmployeeRemovalTaskTransfer[];
+  };
+};
+export type EmployeeRemovalTaskTransfer = {
+  taskId: number;
+  expectedVersion: number;
+  expectedMemberId: number;
+  newMemberId: number | null;
 };
 export type ApplyEmployeeRemovalResult = {
   removedMemberId: number;
@@ -153,6 +179,11 @@ export type ApplyEmployeeRemovalResult = {
   removedPreferenceSubmissionCount: number;
   removedParticipationCount: number;
   invalidatedAppliedPreferenceDraftCount: number;
+  taskAssigneeTransferCount: number;
+  taskOrphanedCount: number;
+  taskSetterTransferCount: number;
+  checklistReservationsReleased: number;
+  remindersDetached: number;
 };
 
 export async function getEmployeeRemovalImpact(
