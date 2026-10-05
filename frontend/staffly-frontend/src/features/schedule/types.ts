@@ -32,6 +32,8 @@ export type ScheduleLifecycleFields = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  autoBuildStaleAt?: string | null;
+  autoBuildStaleReason?: "MEMBER_TERMINATED" | null;
   preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
 };
@@ -89,6 +91,8 @@ export type ScheduleData = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  autoBuildStaleAt?: string | null;
+  autoBuildStaleReason?: "MEMBER_TERMINATED" | null;
   preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
   title: string;

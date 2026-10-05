@@ -15,6 +15,7 @@ import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.exception.StaleExamRevisionException;
@@ -34,6 +35,7 @@ import java.util.stream.IntStream;
 @Slf4j
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
+    private final RestaurantLifecycleMutex lifecycleMutex;
     private final EntityManager entityManager;
     private final TrainingExamSourceFolderRepository sourceFolders;
     private final TrainingExamSourceQuestionRepository sourceQuestions;
@@ -155,6 +157,8 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
+        // Initial operational ownership is serialized with membership termination.
+        lifecycleMutex.lock(restaurantId);
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
                 request.sourceQuestionIds(), request.questionCount());

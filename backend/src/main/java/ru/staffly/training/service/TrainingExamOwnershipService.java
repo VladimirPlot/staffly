@@ -10,6 +10,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.model.PositionSpecializations;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.training.dto.CertificationOwnerCandidateDto;
 import ru.staffly.training.dto.AppliedCertificationOwnershipTransfer;
@@ -32,6 +33,7 @@ public class TrainingExamOwnershipService {
     private final RestaurantMemberRepository members;
     private final TrainingPolicyService trainingPolicyService;
     private final CertificationFolderManagementService certificationFolderManagementService;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
         var actorUser = User.builder().id(actorUserId).build();
@@ -40,6 +42,7 @@ public class TrainingExamOwnershipService {
     }
 
     public TrainingExam changeOwner(Long restaurantId, Long actorUserId, Long examId, Long newOwnerUserId) {
+        lifecycleMutex.lock(restaurantId);
         var exam = requireManageableCertificationExam(restaurantId, actorUserId, examId);
         validateOwnerCandidate(exam, newOwnerUserId);
         exam.setOwner(User.builder().id(newOwnerUserId).build());
@@ -113,6 +116,14 @@ public class TrainingExamOwnershipService {
             Long actorUserId,
             Long ownerUserId,
             List<Map.Entry<Long, Long>> reassignments) {
+        lifecycleMutex.lock(restaurantId);
+        return batchReassignWithLifecycleLockHeld(restaurantId, actorUserId, ownerUserId, reassignments, Map.of());
+    }
+
+    /** Internal primitive: caller already holds RestaurantLifecycleMutex. */
+    public List<AppliedCertificationOwnershipTransfer> batchReassignWithLifecycleLockHeld(
+            Long restaurantId, Long actorUserId, Long ownerUserId,
+            List<Map.Entry<Long, Long>> reassignments, Map<Long, Long> expectedRevisions) {
         if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
             throw new ForbiddenException("Only managers can manage exam ownership");
         }
@@ -136,6 +147,10 @@ public class TrainingExamOwnershipService {
             }
             if (!Objects.equals(exam.getOwner() == null ? null : exam.getOwner().getId(), ownerUserId)) {
                 throw new ConflictException("Exam is not owned by specified user");
+            }
+            if (!expectedRevisions.isEmpty()
+                    && !Objects.equals(exam.getEditorRevision(), expectedRevisions.get(exam.getId()))) {
+                throw new ConflictException("EMPLOYEE_REMOVAL_PLAN_STALE");
             }
             if (!canActorManageExam(actorUserId, restaurantId, exam)) {
                 throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");

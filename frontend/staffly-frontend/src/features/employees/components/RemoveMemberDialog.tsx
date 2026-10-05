@@ -30,11 +30,11 @@ function consequences(schedule: EmployeeRemovalScheduleImpact, isSelf: boolean):
         ? "После вашего выхода прогресс сбора пожеланий будет пересчитан."
         : "Прогресс сбора пожеланий будет пересчитан.",
     );
-  if (schedule.appliedPreferenceDraftWillBeInvalidated) {
+  if (schedule.autoBuildWillBecomeStale) {
     lines.push(
       isSelf
-        ? "После вашего выхода текущий результат автосборки станет неактуальным. Пожелания остальных сотрудников сохранятся, но график потребуется собрать заново."
-        : "График был собран по пожеланиям сотрудников. После удаления сотрудника текущий результат автосборки станет неактуальным. Пожелания остальных сотрудников сохранятся, но график потребуется собрать заново.",
+        ? "После вашего выхода результат автосборки станет неактуальным. Вы сможете проверить текущий график вручную или запустить автосборку повторно."
+        : "После изменения состава сотрудников результат автосборки станет неактуальным. Текущий график можно проверить вручную или запустить автосборку повторно.",
     );
   }
   if (schedule.activeDraftRowWillBeRemoved)
@@ -64,7 +64,7 @@ function consequences(schedule: EmployeeRemovalScheduleImpact, isSelf: boolean):
 function summary(plan: EmployeeRemovalImpactPlan, isSelf: boolean): string[] {
   const schedules = plan.scheduleImpacts;
   const preferenceCount = schedules.filter((item) => item.preferenceDataWillBeDeleted).length;
-  const rebuildCount = schedules.filter((item) => item.appliedPreferenceDraftWillBeInvalidated).length;
+  const rebuildCount = schedules.filter((item) => item.autoBuildWillBecomeStale).length;
   const futureCount = schedules.reduce((total, item) => total + (item.publishedShiftImpact?.futureToCancel ?? 0), 0);
   const historicalCount = schedules.filter((item) => item.publishedRowBecomesHistorical).length;
   return [
@@ -72,7 +72,7 @@ function summary(plan: EmployeeRemovalImpactPlan, isSelf: boolean): string[] {
     preferenceCount
       ? `${isSelf ? "Ваши отправленные пожелания" : "Отправленные пожелания"} будут удалены в графиках: ${preferenceCount}.`
       : null,
-    rebuildCount ? `Результаты автосборки потребуется собрать заново: ${rebuildCount}.` : null,
+    rebuildCount ? `Результат автосборки устареет в графиках: ${rebuildCount}. Их можно проверить вручную или пересобрать.` : null,
     futureCount ? `${isSelf ? "Ваши будущие смены" : "Будущие смены"} будут отменены: ${futureCount}.` : null,
     historicalCount ? "История опубликованных графиков сохранится." : null,
   ].filter((line): line is string => Boolean(line));
@@ -88,6 +88,10 @@ type Props = {
   isSelf: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  taskSelections: Record<string, number | null>;
+  onTaskSelection: (key: string, memberId: number) => void;
+  ownershipSelections: Record<string, number | null>;
+  onOwnershipSelection: (key: string, userId: number) => void;
 };
 
 export default function RemoveMemberDialog({
@@ -100,7 +104,19 @@ export default function RemoveMemberDialog({
   isSelf,
   onConfirm,
   onCancel,
+  taskSelections,
+  onTaskSelection,
+  ownershipSelections,
+  onOwnershipSelection,
 }: Props) {
+  const missingTaskDecision = Boolean(plan && [
+    ...(plan.mode === "FORCED" ? plan.taskImpact.assigneeResponsibilities.map((task) => `assignee:${task.taskId}`) : []),
+    ...plan.taskImpact.setterResponsibilities.map((task) => `setter:${task.taskId}`),
+  ].some((key) => taskSelections[key] == null));
+  const missingOwnershipDecision = Boolean(plan && [
+    ...plan.scheduleOwnership.requiredTransfers.map((item) => `schedule:${item.resourceId}`),
+    ...plan.certificationOwnership.requiredTransfers.map((item) => `certification:${item.resourceId}`),
+  ].some((key) => ownershipSelections[key] == null));
   return (
     <Modal
       open={open}
@@ -111,8 +127,8 @@ export default function RemoveMemberDialog({
           <Button variant="outline" onClick={onCancel} disabled={loading || confirming}>
             Отмена
           </Button>
-          <Button variant="danger" onClick={onConfirm} isLoading={confirming} disabled={loading || !plan}>
-            {isSelf ? "Покинуть ресторан" : "Удалить сотрудника"}
+          <Button variant="danger" onClick={onConfirm} isLoading={confirming} disabled={loading || !plan || missingTaskDecision || missingOwnershipDecision}>
+            {isSelf ? "Покинуть ресторан" : "Исключить"}
           </Button>
         </>
       }
@@ -157,6 +173,54 @@ export default function RemoveMemberDialog({
                   </section>
                 ))}
               </div>
+            )}
+            {([[plan.scheduleOwnership, "schedule", "Графики"] as const,
+                [plan.certificationOwnership, "certification", "Аттестации"] as const] as const).map(([impact, kind, title]) =>
+              impact.requiredTransfers.length > 0 && <section key={kind} className="border-subtle rounded-2xl border p-4">
+                <h3 className="text-strong font-semibold">{title}</h3>
+                {impact.requiredTransfers.map((item) => {
+                  const key = `${kind}:${item.resourceId}`;
+                  return <label key={key} className="mt-3 block text-sm">
+                    <span className="mb-1 block">{item.title} — новый ответственный</span>
+                    {item.candidates.length === 0 ? <span className="text-red-700">Нет доступных сотрудников для передачи ответственности.</span> :
+                      <select className="border-subtle w-full rounded-lg border p-2" value={ownershipSelections[key] ?? ""}
+                        onChange={(event) => onOwnershipSelection(key, Number(event.target.value))}>
+                        <option value="" disabled>Выберите сотрудника</option>
+                        {item.candidates.map((candidate) => <option key={candidate.memberId} value={candidate.userId}>{candidate.name}</option>)}
+                      </select>}
+                  </label>;
+                })}
+              </section>)}
+            {(plan.taskImpact.assigneeResponsibilities.length > 0 || plan.taskImpact.setterResponsibilities.length > 0) && (
+              <section className="border-subtle rounded-2xl border p-4">
+                <h3 className="text-strong font-semibold">Задачи</h3>
+                {plan.mode === "SELF_LEAVE" && plan.taskImpact.assigneeResponsibilities.length > 0 && (
+                  <p className="text-muted mt-2 text-sm">Ваши активные задачи останутся без исполнителя.</p>
+                )}
+                {[...(plan.mode === "FORCED" ? plan.taskImpact.assigneeResponsibilities.map((task) => ({ task, kind: "assignee" })) : []),
+                  ...plan.taskImpact.setterResponsibilities.map((task) => ({ task, kind: "setter" }))].map(({ task, kind }) => {
+                    const key = `${kind}:${task.taskId}`;
+                    return <label key={key} className="mt-3 block text-sm">
+                      <span className="mb-1 block">{task.title} — новый {kind === "setter" ? "постановщик" : "исполнитель"}</span>
+                      <select className="border-subtle w-full rounded-lg border p-2" value={taskSelections[key] ?? ""}
+                        onChange={(event) => onTaskSelection(key, Number(event.target.value))}>
+                        <option value="" disabled>Выберите сотрудника</option>
+                        {task.candidates.map((candidate) => <option key={candidate.memberId} value={candidate.memberId}>
+                          {candidate.name}{candidate.position ? ` — ${candidate.position}` : ""}
+                        </option>)}
+                      </select>
+                    </label>;
+                  })}
+              </section>
+            )}
+            {(plan.checklistImpact.affectedCount > 0 || plan.reminderImpact.affectedCount > 0) && (
+              <section className="border-subtle rounded-2xl border p-4">
+                <h3 className="text-strong font-semibold">Автоматические последствия</h3>
+                <ul className="mt-2 list-disc pl-5 text-sm">
+                  {plan.checklistImpact.affectedCount > 0 && <li>Будут освобождены бронирования чек-листов: {plan.checklistImpact.affectedCount}.</li>}
+                  {plan.reminderImpact.affectedCount > 0 && <li>Будут остановлены личные напоминания: {plan.reminderImpact.affectedCount}.</li>}
+                </ul>
+              </section>
             )}
             <section className="border-subtle bg-surface-muted rounded-xl border p-4">
               <h3 className="text-strong text-sm font-semibold">{isSelf ? "После выхода:" : "После удаления:"}</h3>

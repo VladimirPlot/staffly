@@ -29,11 +29,15 @@ public class ScheduleTerminationApplyHandler {
     private final SchedulePreferenceLifecycleService lifecycle;
     private final PublishedShiftImpactClassifier shiftClassifier;
     private final RestaurantTimeService restaurantTime;
+    private final ru.staffly.schedule.service.ScheduleOwnershipService ownership;
+    private final ScheduleBuildMarkerMemberRepository markerMembers;
 
     public ScheduleTerminationResult apply(TerminationApplyContext context, ScheduleTerminationDecision decision) {
         RestaurantMember member = context.target();
         Long restaurantId = context.restaurantId();
         Long memberId = member.getId();
+        // Markers are current auto-build affinity, not historical business facts.
+        markerMembers.deleteOperationalAffinity(memberId);
         Map<Long, ScheduleToken> tokens;
         try {
             tokens = decision.tokens().stream().collect(Collectors.toMap(ScheduleToken::scheduleId, Function.identity()));
@@ -42,15 +46,26 @@ public class ScheduleTerminationApplyHandler {
         }
         Set<Long> affected = affectedScheduleIds(restaurantId, memberId);
         if (!affected.equals(tokens.keySet())) throw stale();
-        // Coordinator already owns the member lock. Module locks follow in ascending schedule id order.
-        List<Schedule> locked = affected.isEmpty() ? List.of()
-                : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, new ArrayList<>(affected));
-        if (locked.size() != affected.size()) throw stale();
+        Long oldOwner = member.getUser().getId();
+        Set<Long> owned = ownership.findActiveOrFutureOwnedSchedules(restaurantId, oldOwner).stream()
+                .map(Schedule::getId).collect(Collectors.toCollection(TreeSet::new));
+        Set<Long> allIds = new TreeSet<>(affected); allIds.addAll(owned);
+        // One globally ordered lock phase prevents affected[20] -> owned[10] inversion.
+        List<Schedule> allLocked = allIds.isEmpty() ? List.of()
+                : schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, new ArrayList<>(allIds));
+        if (allLocked.size() != allIds.size()) throw stale();
+        Map<Long, Schedule> lockedById = allLocked.stream().collect(Collectors.toMap(Schedule::getId, Function.identity()));
+        List<Schedule> locked = affected.stream().map(lockedById::get).toList();
         if (!affected.equals(affectedScheduleIds(restaurantId, memberId))) throw stale();
+        Set<Long> ownedAfterLock = ownership.findActiveOrFutureOwnedSchedules(restaurantId, oldOwner).stream()
+                .map(Schedule::getId).collect(Collectors.toSet());
+        if (!owned.equals(ownedAfterLock)) throw stale();
         locked.forEach(schedule -> validateToken(schedule, tokens.get(schedule.getId()), memberId));
 
         LocalDateTime localNow = LocalDateTime.ofInstant(context.now(), restaurantTime.zoneFor(member.getRestaurant()));
         int cancelled = 0, historical = 0, removedSubmissions = 0, removedParticipations = 0, invalidatedDrafts = 0;
+        Map<Long, Integer> cancelledBySchedule = new HashMap<>();
+        Set<Long> staleSchedules = new HashSet<>(), historicalSchedules = new HashSet<>(), participationSchedules = new HashSet<>(), submissionSchedules = new HashSet<>();
         for (Schedule schedule : locked) {
             ScheduleParticipation participation = participations.findByScheduleIdAndMemberId(schedule.getId(), memberId).orElse(null);
             SchedulePreferenceSubmission submission = submissions.findByScheduleIdAndMemberId(schedule.getId(), memberId).orElse(null);
@@ -58,29 +73,60 @@ public class ScheduleTerminationApplyHandler {
                 lifecycle.removeParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Удаление сотрудника");
                 removedParticipations += participation == null ? 0 : 1;
                 removedSubmissions += submission == null ? 0 : 1;
+                if (participation != null) participationSchedules.add(schedule.getId());
+                if (submission != null) submissionSchedules.add(schedule.getId());
             }
             ScheduleRow row = activeRow(schedule, memberId);
             switch (schedule.getStatus()) {
                 case DRAFT -> { if (row != null) schedule.getRows().remove(row); }
                 case DRAFT_FROM_PREFERENCES -> {
-                    lifecycle.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, context.actorUserId(), "Удаление участника");
+                    // Keep the useful applied draft and manual edits. Only the ending
+                    // membership's row is operationally removed; provenance records
+                    // that the remaining draft is no longer a fresh auto-build result.
+                    if (row != null) schedule.getRows().remove(row);
+                    schedule.setAutoBuildStaleAt(context.now());
+                    schedule.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_TERMINATED);
                     invalidatedDrafts++;
+                    staleSchedules.add(schedule.getId());
                 }
                 case PUBLISHED -> {
                     if (row != null) {
                         Hibernate.initialize(row.getCells());
-                        cancelled += shiftClassifier.cancelFuture(row.getCells(), localNow);
+                        int scheduleCancelled = shiftClassifier.cancelFuture(row.getCells(), localNow);
+                        cancelled += scheduleCancelled; cancelledBySchedule.put(schedule.getId(), scheduleCancelled);
                         row.setHistorical(true);
                         historical++;
+                        historicalSchedules.add(schedule.getId());
                     }
                 }
                 case COLLECTING_PREFERENCES, PREFERENCES_CLOSED -> { }
             }
             schedule.setUpdatedAt(context.now());
         }
-        schedules.saveAll(locked);
+        var ownershipTransfers = applyOwnership(context, decision, owned.stream().map(lockedById::get).toList());
+        schedules.saveAll(allLocked);
+        var effects = locked.stream().map(s -> new ScheduleTerminationResult.AffectedSchedule(s.getId(), s.getTitle(),
+                s.getOwnerUser() == null ? null : s.getOwnerUser().getId(), participationSchedules.contains(s.getId()),
+                submissionSchedules.contains(s.getId()), cancelledBySchedule.getOrDefault(s.getId(), 0),
+                staleSchedules.contains(s.getId()), historicalSchedules.contains(s.getId()))).toList();
         return new ScheduleTerminationResult(List.copyOf(affected), cancelled, historical,
-                removedSubmissions, removedParticipations, invalidatedDrafts);
+                removedSubmissions, removedParticipations, invalidatedDrafts, ownershipTransfers, effects);
+    }
+
+    private List<ru.staffly.schedule.dto.AppliedScheduleOwnershipTransfer> applyOwnership(TerminationApplyContext context,
+            ScheduleTerminationDecision decision, List<Schedule> lockedOwned) {
+        var transfers = decision.ownershipTransfers();
+        Long oldOwner = context.target().getUser().getId();
+        var expectedIds = lockedOwned.stream().map(Schedule::getId).collect(Collectors.toSet());
+        var providedIds = transfers.stream().map(ru.staffly.member.dto.ApplyEmployeeRemovalRequest.OwnershipTransfer::resourceId)
+                .collect(Collectors.toSet());
+        if (transfers.size() != providedIds.size() || !expectedIds.equals(providedIds)
+                || transfers.stream().anyMatch(t -> !Objects.equals(t.expectedOwnerUserId(), oldOwner))) throw stale();
+        if (transfers.isEmpty()) return List.of();
+        return ownership.reassignOwnedSchedulesWithLocksHeld(context.restaurantId(), context.actorUserId(), oldOwner,
+                lockedOwned,
+                transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.newOwnerUserId())),
+                transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())));
     }
 
     private Set<Long> affectedScheduleIds(Long restaurantId, Long memberId) {

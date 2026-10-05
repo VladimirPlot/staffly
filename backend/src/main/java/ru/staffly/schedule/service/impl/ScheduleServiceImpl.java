@@ -16,6 +16,7 @@ import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
@@ -67,6 +68,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final ScheduleChangeService scheduleChangeService;
     private final UserRepository users;
     private final InboxMessageService inboxMessages;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Override
     public ScheduleDto create(Long restaurantId, Long userId, CreateScheduleRequest request) {
@@ -83,6 +85,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                                          CreateScheduleRequest request,
                                          ScheduleStatus status,
                                          String auditDetails) {
+        // Outermost lifecycle boundary: owner/row members cannot end while this Schedule is created.
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -187,6 +191,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getPreferenceDeadline(),
                         s.getPreferenceClosedAt(),
                         s.getPreferenceAppliedAt(),
+                        s.getAutoBuildStaleAt(),
+                        s.getAutoBuildStaleReason() == null ? null : s.getAutoBuildStaleReason().name(),
                         progress.submittedCount(),
                         progress.totalParticipants(),
                         myPreferenceSubmitted
@@ -1414,6 +1420,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceDeadline(),
                 schedule.getPreferenceClosedAt(),
                 schedule.getPreferenceAppliedAt(),
+                schedule.getAutoBuildStaleAt(),
+                schedule.getAutoBuildStaleReason() == null ? null : schedule.getAutoBuildStaleReason().name(),
                 schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );

@@ -18,6 +18,7 @@ import ru.staffly.schedule.model.Schedule;
 import ru.staffly.schedule.model.ScheduleAuditAction;
 import ru.staffly.schedule.repository.ScheduleRepository;
 import ru.staffly.security.SecurityService;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -40,9 +41,11 @@ public class ScheduleOwnershipService {
     private final SecurityService securityService;
     private final InboxMessageService inboxMessages;
     private final RestaurantTimeService restaurantTime;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     public Schedule changeOwner(Long restaurantId, Long actorUserId, Long scheduleId, Long expectedVersion,
                                 Long newOwnerUserId) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         Schedule schedule = requireManageableScheduleForUpdate(restaurantId, actorUserId, scheduleId);
         if (!Objects.equals(schedule.getVersion(), expectedVersion)) {
@@ -103,6 +106,7 @@ public class ScheduleOwnershipService {
             Long oldOwnerUserId,
             Map<Long, Long> ownerUserIdsByScheduleId,
             Map<Long, Long> expectedVersionsByScheduleId) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
         if (ownerUserIdsByScheduleId == null || ownerUserIdsByScheduleId.isEmpty()) {
@@ -165,6 +169,33 @@ public class ScheduleOwnershipService {
                     saved.getId(), saved.getTitle(), newOwner.getUser().getId()));
         }
         return List.copyOf(appliedTransfers);
+    }
+
+    /** Termination primitive. Caller owns restaurant/member and every Schedule lock in ascending ID order. */
+    public List<AppliedScheduleOwnershipTransfer> reassignOwnedSchedulesWithLocksHeld(
+            Long restaurantId, Long actorUserId, Long oldOwnerUserId, List<Schedule> lockedOwnedSchedules,
+            Map<Long, Long> ownerUserIdsByScheduleId, Map<Long, Long> expectedVersionsByScheduleId) {
+        securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
+        scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
+        Set<Long> expectedIds = lockedOwnedSchedules.stream().map(Schedule::getId).collect(Collectors.toSet());
+        if (!expectedIds.equals(ownerUserIdsByScheduleId.keySet())) throw new BadRequestException("Набор графиков изменился");
+        RestaurantRole oldOwnerRole = resolveOwnerRole(restaurantId, oldOwnerUserId);
+        List<AppliedScheduleOwnershipTransfer> result = new java.util.ArrayList<>();
+        for (Schedule schedule : lockedOwnedSchedules.stream().sorted(Comparator.comparing(Schedule::getId)).toList()) {
+            if (schedule.getOwnerUser() == null || !Objects.equals(schedule.getOwnerUser().getId(), oldOwnerUserId)
+                    || !Objects.equals(schedule.getVersion(), expectedVersionsByScheduleId.get(schedule.getId()))) {
+                throw new ScheduleVersionConflictException(expectedVersionsByScheduleId.get(schedule.getId()), schedule.getVersion());
+            }
+            RestaurantMember replacement = requireOwnerCandidate(restaurantId, ownerUserIdsByScheduleId.get(schedule.getId()));
+            if (Objects.equals(replacement.getUser().getId(), oldOwnerUserId)
+                    || !canReplaceOwner(oldOwnerRole, replacement.getRole())) throw new BadRequestException("Некорректный новый ответственный");
+            String details = buildOwnerChangedDetails(schedule.getOwnerMember(), replacement);
+            schedule.setOwnerUser(replacement.getUser()); schedule.setOwnerMember(replacement);
+            scheduleAuditService.record(schedule, actorUserId, ScheduleAuditAction.OWNER_CHANGED,
+                    details);
+            result.add(new AppliedScheduleOwnershipTransfer(schedule.getId(), schedule.getTitle(), replacement.getUser().getId()));
+        }
+        return List.copyOf(result);
     }
 
     private Schedule requireManageableScheduleForUpdate(Long restaurantId, Long actorUserId, Long scheduleId) {

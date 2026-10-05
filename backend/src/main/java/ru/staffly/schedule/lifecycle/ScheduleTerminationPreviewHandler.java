@@ -18,6 +18,7 @@ import ru.staffly.schedule.model.ScheduleStatus;
 import ru.staffly.schedule.repository.ScheduleParticipationRepository;
 import ru.staffly.schedule.repository.SchedulePreferenceSubmissionRepository;
 import ru.staffly.schedule.repository.ScheduleRepository;
+import ru.staffly.schedule.service.ScheduleOwnershipService;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -31,6 +32,7 @@ public class ScheduleTerminationPreviewHandler {
     private final ScheduleParticipationRepository participations;
     private final SchedulePreferenceSubmissionRepository submissions;
     private final PublishedShiftImpactClassifier shiftClassifier;
+    private final ScheduleOwnershipService ownership;
 
     @Transactional(Transactional.TxType.SUPPORTS)
     public ScheduleTerminationImpact preview(TerminationPreviewContext context) {
@@ -45,8 +47,15 @@ public class ScheduleTerminationPreviewHandler {
                 .forEach(schedule -> affected.put(schedule.getId(), schedule));
         schedules.findByRestaurantIdAndRowMemberId(restaurantId, memberId)
                 .forEach(schedule -> affected.put(schedule.getId(), schedule));
+        var owned = ownership.findActiveOrFutureOwnedSchedules(restaurantId, member.getUser().getId());
+        var candidates = owned.isEmpty() ? java.util.List.<ru.staffly.schedule.dto.ScheduleOwnerDto>of()
+                : ownership.getHandoffOwnerCandidates(restaurantId, context.actorUserId(), member.getUser().getId());
+        var candidateDtos = candidates.stream().map(c -> new EmployeeRemovalImpactPlan.Candidate(
+                c.memberId(), c.userId(), c.displayName(), c.positionName())).toList();
+        var ownerImpacts = owned.stream().map(schedule -> new EmployeeRemovalImpactPlan.OwnershipResource(
+                schedule.getId(), schedule.getTitle(), schedule.getVersion(), member.getUser().getId(), candidateDtos)).toList();
         return new ScheduleTerminationImpact(affected.values().stream()
-                .map(schedule -> impact(schedule, memberId, localNow)).toList());
+                .map(schedule -> impact(schedule, memberId, localNow)).toList(), ownerImpacts);
     }
 
     private EmployeeRemovalImpactPlan.ScheduleImpact impact(Schedule schedule, Long memberId,

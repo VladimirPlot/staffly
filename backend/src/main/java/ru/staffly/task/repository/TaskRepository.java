@@ -2,6 +2,8 @@ package ru.staffly.task.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import ru.staffly.task.model.Task;
 import ru.staffly.task.model.TaskStatus;
 
@@ -13,7 +15,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     @Query("""
            select t from Task t
-           left join fetch t.assignedUser
+           left join fetch t.assignedMember am
+           left join fetch am.user
            left join fetch t.assignedPosition
            left join fetch t.createdBy
            where t.restaurant.id = :restaurantId
@@ -21,7 +24,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
              and (
                :viewAll = true
                or t.assignedToAll = true
-               or t.assignedUser.id = :userId
+               or t.assignedMember.id = :memberId
                or t.assignedPosition.id = :positionId
              )
              and (:status is null or t.status = :status)
@@ -40,7 +43,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
              t.dueDate
            """)
     List<Task> findActiveByFilters(Long restaurantId,
-                                   Long userId,
+                                   Long memberId,
                                    Long positionId,
                                    boolean viewAll,
                                    TaskStatus status,
@@ -49,11 +52,28 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     @Query("""
            select t from Task t
-           left join fetch t.assignedUser
+           left join fetch t.assignedMember am
+           left join fetch am.user
+           left join fetch t.setterMember sm
+           left join fetch sm.user
            left join fetch t.assignedPosition
            left join fetch t.createdBy
            where t.id = :taskId
              and t.deletedAt is null
            """)
     Optional<Task> findActiveById(Long taskId);
+
+    @Query("""
+           select distinct t from Task t
+           left join fetch t.assignedMember am left join fetch am.user
+           left join fetch t.setterMember sm left join fetch sm.user
+           where t.restaurant.id = :restaurantId and t.status = ru.staffly.task.model.TaskStatus.ACTIVE
+             and t.deletedAt is null and (am.id = :memberId or sm.id = :memberId)
+           order by t.id
+           """)
+    List<Task> findActiveResponsibilities(Long restaurantId, Long memberId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from Task t where t.restaurant.id = :restaurantId and t.id in :ids order by t.id")
+    List<Task> findAllForUpdate(Long restaurantId, List<Long> ids);
 }

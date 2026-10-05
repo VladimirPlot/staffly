@@ -228,6 +228,7 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
     List<TrainingExam> findActiveCertificationByRestaurantIdAndOwnerUserIdWithVisibility(@Param("restaurantId") Long restaurantId,
                                                                                          @Param("ownerUserId") Long ownerUserId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select distinct e from TrainingExam e
             left join fetch e.visibilityPositions vp

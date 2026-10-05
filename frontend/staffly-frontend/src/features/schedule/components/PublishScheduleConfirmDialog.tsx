@@ -181,6 +181,12 @@ const PublishScheduleConfirmDialog: React.FC<PublishScheduleConfirmDialogProps> 
       }
     >
       <div className="space-y-4">
+        {schedule?.autoBuildStaleAt && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Результат автосборки устарел после изменения состава сотрудников. Вы можете опубликовать текущий график
+            или сначала запустить автосборку повторно.
+          </div>
+        )}
         <section className="border-subtle bg-app rounded-2xl border p-4">
           <h3 className="text-default text-sm font-semibold">Сводка перед публикацией</h3>
           <div className="text-muted mt-2 text-sm">
