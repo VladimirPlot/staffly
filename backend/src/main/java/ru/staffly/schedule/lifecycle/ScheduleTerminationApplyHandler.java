@@ -29,11 +29,15 @@ public class ScheduleTerminationApplyHandler {
     private final SchedulePreferenceLifecycleService lifecycle;
     private final PublishedShiftImpactClassifier shiftClassifier;
     private final RestaurantTimeService restaurantTime;
+    private final ru.staffly.schedule.service.ScheduleOwnershipService ownership;
+    private final ScheduleBuildMarkerMemberRepository markerMembers;
 
     public ScheduleTerminationResult apply(TerminationApplyContext context, ScheduleTerminationDecision decision) {
         RestaurantMember member = context.target();
         Long restaurantId = context.restaurantId();
         Long memberId = member.getId();
+        // Markers are current auto-build affinity, not historical business facts.
+        markerMembers.deleteOperationalAffinity(memberId);
         Map<Long, ScheduleToken> tokens;
         try {
             tokens = decision.tokens().stream().collect(Collectors.toMap(ScheduleToken::scheduleId, Function.identity()));
@@ -63,7 +67,12 @@ public class ScheduleTerminationApplyHandler {
             switch (schedule.getStatus()) {
                 case DRAFT -> { if (row != null) schedule.getRows().remove(row); }
                 case DRAFT_FROM_PREFERENCES -> {
-                    lifecycle.invalidateAppliedPreferenceDraftWithLocksHeld(schedule, context.actorUserId(), "Удаление участника");
+                    // Keep the useful applied draft and manual edits. Only the ending
+                    // membership's row is operationally removed; provenance records
+                    // that the remaining draft is no longer a fresh auto-build result.
+                    if (row != null) schedule.getRows().remove(row);
+                    schedule.setAutoBuildStaleAt(context.now());
+                    schedule.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_TERMINATED);
                     invalidatedDrafts++;
                 }
                 case PUBLISHED -> {
@@ -78,9 +87,25 @@ public class ScheduleTerminationApplyHandler {
             }
             schedule.setUpdatedAt(context.now());
         }
+        var ownershipTransfers = applyOwnership(context, decision);
         schedules.saveAll(locked);
         return new ScheduleTerminationResult(List.copyOf(affected), cancelled, historical,
-                removedSubmissions, removedParticipations, invalidatedDrafts);
+                removedSubmissions, removedParticipations, invalidatedDrafts, ownershipTransfers);
+    }
+
+    private List<ru.staffly.schedule.dto.AppliedScheduleOwnershipTransfer> applyOwnership(TerminationApplyContext context, ScheduleTerminationDecision decision) {
+        var transfers = decision.ownershipTransfers();
+        Long oldOwner = context.target().getUser().getId();
+        var expected = ownership.findActiveOrFutureOwnedSchedules(context.restaurantId(), oldOwner);
+        var expectedIds = expected.stream().map(Schedule::getId).collect(Collectors.toSet());
+        var providedIds = transfers.stream().map(ru.staffly.member.dto.ApplyEmployeeRemovalRequest.OwnershipTransfer::resourceId)
+                .collect(Collectors.toSet());
+        if (transfers.size() != providedIds.size() || !expectedIds.equals(providedIds)
+                || transfers.stream().anyMatch(t -> !Objects.equals(t.expectedOwnerUserId(), oldOwner))) throw stale();
+        if (transfers.isEmpty()) return List.of();
+        return ownership.reassignOwnedSchedules(context.restaurantId(), context.actorUserId(), oldOwner,
+                transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.newOwnerUserId())),
+                transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())));
     }
 
     private Set<Long> affectedScheduleIds(Long restaurantId, Long memberId) {

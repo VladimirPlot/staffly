@@ -113,6 +113,12 @@ public class TrainingExamOwnershipService {
             Long actorUserId,
             Long ownerUserId,
             List<Map.Entry<Long, Long>> reassignments) {
+        return batchReassignValidated(restaurantId, actorUserId, ownerUserId, reassignments, Map.of());
+    }
+
+    public List<AppliedCertificationOwnershipTransfer> batchReassignValidated(
+            Long restaurantId, Long actorUserId, Long ownerUserId,
+            List<Map.Entry<Long, Long>> reassignments, Map<Long, Long> expectedRevisions) {
         if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
             throw new ForbiddenException("Only managers can manage exam ownership");
         }
@@ -136,6 +142,10 @@ public class TrainingExamOwnershipService {
             }
             if (!Objects.equals(exam.getOwner() == null ? null : exam.getOwner().getId(), ownerUserId)) {
                 throw new ConflictException("Exam is not owned by specified user");
+            }
+            if (!expectedRevisions.isEmpty()
+                    && !Objects.equals(exam.getEditorRevision(), expectedRevisions.get(exam.getId()))) {
+                throw new ConflictException("EMPLOYEE_REMOVAL_PLAN_STALE");
             }
             if (!canActorManageExam(actorUserId, restaurantId, exam)) {
                 throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");

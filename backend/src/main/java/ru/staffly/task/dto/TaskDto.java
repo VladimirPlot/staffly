@@ -13,6 +13,7 @@ public record TaskDto(
         TaskPositionDto assignedPosition,
         TaskUserDto assignedUser,
         TaskUserDto createdBy,
+        TaskUserDto setter,
         String createdAt
 ) {
 }

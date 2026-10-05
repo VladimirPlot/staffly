@@ -7,7 +7,10 @@ public enum BusinessNotificationKind {
     POSITION_CHANGE(InboxEventSubtype.POSITION_CHANGE),
     POSITION_CHANGE_PREFERENCES(InboxEventSubtype.SCHEDULE_PREFERENCES),
     POSITION_CHANGE_SHIFTS(InboxEventSubtype.SCHEDULE_PUBLISHED_CHANGED),
-    INVITATION(InboxEventSubtype.INVITATION);
+    INVITATION(InboxEventSubtype.INVITATION),
+    TASK_ASSIGNMENT(InboxEventSubtype.TASK),
+    TASK_RESPONSIBILITY(InboxEventSubtype.TASK),
+    TASK_ORPHANED(InboxEventSubtype.TASK);
 
     private final InboxEventSubtype eventSubtype;
 

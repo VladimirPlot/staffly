@@ -20,6 +20,8 @@ public record ScheduleSummaryDto(
         Instant preferenceDeadline,
         Instant preferenceClosedAt,
         Instant preferenceAppliedAt,
+        Instant autoBuildStaleAt,
+        String autoBuildStaleReason,
         Integer preferenceSubmittedCount,
         Integer preferenceTotalParticipants,
         Boolean myPreferenceSubmitted

@@ -26,6 +26,8 @@ public record ScheduleDto(
         Instant preferenceDeadline,
         Instant preferenceClosedAt,
         Instant preferenceAppliedAt,
+        Instant autoBuildStaleAt,
+        String autoBuildStaleReason,
         PreferenceCollectionMode preferenceCollectionMode,
         Long preferenceBuildTemplateId
 ) {}

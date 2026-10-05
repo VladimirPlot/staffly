@@ -20,6 +20,7 @@ import ru.staffly.training.lifecycle.*;
 
 import java.time.Instant;
 import java.util.*;
+import jakarta.annotation.PostConstruct;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +35,17 @@ public class PositionChangeCoordinator {
     private final RestaurantTimeService restaurantTime;
     private final PositionChangeNotificationService notifications;
     private final ru.staffly.user.repository.UserRepository users;
+    private final RestaurantLifecycleMutex lifecycleMutex;
+
+    @PostConstruct
+    void validateUniqueHandlers() {
+        Set<LifecycleModule> modules = EnumSet.noneOf(LifecycleModule.class);
+        for (var handler : handlers) {
+            if (!modules.add(handler.module())) {
+                throw new IllegalStateException("Duplicate position-change lifecycle handler for " + handler.module());
+            }
+        }
+    }
 
     @Transactional(readOnly = true)
     public PositionChangeImpactPlan preview(Long restaurantId, Long memberId, Long targetPositionId, Long actorUserId) {
@@ -59,6 +71,8 @@ public class PositionChangeCoordinator {
     @Transactional
     public ApplyPositionChangeResult apply(Long restaurantId, Long memberId,
             ApplyPositionChangeRequest request, Long actorUserId) {
+        lifecycleMutex.lock(restaurantId);
+        // Authority must be read after waiting for the restaurant mutex.
         security.assertAtLeastManager(actorUserId, restaurantId);
         RestaurantMember member = members.findForUpdateByIdAndRestaurantId(memberId, restaurantId).orElseThrow(this::stale);
         if (member.getPosition() == null || !Objects.equals(member.getPosition().getId(), request.expectedCurrentPositionId())
