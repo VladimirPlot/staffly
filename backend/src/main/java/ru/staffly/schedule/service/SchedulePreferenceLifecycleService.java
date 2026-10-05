@@ -210,16 +210,26 @@ public class SchedulePreferenceLifecycleService {
     /** Reopens either a closed collection or its applied draft without discarding valid preferences/vocabulary. */
     public ReopenMutationResult reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
                                                      Long actorUserId, String reason) {
-        return reopenWithLocksHeld(schedule, member, deadline, actorUserId, reason, TimeProvider.now(), false);
+        return reopenWithLocksHeld(schedule, member, deadline, actorUserId, reason, TimeProvider.now());
     }
 
     public ReopenMutationResult reopenForPositionChangeWithLocksHeld(Schedule schedule, RestaurantMember member,
             Instant deadline, Long actorUserId, Instant operationNow) {
-        return reopenWithLocksHeld(schedule, member, deadline, actorUserId, "Смена должности", operationNow, true);
+        return reopenWithLocksHeld(schedule, member, deadline, actorUserId, "Смена должности", operationNow);
+    }
+
+    /** Plain draft addition; caller already holds the member and Schedule locks. */
+    public boolean addDraftParticipantWithLocksHeld(Schedule schedule, RestaurantMember member) {
+        if (schedule.getStatus() != ScheduleStatus.DRAFT) {
+            throw new BadRequestException("Schedule must be a plain draft");
+        }
+        var result = participationCreator.createWithLocksHeld(schedule, member, true);
+        rowMaterializer.ensureRowWithLocksHeld(schedule, member, result.participation());
+        return result.created();
     }
 
     private ReopenMutationResult reopenWithLocksHeld(Schedule schedule, RestaurantMember member, Instant deadline,
-            Long actorUserId, String reason, Instant operationNow, boolean retainDraft) {
+            Long actorUserId, String reason, Instant operationNow) {
         if (deadline == null || !deadline.isAfter(operationNow)) {
             throw new BadRequestException("preferenceDeadline must be in the future");
         }
@@ -228,7 +238,7 @@ public class SchedulePreferenceLifecycleService {
             throw new BadRequestException("Only a closed or applied preference collection can be reopened");
         }
         boolean appliedResultInvalidated = false;
-        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES && !retainDraft) {
+        if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES) {
             boolean hadAppliedMarker = schedule.getPreferenceAppliedAt() != null;
             boolean removedGeneratedCells = schedule.getRows().stream()
                     .flatMap(row -> row.getCells().stream())
@@ -236,6 +246,8 @@ public class SchedulePreferenceLifecycleService {
             schedule.getRows().forEach(row -> row.getCells()
                     .removeIf(cell -> cell.getSource() == ScheduleCellSource.AUTO_BUILD));
             schedule.setPreferenceAppliedAt(null);
+            schedule.setAutoBuildStaleAt(null);
+            schedule.setAutoBuildStaleReason(null);
             appliedResultInvalidated = hadAppliedMarker || removedGeneratedCells;
         }
         boolean participantCreated = addWithLocksHeld(schedule, member).created();

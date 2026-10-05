@@ -146,7 +146,8 @@ public class PositionChangeNotificationService {
             case PREFERENCE_SUBMISSION_REMOVED -> "прежние пожелания удалены";
             case NEW_PARTICIPATION_CREATED -> "участие обновлено";
             case COLLECTION_REOPENED -> "сбор пожеланий открыт повторно";
-            case AUTO_BUILD_RESULT_INVALIDATED -> "автоматический результат требует повторной сборки";
+            case AUTO_BUILD_RESULT_STALE -> "результат автосборки устарел, график стоит проверить";
+            case AUTO_BUILD_RESULT_INVALIDATED -> "результат автосборки сброшен, после сбора пожеланий потребуется повторная сборка";
             case DRAFT_EMPLOYEE_REMOVED -> "сотрудник удалён из черновика";
             case PUBLISHED_FUTURE_SHIFTS_CANCELLED -> "будущие смены отменены";
             case PUBLISHED_ROW_BECAME_HISTORICAL -> "строка прежней должности сохранена в истории";

@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.member.dto.ApplyPositionChangeRequest.ScheduleDecision;
+import ru.staffly.member.dto.PositionChangeImpactPlan.Action;
+import ru.staffly.member.dto.PositionChangeScheduleEffectType;
 import ru.staffly.member.lifecycle.PositionChangeApplyContext;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.service.PublishedShiftImpactClassifier;
@@ -68,12 +70,14 @@ class SchedulePositionChangeTest {
         cell(departing, LocalDate.of(2026, 10, 6), 9, 17, ScheduleCellSource.AUTO_BUILD);
         var generated = cell(other, LocalDate.of(2026, 10, 6), 9, 17, ScheduleCellSource.AUTO_BUILD);
         var manual = cell(other, LocalDate.of(2026, 10, 7), 9, 17, ScheduleCellSource.MANUAL);
-        apply(s);
+        var result = apply(s);
         assertEquals(ScheduleStatus.DRAFT_FROM_PREFERENCES, s.getStatus());
         assertEquals(List.of(other), s.getRows());
         assertEquals(List.of(generated, manual), other.getCells());
         assertEquals(now, s.getAutoBuildStaleAt());
         assertEquals(AutoBuildStaleReason.MEMBER_POSITION_CHANGED, s.getAutoBuildStaleReason());
+        assertTrue(result.appliedEffects().get(s.getId()).contains(PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_STALE));
+        assertFalse(result.appliedEffects().get(s.getId()).contains(PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED));
         verifyNoInteractions(lifecycle);
     }
 
@@ -108,5 +112,77 @@ class SchedulePositionChangeTest {
         var result = handler.applyBefore(c, new SchedulePositionChangeDecision(List.of(), List.of(), List.of()));
         assertTrue(result.affectedScheduleIds().isEmpty());
         verify(schedules, never()).findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(anyLong(), anyList());
+    }
+
+    private SchedulePositionChangeApplyHandler realLifecycleHandler() {
+        when(participations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var service = new SchedulePreferenceLifecycleService(
+                mock(ru.staffly.member.repository.RestaurantMemberRepository.class), schedules, participations, submissions,
+                new ScheduleParticipationCreator(participations), new ScheduleRowMaterializer(), mock(ScheduleAuditService.class));
+        return new SchedulePositionChangeApplyHandler(schedules, participations, submissions, service, time,
+                new PublishedShiftImpactClassifier(), ownership, mock(EntityManager.class),
+                mock(ru.staffly.member.repository.RestaurantMemberRepository.class));
+    }
+
+    private SchedulePositionChangeResult applyDecision(Schedule s, Action action) {
+        s.setPositions(Set.of(oldPosition, targetPosition));
+        when(schedules.findByRestaurantIdAndPositionId(1L, 2L)).thenReturn(List.of(s));
+        var context = new PositionChangeApplyContext(1L, 999L, member, oldPosition, targetPosition, now, UUID.randomUUID());
+        var decision = new SchedulePositionChangeDecision(List.of(new ScheduleDecision(10L, 3L, s.getStatus(),
+                0L, null, null, null, null, action, now.plusSeconds(3600))), List.of(), List.of());
+        var actualHandler = realLifecycleHandler();
+        var preparation = actualHandler.applyBefore(context, decision);
+        member.setPosition(targetPosition);
+        return actualHandler.applyAfter(context, decision, preparation);
+    }
+
+    @Test void addToDraftCreatesTargetParticipationAndActiveRowWithoutReusingHistory() {
+        var s = schedule(ScheduleStatus.DRAFT);
+        row(s, 17L, 1L);
+        var historical = row(s, 17L, 1L);
+        historical.setHistorical(true);
+        targetPosition.setName("Target position");
+        applyDecision(s, Action.ADD_TO_DRAFT);
+        assertEquals(ScheduleStatus.DRAFT, s.getStatus());
+        assertEquals(2, s.getRows().size());
+        assertTrue(s.getRows().contains(historical));
+        var active = s.getRows().stream().filter(r -> !r.isHistorical()).findFirst().orElseThrow();
+        assertEquals(member.getId(), active.getMemberId());
+        assertEquals(targetPosition.getId(), active.getPositionId());
+        assertEquals("Target position", active.getPositionName());
+        verify(participations).save(argThat(p -> p.getMember() == member && p.getPositionId().equals(2L)
+                && p.getPositionName().equals("Target position")));
+    }
+
+    @Test void doNotAddToDraftRemovesOldRowAndPreservesOtherCells() {
+        var s = schedule(ScheduleStatus.DRAFT);
+        row(s, 17L, 1L);
+        var other = row(s, 18L, 1L);
+        var manual = cell(other, LocalDate.of(2026, 10, 6), 9, 17, ScheduleCellSource.MANUAL);
+        applyDecision(s, Action.DO_NOT_ADD_TO_DRAFT);
+        assertEquals(ScheduleStatus.DRAFT, s.getStatus());
+        assertEquals(List.of(other), s.getRows());
+        assertEquals(List.of(manual), other.getCells());
+        verify(participations, never()).save(any());
+    }
+
+    @Test void explicitRebuildActuallyClearsGeneratedStateAndReportsInvalidated() {
+        var s = schedule(ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        row(s, 17L, 1L);
+        s.setPreferenceAppliedAt(now.minusSeconds(60));
+        s.setAutoBuildStaleAt(now.minusSeconds(30));
+        s.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_POSITION_CHANGED);
+        var other = row(s, 18L, 1L);
+        cell(other, LocalDate.of(2026, 10, 6), 9, 17, ScheduleCellSource.AUTO_BUILD);
+        var manual = cell(other, LocalDate.of(2026, 10, 7), 9, 17, ScheduleCellSource.MANUAL);
+        var result = applyDecision(s, Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW);
+        assertEquals(ScheduleStatus.COLLECTING_PREFERENCES, s.getStatus());
+        assertEquals(List.of(manual), other.getCells());
+        assertNull(s.getPreferenceAppliedAt());
+        assertNull(s.getAutoBuildStaleAt());
+        assertNull(s.getAutoBuildStaleReason());
+        assertEquals(1L, s.getPreferenceCollectionCycle());
+        assertTrue(result.effects().get(0).consequences().contains(PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED));
+        assertFalse(result.effects().get(0).consequences().contains(PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_STALE));
     }
 }

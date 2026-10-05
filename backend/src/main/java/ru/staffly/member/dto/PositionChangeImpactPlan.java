@@ -47,7 +47,7 @@ public record PositionChangeImpactPlan(
             Long participationId, boolean participationWillBeRemoved,
             Long preferenceSubmissionId, Integer preferenceSubmissionRevision,
             boolean preferenceDataWillBeDeleted, boolean progressDenominatorWillChange,
-            boolean appliedDraftWillBeInvalidated, boolean activeRowWillBeRemoved,
+            boolean autoBuildWillBecomeStale, boolean activeRowWillBeRemoved,
             boolean publishedRowBecomesHistorical, PublishedShiftImpact publishedShiftImpact
     ) { }
 
@@ -67,6 +67,8 @@ public record PositionChangeImpactPlan(
         CHANGE_POSITION_AND_REOPEN_COLLECTION,
         CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE,
         REOPEN_AND_REBUILD_PREFERENCE_FLOW,
+        ADD_TO_DRAFT,
+        DO_NOT_ADD_TO_DRAFT,
         INFORMATION_ONLY
     }
 

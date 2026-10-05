@@ -87,4 +87,28 @@ class PositionChangeCoordinatorTest {
         when(second.module()).thenReturn(LifecycleModule.TASK);
         assertThrows(IllegalStateException.class, () -> coordinator(List.of(first, second)).validateUniqueHandlers());
     }
+
+    @Test void previewReadsModuleSnapshotsWithoutAcquiringLifecycleMutex() throws Exception {
+        stub();
+        when(members.countActiveByRestaurantIdAndPositionLevel(1L, RestaurantRole.ADMIN)).thenReturn(2L);
+        var impacts = List.<PositionChangeModuleImpact>of(
+                new ru.staffly.schedule.lifecycle.SchedulePositionChangeImpact(List.of(), List.of(), List.of(), List.of()),
+                new ru.staffly.training.lifecycle.CertificationPositionChangeImpact(true, List.of(), List.of(), List.of()),
+                new ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Impact(List.of()),
+                new ru.staffly.checklist.lifecycle.ChecklistPositionChangeLifecycleHandler.Impact(0));
+        var handlers = impacts.stream().map(impact -> {
+            var handler = mock(PositionChangeLifecycleHandler.class);
+            when(handler.preview(any())).thenReturn(impact);
+            return handler;
+        }).toList();
+        var plan = coordinator(handlers).preview(1L, 17L, 2L, 999L);
+        assertEquals(2L, plan.employee().newPosition().id());
+        verifyNoInteractions(mutex);
+        verify(security).assertAtLeastManager(999L, 1L);
+        handlers.forEach(handler -> verify(handler).preview(any()));
+        var transaction = PositionChangeCoordinator.class
+                .getMethod("preview", Long.class, Long.class, Long.class, Long.class)
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+        assertTrue(transaction.readOnly());
+    }
 }

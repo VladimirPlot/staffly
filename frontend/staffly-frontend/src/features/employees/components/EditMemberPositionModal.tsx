@@ -17,6 +17,8 @@ const labels: Record<PositionChangeAction, string> = {
   CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE: "Сменить должность без добавления",
   REOPEN_AND_REBUILD_PREFERENCE_FLOW: "Переоткрыть сбор и собрать график повторно",
   INFORMATION_ONLY: "Не добавлять автоматически",
+  ADD_TO_DRAFT: "Добавить сотрудника в черновик",
+  DO_NOT_ADD_TO_DRAFT: "Не добавлять в этот график",
 };
 const status: Record<string, string> = {
   COLLECTING_PREFERENCES: "идёт сбор пожеланий",
@@ -28,7 +30,6 @@ const status: Record<string, string> = {
 const reopen = (a?: PositionChangeAction) =>
   a === "CHANGE_POSITION_AND_REOPEN_COLLECTION" || a === "REOPEN_AND_REBUILD_PREFERENCE_FLOW";
 const isInformationOnly = (item: NewPositionOpportunity) =>
-  item.scheduleStatus === "DRAFT" ||
   item.scheduleStatus === "PUBLISHED" ||
   (item.allowedActions.length === 1 && item.allowedActions[0] === "INFORMATION_ONLY");
 
@@ -38,14 +39,26 @@ const eligibilityMessages = {
     "Для новой должности нет сохранённых вариантов смен этого сбора. Добавить сотрудника в сбор с выбором времени сейчас нельзя.",
 } as const;
 
-function OldConsequences({ impact, position }: { impact: OldPositionImpact; position: string }) {
+function OldConsequences({
+  impact,
+  position,
+  rebuild,
+}: {
+  impact: OldPositionImpact;
+  position: string;
+  rebuild: boolean;
+}) {
   const p = impact.publishedShiftImpact;
   const items: string[] = [];
   if (impact.participationWillBeRemoved) items.push(`сотрудник перестанет участвовать в сборе как ${position}`);
   if (impact.preferenceDataWillBeDeleted) items.push("отправленные пожелания сотрудника будут удалены");
   if (impact.progressDenominatorWillChange) items.push("прогресс сбора будет пересчитан");
-  if (impact.appliedDraftWillBeInvalidated) {
-    items.push("текущий результат автосборки станет неактуальным", "график можно будет собрать повторно");
+  if (impact.autoBuildWillBecomeStale) {
+    items.push(
+      rebuild
+        ? "Текущий результат автосборки будет сброшен. После нового сбора график потребуется собрать повторно."
+        : "Результат автосборки станет неактуальным. Текущий график можно проверить вручную или запустить автосборку повторно.",
+    );
   }
   if (impact.activeRowWillBeRemoved) items.push("сотрудник будет удалён из черновика");
   if (impact.publishedRowBecomesHistorical) items.push("данные сотрудника останутся в истории опубликованного графика");
@@ -100,9 +113,8 @@ function Opportunity({
       )}
       {informational && (
         <p className="mt-2 text-sm">
-          {item.scheduleStatus === "DRAFT"
-            ? "Для новой должности существует черновик графика. Сотрудник не будет добавлен автоматически."
-            : "Для новой должности уже есть опубликованный график. Сотрудник не будет добавлен автоматически. При необходимости его можно добавить отдельно в графике."}
+          Для новой должности уже есть опубликованный график. Сотрудник не будет добавлен автоматически. При
+          необходимости его можно добавить отдельно в графике.
         </p>
       )}
       {item.eligibilityProblems.map((problem) => (
@@ -129,7 +141,9 @@ function Opportunity({
           <p className="mt-2 text-sm">
             Сбор пожеланий откроется повторно. Пожелания остальных сотрудников сохранятся и снова станут доступны для
             изменения. Сотрудник сможет отправить пожелания уже для новой должности.
-            {item.scheduleStatus === "DRAFT_FROM_PREFERENCES" ? " Текущий результат нужно будет собрать повторно." : ""}
+            {item.scheduleStatus === "DRAFT_FROM_PREFERENCES"
+              ? " Текущий результат автосборки будет сброшен. После нового сбора график потребуется собрать повторно."
+              : ""}
           </p>
           <label className="mt-2 block text-sm">
             Новый срок
@@ -158,8 +172,9 @@ function Opportunity({
       )}
       {decision?.action === "DO_NOT_ADD" && item.scheduleStatus === "DRAFT_FROM_PREFERENCES" && (
         <p className="mt-2 text-sm">
-          Сотрудник не будет добавлен в график для новой должности. Текущий результат автосборки станет неактуальным.
-          Пожелания остальных сотрудников сохранятся, и график можно будет собрать повторно.
+          Сотрудник не будет добавлен в график для новой должности. Пожелания остальных сотрудников сохранятся.
+          Результат автосборки станет неактуальным. Текущий график можно проверить вручную или запустить автосборку
+          повторно.
         </p>
       )}
     </div>
@@ -230,7 +245,11 @@ export default function EditMemberPositionModal(props: {
       const deadlineInstant = d?.newDeadline
         ? restaurantLocalDateTimeToInstant(d.newDeadline, props.restaurantTimeZone)
         : null;
-      if (!d || (reopen(d.action) && (!deadlineInstant || new Date(deadlineInstant).getTime() <= Date.now())))
+      if (
+        !d ||
+        !o.allowedActions.includes(d.action) ||
+        (reopen(d.action) && (!deadlineInstant || new Date(deadlineInstant).getTime() <= Date.now()))
+      )
         return false;
       if (
         d.action === "ADD_TO_COLLECTION" &&
@@ -350,7 +369,12 @@ export default function EditMemberPositionModal(props: {
               <h3 className="mb-2 font-semibold">Что произойдёт с текущими графиками</h3>
               <div className="space-y-2">
                 {plan.oldPositionImpacts.map((i) => (
-                  <OldConsequences key={i.scheduleId} impact={i} position={plan.employee.oldPosition.name} />
+                  <OldConsequences
+                    key={i.scheduleId}
+                    impact={i}
+                    position={plan.employee.oldPosition.name}
+                    rebuild={props.decisions[i.scheduleId]?.action === "REOPEN_AND_REBUILD_PREFERENCE_FLOW"}
+                  />
                 ))}
               </div>
             </section>
@@ -392,7 +416,7 @@ export default function EditMemberPositionModal(props: {
                       График «{o.scheduleTitle}»: сбор пожеланий будет открыт повторно до{" "}
                       {deadline ? formatInstantInTimeZone(deadline, props.restaurantTimeZone) : "выбранного срока"}
                       {decision.action === "REOPEN_AND_REBUILD_PREFERENCE_FLOW"
-                        ? "; текущий результат автосборки станет неактуальным и потребует новой сборки"
+                        ? "; текущий результат автосборки будет сброшен, после нового сбора потребуется повторная сборка"
                         : ""}
                     </li>
                   );
@@ -401,9 +425,12 @@ export default function EditMemberPositionModal(props: {
                 .filter(
                   (o) =>
                     props.decisions[o.scheduleId] &&
-                    ["DO_NOT_ADD", "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE", "INFORMATION_ONLY"].includes(
-                      props.decisions[o.scheduleId].action,
-                    ),
+                    [
+                      "DO_NOT_ADD",
+                      "DO_NOT_ADD_TO_DRAFT",
+                      "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE",
+                      "INFORMATION_ONLY",
+                    ].includes(props.decisions[o.scheduleId].action),
                 )
                 .map((o) => (
                   <li key={o.scheduleId}>в график «{o.scheduleTitle}» сотрудник добавлен не будет</li>

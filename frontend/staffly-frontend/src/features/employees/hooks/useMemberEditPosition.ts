@@ -58,8 +58,7 @@ export function buildPositionChangeRequest(
         const decision = opportunity ? decisions[scheduleId] : undefined;
         const informationOnly = Boolean(
           opportunity &&
-            (opportunity.scheduleStatus === "DRAFT" ||
-              opportunity.scheduleStatus === "PUBLISHED" ||
+            (opportunity.scheduleStatus === "PUBLISHED" ||
               (opportunity.allowedActions.length === 1 && opportunity.allowedActions[0] === "INFORMATION_ONLY")),
         );
         return {

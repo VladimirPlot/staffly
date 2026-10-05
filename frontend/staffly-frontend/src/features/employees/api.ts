@@ -262,6 +262,8 @@ export type PositionChangeAction =
   | "CHANGE_POSITION_AND_REOPEN_COLLECTION"
   | "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE"
   | "REOPEN_AND_REBUILD_PREFERENCE_FLOW"
+  | "ADD_TO_DRAFT"
+  | "DO_NOT_ADD_TO_DRAFT"
   | "INFORMATION_ONLY";
 export type PositionChangeEligibilityProblem = "MISSING_PREFERENCE_MODE" | "MISSING_FROZEN_SHIFT_OPTIONS_FOR_POSITION";
 export type PositionChangePosition = { id: number; name: string };
@@ -291,7 +293,7 @@ export type OldPositionImpact = {
   preferenceSubmissionRevision: number | null;
   preferenceDataWillBeDeleted: boolean;
   progressDenominatorWillChange: boolean;
-  appliedDraftWillBeInvalidated: boolean;
+  autoBuildWillBecomeStale: boolean;
   activeRowWillBeRemoved: boolean;
   publishedRowBecomesHistorical: boolean;
   publishedShiftImpact: PublishedShiftImpact | null;

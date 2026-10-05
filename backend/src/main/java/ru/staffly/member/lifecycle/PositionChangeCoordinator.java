@@ -47,9 +47,8 @@ public class PositionChangeCoordinator {
         }
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public PositionChangeImpactPlan preview(Long restaurantId, Long memberId, Long targetPositionId, Long actorUserId) {
-        lifecycleMutex.lock(restaurantId);
         security.assertAtLeastManager(actorUserId, restaurantId);
         RestaurantMember member = members.findWithUserAndPositionByIdAndRestaurantId(memberId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found: " + memberId));

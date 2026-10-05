@@ -104,7 +104,9 @@ public class SchedulePositionChangePreviewHandler {
 
     private NewPositionOpportunity newOpportunity(Schedule schedule, Long targetPositionId, Instant now) {
         Hibernate.initialize(schedule.getPreferenceShiftOptionSnapshots());
-        boolean shiftOptionsRequired = schedule.getPreferenceCollectionMode() == PreferenceCollectionMode.SHIFT_OPTIONS;
+        boolean shiftOptionsRequired = schedule.getStatus() != ScheduleStatus.DRAFT
+                && schedule.getStatus() != ScheduleStatus.PUBLISHED
+                && schedule.getPreferenceCollectionMode() == PreferenceCollectionMode.SHIFT_OPTIONS;
         List<Long> applicableSnapshotIds = schedule.getPreferenceShiftOptionSnapshots().stream()
                 .filter(snapshot -> {
                     Hibernate.initialize(snapshot.getPositionIds());
@@ -124,7 +126,8 @@ public class SchedulePositionChangePreviewHandler {
             case PREFERENCES_CLOSED -> List.of(Action.CHANGE_POSITION_AND_REOPEN_COLLECTION,
                     Action.CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE);
             case DRAFT_FROM_PREFERENCES -> List.of(Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW, Action.DO_NOT_ADD);
-            case DRAFT, PUBLISHED -> List.of(Action.INFORMATION_ONLY);
+            case DRAFT -> List.of(Action.ADD_TO_DRAFT, Action.DO_NOT_ADD_TO_DRAFT);
+            case PUBLISHED -> List.of(Action.INFORMATION_ONLY);
         };
         Instant deadline = schedule.getPreferenceDeadline();
         boolean lessThanSixHours = deadline != null && deadline.isAfter(now)

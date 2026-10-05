@@ -124,10 +124,12 @@ public class SchedulePositionChangeApplyHandler {
             } else if (schedule.getStatus() == ScheduleStatus.DRAFT_FROM_PREFERENCES
                     && (row != null || old != null || hadSubmission || decision.action() == Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW)) {
                 if (row != null) schedule.getRows().remove(row);
-                schedule.setAutoBuildStaleAt(context.now());
-                schedule.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_POSITION_CHANGED);
-                mark(applied, schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED);
-                cleanup.add(schedule.getId() + ":preference draft retained/stale");
+                if (decision.action() != Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW) {
+                    schedule.setAutoBuildStaleAt(context.now());
+                    schedule.setAutoBuildStaleReason(AutoBuildStaleReason.MEMBER_POSITION_CHANGED);
+                    mark(applied, schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_STALE);
+                    cleanup.add(schedule.getId() + ":preference draft retained/stale");
+                }
             }
         }
         return new SchedulePositionChangePreparation(locked, affected, cleanup, applied, cancelledBySchedule, cancelled, ownershipTransfers);
@@ -161,7 +163,7 @@ public class SchedulePositionChangeApplyHandler {
                 }
                 case REOPEN_AND_REBUILD_PREFERENCE_FLOW -> {
                     requireStatus(schedule, ScheduleStatus.DRAFT_FROM_PREFERENCES);
-                    var result = lifecycle.reopenWithLocksHeld(schedule, member, decision.newDeadline(), context.actorUserId(), "Смена должности");
+                    var result = lifecycle.reopenForPositionChangeWithLocksHeld(schedule, member, decision.newDeadline(), context.actorUserId(), context.now());
                     if (result.participantCreated()) mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
                     mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.COLLECTION_REOPENED);
                     if (result.appliedResultInvalidated()) mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.AUTO_BUILD_RESULT_INVALIDATED);
@@ -172,7 +174,13 @@ public class SchedulePositionChangeApplyHandler {
                             && schedule.getStatus() != ScheduleStatus.DRAFT_FROM_PREFERENCES) throw stale();
                 }
                 case CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE -> requireStatus(schedule, ScheduleStatus.PREFERENCES_CLOSED);
-                case INFORMATION_ONLY -> { if (schedule.getStatus() != ScheduleStatus.DRAFT && schedule.getStatus() != ScheduleStatus.PUBLISHED) throw stale(); }
+                case ADD_TO_DRAFT -> {
+                    requireStatus(schedule, ScheduleStatus.DRAFT);
+                    if (lifecycle.addDraftParticipantWithLocksHeld(schedule, member))
+                        mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
+                }
+                case DO_NOT_ADD_TO_DRAFT -> requireStatus(schedule, ScheduleStatus.DRAFT);
+                case INFORMATION_ONLY -> requireStatus(schedule, ScheduleStatus.PUBLISHED);
             }
             schedule.setUpdatedAt(context.now());
         }
@@ -199,12 +207,16 @@ public class SchedulePositionChangeApplyHandler {
         Hibernate.initialize(s.getPositions()); Hibernate.initialize(s.getRows()); Hibernate.initialize(s.getPreferenceShiftOptionSnapshots());
         boolean opportunity=s.getPositions().stream().anyMatch(pos->Objects.equals(pos.getId(),targetPositionId));
         if (opportunity!=(d.action()!=null) || d.action()!=null && !allowed(s.getStatus(),d.action())) throw stale();
+        if (s.getStatus() == ScheduleStatus.DRAFT && opportunity
+                && s.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId)
+                    && Objects.equals(row.getPositionId(), targetPositionId) && !row.isHistorical())) throw stale();
     }
     private boolean allowed(ScheduleStatus s, Action a) { return switch(s) {
         case COLLECTING_PREFERENCES -> a==Action.ADD_TO_COLLECTION||a==Action.DO_NOT_ADD;
         case PREFERENCES_CLOSED -> a==Action.CHANGE_POSITION_AND_REOPEN_COLLECTION||a==Action.CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE;
         case DRAFT_FROM_PREFERENCES -> a==Action.REOPEN_AND_REBUILD_PREFERENCE_FLOW||a==Action.DO_NOT_ADD;
-        case DRAFT,PUBLISHED -> a==Action.INFORMATION_ONLY; }; }
+        case DRAFT -> a==Action.ADD_TO_DRAFT||a==Action.DO_NOT_ADD_TO_DRAFT;
+        case PUBLISHED -> a==Action.INFORMATION_ONLY; }; }
     private ScheduleRow oldRow(Schedule s,Long memberId,Long positionId){return s.getRows().stream().filter(r->Objects.equals(r.getMemberId(),memberId)&&Objects.equals(r.getPositionId(),positionId)&&!r.isHistorical()).findFirst().orElse(null);}
     private void requireStatus(Schedule s,ScheduleStatus status){if(s.getStatus()!=status)throw stale();}
     private void requireFuture(Instant deadline,Instant now){if(!deadline.isAfter(now))throw new BadRequestException("preferenceDeadline must be in the future");}
