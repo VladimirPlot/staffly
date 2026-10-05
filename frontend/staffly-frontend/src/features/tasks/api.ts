@@ -31,6 +31,7 @@ export type TaskDto = {
   assignedPosition?: TaskPositionDto | null;
   assignedUser?: TaskUserDto | null;
   createdBy?: TaskUserDto | null;
+  setter?: TaskUserDto | null;
   createdAt?: string | null;
 };
 

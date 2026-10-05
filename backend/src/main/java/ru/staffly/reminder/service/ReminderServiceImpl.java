@@ -11,6 +11,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.reminder.dto.ReminderDto;
 import ru.staffly.reminder.dto.ReminderRequest;
 import ru.staffly.reminder.mapper.ReminderMapper;
@@ -45,6 +46,7 @@ public class ReminderServiceImpl implements ReminderService {
     private final ReminderMapper mapper;
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Override
     @Transactional(Transactional.TxType.SUPPORTS)
@@ -68,6 +70,7 @@ public class ReminderServiceImpl implements ReminderService {
     @Override
     @Transactional
     public ReminderDto create(Long restaurantId, Long currentUserId, ReminderRequest request) {
+        lifecycleMutex.lock(restaurantId);
         security.assertMember(currentUserId, restaurantId);
 
         Restaurant restaurant = restaurants.findById(restaurantId)
@@ -132,6 +135,7 @@ public class ReminderServiceImpl implements ReminderService {
     @Override
     @Transactional
     public ReminderDto update(Long restaurantId, Long currentUserId, Long reminderId, ReminderRequest request) {
+        lifecycleMutex.lock(restaurantId);
         security.assertMember(currentUserId, restaurantId);
 
         Reminder reminder = reminders.findByIdAndRestaurantId(reminderId, restaurantId)

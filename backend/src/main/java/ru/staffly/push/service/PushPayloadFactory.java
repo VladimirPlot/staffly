@@ -47,6 +47,14 @@ public class PushPayloadFactory {
         }
     }
 
+    public String buildDirect(String title, String body, String tag, String to) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("title", title); payload.put("body", truncate(normalize(body), MAX_BODY_LENGTH));
+        payload.put("tag", tag); payload.put("to", to); payload.put("url", to); payload.put("type", "DIRECT");
+        try { return objectMapper.writeValueAsString(payload); }
+        catch (JsonProcessingException e) { throw new IllegalStateException("Failed to serialize push payload", e); }
+    }
+
     private String resolveTitle(InboxMessage message) {
         if (message.getType() == InboxMessageType.EVENT
                 && message.getMeta() != null

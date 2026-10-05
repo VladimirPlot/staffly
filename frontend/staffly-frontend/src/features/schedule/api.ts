@@ -506,6 +506,8 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
     preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
     preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
     preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+    autoBuildStaleAt: nullableTimestamp(data.autoBuildStaleAt),
+    autoBuildStaleReason: data.autoBuildStaleReason ?? null,
     preferenceCollectionMode: data.preferenceCollectionMode ?? null,
     preferenceBuildTemplateId: data.preferenceBuildTemplateId ?? null,
   };

@@ -187,6 +187,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getPreferenceDeadline(),
                         s.getPreferenceClosedAt(),
                         s.getPreferenceAppliedAt(),
+                        s.getAutoBuildStaleAt(),
+                        s.getAutoBuildStaleReason() == null ? null : s.getAutoBuildStaleReason().name(),
                         progress.submittedCount(),
                         progress.totalParticipants(),
                         myPreferenceSubmitted
@@ -1414,6 +1416,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceDeadline(),
                 schedule.getPreferenceClosedAt(),
                 schedule.getPreferenceAppliedAt(),
+                schedule.getAutoBuildStaleAt(),
+                schedule.getAutoBuildStaleReason() == null ? null : schedule.getAutoBuildStaleReason().name(),
                 schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );

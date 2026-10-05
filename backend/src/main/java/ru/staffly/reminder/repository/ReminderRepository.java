@@ -2,6 +2,7 @@ package ru.staffly.reminder.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.reminder.model.Reminder;
 
@@ -10,6 +11,17 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ReminderRepository extends JpaRepository<Reminder, Long> {
+
+    int countByTargetMemberId(Long memberId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update Reminder r
+            set r.targetMember = null, r.active = false, r.nextFireAt = null, r.updatedAt = :now
+            where r.targetType = ru.staffly.reminder.model.ReminderTargetType.MEMBER
+              and r.targetMember.id = :memberId
+            """)
+    int detachPersonalTarget(@Param("memberId") Long memberId, @Param("now") Instant now);
 
     Optional<Reminder> findByIdAndRestaurantId(Long id, Long restaurantId);
 

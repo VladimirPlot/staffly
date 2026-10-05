@@ -694,6 +694,12 @@ const SchedulePage: React.FC = () => {
           </button>
         )}
       </div>
+      {schedule?.status === "DRAFT_FROM_PREFERENCES" && schedule.autoBuildStaleAt && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          После автосборки состав сотрудников изменился. Проверьте график или запустите автосборку повторно.
+          Публикация текущего черновика остаётся доступна.
+        </div>
+      )}
       {derived.showLandingHeader && (
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">

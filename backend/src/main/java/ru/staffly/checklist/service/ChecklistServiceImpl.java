@@ -30,6 +30,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
@@ -72,6 +73,7 @@ public class ChecklistServiceImpl implements ChecklistService {
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
     private final ChecklistImageStorage imageStorage;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Override
     @Transactional
@@ -232,6 +234,12 @@ public class ChecklistServiceImpl implements ChecklistService {
     @Override
     @Transactional
     public ChecklistDto reserveItem(Long restaurantId, Long currentUserId, Long checklistId, Long itemId) {
+        // Lifecycle order: restaurant -> member -> checklist. This prevents a
+        // reservation from being committed for a concurrently ended period.
+        lifecycleMutex.lock(restaurantId);
+        RestaurantMember activeMember = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
+                .flatMap(member -> members.findForUpdateByIdAndRestaurantId(member.getId(), restaurantId))
+                .orElseThrow(() -> new ConflictException("Membership is no longer active"));
         ChecklistContext context = loadChecklistContext(restaurantId, currentUserId, checklistId);
         ChecklistItem item = findChecklistItem(context.checklist(), itemId);
         if (item.isDone()) {
@@ -240,7 +248,7 @@ public class ChecklistServiceImpl implements ChecklistService {
         if (item.getReservedBy() != null && !item.getReservedBy().getId().equals(context.member().getId())) {
             throw new ConflictException("Пункт забронирован другим сотрудником");
         }
-        item.setReservedBy(context.member());
+        item.setReservedBy(activeMember);
         item.setReservedAt(restaurantTime.nowInstant());
         return mapper.toDto(checklists.save(context.checklist()));
     }

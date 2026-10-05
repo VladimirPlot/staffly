@@ -113,6 +113,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
+        schedule.setAutoBuildStaleAt(null);
+        schedule.setAutoBuildStaleReason(null);
         Schedule saved = schedules.saveAndFlush(schedule);
 
         scheduleAuditService.record(
