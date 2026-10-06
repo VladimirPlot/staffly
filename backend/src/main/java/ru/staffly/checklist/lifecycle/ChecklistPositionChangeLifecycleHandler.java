@@ -24,7 +24,7 @@ public class ChecklistPositionChangeLifecycleHandler implements PositionChangeLi
     }
     @Override public Result applyAfterPositionChange(PositionChangeApplyContext c, PositionChangeModuleDecision d, PositionChangeModulePreparation p) {
         // Match ordinary checklist writes: parent before item, ordered parent IDs.
-        items.findByReservedById(c.member().getId()).stream().map(i -> i.getChecklist().getId()).distinct().sorted()
+        items.findReservedChecklistIds(c.member().getId()).stream().distinct().sorted()
                 .forEach(id -> checklists.findDetailedByIdForUpdate(id).orElseThrow(PositionChangeSupport::stale));
         var reserved = items.findReservedForUpdate(c.member().getId());
         int released = 0;

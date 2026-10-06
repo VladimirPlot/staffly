@@ -153,7 +153,7 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     @Query("select count(m) from RestaurantMember m where m.restaurant.id = :restaurantId and m.endedAt is null and m.position.level = :role")
     long countActiveByRestaurantIdAndPositionLevel(Long restaurantId, RestaurantRole role);
 
-    boolean existsByRestaurantIdAndUserIdNotAndEndedAtIsNull(Long restaurantId, Long userId);
+    boolean existsByRestaurantId(Long restaurantId);
 
     boolean existsByRestaurantIdAndUserIdAndEndedAtIsNull(Long restaurantId, Long userId);
 

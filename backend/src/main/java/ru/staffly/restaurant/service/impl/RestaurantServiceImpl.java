@@ -86,12 +86,12 @@ public class RestaurantServiceImpl implements RestaurantService {
     @Override
     @Transactional
     public void delete(Long restaurantId, Long creatorUserId) {
-        Restaurant restaurant = restaurants.findById(restaurantId)
+        // Admission locks this same row. Check all employment periods before allowing DB cascades.
+        Restaurant restaurant = restaurants.findLifecycleMutex(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        boolean hasOtherMembers = members.existsByRestaurantIdAndUserIdNotAndEndedAtIsNull(restaurantId, creatorUserId);
-        if (hasOtherMembers) {
-            throw new ConflictException("Cannot delete restaurant with other participants");
+        if (members.existsByRestaurantId(restaurantId)) {
+            throw new ConflictException("Cannot delete restaurant with employment history");
         }
 
         restaurants.delete(restaurant);
