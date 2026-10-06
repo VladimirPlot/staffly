@@ -102,7 +102,7 @@ public class PositionChangeNotificationService {
         scheduleTransfers.stream().collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((id, values) ->
                 addTransferCommand(commands, subject, actor, operationId, id, BusinessNotificationKind.SCHEDULE,
                         "Вам передали ответственность за графики: " + values.stream().map(t -> t.title()).collect(Collectors.joining(", "))));
-        certificationTransfers.stream().collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((id, values) ->
+        certificationTransfers.stream().filter(t -> t.active()).collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((id, values) ->
                 addTransferCommand(commands, subject, actor, operationId, id, BusinessNotificationKind.CERTIFICATION,
                         "Вам передали ответственность за аттестации: " + values.stream().map(t -> t.title()).collect(Collectors.joining(", "))));
         taskTransfers.stream().collect(Collectors.groupingBy(t -> t.memberId())).forEach((id, values) -> {

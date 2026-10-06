@@ -24,7 +24,7 @@ public class CertificationEmployeeLifecycleHandler
     @Override public int getOrder() { return Ordered.HIGHEST_PRECEDENCE + 200; }
     @Override public CertificationLifecycleImpact preview(TerminationPreviewContext context) {
         Long ownerUserId = context.target().getUser().getId();
-        var exams = ownership.findActiveOwnedCertificationExams(context.restaurantId(), ownerUserId);
+        var exams = ownership.findOwnedCertificationForLifecycle(context.restaurantId(), ownerUserId);
         if (exams.isEmpty()) return new CertificationLifecycleImpact(module(), true, List.of());
         var options = ownership.buildReassignmentOptions(context.restaurantId(), context.actorUserId(), ownerUserId);
         var memberByUser = members.findActiveWithUserAndPositionByRestaurantId(context.restaurantId()).stream()
@@ -38,7 +38,7 @@ public class CertificationEmployeeLifecycleHandler
         return new CertificationLifecycleImpact(module(), true, impacts);
     }
     @Override public CertificationPositionChangeImpact preview(PositionChangePreviewContext context) {
-        var exams = ownership.findActiveOwnedCertificationExams(context.restaurantId(), context.member().getUser().getId());
+        var exams = ownership.findOwnedCertificationForLifecycle(context.restaurantId(), context.member().getUser().getId());
         var impacts = exams.stream().filter(e -> !ownership.canRetainOwnership(e, context.targetPosition()))
                 .map(e -> new EmployeeRemovalImpactPlan.OwnershipResource(e.getId(), e.getTitle(), e.getEditorRevision(),
                         context.member().getUser().getId(), ownership.lifecycleCandidates(e, context.member().getId(), context.targetPosition()).stream()
@@ -50,9 +50,9 @@ public class CertificationEmployeeLifecycleHandler
     @Override public CertificationPositionChangePreparation applyBeforePositionChange(PositionChangeApplyContext c,
             PositionChangeModuleDecision raw) {
         if (!(raw instanceof CertificationPositionChangeDecision d)) throw PositionChangeSupport.stale();
-        ownership.lockActiveCertificationExams(c.restaurantId());
+        ownership.lockCertificationLifecycleResources(c.restaurantId(), c.member().getUser().getId());
         Long owner = c.member().getUser().getId();
-        var owned = ownership.findActiveOwnedCertificationExams(c.restaurantId(), owner);
+        var owned = ownership.findOwnedCertificationForLifecycle(c.restaurantId(), owner);
         var state = owned.stream().map(e -> new ru.staffly.member.dto.PositionChangeImpactPlan.OwnershipState(
                 e.getId(), e.getEditorRevision(), e.getOwner().getId())).collect(Collectors.toSet());
         if (d.expectedOwnershipState() == null || state.size() != d.expectedOwnershipState().size()
@@ -78,9 +78,9 @@ public class CertificationEmployeeLifecycleHandler
     @Override public CertificationTerminationResult applyBeforeTermination(TerminationApplyContext context,
             TerminationModuleDecision raw) {
         if (!(raw instanceof CertificationTerminationDecision decision)) throw stale();
-        ownership.lockActiveCertificationExams(context.restaurantId());
+        ownership.lockCertificationLifecycleResources(context.restaurantId(), context.target().getUser().getId());
         Long oldOwner = context.target().getUser().getId();
-        var expected = ownership.findActiveOwnedCertificationExams(context.restaurantId(), oldOwner);
+        var expected = ownership.findOwnedCertificationForLifecycle(context.restaurantId(), oldOwner);
         var expectedIds = expected.stream().map(e -> e.getId()).collect(Collectors.toSet());
         var providedIds = decision.ownershipTransfers().stream().map(t -> t.resourceId()).collect(Collectors.toSet());
         if (providedIds.size() != decision.ownershipTransfers().size() || !expectedIds.equals(providedIds)

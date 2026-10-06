@@ -2,15 +2,17 @@
 
 ## Executive verdict
 
-**NOT_READY** — 2026-10-06. Three confirmed defects are fixed locally. One concrete
-Certification ownership edge case still needs a product decision before closure:
-hidden Certification → owner termination/demotion → restore. This report does not
-claim that manual E2E or PostgreSQL concurrency scenarios were executed.
+**READY_FOR_MANUAL_VALIDATION** — 2026-10-06. The confirmed dispatch/reservation/cascade
+defects and the hidden Certification ownership/activation gap are corrected. Hidden
+Certification is a restorable business resource with mandatory ownership, independently
+of active audience. This report does not claim that manual E2E or PostgreSQL concurrency
+scenarios were executed.
 
-Audited revision: `5e931da52f00ebccdbfc60d29bb12f5686017c16`, plus this working tree.
-Branch: `feature/employee-lifecycle-final-audit`. Initial working tree was clean.
-HEAD, local dev and origin/dev matched; read-only `git ls-remote origin refs/heads/dev`
-also confirmed that exact remote SHA. No commit, push, reset, merge or rebase was run.
+Original audited revision: `5e931da52f00ebccdbfc60d29bb12f5686017c16`. Follow-up base:
+`6573a634bcfea99371c833bf5e9bd03b00a49322` (the existing audit-results commit), plus this
+working tree. Branch: `feature/employee-lifecycle-final-audit`; follow-up started clean.
+The original dev base was confirmed with read-only ls-remote during the initial audit.
+No new branch, commit, push, reset, merge or rebase was performed by this follow-up.
 
 ## Original target architecture
 
@@ -67,7 +69,7 @@ create another period or replay module effects.
 | Task | TaskTerminationLifecycleHandler: forced transfer; self-leave orphan; setter handoff | TaskPositionChangeLifecycleHandler: retain individual assignee; handoff setter if capability lost | No adapter needed; no old individual state restored | Task handlers / TaskService | No second automatic reaction found |
 | Checklist | ChecklistTerminationLifecycleHandler releases live reservations only | ChecklistPositionChangeLifecycleHandler releases only reservations losing access | No adapter needed; reservations created explicitly | Checklist module | No duplicate; concurrency defect fixed |
 | Reminder | ReminderTerminationLifecycleHandler detaches/stops personal target | ReminderPositionChangeLifecycleHandler explicitly preserves personal member targets | No adapter needed; targets created explicitly | ReminderRepository / ReminderServiceImpl / dispatch worker | No duplicate; dispatch resurrection race fixed |
-| Certification | CertificationEmployeeLifecycleHandler: active owner handoff, then audience sync after end | Same adapter: capability-aware active owner handoff, then audience sync | CertificationAdmissionLifecycleHandler prepares exam locks and syncs new audience | TrainingExamOwnershipService, CertificationAssignmentService, CertificationAudienceSyncService | No duplicate automatic reaction; hidden restore policy unresolved |
+| Certification | CertificationEmployeeLifecycleHandler: active and hidden owner handoff, then active-only audience sync after end | Same adapter: capability-aware active and hidden owner handoff, then active-only audience sync | CertificationAdmissionLifecycleHandler prepares active exam locks and syncs current audience | TrainingExamOwnershipService, CertificationAssignmentService, CertificationAudienceSyncService | No duplicate automatic reaction; hidden ownership gap fixed |
 
 Handler lists are injected by Spring using Ordered. Schedule=100, Certification=200,
 Task=300, Checklist=400, Reminder=500 (termination/position offsets use
@@ -119,7 +121,7 @@ business operations, not employee-event listeners.
 | P1 | ReminderDispatchJob loaded/saved mutable Reminder without lifecycle serialization. A concurrent detach could be overwritten by dispatch's stale full entity UPDATE | Fixed: per-restaurant transactional worker acquires restaurant mutex before due-reminder/member reads; failure rolls back that restaurant batch |
 | P1 | Checklist termination bulk UPDATE bypassed parent lock used by normal item editing. A stale item edit could flush reservedBy back after release | Fixed: scalar ordered parent-ID discovery, parent locks, then bulk release |
 | P1 | Position-change Checklist discovery loaded items before waiting for parent locks, allowing stale managed item state to survive into the later item-lock query | Fixed: scalar parent-ID discovery; items loaded only after parent locks |
-| P1 / policy unresolved | Hidden Certification is excluded from active owner handoff and restored without owner capability/membership validation | See Remaining risks; no speculative semantics applied |
+| P1 | Hidden Certification excluded from ownership handoff; activation could restore an invalid legacy owner | Fixed under accepted product contract: all extant Certification ownership participates in lifecycle; owner guard blocks invalid activation |
 | P2 | Requested Phase 6 legacy endpoints/types/bulk wrappers | No active occurrences found; nothing to remove |
 | P3 | Migration history and old display metadata contain historical names | Left intact; V115–V119 not modified; no V120 needed for confirmed fixes |
 
@@ -133,6 +135,42 @@ business operations, not employee-event listeners.
 - `member/repository/RestaurantMemberRepository.java`: all-period `existsByRestaurantId` replaces the sole caller's insufficient other-active-member predicate.
 - `restaurant/service/impl/RestaurantServiceImpl.java`: lifecycle row lock → all-period history check → delete only empty-employment restaurants.
 - New focused tests: ChecklistTerminationLockTest; ReminderDispatchLifecycleTest (termination-winning dispatch and same-User rehire isolation); RestaurantDeletionLifecycleTest (history protection and empty-restaurant deletion).
+
+### Hidden Certification closure correction
+
+- `training/repository/TrainingExamRepository.java`: new ownership queries
+  `findOwnedCertificationForLifecycle` and `findCertificationForLifecycleTransfer`
+  include every extant CERTIFICATION row regardless of active; deleted exams are
+  physically absent. Existing active-only audience/execution queries are unchanged.
+- `training/service/TrainingExamOwnershipService.java`: lifecycle discovery and batch
+  transfer use those queries. `lockCertificationLifecycleResources` locks the sorted
+  union of active audience resources and all resources owned by the subject (including
+  hidden); each is refreshed before ownership-state/revision validation. Candidate,
+  actor/container authority, expected owner/revision and visibility checks remain.
+- `training/lifecycle/CertificationEmployeeLifecycleHandler.java`: both previews,
+  ownership state and both apply-before hooks include active/hidden resources. Missing
+  hidden handoff decisions fail before ownership/member mutation. Audience changes
+  still resolve only active resources; handoff itself never changes active, assignments,
+  specification, cycle, PASSED or attempts.
+- `training/service/ExamServiceImpl.java`: restore and update take the restaurant mutex
+  before the Certification exam lock/refresh. Owner validation precedes activation,
+  assignment restoration and audience synchronization; update activation validates the
+  requested final visibility before any content mutation. Invalid owner returns
+  `CERTIFICATION_OWNER_INVALID` with the owner-correction message.
+- `security/GlobalCreatorPolicy.java` and `auth/controller/AuthController.java`: the
+  existing configured-phone CREATOR mechanism is shared between token issuance and
+  persisted resource-owner validation. Training contains no duplicated phone/email
+  configuration and never uses the actor's CREATOR token or owner==createdBy as proof.
+  Valid owners are an eligible active membership or an explicitly configured global
+  CREATOR User. Membership-less CREATOR remains excluded from handoff candidates/fallback.
+- `training/dto/AppliedCertificationOwnershipTransfer.java` captures active at transfer;
+  PositionChangeNotificationService and TerminationNotificationService suppress hidden
+  owner-transfer notifications while retaining active owner-transfer notifications.
+- `HiddenCertificationOwnershipTest`: focused impact/mandatory-decision, hidden transfer,
+  capability loss, sorted locks, legacy owner guards on both activation routes, final
+  visibility, valid owner/CREATOR restore, rehire isolation and notification regressions.
+- Hidden-resource owner correction uses the existing changeOwner endpoint and UI button.
+  `getTrainingErrorMessage` already displays server messages, so no frontend change was needed.
 
 ## Historical identity audit
 
@@ -150,7 +188,7 @@ business operations, not employee-event listeners.
 | Schedule shift request | Row identity + member IDs + shift snapshots | Historical row rejects application via getStaleReason; new candidate lookup requires active row/participation |
 | Schedule ownership | ownerMember with explicit User mirror | Initial/change/handoff validates active management member; past resource history may retain old owner |
 | Certification result/assignment | User + Restaurant + specification/version/cycle/generation | Intentional user-based exact-cycle reactivation; PASSED/attempt history preserved; no engine redesign |
-| Certification ownership | Explicit User; handoff candidates require active eligible membership | CREATOR initial createdBy/owner preserved without synthetic membership; hidden-restore gap remains |
+| Certification ownership | Explicit User; handoff candidates require active eligible membership | Active and hidden ownership transferred by lifecycle; CREATOR initial User ownership preserved; restore guarded; rehire never reclaims transferred resources |
 
 No automatic User→current membership shortcut was found for old individual Tasks,
 Task setter, personal Reminder, Schedule participation/row or Checklist reservation.
@@ -206,7 +244,8 @@ DRAFT rows. No additional DB FK was introduced.
 | Reminder create/update/dispatch | Restaurant mutex before target resolution or loading due entities; dispatch holds it only for one restaurant transaction |
 | Checklist reserve | Restaurant mutex → member → parent; termination now ordered parents → reservation update; position-change discovery no longer preloads items |
 | Certification create/owner change | Restaurant mutex before owner setup/candidate validation, exam lock/refresh on reassignment |
-| Certification ordinary audience edit/hide/restore | Exam mutation lock → assignment locks; lifecycle uses same exam locks. Hidden restore lacks a current-owner employment/capability contract |
+| Certification update/restore | Restaurant mutex → exam lock/refresh → owner validation → mutation/assignment locks; active-only audience sync; invalid owner cannot become operational |
+| Certification ordinary hide/other audience mutations | Exam mutation lock → assignment locks; lifecycle locks the sorted union of active resources and subject-owned active/hidden resources |
 | Position definition update | Position write lock; blocks level/specialization mutation for occupied Positions; Admission/Position Change take target Position share lock |
 | Restaurant delete | Same restaurant row mutex as Admission → all-period predicate; cannot cascade any employment period |
 
@@ -240,38 +279,36 @@ CRUD notifications. Certification lifecycle sync suppresses old assignment notif
 dispatch. Normal Task create, resource owner change, exam edits and reminder dispatch
 retain their own domain notifications.
 
+Hidden ownership transfers carry a non-active mutation fact and produce no new-owner
+employee notification. Termination's direct removal push and Position Change's primary
+employee notification still describe the employment operation, not hidden audience
+activation. Rehire audience reconciliation never writes exam ownership.
+
 After-commit delivery is currently best-effort: a process failure after authoritative
 commit can lose a batch. The existing alpha policy explicitly accepts this; no outbox
 redesign was performed.
 
 ## Remaining risks
 
-1. **Hidden Certification ownership**: findActiveOwnedCertificationExams excludes
-   `active=false`. Termination/demotion therefore does not hand off a hidden exam.
-   ExamServiceImpl.restoreExam (and updateExam changing active to true) makes it active
-   without validating its existing owner as an eligible current employee. That can
-   revive operational ownership by an ended/incapable User. Two plausible policies
-   exist: include hidden resources in mandatory lifecycle handoff, or require explicit
-   owner correction before activation. The acceptance matrix does not select one;
-   changing it speculatively could break intentional CREATOR initial User ownership.
-   A user decision was requested. This is a closure blocker, not merely a naming issue.
-2. Live DB races and the 16 UI scenarios remain unexecuted. These are the intended
-   manual-validation work after code review, with extra targeted race scenarios below.
+1. Live PostgreSQL race scenarios have not been executed.
+2. The manual E2E matrix has not been executed.
 
 ## Verification
 
 - Initial: `git branch --show-current`; `git status --short` — requested branch, clean.
 - `git rev-parse HEAD dev origin/dev` and `git ls-remote origin refs/heads/dev` — all `5e931da…`. First sandbox network attempt failed; read-only retry outside sandbox succeeded.
 - `mvn -DskipTests compile` — first bare invocation could not find Maven; cached Maven 3.9.11 with JAVA_HOME=temurin-17.0.15 succeeded. Final compile after restaurant fix also passed.
-- `mvn test` using that cached executable — final run after all fixes: **54 tests, 0 failures, 0 errors, 0 skipped** (including five focused regression tests).
+- Original audit `mvn test`: 54 tests passed. Hidden ownership follow-up: `mvn -DskipTests compile` passed; final `mvn test` passed with **68 tests, 0 failures, 0 errors, 0 skipped**, including 14 focused HiddenCertificationOwnershipTest cases. An intermediate notification test attempted to mock a final record unsupported by this repository's Mockito configuration; it was corrected to use real result records before the successful final run.
 - `pnpm build` — passed (TypeScript, Vite and PWA); `pnpm lint` — passed.
+- Frontend was unchanged in the hidden-ownership follow-up; build/lint were not repeated, as requested. Existing hidden owner-change button and server-message display were inspected.
 - `git diff --check` — passed, including final repeat. New files were also checked for trailing spaces/tabs.
 
 ## Final verdict
 
-**NOT_READY** until hidden Certification activation/ownership policy is resolved and
-implemented. Confirmed local fixes remove the discovered dispatch/reservation races
-and destructive container cascade path. Current runtime has one authoritative
-orchestrator per employee transition, and no parallel automatic cleanup listener,
-endpoint, job or service was found. The unresolved activation shortcut prevents the
-stronger claim that every operational responsibility remains valid after lifecycle.
+**READY_FOR_MANUAL_VALIDATION**. Admission creates an employment period, Position
+Change mutates Position inside that period, and Termination ends it through exactly
+one authoritative coordinator per transition. Modules own their consequences through
+adapters/domain primitives. No second automatic employee lifecycle reaction was found.
+Active and hidden Certification ownership now participates in mandatory handoff;
+activation rejects invalid legacy owners while preserving explicit CREATOR ownership.
+The live DB concurrency and manual UI scenarios remain the next validation step.

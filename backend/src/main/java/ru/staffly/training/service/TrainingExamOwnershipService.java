@@ -35,6 +35,8 @@ public class TrainingExamOwnershipService {
     private final CertificationFolderManagementService certificationFolderManagementService;
     private final RestaurantLifecycleMutex lifecycleMutex;
     private final jakarta.persistence.EntityManager entityManager;
+    private final ru.staffly.security.GlobalCreatorPolicy creatorPolicy;
+    private final ru.staffly.user.repository.UserRepository users;
 
     public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
         var actorUser = User.builder().id(actorUserId).build();
@@ -76,8 +78,8 @@ public class TrainingExamOwnershipService {
         );
     }
 
-    public List<TrainingExam> findActiveOwnedCertificationExams(Long restaurantId, Long ownerUserId) {
-        return exams.findActiveCertificationByRestaurantIdAndOwnerUserIdWithVisibility(restaurantId, ownerUserId);
+    public List<TrainingExam> findOwnedCertificationForLifecycle(Long restaurantId, Long ownerUserId) {
+        return exams.findOwnedCertificationForLifecycle(restaurantId, ownerUserId);
     }
 
     public CertificationOwnerReassignmentOptionsDto buildReassignmentOptions(Long restaurantId, Long actorUserId, Long ownerUserId) {
@@ -87,7 +89,7 @@ public class TrainingExamOwnershipService {
 
         RestaurantMember ownerMember = members.findActiveByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
-        List<TrainingExam> ownedExams = findActiveOwnedCertificationExams(restaurantId, ownerUserId)
+        List<TrainingExam> ownedExams = findOwnedCertificationForLifecycle(restaurantId, ownerUserId)
                 .stream()
                 .filter(exam -> canActorManageExamAndContainer(actorUserId, restaurantId, exam))
                 .toList();
@@ -131,8 +133,8 @@ public class TrainingExamOwnershipService {
         if (distinctExamIds.size() != reassignments.size()) {
             throw new BadRequestException("Duplicate examId in reassignment items");
         }
-        var requestedExamIds = distinctExamIds;
-        var examsById = exams.findActiveCertificationByRestaurantIdAndIdInWithVisibility(restaurantId, requestedExamIds)
+        var requestedExamIds = distinctExamIds.stream().sorted().toList();
+        var examsById = exams.findCertificationForLifecycleTransfer(restaurantId, requestedExamIds)
                 .stream()
                 .collect(Collectors.toMap(TrainingExam::getId, Function.identity()));
 
@@ -167,7 +169,7 @@ public class TrainingExamOwnershipService {
                 .map(item -> {
                     TrainingExam exam = examsById.get(item.getKey());
                     return new AppliedCertificationOwnershipTransfer(
-                            exam.getId(), exam.getTitle(), exam.getOwner().getId());
+                            exam.getId(), exam.getTitle(), exam.getOwner().getId(), exam.isActive());
                 })
                 .toList();
     }
@@ -190,6 +192,40 @@ public class TrainingExamOwnershipService {
                     entityManager.refresh(locked);
                     return locked;
                 }).toList();
+    }
+
+    /** Lock one sorted union: active audience resources plus all owned (including hidden) resources. */
+    public void lockCertificationLifecycleResources(Long restaurantId, Long ownerUserId) {
+        var ids = new TreeSet<Long>();
+        exams.findActiveCertificationByRestaurantIdWithVisibility(restaurantId).forEach(e -> ids.add(e.getId()));
+        findOwnedCertificationForLifecycle(restaurantId, ownerUserId).forEach(e -> ids.add(e.getId()));
+        for (Long id : ids) {
+            var locked = exams.findByIdAndRestaurantIdForUpdate(id, restaurantId)
+                    .orElseThrow(ru.staffly.member.lifecycle.PositionChangeSupport::stale);
+            entityManager.refresh(locked);
+        }
+    }
+
+    /** Activation uses the owner's authority, never the current actor's CREATOR token or createdBy equality. */
+    public void assertOwnerValidForActivation(TrainingExam exam) {
+        assertOwnerValidForActivation(exam, exam.getVisibilityPositions());
+    }
+
+    public void assertOwnerValidForActivation(TrainingExam exam, Collection<Position> resultingVisibility) {
+        var owner = exam.getOwner();
+        var persistedOwner = owner == null || owner.getId() == null ? Optional.<User>empty()
+                : users.findById(owner.getId());
+        boolean valid = persistedOwner.filter(creatorPolicy::isCreator).isPresent();
+        if (!valid && persistedOwner.isPresent()) {
+            valid = members.findActiveByUserIdAndRestaurantIdWithPosition(owner.getId(), exam.getRestaurant().getId())
+                    .filter(m -> m.getUser() != null && m.getPosition() != null)
+                    .filter(this::canManageTrainingAsMember)
+                    .filter(m -> trainingPolicyService.canOwnCertificationAsPosition(m.getPosition(), resultingVisibility))
+                    .isPresent();
+        }
+        if (!valid) throw new ConflictException(
+                "Перед восстановлением аттестации назначьте действующего ответственного.",
+                Map.of("code", "CERTIFICATION_OWNER_INVALID"));
     }
 
     public boolean canRetainOwnership(TrainingExam exam, Position resultingPosition) {

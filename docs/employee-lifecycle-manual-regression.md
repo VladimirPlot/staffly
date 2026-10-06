@@ -1,8 +1,9 @@
 # Employee Lifecycle — manual regression plan
 
 Prepared 2026-10-06 for code review and subsequent human testing. **No scenario below
-has been executed as part of this audit.** Current closure verdict is NOT_READY;
-resolve hidden Certification owner activation policy in the companion audit first.
+has been executed as part of this audit.** Current closure verdict is
+READY_FOR_MANUAL_VALIDATION. Hidden Certification participates in mandatory lifecycle
+ownership handoff and stays hidden; activation rejects invalid legacy owners.
 
 Use a disposable restaurant with ADMIN, MANAGER, two STAFF Positions, replacement
 employees, and a global CREATOR without membership. Record actual IDs (User and
@@ -56,12 +57,12 @@ Preconditions: individual Task; setter responsibility if actor has that capabili
 
 ## 5. Manager owner termination
 
-Preconditions: departing manager owns current/future Schedule, active Certification and Task setter responsibility; eligible replacements.
+Preconditions: departing manager owns current/future Schedule, active and hidden Certification and Task setter responsibility; eligible replacements.
 
 - [ ] Steps: inspect impact; apply without handoffs; verify rejection; supply decisions and send one atomic apply.
-- [ ] Expected backend state: first attempt changes nothing; successful attempt transfers all required ownership/responsibility exactly once and ends membership in the same transaction.
+- [ ] Expected backend state: first attempt changes nothing; successful attempt transfers all required ownership/responsibility exactly once and ends membership in the same transaction, including hidden Certification ownership; hidden exam stays active=false with no assignment restoration.
 - [ ] Expected UI state: no separate handoff request followed by removal; updated owners shown; ended actor not a candidate.
-- [ ] Expected notifications: none from rejected transaction; grouped new-owner/task notifications and forced-removal push once after success.
+- [ ] Expected notifications: none from rejected transaction; active resource/new-owner/task notifications and forced-removal push once after success; hidden owner handoff produces no employee notification.
 - [ ] Result: PASS / FAIL / NOT RUN. Notes:
 
 ## 6. Last ADMIN
@@ -209,18 +210,46 @@ third restaurant with no employment periods; pending invite in a concurrent fixt
 - [ ] Expected notifications: rejected deletion produces no employee-removal notification; losing acceptance cannot create partial membership/consequences.
 - [ ] Result: PASS / FAIL / NOT RUN. Notes:
 
-## 20. Hidden Certification activation policy — blocked pending decision
+## 20. Hidden Certification lifecycle ownership and activation guard
 
-Preconditions: manager owns hidden Certification; terminate or demote owner; eligible replacement
-available. Also include explicit initial User ownership by membership-less CREATOR.
+Preconditions: manager owns active and hidden Certification; eligible replacement available;
+separate fixtures for Termination, Position Change and legacy invalid-owner activation.
+Include membership-less global CREATOR initial ownership and same-User rehire fixtures.
 
-- [ ] Steps: review chosen policy; exercise lifecycle handoff or explicit owner correction;
-  attempt both restoreExam and updateExam(active=true); repeat concurrent activation/termination.
-- [ ] Expected backend state: must be specified after policy decision; neither activation path
-  may create an operational resource with an ended/incapable employee owner or violate explicit CREATOR ownership.
-- [ ] Expected UI state: mandatory handoff or owner-correction conflict according to selected policy.
-- [ ] Expected notifications: no duplicate lifecycle/ordinary activation ownership messages; no messages from rejected activation.
-- [ ] Result: PASS / FAIL / NOT RUN. Notes and policy decision:
+- [ ] Steps: preview Termination; verify active and hidden owned exams are both listed; omit
+  hidden transfer and verify rejection; provide all decisions and apply.
+- [ ] Steps: preview capability-losing Position Change; omit hidden transfer and verify rejection;
+  provide all decisions and apply. Repeat with a resulting Position retaining capability.
+- [ ] Steps: try restoreExam and updateExam(active=false → true) on legacy hidden exams with
+  ended, incapable, visibility-ineligible and missing owner. Include ordinary former manager
+  where owner==createdBy, and perform activation as CREATOR to ensure actor authority cannot
+  substitute for valid resource-owner authority.
+- [ ] Steps: correct owner through existing hidden-exam change-owner UI/API; restore again.
+  Restore explicit global CREATOR-owned exam without membership. Repeat activation/update
+  with a changed final visibility, and overlap activation with owner termination/demotion.
+- [ ] Steps: after hidden ownership transfer, rehire the old owner as a new member period;
+  verify neither Admission nor audience synchronization returns ownership.
+- [ ] Expected backend state: all extant active/hidden CERTIFICATION resources participate in
+  mandatory ownership state; transfers preserve active=false, assignments, cycle/version,
+  PASSED and attempts. Missing/stale decisions roll back atomically. Resulting Position
+  retains ownership only if eligible. Locks follow restaurant → member → Schedule →
+  ascending Certification IDs; activation uses restaurant → exam → owner validation.
+- [ ] Expected backend state: both invalid-owner activation routes return stable
+  CERTIFICATION_OWNER_INVALID before active=true, restoreHiddenAudienceAssignments or
+  syncExamAudience; update does not partially change content. Allowed owner is an eligible
+  current active member or explicitly configured global CREATOR User; createdBy equality
+  is insufficient. Valid owner restore follows the existing Certification engine.
+- [ ] Expected UI state: hidden exam remains hidden after handoff; mandatory handoffs appear
+  in lifecycle decisions. Invalid restore shows “Перед восстановлением аттестации назначьте
+  действующего ответственного.” Existing owner-change action works on hidden resources;
+  successful corrected-owner/CREATOR restore makes exam active normally.
+- [ ] Expected notifications: hidden handoff produces no employee notification, audience
+  activation or assignment restoration. Primary employment notification still applies.
+  Active handoff notifications remain once; rejected activation sends none; successful
+  explicit restore follows normal domain notification behavior without a duplicate lifecycle message.
+- [ ] Expected rehire state: resource remains with replacement owner; no automatic reclaim by
+  old User, no synthetic CREATOR membership, no membership-less CREATOR handoff candidate/fallback.
+- [ ] Result: PASS / FAIL / NOT RUN. Notes, old/new member IDs, owner IDs and lock evidence:
 
 ## Run record
 

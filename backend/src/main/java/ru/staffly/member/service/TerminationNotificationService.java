@@ -43,7 +43,7 @@ public class TerminationNotificationService {
                 notifyOwner(restaurant, actor, operationId, userId, BusinessNotificationKind.SCHEDULE,
                         values.size() == 1 ? "Вам передали ответственность за график «" + values.get(0).title() + "»."
                                 : "Вам передали ответственность за " + values.size() + " графиков."));
-        certifications.ownershipTransfers().stream().collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((userId, values) ->
+        certifications.ownershipTransfers().stream().filter(t -> t.active()).collect(Collectors.groupingBy(t -> t.newOwnerUserId())).forEach((userId, values) ->
                 notifyOwner(restaurant, actor, operationId, userId, BusinessNotificationKind.CERTIFICATION,
                         values.size() == 1 ? "Вам передали ответственность за аттестацию «" + values.get(0).title() + "»."
                                 : "Вам передали ответственность за " + values.size() + " аттестаций."));
