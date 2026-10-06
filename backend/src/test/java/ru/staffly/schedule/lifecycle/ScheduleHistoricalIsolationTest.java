@@ -103,11 +103,13 @@ class ScheduleHistoricalIsolationTest {
         var member = RestaurantMember.builder().id(42L).build();
         when(members.findForUpdateByIdAndRestaurantId(42L, 1L)).thenReturn(Optional.of(member));
         when(schedules.findForUpdateByIdAndRestaurantId(10L, 1L)).thenReturn(Optional.of(schedule));
-        when(participants.deleteByScheduleIdAndMemberId(10L, 42L)).thenReturn(1L);
+        schedule.getParticipations().add(ScheduleParticipation.builder().schedule(schedule).member(member)
+                .positionId(2L).positionName("Current").build());
         schedule.getRows().addAll(List.of(active, historical));
         var service = new SchedulePreferenceLifecycleService(members, schedules, participants, submissions,
                 new ScheduleParticipationCreator(participants), new ScheduleRowMaterializer(), mock(ScheduleAuditService.class));
         service.removeParticipant(1L, 10L, 42L, 1L, 7L, "test");
+        assertTrue(schedule.getParticipations().isEmpty());
         assertEquals(List.of(historical), schedule.getRows());
         service.resetPreferenceCollectionWithLocksHeld(schedule, 7L, "test");
         verify(participants, never()).deleteByScheduleId(10L);
@@ -121,5 +123,27 @@ class ScheduleHistoricalIsolationTest {
         assertThrows(ru.staffly.common.exception.BadRequestException.class,
                 () -> new ScheduleParticipationCreator(participants).createWithLocksHeld(schedule, member, true));
         verify(participants, never()).save(any());
+    }
+
+    @Test void sharedLifecycleRemovalKeepsOtherParticipantsAndHistoricalRows() {
+        var participants = mock(ScheduleParticipationRepository.class);
+        var submissions = mock(SchedulePreferenceSubmissionRepository.class);
+        var departing = RestaurantMember.builder().id(42L).build();
+        var other = RestaurantMember.builder().id(43L).build();
+        var retained = ScheduleParticipation.builder().schedule(schedule).member(other)
+                .positionId(2L).positionName("Other").build();
+        schedule.getParticipations().add(ScheduleParticipation.builder().schedule(schedule).member(departing)
+                .positionId(1L).positionName("Old").build());
+        schedule.getParticipations().add(retained);
+        schedule.getRows().add(historical);
+        var service = new SchedulePreferenceLifecycleService(mock(ru.staffly.member.repository.RestaurantMemberRepository.class),
+                mock(ScheduleRepository.class), participants, submissions, new ScheduleParticipationCreator(participants),
+                new ScheduleRowMaterializer(), mock(ScheduleAuditService.class));
+        var result = service.removeParticipantWithLocksHeld(schedule, departing, 7L, "lifecycle", Instant.EPOCH);
+        assertTrue(result.participationRemoved());
+        assertEquals(List.of(retained), schedule.getParticipations());
+        assertEquals(List.of(historical), schedule.getRows());
+        assertFalse(service.removeParticipantWithLocksHeld(schedule, departing, 7L, "lifecycle", Instant.EPOCH).changed());
+        verify(participants, never()).deleteByScheduleIdAndMemberId(anyLong(), anyLong());
     }
 }
