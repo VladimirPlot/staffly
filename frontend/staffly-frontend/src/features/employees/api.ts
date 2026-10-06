@@ -55,52 +55,6 @@ export async function listMembers(restaurantId: number): Promise<MemberDto[]> {
   }));
 }
 
-export type MemberResponsibilityType = "CERTIFICATION" | "SCHEDULE";
-
-export type MemberResponsibilityCandidateDto = {
-  userId: number;
-  memberId: number | null;
-  displayName: string;
-  role: string;
-  positionId: number | null;
-  positionName: string | null;
-};
-
-export type MemberResponsibilityPeriodDto = {
-  startDate: string;
-  endDate: string;
-};
-
-export type MemberResponsibilityItemDto = {
-  id: number;
-  version?: number | null;
-  title: string;
-  subtitle: string | null;
-  period: MemberResponsibilityPeriodDto | null;
-  candidates: MemberResponsibilityCandidateDto[];
-};
-
-export type MemberResponsibilityGroupDto = {
-  type: MemberResponsibilityType;
-  title: string;
-  items: MemberResponsibilityItemDto[];
-};
-
-export type MemberResponsibilityHandoffOptionsDto = {
-  userId: number;
-  fullName: string;
-  groups: MemberResponsibilityGroupDto[];
-};
-
-export type MemberResponsibilityHandoffRequest = {
-  items: {
-    type: MemberResponsibilityType;
-    resourceId: number;
-    resourceVersion?: number | null;
-    newOwnerUserId: number;
-  }[];
-};
-
 export type EmployeeRemovalPosition = { id: number; name: string };
 export type EmployeeRemovalScheduleImpact = {
   scheduleId: number;
@@ -226,34 +180,6 @@ export async function applyEmployeeRemoval(
     request,
   );
   return data;
-}
-
-export async function getMemberResponsibilityHandoffOptions(
-  restaurantId: number,
-  memberId: number,
-): Promise<MemberResponsibilityHandoffOptionsDto> {
-  const { data } = await api.get<MemberResponsibilityHandoffOptionsDto>(
-    `/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff-options`,
-  );
-
-  return {
-    ...data,
-    groups: (data.groups ?? []).map((group) => ({
-      ...group,
-      items: (group.items ?? []).map((item) => ({
-        ...item,
-        candidates: item.candidates ?? [],
-      })),
-    })),
-  };
-}
-
-export async function submitMemberResponsibilityHandoff(
-  restaurantId: number,
-  memberId: number,
-  payload: MemberResponsibilityHandoffRequest,
-): Promise<void> {
-  await api.post(`/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff`, payload);
 }
 
 export type PositionChangeAction =

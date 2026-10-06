@@ -9,5 +9,4 @@ public interface RestaurantService {
     Restaurant update(Long restaurantId, UpdateRestaurantRequest req);
     Restaurant toggleLock(Long restaurantId);
     void delete(Long restaurantId, Long creatorUserId);
-    void assignAdmin(Long restaurantId, Long userId, Long positionId);
 }

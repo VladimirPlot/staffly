@@ -86,7 +86,7 @@ public class SchedulePositionChangeApplyHandler {
                 : ownership.reassignOwnedSchedulesWithLocksHeld(restaurantId, context.actorUserId(), member.getUser().getId(),
                     allLocked.stream().filter(sch -> ownedIds.contains(sch.getId())).toList(),
                     transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.newOwnerUserId())),
-                    transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())), context.targetPosition().getLevel());
+                    transfers.stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())), context.targetPosition().getLevel(), context.now());
         LocalDateTime localNow = LocalDateTime.ofInstant(context.now(), restaurantTime.zoneFor(member.getRestaurant()));
         int cancelled = 0;
         List<String> cleanup = new ArrayList<>();
@@ -100,7 +100,7 @@ public class SchedulePositionChangeApplyHandler {
                     .filter(s -> Objects.equals(s.getPositionId(), oldPositionId)).isPresent();
             ScheduleRow row = oldRow(schedule, memberId, oldPositionId);
             if (old != null || hadSubmission) {
-                var removal = lifecycle.removeParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Смена должности");
+                var removal = lifecycle.removeParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Смена должности", context.now());
                 if (removal.participationRemoved()) mark(applied, schedule, PositionChangeScheduleEffectType.OLD_PARTICIPATION_REMOVED);
                 if (removal.submissionRemoved()) mark(applied, schedule, PositionChangeScheduleEffectType.PREFERENCE_SUBMISSION_REMOVED);
                 cleanup.add(schedule.getId() + ":participation/preferences removed");
@@ -151,7 +151,7 @@ public class SchedulePositionChangeApplyHandler {
                         if (schedule.getPreferenceDeadline() != null && decision.newDeadline().isBefore(schedule.getPreferenceDeadline()))
                             throw new BadRequestException("Preference deadline cannot be shortened");
                         schedule.setPreferenceDeadline(decision.newDeadline()); }
-                    if (lifecycle.addParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Смена должности"))
+                    if (lifecycle.addParticipantWithLocksHeld(schedule, member, context.actorUserId(), "Смена должности", context.now()))
                         mark(preparation.appliedEffects(), schedule, PositionChangeScheduleEffectType.NEW_PARTICIPATION_CREATED);
                 }
                 case CHANGE_POSITION_AND_REOPEN_COLLECTION -> {

@@ -84,6 +84,7 @@ public class ChecklistMapper {
             return null;
         }
         String name = member.getUser() != null ? member.getUser().getFullName() : null;
+        if (name != null && !member.isActive()) name += " (исключен)";
         return new ChecklistMemberShortDto(member.getId(), name);
     }
 

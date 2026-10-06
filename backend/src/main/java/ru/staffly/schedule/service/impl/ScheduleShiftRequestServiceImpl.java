@@ -586,6 +586,7 @@ public class ScheduleShiftRequestServiceImpl implements ScheduleShiftRequestServ
     }
 
     private String getStaleReason(ScheduleShiftRequest request, ScheduleRow fromRow, ScheduleRow toRow) {
+        if (fromRow.isHistorical() || toRow.isHistorical()) return OUTDATED_COMMENT;
         if (request.getFromShiftValueSnapshot() == null) {
             return "Заявка создана до включения snapshot-проверки и потеряла актуальность";
         }

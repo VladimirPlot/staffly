@@ -66,7 +66,7 @@ public class ScheduleTerminationPreviewHandler {
         SchedulePreferenceSubmission submission = submissions
                 .findByScheduleIdAndMemberId(schedule.getId(), memberId).orElse(null);
         ScheduleRow row = schedule.getRows().stream()
-                .filter(candidate -> memberId.equals(candidate.getMemberId())).findFirst().orElse(null);
+                .filter(candidate -> memberId.equals(candidate.getMemberId()) && !candidate.isHistorical()).findFirst().orElse(null);
         ScheduleStatus status = schedule.getStatus();
         boolean preferenceLifecycle = status == ScheduleStatus.COLLECTING_PREFERENCES
                 || status == ScheduleStatus.PREFERENCES_CLOSED

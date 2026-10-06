@@ -29,6 +29,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class AdmissionCoordinatorTest {
+    @Test void duplicateAdmissionModulesFailBeforeStartup() {
+        var first = mock(AdmissionLifecycleHandler.class);
+        var second = mock(AdmissionLifecycleHandler.class);
+        when(first.module()).thenReturn(LifecycleModule.SCHEDULE);
+        when(second.module()).thenReturn(LifecycleModule.SCHEDULE);
+        assertThrows(IllegalStateException.class,
+                () -> coordinator(List.of(first, second)).validateUniqueHandlers());
+    }
+
     final InvitationRepository invites = mock(InvitationRepository.class);
     final PositionRepository positions = mock(PositionRepository.class);
     final RestaurantMemberRepository members = mock(RestaurantMemberRepository.class);

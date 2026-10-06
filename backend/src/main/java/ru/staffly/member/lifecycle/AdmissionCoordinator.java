@@ -36,6 +36,16 @@ public class AdmissionCoordinator {
     private final InvitationSenderNotificationService senderNotifications;
     private final InvitationAcceptanceOwnerNotificationService ownerNotifications;
 
+    @jakarta.annotation.PostConstruct
+    void validateUniqueHandlers() {
+        Set<LifecycleModule> modules = EnumSet.noneOf(LifecycleModule.class);
+        for (var handler : handlers) {
+            if (!modules.add(handler.module())) {
+                throw new IllegalStateException("Duplicate admission lifecycle handler for " + handler.module());
+            }
+        }
+    }
+
     @Transactional(noRollbackFor = {InvitationInvalidatedException.class, InvitationExpiredException.class})
     public MemberDto acceptInvite(String token, Long userId) {
         // Scalar lookup avoids loading stale invitation/position entities before waiting on the mutex.

@@ -179,12 +179,12 @@ public class ExamServiceImpl implements ExamService {
                 .active(true)
                 .version(1)
                 .build();
-        trainingExamOwnershipService.assignInitialOwner(examEntity, userId);
         var exam = exams.save(examEntity);
         trainingCertificationNotificationService.ensureStateExistsForExam(exam);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
+        trainingExamOwnershipService.assignInitialOwner(exam, userId);
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             var specification = certificationSpecificationService.createCurrent(exam);
             certificationAssignmentCycleService.createPublicationCycle(

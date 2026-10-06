@@ -20,6 +20,7 @@ public class ScheduleAdmissionLifecycleHandler implements AdmissionLifecycleHand
     private final ScheduleRepository schedules;
     private final InvitationImpactService impact;
     private final SchedulePreferenceLifecycleService lifecycle;
+    @Override public LifecycleModule module() { return LifecycleModule.SCHEDULE; }
     @Override public int getOrder() { return 100; }
     public static boolean mutating(InvitationScheduleIntentAction action) {
         return action == InvitationScheduleIntentAction.ADD_TO_COLLECTION
@@ -70,7 +71,7 @@ public class ScheduleAdmissionLifecycleHandler implements AdmissionLifecycleHand
                                 c.user().getId(), c.operationNow()).participantCreated();
                     case ADD_TO_COLLECTION -> {
                         if (intent.getRequestedDeadline() != null) schedule.setPreferenceDeadline(intent.getRequestedDeadline());
-                        created = lifecycle.addParticipantWithLocksHeld(schedule, member, c.user().getId(), "Принятие приглашения");
+                        created = lifecycle.addParticipantWithLocksHeld(schedule, member, c.user().getId(), "Принятие приглашения", c.operationNow());
                     }
                     default -> throw new IllegalStateException("Unexpected admission action");
                 }

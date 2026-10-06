@@ -28,6 +28,11 @@ public class ScheduleAuditService {
     private final UserRepository users;
 
     public void record(Schedule schedule, Long actorUserId, ScheduleAuditAction action, String details) {
+        record(schedule, actorUserId, action, details, TimeProvider.now());
+    }
+
+    public void record(Schedule schedule, Long actorUserId, ScheduleAuditAction action, String details,
+                       java.time.Instant operationNow) {
         if (schedule == null || action == null) {
             return;
         }
@@ -36,7 +41,7 @@ public class ScheduleAuditService {
                 .actorUserId(actorUserId)
                 .action(action)
                 .details(details)
-                .createdAt(TimeProvider.now())
+                .createdAt(operationNow)
                 .build());
     }
 

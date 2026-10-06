@@ -1,7 +1,6 @@
 package ru.staffly.restaurant.controller;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,15 +28,6 @@ public class RestaurantController {
     public RestaurantDto create(@RequestBody @Valid CreateRestaurantRequest req) {
         // CREATOR has global access; restaurant creation must not create an employee membership.
         return RestaurantDto.from(service.create(req));
-    }
-
-    // только СОЗДАТЕЛЬ — назначить существующего пользователя как ADMIN
-    public record AssignAdminRequest(@NotNull Long userId, @NotNull Long positionId) {}
-
-    @PreAuthorize("hasRole('CREATOR')")
-    @PostMapping("/{restaurantId}/members/assign-admin")
-    public void assignAdmin(@PathVariable Long restaurantId, @Valid @RequestBody AssignAdminRequest req) {
-        service.assignAdmin(restaurantId, req.userId(), req.positionId());
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #id)")

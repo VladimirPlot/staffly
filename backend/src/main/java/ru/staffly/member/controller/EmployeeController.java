@@ -18,9 +18,6 @@ import ru.staffly.member.dto.PositionChangeImpactRequest;
 import ru.staffly.member.dto.EmployeeRemovalImpactPlan;
 import ru.staffly.member.dto.ApplyEmployeeRemovalRequest;
 import ru.staffly.member.dto.ApplyEmployeeRemovalResult;
-import ru.staffly.member.responsibility.MemberResponsibilityHandoffOptionsDto;
-import ru.staffly.member.responsibility.MemberResponsibilityHandoffRequest;
-import ru.staffly.member.responsibility.MemberResponsibilityHandoffService;
 import ru.staffly.member.service.EmployeeService;
 import ru.staffly.member.service.EmployeeRemovalImpactService;
 import ru.staffly.member.service.EmployeeRemovalApplyService;
@@ -36,7 +33,6 @@ import java.util.List;
 public class EmployeeController {
 
     private final EmployeeService employees;
-    private final MemberResponsibilityHandoffService responsibilityHandoffService;
     private final PositionChangeImpactService positionChangeImpactService;
     private final PositionChangeApplyService positionChangeApplyService;
     private final EmployeeRemovalImpactService employeeRemovalImpactService;
@@ -111,23 +107,6 @@ public class EmployeeController {
                                               @AuthenticationPrincipal UserPrincipal principal,
                                               @Valid @RequestBody ApplyEmployeeRemovalRequest request) {
         return employeeRemovalApplyService.apply(restaurantId, memberId, request, principal.userId());
-    }
-
-    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @GetMapping("/members/{memberId}/responsibility-handoff-options")
-    public MemberResponsibilityHandoffOptionsDto responsibilityHandoffOptions(@PathVariable Long restaurantId,
-                                                                               @PathVariable Long memberId,
-                                                                               @AuthenticationPrincipal UserPrincipal principal) {
-        return responsibilityHandoffService.getHandoffOptions(restaurantId, memberId, principal.userId());
-    }
-
-    @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
-    @PostMapping("/members/{memberId}/responsibility-handoff")
-    public void responsibilityHandoff(@PathVariable Long restaurantId,
-                                      @PathVariable Long memberId,
-                                      @AuthenticationPrincipal UserPrincipal principal,
-                                      @Valid @RequestBody MemberResponsibilityHandoffRequest request) {
-        responsibilityHandoffService.handoff(restaurantId, memberId, principal.userId(), request);
     }
 
 }

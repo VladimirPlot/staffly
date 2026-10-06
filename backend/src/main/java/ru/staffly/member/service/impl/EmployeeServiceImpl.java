@@ -5,7 +5,6 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import ru.staffly.common.exception.ConflictException;
 import ru.staffly.invite.dto.InviteRequest;
 import ru.staffly.invite.dto.InviteResponse;
 import ru.staffly.member.dto.MemberDto;
@@ -97,10 +96,5 @@ public class EmployeeServiceImpl implements EmployeeService {
                 .toList();
     }
 
-    @Override
-    @Transactional
-    public MemberDto updatePosition(Long restaurantId, Long memberId, Long positionId, Long currentUserId) {
-        throw new ConflictException("Direct position update is retired; use the atomic position-change command");
-    }
 
 }
