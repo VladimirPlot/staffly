@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ScheduleHistoricalIsolationTest {
-    @Test void creatorWithoutMembershipKeepsActorIdentityButNeverBecomesCertificationOwner() {
+    @Test void creatorWithoutMembershipIsInitialUserOwnerWithoutSyntheticMembership() {
         var members = mock(ru.staffly.member.repository.RestaurantMemberRepository.class);
         var ownership = mock(ru.staffly.training.service.TrainingExamOwnershipService.class, CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(ownership, "members", members);
@@ -29,8 +29,29 @@ class ScheduleHistoricalIsolationTest {
                 .restaurant(Restaurant.builder().id(1L).build())
                 .mode(ru.staffly.training.model.TrainingExamMode.CERTIFICATION).build();
         ownership.assignInitialOwner(exam, 7L);
-        assertNull(exam.getOwner());
         assertEquals(7L, exam.getCreatedBy().getId());
+        assertSame(exam.getCreatedBy(), exam.getOwner());
+        assertEquals(7L, exam.getOwner().getId());
+        verifyNoInteractions(members);
+    }
+
+    @Test void creatorWithoutActiveMembershipIsNotLifecycleReassignmentCandidateOrFallback() {
+        var members = mock(ru.staffly.member.repository.RestaurantMemberRepository.class);
+        var ownership = mock(ru.staffly.training.service.TrainingExamOwnershipService.class, CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(ownership, "members", members);
+        var restaurant = Restaurant.builder().id(1L).build();
+        var creator = User.builder().id(7L).build();
+        var exam = ru.staffly.training.model.TrainingExam.builder().restaurant(restaurant)
+                .mode(ru.staffly.training.model.TrainingExamMode.CERTIFICATION)
+                .createdBy(creator).owner(creator).build();
+        when(members.findActiveWithUserAndPositionByRestaurantId(1L)).thenReturn(List.of());
+        assertTrue(ownership.lifecycleCandidates(exam, 42L, Position.builder().id(2L).build()).isEmpty());
+        assertThrows(ru.staffly.common.exception.BadRequestException.class,
+                () -> ownership.validateOwnerCandidate(exam, creator.getId()));
+        assertSame(creator, exam.getOwner());
+        verify(members).findActiveWithUserAndPositionByRestaurantId(1L);
+        verify(members).findActiveByUserIdAndRestaurantIdWithPosition(7L, 1L);
+        verifyNoMoreInteractions(members);
     }
 
     final LocalDate day = LocalDate.of(2026, 10, 6);

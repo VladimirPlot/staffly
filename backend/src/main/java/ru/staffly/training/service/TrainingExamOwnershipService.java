@@ -39,12 +39,8 @@ public class TrainingExamOwnershipService {
     public void assignInitialOwner(TrainingExam exam, Long actorUserId) {
         var actorUser = User.builder().id(actorUserId).build();
         exam.setCreatedBy(actorUser);
-        // Practice owner is a User actor; certification responsibility requires a real current employee.
-        exam.setOwner(exam.getMode() == TrainingExamMode.CERTIFICATION
-                ? members.findActiveByUserIdAndRestaurantIdWithPosition(actorUserId, exam.getRestaurant().getId())
-                    .filter(member -> canRetainOwnership(exam, member.getPosition()))
-                    .map(RestaurantMember::getUser).orElse(null)
-                : actorUser);
+        // Explicit initial User ownership does not create membership or imply handoff eligibility.
+        exam.setOwner(actorUser);
     }
 
     public TrainingExam changeOwner(Long restaurantId, Long actorUserId, Long examId, Long newOwnerUserId) {

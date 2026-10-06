@@ -41,7 +41,7 @@ audit or a PostgreSQL concurrency integration test. No business history was dele
 | Historical table/render/export identity | Verified | Keep negative historical row-ID cell key, read-only cells, snapshot display and history-after-active sorting | ScheduleServiceImpl.toDto; ScheduleTable / ScheduleTableSection; PublishScheduleConfirmDialog; exporters; useScheduleDerivedState currentMemberInSchedule excludes history |
 | Publish notification recipient lookup included historical rows | Fixed | Filter active rows before matching participation recipients | ScheduleServiceImpl.notifySchedulePublished |
 | Former employee presentation | Improved | Show `(исключен)` for ended membership Task assignee/setter and Checklist completion actors; keep stored Checklist historical names | TaskService.toUserDto and tasks/utils.ts; ChecklistMapper; ChecklistHistoryMapper prefers doneByName / reservedByName snapshots and keeps original membership IDs |
-| CREATOR automatically became certification owner without membership | Fixed | Preserve createdBy User actor, but initial certification owner must resolve to eligible active RestaurantMember; otherwise leave nullable owner unassigned | TrainingExamOwnershipService.assignInitialOwner called after visibility is established; creatorWithoutMembership regression; V52 and TrainingExam already allow nullable owner. Practice User actor semantics remain intact |
+| Explicit initial Certification ownership vs lifecycle reassignment | Corrected | CREATOR не получает synthetic membership и не участвует в membership-based lifecycle reassignment candidates. Явный создатель Certification сохраняется как initial User owner, поэтому mandatory ownership не становится пустым | TrainingExamOwnershipService.assignInitialOwner sets createdBy and owner to the same actor User without accessing RestaurantMemberRepository; targeted tests preserve initial ownership and reject a membership-less creator as a lifecycle reassignment candidate/fallback |
 | Role authority and invitation desiredRole | Verified / clarified | Keep Position.level authority and compatibility getRole; document desiredRole as display-only | RestaurantMember has no persisted role; Invitation model comment and V119 column comment agree; InviteResponse/MyInviteDto/frontend still consume desiredRole |
 | Schedule writes lacked outer lifecycle mutex | Hardened | Acquire restaurant mutex before authority/member/Schedule reads for update, addMember and startPreferenceCollection | ScheduleServiceImpl; create already held it. These boundaries can create participation and rows |
 | External responsibility writes | Verified | Preserve restaurant mutex on Schedule owner change/create, Certification owner/create, Task create, Reminder create/update, Checklist reserve | Corresponding service mutation entry points. Preference member mutations use current-member pessimistic locks before Schedule; auto-build and shift requests hold Schedule aggregate lock and validate active participation/rows |
@@ -92,7 +92,7 @@ published shifts remain retained. Historical rows cannot grant participation or 
 
 ## Verification
 
-Executed after the final code edits:
+Original Phase 6 verification (before the initial ownership correction):
 
 | Command | Result |
 | --- | --- |
@@ -120,4 +120,23 @@ Existing development data were not rewritten to invent missing snapshot history.
 
 Working branch: `feature/phase6-lifecycle-hardening`.
 
-No commit performed. No PR / push performed.
+The original Phase 6 changes were committed separately as `129d805`.
+
+## Initial User ownership correction
+
+Restored `assignInitialOwner()` to `createdBy = actorUser` and `owner = actorUser` for both
+Certification and Practice, including CREATOR without RestaurantMember. Initial ownership is explicit
+User ownership; it does not create or look up synthetic membership and grants no lifecycle candidate
+or fallback status. Membership-based reassignment selection and validation remain unchanged.
+
+Replaced the ownerless-creator regression with `creatorWithoutMembershipIsInitialUserOwnerWithoutSyntheticMembership`,
+including `verifyNoInteractions(members)`. Added one narrow candidate regression because the existing
+eligibility test checked Position policy rather than the membership-less creator case: candidate selection
+remains empty without current memberships and explicit reassignment to that creator is rejected.
+
+Only TrainingExamOwnershipService, this ownership test block and this report were changed.
+No frontend, lifecycle coordinators, Schedule logic, Certification audience/version engine or migrations changed.
+
+Correction verification: `mvn -DskipTests compile` PASS; `mvn test` PASS — 49 tests,
+0 failures/errors/skips; `git diff --check` PASS. Frontend was unchanged and not rerun.
+The correction is committed separately and pushed to `feature/phase6-lifecycle-hardening`; no PR created.
