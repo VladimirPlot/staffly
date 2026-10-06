@@ -41,7 +41,7 @@ public class SchedulePreferenceLifecycleService {
         assertMutablePreferenceState(schedule);
 
         boolean hadSubmission = submissions.deleteByScheduleIdAndMemberId(scheduleId, member.getId()) > 0;
-        boolean removed = participations.deleteByScheduleIdAndMemberId(scheduleId, member.getId()) > 0;
+        boolean removed = removeParticipationWithLocksHeld(schedule, member.getId());
         if (!removed && !hadSubmission) {
             return new MutationResult(schedule, false);
         }
@@ -182,13 +182,19 @@ public class SchedulePreferenceLifecycleService {
             Schedule schedule, RestaurantMember member, Long actorUserId, String reason, Instant operationNow) {
         boolean submissionRemoved = submissions.deleteByScheduleIdAndMemberId(
                 schedule.getId(), member.getId()) > 0;
-        boolean participationRemoved = participations.deleteByScheduleIdAndMemberId(
-                schedule.getId(), member.getId()) > 0;
+        boolean participationRemoved = removeParticipationWithLocksHeld(schedule, member.getId());
         if (submissionRemoved || participationRemoved) {
             auditService.record(schedule, actorUserId, ScheduleAuditAction.PREFERENCE_PARTICIPANT_REMOVED,
                     details("Участник сбора пожеланий удалён", reason), operationNow);
         }
         return new RemoveParticipantMutationResult(participationRemoved, submissionRemoved);
+    }
+
+    private boolean removeParticipationWithLocksHeld(Schedule schedule, Long memberId) {
+        // Schedule owns this cascading, orphan-removing collection. A repository delete
+        // alone leaves the child reachable and Hibernate can undo its removal on cascade.
+        // Removing it from the managed aggregate makes the orphan deletion authoritative.
+        return schedule.getParticipations().removeIf(p -> Objects.equals(p.getMember().getId(), memberId));
     }
 
     public record RemoveParticipantMutationResult(boolean participationRemoved, boolean submissionRemoved) {
