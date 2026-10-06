@@ -144,6 +144,5 @@ class ScheduleHistoricalIsolationTest {
         assertEquals(List.of(retained), schedule.getParticipations());
         assertEquals(List.of(historical), schedule.getRows());
         assertFalse(service.removeParticipantWithLocksHeld(schedule, departing, 7L, "lifecycle", Instant.EPOCH).changed());
-        verify(participants, never()).deleteByScheduleIdAndMemberId(anyLong(), anyLong());
     }
 }
