@@ -21,5 +21,4 @@ public interface ScheduleParticipationRepository extends JpaRepository<ScheduleP
     @EntityGraph(attributePaths = {"member", "member.user", "member.position"})
     List<ScheduleParticipation> findByScheduleIdOrderById(Long scheduleId);
 
-    long deleteByScheduleId(Long scheduleId);
 }

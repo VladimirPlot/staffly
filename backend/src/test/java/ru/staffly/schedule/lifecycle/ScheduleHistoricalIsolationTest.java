@@ -112,7 +112,6 @@ class ScheduleHistoricalIsolationTest {
         assertTrue(schedule.getParticipations().isEmpty());
         assertEquals(List.of(historical), schedule.getRows());
         service.resetPreferenceCollectionWithLocksHeld(schedule, 7L, "test");
-        verify(participants, never()).deleteByScheduleId(10L);
         assertEquals(ScheduleStatus.DRAFT, schedule.getStatus());
     }
 
