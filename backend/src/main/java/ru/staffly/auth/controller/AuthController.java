@@ -4,7 +4,6 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +25,7 @@ import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.security.SecurityService;
+import ru.staffly.security.GlobalCreatorPolicy;
 import ru.staffly.security.JwtService;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.user.model.User;
@@ -33,11 +33,8 @@ import ru.staffly.user.repository.UserRepository;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -48,7 +45,7 @@ public class AuthController {
     private final JwtService jwt;
     private final RestaurantMemberRepository memberRepository;
     private final SecurityService securityService;
-    private final Set<String> creatorPhones;
+    private final GlobalCreatorPolicy creatorPolicy;
     private final AuthSessionService authSessionService;
     private final RefreshCookieService refreshCookieService;
     private final AuthProperties authProperties;
@@ -62,7 +59,7 @@ public class AuthController {
                           AuthSessionService authSessionService,
                           RefreshCookieService refreshCookieService,
                           AuthProperties authProperties,
-                          @Value("${app.creator.phones:+79999999999}") String creatorPhonesCsv) {
+                          GlobalCreatorPolicy creatorPolicy) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
@@ -71,10 +68,7 @@ public class AuthController {
         this.authSessionService = authSessionService;
         this.refreshCookieService = refreshCookieService;
         this.authProperties = authProperties;
-        this.creatorPhones = Arrays.stream(creatorPhonesCsv.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
+        this.creatorPolicy = creatorPolicy;
     }
 
     @PostMapping("/register")
@@ -116,7 +110,7 @@ public class AuthController {
                 .build());
 
         // авто-логин
-        List<String> roles = creatorPhones.contains(u.getPhone()) ? List.of("CREATOR") : List.of();
+        List<String> roles = creatorPolicy.isCreator(u) ? List.of("CREATOR") : List.of();
         var principal = new UserPrincipal(u.getId(), u.getPhone(), null, roles);
         String token = jwt.generateToken(principal);
         String refreshToken = authSessionService.createSession(u.getId(), request.getHeader("User-Agent"), resolveIp(request));
@@ -135,7 +129,7 @@ public class AuthController {
         if (!encoder.matches(req.password(), u.getPasswordHash())) {
             throw new BadRequestException("Неверные учетные данные");
         }
-        List<String> roles = creatorPhones.contains(u.getPhone()) ? List.of("CREATOR") : List.of();
+        List<String> roles = creatorPolicy.isCreator(u) ? List.of("CREATOR") : List.of();
         var principal = new UserPrincipal(u.getId(), u.getPhone(), null, roles);
         String token = jwt.generateToken(principal);
         String refreshToken = authSessionService.createSession(u.getId(), request.getHeader("User-Agent"), resolveIp(request));
@@ -154,7 +148,7 @@ public class AuthController {
         try {
             var rotation = authSessionService.rotateSession(refreshToken, request.getHeader("User-Agent"), resolveIp(request));
             var user = users.findById(rotation.userId()).orElseThrow();
-            List<String> roles = creatorPhones.contains(user.getPhone()) ? List.of("CREATOR") : List.of();
+            List<String> roles = creatorPolicy.isCreator(user) ? List.of("CREATOR") : List.of();
             var principal = new UserPrincipal(user.getId(), user.getPhone(), null, roles);
             String token = jwt.generateToken(principal);
             var cookie = refreshCookieService.buildRefreshCookie(rotation.refreshToken(), request);
