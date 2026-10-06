@@ -251,6 +251,32 @@ Include membership-less global CREATOR initial ownership and same-User rehire fi
   old User, no synthetic CREATOR membership, no membership-less CREATOR handoff candidate/fallback.
 - [ ] Result: PASS / FAIL / NOT RUN. Notes, old/new member IDs, owner IDs and lock evidence:
 
+## 21. Cross-scope Certification handoff by MANAGER
+
+Preconditions: actor is MANAGER without Examiner; target is STAFF Examiner; resulting
+Position is STAFF without Examiner. Target owns active and hidden Certification with
+MANAGER/ADMIN visibility inside a folder the actor cannot manage manually. Replacement
+is an active member whose Examiner Position can own the full visibility scope.
+
+- [ ] Steps: as this MANAGER, try ordinary Certification change-owner API/UI; verify
+  manual scope refusal. Separately test an exam within actor scope in an inaccessible
+  folder to verify the manual container restriction remains enforced.
+- [ ] Steps: preview and apply target Termination with all mandatory owner decisions.
+  Repeat on a separate fixture for STAFF Examiner→STAFF without Examiner Position Change.
+- [ ] Steps: omit a transfer; choose departing owner, ended/non-member, non-manager
+  non-Examiner or visibility-ineligible replacement; change owner/revision after preview.
+- [ ] Expected backend state: both previews include every required active/hidden exam
+  regardless of actor manual scope/container authority. Valid mandatory transfers succeed
+  under coordinator authority. Termination ends the period; Position Change preserves
+  member ID and startedAt. Invalid/missing/stale decisions roll back ownership and employment.
+- [ ] Expected backend state: hidden remains active=false; no assignment restoration or
+  cycle/version/PASSED/attempt changes. Ordinary manual target/container checks still reject.
+- [ ] Expected UI state: complete mandatory ownership list and only eligible candidates;
+  permitted lifecycle operation completes while ordinary manual owner editing stays restricted.
+- [ ] Expected notifications: primary lifecycle notification applies; hidden owner handoff
+  sends no Certification notification; active handoff follows existing notification behavior.
+- [ ] Result: PASS / FAIL / NOT RUN. Notes, actor/subject/replacement positions and exam IDs:
+
 ## Run record
 
 | Field | Tester entry |

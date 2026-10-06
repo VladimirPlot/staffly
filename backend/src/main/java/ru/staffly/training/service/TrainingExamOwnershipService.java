@@ -15,8 +15,6 @@ import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.training.dto.CertificationOwnerCandidateDto;
 import ru.staffly.training.dto.AppliedCertificationOwnershipTransfer;
 import ru.staffly.training.dto.CertificationOwnerCandidatesDto;
-import ru.staffly.training.dto.CertificationOwnerReassignmentOptionsDto;
-import ru.staffly.training.dto.OwnedCertificationExamDto;
 import ru.staffly.training.model.TrainingExam;
 import ru.staffly.training.model.TrainingExamMode;
 import ru.staffly.training.repository.TrainingExamRepository;
@@ -82,49 +80,10 @@ public class TrainingExamOwnershipService {
         return exams.findOwnedCertificationForLifecycle(restaurantId, ownerUserId);
     }
 
-    public CertificationOwnerReassignmentOptionsDto buildReassignmentOptions(Long restaurantId, Long actorUserId, Long ownerUserId) {
-        if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
-            throw new ForbiddenException("Only managers can manage exam ownership");
-        }
-
-        RestaurantMember ownerMember = members.findActiveByUserIdAndRestaurantIdWithPosition(ownerUserId, restaurantId)
-                .orElseThrow(() -> new NotFoundException("Member not found"));
-        List<TrainingExam> ownedExams = findOwnedCertificationForLifecycle(restaurantId, ownerUserId)
-                .stream()
-                .filter(exam -> canActorManageExamAndContainer(actorUserId, restaurantId, exam))
-                .toList();
-
-        if (ownedExams.isEmpty()) {
-            return new CertificationOwnerReassignmentOptionsDto(
-                    ownerUserId,
-                    ownerMember.getUser() == null ? null : ownerMember.getUser().getFullName(),
-                    List.of()
-            );
-        }
-
-        List<RestaurantMember> candidateMembers = filterOwnerCandidateMembers(
-                members.findActiveWithUserAndPositionByRestaurantId(restaurantId),
-                ownerUserId
-        );
-
-        List<OwnedCertificationExamDto> examDtos = ownedExams.stream()
-                .map(exam -> toOwnedExamDto(exam, candidateMembers))
-                .toList();
-
-        return new CertificationOwnerReassignmentOptionsDto(
-                ownerUserId,
-                ownerMember.getUser() == null ? null : ownerMember.getUser().getFullName(),
-                examDtos
-        );
-    }
-
-    /** Internal primitive: caller already holds RestaurantLifecycleMutex. */
-    public List<AppliedCertificationOwnershipTransfer> batchReassignWithLifecycleLockHeld(
-            Long restaurantId, Long actorUserId, Long ownerUserId,
+    /** Mandatory handoff after coordinator authorization; caller holds restaurant and resource locks. */
+    public List<AppliedCertificationOwnershipTransfer> batchReassignForLifecycleWithLocksHeld(
+            Long restaurantId, Long ownerUserId,
             List<Map.Entry<Long, Long>> reassignments, Map<Long, Long> expectedRevisions) {
-        if (!trainingPolicyService.canManageTraining(actorUserId, restaurantId)) {
-            throw new ForbiddenException("Only managers can manage exam ownership");
-        }
         if (reassignments == null || reassignments.isEmpty()) {
             throw new BadRequestException("Reassignment items are required");
         }
@@ -146,14 +105,10 @@ public class TrainingExamOwnershipService {
             if (!Objects.equals(exam.getOwner() == null ? null : exam.getOwner().getId(), ownerUserId)) {
                 throw new ConflictException("Exam is not owned by specified user");
             }
-            if (!expectedRevisions.isEmpty()
-                    && !Objects.equals(exam.getEditorRevision(), expectedRevisions.get(exam.getId()))) {
+            if (expectedRevisions == null
+                    || !Objects.equals(exam.getEditorRevision(), expectedRevisions.get(exam.getId()))) {
                 throw new ConflictException("EMPLOYEE_REMOVAL_PLAN_STALE", Map.of("code", "EMPLOYEE_REMOVAL_PLAN_STALE"));
             }
-            if (!canActorManageExam(actorUserId, restaurantId, exam)) {
-                throw new ForbiddenException("Training exam-target policy does not allow access to this visibility scope.");
-            }
-            assertCurrentContainerManageable(restaurantId, actorUserId, exam);
             if (Objects.equals(item.getValue(), ownerUserId)) {
                 throw new BadRequestException("Новый ответственный должен отличаться от увольняемого сотрудника");
             }
@@ -234,7 +189,8 @@ public class TrainingExamOwnershipService {
 
     public List<RestaurantMember> lifecycleCandidates(TrainingExam exam, Long excludedMemberId, Position target) {
         return members.findActiveWithUserAndPositionByRestaurantId(exam.getRestaurant().getId()).stream()
-                .filter(m -> !Objects.equals(m.getId(), excludedMemberId) && m.getPosition() != null)
+                .filter(m -> !Objects.equals(m.getId(), excludedMemberId) && m.getUser() != null && m.getPosition() != null)
+                .filter(this::canManageTrainingAsMember)
                 .filter(m -> canRetainOwnership(exam, m.getPosition()))
                 .sorted(ru.staffly.member.lifecycle.PositionChangeSupport.candidateOrder(target)).toList();
     }
@@ -258,22 +214,6 @@ public class TrainingExamOwnershipService {
             throw new ForbiddenException("Selected owner cannot manage certification visibility");
         }
 
-    }
-
-    private OwnedCertificationExamDto toOwnedExamDto(TrainingExam exam, List<RestaurantMember> candidateMembers) {
-        var visibilityPositions = exam.getVisibilityPositions().stream()
-                .sorted(Comparator.comparing(Position::getId))
-                .toList();
-        var visibilityIds = visibilityPositions.stream().map(Position::getId).toList();
-        var visibilityNames = visibilityPositions.stream().map(Position::getName).toList();
-
-        return new OwnedCertificationExamDto(
-                exam.getId(),
-                exam.getTitle(),
-                visibilityIds,
-                visibilityNames,
-                buildCandidatesForExam(exam, candidateMembers)
-        );
     }
 
     private List<CertificationOwnerCandidateDto> buildCandidatesForExam(TrainingExam exam, List<RestaurantMember> candidateMembers) {
@@ -319,15 +259,6 @@ public class TrainingExamOwnershipService {
         }
         assertCurrentContainerManageable(restaurantId, actorUserId, exam);
         return exam;
-    }
-
-    private boolean canActorManageExamAndContainer(Long actorUserId, Long restaurantId, TrainingExam exam) {
-        if (!canActorManageExam(actorUserId, restaurantId, exam)) {
-            return false;
-        }
-        return exam.getFolder() == null || certificationFolderManagementService
-                .manageableFolderIds(restaurantId, actorUserId)
-                .contains(exam.getFolder().getId());
     }
 
     private void assertCurrentContainerManageable(Long restaurantId, Long actorUserId, TrainingExam exam) {

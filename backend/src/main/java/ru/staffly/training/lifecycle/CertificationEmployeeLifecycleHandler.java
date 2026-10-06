@@ -26,15 +26,10 @@ public class CertificationEmployeeLifecycleHandler
         Long ownerUserId = context.target().getUser().getId();
         var exams = ownership.findOwnedCertificationForLifecycle(context.restaurantId(), ownerUserId);
         if (exams.isEmpty()) return new CertificationLifecycleImpact(module(), true, List.of());
-        var options = ownership.buildReassignmentOptions(context.restaurantId(), context.actorUserId(), ownerUserId);
-        var memberByUser = members.findActiveWithUserAndPositionByRestaurantId(context.restaurantId()).stream()
-                .collect(Collectors.toMap(m -> m.getUser().getId(), m -> m));
-        var impacts = options.ownedExams().stream().map(exam -> new EmployeeRemovalImpactPlan.OwnershipResource(
-                exam.examId(), exam.title(), exams.stream().filter(e -> e.getId().equals(exam.examId())).findFirst().orElseThrow().getEditorRevision(),
-                ownerUserId, exam.candidates().stream().map(c -> {
-                    var member = memberByUser.get(c.userId());
-                    return new EmployeeRemovalImpactPlan.Candidate(member.getId(), c.userId(), c.fullName(), c.positionName());
-                }).toList())).toList();
+        var impacts = exams.stream().map(exam -> new EmployeeRemovalImpactPlan.OwnershipResource(
+                exam.getId(), exam.getTitle(), exam.getEditorRevision(), ownerUserId,
+                ownership.lifecycleCandidates(exam, context.target().getId(), context.target().getPosition()).stream()
+                        .map(PositionChangeSupport::candidate).toList())).toList();
         return new CertificationLifecycleImpact(module(), true, impacts);
     }
     @Override public CertificationPositionChangeImpact preview(PositionChangePreviewContext context) {
@@ -70,7 +65,7 @@ public class CertificationEmployeeLifecycleHandler
         }
         try {
             return new CertificationPositionChangePreparation(tokens.isEmpty() ? List.of() :
-                    ownership.batchReassignWithLifecycleLockHeld(c.restaurantId(), c.actorUserId(), owner,
+                    ownership.batchReassignForLifecycleWithLocksHeld(c.restaurantId(), owner,
                     tokens.values().stream().map(t -> Map.entry(t.resourceId(), t.newOwnerUserId())).toList(),
                     tokens.values().stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion()))));
         } catch (ru.staffly.common.exception.ConflictException ex) { throw PositionChangeSupport.stale(); }
@@ -87,7 +82,7 @@ public class CertificationEmployeeLifecycleHandler
                 || decision.ownershipTransfers().stream().anyMatch(t -> !Objects.equals(t.expectedOwnerUserId(), oldOwner)
                 || expected.stream().noneMatch(e -> e.getId().equals(t.resourceId()) && e.getEditorRevision() == t.expectedVersion()))) throw stale();
         var applied = providedIds.isEmpty() ? List.<ru.staffly.training.dto.AppliedCertificationOwnershipTransfer>of()
-                : ownership.batchReassignWithLifecycleLockHeld(context.restaurantId(), context.actorUserId(), oldOwner,
+                : ownership.batchReassignForLifecycleWithLocksHeld(context.restaurantId(), oldOwner,
                 decision.ownershipTransfers().stream().map(t -> Map.entry(t.resourceId(), t.newOwnerUserId())).toList(),
                 decision.ownershipTransfers().stream().collect(Collectors.toMap(t -> t.resourceId(), t -> t.expectedVersion())));
         return new CertificationTerminationResult(false, applied);

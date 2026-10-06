@@ -3,14 +3,16 @@
 ## Executive verdict
 
 **READY_FOR_MANUAL_VALIDATION** — 2026-10-06. The confirmed dispatch/reservation/cascade
-defects and the hidden Certification ownership/activation gap are corrected. Hidden
+defects, hidden Certification ownership/activation gap and cross-scope lifecycle
+handoff authority coupling are corrected. Hidden
 Certification is a restorable business resource with mandatory ownership, independently
 of active audience. This report does not claim that manual E2E or PostgreSQL concurrency
 scenarios were executed.
 
 Original audited revision: `5e931da52f00ebccdbfc60d29bb12f5686017c16`. Follow-up base:
-`6573a634bcfea99371c833bf5e9bd03b00a49322` (the existing audit-results commit), plus this
-working tree. Branch: `feature/employee-lifecycle-final-audit`; follow-up started clean.
+`6573a634bcfea99371c833bf5e9bd03b00a49322` for hidden ownership, then
+`73947071fab2c99448efd73f64f560350d7fd260` for cross-scope authority, plus this
+working tree. Branch: `feature/employee-lifecycle-final-audit`; both follow-ups started clean.
 The original dev base was confirmed with read-only ls-remote during the initial audit.
 No new branch, commit, push, reset, merge or rebase was performed by this follow-up.
 
@@ -122,6 +124,7 @@ business operations, not employee-event listeners.
 | P1 | Checklist termination bulk UPDATE bypassed parent lock used by normal item editing. A stale item edit could flush reservedBy back after release | Fixed: scalar ordered parent-ID discovery, parent locks, then bulk release |
 | P1 | Position-change Checklist discovery loaded items before waiting for parent locks, allowing stale managed item state to survive into the later item-lock query | Fixed: scalar parent-ID discovery; items loaded only after parent locks |
 | P1 | Hidden Certification excluded from ownership handoff; activation could restore an invalid legacy owner | Fixed under accepted product contract: all extant Certification ownership participates in lifecycle; owner guard blocks invalid activation |
+| P1 | Certification lifecycle preview/batch reused manual actor Training scope/container authority, making permitted MANAGER termination or STAFF→STAFF capability loss impossible for STAFF Examiner ownership with MANAGER/ADMIN visibility | Fixed: preview discovers all subject-owned resources; explicit lifecycle transfer trusts coordinator transition authority and validates resource snapshot and replacement eligibility independently of actor manual scope |
 | P2 | Requested Phase 6 legacy endpoints/types/bulk wrappers | No active occurrences found; nothing to remove |
 | P3 | Migration history and old display metadata contain historical names | Left intact; V115–V119 not modified; no V120 needed for confirmed fixes |
 
@@ -146,7 +149,8 @@ business operations, not employee-event listeners.
   transfer use those queries. `lockCertificationLifecycleResources` locks the sorted
   union of active audience resources and all resources owned by the subject (including
   hidden); each is refreshed before ownership-state/revision validation. Candidate,
-  actor/container authority, expected owner/revision and visibility checks remain.
+  expected owner/revision and replacement visibility checks remain. Actor/container
+  authority remains on manual CRUD; lifecycle transition authority belongs to its coordinator.
 - `training/lifecycle/CertificationEmployeeLifecycleHandler.java`: both previews,
   ownership state and both apply-before hooks include active/hidden resources. Missing
   hidden handoff decisions fail before ownership/member mutation. Audience changes
@@ -171,6 +175,35 @@ business operations, not employee-event listeners.
   visibility, valid owner/CREATOR restore, rehire isolation and notification regressions.
 - Hidden-resource owner correction uses the existing changeOwner endpoint and UI button.
   `getTrainingErrorMessage` already displays server messages, so no frontend change was needed.
+
+### Cross-scope Certification lifecycle authority correction
+
+- Reproduction: a MANAGER without Examiner may terminate STAFF or move STAFF→STAFF.
+  A STAFF Examiner may own Certification visible to MANAGER/ADMIN. Manual Training
+  management scope of that MANAGER covers STAFF only. The previous termination preview
+  filtered out such exams (or required actor Training authority); apply then rejected
+  the missing mandatory decision as stale, or batch handoff rejected actor scope/container.
+- Termination preview now maps every active/hidden subject-owned Certification directly
+  through `lifecycleCandidates`, matching Position Change's module-owned eligibility.
+  No manual actor scope/container filter remains in lifecycle discovery.
+- `batchReassignForLifecycleWithLocksHeld` has no actor parameter or security-bypass
+  flag. Only the Certification lifecycle adapter invokes it after coordinator authority
+  validation and restaurant/member/resource locking. It preserves sorted resource IDs,
+  existence, expected owner, mandatory expected revision, distinct transfer IDs,
+  new owner different from subject, active restaurant membership, training capability
+  and full visibility eligibility. All decisions validate before any owner mutation.
+- The unused lifecycle-only `buildReassignmentOptions` path and its manual filtering
+  helpers were removed. `changeOwner`, `getOwnerCandidates` and their manual Training
+  target/container checks remain unchanged. `ExamServiceImpl.changeCertificationExamOwner`
+  still delegates to that restricted manual primitive.
+- Hidden active state, assignments, cycle/version engine, restore guard and notification
+  suppression are unchanged. Global CREATOR transition authority still uses coordinator
+  policies; no synthetic membership or membership-less CREATOR candidate/fallback is added.
+- `CrossScopeCertificationLifecycleTest` uses real coordinators, transition policies,
+  Certification adapter and ownership policy, mocking persistence and unrelated modules.
+  It covers active/hidden termination, active/hidden capability-losing STAFF→STAFF change
+  with the same membership, direct manual API target/container refusals, missing handoff,
+  invalid candidates, stale owner/revision/missing resource and global CREATOR authority.
 
 ## Historical identity audit
 
@@ -299,8 +332,15 @@ redesign was performed.
 - `git rev-parse HEAD dev origin/dev` and `git ls-remote origin refs/heads/dev` — all `5e931da…`. First sandbox network attempt failed; read-only retry outside sandbox succeeded.
 - `mvn -DskipTests compile` — first bare invocation could not find Maven; cached Maven 3.9.11 with JAVA_HOME=temurin-17.0.15 succeeded. Final compile after restaurant fix also passed.
 - Original audit `mvn test`: 54 tests passed. Hidden ownership follow-up: `mvn -DskipTests compile` passed; final `mvn test` passed with **68 tests, 0 failures, 0 errors, 0 skipped**, including 14 focused HiddenCertificationOwnershipTest cases. An intermediate notification test attempted to mock a final record unsupported by this repository's Mockito configuration; it was corrected to use real result records before the successful final run.
+- Cross-scope authority follow-up: `mvn -DskipTests compile` passed; final `mvn test`
+  passed with **83 tests, 0 failures, 0 errors, 0 skipped**, including 15 new
+  CrossScopeCertificationLifecycleTest cases and the existing 14 hidden ownership cases.
+  Initial test compilation exposed Java generic inference on conditional exception classes;
+  explicit typed class variables corrected the test before the successful full run.
 - `pnpm build` — passed (TypeScript, Vite and PWA); `pnpm lint` — passed.
 - Frontend was unchanged in the hidden-ownership follow-up; build/lint were not repeated, as requested. Existing hidden owner-change button and server-message display were inspected.
+- Frontend, migrations and other lifecycle modules were unchanged in the cross-scope
+  correction; frontend verification was not repeated, as requested.
 - `git diff --check` — passed, including final repeat. New files were also checked for trailing spaces/tabs.
 
 ## Final verdict
@@ -311,4 +351,6 @@ one authoritative coordinator per transition. Modules own their consequences thr
 adapters/domain primitives. No second automatic employee lifecycle reaction was found.
 Active and hidden Certification ownership now participates in mandatory handoff;
 activation rejects invalid legacy owners while preserving explicit CREATOR ownership.
+Lifecycle Certification handoff uses coordinator transition authority independently
+of actor manual Training scope; replacement eligibility and manual CRUD restrictions remain enforced.
 The live DB concurrency and manual UI scenarios remain the next validation step.
