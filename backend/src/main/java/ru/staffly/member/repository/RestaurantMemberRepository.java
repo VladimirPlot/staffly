@@ -87,14 +87,6 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     List<RestaurantMember> findByRestaurantIdAndPositionIdInAndEndedAtIsNull(Long restaurantId, List<Long> positionIds);
 
     @Query("""
-           select m from RestaurantMember m
-           left join fetch m.user u
-           left join fetch m.position p
-           where m.id in :memberIds and m.endedAt is null
-           """)
-    List<RestaurantMember> findWithUserAndPositionByIdIn(@Param("memberIds") Set<Long> memberIds);
-
-    @Query("""
            select distinct m from RestaurantMember m
            join fetch m.user u
            join fetch m.position p
@@ -158,14 +150,6 @@ public interface RestaurantMemberRepository extends JpaRepository<RestaurantMemb
     boolean existsByRestaurantIdAndUserIdAndEndedAtIsNull(Long restaurantId, Long userId);
 
     boolean existsByPositionIdAndEndedAtIsNull(Long positionId);
-
-    @Query("""
-           select m from RestaurantMember m
-           where m.restaurant.id = :restaurantId
-             and m.endedAt is null
-             and m.position.level in ('ADMIN', 'MANAGER')
-           """)
-    List<RestaurantMember> findAdmins(Long restaurantId);
 
     List<RestaurantMember> findByUserIdAndEndedAtIsNull(Long userId);
 

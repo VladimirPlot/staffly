@@ -3,25 +3,6 @@ import { getMyRoleIn } from "../../shared/api/memberships";
 import type { RestaurantRole } from "../../shared/types/restaurant";
 import { toAbsoluteUrl } from "../../shared/utils/url";
 
-/* ===== Приглашения (оставляем как было) ===== */
-export type InviteRequest = {
-  phone: string;
-  positionId: number;
-};
-
-export type InviteResponse = {
-  token: string;
-  restaurantId: number;
-  desiredRole: RestaurantRole;
-  positionId?: number;
-  expiresAt: string;
-};
-
-export async function sendInvite(restaurantId: number, payload: InviteRequest): Promise<InviteResponse> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/employees/invite`, payload);
-  return data as InviteResponse;
-}
-
 /* ===== Помощник: узнать мою роль в текущем ресторане ===== */
 export async function fetchMyRoleIn(restaurantId: number): Promise<RestaurantRole | null> {
   return getMyRoleIn(restaurantId);
