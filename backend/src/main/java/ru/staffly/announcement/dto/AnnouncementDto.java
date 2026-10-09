@@ -8,6 +8,9 @@ public record AnnouncementDto(
         String content,
         Instant createdAt,
         AnnouncementAuthorDto createdBy,
-        List<AnnouncementPositionDto> positions
+        List<AnnouncementPositionDto> positions,
+        AnnouncementAudience audience,
+        long recipientCount,
+        List<AnnouncementMemberDto> recipients
 ) {
 }

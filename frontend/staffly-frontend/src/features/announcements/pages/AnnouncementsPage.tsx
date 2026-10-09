@@ -72,7 +72,7 @@ const AnnouncementsPage = () => {
         <div>
           <h2 className="text-2xl font-semibold">Объявления</h2>
           <p className="text-sm text-muted">
-            Сообщения руководства для сотрудников по должностям.
+            Сообщения руководства участникам ресторана.
           </p>
         </div>
         {canManageAnnouncements && <Button onClick={handleCreate}>Создать объявление</Button>}

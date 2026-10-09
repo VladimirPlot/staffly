@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -85,17 +86,17 @@ public class InboxMessageService {
 
     @Transactional
     public InboxMessage createAnnouncement(Restaurant restaurant,
-                                           User creator,
                                            String content,
                                            List<Position> positions,
-                                           List<RestaurantMember> targets) {
+                                           List<RestaurantMember> targets,
+                                           Map<String, Object> metadata) {
         String meta = "announcement:" + UUID.randomUUID();
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.ANNOUNCEMENT)
                 .content(content)
-                .createdBy(creator)
                 .meta(meta)
+                .metadata(metadata)
                 .positions(new HashSet<>(positions))
                 .build();
 

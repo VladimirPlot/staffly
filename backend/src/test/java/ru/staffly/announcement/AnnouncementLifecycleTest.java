@@ -4,7 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.staffly.announcement.controller.AnnouncementController;
 import ru.staffly.announcement.dto.AnnouncementRequest;
+import ru.staffly.announcement.dto.AnnouncementAudience;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import ru.staffly.announcement.service.AnnouncementService;
+import ru.staffly.announcement.repository.AnnouncementOperationRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.exception.GlobalExceptionHandler;
@@ -46,7 +49,8 @@ class AnnouncementLifecycleTest {
     final SecurityService security = mock(SecurityService.class);
     final PushEnqueueService push = mock(PushEnqueueService.class);
     final AnnouncementService service = new AnnouncementService(
-            messages, inbox, restaurants, positions, members, users, security, push);
+            messages, inbox, restaurants, positions, members, users, security, push, new ObjectMapper(),
+            mock(AnnouncementOperationRepository.class));
 
     @Test void sentAnnouncementCannotBeEditedThroughTheOldEndpoint() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new AnnouncementController(service))
@@ -60,20 +64,21 @@ class AnnouncementLifecycleTest {
 
     @Test void emptyAudienceIsRejectedBeforeSavingOrEnqueuingPush() {
         var restaurant = Restaurant.builder().id(1L).build();
-        when(restaurants.findById(1L)).thenReturn(Optional.of(restaurant));
+        when(restaurants.findLifecycleMutex(1L)).thenReturn(Optional.of(restaurant));
         when(users.findById(7L)).thenReturn(Optional.of(User.builder().id(7L).build()));
         when(positions.findAllById(List.of(2L))).thenReturn(List.of(
                 Position.builder().id(2L).restaurant(restaurant).build()));
-        when(members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(1L, List.of(2L)))
+        when(members.findActiveWithUserAndPositionByRestaurantIdAndPositionIdIn(1L, List.of(2L)))
                 .thenReturn(List.of());
 
         assertThrows(BadRequestException.class,
-                () -> service.create(1L, 7L, new AnnouncementRequest("Message", List.of(2L))));
+                () -> service.create(1L, 7L, new AnnouncementRequest("Message", AnnouncementAudience.POSITIONS, List.of(2L), List.of(), java.util.UUID.randomUUID())));
         verify(security).assertAtLeastManager(7L, 1L);
         verifyNoInteractions(inbox, push);
     }
 
     @Test void manualDeletionCancelsPendingPushBeforeRemovingInboxMessage() {
+        when(restaurants.findLifecycleMutex(1L)).thenReturn(Optional.of(Restaurant.builder().id(1L).build()));
         var message = InboxMessage.builder().id(10L).type(InboxMessageType.ANNOUNCEMENT).build();
         when(messages.findByIdAndRestaurantId(10L, 1L)).thenReturn(Optional.of(message));
 
@@ -87,6 +92,7 @@ class AnnouncementLifecycleTest {
     }
 
     @Test void anotherMessageTypeCannotBeDeletedAsAnAnnouncement() {
+        when(restaurants.findLifecycleMutex(1L)).thenReturn(Optional.of(Restaurant.builder().id(1L).build()));
         when(messages.findByIdAndRestaurantId(10L, 1L)).thenReturn(Optional.of(
                 InboxMessage.builder().type(InboxMessageType.EVENT).build()));
         assertThrows(NotFoundException.class, () -> service.delete(1L, 7L, 10L));
