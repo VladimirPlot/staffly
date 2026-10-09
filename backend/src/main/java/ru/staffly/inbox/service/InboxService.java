@@ -27,6 +27,7 @@ import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -184,7 +185,7 @@ public class InboxService {
                 message.getExpiresAt(),
                 message.getCreatedAt(),
                 author,
-                message.getMetadata(),
+                message.getType() == InboxMessageType.ANNOUNCEMENT ? Map.of() : message.getMetadata(),
                 recipient.getReadAt() != null,
                 recipient.getArchivedAt() != null,
                 expired

@@ -1,5 +1,6 @@
 package ru.staffly.announcement;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,11 +9,17 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.data.domain.PageRequest;
 import ru.staffly.dictionary.model.Position;
+import ru.staffly.dictionary.repository.PositionRepository;
+import ru.staffly.announcement.dto.AnnouncementAudience;
+import ru.staffly.announcement.dto.AnnouncementRequest;
+import ru.staffly.announcement.service.AnnouncementService;
+import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.inbox.model.*;
 import ru.staffly.inbox.repository.InboxMessageRepository;
 import ru.staffly.inbox.repository.InboxRecipientRepository;
 import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.push.config.PushProperties;
 import ru.staffly.push.model.PushDelivery;
 import ru.staffly.push.model.PushDeliveryStatus;
@@ -20,11 +27,15 @@ import ru.staffly.push.repository.PushDeliveryRepository;
 import ru.staffly.push.service.PushEnqueueService;
 import ru.staffly.push.service.PushPayloadFactory;
 import ru.staffly.restaurant.model.Restaurant;
+import ru.staffly.restaurant.repository.RestaurantRepository;
+import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
+import ru.staffly.user.repository.UserRepository;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -42,6 +53,10 @@ class AnnouncementPersistenceTest {
     @Autowired InboxMessageRepository messages;
     @Autowired InboxRecipientRepository recipients;
     @Autowired PushDeliveryRepository deliveries;
+    @Autowired RestaurantRepository restaurants;
+    @Autowired PositionRepository positions;
+    @Autowired RestaurantMemberRepository members;
+    @Autowired UserRepository users;
     Restaurant restaurant;
     User user;
     Position position;
@@ -62,8 +77,8 @@ class AnnouncementPersistenceTest {
 
     @Test void announcementCreatesOneRecipientWithoutExpiryAndKeepsReadAndHiddenStates() {
         var service = new InboxMessageService(messages, recipients, disabledPush());
-        var first = service.createAnnouncement(restaurant, user, "First", List.of(position), List.of(member, member));
-        var second = service.createAnnouncement(restaurant, user, "Second", List.of(position), List.of(member));
+        var first = service.createAnnouncement(restaurant, user, "First", List.of(position), List.of(member, member), Map.of());
+        var second = service.createAnnouncement(restaurant, user, "Second", List.of(position), List.of(member), Map.of());
         assertNotEquals(first.getMeta(), second.getMeta());
         assertNull(first.getExpiresAt());
         assertNull(second.getExpiresAt());
@@ -84,6 +99,65 @@ class AnnouncementPersistenceTest {
         var persisted = recipients.findByMessageIdAndMemberId(first.getId(), member.getId()).orElseThrow();
         assertEquals(old, persisted.getReadAt());
         assertEquals(old, persisted.getArchivedAt());
+    }
+
+    @Test void audienceSnapshotSurvivesJsonReloadNameChangeAndTermination() {
+        var service = announcementService();
+        var sent = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Message",
+                AnnouncementAudience.MEMBERS, List.of(position.getId()), List.of(member.getId())));
+        assertEquals(1, sent.recipientCount());
+        user.setFirstName("Renamed");
+        member.setEndedAt(Instant.now());
+        em.flush();
+        em.clear();
+
+        var history = service.list(restaurant.getId(), user.getId());
+        assertEquals(1, history.size());
+        assertEquals("Test Manager", history.get(0).recipients().get(0).name());
+        assertEquals("Manager", history.get(0).recipients().get(0).positionName());
+        assertEquals(1, history.get(0).recipientCount());
+        assertEquals(List.of(member.getId()), recipients.findMemberIdsByMessageId(sent.id()));
+    }
+
+    @Test void actualQueriesExcludeEndedAndForeignMembershipsAndRejectChangedPositions() {
+        var otherRestaurant = Restaurant.builder().name("Other").code("audience-other").timezone("UTC").build();
+        em.persist(otherRestaurant);
+        var otherPosition = Position.builder().restaurant(otherRestaurant).name("Other").build();
+        em.persist(otherPosition);
+        var foreign = RestaurantMember.builder().restaurant(otherRestaurant).user(user).position(otherPosition).build();
+        em.persist(foreign);
+        var endedUser = User.builder().phone("+79999999998").email("ended@example.com")
+                .firstName("Ended").lastName("Employee").passwordHash("test").build();
+        em.persist(endedUser);
+        var ended = RestaurantMember.builder().restaurant(restaurant).user(endedUser).position(position)
+                .endedAt(Instant.now()).build();
+        em.persist(ended);
+        em.flush();
+
+        var service = announcementService();
+        var all = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Everyone",
+                AnnouncementAudience.ALL, List.of(), List.of()));
+        assertEquals(List.of(member.getId()), recipients.findMemberIdsByMessageId(all.id()));
+        assertEquals(1, service.audienceOptions(restaurant.getId(), user.getId()).members().size());
+        for (var invalid : List.of(foreign.getId(), ended.getId())) {
+            assertThrows(BadRequestException.class, () -> service.create(restaurant.getId(), user.getId(),
+                    new AnnouncementRequest("Specific", AnnouncementAudience.MEMBERS,
+                            List.of(position.getId()), List.of(invalid))));
+        }
+        var newPosition = Position.builder().restaurant(restaurant).name("New position").build();
+        em.persist(newPosition);
+        member.setPosition(newPosition);
+        em.flush();
+        assertThrows(BadRequestException.class, () -> service.create(restaurant.getId(), user.getId(),
+                new AnnouncementRequest("Stale selection", AnnouncementAudience.MEMBERS,
+                        List.of(position.getId()), List.of(member.getId()))));
+        assertEquals(1, messages.findByRestaurantIdAndTypeOrderByCreatedAtDesc(
+                restaurant.getId(), InboxMessageType.ANNOUNCEMENT).size());
+    }
+
+    private AnnouncementService announcementService() {
+        return new AnnouncementService(messages, new InboxMessageService(messages, recipients, disabledPush()),
+                restaurants, positions, members, users, mock(SecurityService.class), disabledPush(), new ObjectMapper());
     }
 
     @Test void inboxLimitPreservesEveryAnnouncementAndOnlyCountsOtherTypes() {

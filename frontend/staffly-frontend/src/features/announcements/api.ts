@@ -15,18 +15,42 @@ export type AnnouncementPositionDto = {
   level?: RestaurantRole;
 };
 
+export type AnnouncementAudience = "ALL" | "POSITIONS" | "MEMBERS";
+
+export type AnnouncementMemberDto = {
+  id: number;
+  name: string;
+  positionId: number;
+  positionName: string;
+};
+
+export type AnnouncementAudienceOptionsDto = {
+  positions: AnnouncementPositionDto[];
+  members: AnnouncementMemberDto[];
+};
+
 export type AnnouncementDto = {
   id: number;
   content: string;
   createdAt: string;
   createdBy?: AnnouncementAuthorDto;
   positions: AnnouncementPositionDto[];
+  audience: AnnouncementAudience;
+  recipientCount: number;
+  recipients: AnnouncementMemberDto[];
 };
 
 export type AnnouncementRequest = {
   content: string;
+  audience: AnnouncementAudience;
   positionIds: number[];
+  memberIds: number[];
 };
+
+export async function fetchAnnouncementAudience(restaurantId: number): Promise<AnnouncementAudienceOptionsDto> {
+  const { data } = await api.get(`/api/restaurants/${restaurantId}/announcements/audience`);
+  return data as AnnouncementAudienceOptionsDto;
+}
 
 export async function listAnnouncements(restaurantId: number): Promise<AnnouncementDto[]> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/announcements`);

@@ -5,13 +5,14 @@ import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import ContentText from "../../shared/ui/ContentText";
 import Icon from "../../shared/ui/Icon";
 import AnnouncementDialog from "./AnnouncementDialog";
-import type { AnnouncementDto, AnnouncementRequest } from "./api";
+import type { AnnouncementAudienceOptionsDto, AnnouncementDto, AnnouncementRequest } from "./api";
 import {
   createAnnouncement,
   deleteAnnouncement,
   listAnnouncements,
+  fetchAnnouncementAudience,
 } from "./api";
-import { listPositions, type PositionDto } from "../dictionaries/api";
+import { announcementAudienceLabel } from "./audience";
 import { Trash2 } from "lucide-react";
 
 function formatShortDate(dateStr: string): string {
@@ -33,7 +34,10 @@ const AnnouncementsManager = ({
 }: AnnouncementsManagerProps) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
-  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [audienceOptions, setAudienceOptions] = useState<AnnouncementAudienceOptionsDto | null>(null);
+  const [audienceLoading, setAudienceLoading] = useState(false);
+  const [audienceError, setAudienceError] = useState<string | null>(null);
+  const [audienceReload, setAudienceReload] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -61,16 +65,24 @@ const AnnouncementsManager = ({
   }, [loadAnnouncements]);
 
   useEffect(() => {
-    if (!canManage) return;
+    if (!canManage || !dialogOpen) return;
+    let alive = true;
+    setAudienceLoading(true);
+    setAudienceError(null);
+    setAudienceOptions(null);
     (async () => {
       try {
-        const data = await listPositions(restaurantId, { includeInactive: true });
-        setPositions(data);
+        const data = await fetchAnnouncementAudience(restaurantId);
+        if (alive) setAudienceOptions(data);
       } catch (e) {
-        console.error("Failed to load positions", e);
+        console.error("Failed to load announcement audience", e);
+        if (alive) setAudienceError("Не удалось загрузить получателей");
+      } finally {
+        if (alive) setAudienceLoading(false);
       }
     })();
-  }, [canManage, restaurantId]);
+    return () => { alive = false; };
+  }, [canManage, restaurantId, dialogOpen, audienceReload]);
 
   const openCreate = useCallback(() => {
     setDialogError(null);
@@ -168,13 +180,8 @@ const AnnouncementsManager = ({
           )}
         </div>
         <ContentText className="mt-2 text-base text-strong">{announcement.content}</ContentText>
-        {announcement.positions.length > 0 && (
-          <div className="mt-3 text-xs uppercase tracking-wide text-muted">
-            {announcement.positions
-              .map((position) => `${position.name}${!position.active ? " (неактивна)" : ""}`)
-              .join(", ")}
-          </div>
-        )}
+        <div className="mt-3 text-sm text-muted">{announcementAudienceLabel(announcement)}</div>
+        <div className="mt-1 text-xs text-muted">Получателей: {announcement.recipientCount}</div>
       </div>
     );
   };
@@ -191,7 +198,7 @@ const AnnouncementsManager = ({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="text-lg font-semibold text-strong">Объявления</div>
-            <div className="text-sm text-muted">Сообщения руководства по должностям</div>
+            <div className="text-sm text-muted">Сообщения руководства участникам ресторана</div>
           </div>
           {canManage && <Button onClick={openCreate}>Создать объявление</Button>}
         </div>
@@ -211,7 +218,10 @@ const AnnouncementsManager = ({
 
       <AnnouncementDialog
         open={dialogOpen}
-        positions={positions}
+        options={audienceOptions}
+        loading={audienceLoading}
+        loadingError={audienceError}
+        onReload={() => setAudienceReload((previous) => previous + 1)}
         submitting={submitting}
         error={dialogError}
         onClose={closeDialog}
