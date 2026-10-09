@@ -196,6 +196,7 @@ class AnnouncementPersistenceTest {
     }
 
     @Test void historyPagesHaveThirtyItemsAndStableOrderingIncludingTheLastPage() {
+        restaurant.setTimezone("Asia/Vladivostok");
         var service = announcementService();
         for (int i = 0; i < 61; i++) {
             var sent = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Message",
@@ -213,6 +214,7 @@ class AnnouncementPersistenceTest {
         assertEquals(61, firstPage.totalElements());
         assertEquals(3, firstPage.totalPages());
         assertEquals(30, firstPage.size());
+        assertEquals("Asia/Vladivostok", firstPage.timezone());
         assertTrue(firstPage.items().get(29).id() > secondPage.items().get(0).id());
         assertTrue(secondPage.items().get(29).id() > lastPage.items().get(0).id());
         assertTrue(service.list(restaurant.getId(), user.getId(), 3).items().isEmpty());

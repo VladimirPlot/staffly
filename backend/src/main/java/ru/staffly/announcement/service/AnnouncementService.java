@@ -76,10 +76,13 @@ public class AnnouncementService {
     public AnnouncementPageDto list(Long restaurantId, Long userId, int page) {
         security.assertAtLeastManager(userId, restaurantId);
         if (page < 0) throw new BadRequestException("Некорректная страница");
+        var restaurant = restaurants.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
         var result = messages.findByRestaurantIdAndType(restaurantId, InboxMessageType.ANNOUNCEMENT,
                 PageRequest.of(page, 30, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
         return new AnnouncementPageDto(result.getContent().stream().map(this::toDto).toList(),
-                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
+                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages(),
+                restaurant.getTimezone());
     }
 
     @Transactional
