@@ -10,12 +10,7 @@ import type { AnnouncementAudienceOptionsDto, AnnouncementDto, AnnouncementReque
 import { createAnnouncement, deleteAnnouncement, listAnnouncements, fetchAnnouncementAudience } from "./api";
 import { announcementAudienceLabel } from "./audience";
 import { Trash2 } from "lucide-react";
-
-function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
-}
+import { formatAnnouncementSentAt } from "./sentAt";
 
 type AnnouncementsManagerProps = {
   restaurantId: number;
@@ -28,6 +23,7 @@ const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: A
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [viewed, setViewed] = useState<AnnouncementDto | null>(null);
   const loadSequence = useRef(0);
   const [audienceOptions, setAudienceOptions] = useState<AnnouncementAudienceOptionsDto | null>(null);
@@ -58,6 +54,7 @@ const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: A
         }
         setAnnouncements(data.items);
         setTotalPages(data.totalPages);
+        setTimezone(data.timezone);
       } catch (e) {
         if (sequence !== loadSequence.current) return;
         console.error("Failed to load announcements", e);
@@ -188,7 +185,7 @@ const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: A
 
   const renderAnnouncement = (announcement: AnnouncementDto) => {
     const createdLabel = announcement.createdAt
-      ? `${announcement.createdBy?.name ?? "Без имени"}, ${formatShortDate(announcement.createdAt)}`
+      ? `${announcement.createdBy?.name ?? "Без имени"}, ${formatAnnouncementSentAt(announcement.createdAt, timezone)}`
       : (announcement.createdBy?.name ?? "Без имени");
 
     return (
@@ -202,7 +199,12 @@ const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: A
           aria-label={`Открыть объявление от ${createdLabel}`}
           className="focus-visible:ring-default flex w-full min-w-0 flex-col gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2"
         >
-          <div className="text-muted h-9 w-full truncate pr-12 text-xs">{createdLabel}</div>
+          <div className="text-muted flex h-9 w-full gap-1 pr-12 text-xs">
+            <span className="min-w-0 truncate">{announcement.createdBy?.name ?? "Без имени"}</span>
+            <time dateTime={announcement.createdAt} className="shrink-0">
+              {formatAnnouncementSentAt(announcement.createdAt, timezone)}
+            </time>
+          </div>
           <ContentText className="text-strong line-clamp-3 max-h-[4.5rem] overflow-hidden text-base leading-6">
             {announcement.content}
           </ContentText>
@@ -276,7 +278,7 @@ const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: A
         {viewed && (
           <div className="space-y-4">
             <div className="text-muted text-xs">
-              {viewed.createdBy?.name ?? "Без имени"}, {formatShortDate(viewed.createdAt)}
+              {viewed.createdBy?.name ?? "Без имени"}, {formatAnnouncementSentAt(viewed.createdAt, timezone)}
             </div>
             <ContentText>{viewed.content}</ContentText>
             <div>

@@ -66,6 +66,7 @@ class AnnouncementAudienceTest {
 
     @BeforeEach void setup() {
         when(restaurants.findLifecycleMutex(1L)).thenReturn(Optional.of(restaurant));
+        when(restaurants.findById(1L)).thenReturn(Optional.of(restaurant));
         when(users.findById(7L)).thenReturn(Optional.of(manager));
         when(positions.findAllById(List.of(3L))).thenReturn(List.of(staffPosition));
         when(members.findActiveWithUserAndPositionByRestaurantId(1L)).thenReturn(List.of(sender, first, second));

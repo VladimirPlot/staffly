@@ -54,6 +54,7 @@ export type AnnouncementPageDto = {
   size: number;
   totalElements: number;
   totalPages: number;
+  timezone: string;
 };
 
 export async function fetchAnnouncementAudience(restaurantId: number): Promise<AnnouncementAudienceOptionsDto> {
