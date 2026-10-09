@@ -27,6 +27,12 @@ public class PushEnqueueService {
     private final PushProperties properties;
 
     @Transactional
+    public void cancelUnsentForInboxMessage(Long restaurantId, Long messageId) {
+        // Cancel even when push is disabled: previously queued deliveries may still exist.
+        deliveryRepository.cancelUnsentForInboxMessage(restaurantId, messageId, TimeProvider.now());
+    }
+
+    @Transactional
     public void enqueueForMessage(InboxMessage message, List<RestaurantMember> recipients) {
         if (!properties.enabled() || recipients == null || recipients.isEmpty()) {
             return;

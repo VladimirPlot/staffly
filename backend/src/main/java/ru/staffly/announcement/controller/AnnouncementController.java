@@ -35,15 +35,6 @@ public class AnnouncementController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
-    @PutMapping("/{announcementId}")
-    public AnnouncementDto update(@PathVariable Long restaurantId,
-                                  @PathVariable Long announcementId,
-                                  @AuthenticationPrincipal UserPrincipal principal,
-                                  @Valid @RequestBody AnnouncementRequest request) {
-        return announcements.update(restaurantId, principal.userId(), announcementId, request);
-    }
-
-    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @DeleteMapping("/{announcementId}")
     public void delete(@PathVariable Long restaurantId,
                        @PathVariable Long announcementId,

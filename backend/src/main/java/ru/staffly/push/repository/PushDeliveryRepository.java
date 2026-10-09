@@ -11,6 +11,26 @@ import java.util.List;
 
 public interface PushDeliveryRepository extends JpaRepository<PushDelivery, Long> {
 
+    // The sending worker holds delivery row locks until its transaction completes.
+    // This update waits for any in-flight send, then cancels only unfinished deliveries.
+    @Modifying
+    @Query(value = """
+            update push_deliveries
+            set status = 'DEAD',
+                next_attempt_at = null,
+                locked_until = null,
+                lock_owner = null,
+                last_error = 'Inbox message deleted',
+                updated_at = :now
+            where restaurant_id = :restaurantId
+              and ref_type = 'INBOX_MESSAGE'
+              and ref_id = :messageId
+              and status in ('PENDING', 'RETRY', 'SENDING')
+            """, nativeQuery = true)
+    int cancelUnsentForInboxMessage(@Param("restaurantId") Long restaurantId,
+                                   @Param("messageId") Long messageId,
+                                   @Param("now") Instant now);
+
     @Modifying
     @Query(value = """
             insert into push_deliveries (ref_type, ref_id, restaurant_id, user_id, payload, status, run_at, created_at, updated_at)
