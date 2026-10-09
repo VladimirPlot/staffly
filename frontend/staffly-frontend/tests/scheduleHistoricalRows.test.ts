@@ -60,7 +60,9 @@ test("history styling covers name, day and count while preserving snapshots and 
   assert.match(historicalCells[0], /text-muted/);
   assert.match(html, />История<\/span>/);
   assert.match(html, /aria-label="История\. Историческая строка/);
-  assert.match(html, /Ранее созданные смены сохранены и доступны только для просмотра/);
+  assert.match(html, /У сотрудника может быть отдельная активная строка/);
+  assert.doesNotMatch(html, /сотрудник больше не участвует/);
+  assert.match(html, /сохраняет прежние имя, должность и смены и доступна только для просмотра/);
   assert.match(html, /Старое имя/);
   assert.match(html, /Старая должность/);
   assert.match(html, /text-strong[^>]*><span>08:00<\/span>/);
