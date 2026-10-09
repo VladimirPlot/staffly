@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, X } from "lucide-react";
 import DropdownMenu from "../../shared/ui/DropdownMenu";
 import SearchBar from "../../shared/ui/SearchBar";
-import { matchesSearchText } from "../../shared/utils/search";
+import { filterAnnouncementOptions } from "./audience";
 
 type Option = { id: number; name: string; detail?: string };
 
@@ -30,7 +30,7 @@ export default function AnnouncementRecipientPicker({
   const anchor = useRef<HTMLDivElement>(null);
   const selected = new Set(selectedIds);
   const filtered = useMemo(
-    () => options.filter((option) => matchesSearchText([option.name, option.detail], query)),
+    () => filterAnnouncementOptions(options, query),
     [options, query],
   );
   const selectedOptions = options.filter((option) => selected.has(option.id));
@@ -81,10 +81,10 @@ export default function AnnouncementRecipientPicker({
               label={`Поиск: ${label.toLowerCase()}`}
               value={query}
               onValueChange={setQuery}
-              placeholder="Найти"
+              placeholder={label === "Участники" ? "Имя или фамилия" : "Название должности"}
               disabled={disabled}
             />
-            <div className="max-h-64 space-y-0.5 overflow-y-auto pr-1">
+            <div className="max-h-[18.75rem] space-y-0.5 overflow-y-auto overscroll-contain pr-1">
               {filtered.map((option) => (
                 <button
                   key={option.id}
@@ -92,7 +92,7 @@ export default function AnnouncementRecipientPicker({
                   role="menuitemcheckbox"
                   aria-checked={selected.has(option.id)}
                   disabled={disabled}
-                  className="text-default hover:bg-app focus:bg-app flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm focus:outline-none"
+                  className="text-default hover:bg-app focus:bg-app flex h-12 w-full items-center justify-between gap-3 rounded-xl px-3 text-left text-sm focus:outline-none"
                   onClick={() =>
                     onChange(
                       selected.has(option.id)

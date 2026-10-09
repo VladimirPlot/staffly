@@ -1,4 +1,13 @@
 import type { AnnouncementAudience, AnnouncementMemberDto } from "./api";
+import { matchesSearchText } from "../../shared/utils/search";
+
+export function filterAnnouncementOptions<T extends { name: string; detail?: string }>(
+  options: T[],
+  query: string,
+): T[] {
+  if (!query.trim()) return options;
+  return options.filter((option) => matchesSearchText([option.name, option.detail], query));
+}
 
 export function membersForPositions(members: AnnouncementMemberDto[], positionIds: number[]) {
   const selected = new Set(positionIds);
