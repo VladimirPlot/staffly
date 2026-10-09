@@ -13,6 +13,7 @@ import TaskCard from "../components/TaskCard";
 import TaskCreateModal from "../components/TaskCreateModal";
 import TaskDetailModal from "../components/TaskDetailModal";
 import TaskGroup from "../components/TaskGroup";
+import TaskAssignModal from "../components/TaskAssignModal";
 import {
   completeTask,
   createTask,
@@ -25,7 +26,7 @@ import {
   type TaskDto,
   type TaskScope,
 } from "../api";
-import { isOverdue, sortTasks } from "../utils";
+import { isOverdue, sortTasks, isUnassignedTask } from "../utils";
 
 const COMMENTS_PAGE_SIZE = 10;
 
@@ -46,7 +47,8 @@ const TasksPage = () => {
   const [myRole, setMyRole] = useState<string | null>(null);
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [members, setMembers] = useState<MemberDto[]>([]);
-  const [scope, setScope] = useState<TaskScope>("MINE");
+  const [scope, setScope] = useState<TaskScope | "UNASSIGNED">("MINE");
+  const [assignmentTask, setAssignmentTask] = useState<TaskDto | null>(null);
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -103,7 +105,7 @@ const TasksPage = () => {
     setLoading(true);
     (async () => {
       try {
-        const data = await listTasks(restaurantId, { scope });
+        const data = await listTasks(restaurantId, { scope: scope === "UNASSIGNED" ? "ALL" : scope });
         if (alive) setTasks(data);
       } catch (err) {
         console.error("Failed to load tasks", err);
@@ -151,7 +153,7 @@ const TasksPage = () => {
     if (!restaurantId) return;
     setLoading(true);
     try {
-      const data = await listTasks(restaurantId, { scope });
+      const data = await listTasks(restaurantId, { scope: scope === "UNASSIGNED" ? "ALL" : scope });
       setTasks(data);
     } catch (err) {
       console.error("Failed to reload tasks", err);
@@ -255,19 +257,31 @@ const TasksPage = () => {
     }
   }, [selectedTask, commentHasNext, commentLoadingMore, commentPage]);
 
+  const visibleTasks = useMemo(
+    () => scope === "UNASSIGNED" ? tasks.filter(isUnassignedTask) : tasks,
+    [scope, tasks]
+  );
+  const handleOpenAssignment = useCallback((task: TaskDto) => {
+    setSelectedTask(null);
+    setAssignmentTask(task);
+  }, []);
+  const handleTaskUpdated = useCallback((updated: TaskDto) => {
+    setTasks((prev) => prev.map((task) => task.id === updated.id ? updated : task));
+  }, []);
+
   const activeTasks = useMemo(
-    () => sortTasks(tasks.filter((task) => task.status === "ACTIVE" && !isOverdue(task.dueDate))),
-    [tasks]
+    () => sortTasks(visibleTasks.filter((task) => task.status === "ACTIVE" && !isOverdue(task.dueDate))),
+    [visibleTasks]
   );
 
   const overdueTasks = useMemo(
-    () => sortTasks(tasks.filter((task) => task.status === "ACTIVE" && isOverdue(task.dueDate))),
-    [tasks]
+    () => sortTasks(visibleTasks.filter((task) => task.status === "ACTIVE" && isOverdue(task.dueDate))),
+    [visibleTasks]
   );
 
   const completedTasks = useMemo(
-    () => sortTasks(tasks.filter((task) => task.status === "COMPLETED")),
-    [tasks]
+    () => sortTasks(visibleTasks.filter((task) => task.status === "COMPLETED")),
+    [visibleTasks]
   );
 
   return (
@@ -297,6 +311,17 @@ const TasksPage = () => {
               onClick={() => setScope("ALL")}
             >
               Все
+            </Button>
+            <Button
+              type="button"
+              variant={scope === "UNASSIGNED" ? "primary" : "outline"}
+              onClick={() => {
+                setScope("UNASSIGNED");
+                setActiveOpen(true);
+                setOverdueOpen(true);
+              }}
+            >
+              Без исполнителя
             </Button>
             <Button
               type="button"
@@ -337,6 +362,7 @@ const TasksPage = () => {
                     onComplete={handleComplete}
                     onDelete={handleDelete}
                     canDelete={canManage}
+                    onAssign={canManage ? handleOpenAssignment : undefined}
                   />
                 ))}
               </div>
@@ -367,6 +393,7 @@ const TasksPage = () => {
                     onComplete={handleComplete}
                     onDelete={handleDelete}
                     canDelete={canManage}
+                    onAssign={canManage ? handleOpenAssignment : undefined}
                   />
                 ))}
               </div>
@@ -432,7 +459,17 @@ const TasksPage = () => {
         onDelete={handleDelete}
         onClose={() => setSelectedTask(null)}
         canDelete={canManage}
+        onAssign={canManage ? handleOpenAssignment : undefined}
       />
+
+      {assignmentTask && canManage && (
+        <TaskAssignModal
+          key={assignmentTask.id}
+          task={assignmentTask}
+          onClose={() => setAssignmentTask(null)}
+          onTaskUpdated={handleTaskUpdated}
+        />
+      )}
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

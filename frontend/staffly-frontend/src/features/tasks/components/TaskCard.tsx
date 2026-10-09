@@ -7,6 +7,7 @@ import {
   formatRelativeTaskDate,
   formatTaskDate,
   resolveTaskAssignee,
+  isUnassignedTask,
 } from "../utils";
 
 type TaskCardProps = {
@@ -15,6 +16,7 @@ type TaskCardProps = {
   onComplete: (task: TaskDto) => void;
   onDelete: (task: TaskDto) => void;
   canDelete: boolean;
+  onAssign?: (task: TaskDto) => void;
 };
 
 const priorityStyles: Record<string, string> = {
@@ -23,7 +25,7 @@ const priorityStyles: Record<string, string> = {
   LOW: "bg-emerald-100 text-emerald-700",
 };
 
-const TaskCard = ({ task, onOpen, onComplete, onDelete, canDelete }: TaskCardProps) => {
+const TaskCard = ({ task, onOpen, onComplete, onDelete, canDelete, onAssign }: TaskCardProps) => {
   const badgeClass = priorityStyles[task.priority] ?? "bg-app text-muted";
 
   return (
@@ -54,6 +56,18 @@ const TaskCard = ({ task, onOpen, onComplete, onDelete, canDelete }: TaskCardPro
             )}
           </div>
           <div className="flex items-center gap-2">
+            {onAssign && isUnassignedTask(task) && (
+              <button
+                type="button"
+                className="border-subtle text-default hover:bg-app rounded-full border px-3 py-2 text-sm"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAssign(task);
+                }}
+              >
+                Назначить
+              </button>
+            )}
             {task.status !== "COMPLETED" && (
               <button
                 type="button"

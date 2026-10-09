@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:task-assignment": "node --test --experimental-strip-types tests/taskAssignment.test.ts",
     "test:reminder-detached": "node --test --experimental-strip-types tests/reminderDetachedTarget.test.ts",
     "test:historical-rows": "node --test --experimental-strip-types tests/scheduleHistoricalRows.test.ts",
     "dev": "vite",

@@ -14,6 +14,7 @@ public record TaskDto(
         TaskUserDto assignedUser,
         TaskUserDto createdBy,
         TaskUserDto setter,
-        String createdAt
+        String createdAt,
+        long version
 ) {
 }
