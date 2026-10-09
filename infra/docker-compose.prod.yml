@@ -82,7 +82,6 @@ services:
 
     depends_on:
       - db
-    command: ["--spring.profiles.active=prod,worker"]
 
   frontend:
     build:
