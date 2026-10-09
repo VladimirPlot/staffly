@@ -134,6 +134,7 @@ export default function InvitePage() {
             impact={inviteForm.impact}
             decisions={inviteForm.decisions}
             deadlines={inviteForm.deadlines}
+            deadlineValidations={inviteForm.deadlineValidations}
             restaurantTimeZone={restaurantTimeZone}
             submitting={inviteForm.submitting}
             isSubmitDisabled={inviteForm.isSubmitDisabled}
