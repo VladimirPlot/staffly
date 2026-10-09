@@ -18,16 +18,13 @@ export type AnnouncementPositionDto = {
 export type AnnouncementDto = {
   id: number;
   content: string;
-  expiresAt?: string | null;
   createdAt: string;
-  updatedAt: string;
   createdBy?: AnnouncementAuthorDto;
   positions: AnnouncementPositionDto[];
 };
 
 export type AnnouncementRequest = {
   content: string;
-  expiresAt?: string | null;
   positionIds: number[];
 };
 
@@ -41,18 +38,6 @@ export async function createAnnouncement(
   payload: AnnouncementRequest,
 ): Promise<AnnouncementDto> {
   const { data } = await api.post(`/api/restaurants/${restaurantId}/announcements`, payload);
-  return data as AnnouncementDto;
-}
-
-export async function updateAnnouncement(
-  restaurantId: number,
-  announcementId: number,
-  payload: AnnouncementRequest,
-): Promise<AnnouncementDto> {
-  const { data } = await api.put(
-    `/api/restaurants/${restaurantId}/announcements/${announcementId}`,
-    payload,
-  );
   return data as AnnouncementDto;
 }
 

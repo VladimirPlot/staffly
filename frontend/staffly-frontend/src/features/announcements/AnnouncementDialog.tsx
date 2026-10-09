@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 
 import Modal from "../../shared/ui/Modal";
-import Input from "../../shared/ui/Input";
 import Textarea from "../../shared/ui/Textarea";
 import Button from "../../shared/ui/Button";
 import DropdownMenu from "../../shared/ui/DropdownMenu";
@@ -15,30 +14,22 @@ import { matchesSearchText } from "../../shared/utils/search";
 
 type AnnouncementDialogProps = {
   open: boolean;
-  title: string;
   positions: PositionDto[];
   submitting: boolean;
-  submitLabel?: string;
   error?: string | null;
-  initialData?: { content: string; expiresAt?: string | null; positionIds: number[] };
   onClose: () => void;
   onSubmit: (payload: AnnouncementRequest) => void;
 };
 
 const AnnouncementDialog = ({
   open,
-  title,
   positions,
   submitting,
-  submitLabel = "Сохранить",
   error,
-  initialData,
   onClose,
   onSubmit,
 }: AnnouncementDialogProps) => {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [content, setContent] = useState(initialData?.content ?? "");
-  const [expiresAt, setExpiresAt] = useState(initialData?.expiresAt ?? "");
+  const [content, setContent] = useState("");
   const [selectedPositionIds, setSelectedPositionIds] = useState<number[]>([]);
   const [positionQuery, setPositionQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -47,13 +38,12 @@ const AnnouncementDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    setContent(initialData?.content ?? "");
-    setExpiresAt(initialData?.expiresAt ?? "");
-    setSelectedPositionIds(initialData?.positionIds ?? []);
+    setContent("");
+    setSelectedPositionIds([]);
     setPositionQuery("");
     setPickerOpen(false);
     setLocalError(null);
-  }, [open, initialData?.content, initialData?.expiresAt, initialData?.positionIds]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -111,10 +101,9 @@ const AnnouncementDialog = ({
     setLocalError(null);
     onSubmit({
       content: trimmed,
-      expiresAt: expiresAt?.trim() ? expiresAt.trim() : null,
       positionIds: selectedPositionIds,
     });
-  }, [content, expiresAt, onSubmit, selectedPositionIds]);
+  }, [content, onSubmit, selectedPositionIds]);
 
   const effectiveError = error || localError;
   const triggerLabel = useMemo(() => {
@@ -145,14 +134,14 @@ const AnnouncementDialog = ({
     <Modal
       open={open}
       onClose={onClose}
-      title={title}
+      title="Создать объявление"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? "Сохраняем…" : submitLabel}
+            {submitting ? "Отправляем…" : "Отправить"}
           </Button>
         </>
       }
@@ -253,20 +242,13 @@ const AnnouncementDialog = ({
           </div>
         </div>
 
-        <Input
-          label="Дата окончания (необязательно)"
-          type="date"
-          min={today}
-          value={expiresAt}
-          onChange={(event) => setExpiresAt(event.target.value)}
-          disabled={submitting}
-        />
-
         <Textarea
           label="Объявление"
           value={content}
           onChange={(event) => setContent(event.target.value)}
           rows={6}
+          maxLength={2000}
+          hint={`${content.length} / 2000`}
           disabled={submitting}
           className="resize-y"
         />

@@ -10,22 +10,14 @@ import {
   createAnnouncement,
   deleteAnnouncement,
   listAnnouncements,
-  updateAnnouncement,
 } from "./api";
 import { listPositions, type PositionDto } from "../dictionaries/api";
-import { Pencil, Trash2 } from "lucide-react";
-
-function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
-}
+import { Trash2 } from "lucide-react";
 
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(d);
+  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
 }
 
 type AnnouncementsManagerProps = {
@@ -43,20 +35,22 @@ const AnnouncementsManager = ({
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<AnnouncementDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AnnouncementDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadAnnouncements = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await listAnnouncements(restaurantId);
       setAnnouncements(data);
     } catch (e) {
       console.error("Failed to load announcements", e);
-      setAnnouncements([]);
+      setLoadError("Не удалось загрузить объявления");
     } finally {
       setLoading(false);
     }
@@ -79,17 +73,9 @@ const AnnouncementsManager = ({
   }, [canManage, restaurantId]);
 
   const openCreate = useCallback(() => {
-    setEditing(null);
     setDialogError(null);
     setDialogOpen(true);
   }, []);
-
-  const openEdit = useCallback((announcement: AnnouncementDto) => {
-    setEditing(announcement);
-    setDialogError(null);
-    setDialogOpen(true);
-  }, []);
-
 
   useEffect(() => {
     function handleOpenDialog() {
@@ -107,7 +93,6 @@ const AnnouncementsManager = ({
     if (submitting) return;
     setDialogOpen(false);
     setDialogError(null);
-    setEditing(null);
   }, [submitting]);
 
   const handleSubmit = useCallback(
@@ -115,43 +100,42 @@ const AnnouncementsManager = ({
       setSubmitting(true);
       setDialogError(null);
       try {
-        if (editing) {
-          await updateAnnouncement(restaurantId, editing.id, payload);
-        } else {
-          await createAnnouncement(restaurantId, payload);
-        }
+        await createAnnouncement(restaurantId, payload);
         setDialogOpen(false);
-        setEditing(null);
         await loadAnnouncements();
       } catch (e: any) {
         console.error("Failed to save announcement", e);
-        const message = e?.friendlyMessage || "Не удалось сохранить";
+        const message = e?.friendlyMessage || "Не удалось отправить объявление";
         setDialogError(message);
       } finally {
         setSubmitting(false);
       }
     },
-    [editing, loadAnnouncements, restaurantId],
+    [loadAnnouncements, restaurantId],
   );
 
   const openDelete = useCallback((announcement: AnnouncementDto) => {
+    setDeleteError(null);
     setDeleteTarget(announcement);
   }, []);
 
   const closeDelete = useCallback(() => {
     if (deleting) return;
     setDeleteTarget(null);
+    setDeleteError(null);
   }, [deleting]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await deleteAnnouncement(restaurantId, deleteTarget.id);
       setDeleteTarget(null);
       await loadAnnouncements();
     } catch (e) {
       console.error("Failed to delete announcement", e);
+      setDeleteError("Не удалось удалить объявление. Попробуйте ещё раз.");
     } finally {
       setDeleting(false);
     }
@@ -174,14 +158,6 @@ const AnnouncementsManager = ({
               <Button
                 variant="outline"
                 size="icon"
-                aria-label="Изменить"
-                onClick={() => openEdit(announcement)}
-              >
-                <Icon icon={Pencil} size="sm" decorative />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
                 className="text-default"
                 aria-label="Удалить"
                 onClick={() => openDelete(announcement)}
@@ -199,13 +175,6 @@ const AnnouncementsManager = ({
               .join(", ")}
           </div>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-          <span className="rounded-full bg-app px-3 py-1 text-sm text-strong">
-            {announcement.expiresAt
-              ? `Действует до ${formatDate(announcement.expiresAt)}`
-              : "Без даты окончания"}
-          </span>
-        </div>
       </div>
     );
   };
@@ -229,25 +198,22 @@ const AnnouncementsManager = ({
       )}
 
       <div className={`${hideHeader ? "" : "mt-4 "}space-y-3`}>
-        {announcements.length > 0 ? announcements.map(renderAnnouncement) : emptyState}
+        {loadError && (
+          <div className="flex items-center justify-between gap-3 text-sm text-red-600" role="alert">
+            <span>{loadError}</span>
+            <Button variant="outline" onClick={() => void loadAnnouncements()} disabled={loading}>
+              Повторить
+            </Button>
+          </div>
+        )}
+        {announcements.length > 0 ? announcements.map(renderAnnouncement) : !loadError && emptyState}
       </div>
 
       <AnnouncementDialog
         open={dialogOpen}
-        title={editing ? "Редактирование объявления" : "Создать объявление"}
         positions={positions}
         submitting={submitting}
-        submitLabel={editing ? "Сохранить" : "Отправить"}
         error={dialogError}
-        initialData={
-          editing
-            ? {
-                content: editing.content,
-                expiresAt: editing.expiresAt ?? "",
-                positionIds: editing.positions.map((p) => p.id),
-              }
-            : undefined
-        }
         onClose={closeDialog}
         onSubmit={handleSubmit}
       />
@@ -255,7 +221,12 @@ const AnnouncementsManager = ({
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Удалить объявление?"
-        description="Объявление исчезнет у всех сотрудников."
+        description={
+          <>
+            <span>Объявление исчезнет из входящих у всех получателей. Уже отправленные push останутся на устройствах.</span>
+            {deleteError && <span className="mt-2 block text-red-600" role="alert">{deleteError}</span>}
+          </>
+        }
         confirming={deleting}
         confirmText="Удалить"
         onCancel={closeDelete}

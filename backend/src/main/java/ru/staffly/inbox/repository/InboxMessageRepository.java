@@ -36,18 +36,6 @@ public interface InboxMessageRepository extends JpaRepository<InboxMessage, Long
         select m.id from InboxMessage m
         where m.type = :type
           and m.restaurant.id = :restaurantId
-          and ((m.expiresAt is not null and m.expiresAt < :expiresBefore)
-            or (m.expiresAt is null and m.createdAt < :createdBefore))
-        """)
-    List<Long> findAnnouncementIdsForCleanup(@Param("type") InboxMessageType type,
-                                             @Param("restaurantId") Long restaurantId,
-                                             @Param("expiresBefore") LocalDate expiresBefore,
-                                             @Param("createdBefore") Instant createdBefore);
-
-    @Query("""
-        select m.id from InboxMessage m
-        where m.type = :type
-          and m.restaurant.id = :restaurantId
           and m.createdAt < :createdBefore
         """)
     List<Long> findEventIdsForCleanup(@Param("type") InboxMessageType type,
