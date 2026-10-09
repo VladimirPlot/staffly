@@ -1,5 +1,7 @@
 package ru.staffly.schedule.lifecycle;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.invite.model.*;
@@ -79,5 +81,66 @@ class ScheduleAdmissionTest {
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);schedule.setPreferenceCollectionMode(PreferenceCollectionMode.SHIFT_OPTIONS);
         schedule.setPreferenceDeadline(now.plusSeconds(7200)); stub(intent(InvitationScheduleIntentAction.ADD_TO_COLLECTION,null));
         assertThrows(AdmissionPlanInvalidException.class, () -> handler.prepare(c)); verifyNoInteractions(lifecycle);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = InvitationScheduleIntentAction.class, names = {
+            "ADD_AND_REOPEN_COLLECTION", "ADD_AND_REOPEN_FOR_REBUILD"})
+    void reopenDynamicallyAllowsCurrentDeadlinesUpToRequestedDeadline(InvitationScheduleIntentAction action) {
+        var originalDeadline = now.plusSeconds(6 * 3600); // 18:00 at invitation creation
+        var requestedDeadline = now.plusSeconds(8 * 3600); // 20:00
+        schedule.setStatus(action == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                ? ScheduleStatus.PREFERENCES_CLOSED : ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.DAY_LEVEL);
+        var i = intent(action, requestedDeadline);
+        i.setExpectedPreferenceDeadline(originalDeadline);
+        stub(i);
+        when(lifecycle.reopenForAdmissionWithLocksHeld(schedule, member, requestedDeadline, 7L, now))
+                .thenReturn(new SchedulePreferenceLifecycleService.ReopenMutationResult(true, false));
+        // The original snapshot is deliberately unchanged: harmless extensions do not invalidate ACCEPT.
+        for (var current : Arrays.asList(originalDeadline, now.plusSeconds(7 * 3600), requestedDeadline, null)) {
+            schedule.setPreferenceDeadline(current);
+            var prepared = handler.prepare(c);
+            assertEquals(current, schedule.getPreferenceDeadline());
+            var result = prepared.applyAfterMembershipCreated(member);
+            assertEquals(1, result.scheduleEffects().size());
+        }
+        verify(lifecycle, times(4)).reopenForAdmissionWithLocksHeld(schedule, member, requestedDeadline, 7L, now);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = InvitationScheduleIntentAction.class, names = {
+            "ADD_AND_REOPEN_COLLECTION", "ADD_AND_REOPEN_FOR_REBUILD"})
+    void reopenRejectsCurrentDeadlineBeyondRequestedBeforeAnyMutation(InvitationScheduleIntentAction action) {
+        schedule.setStatus(action == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                ? ScheduleStatus.PREFERENCES_CLOSED : ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.DAY_LEVEL);
+        var current = now.plusSeconds(9 * 3600); // changed to 21:00 after creation
+        schedule.setPreferenceDeadline(current);
+        var i = intent(action, now.plusSeconds(8 * 3600)); // requested 20:00
+        i.setExpectedPreferenceDeadline(now.plusSeconds(6 * 3600)); // original 18:00
+        stub(i);
+        var error = assertThrows(AdmissionPlanInvalidException.class, () -> handler.prepare(c));
+        assertEquals("DEADLINE_CHANGED", error.getMessage());
+        assertEquals(current, schedule.getPreferenceDeadline());
+        assertEquals(i.getSelectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                ? ScheduleStatus.PREFERENCES_CLOSED : ScheduleStatus.DRAFT_FROM_PREFERENCES, schedule.getStatus());
+        verifyNoInteractions(lifecycle);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = InvitationScheduleIntentAction.class, names = {
+            "ADD_AND_REOPEN_COLLECTION", "ADD_AND_REOPEN_FOR_REBUILD"})
+    void reopenMissingOrExpiredDeadlineKeepsExistingReason(InvitationScheduleIntentAction action) {
+        schedule.setStatus(action == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                ? ScheduleStatus.PREFERENCES_CLOSED : ScheduleStatus.DRAFT_FROM_PREFERENCES);
+        schedule.setPreferenceCollectionMode(PreferenceCollectionMode.DAY_LEVEL);
+        schedule.setPreferenceDeadline(now.plusSeconds(9 * 3600));
+        for (var requested : Arrays.asList(null, now.minusSeconds(1), now)) {
+            stub(intent(action, requested));
+            var error = assertThrows(AdmissionPlanInvalidException.class, () -> handler.prepare(c));
+            assertEquals("DEADLINE_EXPIRED", error.getMessage());
+        }
+        verifyNoInteractions(lifecycle);
     }
 }

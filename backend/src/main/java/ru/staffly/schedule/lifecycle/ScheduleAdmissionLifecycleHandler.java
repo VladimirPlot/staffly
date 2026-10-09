@@ -54,9 +54,14 @@ public class ScheduleAdmissionLifecycleHandler implements AdmissionLifecycleHand
                         || !schedule.getPreferenceDeadline().isAfter(c.operationNow()))) {
                     throw new AdmissionPlanInvalidException("COLLECTION_EXPIRED");
                 }
-            } else if (intent.getSelectedAction() != InvitationScheduleIntentAction.ADD_TO_DRAFT
-                    && (deadline == null || !deadline.isAfter(c.operationNow()))) {
-                throw new AdmissionPlanInvalidException("DEADLINE_EXPIRED");
+            } else if (intent.getSelectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                    || intent.getSelectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD) {
+                if (deadline == null || !deadline.isAfter(c.operationNow())) {
+                    throw new AdmissionPlanInvalidException("DEADLINE_EXPIRED");
+                }
+                if (schedule.getPreferenceDeadline() != null && deadline.isBefore(schedule.getPreferenceDeadline())) {
+                    throw new AdmissionPlanInvalidException("DEADLINE_CHANGED");
+                }
             }
         }
         return member -> {

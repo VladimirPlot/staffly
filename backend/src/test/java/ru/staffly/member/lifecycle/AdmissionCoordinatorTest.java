@@ -1,6 +1,9 @@
 package ru.staffly.member.lifecycle;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
@@ -130,6 +133,101 @@ class AdmissionCoordinatorTest {
         when(handler.prepare(any())).thenThrow(new AdmissionPlanInvalidException("SCHEDULE_CHANGED"));
         assertThrows(InvitationInvalidatedException.class, () -> coordinator(List.of(handler)).acceptInvite("token", 7L));
         verify(members, never()).save(any()); assertEquals(1, tx.commits.get());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "ADD_AND_REOPEN_COLLECTION, 6", "ADD_AND_REOPEN_COLLECTION, 7", "ADD_AND_REOPEN_COLLECTION, 8",
+            "ADD_AND_REOPEN_FOR_REBUILD, 6", "ADD_AND_REOPEN_FOR_REBUILD, 7", "ADD_AND_REOPEN_FOR_REBUILD, 8"})
+    void reopenAcceptsUnchangedHarmlesslyExtendedOrEqualCurrentDeadline(InvitationScheduleIntentAction action,
+                                                                      int currentHoursAfterNow) {
+        var schedules = mock(ru.staffly.schedule.repository.ScheduleRepository.class);
+        var intents = mock(ru.staffly.invite.repository.InvitationScheduleIntentRepository.class);
+        var lifecycle = mock(ru.staffly.schedule.service.SchedulePreferenceLifecycleService.class);
+        var status = action == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                ? ru.staffly.schedule.model.ScheduleStatus.PREFERENCES_CLOSED
+                : ru.staffly.schedule.model.ScheduleStatus.DRAFT_FROM_PREFERENCES;
+        var schedule = ru.staffly.schedule.model.Schedule.builder().id(10L).restaurant(restaurant)
+                .positions(Set.of(position)).status(status).preferenceDeadline(now.plusSeconds(currentHoursAfterNow * 3600L))
+                .preferenceCollectionMode(ru.staffly.schedule.model.PreferenceCollectionMode.DAY_LEVEL).build();
+        var requested = now.plusSeconds(8 * 3600); // 20:00, planned at original 18:00
+        var intent = InvitationScheduleIntent.builder().expectedScheduleId(10L).selectedAction(action)
+                .requestedDeadline(requested).expectedPreferenceDeadline(now.plusSeconds(6 * 3600)).build();
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(invite.getId())).thenReturn(List.of(intent));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(10L))).thenReturn(List.of(schedule));
+        when(lifecycle.reopenForAdmissionWithLocksHeld(eq(schedule), any(), eq(requested), eq(7L), eq(now)))
+                .thenReturn(new ru.staffly.schedule.service.SchedulePreferenceLifecycleService.ReopenMutationResult(true, false));
+        var impact = new InvitationImpactService(null, null, null, null, null, null, time);
+        var handler = new ru.staffly.schedule.lifecycle.ScheduleAdmissionLifecycleHandler(intents, schedules, impact, lifecycle);
+        var result = coordinator(List.of(handler)).acceptInvite("token", 7L);
+        assertEquals(42L, result.id());
+        assertEquals(InvitationStatus.ACCEPTED, invite.getStatus());
+        var order = inOrder(schedules, members, lifecycle);
+        order.verify(schedules).findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(10L));
+        order.verify(members).save(any());
+        order.verify(lifecycle).reopenForAdmissionWithLocksHeld(schedule, invite.getAcceptedMember(), requested, 7L, now);
+        assertEquals(1, tx.commits.get());
+        assertEquals(0, tx.rollbacks.get());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = InvitationScheduleIntentAction.class, names = {
+            "ADD_AND_REOPEN_COLLECTION", "ADD_AND_REOPEN_FOR_REBUILD"})
+    void changedReopenDeadlineInvalidatesWithoutMemberOrPartialScheduleMutation(InvitationScheduleIntentAction action) {
+        assertReopenInvalidationBeforeMutation(action, now.plusSeconds(8 * 3600), "DEADLINE_CHANGED");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = InvitationScheduleIntentAction.class, names = {
+            "ADD_AND_REOPEN_COLLECTION", "ADD_AND_REOPEN_FOR_REBUILD"})
+    void expiredReopenDeadlineInvalidatesWithoutMemberOrPartialScheduleMutation(InvitationScheduleIntentAction action) {
+        assertReopenInvalidationBeforeMutation(action, now, "DEADLINE_EXPIRED");
+    }
+
+    private void assertReopenInvalidationBeforeMutation(InvitationScheduleIntentAction action,
+                                                       Instant requestedDeadline, String reason) {
+        var schedules = mock(ru.staffly.schedule.repository.ScheduleRepository.class);
+        var intents = mock(ru.staffly.invite.repository.InvitationScheduleIntentRepository.class);
+        var lifecycle = mock(ru.staffly.schedule.service.SchedulePreferenceLifecycleService.class);
+        var status = action == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                ? ru.staffly.schedule.model.ScheduleStatus.PREFERENCES_CLOSED
+                : ru.staffly.schedule.model.ScheduleStatus.DRAFT_FROM_PREFERENCES;
+        var originalDeadline = now.plusSeconds(6 * 3600); // 18:00 at creation
+        var currentDeadline = now.plusSeconds(9 * 3600); // 21:00 at ACCEPT
+        var first = ru.staffly.schedule.model.Schedule.builder().id(10L).restaurant(restaurant)
+                .positions(Set.of(position)).status(status).preferenceDeadline(originalDeadline)
+                .preferenceCollectionMode(ru.staffly.schedule.model.PreferenceCollectionMode.DAY_LEVEL).build();
+        var changed = ru.staffly.schedule.model.Schedule.builder().id(11L).restaurant(restaurant)
+                .positions(Set.of(position)).status(status).preferenceDeadline(currentDeadline)
+                .preferenceCollectionMode(ru.staffly.schedule.model.PreferenceCollectionMode.DAY_LEVEL).build();
+        var firstIntent = InvitationScheduleIntent.builder().expectedScheduleId(10L).selectedAction(action)
+                .requestedDeadline(now.plusSeconds(8 * 3600)).expectedPreferenceDeadline(originalDeadline).build();
+        var changedIntent = InvitationScheduleIntent.builder().expectedScheduleId(11L).selectedAction(action)
+                .requestedDeadline(requestedDeadline).expectedPreferenceDeadline(originalDeadline).build();
+        when(intents.findByInvitationIdOrderByExpectedScheduleIdAsc(invite.getId()))
+                .thenReturn(List.of(firstIntent, changedIntent));
+        when(schedules.findAllForUpdateByRestaurantIdAndIdInOrderByIdAsc(1L, List.of(10L, 11L)))
+                .thenReturn(List.of(first, changed));
+        var impact = new InvitationImpactService(null, null, null, null, null, null, time);
+        var handler = new ru.staffly.schedule.lifecycle.ScheduleAdmissionLifecycleHandler(intents, schedules, impact, lifecycle);
+        var error = assertThrows(InvitationInvalidatedException.class,
+                () -> coordinator(List.of(handler)).acceptInvite("token", 7L));
+        assertEquals("INVITATION_INVALIDATED", error.getMeta().get("code"));
+        assertEquals(reason, error.getMeta().get("reason"));
+        assertEquals(InvitationStatus.INVALIDATED, invite.getStatus());
+        assertNull(invite.getAcceptedMember());
+        verify(members, never()).save(any());
+        verifyNoInteractions(lifecycle, owners);
+        assertEquals(originalDeadline, first.getPreferenceDeadline());
+        assertEquals(currentDeadline, changed.getPreferenceDeadline());
+        assertEquals(status, first.getStatus());
+        assertEquals(status, changed.getStatus());
+        assertEquals(0, first.getPreferenceCollectionCycle());
+        assertEquals(0, changed.getPreferenceCollectionCycle());
+        assertEquals(1, tx.commits.get());
+        assertEquals(0, tx.rollbacks.get());
+        verify(invites).saveAndFlush(invite);
+        verify(sender).submitInvalidated(eq(invite), eq(user), eq(reason), any());
     }
     @Test void emailCompatibilityNormalizesContactAndLegacyRoleDoesNotGrantAuthority() {
         invite.setPhoneOrEmail(" Employee@Example.COM ");user.setEmail("employee@example.com");
