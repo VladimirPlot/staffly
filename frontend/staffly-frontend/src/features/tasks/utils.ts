@@ -72,7 +72,11 @@ export function resolveTaskAssignee(task: TaskDto): string {
   if (task.assignedPosition) {
     return task.assignedPosition.name;
   }
-  return "Без ответственного";
+  return "Без исполнителя";
+}
+
+export function isUnassignedTask(task: TaskDto): boolean {
+  return task.status === "ACTIVE" && !task.assignedToAll && !task.assignedUser && !task.assignedPosition;
 }
 
 export function formatCompletedAt(value?: string | null): string {

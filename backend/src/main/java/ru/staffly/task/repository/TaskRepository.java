@@ -13,6 +13,10 @@ import java.util.Optional;
 
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
+    // Scalar lookup avoids caching a task snapshot before waiting on the lifecycle mutex.
+    @Query("select t.restaurant.id from Task t where t.id = :taskId and t.deletedAt is null")
+    Optional<Long> findRestaurantIdByActiveId(Long taskId);
+
     @Query("""
            select t from Task t
            left join fetch t.assignedMember am

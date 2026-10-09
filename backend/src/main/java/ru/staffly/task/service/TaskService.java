@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.exception.ForbiddenException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
@@ -33,6 +34,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Objects;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -193,6 +195,37 @@ public class TaskService {
     }
 
     @Transactional
+    public TaskDto assign(Long taskId, Long userId, TaskAssignRequest request) {
+        Long restaurantId = tasks.findRestaurantIdByActiveId(taskId)
+                .orElseThrow(() -> new NotFoundException("Task not found: " + taskId));
+        lifecycleMutex.lock(restaurantId);
+        securityService.assertAtLeastManager(userId, restaurantId);
+        RestaurantMember actor = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
+                .orElseThrow(() -> new ForbiddenException("Для назначения нужен действующий MANAGER или ADMIN"));
+        if (!isManager(actor)) {
+            throw new ForbiddenException("Для назначения нужен действующий MANAGER или ADMIN");
+        }
+        RestaurantMember target = members.findForUpdateByIdAndRestaurantId(request.memberId(), restaurantId)
+                .orElseThrow(() -> new BadRequestException("Сотрудник больше не работает в ресторане. Обновите список."));
+        Task task = tasks.findAllForUpdate(restaurantId, List.of(taskId)).stream().findFirst()
+                .filter(candidate -> candidate.getDeletedAt() == null)
+                .orElseThrow(() -> new NotFoundException("Task not found: " + taskId));
+        if (!Objects.equals(request.expectedVersion(), task.getVersion())
+                || task.getStatus() != TaskStatus.ACTIVE || task.isAssignedToAll()
+                || task.getAssignedMember() != null || task.getAssignedUser() != null
+                || task.getAssignedPosition() != null) {
+            throw new ConflictException("Задача изменилась. Обновите её перед назначением.",
+                    Map.of("code", "TASK_ASSIGNMENT_STALE"));
+        }
+        task.setAssignedMember(target);
+        task.setAssignedUser(target.getUser());
+        task = tasks.saveAndFlush(task);
+        inboxMessages.createEvent(task.getRestaurant(), actor.getUser(), "Вам назначена задача: " + task.getTitle(),
+                InboxEventSubtype.TASK, "task-assignment:" + task.getId() + ":" + task.getVersion(), List.of(target), null);
+        return toDto(task, target, task.getSetterMember());
+    }
+
+    @Transactional
     public TaskDto complete(Long taskId, Long userId) {
         Task task = tasks.findActiveById(taskId)
                 .orElseThrow(() -> new NotFoundException("Task not found: " + taskId));
@@ -304,7 +337,8 @@ public class TaskService {
                 assignedUser,
                 createdBy,
                 setter,
-                task.getCreatedAt() == null ? null : task.getCreatedAt().toString()
+                task.getCreatedAt() == null ? null : task.getCreatedAt().toString(),
+                task.getVersion()
         );
     }
 

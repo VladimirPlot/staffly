@@ -20,6 +20,7 @@ export type TaskUserDto = {
 
 export type TaskDto = {
   id: number;
+  version: number;
   restaurantId: number;
   title: string;
   description?: string | null;
@@ -98,6 +99,11 @@ export async function fetchTask(taskId: number): Promise<TaskDto> {
 
 export async function completeTask(taskId: number): Promise<TaskDto> {
   const { data } = await api.patch(`/api/tasks/${taskId}/complete`);
+  return data as TaskDto;
+}
+
+export async function assignTask(taskId: number, memberId: number, expectedVersion: number): Promise<TaskDto> {
+  const { data } = await api.patch(`/api/tasks/${taskId}/assignee`, { memberId, expectedVersion });
   return data as TaskDto;
 }
 

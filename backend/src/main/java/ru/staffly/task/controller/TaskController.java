@@ -10,6 +10,7 @@ import ru.staffly.task.dto.TaskCommentDto;
 import ru.staffly.task.dto.TaskCommentPageDto;
 import ru.staffly.task.dto.TaskCommentRequest;
 import ru.staffly.task.dto.TaskCreateRequest;
+import ru.staffly.task.dto.TaskAssignRequest;
 import ru.staffly.task.dto.TaskDto;
 import ru.staffly.task.model.TaskStatus;
 import ru.staffly.task.service.TaskService;
@@ -46,6 +47,14 @@ public class TaskController {
     public TaskDto get(@PathVariable Long taskId,
                        @AuthenticationPrincipal UserPrincipal principal) {
         return service.get(taskId, principal.userId());
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PatchMapping("/tasks/{taskId}/assignee")
+    public TaskDto assign(@PathVariable Long taskId,
+                          @AuthenticationPrincipal UserPrincipal principal,
+                          @Valid @RequestBody TaskAssignRequest request) {
+        return service.assign(taskId, principal.userId(), request);
     }
 
     @PreAuthorize("isAuthenticated()")
