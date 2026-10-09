@@ -68,9 +68,7 @@ public class ScheduleTerminationPreviewHandler {
         ScheduleRow row = schedule.getRows().stream()
                 .filter(candidate -> memberId.equals(candidate.getMemberId()) && !candidate.isHistorical()).findFirst().orElse(null);
         ScheduleStatus status = schedule.getStatus();
-        boolean preferenceLifecycle = status == ScheduleStatus.COLLECTING_PREFERENCES
-                || status == ScheduleStatus.PREFERENCES_CLOSED
-                || status == ScheduleStatus.DRAFT_FROM_PREFERENCES;
+        boolean draft = status == ScheduleStatus.DRAFT || status == ScheduleStatus.DRAFT_FROM_PREFERENCES;
         boolean activeRow = row != null && !row.isHistorical();
         boolean publishedActiveRow = status == ScheduleStatus.PUBLISHED && activeRow;
         PublishedShiftImpact shiftImpact = null;
@@ -85,11 +83,11 @@ public class ScheduleTerminationPreviewHandler {
                 participation == null ? null : participation.getId(),
                 submission == null ? null : submission.getId(),
                 submission == null ? null : submission.getRevision(),
-                preferenceLifecycle && participation != null,
-                preferenceLifecycle && submission != null,
+                participation != null,
+                submission != null,
                 status == ScheduleStatus.COLLECTING_PREFERENCES && participation != null,
                 status == ScheduleStatus.DRAFT_FROM_PREFERENCES,
-                status == ScheduleStatus.DRAFT && activeRow,
+                draft && activeRow,
                 publishedActiveRow,
                 shiftImpact);
     }

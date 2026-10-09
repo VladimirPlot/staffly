@@ -31,6 +31,13 @@ public record EmployeeRemovalImpactPlan(
                              List<TaskResponsibility> setterResponsibilities) { }
     public record AutomaticImpact(int affectedCount) { }
 
+    /**
+     * Participation and submission removal flags describe existing records in any status.
+     * Progress denominator refers only to the ongoing COLLECTING_PREFERENCES progress.
+     * Active draft row removal covers DRAFT and DRAFT_FROM_PREFERENCES, not collection rows.
+     * Auto-build staleness describes Apply marking an affected DRAFT_FROM_PREFERENCES stale,
+     * including a draft that was already stale. Published effects concern only active rows.
+     */
     public record ScheduleImpact(
             Long scheduleId, String scheduleTitle, ScheduleStatus scheduleStatus, Long scheduleVersion,
             long preferenceCollectionCycle, Instant currentPreferenceDeadline,
