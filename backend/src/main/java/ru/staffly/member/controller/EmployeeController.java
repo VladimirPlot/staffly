@@ -47,7 +47,7 @@ public class EmployeeController {
         return invitationImpactService.calculate(restaurantId, principal.userId(), request);
     }
 
-    // Пригласить по телефону/email (MANAGER/OWNER)
+    // Пригласить по телефону (MANAGER/ADMIN или global CREATOR).
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/members/invite")
     public InviteResponse invite(@PathVariable Long restaurantId,
@@ -56,7 +56,7 @@ public class EmployeeController {
         return employees.invite(restaurantId, principal.userId(), req);
     }
 
-    // Отменить инвайт (MANAGER/OWNER)
+    // Отменить инвайт (MANAGER/ADMIN или global CREATOR).
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @DeleteMapping("/invitations/{token}")
     public void cancelInvite(@PathVariable Long restaurantId,

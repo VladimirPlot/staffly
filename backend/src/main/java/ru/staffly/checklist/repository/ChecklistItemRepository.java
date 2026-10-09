@@ -20,8 +20,6 @@ public interface ChecklistItemRepository extends JpaRepository<ChecklistItem, Lo
     @Query("select i from ChecklistItem i where i.reservedBy.id = :memberId order by i.id")
     List<ChecklistItem> findReservedForUpdate(@Param("memberId") Long memberId);
 
-    List<ChecklistItem> findByChecklistIdOrderByItemOrderAsc(Long checklistId);
-
     @Query("select count(i) from ChecklistItem i where i.reservedBy.id = :memberId")
     int countActiveReservationsForMember(@Param("memberId") Long memberId);
 

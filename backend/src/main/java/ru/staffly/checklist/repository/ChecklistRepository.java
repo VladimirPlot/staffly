@@ -43,19 +43,6 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
     @EntityGraph(attributePaths = {"positions", "restaurant"})
     Optional<Checklist> findWithPositionsById(Long id);
 
-    @EntityGraph(attributePaths = {
-            "positions",
-            "restaurant",
-            "items",
-            "items.doneBy",
-            "items.doneBy.user",
-            "items.reservedBy",
-            "items.reservedBy.user",
-            "items.completionPhotoUploadedBy",
-            "items.completionPhotoUploadedBy.user"
-    })
-    Optional<Checklist> findDetailedById(Long id);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {
             "positions",

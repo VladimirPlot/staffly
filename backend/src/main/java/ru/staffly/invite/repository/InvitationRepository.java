@@ -40,8 +40,6 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
            """)
     List<Long> findExpiredPendingIds(InvitationStatus status, Instant now, Pageable pageable);
 
-    List<Invitation> findByRestaurantIdAndStatus(Long restaurantId, InvitationStatus status);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
            select i from Invitation i

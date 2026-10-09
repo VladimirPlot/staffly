@@ -33,7 +33,6 @@ import static org.mockito.Mockito.*;
 @DataJpaTest(properties = {
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
         "spring.datasource.url=jdbc:h2:mem:termination-consistency;MODE=PostgreSQL;NON_KEYWORDS=VALUE,DAY;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver"
 }, showSql = false)

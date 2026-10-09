@@ -214,20 +214,6 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             """)
     List<TrainingExam> findCertificationByRestaurantIdWithFolderAndVisibility(@Param("restaurantId") Long restaurantId);
 
-    @Query("""
-            select distinct e from TrainingExam e
-            left join fetch e.visibilityPositions vp
-            left join fetch e.createdBy cb
-            left join fetch e.owner ow
-            where e.restaurant.id = :restaurantId
-              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
-              and e.active = true
-              and e.owner.id = :ownerUserId
-            order by e.createdAt desc
-            """)
-    List<TrainingExam> findActiveCertificationByRestaurantIdAndOwnerUserIdWithVisibility(@Param("restaurantId") Long restaurantId,
-                                                                                         @Param("ownerUserId") Long ownerUserId);
-
     /** Restorable hidden resources retain mandatory ownership. Deleted exams are physically absent. */
     @Query("""
             select distinct e from TrainingExam e
@@ -253,19 +239,5 @@ public interface TrainingExamRepository extends JpaRepository<TrainingExam, Long
             """)
     List<TrainingExam> findCertificationForLifecycleTransfer(@Param("restaurantId") Long restaurantId,
                                                              @Param("examIds") List<Long> examIds);
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-            select distinct e from TrainingExam e
-            left join fetch e.visibilityPositions vp
-            left join fetch e.createdBy cb
-            left join fetch e.owner ow
-            where e.restaurant.id = :restaurantId
-              and e.mode = ru.staffly.training.model.TrainingExamMode.CERTIFICATION
-              and e.active = true
-              and e.id in :examIds
-            """)
-    List<TrainingExam> findActiveCertificationByRestaurantIdAndIdInWithVisibility(@Param("restaurantId") Long restaurantId,
-                                                                                  @Param("examIds") List<Long> examIds);
 
 }
