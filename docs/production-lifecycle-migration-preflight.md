@@ -5,6 +5,37 @@ Commands are POSIX shell examples run from the repository root with Docker Compo
 Keep the existing Compose project name (`-p <existing-name>` if used in production),
 environment file and volumes. Never use `down -v`. Protect backup/report files as personal data.
 
+## Required production environment
+
+Supply nonempty `DB_PASSWORD`, `JWT_SECRET`, `CREATOR_PHONES`, `S3_ACCESS_KEY`,
+`S3_SECRET_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` through
+the Compose interpolation environment (exported shell variables or a protected
+`infra/.env`; alternatively use `--env-file /secure/path/production.env` on EVERY
+Compose command). Service `env_file` alone is not a general interpolation source.
+Use `config --quiet` to validate without printing resolved secrets. Required-variable
+guards reject missing AND empty values. Do not commit populated environment files.
+
+`DB_PASSWORD` is the single source for PostgreSQL and both application containers.
+For an existing `pgdata` volume, changing `POSTGRES_PASSWORD` does NOT rotate the
+stored PostgreSQL role password: arrange an explicit controlled role-password change
+and update the environment together. Never initialize/delete the volume to rotate it.
+Use a strong random JWT secret of at least 32 bytes; the current JWT implementation
+does not enforce entropy, so do not use examples or former hardcoded values. Coordinate
+JWT rotation because it invalidates access tokens signed with the previous secret.
+
+`CREATOR_PHONES` is the exact comma-separated authorized phone list; production no
+longer inherits the dev demo creator phone. Copy that same effective list into the
+preflight input below, accounting for any deployment property overrides.
+VAPID credentials are required even when `PUSH_ENABLED=false` for rehearsal; supply
+rehearsal keys, not real delivery credentials. S3 clients are always configured, so
+use isolated rehearsal credentials. API and worker both use the fixed production
+bucket names `staffly-prod`/`staffly-private`; endpoint/region/public URL have safe
+Yandex defaults. Review endpoint overrides before giving them production credentials.
+
+When starting the prod profile outside Compose, also supply `DB_URL` and `DB_USER`.
+Production Spring placeholders have no credential fallbacks. Dev-only DB/JWT/creator
+convenience values are in the dev configuration; never combine `dev` with `prod`.
+
 ## Preconditions and migration audit
 
 - V115 requires every member's non-null Position to exist, belong to the same
@@ -56,20 +87,23 @@ blockers. Use `production-lifecycle-migration-preflight.sql` as the production g
    isolated database. Record release/image IDs, effective profiles, Flyway history,
    DB TimeZone, backup checksum/location and any existing pending invitations.
    Preserve the initial untouched backup; make a second backup after reconciliation.
-3. Copy the preflight SQL to a protected working copy and replace its creator-phone
-   placeholder with ALL effective `app.creator.phones` values, e.g.
-   `VALUES ('+79990000001'), ('+79990000002')`. `GlobalCreatorPolicy` matches phones;
-   hidden emails and null positions alone do not prove CREATOR authority. An
-   unedited placeholder produces no creator detections and is not a valid review.
+3. Set `CREATOR_PHONES` to ALL effective `app.creator.phones` values, e.g.
+   `+79990000001,+79990000002` (illustrative phones only). Supply it explicitly as
+   psql variable `creator_phones`; Compose's `.env` is not exported to the operator
+   shell automatically. The script aborts on missing, empty or malformed input.
+   Entries must have `+` followed by 7–15 digits; surrounding spaces are trimmed.
+   Input is quoted as a SQL literal, never executed as SQL. `GlobalCreatorPolicy`
+   matches phones; hidden emails and null positions alone do not prove authority.
 4. Run against the V114 primary with writers still stopped. `-X` ignores psqlrc,
    `ON_ERROR_STOP` makes SQL/schema failures abort, and the SQL enforces a stable
    read-only transaction. Use the database's migration-session TimeZone; legacy task
    `created_at` is a timestamp without time zone, membership starts are timestamptz.
 
    ```sh
+   : "${CREATOR_PHONES:?Export the complete effective CREATOR phone list first}"
    docker compose -f infra/docker-compose.prod.yml exec -T db \
-     psql -X -U app -d staffly -v ON_ERROR_STOP=1 \
-     < /secure/path/preflight-reviewed.sql > backups/lifecycle-preflight.txt
+     psql -X -U app -d staffly -v ON_ERROR_STOP=1 -v creator_phones="$CREATOR_PHONES" \
+     < docs/production-lifecycle-migration-preflight.sql > backups/lifecycle-preflight.txt
    ```
 
 5. Review every non-zero anomaly and every returned task/audit/creator detail.
@@ -140,6 +174,11 @@ healthy API, caddy also waits for frontend start. API readiness requires Spring
 `ACCEPTING_TRAFFIC` after Flyway/context/runners and a live `SELECT 1`; it exposes no
 DB details. Actuator is not needed. API Flyway stays enabled; worker Flyway stays
 disabled and its web application type stays `none`; scheduling stays worker-only.
+Readiness is unauthenticated internally at `http://127.0.0.1:8080/api/ready` in the
+backend container; the production backend has no published port. Caddy returns 404
+for `/api/ready` and its path suffixes before proxying normal `/api/*` requests.
+Verify readiness with `docker compose exec -T backend curl ...` only. Public smoke
+uses `/api/ping` or a normal authenticated API operation, never readiness.
 
 Healthchecks poll actual state, not elapsed sleeps. The API health budget is 30s
 start period plus 60 failures at 5s intervals; adjust to measured rehearsal time.
@@ -158,7 +197,8 @@ Use designated smoke accounts/restaurant with agreed cleanup through application
 flows; no full 21-scenario lifecycle regression in production.
 
 - API logs show `prod`, successful Flyway through V119 and no startup exceptions;
-  `/api/ready` responds 200 internally and through the public route.
+  `/api/ready` responds 200 internally. Public `https://staffly.store/api/ready`
+  (including query/path suffix variants) returns 404, while `/api/ping` returns `pong`.
 - Worker logs show `prod,worker`, no web server and no Flyway migration attempt.
   Inspect effective configuration (without printing secrets):
   `application-worker.yml` has `spring.flyway.enabled=false`; no deployment override.

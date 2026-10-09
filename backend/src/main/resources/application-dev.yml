@@ -5,6 +5,10 @@ spring:
     password: app
 
 app:
+  jwt:
+    secret: ${JWT_SECRET:dev-very-secret-key-change-me}
+  creator:
+    phones: ${CREATOR_PHONES:+79999999999}
   s3:
     public-bucket: ${S3_PUBLIC_BUCKET:staffly-dev-public}
     private-bucket: ${S3_PRIVATE_BUCKET:staffly-dev-private}

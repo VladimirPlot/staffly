@@ -1,10 +1,29 @@
 -- READ ONLY. Run with psql -X -v ON_ERROR_STOP=1 against a V114 database.
 -- Reports do not repair data. Every non-zero blocker must be reconciled explicitly.
--- Replace the creator-phone placeholder below with ALL effective app.creator.phones.
+-- REQUIRED: -v creator_phones='+79990000001,+79990000002' containing ALL
+-- effective app.creator.phones. Input is quoted as a SQL literal, never SQL code.
 -- Run on the primary with writers stopped; task timestamp comparisons use the
 -- migration connection's TimeZone (do not change it just for this report).
+\set ON_ERROR_STOP on
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 SET LOCAL search_path = public, pg_catalog;
+
+\if :{?creator_phones}
+SELECT NOT EXISTS (
+    SELECT 1 FROM regexp_split_to_table(:'creator_phones', ',') AS input(phone)
+    WHERE btrim(phone) !~ '^\+[0-9]{7,15}$'
+) AND btrim(:'creator_phones') <> '' AS creator_input_valid \gset
+\if :creator_input_valid
+\else
+DO $$ BEGIN
+    RAISE EXCEPTION 'Invalid creator_phones: provide a nonempty comma-separated list of configured phones in +digits format (7-15 digits), with no placeholders or empty entries';
+END $$;
+\endif
+\else
+DO $$ BEGIN
+    RAISE EXCEPTION 'Missing required psql variable creator_phones: use -v creator_phones=... with ALL effective configured CREATOR phones';
+END $$;
+\endif
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM flyway_schema_history WHERE version = '114' AND success)
@@ -102,7 +121,10 @@ WHERE period_count <> 1 ORDER BY task_id, relation;
 -- Detection only. GlobalCreatorPolicy uses configured phones, not a DB CREATOR
 -- role or email. Every membership of a configured creator deserves review;
 -- invalid/null Position semantics makes it a likely legacy synthetic candidate.
-WITH configured_creator_phones(phone) AS (VALUES ('<replace-with-deployed-creator-phone>'))
+WITH configured_creator_phones AS (
+    SELECT DISTINCT btrim(phone) AS phone
+    FROM regexp_split_to_table(:'creator_phones', ',') AS input(phone)
+)
 SELECT m.id, m.user_id, m.restaurant_id, m.created_at, m.role, m.position_id,
        u.phone, u.email, p.name, p.level,
        (m.position_id IS NULL OR p.id IS NULL
