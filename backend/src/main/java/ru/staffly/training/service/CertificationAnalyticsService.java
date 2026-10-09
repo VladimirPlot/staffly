@@ -36,6 +36,7 @@ class CertificationAnalyticsService {
 
     @Transactional
     public CertificationExamSummaryDto getExamSummary(Long restaurantId, Long actorUserId, Long examId) {
+        trainingPolicyService.assertRestaurantUnlocked(actorUserId, restaurantId);
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
@@ -49,6 +50,7 @@ class CertificationAnalyticsService {
             Long actorUserId,
             Collection<Long> examIds
     ) {
+        trainingPolicyService.assertRestaurantUnlocked(actorUserId, restaurantId);
         if (examIds == null || examIds.isEmpty()) {
             return Map.of();
         }
@@ -84,6 +86,7 @@ class CertificationAnalyticsService {
 
     @Transactional
     public List<CertificationExamPositionBreakdownDto> getPositionBreakdown(Long restaurantId, Long actorUserId, Long examId) {
+        trainingPolicyService.assertRestaurantUnlocked(actorUserId, restaurantId);
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
@@ -115,6 +118,7 @@ class CertificationAnalyticsService {
 
     @Transactional
     public List<CertificationExamEmployeeRowDto> getEmployeeRows(Long restaurantId, Long actorUserId, Long examId) {
+        trainingPolicyService.assertRestaurantUnlocked(actorUserId, restaurantId);
         var now = TimeProvider.now();
         lifecycleCoordinator.normalizeCurrentExam(restaurantId, examId, now);
         entityManager.flush();
@@ -160,6 +164,7 @@ class CertificationAnalyticsService {
 
     @Transactional(readOnly = true)
     public List<CertificationExamAttemptHistoryDto> getEmployeeAttemptHistory(Long restaurantId, Long actorUserId, Long examId, Long userId) {
+        trainingPolicyService.assertRestaurantUnlocked(actorUserId, restaurantId);
         ensureCertificationExam(restaurantId, examId);
         assertCanAccessEmployeeByRole(restaurantId, actorUserId, userId);
         // История для employee endpoint возвращается как полная история попыток пользователя по exam.
@@ -190,6 +195,7 @@ class CertificationAnalyticsService {
 
     @Transactional(readOnly = true)
     public CertificationAttemptDetailsDto getAttemptDetails(Long restaurantId, Long actorUserId, Long examId, Long attemptId) {
+        trainingPolicyService.assertRestaurantUnlocked(actorUserId, restaurantId);
         ensureCertificationExam(restaurantId, examId);
         var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Attempt not found"));

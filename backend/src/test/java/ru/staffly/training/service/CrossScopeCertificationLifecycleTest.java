@@ -58,7 +58,7 @@ class CrossScopeCertificationLifecycleTest {
     private final CertificationFolderManagementService folders = mock(CertificationFolderManagementService.class);
     private final CertificationAudienceSyncService audience = mock(CertificationAudienceSyncService.class);
     private final RestaurantTimeService time = mock(RestaurantTimeService.class);
-    private final TrainingPolicyService policy = spy(new TrainingPolicyService(members, positions));
+    private final TrainingPolicyService policy = spy(new TrainingPolicyService(members, positions, new SecurityService(members, mock(RestaurantRepository.class))));
     private final TrainingExamOwnershipService ownership = new TrainingExamOwnershipService(exams, members, policy,
             folders, mutex, em, new GlobalCreatorPolicy("+79999999999"), users);
     private final CertificationEmployeeLifecycleHandler certification = new CertificationEmployeeLifecycleHandler(audience, ownership, members);

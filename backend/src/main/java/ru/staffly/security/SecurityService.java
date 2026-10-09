@@ -66,8 +66,13 @@ public class SecurityService {
         if (!isCreator() && isLocked(restaurantId)) throw new ForbiddenException("Restaurant is locked");
         if (!isAdmin(userId, restaurantId)) throw new ForbiddenException("Admin required"); }
 
+    /** Global CREATOR authority is exempt from the restaurant lock. */
+    public boolean isRestaurantUnlocked(Long restaurantId) {
+        return isCreator() || !isLocked(restaurantId);
+    }
+
     public void assertRestaurantUnlocked(Long userId, Long restaurantId) {
-        if (!isCreator() && isLocked(restaurantId)) {
+        if (!isRestaurantUnlocked(restaurantId)) {
             throw new ForbiddenException("Restaurant is locked");
         }
     }
