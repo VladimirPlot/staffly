@@ -13,6 +13,7 @@ import type {
   ShiftMode,
 } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
+import { canEditScheduleCell, scheduleRowCellKey, scheduleRowKey } from "../utils/rowIdentity";
 import {
   canApplyPreferenceHint,
   formatPreferenceHintTime,
@@ -33,6 +34,8 @@ import {
 } from "../utils/timeValues";
 
 const HOURS = Array.from({ length: 25 }, (_, index) => index);
+const HISTORY_EXPLANATION =
+  "Историческая строка — сотрудник больше не участвует в графике. Ранее созданные смены сохранены и доступны только для просмотра.";
 
 const PLACEHOLDERS: Record<ShiftMode, string> = {
   ARRIVAL_ONLY: "08 или 08:30",
@@ -117,6 +120,7 @@ type ScheduleCellEditorProps = {
   hints?: SchedulePreferenceCellDto[];
   rejectionHints?: ScheduleAutoBuildRejectionHintDto[];
   showCellDiagnostics: boolean;
+  historical?: boolean;
 };
 
 type EditableCellProps = {
@@ -169,7 +173,7 @@ const ScheduleTable: React.FC<Props> = ({
 
     rows.forEach((row, rowIndex) => {
       days.forEach((day, dayIndex) => {
-        const value = cellValues[`${row.historical ? -row.id! : row.memberId}:${day.date}`] ?? "";
+        const value = cellValues[scheduleRowCellKey(row, day.date)] ?? "";
         if (!hasCompleteRangeValue(value)) return;
         nextMemberShiftCounts[rowIndex] += 1;
         nextDayShiftCounts[dayIndex] += 1;
@@ -186,10 +190,11 @@ const ScheduleTable: React.FC<Props> = ({
 
   const handleCellValueChange = React.useCallback(
     (memberId: number, day: string, value: string, options?: ScheduleCellChangeOptions) => {
-      if (readOnly) return;
-      onChange(`${memberId}:${day}`, value, options);
+      const key: ScheduleCellKey = `${memberId}:${day}`;
+      if (readOnly || !canEditScheduleCell({ rows, days }, key)) return;
+      onChange(key, value, options);
     },
-    [onChange, readOnly],
+    [days, rows, onChange, readOnly],
   );
 
   const gridTemplateColumns = React.useMemo(() => {
@@ -227,7 +232,7 @@ const ScheduleTable: React.FC<Props> = ({
 
         {rows.map((row, rowIndex) => (
           <ScheduleTableRow
-            key={row.id ?? row.memberId ?? rowIndex}
+            key={scheduleRowKey(row)}
             row={row}
             days={days}
             cellValues={cellValues}
@@ -377,23 +382,29 @@ const ScheduleTableRow = React.memo(
     rejectionHintsByCellKey,
     showCellDiagnostics,
   }: ScheduleTableRowProps) {
+    const historical = Boolean(row.historical);
+    const rowDiagnostics = showCellDiagnostics && !historical;
+    const background = historical ? "bg-app" : "bg-surface";
     return (
       <>
         {/* Липкий столбец с именем */}
         <div
           className={[
             "sticky left-0 z-30 flex flex-col justify-center",
-            "border-subtle bg-surface border-r border-b",
+            "border-subtle border-r border-b",
+            background,
             scheduleZoomCss.headerPaddingX,
             "py-[max(0.45rem,calc(0.75rem*var(--schedule-zoom)))]",
-            "text-strong font-medium",
+            historical ? "text-muted font-medium" : "text-strong font-medium",
             scheduleZoomCss.memberText,
             STICKY_COL_SHADOW,
           ].join(" ")}
+          data-historical={historical || undefined}
+          title={historical ? HISTORY_EXPLANATION : undefined}
         >
           <span className="flex min-w-0 items-center gap-[max(0.15rem,calc(0.25rem*var(--schedule-zoom)))]">
             <span className="truncate">{row.displayName}</span>
-            {showCellDiagnostics && preferenceCommentsByMemberId?.[row.memberId] && (
+            {rowDiagnostics && preferenceCommentsByMemberId?.[row.memberId] && (
               <ScheduleInfoButton
                 label="Комментарий к периоду"
                 content={preferenceCommentsByMemberId[row.memberId]}
@@ -407,29 +418,48 @@ const ScheduleTableRow = React.memo(
               {row.positionName}
             </span>
           )}
+          {historical && (
+            <span
+              className={[
+                "border-subtle text-muted mt-1 self-start rounded border font-medium",
+                scheduleZoomCss.badgePadding,
+                scheduleZoomCss.badgeText,
+              ].join(" ")}
+              title={HISTORY_EXPLANATION}
+              aria-label={`История. ${HISTORY_EXPLANATION}`}
+            >
+              История
+            </span>
+          )}
         </div>
 
         {days.map((day) => {
-          const key: ScheduleCellKey = `${row.historical ? -row.id! : row.memberId}:${day.date}`;
+          const key = scheduleRowCellKey(row, day.date);
           return (
-            <div key={key} className="border-subtle border-b border-l">
+            <div
+              key={key}
+              className={["border-subtle border-b border-l", historical ? background : ""].join(" ")}
+              data-historical={historical || undefined}
+              title={historical ? HISTORY_EXPLANATION : undefined}
+            >
               <ScheduleCellEditor
-                memberId={row.memberId}
+                memberId={historical ? -row.id! : row.memberId}
                 day={day.date}
                 value={cellValues[key] ?? ""}
                 shiftMode={shiftMode}
                 placeholder={placeholder}
-                readOnly={readOnly || Boolean(row.historical)}
+                readOnly={readOnly || historical}
+                historical={historical}
                 onCellValueChange={onCellValueChange}
-                hints={showCellDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
-                rejectionHints={showCellDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
-                showCellDiagnostics={showCellDiagnostics}
+                hints={rowDiagnostics ? preferenceHintsByCellKey?.[key] : undefined}
+                rejectionHints={rowDiagnostics ? rejectionHintsByCellKey?.[key] : undefined}
+                showCellDiagnostics={rowDiagnostics}
               />
             </div>
           );
         })}
 
-        <ShiftCountCell value={memberShiftCount} />
+        <ShiftCountCell value={memberShiftCount} historical={historical} />
       </>
     );
   },
@@ -444,13 +474,14 @@ const ScheduleTableRow = React.memo(
       prev.onCellValueChange !== next.onCellValueChange ||
       prev.preferenceHintsByCellKey !== next.preferenceHintsByCellKey ||
       prev.preferenceCommentsByMemberId !== next.preferenceCommentsByMemberId ||
+      prev.rejectionHintsByCellKey !== next.rejectionHintsByCellKey ||
       prev.showCellDiagnostics !== next.showCellDiagnostics
     ) {
       return false;
     }
 
     return prev.days.every((day) => {
-      const key: ScheduleCellKey = `${prev.row.historical ? -prev.row.id! : prev.row.memberId}:${day.date}`;
+      const key = scheduleRowCellKey(prev.row, day.date);
       return (prev.cellValues[key] ?? "") === (next.cellValues[key] ?? "");
     });
   },
@@ -463,6 +494,7 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
   shiftMode,
   placeholder,
   readOnly,
+  historical = false,
   onCellValueChange,
   hints,
   rejectionHints,
@@ -516,7 +548,12 @@ const ScheduleCellEditor = React.memo(function ScheduleCellEditor({
       aria-label={conflictSeverity !== "NONE" ? conflictLabel : undefined}
     >
       {readOnly ? (
-        <ReadonlyCell value={value} shiftMode={shiftMode} showCellDiagnostics={showCellDiagnostics} />
+        <ReadonlyCell
+          value={value}
+          shiftMode={shiftMode}
+          showCellDiagnostics={showCellDiagnostics}
+          historical={historical}
+        />
       ) : (
         <EditableCell
           value={value}
@@ -644,12 +681,22 @@ const ScheduleTableFooter = React.memo(function ScheduleTableFooter({
   );
 });
 
-const ShiftCountCell = React.memo(function ShiftCountCell({ value }: { value: number }) {
+const ShiftCountCell = React.memo(function ShiftCountCell({
+  value,
+  historical = false,
+}: {
+  value: number;
+  historical?: boolean;
+}) {
   return (
-    <div className={["border-subtle border-b border-l", scheduleZoomCss.cellPadding].join(" ")}>
+    <div
+      className={["border-subtle border-b border-l", historical ? "bg-app" : "", scheduleZoomCss.cellPadding].join(" ")}
+      data-historical={historical || undefined}
+    >
       <div
         className={[
-          "bg-surface text-strong flex items-center justify-center text-center leading-tight font-semibold",
+          "text-strong flex items-center justify-center text-center leading-tight font-semibold",
+          historical ? "bg-app" : "bg-surface",
           scheduleZoomCss.readonlyShell,
         ].join(" ")}
       >
@@ -691,16 +738,20 @@ function ReadonlyCell({
   value,
   shiftMode,
   showCellDiagnostics,
+  historical = false,
 }: {
   value: string;
   shiftMode: ShiftMode;
   showCellDiagnostics: boolean;
+  historical?: boolean;
 }) {
+  const background = historical ? "bg-app" : "bg-surface";
   if (!value) {
     return (
       <div
         className={[
-          "bg-surface text-muted flex items-center justify-center text-center leading-tight",
+          "text-muted flex items-center justify-center text-center leading-tight",
+          background,
           scheduleZoomCss.readonlyShell,
         ].join(" ")}
       >
@@ -719,7 +770,8 @@ function ReadonlyCell({
       return (
         <div
           className={[
-            "bg-surface text-strong flex items-center justify-center text-center leading-tight",
+            "text-strong flex items-center justify-center text-center leading-tight",
+            background,
             scheduleZoomCss.readonlyShell,
           ].join(" ")}
         >
@@ -731,7 +783,8 @@ function ReadonlyCell({
     return (
       <div
         className={[
-          "bg-surface text-strong flex flex-col items-center justify-center text-center leading-tight",
+          "text-strong flex flex-col items-center justify-center text-center leading-tight",
+          background,
           scheduleZoomCss.readonlyShell,
         ].join(" ")}
       >
@@ -744,7 +797,8 @@ function ReadonlyCell({
   return (
     <div
       className={[
-        "bg-surface text-strong flex items-center justify-center text-center leading-tight",
+        "text-strong flex items-center justify-center text-center leading-tight",
+        background,
         scheduleZoomCss.readonlyShell,
       ].join(" ")}
     >
