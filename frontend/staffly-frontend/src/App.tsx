@@ -195,7 +195,7 @@ function TopBar() {
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 sm:flex-nowrap sm:items-center">
         <Link to={homeHref} className="ml-1 flex shrink-0 items-center gap-2.5 sm:ml-2">
           <span className="staffly-brand-mark">
-            <span className="staffly-brand-text">Staffly</span>
+            <span className="staffly-brand-text">staffli</span>
           </span>
           <span className="staffly-release-badge">alpha 3.2.7</span>
         </Link>
