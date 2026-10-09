@@ -9,7 +9,8 @@ import type {
   InvitationIntentAction,
   InvitationScheduleOpportunity,
 } from "../../invitations/api";
-import { formatInstantInTimeZone, instantToRestaurantLocalDateTime } from "../../schedule/utils/date";
+import { formatInstantInTimeZone } from "../../schedule/utils/date";
+import { actionAcceptsDeadline, type InvitationDeadlineValidation } from "../utils/invitationDeadline";
 
 type InvitePanelProps = {
   open: boolean;
@@ -25,6 +26,7 @@ type InvitePanelProps = {
   impact: InvitationImpactPlan | null;
   decisions: Record<number, InvitationIntentAction>;
   deadlines: Record<number, string>;
+  deadlineValidations: Record<number, InvitationDeadlineValidation>;
   restaurantTimeZone: string;
   submitting: boolean;
   isSubmitDisabled: boolean;
@@ -55,6 +57,7 @@ export default function InvitePanel({
   impact,
   decisions,
   deadlines,
+  deadlineValidations,
   restaurantTimeZone,
   submitting,
   isSubmitDisabled,
@@ -107,6 +110,7 @@ export default function InvitePanel({
                 action={decisions[item.scheduleId]}
                 deadline={deadlines[item.scheduleId] ?? ""}
                 timeZone={restaurantTimeZone}
+                validation={deadlineValidations[item.scheduleId]}
                 onAction={(action) => onChangeDecision(item.scheduleId, action)}
                 onDeadline={(value) => onChangeDeadline(item.scheduleId, value)}
               />
@@ -186,6 +190,7 @@ function ScheduleImpactCard({
   action,
   deadline,
   timeZone,
+  validation,
   onAction,
   onDeadline,
 }: {
@@ -193,16 +198,14 @@ function ScheduleImpactCard({
   action?: InvitationIntentAction;
   deadline: string;
   timeZone: string;
+  validation: InvitationDeadlineValidation;
   onAction: (action: InvitationIntentAction) => void;
   onDeadline: (value: string) => void;
 }) {
   const informational = item.allowedActions.length === 1 && item.allowedActions[0] === "INFORMATION_ONLY";
-  const asksDeadline =
-    action === "ADD_TO_COLLECTION" || action === "ADD_AND_REOPEN_COLLECTION" || action === "ADD_AND_REOPEN_FOR_REBUILD";
-  const minimum =
-    item.scheduleStatus === "COLLECTING_PREFERENCES" && item.currentPreferenceDeadline
-      ? instantToRestaurantLocalDateTime(item.currentPreferenceDeadline, timeZone)
-      : instantToRestaurantLocalDateTime(new Date(Date.now() + 60_000), timeZone);
+  const asksDeadline = actionAcceptsDeadline(action);
+  const helperId = `invitation-deadline-helper-${item.scheduleId}`;
+  const errorId = `invitation-deadline-error-${item.scheduleId}`;
   const description =
     item.scheduleStatus === "COLLECTING_PREFERENCES"
       ? "Сейчас идёт сбор пожеланий. Если сотрудник примет приглашение, его можно добавить в этот сбор."
@@ -243,7 +246,8 @@ function ScheduleImpactCard({
       {!informational && (
         <div className="mt-3 grid gap-2">
           {item.allowedActions.map((allowed) => {
-            const disabled = allowed !== "DO_NOT_ADD" && allowed !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0;
+            const disabled =
+              allowed !== "DO_NOT_ADD" && allowed !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0;
             return (
               <label key={allowed} className={`flex items-center gap-2 text-sm ${disabled ? "opacity-50" : ""}`}>
                 <input
@@ -262,17 +266,27 @@ function ScheduleImpactCard({
       {asksDeadline && (
         <div className="mt-3">
           <label className="text-default text-sm">
-            {item.newDeadlineRequired ? "Новый дедлайн" : "Продлить дедлайн (необязательно)"}
+            {validation.required ? "Новый дедлайн (обязательно)" : "Продлить дедлайн (необязательно)"}
             <input
               className="border-subtle bg-app mt-1 block w-full rounded-lg border px-3 py-2"
               type="datetime-local"
               value={deadline}
-              min={minimum ?? undefined}
-              required={item.newDeadlineRequired}
+              min={validation.minimum ?? undefined}
+              required={validation.required}
+              aria-invalid={!validation.valid}
+              aria-describedby={`${helperId}${validation.error ? ` ${errorId}` : ""}`}
               onChange={(event) => onDeadline(event.target.value)}
             />
           </label>
-          <div className="text-muted mt-1 text-xs">Новый дедлайн будет применён только после принятия приглашения.</div>
+          <div id={helperId} className="text-muted mt-1 text-xs">
+            <div>{validation.helper}</div>
+            <div>{validation.applicationHelper}</div>
+          </div>
+          {validation.error && (
+            <div id={errorId} role="alert" className="mt-1 text-sm text-red-600">
+              {validation.error}
+            </div>
+          )}
         </div>
       )}
     </div>

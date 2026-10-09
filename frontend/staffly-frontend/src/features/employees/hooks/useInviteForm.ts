@@ -10,7 +10,7 @@ import {
 import type { PositionDto } from "../../dictionaries/api";
 import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
 import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
-import { restaurantLocalDateTimeToInstant } from "../../schedule/utils/date";
+import { actionAcceptsDeadline, deadlineValidation } from "../utils/invitationDeadline";
 
 type AccessFlags = {
   isManagerLike: boolean;
@@ -33,6 +33,13 @@ export function useInviteForm(
   const [impact, setImpact] = useState<InvitationImpactPlan | null>(null);
   const [decisions, setDecisions] = useState<Record<number, InvitationIntentAction>>({});
   const [deadlines, setDeadlines] = useState<Record<number, string>>({});
+  const [validationNow, setValidationNow] = useState(Date.now);
+
+  useEffect(() => {
+    if (!inviteOpen || !impact) return;
+    const timer = window.setInterval(() => setValidationNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [inviteOpen, impact]);
 
   const canInvite = access.isManagerLike;
   const normalizedPhone = normalizePhoneForSubmit(phone, {
@@ -77,6 +84,7 @@ export function useInviteForm(
         phone: normalizedPhone.e164,
         positionId,
       });
+      setValidationNow(Date.now());
       setImpact(plan);
       setDecisions({});
       setDeadlines({});
@@ -87,22 +95,34 @@ export function useInviteForm(
     }
   };
 
+  const deadlineValidations = useMemo(
+    () =>
+      Object.fromEntries(
+        (impact?.scheduleOpportunities ?? []).map((item) => [
+          item.scheduleId,
+          deadlineValidation(
+            item,
+            decisions[item.scheduleId],
+            deadlines[item.scheduleId] ?? "",
+            restaurantTimeZone,
+            validationNow,
+          ),
+        ]),
+      ),
+    [decisions, deadlines, impact, restaurantTimeZone, validationNow],
+  );
+
   const allRequiredScheduleDecisionsSelected = useMemo(() => {
     if (!impact) return false;
     return impact.scheduleOpportunities.every((item) => {
       if (isInformationOnly(item.allowedActions)) return true;
       const action = decisions[item.scheduleId];
       if (!action || !item.allowedActions.includes(action)) return false;
-      if (action !== "DO_NOT_ADD" && item.eligibilityProblems.length > 0) return false;
-
-      const localDeadline = deadlines[item.scheduleId];
-      if (!actionAcceptsDeadline(action)) return true;
-      if (!localDeadline) return !item.newDeadlineRequired;
-      const instant = restaurantLocalDateTimeToInstant(localDeadline, restaurantTimeZone);
-      if (!instant || new Date(instant).getTime() <= Date.now()) return false;
-      return !item.currentPreferenceDeadline || new Date(instant) >= new Date(item.currentPreferenceDeadline);
+      if (action !== "DO_NOT_ADD" && action !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0)
+        return false;
+      return deadlineValidations[item.scheduleId].valid;
     });
-  }, [decisions, deadlines, impact, restaurantTimeZone]);
+  }, [decisions, deadlineValidations, impact]);
 
   const confirm = async () => {
     if (!restaurantId || !impact || !normalizedPhone.e164 || !positionId || !allRequiredScheduleDecisionsSelected)
@@ -110,22 +130,22 @@ export function useInviteForm(
     setSubmitting(true);
     setError(null);
     try {
+      const now = Date.now();
       const scheduleIntents: InvitationScheduleDecision[] = impact.scheduleOpportunities.map((item) => {
         const selectedAction = isInformationOnly(item.allowedActions) ? "INFORMATION_ONLY" : decisions[item.scheduleId];
-        const localDeadline = deadlines[item.scheduleId];
-        const requestedDeadline =
-          actionAcceptsDeadline(selectedAction) && localDeadline
-            ? restaurantLocalDateTimeToInstant(localDeadline, restaurantTimeZone)
-            : null;
         if (!selectedAction) throw new Error("Выберите действие для каждого графика");
-        if (item.newDeadlineRequired && selectedAction !== "DO_NOT_ADD" && !requestedDeadline) {
-          throw new Error("Укажите новый дедлайн для переоткрытия сбора");
-        }
-        if (localDeadline && !requestedDeadline) throw new Error("Проверьте локальное время дедлайна");
+        const validation = deadlineValidation(
+          item,
+          selectedAction,
+          deadlines[item.scheduleId] ?? "",
+          restaurantTimeZone,
+          now,
+        );
+        if (!validation.valid) throw new Error(validation.error ?? "Проверьте дедлайн");
         return {
           scheduleId: item.scheduleId,
           selectedAction,
-          requestedDeadline,
+          requestedDeadline: validation.requestedDeadline,
           expectedScheduleVersion: item.scheduleVersion,
           expectedScheduleStatus: item.scheduleStatus,
           expectedCollectionCycle: item.preferenceCollectionCycle,
@@ -174,6 +194,7 @@ export function useInviteForm(
     impact,
     decisions,
     deadlines,
+    deadlineValidations,
     allRequiredScheduleDecisionsSelected,
     setDecision: (scheduleId: number, action: InvitationIntentAction) => {
       setDecisions((current) => ({ ...current, [scheduleId]: action }));
@@ -202,10 +223,4 @@ export function useInviteForm(
 
 function isInformationOnly(actions: InvitationIntentAction[]): boolean {
   return actions.length === 1 && actions[0] === "INFORMATION_ONLY";
-}
-
-function actionAcceptsDeadline(action: InvitationIntentAction | undefined): boolean {
-  return (
-    action === "ADD_TO_COLLECTION" || action === "ADD_AND_REOPEN_COLLECTION" || action === "ADD_AND_REOPEN_FOR_REBUILD"
-  );
 }

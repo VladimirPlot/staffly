@@ -12,6 +12,7 @@
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
+    "test:invitation-deadline": "node --test --experimental-strip-types tests/invitationDeadline.test.ts",
     "test:drafts": "node --test --experimental-strip-types tests/schedulePreferenceDraftStorage.test.ts",
     "test:preference-calendar": "node --test --experimental-strip-types tests/schedulePreferenceCalendar.test.ts",
     "test:build-template": "node --test --experimental-strip-types tests/buildTemplateDraft.test.ts",

@@ -156,20 +156,25 @@ public class InvitationCommandService {
             if (affirmative && (!current.targetPositionEligible() || !current.eligibilityProblems().isEmpty())) {
                 throw new InvitationImpactPlanStaleException();
             }
-            if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_TO_COLLECTION) {
-                if (decision.requestedDeadline() != null
-                        && (!decision.requestedDeadline().isAfter(now)
-                        || schedule.getPreferenceDeadline() == null
-                        || decision.requestedDeadline().isBefore(schedule.getPreferenceDeadline()))) {
-                    throw new BadRequestException("requestedDeadline must be future and cannot shorten the current deadline");
+            boolean reopens = decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
+                    || decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD;
+            boolean acceptsDeadline = reopens
+                    || decision.selectedAction() == InvitationScheduleIntentAction.ADD_TO_COLLECTION;
+            Instant requestedDeadline = decision.requestedDeadline();
+            if (reopens && requestedDeadline == null) {
+                throw new BadRequestException("Укажите новый дедлайн для повторного открытия сбора пожеланий.");
+            }
+            if (requestedDeadline != null) {
+                if (!acceptsDeadline) {
+                    throw new BadRequestException("Для выбранного действия нельзя указывать дедлайн.");
                 }
-            } else if (decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_COLLECTION
-                    || decision.selectedAction() == InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD) {
-                if (decision.requestedDeadline() == null || !decision.requestedDeadline().isAfter(now)) {
-                    throw new BadRequestException("requestedDeadline must be in the future");
+                if (!requestedDeadline.isAfter(now)) {
+                    throw new BadRequestException("Дата и время дедлайна должны быть в будущем.");
                 }
-            } else if (decision.requestedDeadline() != null) {
-                throw new BadRequestException("requestedDeadline is not allowed for this action");
+                if (schedule.getPreferenceDeadline() != null
+                        && requestedDeadline.isBefore(schedule.getPreferenceDeadline())) {
+                    throw new BadRequestException("Новый дедлайн не может быть раньше текущего.");
+                }
             }
         }
     }
