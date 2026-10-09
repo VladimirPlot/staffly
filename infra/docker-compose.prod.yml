@@ -7,9 +7,15 @@ services:
     environment:
       POSTGRES_DB: staffly
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD to the production PostgreSQL password}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
 
   backend:
     build:
@@ -22,30 +28,38 @@ services:
 
       DB_URL: jdbc:postgresql://db:5432/staffly
       DB_USER: app
-      DB_PASSWORD: app
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD to the production PostgreSQL password}
 
-      JWT_SECRET: prod-very-secret-key-change-me-32+chars-long!!_0123456789
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a strong random production signing secret}
+      CREATOR_PHONES: ${CREATOR_PHONES:?Set CREATOR_PHONES to all authorized production creator phones}
       ACCESS_TTL_MINUTES: 15
       REFRESH_TTL_DAYS: 30
 
       PUBLIC_BASE_URL: https://staffly.store
 
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
-      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?Set VAPID_PUBLIC_KEY for production}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?Set VAPID_PRIVATE_KEY for production}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:?Set VAPID_SUBJECT for production}
 
       # ✅ S3 (Yandex Object Storage)
-      S3_ENDPOINT: ${S3_ENDPOINT}
-      S3_REGION: ${S3_REGION}
-      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL}
+      S3_ENDPOINT: ${S3_ENDPOINT:-https://storage.yandexcloud.net}
+      S3_REGION: ${S3_REGION:-ru-central1}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-https://storage.yandexcloud.net}
       # ✅ prod buckets fixed
       S3_PUBLIC_BUCKET: staffly-prod
       S3_PRIVATE_BUCKET: staffly-private
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY for production}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY for production}
 
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/api/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   backend-worker:
     build:
@@ -58,44 +72,51 @@ services:
 
       DB_URL: jdbc:postgresql://db:5432/staffly
       DB_USER: app
-      DB_PASSWORD: app
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD to the production PostgreSQL password}
 
-      JWT_SECRET: prod-very-secret-key-change-me-32+chars-long!!_0123456789
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a strong random production signing secret}
+      CREATOR_PHONES: ${CREATOR_PHONES:?Set CREATOR_PHONES to all authorized production creator phones}
       ACCESS_TTL_MINUTES: 15
       REFRESH_TTL_DAYS: 30
 
       PUBLIC_BASE_URL: https://staffly.store
 
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
-      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?Set VAPID_PUBLIC_KEY for production}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?Set VAPID_PRIVATE_KEY for production}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:?Set VAPID_SUBJECT for production}
 
       # ✅ S3 (Yandex Object Storage)
-      S3_ENDPOINT: ${S3_ENDPOINT}
-      S3_REGION: ${S3_REGION}
-      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL}
+      S3_ENDPOINT: ${S3_ENDPOINT:-https://storage.yandexcloud.net}
+      S3_REGION: ${S3_REGION:-ru-central1}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-https://storage.yandexcloud.net}
       # ✅ prod buckets fixed
-      S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET}
-      S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_PUBLIC_BUCKET: staffly-prod
+      S3_PRIVATE_BUCKET: staffly-private
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY for production}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY for production}
 
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   frontend:
     build:
       context: ../frontend/staffly-frontend
     container_name: staffly-frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   caddy:
     image: caddy:2
     container_name: staffly-caddy
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"

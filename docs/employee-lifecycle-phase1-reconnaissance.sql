@@ -1,4 +1,6 @@
 -- Read-only snapshot. Save the result before applying V115.
+-- Supplemental reconnaissance only. The complete V114 production gate is
+-- docs/production-lifecycle-migration-preflight.sql (also checks audit and V117).
 SELECT m.id, m.user_id, m.restaurant_id, m.role, m.position_id
 FROM restaurant_member m WHERE m.position_id IS NULL ORDER BY m.restaurant_id, m.id;
 
