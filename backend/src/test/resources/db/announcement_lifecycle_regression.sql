@@ -5,12 +5,15 @@ CREATE SCHEMA announcement_lifecycle_regression;
 SET LOCAL search_path TO announcement_lifecycle_regression;
 
 CREATE TABLE restaurants (id BIGINT PRIMARY KEY, timezone TEXT NOT NULL);
+CREATE TABLE users (id BIGINT PRIMARY KEY, first_name TEXT, last_name TEXT, full_name TEXT);
+INSERT INTO users VALUES (1, 'Original', 'Author', 'Original Author');
 CREATE TABLE inbox_messages (
     id BIGINT PRIMARY KEY,
     restaurant_id BIGINT REFERENCES restaurants(id),
     type TEXT NOT NULL,
     expires_at DATE,
-    metadata JSONB NOT NULL DEFAULT '{"prior":"kept"}'::jsonb
+    metadata JSONB NOT NULL DEFAULT '{"prior":"kept"}'::jsonb,
+    created_by_user_id BIGINT REFERENCES users(id)
 );
 CREATE TABLE inbox_recipients (
     id BIGINT PRIMARY KEY,
@@ -49,9 +52,36 @@ INSERT INTO inbox_messages (id, restaurant_id, type, expires_at) VALUES (99, 1, 
 INSERT INTO position VALUES (1, 'Legacy manager', true, 'MANAGER');
 INSERT INTO inbox_message_positions SELECT id, 1 FROM inbox_messages WHERE type = 'ANNOUNCEMENT' AND id <> 99;
 \ir ../../../main/resources/db/migration/V121__announcement_audience_snapshot.sql
+UPDATE inbox_messages SET created_by_user_id = 1 WHERE type = 'ANNOUNCEMENT' AND id <> 99;
+\ir ../../../main/resources/db/migration/V122__announcement_operations_and_author.sql
+UPDATE users SET first_name = 'Changed', full_name = 'Changed Author' WHERE id = 1;
+DELETE FROM users WHERE id = 1;
+
+INSERT INTO announcement_operations (restaurant_id, actor_id, operation_id, request_hash, message_id)
+VALUES (1, 1, '00000000-0000-4000-8000-000000000001', repeat('a', 64), 99);
+DELETE FROM inbox_messages WHERE id = 99;
+INSERT INTO inbox_messages (id, restaurant_id, type) VALUES (99, 1, 'ANNOUNCEMENT');
+-- Restore the legacy zero-recipient fixture for the assertions below; the deleted operation stays detached.
+UPDATE inbox_messages SET metadata = '{"prior":"kept","announcement":{"audience":"POSITIONS","recipientCount":0,"recipients":[],"positions":[],"author":null}}'::jsonb WHERE id = 99;
 
 DO $$
 BEGIN
+    IF EXISTS (SELECT 1 FROM inbox_messages WHERE type = 'ANNOUNCEMENT' AND created_by_user_id IS NOT NULL) THEN
+        RAISE EXCEPTION 'History still references the live author';
+    END IF;
+    IF (SELECT count(*) FROM inbox_messages WHERE type = 'ANNOUNCEMENT' AND id <> 99
+            AND metadata -> 'announcement' -> 'author' ->> 'name' = 'Original Author') <> 8 THEN
+        RAISE EXCEPTION 'Historical author changed after rename or deletion';
+    END IF;
+    IF EXISTS (SELECT 1 FROM announcement_operations WHERE message_id IS NOT NULL) THEN
+        RAISE EXCEPTION 'Deleted send operation was not preserved as a tombstone';
+    END IF;
+    BEGIN
+        INSERT INTO announcement_operations (restaurant_id, actor_id, operation_id, request_hash)
+        VALUES (1, 1, '00000000-0000-4000-8000-000000000001', repeat('b', 64));
+        RAISE EXCEPTION 'Database accepted a duplicate send identity';
+    EXCEPTION WHEN unique_violation THEN NULL;
+    END;
     IF EXISTS (SELECT 1 FROM inbox_messages WHERE type = 'ANNOUNCEMENT' AND expires_at IS NOT NULL) THEN
         RAISE EXCEPTION 'Announcement expiry was not removed';
     END IF;

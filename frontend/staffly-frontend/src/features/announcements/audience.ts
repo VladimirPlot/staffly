@@ -1,5 +1,15 @@
 import type { AnnouncementAudience, AnnouncementMemberDto } from "./api";
 import { matchesSearchText } from "../../shared/utils/search";
+import type { AnnouncementRequest } from "./api";
+
+export function announcementSubmissionKey(payload: Omit<AnnouncementRequest, "operationId">): string {
+  return JSON.stringify([
+    payload.content.trim(),
+    payload.audience,
+    [...new Set(payload.positionIds)].sort((a, b) => a - b),
+    [...new Set(payload.memberIds)].sort((a, b) => a - b),
+  ]);
+}
 
 export function filterAnnouncementOptions<T extends { name: string; detail?: string }>(
   options: T[],

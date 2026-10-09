@@ -13,6 +13,7 @@ import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.announcement.dto.AnnouncementAudience;
 import ru.staffly.announcement.dto.AnnouncementRequest;
 import ru.staffly.announcement.service.AnnouncementService;
+import ru.staffly.announcement.repository.AnnouncementOperationRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.inbox.model.*;
 import ru.staffly.inbox.repository.InboxMessageRepository;
@@ -57,6 +58,7 @@ class AnnouncementPersistenceTest {
     @Autowired PositionRepository positions;
     @Autowired RestaurantMemberRepository members;
     @Autowired UserRepository users;
+    @Autowired AnnouncementOperationRepository operations;
     Restaurant restaurant;
     User user;
     Position position;
@@ -77,8 +79,8 @@ class AnnouncementPersistenceTest {
 
     @Test void announcementCreatesOneRecipientWithoutExpiryAndKeepsReadAndHiddenStates() {
         var service = new InboxMessageService(messages, recipients, disabledPush());
-        var first = service.createAnnouncement(restaurant, user, "First", List.of(position), List.of(member, member), Map.of());
-        var second = service.createAnnouncement(restaurant, user, "Second", List.of(position), List.of(member), Map.of());
+        var first = service.createAnnouncement(restaurant, "First", List.of(position), List.of(member, member), Map.of());
+        var second = service.createAnnouncement(restaurant, "Second", List.of(position), List.of(member), Map.of());
         assertNotEquals(first.getMeta(), second.getMeta());
         assertNull(first.getExpiresAt());
         assertNull(second.getExpiresAt());
@@ -104,18 +106,20 @@ class AnnouncementPersistenceTest {
     @Test void audienceSnapshotSurvivesJsonReloadNameChangeAndTermination() {
         var service = announcementService();
         var sent = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Message",
-                AnnouncementAudience.MEMBERS, List.of(position.getId()), List.of(member.getId())));
+                AnnouncementAudience.MEMBERS, List.of(position.getId()), List.of(member.getId()), java.util.UUID.randomUUID()));
         assertEquals(1, sent.recipientCount());
         user.setFirstName("Renamed");
         member.setEndedAt(Instant.now());
         em.flush();
         em.clear();
 
-        var history = service.list(restaurant.getId(), user.getId());
+        var history = service.list(restaurant.getId(), user.getId(), 0).items();
         assertEquals(1, history.size());
         assertEquals("Test Manager", history.get(0).recipients().get(0).name());
         assertEquals("Manager", history.get(0).recipients().get(0).positionName());
         assertEquals(1, history.get(0).recipientCount());
+        assertEquals("Test Manager", history.get(0).createdBy().name());
+        assertNull(messages.findById(sent.id()).orElseThrow().getCreatedBy());
         assertEquals(List.of(member.getId()), recipients.findMemberIdsByMessageId(sent.id()));
     }
 
@@ -136,13 +140,13 @@ class AnnouncementPersistenceTest {
 
         var service = announcementService();
         var all = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Everyone",
-                AnnouncementAudience.ALL, List.of(), List.of()));
+                AnnouncementAudience.ALL, List.of(), List.of(), java.util.UUID.randomUUID()));
         assertEquals(List.of(member.getId()), recipients.findMemberIdsByMessageId(all.id()));
         assertEquals(1, service.audienceOptions(restaurant.getId(), user.getId()).members().size());
         for (var invalid : List.of(foreign.getId(), ended.getId())) {
             assertThrows(BadRequestException.class, () -> service.create(restaurant.getId(), user.getId(),
                     new AnnouncementRequest("Specific", AnnouncementAudience.MEMBERS,
-                            List.of(position.getId()), List.of(invalid))));
+                            List.of(position.getId()), List.of(invalid), java.util.UUID.randomUUID())));
         }
         var newPosition = Position.builder().restaurant(restaurant).name("New position").build();
         em.persist(newPosition);
@@ -150,14 +154,69 @@ class AnnouncementPersistenceTest {
         em.flush();
         assertThrows(BadRequestException.class, () -> service.create(restaurant.getId(), user.getId(),
                 new AnnouncementRequest("Stale selection", AnnouncementAudience.MEMBERS,
-                        List.of(position.getId()), List.of(member.getId()))));
+                        List.of(position.getId()), List.of(member.getId()), java.util.UUID.randomUUID())));
         assertEquals(1, messages.findByRestaurantIdAndTypeOrderByCreatedAtDesc(
                 restaurant.getId(), InboxMessageType.ANNOUNCEMENT).size());
     }
 
     private AnnouncementService announcementService() {
         return new AnnouncementService(messages, new InboxMessageService(messages, recipients, disabledPush()),
-                restaurants, positions, members, users, mock(SecurityService.class), disabledPush(), new ObjectMapper());
+                restaurants, positions, members, users, mock(SecurityService.class), disabledPush(), new ObjectMapper(), operations);
+    }
+
+    @Test void retryReturnsTheOriginalSendEvenAfterRosterChangesAndRejectsKeyReuse() {
+        var service = announcementService();
+        var operationId = java.util.UUID.randomUUID();
+        var request = new AnnouncementRequest("  Message  ", AnnouncementAudience.MEMBERS,
+                List.of(position.getId(), position.getId()), List.of(member.getId()), operationId);
+        var sent = service.create(restaurant.getId(), user.getId(), request);
+        member.setEndedAt(Instant.now());
+        user.setFirstName("Changed");
+        em.flush();
+        em.clear();
+
+        var replay = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Message",
+                AnnouncementAudience.MEMBERS, List.of(position.getId()), List.of(member.getId()), operationId));
+        assertEquals(sent.id(), replay.id());
+        assertEquals("Test Manager", replay.createdBy().name());
+        assertEquals(1, messages.count());
+        assertEquals(1, recipients.count());
+        assertEquals(1, operations.count());
+        assertThrows(BadRequestException.class, () -> service.create(restaurant.getId(), user.getId(),
+                new AnnouncementRequest("Different", AnnouncementAudience.MEMBERS,
+                        List.of(position.getId()), List.of(member.getId()), operationId)));
+
+        service.delete(restaurant.getId(), user.getId(), sent.id());
+        em.flush();
+        em.clear();
+        assertThrows(BadRequestException.class, () -> service.create(restaurant.getId(), user.getId(), request));
+        assertEquals(0, messages.count());
+        assertEquals(1, operations.count());
+        assertNull(operations.findAll().get(0).getMessageId());
+    }
+
+    @Test void historyPagesHaveThirtyItemsAndStableOrderingIncludingTheLastPage() {
+        var service = announcementService();
+        for (int i = 0; i < 61; i++) {
+            var sent = service.create(restaurant.getId(), user.getId(), new AnnouncementRequest("Message",
+                    AnnouncementAudience.ALL, List.of(), List.of(), java.util.UUID.randomUUID()));
+            messages.findById(sent.id()).orElseThrow().setCreatedAt(old);
+        }
+        em.flush();
+        em.clear();
+        var firstPage = service.list(restaurant.getId(), user.getId(), 0);
+        var secondPage = service.list(restaurant.getId(), user.getId(), 1);
+        var lastPage = service.list(restaurant.getId(), user.getId(), 2);
+        assertEquals(30, firstPage.items().size());
+        assertEquals(30, secondPage.items().size());
+        assertEquals(1, lastPage.items().size());
+        assertEquals(61, firstPage.totalElements());
+        assertEquals(3, firstPage.totalPages());
+        assertEquals(30, firstPage.size());
+        assertTrue(firstPage.items().get(29).id() > secondPage.items().get(0).id());
+        assertTrue(secondPage.items().get(29).id() > lastPage.items().get(0).id());
+        assertTrue(service.list(restaurant.getId(), user.getId(), 3).items().isEmpty());
+        assertThrows(BadRequestException.class, () -> service.list(restaurant.getId(), user.getId(), -1));
     }
 
     @Test void inboxLimitPreservesEveryAnnouncementAndOnlyCountsOtherTypes() {

@@ -1,6 +1,8 @@
 package ru.staffly.announcement.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +14,9 @@ import ru.staffly.announcement.dto.AnnouncementAudience;
 import ru.staffly.announcement.dto.AnnouncementAudienceDetails;
 import ru.staffly.announcement.dto.AnnouncementAudienceOptionsDto;
 import ru.staffly.announcement.dto.AnnouncementMemberDto;
+import ru.staffly.announcement.dto.AnnouncementPageDto;
+import ru.staffly.announcement.model.AnnouncementOperation;
+import ru.staffly.announcement.repository.AnnouncementOperationRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
@@ -29,6 +34,9 @@ import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
@@ -48,6 +56,7 @@ public class AnnouncementService {
     private final SecurityService security;
     private final PushEnqueueService pushEnqueue;
     private final ObjectMapper json;
+    private final AnnouncementOperationRepository operations;
 
     @Transactional(readOnly = true)
     public AnnouncementAudienceOptionsDto audienceOptions(Long restaurantId, Long userId) {
@@ -64,12 +73,13 @@ public class AnnouncementService {
     }
 
     @Transactional(readOnly = true)
-    public List<AnnouncementDto> list(Long restaurantId, Long userId) {
+    public AnnouncementPageDto list(Long restaurantId, Long userId, int page) {
         security.assertAtLeastManager(userId, restaurantId);
-        return messages.findByRestaurantIdAndTypeOrderByCreatedAtDesc(restaurantId, InboxMessageType.ANNOUNCEMENT)
-                .stream()
-                .map(this::toDto)
-                .toList();
+        if (page < 0) throw new BadRequestException("Некорректная страница");
+        var result = messages.findByRestaurantIdAndType(restaurantId, InboxMessageType.ANNOUNCEMENT,
+                PageRequest.of(page, 30, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
+        return new AnnouncementPageDto(result.getContent().stream().map(this::toDto).toList(),
+                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
 
     @Transactional
@@ -78,9 +88,6 @@ public class AnnouncementService {
         Restaurant restaurant = restaurants.findLifecycleMutex(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
         security.assertAtLeastManager(userId, restaurantId);
-        User creator = users.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
-
         String content = normalize(request.content());
         if (content == null || content.isBlank()) {
             throw new BadRequestException("Текст объявления обязателен");
@@ -89,6 +96,21 @@ public class AnnouncementService {
         List<Long> positionIds = normalizeIds(request.positionIds());
         List<Long> memberIds = normalizeIds(request.memberIds());
         validateAudience(request.audience(), positionIds, memberIds);
+        if (request.operationId() == null) throw new BadRequestException("Не указан идентификатор отправки");
+        String requestHash = requestHash(content, request.audience(), positionIds, memberIds);
+        var previous = operations.findByRestaurantIdAndActorIdAndOperationId(restaurantId, userId, request.operationId());
+        if (previous.isPresent()) {
+            if (!previous.get().getRequestHash().equals(requestHash)) {
+                throw new BadRequestException("Этот идентификатор отправки уже использован для другого объявления");
+            }
+            if (previous.get().getMessageId() == null) {
+                throw new BadRequestException("Это объявление уже было отправлено и удалено");
+            }
+            return toDto(messages.findByIdAndRestaurantId(previous.get().getMessageId(), restaurantId)
+                    .orElseThrow(() -> new BadRequestException("Это объявление уже было отправлено и удалено")));
+        }
+        User creator = users.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
         List<Position> targetPositions = request.audience() == AnnouncementAudience.ALL
                 ? List.of() : resolvePositions(restaurantId, positionIds);
         List<RestaurantMember> targets = resolveRecipients(restaurantId, request.audience(), positionIds, memberIds);
@@ -98,26 +120,31 @@ public class AnnouncementService {
 
         var details = new AnnouncementAudienceDetails(request.audience(), targets.size(),
                 request.audience() == AnnouncementAudience.MEMBERS ? targets.stream().map(this::memberDto).toList() : List.of(),
-                targetPositions.stream().map(this::positionDto).toList());
+                targetPositions.stream().map(this::positionDto).toList(),
+                new AnnouncementAuthorDto(null, creator.getFullName(), creator.getFirstName(), creator.getLastName()));
 
         InboxMessage message = inboxMessages.createAnnouncement(
                 restaurant,
-                creator,
                 content,
                 targetPositions,
                 targets,
                 Map.of("announcement", details)
         );
+        operations.save(AnnouncementOperation.builder().restaurant(restaurant).actorId(userId)
+                .operationId(request.operationId()).requestHash(requestHash).messageId(message.getId()).build());
         return toDto(message);
     }
 
     @Transactional
     public void delete(Long restaurantId, Long userId, Long announcementId) {
+        restaurants.findLifecycleMutex(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
         security.assertAtLeastManager(userId, restaurantId);
         InboxMessage message = messages.findByIdAndRestaurantId(announcementId, restaurantId)
                 .filter(item -> item.getType() == InboxMessageType.ANNOUNCEMENT)
                 .orElseThrow(() -> new NotFoundException("Announcement not found: " + announcementId));
         pushEnqueue.cancelUnsentForInboxMessage(restaurantId, announcementId);
+        operations.detachMessage(announcementId);
         messages.delete(message);
     }
 
@@ -189,20 +216,13 @@ public class AnnouncementService {
     }
 
     private AnnouncementDto toDto(InboxMessage message) {
-        User creator = message.getCreatedBy();
-        AnnouncementAuthorDto author = creator == null ? null : new AnnouncementAuthorDto(
-                creator.getId(),
-                creator.getFullName(),
-                creator.getFirstName(),
-                creator.getLastName()
-        );
         var details = json.convertValue(message.getMetadata().get("announcement"), AnnouncementAudienceDetails.class);
 
         return new AnnouncementDto(
                 message.getId(),
                 message.getContent(),
                 message.getCreatedAt(),
-                author,
+                details.author(),
                 details.positions(),
                 details.audience(),
                 details.recipientCount(),
@@ -212,5 +232,16 @@ public class AnnouncementService {
 
     private String normalize(String value) {
         return value == null ? null : value.trim();
+    }
+
+    private String requestHash(String content, AnnouncementAudience audience, List<Long> positions, List<Long> members) {
+        try {
+            String canonical = json.writeValueAsString(List.of(content, audience,
+                    positions.stream().sorted().toList(), members.stream().sorted().toList()));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.io.IOException | java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Failed to fingerprint announcement", e);
+        }
     }
 }

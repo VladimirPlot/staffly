@@ -7,6 +7,7 @@ public record AnnouncementAudienceDetails(
         AnnouncementAudience audience,
         long recipientCount,
         List<AnnouncementMemberDto> recipients,
-        List<AnnouncementPositionDto> positions
+        List<AnnouncementPositionDto> positions,
+        AnnouncementAuthorDto author
 ) {
 }

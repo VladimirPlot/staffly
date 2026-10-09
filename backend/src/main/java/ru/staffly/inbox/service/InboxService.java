@@ -1,6 +1,7 @@
 package ru.staffly.inbox.service;
 
 import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -44,6 +45,7 @@ public class InboxService {
     private final RestaurantMemberRepository members;
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
+    private final ObjectMapper json;
 
     @Transactional(readOnly = true)
     public InboxPageDto list(Long restaurantId,
@@ -174,6 +176,13 @@ public class InboxService {
                 creator.getFirstName(),
                 creator.getLastName()
         );
+        if (message.getType() == InboxMessageType.ANNOUNCEMENT) {
+            var raw = message.getMetadata().get("announcement");
+            if (raw != null) {
+                var saved = json.convertValue(raw, Map.class).get("author");
+                author = saved == null ? null : json.convertValue(saved, InboxAuthorDto.class);
+            }
+        }
 
         boolean expired = message.getExpiresAt() != null && message.getExpiresAt().isBefore(today);
 

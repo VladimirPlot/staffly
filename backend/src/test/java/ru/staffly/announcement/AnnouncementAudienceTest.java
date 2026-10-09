@@ -9,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import ru.staffly.announcement.dto.*;
 import ru.staffly.announcement.service.AnnouncementService;
+import ru.staffly.announcement.repository.AnnouncementOperationRepository;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.time.RestaurantTimeService;
@@ -49,9 +50,10 @@ class AnnouncementAudienceTest {
     final UserRepository users = mock(UserRepository.class);
     final SecurityService security = mock(SecurityService.class);
     final PushEnqueueService push = mock(PushEnqueueService.class);
+    final AnnouncementOperationRepository operations = mock(AnnouncementOperationRepository.class);
     final AnnouncementService service = new AnnouncementService(messages,
             new InboxMessageService(messages, receipts, push), restaurants, positions, members, users,
-            security, push, new ObjectMapper());
+            security, push, new ObjectMapper(), operations);
     final Restaurant restaurant = Restaurant.builder().id(1L).build();
     final Position managerPosition = Position.builder().id(2L).restaurant(restaurant)
             .name("Менеджер").level(RestaurantRole.MANAGER).build();
@@ -90,6 +92,22 @@ class AnnouncementAudienceTest {
         order.verify(members).findActiveWithUserAndPositionByRestaurantId(1L);
     }
 
+    @Test void replayDoesNotEnqueuePushOrResolveAudienceAgain() {
+        var request = request(AnnouncementAudience.ALL, List.of(), List.of());
+        var sent = service.create(1L, 7L, request);
+        var operation = ArgumentCaptor.forClass(ru.staffly.announcement.model.AnnouncementOperation.class);
+        verify(operations).save(operation.capture());
+        var message = ArgumentCaptor.forClass(InboxMessage.class);
+        verify(messages).save(message.capture());
+        when(operations.findByRestaurantIdAndActorIdAndOperationId(1L, 7L, request.operationId()))
+                .thenReturn(Optional.of(operation.getValue()));
+        when(messages.findByIdAndRestaurantId(sent.id(), 1L)).thenReturn(Optional.of(message.getValue()));
+        clearInvocations(push, members, users, receipts);
+        assertEquals(sent.id(), service.create(1L, 7L, request).id());
+        verifyNoInteractions(push, members, users, receipts);
+        verify(messages, times(1)).save(any());
+    }
+
     @Test void positionsTargetEveryoneInTheirUnionAndNormalizeDuplicateIds() {
         when(positions.findAllById(List.of(2L, 3L))).thenReturn(List.of(managerPosition, staffPosition));
         when(members.findActiveWithUserAndPositionByRestaurantIdAndPositionIdIn(1L, List.of(2L, 3L)))
@@ -110,11 +128,11 @@ class AnnouncementAudienceTest {
         first.getUser().setFullName("Новое имя");
         first.setPosition(managerPosition);
         staffPosition.setName("Новое название должности");
-        when(messages.findByRestaurantIdAndTypeOrderByCreatedAtDesc(eq(1L), any()))
-                .thenReturn(List.of(message.getValue()));
-        assertEquals("Иван", service.list(1L, 7L).get(0).recipients().get(0).name());
-        assertEquals("Официант", service.list(1L, 7L).get(0).recipients().get(0).positionName());
-        assertEquals("Официант", service.list(1L, 7L).get(0).positions().get(0).name());
+        when(messages.findByRestaurantIdAndType(eq(1L), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(message.getValue())));
+        assertEquals("Иван", service.list(1L, 7L, 0).items().get(0).recipients().get(0).name());
+        assertEquals("Официант", service.list(1L, 7L, 0).items().get(0).recipients().get(0).positionName());
+        assertEquals("Официант", service.list(1L, 7L, 0).items().get(0).positions().get(0).name());
     }
 
     @ParameterizedTest
@@ -174,21 +192,25 @@ class AnnouncementAudienceTest {
         when(time.today(1L)).thenReturn(LocalDate.of(2026, 10, 9));
         when(members.findActiveByUserIdAndRestaurantId(7L, 1L)).thenReturn(Optional.of(sender));
         var announcement = InboxMessage.builder().id(1L).restaurant(restaurant).type(InboxMessageType.ANNOUNCEMENT)
-                .content("Message").metadata(Map.of("announcement", Map.of("recipients", List.of("Private names")))).build();
+                .createdBy(User.builder().id(5L).fullName("Renamed user").build())
+                .content("Message").metadata(Map.of("announcement", Map.of(
+                        "recipients", List.of("Private names"),
+                        "author", Map.of("name", "Original author", "firstName", "Original", "lastName", "author")))).build();
         var event = InboxMessage.builder().id(2L).restaurant(restaurant).type(InboxMessageType.EVENT)
                 .content("Event").metadata(Map.of("operation", "kept")).build();
         when(receipts.findByState(anyLong(), anyLong(), anyList(), eq(InboxState.UNREAD), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(
                         InboxRecipient.builder().message(announcement).member(sender).build(),
                         InboxRecipient.builder().message(event).member(sender).build())));
-        var inbox = new InboxService(receipts, members, security, time);
+        var inbox = new InboxService(receipts, members, security, time, new ObjectMapper());
         var items = inbox.list(1L, 7L, InboxService.InboxTypeFilter.ALL, InboxState.UNREAD, 0, 10).items();
         assertTrue(items.get(0).metadata().isEmpty());
+        assertEquals("Original author", items.get(0).createdBy().name());
         assertEquals(Map.of("operation", "kept"), items.get(1).metadata());
     }
 
     private AnnouncementRequest request(AnnouncementAudience audience, List<Long> positionIds, List<Long> memberIds) {
-        return new AnnouncementRequest("Сообщение", audience, positionIds, memberIds);
+        return new AnnouncementRequest("Сообщение", audience, positionIds, memberIds, java.util.UUID.randomUUID());
     }
 
     private RestaurantMember member(Long id, String name, Position position) {

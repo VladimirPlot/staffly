@@ -4,7 +4,7 @@ export type InboxMessageType = "BIRTHDAY" | "EVENT" | "ANNOUNCEMENT";
 export type InboxEventSubtype = "SCHEDULE_DECISION" | "TASK" | null;
 
 export type InboxAuthorDto = {
-  id: number;
+  id: number | null;
   name: string;
   firstName?: string | null;
   lastName?: string | null;
@@ -53,9 +53,7 @@ export async function fetchInbox(
   return data as InboxPageDto;
 }
 
-export async function fetchInboxUnreadCount(
-  restaurantId: number,
-): Promise<InboxUnreadCountDto> {
+export async function fetchInboxUnreadCount(restaurantId: number): Promise<InboxUnreadCountDto> {
   const { data } = await api.get(`/api/restaurants/${restaurantId}/inbox/unread-count`);
   return data as InboxUnreadCountDto;
 }
@@ -69,16 +67,10 @@ export async function markInboxRead(restaurantId: number, messageId: number): Pr
   await api.post(`/api/restaurants/${restaurantId}/inbox/${messageId}/read`);
 }
 
-export async function hideInboxMessage(
-  restaurantId: number,
-  messageId: number,
-): Promise<void> {
+export async function hideInboxMessage(restaurantId: number, messageId: number): Promise<void> {
   await api.post(`/api/restaurants/${restaurantId}/inbox/${messageId}/hide`);
 }
 
-export async function restoreInboxMessage(
-  restaurantId: number,
-  messageId: number,
-): Promise<void> {
+export async function restoreInboxMessage(restaurantId: number, messageId: number): Promise<void> {
   await api.post(`/api/restaurants/${restaurantId}/inbox/${messageId}/restore`);
 }

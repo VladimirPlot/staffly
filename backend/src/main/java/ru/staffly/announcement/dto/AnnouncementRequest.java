@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.UUID;
 
 public record AnnouncementRequest(
         @NotBlank
@@ -14,6 +15,7 @@ public record AnnouncementRequest(
         @NotNull
         AnnouncementAudience audience,
         List<@NotNull @Positive Long> positionIds,
-        List<@NotNull @Positive Long> memberIds
+        List<@NotNull @Positive Long> memberIds,
+        @NotNull UUID operationId
 ) {
 }

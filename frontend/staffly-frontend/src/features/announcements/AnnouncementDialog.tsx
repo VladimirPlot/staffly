@@ -1,11 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import Textarea from "../../shared/ui/Textarea";
 import Button from "../../shared/ui/Button";
 import SelectField from "../../shared/ui/SelectField";
 import type { AnnouncementAudience, AnnouncementAudienceOptionsDto, AnnouncementRequest } from "./api";
 import AnnouncementRecipientPicker from "./AnnouncementRecipientPicker";
-import { announcementRecipients, membersForPositions, reconcileSelectedMembers } from "./audience";
+import {
+  announcementRecipients,
+  announcementSubmissionKey,
+  membersForPositions,
+  reconcileSelectedMembers,
+} from "./audience";
 
 type Props = {
   open: boolean;
@@ -35,6 +40,7 @@ export default function AnnouncementDialog({
   const [positionIds, setPositionIds] = useState<number[]>([]);
   const [memberIds, setMemberIds] = useState<number[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
+  const submission = useRef<{ key: string; operationId: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -43,6 +49,7 @@ export default function AnnouncementDialog({
     setPositionIds([]);
     setMemberIds([]);
     setLocalError(null);
+    submission.current = null;
   }, [open]);
 
   const members = options?.members ?? [];
@@ -95,12 +102,17 @@ export default function AnnouncementDialog({
       return;
     }
     setLocalError(null);
-    onSubmit({
+    const payload = {
       content: text,
       audience,
       positionIds: audience === "ALL" ? [] : positionIds,
       memberIds: audience === "MEMBERS" ? memberIds : [],
-    });
+    };
+    const key = announcementSubmissionKey(payload);
+    if (!submission.current || submission.current.key !== key) {
+      submission.current = { key, operationId: crypto.randomUUID() };
+    }
+    onSubmit({ ...payload, operationId: submission.current.operationId });
   }
 
   return (

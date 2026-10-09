@@ -86,7 +86,6 @@ public class InboxMessageService {
 
     @Transactional
     public InboxMessage createAnnouncement(Restaurant restaurant,
-                                           User creator,
                                            String content,
                                            List<Position> positions,
                                            List<RestaurantMember> targets,
@@ -96,7 +95,6 @@ public class InboxMessageService {
                 .restaurant(restaurant)
                 .type(InboxMessageType.ANNOUNCEMENT)
                 .content(content)
-                .createdBy(creator)
                 .meta(meta)
                 .metadata(metadata)
                 .positions(new HashSet<>(positions))

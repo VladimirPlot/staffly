@@ -7,6 +7,7 @@ const {
   reconcileSelectedMembers,
   announcementAudienceLabel,
   filterAnnouncementOptions,
+  announcementSubmissionKey,
 } = await import("../src/features/announcements/audience.ts");
 
 const members: AnnouncementMemberDto[] = [
@@ -15,6 +16,21 @@ const members: AnnouncementMemberDto[] = [
   { id: 3, name: "Анна", positionId: 20, positionName: "Официант" },
   { id: 4, name: "Повар", positionId: 30, positionName: "Повар" },
 ];
+
+test("retry identity ignores whitespace and selection order but distinguishes changed content and audience", () => {
+  const payload = { content: " Message ", audience: "MEMBERS" as const, positionIds: [2, 1, 2], memberIds: [4, 3] };
+  assert.equal(
+    announcementSubmissionKey(payload),
+    announcementSubmissionKey({
+      ...payload,
+      content: "Message",
+      positionIds: [1, 2],
+      memberIds: [3, 4],
+    }),
+  );
+  assert.notEqual(announcementSubmissionKey(payload), announcementSubmissionKey({ ...payload, content: "Changed" }));
+  assert.notEqual(announcementSubmissionKey(payload), announcementSubmissionKey({ ...payload, memberIds: [3] }));
+});
 
 test("opening either picker with no search shows all options, including those reached by scrolling", () => {
   const positions = Array.from({ length: 12 }, (_, id) => ({ id, name: `Должность ${id}` }));

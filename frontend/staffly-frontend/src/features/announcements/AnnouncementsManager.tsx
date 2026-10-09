@@ -1,17 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Card from "../../shared/ui/Card";
 import Button from "../../shared/ui/Button";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import ContentText from "../../shared/ui/ContentText";
 import Icon from "../../shared/ui/Icon";
+import Modal from "../../shared/ui/Modal";
 import AnnouncementDialog from "./AnnouncementDialog";
 import type { AnnouncementAudienceOptionsDto, AnnouncementDto, AnnouncementRequest } from "./api";
-import {
-  createAnnouncement,
-  deleteAnnouncement,
-  listAnnouncements,
-  fetchAnnouncementAudience,
-} from "./api";
+import { createAnnouncement, deleteAnnouncement, listAnnouncements, fetchAnnouncementAudience } from "./api";
 import { announcementAudienceLabel } from "./audience";
 import { Trash2 } from "lucide-react";
 
@@ -27,13 +23,13 @@ type AnnouncementsManagerProps = {
   hideHeader?: boolean;
 };
 
-const AnnouncementsManager = ({
-  restaurantId,
-  canManage,
-  hideHeader = false,
-}: AnnouncementsManagerProps) => {
+const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: AnnouncementsManagerProps) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [viewed, setViewed] = useState<AnnouncementDto | null>(null);
+  const loadSequence = useRef(0);
   const [audienceOptions, setAudienceOptions] = useState<AnnouncementAudienceOptionsDto | null>(null);
   const [audienceLoading, setAudienceLoading] = useState(false);
   const [audienceError, setAudienceError] = useState<string | null>(null);
@@ -46,23 +42,41 @@ const AnnouncementsManager = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const loadAnnouncements = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const data = await listAnnouncements(restaurantId);
-      setAnnouncements(data);
-    } catch (e) {
-      console.error("Failed to load announcements", e);
-      setLoadError("Не удалось загрузить объявления");
-    } finally {
-      setLoading(false);
-    }
-  }, [restaurantId]);
+  const loadAnnouncements = useCallback(
+    async (requestedPage: number) => {
+      const sequence = ++loadSequence.current;
+      setLoading(true);
+      setLoadError(null);
+      setAnnouncements([]);
+      try {
+        const data = await listAnnouncements(restaurantId, requestedPage);
+        if (sequence !== loadSequence.current) return;
+        const lastPage = Math.max(0, data.totalPages - 1);
+        if (requestedPage > lastPage) {
+          setPage(lastPage);
+          return;
+        }
+        setAnnouncements(data.items);
+        setTotalPages(data.totalPages);
+      } catch (e) {
+        if (sequence !== loadSequence.current) return;
+        console.error("Failed to load announcements", e);
+        setLoadError("Не удалось загрузить объявления");
+      } finally {
+        if (sequence === loadSequence.current) setLoading(false);
+      }
+    },
+    [restaurantId],
+  );
+
+  const invalidateLoads = useCallback(() => {
+    ++loadSequence.current;
+  }, []);
 
   useEffect(() => {
-    void loadAnnouncements();
-  }, [loadAnnouncements]);
+    void loadAnnouncements(page);
+    return invalidateLoads;
+  }, [loadAnnouncements, page, invalidateLoads]);
 
   useEffect(() => {
     if (!canManage || !dialogOpen) return;
@@ -81,7 +95,9 @@ const AnnouncementsManager = ({
         if (alive) setAudienceLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [canManage, restaurantId, dialogOpen, audienceReload]);
 
   const openCreate = useCallback(() => {
@@ -114,7 +130,8 @@ const AnnouncementsManager = ({
       try {
         await createAnnouncement(restaurantId, payload);
         setDialogOpen(false);
-        await loadAnnouncements();
+        if (page === 0) await loadAnnouncements(0);
+        else setPage(0);
       } catch (e: any) {
         console.error("Failed to save announcement", e);
         const message = e?.friendlyMessage || "Не удалось отправить объявление";
@@ -123,7 +140,7 @@ const AnnouncementsManager = ({
         setSubmitting(false);
       }
     },
-    [loadAnnouncements, restaurantId],
+    [loadAnnouncements, restaurantId, page],
   );
 
   const openDelete = useCallback((announcement: AnnouncementDto) => {
@@ -144,50 +161,74 @@ const AnnouncementsManager = ({
     try {
       await deleteAnnouncement(restaurantId, deleteTarget.id);
       setDeleteTarget(null);
-      await loadAnnouncements();
+      if (viewed?.id === deleteTarget.id) setViewed(null);
+      await loadAnnouncements(page);
     } catch (e) {
       console.error("Failed to delete announcement", e);
       setDeleteError("Не удалось удалить объявление. Попробуйте ещё раз.");
     } finally {
       setDeleting(false);
     }
-  }, [deleteTarget, restaurantId, loadAnnouncements]);
+  }, [deleteTarget, restaurantId, loadAnnouncements, page, viewed]);
+
+  const pagination = (label: string) =>
+    totalPages > 1 && (
+      <nav aria-label={label} className="flex items-center justify-between gap-2 py-2">
+        <Button variant="outline" disabled={loading || page === 0} onClick={() => setPage(page - 1)}>
+          Назад
+        </Button>
+        <span className="text-muted text-center text-sm">
+          Страница {page + 1} из {totalPages}
+        </span>
+        <Button variant="outline" disabled={loading || page + 1 >= totalPages} onClick={() => setPage(page + 1)}>
+          Далее
+        </Button>
+      </nav>
+    );
 
   const renderAnnouncement = (announcement: AnnouncementDto) => {
     const createdLabel = announcement.createdAt
       ? `${announcement.createdBy?.name ?? "Без имени"}, ${formatShortDate(announcement.createdAt)}`
-      : announcement.createdBy?.name ?? "Без имени";
+      : (announcement.createdBy?.name ?? "Без имени");
 
     return (
       <div
         key={announcement.id}
-        className="rounded-2xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)]"
+        className="border-subtle bg-surface relative h-56 rounded-2xl border p-4 shadow-[var(--staffly-shadow)]"
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="text-xs text-muted">{createdLabel}</div>
-          {canManage && (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="text-default"
-                aria-label="Удалить"
-                onClick={() => openDelete(announcement)}
-              >
-                <Icon icon={Trash2} size="sm" decorative />
-              </Button>
-            </div>
-          )}
-        </div>
-        <ContentText className="mt-2 text-base text-strong">{announcement.content}</ContentText>
-        <div className="mt-3 text-sm text-muted">{announcementAudienceLabel(announcement)}</div>
-        <div className="mt-1 text-xs text-muted">Получателей: {announcement.recipientCount}</div>
+        <button
+          type="button"
+          onClick={() => setViewed(announcement)}
+          aria-label={`Открыть объявление от ${createdLabel}`}
+          className="focus:ring-default flex h-full w-full min-w-0 flex-col justify-between rounded-lg text-left focus:ring-2 focus:outline-none"
+        >
+          <div className="text-muted h-9 w-full truncate pr-12 text-xs">{createdLabel}</div>
+          <ContentText className="text-strong line-clamp-3 h-[4.5rem] overflow-hidden text-base leading-6">
+            {announcement.content}
+          </ContentText>
+          <div className="w-full min-w-0">
+            <div className="text-muted text-xs">Получателей: {announcement.recipientCount}</div>
+            <div className="text-muted mt-1 truncate text-sm">{announcementAudienceLabel(announcement)}</div>
+            <div className="text-default mt-2 text-xs">Подробнее</div>
+          </div>
+        </button>
+        {canManage && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="text-default absolute top-4 right-4"
+            aria-label="Удалить"
+            onClick={() => openDelete(announcement)}
+          >
+            <Icon icon={Trash2} size="sm" decorative />
+          </Button>
+        )}
       </div>
     );
   };
 
   const emptyState = (
-    <div className="rounded-2xl border border-subtle bg-surface p-4 text-sm text-muted">
+    <div className="border-subtle bg-surface text-muted rounded-2xl border p-4 text-sm">
       {loading ? "Загружаем объявления…" : "Пока нет объявлений"}
     </div>
   );
@@ -197,24 +238,55 @@ const AnnouncementsManager = ({
       {!hideHeader && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-lg font-semibold text-strong">Объявления</div>
-            <div className="text-sm text-muted">Сообщения руководства участникам ресторана</div>
+            <div className="text-strong text-lg font-semibold">Объявления</div>
+            <div className="text-muted text-sm">Сообщения руководства участникам ресторана</div>
           </div>
           {canManage && <Button onClick={openCreate}>Создать объявление</Button>}
         </div>
       )}
 
-      <div className={`${hideHeader ? "" : "mt-4 "}space-y-3`}>
+      <div className={`${hideHeader ? "" : "mt-4"} space-y-3`}>
+        {pagination("Страницы объявлений сверху")}
         {loadError && (
           <div className="flex items-center justify-between gap-3 text-sm text-red-600" role="alert">
             <span>{loadError}</span>
-            <Button variant="outline" onClick={() => void loadAnnouncements()} disabled={loading}>
+            <Button variant="outline" onClick={() => void loadAnnouncements(page)} disabled={loading}>
               Повторить
             </Button>
           </div>
         )}
-        {announcements.length > 0 ? announcements.map(renderAnnouncement) : !loadError && emptyState}
+        {loading
+          ? emptyState
+          : announcements.length > 0
+            ? announcements.map(renderAnnouncement)
+            : !loadError && emptyState}
+        {pagination("Страницы объявлений снизу")}
       </div>
+
+      <Modal
+        open={Boolean(viewed)}
+        onClose={() => setViewed(null)}
+        title="Объявление"
+        headerCloseButton
+        footer={
+          <Button variant="outline" onClick={() => setViewed(null)}>
+            Закрыть
+          </Button>
+        }
+      >
+        {viewed && (
+          <div className="space-y-4">
+            <div className="text-muted text-xs">
+              {viewed.createdBy?.name ?? "Без имени"}, {formatShortDate(viewed.createdAt)}
+            </div>
+            <ContentText>{viewed.content}</ContentText>
+            <div>
+              <div className="text-muted text-sm">Получателей: {viewed.recipientCount}</div>
+              <ContentText className="text-muted mt-1 text-sm">{announcementAudienceLabel(viewed)}</ContentText>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <AnnouncementDialog
         open={dialogOpen}
@@ -233,8 +305,14 @@ const AnnouncementsManager = ({
         title="Удалить объявление?"
         description={
           <>
-            <span>Объявление исчезнет из входящих у всех получателей. Уже отправленные push останутся на устройствах.</span>
-            {deleteError && <span className="mt-2 block text-red-600" role="alert">{deleteError}</span>}
+            <span>
+              Объявление исчезнет из входящих у всех получателей. Уже отправленные push останутся на устройствах.
+            </span>
+            {deleteError && (
+              <span className="mt-2 block text-red-600" role="alert">
+                {deleteError}
+              </span>
+            )}
           </>
         }
         confirming={deleting}
