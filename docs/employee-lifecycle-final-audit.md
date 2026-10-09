@@ -1,6 +1,48 @@
 # Employee Lifecycle — final architecture audit
 
-## Executive verdict
+## Closure verdict — 2026-10-09
+
+**EMPLOYEE LIFECYCLE — ACCEPTED / COMPLETE.** Admission, Position Change,
+Termination and Rehire use centralized coordinators, restaurant serialization,
+authoritative stale checks and atomic mandatory effects. RestaurantMember is a
+separate employment period; operational exits preserve historical facts. No known
+critical defect remains in the accepted lifecycle scope.
+
+The project owner reported the completed PostgreSQL/manual regression results.
+[Scenarios 1–21](employee-lifecycle-manual-regression.md) now record those results,
+with explicit exceptions: scenario 5 has regression/overlapping ownership coverage
+rather than a standalone full UI run; scenario 17 has automated lifecycle race PASS,
+with scheduled worker E2E deferred. This documentation pass did not repeat manual runs.
+
+The ScheduleParticipation orphan-removal defect found during final regression was
+fixed by keeping the managed Schedule association synchronized during removal,
+covered by persistence regression and reported revalidated on real PostgreSQL.
+Historical rows stay isolated and never become operational on rehire/Position return.
+Removal preview/Apply participation semantics are covered by
+`ScheduleTerminationConsistencyTest`, including PUBLISHED state.
+
+P1 is delivered: worker-only scheduling, CREATOR/Training authorization consistency
+and production preflight/runbook without weakening V115. P2 is delivered with
+Historical Certification results UI explicitly deferred for MVP. P3 is complete:
+unused APIs/repository methods and stale tests removed, dependency/test warnings
+cleaned, intentional historical compatibility retained; live dev fixtures not deleted.
+
+Technical baseline is merged dev `3d6cdfba8354e81fc61f9fee2991c117481baa9d`
+([PR #359](https://github.com/VladimirPlot/staffly/pull/359)). Final P3 checks passed:
+226 backend tests, 66 frontend tests on Node 24 and Node 22.13, ESLint,
+TypeScript and production Vite/PWA build, plus clean diff checks. Backend tests include
+H2 persistence coverage; this is separate from the reported PostgreSQL manual evidence.
+The remaining push-unavailable log is intentionally emitted by a fault-injection test.
+
+Production migration execution/rehearsal, scheduled E2E and later P2 browser/PostgreSQL
+smoke remain tracked in [deferred issues](employee-lifecycle-known-deferred-issues.md).
+COMPLETE is the lifecycle milestone, not a blanket production-verification statement.
+The [documentation index](employee-lifecycle.md) links architecture, contracts and
+production checks. The sections below retain the initial audit and follow-up evidence;
+their READY status, counts, line references and unexecuted-run statements describe
+that earlier snapshot and are superseded by this closure verdict.
+
+## Historical audit verdict — 2026-10-06
 
 **READY_FOR_MANUAL_VALIDATION** — 2026-10-06. The confirmed dispatch/reservation/cascade
 defects, hidden Certification ownership/activation gap and cross-scope lifecycle
@@ -321,12 +363,12 @@ After-commit delivery is currently best-effort: a process failure after authorit
 commit can lose a batch. The existing alpha policy explicitly accepts this; no outbox
 redesign was performed.
 
-## Remaining risks
+## Remaining risks at the initial audit
 
 1. Live PostgreSQL race scenarios have not been executed.
 2. The manual E2E matrix has not been executed.
 
-## Verification
+## Historical automated verification
 
 - Initial: `git branch --show-current`; `git status --short` — requested branch, clean.
 - `git rev-parse HEAD dev origin/dev` and `git ls-remote origin refs/heads/dev` — all `5e931da…`. First sandbox network attempt failed; read-only retry outside sandbox succeeded.
@@ -343,7 +385,7 @@ redesign was performed.
   correction; frontend verification was not repeated, as requested.
 - `git diff --check` — passed, including final repeat. New files were also checked for trailing spaces/tabs.
 
-## Final verdict
+## Historical pre-regression verdict
 
 **READY_FOR_MANUAL_VALIDATION**. Admission creates an employment period, Position
 Change mutates Position inside that period, and Termination ends it through exactly
