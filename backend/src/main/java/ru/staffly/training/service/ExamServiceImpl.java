@@ -110,6 +110,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         // Read-repair semantics: listing certifications can finalize stale expired unfinished attempts
         // and update assignment derived fields/status to keep list/start/result consistent.
         Instant now = TimeProvider.now();
@@ -123,6 +124,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         // Read-repair semantics: self-result can mutate DB by repairing stale lifecycle state
         // (e.g. finalize expired unfinished attempt before building result).
         Instant now = TimeProvider.now();
@@ -486,6 +488,7 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         // Practice-only progress endpoint: только по practice-экзаменам, доступным пользователю по visibility.
         var examIds = examAccessService.listVisiblePracticeExamIdsForUser(restaurantId, userId);
         if (examIds.isEmpty()) {
@@ -513,6 +516,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         Instant now = TimeProvider.now();
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
@@ -607,6 +611,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Attempt not found"));
         if (!Objects.equals(attempt.getUser().getId(), userId)) {

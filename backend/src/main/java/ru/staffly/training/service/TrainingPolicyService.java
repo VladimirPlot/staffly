@@ -20,6 +20,22 @@ public class TrainingPolicyService {
     private final RestaurantMemberRepository members;
     private final PositionRepository positions;
 
+    /** Shared training reads support global management authority and real employees. */
+    public boolean canReadTraining(Long userId, Long restaurantId) {
+        return isCreator() || isActiveTrainingMember(userId, restaurantId);
+    }
+
+    /** Global authority alone never supplies an employee identity. */
+    public boolean isActiveTrainingMember(Long userId, Long restaurantId) {
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent();
+    }
+
+    public void assertActiveTrainingMember(Long userId, Long restaurantId) {
+        if (!isActiveTrainingMember(userId, restaurantId)) {
+            throw new ForbiddenException("Not a member");
+        }
+    }
+
     public boolean canManageTraining(Long userId, Long restaurantId) {
         return resolveContext(userId, restaurantId).canManageTraining();
     }
@@ -240,7 +256,7 @@ public class TrainingPolicyService {
         return visibility.stream().allMatch(p -> allowedLevelsByContext(context, PolicyContext.EXAM_TARGET).contains(p.getLevel()));
     }
 
-    private boolean isCreator() {
+    boolean isCreator() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getAuthorities().stream()
                 .anyMatch(grantedAuthority -> "ROLE_CREATOR".equals(grantedAuthority.getAuthority()));

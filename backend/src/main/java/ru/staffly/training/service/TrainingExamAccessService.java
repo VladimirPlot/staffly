@@ -18,6 +18,7 @@ import java.util.Objects;
 class TrainingExamAccessService {
     private final TrainingExamRepository exams;
     private final RestaurantMemberRepository members;
+    private final TrainingPolicyService trainingPolicyService;
 
     /**
      * Visibility = текущий уровень доступа к экзамену.
@@ -31,7 +32,7 @@ class TrainingExamAccessService {
                                         boolean isManager,
                                         boolean includeInactive,
                                         TrainingExamMode modeFilter) {
-        var context = resolveVisibilityContext(restaurantId, userId, isManager);
+        var context = resolveManagementReadContext(restaurantId, userId, isManager);
         return listVisibleExams(restaurantId, context, includeInactive, modeFilter);
     }
 
@@ -65,7 +66,7 @@ class TrainingExamAccessService {
                                                                  boolean isManager,
                                                                  Long folderId,
                                                                  boolean includeInactive) {
-        var context = resolveVisibilityContext(restaurantId, userId, isManager);
+        var context = resolveManagementReadContext(restaurantId, userId, isManager);
         if (context.isManager()) {
             return exams.listPracticeByKnowledgeFolder(restaurantId, folderId, includeInactive, null);
         }
@@ -92,6 +93,14 @@ class TrainingExamAccessService {
         boolean memberIsManager = member.getRole() == RestaurantRole.ADMIN || member.getRole() == RestaurantRole.MANAGER;
         boolean effectiveManager = managerOverride == null ? memberIsManager : managerOverride;
         return new ExamVisibilityContext(effectiveManager, member.getPosition() == null ? null : member.getPosition().getId());
+    }
+
+    private ExamVisibilityContext resolveManagementReadContext(Long restaurantId, Long userId, boolean isManager) {
+        // Only management listings bypass membership. Start and personal progress still resolve a real member.
+        if (isManager && trainingPolicyService.isCreator()) {
+            return new ExamVisibilityContext(true, null);
+        }
+        return resolveVisibilityContext(restaurantId, userId, isManager);
     }
 
     private record ExamVisibilityContext(boolean isManager, Long positionId) {
