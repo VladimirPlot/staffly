@@ -159,6 +159,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         // Initial operational ownership is serialized with membership termination.
         lifecycleMutex.lock(restaurantId);
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
@@ -873,6 +874,7 @@ public class ExamServiceImpl implements ExamService {
     public ExamSourcesPreflightDto preflightSources(Long restaurantId,
                                                     Long userId,
                                                     ExamSourcesPreflightRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         try {
             int available = questionPoolResolver.resolveAvailableQuestionCount(
                     restaurantId, userId, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());

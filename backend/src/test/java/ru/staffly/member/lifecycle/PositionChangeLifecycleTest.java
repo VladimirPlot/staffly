@@ -104,7 +104,8 @@ class PositionChangeLifecycleTest {
     }
 
     @Test void certificationEligibilityUsesResultingRoleCapabilityAndFullVisibility() {
-        var policy = new TrainingPolicyService(mock(RestaurantMemberRepository.class), mock(PositionRepository.class));
+        var policy = new TrainingPolicyService(mock(RestaurantMemberRepository.class), mock(PositionRepository.class),
+                mock(ru.staffly.security.SecurityService.class));
         var admin = position(1, RestaurantRole.ADMIN);
         var manager = position(2, RestaurantRole.MANAGER);
         var staff = position(3, RestaurantRole.STAFF);

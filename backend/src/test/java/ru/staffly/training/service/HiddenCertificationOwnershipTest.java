@@ -13,7 +13,9 @@ import ru.staffly.member.lifecycle.*;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.*;
+import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.GlobalCreatorPolicy;
+import ru.staffly.security.SecurityService;
 import ru.staffly.training.dto.UpdateTrainingExamRequest;
 import ru.staffly.training.lifecycle.*;
 import ru.staffly.training.model.*;
@@ -48,7 +50,8 @@ class HiddenCertificationOwnershipTest {
     private final CertificationAudienceSyncService audience = mock(CertificationAudienceSyncService.class);
     private final CertificationAssignmentService assignments = mock(CertificationAssignmentService.class);
     private final TrainingExamOwnershipService ownership = new TrainingExamOwnershipService(exams, members,
-            new TrainingPolicyService(members, positions), mock(CertificationFolderManagementService.class), mutex,
+            new TrainingPolicyService(members, positions, new SecurityService(members, mock(RestaurantRepository.class))),
+            mock(CertificationFolderManagementService.class), mutex,
             em, new GlobalCreatorPolicy("+79999999999"), users);
     private final CertificationEmployeeLifecycleHandler handler = new CertificationEmployeeLifecycleHandler(audience, ownership, members);
 

@@ -12,6 +12,7 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,6 +37,7 @@ import ru.staffly.training.repository.*;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.lang.reflect.InvocationTargetException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -74,7 +76,8 @@ class TrainingAuthorizationTest {
     @BeforeEach void setUp() {
         SecurityContextHolder.clearContext();
         mocks = MockitoAnnotations.openMocks(this);
-        policy = new TrainingPolicyService(members, positions);
+        var security = new SecurityService(members, restaurants);
+        policy = new TrainingPolicyService(members, positions, security);
         access = new TrainingExamAccessService(exams, members, policy);
         var folderManagement = new CertificationFolderManagementService(folders, exams, policy);
         ReflectionTestUtils.setField(examService, "trainingPolicyService", policy);
@@ -82,9 +85,8 @@ class TrainingAuthorizationTest {
         ReflectionTestUtils.setField(knowledgeService, "trainingPolicyService", policy);
         ReflectionTestUtils.setField(knowledgeService, "certificationFolderManagementService", folderManagement);
         ReflectionTestUtils.setField(knowledgeService, "activeContainerValidator", new TrainingActiveContainerValidator());
-        var security = new SecurityService(members, restaurants);
         var target = new TrainingController(knowledgeService, mock(QuestionService.class), examService,
-                mock(CertificationEmployeeAnalyticsService.class), folderManagement, security, policy);
+                mock(CertificationEmployeeAnalyticsService.class), folderManagement, policy);
         context = new AnnotationConfigApplicationContext();
         context.register(MethodSecurityConfig.class);
         context.registerBean("securityService", SecurityService.class, () -> security);
@@ -293,8 +295,11 @@ class TrainingAuthorizationTest {
         verify(folders, never()).save(any());
     }
 
-    @Test void creatorWithRealMembershipUsesTheExistingEmployeeFlow() {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void creatorWithRealMembershipUsesTheExistingEmployeeFlow(boolean locked) {
         member(RestaurantRole.STAFF, false);
+        if (locked) lockedRestaurant();
         authenticate(true);
         assertDoesNotThrow(() -> controller.listCurrentUserCertifications(1L, principal));
         verify(assignments).findActiveCertificationAssignmentsForUser(1L, 7L);
@@ -306,5 +311,114 @@ class TrainingAuthorizationTest {
         when(restaurants.findById(1L)).thenReturn(Optional.of(Restaurant.builder().id(1L).locked(true).build()));
         assertThrows(AccessDeniedException.class, () -> controller.listExams(1L, principal, true, true));
         assertThrows(AccessDeniedException.class, () -> controller.listCurrentUserCertifications(1L, principal));
+    }
+
+    void lockedRestaurant() {
+        when(restaurants.findById(1L)).thenReturn(Optional.of(Restaurant.builder().id(1L).locked(true).build()));
+    }
+
+    void memberAuthority(String authority) {
+        member("EXAMINER".equals(authority) ? RestaurantRole.STAFF : RestaurantRole.valueOf(authority),
+                "EXAMINER".equals(authority));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MANAGER", "ADMIN", "EXAMINER"})
+    void lockedRestaurantDeniesEveryManagementEndpoint(String authority) throws Exception {
+        memberAuthority(authority);
+        lockedRestaurant();
+        assertFalse(policy.canManageTraining(7L, 1L));
+        for (var method : TrainingController.class.getDeclaredMethods()) {
+            var authorization = method.getAnnotation(PreAuthorize.class);
+            if (authorization == null || !authorization.value().contains("canManageTraining")) continue;
+            var args = new Object[method.getParameterCount()];
+            var types = method.getParameterTypes();
+            for (int i = 0; i < types.length; i++) {
+                args[i] = types[i] == UserPrincipal.class ? principal
+                        : types[i] == Long.class ? 1L : types[i] == boolean.class ? false : null;
+            }
+            var denied = assertThrows(InvocationTargetException.class, () -> method.invoke(controller, args), method.getName());
+            assertInstanceOf(AccessDeniedException.class, denied.getCause(), method.getName());
+        }
+        verifyNoInteractions(exams, folders, assignments, attempts);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STAFF", "MANAGER", "ADMIN", "EXAMINER"})
+    void lockedRestaurantDeniesSharedAndAllPersonalEndpoints(String authority) {
+        memberAuthority(authority);
+        lockedRestaurant();
+        assertFalse(policy.canReadTraining(7L, 1L));
+        assertFalse(policy.isActiveTrainingMember(7L, 1L));
+        assertThrows(AccessDeniedException.class, () -> controller.listFolders(1L, principal, TrainingFolderType.KNOWLEDGE, false));
+        assertThrows(AccessDeniedException.class, () -> controller.listKnowledgeItems(1L, principal, null, false));
+        assertThrows(AccessDeniedException.class, () -> controller.listExams(1L, principal, false, null));
+        assertThrows(AccessDeniedException.class, () -> controller.listKnowledgeExams(1L, principal, 50L, false));
+        for (String action : List.of("my-certifications", "my-result", "practice-progress", "start", "submit")) {
+            assertThrows(AccessDeniedException.class, () -> invokePersonal(action));
+        }
+        verifyNoInteractions(exams, folders, assignments, attempts);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STAFF", "MANAGER", "ADMIN", "EXAMINER"})
+    void directPolicyAndServiceCallsCannotBypassLockIncludingEmptyScopes(String authority) {
+        memberAuthority(authority);
+        lockedRestaurant();
+        assertThrows(ForbiddenException.class, () -> policy.allowedKnowledgePositionIds(7L, 1L));
+        assertThrows(ForbiddenException.class, () -> policy.certificationManagementScopes(7L, 1L));
+        assertThrows(ForbiddenException.class, () -> policy.canAccessKnowledgeByVisibility(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canAccessQuestionBankByVisibility(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canAccessCertificationByVisibility(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canAccessExamTargetByVisibility(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canManageQuestionBankByVisibility(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canManageCertificationFolderOwnScope(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canManageCertificationTargets(7L, 1L, Set.of()));
+        assertThrows(ForbiddenException.class, () -> policy.canAccessCertificationEmployeeAnalyticsTargetRole(7L, 1L, RestaurantRole.STAFF));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.listFolders(1L, 7L, TrainingFolderType.KNOWLEDGE, false));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.getQuestionBankTree(1L, 7L, TrainingExamMode.CERTIFICATION, false));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.listKnowledgeItems(1L, 7L, null, false));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.createFolder(1L, 7L, null));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.createKnowledgeItem(1L, 7L, null));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.reorderObjects(1L, 7L, null));
+        assertThrows(ForbiddenException.class, () -> knowledgeService.hideKnowledgeItem(1L, 7L, 50L));
+        assertThrows(ForbiddenException.class, () -> examService.listExams(1L, 7L, true, true, true));
+        assertThrows(ForbiddenException.class, () -> examService.createExam(1L, 7L, null));
+        assertThrows(ForbiddenException.class, () -> examService.preflightSources(1L, 7L, null));
+        assertThrows(ForbiddenException.class, () -> examService.listCurrentUserCertificationExams(1L, 7L));
+        assertThrows(ForbiddenException.class, () -> examService.getCurrentUserCertificationResult(1L, 100L, 7L, true));
+        assertThrows(ForbiddenException.class, () -> examService.listCurrentUserPracticeExamProgress(1L, 7L));
+        assertThrows(ForbiddenException.class, () -> examService.startExam(1L, 100L, 7L, true));
+        assertThrows(ForbiddenException.class, () -> examService.submitAttempt(1L, 100L, 7L, null));
+        var employeeAnalytics = new CertificationEmployeeAnalyticsService(members, assignments, policy,
+                mock(CertificationAssignmentService.class));
+        assertThrows(ForbiddenException.class, () -> employeeAnalytics.findCertificationEmployees(1L, 7L, null, null));
+        assertThrows(ForbiddenException.class, () -> employeeAnalytics.getCertificationEmployeeSummary(1L, 7L, 8L));
+        var lifecycle = mock(CertificationAnalyticsLifecycleCoordinator.class);
+        var analytics = new CertificationAnalyticsService(exams, assignments, attempts,
+                mock(TrainingExamAttemptQuestionRepository.class), members, mock(CertificationAssignmentService.class),
+                mock(ExamSnapshotService.class), policy, lifecycle, mock(jakarta.persistence.EntityManager.class));
+        assertThrows(ForbiddenException.class, () -> analytics.getExamSummaryPreviewBatch(1L, 7L, List.of()));
+        assertThrows(ForbiddenException.class, () -> analytics.getExamSummary(1L, 7L, 100L));
+        verifyNoInteractions(lifecycle, exams, folders, assignments, attempts);
+    }
+
+    @Test void lockedRestaurantAllowsGlobalCreatorManagementWithoutMembership() {
+        lockedRestaurant();
+        creatorListsCertificationManagementWithoutMembership(true);
+        creatorCreatesAndUpdatesCertificationFolderWithoutSyntheticMembership();
+        assertTrue(policy.canManageTraining(7L, 1L));
+        assertTrue(policy.canReadTraining(7L, 1L));
+        assertTrue(policy.canManageCertificationTargets(7L, 1L, Set.of(11L, 12L, 13L)));
+        assertFalse(policy.isActiveTrainingMember(7L, 1L));
+        assertThrows(AccessDeniedException.class, () -> invokePersonal("my-certifications"));
+        verify(members, never()).save(any());
+    }
+
+    @Test void candidateCapabilityEvaluationIsIndependentOfActorAndRestaurantLock() {
+        member(RestaurantRole.MANAGER, false);
+        lockedRestaurant();
+        assertTrue(policy.canOwnCertificationAsPosition(adminPosition, Set.of(staffPosition, managerPosition)));
+        assertFalse(policy.canOwnCertificationAsPosition(managerPosition, Set.of(adminPosition)));
     }
 }

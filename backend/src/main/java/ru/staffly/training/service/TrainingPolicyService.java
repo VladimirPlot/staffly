@@ -9,6 +9,7 @@ import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.model.RestaurantRole;
+import ru.staffly.security.SecurityService;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -19,25 +20,36 @@ import java.util.stream.Collectors;
 public class TrainingPolicyService {
     private final RestaurantMemberRepository members;
     private final PositionRepository positions;
+    private final SecurityService securityService;
 
     /** Shared training reads support global management authority and real employees. */
     public boolean canReadTraining(Long userId, Long restaurantId) {
-        return isCreator() || isActiveTrainingMember(userId, restaurantId);
+        return securityService.isMember(userId, restaurantId);
     }
 
     /** Global authority alone never supplies an employee identity. */
     public boolean isActiveTrainingMember(Long userId, Long restaurantId) {
-        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent();
+        return canReadTraining(userId, restaurantId)
+                && members.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent();
     }
 
     public void assertActiveTrainingMember(Long userId, Long restaurantId) {
+        assertRestaurantUnlocked(userId, restaurantId);
         if (!isActiveTrainingMember(userId, restaurantId)) {
             throw new ForbiddenException("Not a member");
         }
     }
 
     public boolean canManageTraining(Long userId, Long restaurantId) {
+        if (!securityService.isRestaurantUnlocked(restaurantId)) {
+            return false;
+        }
         return resolveContext(userId, restaurantId).canManageTraining();
+    }
+
+    /** Actor authorization only; lifecycle candidate capability checks intentionally do not use this gate. */
+    public void assertRestaurantUnlocked(Long userId, Long restaurantId) {
+        securityService.assertRestaurantUnlocked(userId, restaurantId);
     }
 
     public Set<Long> allowedKnowledgePositionIds(Long userId, Long restaurantId) {
@@ -82,6 +94,7 @@ public class TrainingPolicyService {
 
     /** Reading is intersection-based; managing a question-bank object requires authority over its full scope. */
     public boolean canManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        assertRestaurantUnlocked(userId, restaurantId);
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return true;
         }
@@ -98,6 +111,7 @@ public class TrainingPolicyService {
     }
 
     public boolean canManageCertificationTargets(Long userId, Long restaurantId, Set<Long> targetPositionIds) {
+        assertRestaurantUnlocked(userId, restaurantId);
         if (targetPositionIds == null || targetPositionIds.isEmpty()) {
             return false;
         }
@@ -107,6 +121,7 @@ public class TrainingPolicyService {
 
     /** Folder navigation is intersection-based, but changing a folder requires its entire scope. */
     public boolean canManageCertificationFolderOwnScope(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
+        assertRestaurantUnlocked(userId, restaurantId);
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return true;
         }
@@ -191,6 +206,7 @@ public class TrainingPolicyService {
                                           Long restaurantId,
                                           Set<Long> visibilityPositionIds,
                                           PolicyContext policyContext) {
+        assertRestaurantUnlocked(userId, restaurantId);
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return true;
         }
@@ -233,6 +249,7 @@ public class TrainingPolicyService {
     }
 
     private TrainingPolicyContext resolveContext(Long userId, Long restaurantId) {
+        assertRestaurantUnlocked(userId, restaurantId);
         if (isCreator()) {
             return new TrainingPolicyContext(true, true, true, RestaurantRole.ADMIN);
         }
