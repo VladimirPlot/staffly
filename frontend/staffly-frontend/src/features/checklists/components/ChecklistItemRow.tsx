@@ -1,4 +1,5 @@
-import { Camera, Check, Image as ImageIcon, Lock, Unlock, X } from "lucide-react";
+import { useId, useState } from "react";
+import { Camera, Check, ChevronDown, ImagePlus, Lock, Unlock, X } from "lucide-react";
 
 import Button from "../../../shared/ui/Button";
 import ContentText from "../../../shared/ui/ContentText";
@@ -47,6 +48,8 @@ export default function ChecklistItemRow({
   onCompletionPhotoDelete,
   onPhotoPreview,
 }: ChecklistItemRowProps) {
+  const [mediaExpanded, setMediaExpanded] = useState(false);
+  const mediaPanelId = useId();
   const reserveKey = `${checklist.id}-${item.id}-reserve`;
   const unreserveKey = `${checklist.id}-${item.id}-unreserve`;
   const completeKey = `${checklist.id}-${item.id}-complete`;
@@ -85,58 +88,29 @@ export default function ChecklistItemRow({
     : item.reservedBy
       ? "bg-amber-50/25 dark:bg-amber-500/[0.06]"
       : "bg-surface";
-  const shouldShowMedia = hasExamplePhoto || hasCompletionPhoto || hasCompletionPhotoEnabled;
+  const shouldShowMedia = hasExamplePhoto || hasCompletionPhoto || (hasCompletionPhotoEnabled && !item.done);
 
   return (
     <div className={`border-subtle border-b px-2.5 py-3 transition-colors last:border-b-0 sm:px-4 ${itemRowClass}`}>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
-            {hasCompletionPhotoEnabled && (
-              <span
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                  missingRequiredPhoto
-                    ? "border-red-300 bg-red-50 text-red-700 dark:border-red-500/45 dark:bg-red-500/15 dark:text-red-200"
-                    : "text-default border-emerald-300 bg-emerald-50 dark:border-emerald-500/45 dark:bg-emerald-500/15"
-                }`}
-              >
-                <span className="inline-flex items-center gap-1">
-                  <Icon icon={Camera} size="xs" decorative />
-                  {photoStatusLabel}
-                </span>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
+          {hasCompletionPhotoEnabled && (
+            <span
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                missingRequiredPhoto
+                  ? "border-red-300 bg-red-50 text-red-700 dark:border-red-500/45 dark:bg-red-500/15 dark:text-red-200"
+                  : "text-default border-emerald-300 bg-emerald-50 dark:border-emerald-500/45 dark:bg-emerald-500/15"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1">
+                <Icon icon={Camera} size="xs" decorative />
+                {photoStatusLabel}
               </span>
-            )}
-            {hasExamplePhoto && (
-              <span className="border-subtle bg-surface text-default inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs">
-                <Icon icon={ImageIcon} size="xs" decorative />
-                Есть эталон
-              </span>
-            )}
-          </div>
-          <ContentText
-            className={`text-[15px] leading-6 [overflow-wrap:anywhere] ${
-              item.done ? "text-muted line-through" : "text-strong"
-            }`}
-          >
-            {item.text}
-          </ContentText>
-          <div className="text-muted mt-1 text-xs">
-            {item.done ? (
-              <>
-                Выполнил: <span className="text-default font-medium">{doneByName}</span>
-                {item.doneAt ? ` · ${formatDateTime(item.doneAt)}` : ""}
-              </>
-            ) : item.reservedBy ? (
-              <>
-                <span className="text-strong font-semibold">{reservedByName}</span> взял пункт в работу
-              </>
-            ) : (
-              "Можно брать в работу"
-            )}
-          </div>
+            </span>
+          )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 md:max-w-[9rem] md:justify-self-end">
+        <div className="flex shrink-0 items-center gap-1.5">
           {!item.done && !item.reservedBy && (
             <Button
               variant="outline"
@@ -162,7 +136,7 @@ export default function ChecklistItemRow({
               leftIcon={!unreserveLoading ? <Icon icon={Unlock} size="sm" decorative /> : undefined}
               aria-label="Снять бронь"
               title="Снять бронь"
-              disabled={isBusy}
+              disabled={isBusy || (!isOwnReservation && !canManage)}
               isLoading={unreserveLoading}
               onClick={() =>
                 onItemAction(unreserveKey, () =>
@@ -204,17 +178,86 @@ export default function ChecklistItemRow({
           )}
         </div>
       </div>
+      <ContentText
+        className={`text-[15px] leading-6 [overflow-wrap:anywhere] ${
+          item.done ? "text-muted line-through" : "text-strong"
+        }`}
+      >
+        {item.text}
+      </ContentText>
+      <div className="text-muted mt-1 flex items-center justify-between gap-2 text-xs">
+        <div className="min-w-0">
+          {item.done ? (
+            <>
+              Выполнил: <span className="text-default font-medium">{doneByName}</span>
+              {item.doneAt ? ` · ${formatDateTime(item.doneAt)}` : ""}
+            </>
+          ) : item.reservedBy ? (
+            <>
+              <span className="text-strong font-semibold">{reservedByName}</span> взял пункт в работу
+            </>
+          ) : (
+            "Можно брать в работу"
+          )}
+        </div>
+        {shouldShowMedia && (
+          <button
+            type="button"
+            className="text-muted hover:text-default focus:ring-default flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition hover:bg-[color:var(--staffly-control-hover)] focus:ring-2 focus:outline-none"
+            aria-expanded={mediaExpanded}
+            aria-controls={mediaPanelId}
+            aria-label={
+              mediaExpanded
+                ? "Скрыть фотографии"
+                : hasExamplePhoto
+                  ? "Показать эталон и фото выполнения"
+                  : hasCompletionPhoto
+                    ? "Показать фото выполнения"
+                    : "Добавить фото выполнения"
+            }
+            title={
+              mediaExpanded
+                ? "Скрыть фотографии"
+                : hasExamplePhoto
+                  ? "Эталон и фото выполнения"
+                  : hasCompletionPhoto
+                    ? "Фото выполнения"
+                    : "Добавить фото выполнения"
+            }
+            onClick={() => setMediaExpanded((expanded) => !expanded)}
+          >
+            {hasExamplePhoto ? (
+              <span
+                className={
+                  mediaExpanded
+                    ? "flex rotate-180 transition-transform duration-200"
+                    : "flex transition-transform duration-200"
+                }
+              >
+                <Icon icon={ChevronDown} size="sm" decorative />
+              </span>
+            ) : (
+              <Icon icon={hasCompletionPhoto ? Camera : ImagePlus} size="sm" decorative />
+            )}
+          </button>
+        )}
+      </div>
+
       {shouldShowMedia && (
-        <ChecklistItemMedia
-          checklist={checklist}
-          item={item}
-          isPhotoUploading={isPhotoUploading}
-          disabled={isBusy}
-          canManage={canManage}
-          onCompletionPhotoUpload={onCompletionPhotoUpload}
-          onCompletionPhotoDelete={onCompletionPhotoDelete}
-          onPhotoPreview={onPhotoPreview}
-        />
+        <div id={mediaPanelId} hidden={!mediaExpanded}>
+          {mediaExpanded && (
+            <ChecklistItemMedia
+              checklist={checklist}
+              item={item}
+              isPhotoUploading={isPhotoUploading}
+              disabled={isBusy}
+              canManage={canManage}
+              onCompletionPhotoUpload={onCompletionPhotoUpload}
+              onCompletionPhotoDelete={onCompletionPhotoDelete}
+              onPhotoPreview={onPhotoPreview}
+            />
+          )}
+        </div>
       )}
     </div>
   );

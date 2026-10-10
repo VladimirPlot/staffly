@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import ru.staffly.checklist.dto.ChecklistArchiveEntryDto;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistHistoryDetailDto;
 import ru.staffly.checklist.dto.ChecklistHistorySummaryDto;
@@ -160,6 +161,21 @@ public class ChecklistController {
                                                         @PathVariable Long checklistId,
                                                         @AuthenticationPrincipal UserPrincipal principal) {
         return service.listHistory(restaurantId, principal.userId(), checklistId, page, size);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/archive")
+    public List<ChecklistArchiveEntryDto> listArchiveCatalog(@PathVariable Long restaurantId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return service.listArchiveCatalog(restaurantId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/history/{historyId}/related")
+    public List<ChecklistHistorySummaryDto> listLegacyHistory(@PathVariable Long restaurantId, @PathVariable Long historyId,
+            @AuthenticationPrincipal UserPrincipal principal, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.listLegacyHistory(restaurantId, principal.userId(), historyId, page, size);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

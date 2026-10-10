@@ -1,6 +1,7 @@
 package ru.staffly.checklist.service;
 
 import org.springframework.web.multipart.MultipartFile;
+import ru.staffly.checklist.dto.ChecklistArchiveEntryDto;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistHistoryDetailDto;
 import ru.staffly.checklist.dto.ChecklistHistorySummaryDto;
@@ -50,6 +51,10 @@ public interface ChecklistService {
     void processAutomaticResets(Long restaurantId);
 
     List<ChecklistHistorySummaryDto> listRestaurantHistory(Long restaurantId, Long currentUserId, int page, int size);
+
+    List<ChecklistArchiveEntryDto> listArchiveCatalog(Long restaurantId, Long currentUserId);
+
+    List<ChecklistHistorySummaryDto> listLegacyHistory(Long restaurantId, Long currentUserId, Long historyId, int page, int size);
 
     ChecklistHistoryDetailDto getHistory(Long restaurantId, Long currentUserId, Long historyId);
 }

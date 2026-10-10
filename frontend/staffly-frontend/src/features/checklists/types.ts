@@ -12,9 +12,8 @@ export type PhotoPreview = {
     | { kind: "history"; itemId: number; photo: "example" | "completion" };
 };
 
-export type ChecklistItemSectionKey = "available" | "reserved" | "done";
 export type ChecklistWorkStatus = "empty" | "completed" | "reserved" | "available";
-export type ChecklistItemGroups = Record<ChecklistItemSectionKey, ChecklistItemDto[]>;
+export type ChecklistItemGroups = Record<"available" | "reserved" | "done", ChecklistItemDto[]>;
 
 export type ChecklistWorkSummary = {
   label: string;

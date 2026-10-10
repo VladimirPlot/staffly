@@ -7,14 +7,11 @@ import {
   CHECKLIST_SCROLL_TOP_OFFSET_RATIO,
 } from "../constants";
 import type { ChecklistDto } from "../api";
-import type { ChecklistItemSectionKey } from "../types";
-import { getInitialItemTab, groupChecklistItems } from "../utils/checklistItems";
 import { sanitizeFileName } from "../utils/formatters";
 import { createChecklistExportNode } from "../utils/checklistExport";
 
 export function useChecklistCardUiState() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [activeItemTab, setActiveItemTab] = useState<ChecklistItemSectionKey>("available");
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [actionMenuFor, setActionMenuFor] = useState<number | null>(null);
@@ -62,7 +59,6 @@ export function useChecklistCardUiState() {
         return;
       }
 
-      setActiveItemTab(getInitialItemTab(groupChecklistItems(checklist.items ?? [])));
       setExpandedId(checklist.id);
       scrollChecklistIntoView(checklist.id);
     },
@@ -144,11 +140,9 @@ export function useChecklistCardUiState() {
 
   return {
     expandedId,
-    activeItemTab,
     downloading,
     downloadError,
     actionMenuFor,
-    setActiveItemTab,
     resetExpandedState,
     toggleExpanded,
     handleDownloadJpg,

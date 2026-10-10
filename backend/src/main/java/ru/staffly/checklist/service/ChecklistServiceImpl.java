@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.stereotype.Service;
+import ru.staffly.checklist.dto.ChecklistArchiveEntryDto;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistHistoryDetailDto;
 import ru.staffly.checklist.dto.ChecklistHistorySummaryDto;
@@ -1089,6 +1090,35 @@ public class ChecklistServiceImpl implements ChecklistService {
         security.assertAtLeastManager(currentUserId, restaurantId);
         return histories.findByRestaurantIdOrderByResetAtDescIdDesc(restaurantId, historyPage(page, size)).stream()
                 .map(historyMapper::toSummaryDto).toList();
+    }
+
+    @Override
+    @Transactional
+    public List<ChecklistArchiveEntryDto> listArchiveCatalog(Long restaurantId, Long currentUserId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        Collator collator = Collator.getInstance(new Locale("ru", "RU"));
+        collator.setStrength(Collator.PRIMARY);
+        List<ChecklistArchiveEntryDto> entries = new ArrayList<>();
+        for (Checklist checklist : checklists.findArchiveCatalog(restaurantId)) {
+            List<String> names = checklist.getPositions().stream().map(Position::getName).sorted(collator).toList();
+            String positionNames = String.join(", ", names);
+            entries.add(new ChecklistArchiveEntryDto(checklist.getId(), checklist.getName(), positionNames, checklist.getDeletedAt() != null, null, names));
+        }
+        entries.addAll(histories.findLegacyArchiveCatalog(restaurantId));
+        entries.sort(Comparator.comparing((ChecklistArchiveEntryDto entry) -> Objects.toString(entry.positions(), ""), collator)
+                .thenComparing(ChecklistArchiveEntryDto::name, collator)
+                .thenComparing(entry -> entry.checklistId() != null ? entry.checklistId() : entry.legacyHistoryId()));
+        return entries;
+    }
+
+    @Override
+    @Transactional
+    public List<ChecklistHistorySummaryDto> listLegacyHistory(Long restaurantId, Long currentUserId, Long historyId, int page, int size) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        var reference = histories.findMetadata(historyId, restaurantId).orElseThrow(() -> new NotFoundException("Checklist history not found"));
+        if (reference.getChecklist() != null) throw new BadRequestException("Use checklist history for this entry");
+        return histories.findLegacyHistory(restaurantId, reference.getChecklistName(), reference.getPositionsSnapshot(), historyPage(page, size))
+                .stream().map(historyMapper::toSummaryDto).toList();
     }
 
     private record NormalizedChecklistItem(Long id, String text, ChecklistPhotoMode completionPhotoMode) {

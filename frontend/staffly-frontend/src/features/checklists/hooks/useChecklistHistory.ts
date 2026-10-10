@@ -2,13 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getChecklistHistory,
   listChecklistHistory,
-  listRestaurantChecklistHistory,
+  listChecklistArchive,
+  listLegacyChecklistHistory,
+  type ChecklistArchiveEntryDto,
   type ChecklistDto,
   type ChecklistHistoryDetailDto,
   type ChecklistHistorySummaryDto,
 } from "../api";
-type HistoryTarget = { id?: number; name: string };
+type HistoryTarget = { id?: number; name: string; legacyHistoryId?: number };
 export function useChecklistHistory(restaurantId: number) {
+  const [archiveEntries, setArchiveEntries] = useState<ChecklistArchiveEntryDto[]>([]);
+  const [archiveNavigation, setArchiveNavigation] = useState(false);
+  const selectedDetailId = useRef<number | null>(null);
   const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
   const [historySummaries, setHistorySummaries] = useState<ChecklistHistorySummaryDto[]>([]);
   const [historyDetail, setHistoryDetail] = useState<ChecklistHistoryDetailDto | null>(null);
@@ -24,20 +29,29 @@ export function useChecklistHistory(restaurantId: number) {
   const pageLoading = useRef(false);
   const loadHistoryDetail = useCallback(
     async (historyId: number, background = false) => {
-      if (background && detailLoadingRef.current) return;
+      if (background && (detailLoadingRef.current || selectedDetailId.current !== historyId)) return;
       if (!background) detailLoadingRef.current = true;
       const request = ++detailRequest.current;
       const currentSession = session.current;
       if (!background) {
+        selectedDetailId.current = historyId;
+        setHistoryDetail(null);
         setHistoryDetailLoading(historyId);
         setHistoryError(null);
       }
       try {
         const detail = await getChecklistHistory(restaurantId, historyId);
-        if (request === detailRequest.current && currentSession === session.current) setHistoryDetail(detail);
+        if (
+          request === detailRequest.current &&
+          currentSession === session.current &&
+          selectedDetailId.current === historyId
+        )
+          setHistoryDetail(detail);
       } catch (e: any) {
-        if (!background && request === detailRequest.current && currentSession === session.current)
+        if (!background && request === detailRequest.current && currentSession === session.current) {
+          selectedDetailId.current = null;
           setHistoryError(e?.friendlyMessage || "Не удалось загрузить историю");
+        }
       } finally {
         if (!background && request === detailRequest.current && currentSession === session.current) {
           detailLoadingRef.current = false;
@@ -57,7 +71,7 @@ export function useChecklistHistory(restaurantId: number) {
         const summaries =
           target.id != null
             ? await listChecklistHistory(restaurantId, target.id, page)
-            : await listRestaurantChecklistHistory(restaurantId, page);
+            : await listLegacyChecklistHistory(restaurantId, target.legacyHistoryId!, page);
         if (currentSession !== session.current) return;
         setHistorySummaries((prev) =>
           page === 0
@@ -66,7 +80,6 @@ export function useChecklistHistory(restaurantId: number) {
         );
         pageRef.current = page;
         setHasMoreHistory(summaries.length === 50);
-        if (page === 0 && summaries[0]) await loadHistoryDetail(summaries[0].id);
       } catch (e: any) {
         if (currentSession === session.current) setHistoryError(e?.friendlyMessage || "Не удалось загрузить историю");
       } finally {
@@ -76,7 +89,7 @@ export function useChecklistHistory(restaurantId: number) {
         }
       }
     },
-    [loadHistoryDetail, restaurantId],
+    [restaurantId],
   );
   const openTarget = useCallback(
     (target: HistoryTarget) => {
@@ -84,18 +97,69 @@ export function useChecklistHistory(restaurantId: number) {
       detailRequest.current++;
       pageLoading.current = false;
       detailLoadingRef.current = false;
+      selectedDetailId.current = null;
       targetRef.current = target;
       setHistoryTarget(target);
       setHistorySummaries([]);
       setHistoryDetail(null);
       setHistoryDetailLoading(null);
       setHasMoreHistory(false);
-      void loadPage(target, 0, session.current);
+      setHistoryError(null);
+      if (target.id != null || target.legacyHistoryId != null) {
+        void loadPage(target, 0, session.current);
+      } else {
+        const currentSession = session.current;
+        setArchiveEntries([]);
+        setHistoryLoading(true);
+        void listChecklistArchive(restaurantId)
+          .then((entries) => {
+            if (currentSession === session.current) setArchiveEntries(entries);
+          })
+          .catch((e: any) => {
+            if (currentSession === session.current) setHistoryError(e?.friendlyMessage || "Не удалось загрузить архив");
+          })
+          .finally(() => {
+            if (currentSession === session.current) setHistoryLoading(false);
+          });
+      }
     },
-    [loadPage],
+    [loadPage, restaurantId],
   );
-  const openHistoryModal = useCallback((checklist: ChecklistDto) => openTarget(checklist), [openTarget]);
-  const openArchiveModal = useCallback(() => openTarget({ name: "Архив чек-листов" }), [openTarget]);
+  const openHistoryModal = useCallback(
+    (checklist: ChecklistDto) => {
+      setArchiveNavigation(false);
+      openTarget(checklist);
+    },
+    [openTarget],
+  );
+  const openArchiveModal = useCallback(() => {
+    setArchiveNavigation(true);
+    openTarget({ name: "Архив чек-листов" });
+  }, [openTarget]);
+  const selectArchiveEntry = useCallback(
+    (entry: ChecklistArchiveEntryDto) =>
+      openTarget({
+        id: entry.checklistId ?? undefined,
+        name: entry.name,
+        legacyHistoryId: entry.legacyHistoryId ?? undefined,
+      }),
+    [openTarget],
+  );
+  const toggleHistoryDetail = useCallback(
+    (historyId: number) => {
+      if (selectedDetailId.current === historyId) {
+        selectedDetailId.current = null;
+        detailRequest.current++;
+        detailLoadingRef.current = false;
+        setHistoryDetail(null);
+        setHistoryDetailLoading(null);
+        setHistoryError(null);
+      } else {
+        void loadHistoryDetail(historyId);
+      }
+    },
+    [loadHistoryDetail],
+  );
   const loadMoreHistory = useCallback(() => {
     if (targetRef.current) void loadPage(targetRef.current, pageRef.current + 1, session.current);
   }, [loadPage]);
@@ -104,6 +168,7 @@ export function useChecklistHistory(restaurantId: number) {
     detailRequest.current++;
     pageLoading.current = false;
     detailLoadingRef.current = false;
+    selectedDetailId.current = null;
     targetRef.current = null;
     setHistoryTarget(null);
     setHistorySummaries([]);
@@ -130,6 +195,10 @@ export function useChecklistHistory(restaurantId: number) {
     return closeHistoryModal;
   }, [restaurantId, closeHistoryModal]);
   return {
+    archiveEntries,
+    archiveNavigation,
+    selectArchiveEntry,
+    toggleHistoryDetail,
     historyTarget,
     historySummaries,
     historyDetail,

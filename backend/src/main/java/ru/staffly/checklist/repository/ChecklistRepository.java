@@ -41,6 +41,10 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             """)
     List<Checklist> findListDetailedByRestaurantId(Long restaurantId, Long positionId, ChecklistKind kind, String query);
 
+    @EntityGraph(attributePaths = {"positions"})
+    @Query("select distinct c from Checklist c where c.restaurant.id = :restaurantId and (c.kind = ru.staffly.checklist.model.ChecklistKind.TRACKABLE or exists (select 1 from ChecklistHistory h where h.checklist = c and h.kind = ru.staffly.checklist.model.ChecklistKind.TRACKABLE))")
+    List<Checklist> findArchiveCatalog(Long restaurantId);
+
     @EntityGraph(attributePaths = {"positions", "restaurant"})
     Optional<Checklist> findWithPositionsById(Long id);
 
