@@ -26,7 +26,7 @@ export function useChecklistsData({
   const [checklists, setChecklists] = useState<ChecklistDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [positionFilter, setPositionFilter] = useState<number | null>(null);
+  const [positionFilters, setPositionFilters] = useState<number[]>([]);
   const [myPositionId, setMyPositionId] = useState<number | null>(null);
   const [myPositionLoaded, setMyPositionLoaded] = useState(() => !canManage);
   const [viewScope, setViewScope] = useState<ChecklistViewScope>("all");
@@ -53,13 +53,13 @@ export function useChecklistsData({
       if (background && foregroundRequest.current) return;
       if (!background) foregroundRequest.current = true;
       const requestId = ++requestSequence.current;
-      const scope = `${restaurantId}-${activeKind}-${viewScope}-${positionFilter}-${myPositionId}-${debouncedQuery}`;
+      const scope = `${restaurantId}-${activeKind}-${viewScope}-${myPositionId}-${debouncedQuery}`;
       if (!background) {
         setLoading(true);
         setError(null);
       }
       try {
-        const effectivePositionFilter = canManage ? (viewScope === "my" ? myPositionId : positionFilter) : undefined;
+        const effectivePositionFilter = canManage && viewScope === "my" ? myPositionId : undefined;
         const data = await listChecklists(
           restaurantId,
           {
@@ -91,20 +91,11 @@ export function useChecklistsData({
         }
       }
     },
-    [
-      activeKind,
-      canManage,
-      debouncedQuery,
-      myPositionId,
-      myPositionLoaded,
-      onListLoaded,
-      positionFilter,
-      restaurantId,
-      viewScope,
-    ],
+    [activeKind, canManage, debouncedQuery, myPositionId, myPositionLoaded, onListLoaded, restaurantId, viewScope],
   );
 
   useEffect(() => {
+    setPositionFilters([]);
     void loadPositions();
   }, [loadPositions]);
 
@@ -192,7 +183,15 @@ export function useChecklistsData({
     return map;
   }, [positions]);
 
-  const visibleChecklists = useMemo(() => sortVisibleChecklists(checklists, activeKind), [activeKind, checklists]);
+  const visibleChecklists = useMemo(() => {
+    const filtered =
+      canManage && viewScope === "all" && positionFilters.length > 0
+        ? checklists.filter((checklist) =>
+            checklist.positions.some((position) => positionFilters.includes(position.id)),
+          )
+        : checklists;
+    return sortVisibleChecklists(filtered, activeKind);
+  }, [activeKind, canManage, checklists, positionFilters, viewScope]);
 
   const isListLoading = loading || (canManage && !myPositionLoaded);
 
@@ -203,20 +202,19 @@ export function useChecklistsData({
   const handleViewScopeChange = useCallback((scope: ChecklistViewScope) => {
     setViewScope(scope);
     if (scope === "my") {
-      setPositionFilter(null);
+      setPositionFilters([]);
     }
   }, []);
 
-  const handlePositionFilterChange = useCallback((positionId: number | null) => {
-    setPositionFilter(positionId);
+  const handlePositionFilterChange = useCallback((positionIds: number[]) => {
+    setPositionFilters(positionIds);
     setViewScope("all");
   }, []);
 
   const resetFilter = useCallback(() => {
-    setPositionFilter(null);
+    setPositionFilters([]);
     setSearchTerm("");
-    setViewScope(myPositionId != null ? "my" : "all");
-  }, [myPositionId]);
+  }, []);
 
   return {
     positions,
@@ -225,7 +223,7 @@ export function useChecklistsData({
     loading,
     error,
     isListLoading,
-    positionFilter,
+    positionFilters,
     positionNames,
     myPositionId,
     myPositionLoaded,

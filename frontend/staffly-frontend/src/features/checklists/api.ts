@@ -344,3 +344,28 @@ export async function listRestaurantChecklistHistory(
   const { data } = await api.get(`/api/restaurants/${restaurantId}/checklists/history`, { params: { page, size: 50 } });
   return data;
 }
+
+export type ChecklistArchiveEntryDto = {
+  checklistId: number | null;
+  name: string;
+  positions: string | null;
+  deleted: boolean;
+  legacyHistoryId: number | null;
+  positionNames?: string[];
+};
+
+export async function listChecklistArchive(restaurantId: number): Promise<ChecklistArchiveEntryDto[]> {
+  const { data } = await api.get("/api/restaurants/" + restaurantId + "/checklists/archive");
+  return data;
+}
+
+export async function listLegacyChecklistHistory(
+  restaurantId: number,
+  historyId: number,
+  page = 0,
+): Promise<ChecklistHistorySummaryDto[]> {
+  const { data } = await api.get("/api/restaurants/" + restaurantId + "/checklists/history/" + historyId + "/related", {
+    params: { page, size: 50 },
+  });
+  return data;
+}

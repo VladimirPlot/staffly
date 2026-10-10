@@ -78,7 +78,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
 
   useEffect(() => {
     resetExpandedState();
-  }, [activeKind, data.debouncedQuery, data.positionFilter, data.viewScope, resetExpandedState]);
+  }, [activeKind, data.debouncedQuery, data.positionFilters, data.viewScope, resetExpandedState]);
 
   useEffect(() => {
     if (createDialogRequestKey == null || lastCreateDialogRequestKey.current === createDialogRequestKey) return;
@@ -130,7 +130,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         positions={data.positions}
         myPositionId={data.myPositionId}
         viewScope={data.viewScope}
-        positionFilter={data.positionFilter}
+        positionFilters={data.positionFilters}
         searchTerm={data.searchTerm}
         onSearchTermChange={data.setSearchTerm}
         onViewScopeChange={data.handleViewScopeChange}
@@ -149,7 +149,6 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         error={data.error}
         itemActionError={itemActions.itemActionError || cardUi.downloadError}
         expandedId={cardUi.expandedId}
-        activeItemTab={cardUi.activeItemTab}
         resetting={itemActions.resetting}
         downloading={cardUi.downloading}
         actionMenuFor={cardUi.actionMenuFor}
@@ -164,7 +163,6 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         onEdit={dialog.openEditDialog}
         onOpenHistory={history.openHistoryModal}
         onDelete={openDeleteDialog}
-        onActiveItemTabChange={cardUi.setActiveItemTab}
         onItemAction={itemActions.handleItemAction}
         onCompletionPhotoUpload={itemActions.handleCompletionPhotoUpload}
         onCompletionPhotoDelete={itemActions.handleCompletionPhotoDelete}
@@ -193,6 +191,10 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
 
       <ChecklistHistoryModal
         target={history.historyTarget}
+        archiveEntries={history.archiveEntries}
+        archiveNavigation={history.archiveNavigation}
+        onSelectArchiveEntry={history.selectArchiveEntry}
+        onBackToArchive={history.openArchiveModal}
         summaries={history.historySummaries}
         detail={history.historyDetail}
         loading={history.historyLoading}
@@ -201,7 +203,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         hasMore={history.hasMoreHistory}
         onLoadMore={history.loadMoreHistory}
         onClose={closeHistoryModal}
-        onLoadDetail={history.loadHistoryDetail}
+        onLoadDetail={history.toggleHistoryDetail}
         onPhotoPreview={setPhotoPreview}
       />
 

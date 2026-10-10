@@ -1,6 +1,6 @@
 import Card from "../../../shared/ui/Card";
 import type { ChecklistDto, ChecklistItemDto } from "../api";
-import type { ChecklistItemSectionKey, PhotoPreview } from "../types";
+import type { PhotoPreview } from "../types";
 import ChecklistCard from "./ChecklistCard";
 
 type ChecklistListProps = {
@@ -13,7 +13,6 @@ type ChecklistListProps = {
   error: string | null;
   itemActionError: string | null;
   expandedId: number | null;
-  activeItemTab: ChecklistItemSectionKey;
   resetting: number | null;
   downloading: number | null;
   actionMenuFor: number | null;
@@ -28,7 +27,6 @@ type ChecklistListProps = {
   onEdit: (checklist: ChecklistDto) => void;
   onOpenHistory: (checklist: ChecklistDto) => void;
   onDelete: (checklist: ChecklistDto) => void;
-  onActiveItemTabChange: (tab: ChecklistItemSectionKey) => void;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
@@ -46,7 +44,6 @@ export default function ChecklistList({
   error,
   itemActionError,
   expandedId,
-  activeItemTab,
   resetting,
   downloading,
   actionMenuFor,
@@ -61,7 +58,6 @@ export default function ChecklistList({
   onEdit,
   onOpenHistory,
   onDelete,
-  onActiveItemTabChange,
   onItemAction,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
@@ -86,7 +82,6 @@ export default function ChecklistList({
             canManage={canManage}
             positionNames={positionNames}
             isExpanded={expandedId === checklist.id}
-            activeItemTab={activeItemTab}
             isResetting={resetting === checklist.id}
             isDownloading={downloading === checklist.id}
             isActionMenuOpen={actionMenuFor === checklist.id}
@@ -101,7 +96,6 @@ export default function ChecklistList({
             onEdit={onEdit}
             onOpenHistory={onOpenHistory}
             onDelete={onDelete}
-            onActiveItemTabChange={onActiveItemTabChange}
             onItemAction={onItemAction}
             onCompletionPhotoUpload={onCompletionPhotoUpload}
             onCompletionPhotoDelete={onCompletionPhotoDelete}

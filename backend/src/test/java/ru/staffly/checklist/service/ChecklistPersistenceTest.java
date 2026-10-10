@@ -205,6 +205,39 @@ class ChecklistPersistenceTest {
         assertThrows(BadRequestException.class, () -> later.listHistory(f.restaurant().getId(), f.user().getId(), created.id(), -1, 50));
     }
 
+    @Test void archiveCatalogIncludesEmptyAndDeletedChecklistsWithoutLoadingItemsOrSigningPhotos() {
+        var f = fixture(); var svc = service(START); var first = create(f, "MANUAL");
+        var otherPosition = Position.builder().restaurant(f.restaurant()).name("Бармен, старший").build(); em.persist(otherPosition); em.flush();
+        var second = svc.create(f.restaurant().getId(), f.user().getId(), new ChecklistRequest("Яблоко", null, "TRACKABLE", "MANUAL", null, null, null,
+                List.of("Item"), null, List.of(otherPosition.getId())));
+        var third = svc.create(f.restaurant().getId(), f.user().getId(), new ChecklistRequest("Арбуз", null, "TRACKABLE", "MANUAL", null, null, null,
+                List.of("Item"), null, List.of(otherPosition.getId())));
+        svc.delete(f.restaurant().getId(), f.user().getId(), first.id(), first.version());
+        em.flush(); em.clear(); clearInvocations(storage);
+        var catalog = svc.listArchiveCatalog(f.restaurant().getId(), f.user().getId());
+        assertEquals(List.of(first.id(), third.id(), second.id()), catalog.stream().map(ChecklistArchiveEntryDto::checklistId).toList());
+        assertTrue(catalog.get(0).deleted()); assertFalse(catalog.get(1).deleted());
+        assertEquals(List.of("Бармен, старший"), catalog.get(1).positionNames());
+        assertTrue(svc.listHistory(f.restaurant().getId(), f.user().getId(), third.id(), 0, 50).isEmpty());
+        assertFalse(em.getEntityManagerFactory().getPersistenceUnitUtil().isLoaded(em.find(Checklist.class, second.id()), "items"));
+        verifyNoInteractions(storage);
+    }
+
+    @Test void legacyArchiveGroupsPeriodsAndKeepsRestaurantIsolationAndPagination() {
+        var f = fixture(); var svc = service(START); var created = create(f, "DAILY");
+        service(START.plus(2, java.time.temporal.ChronoUnit.DAYS)).processAutomaticResets(f.restaurant().getId());
+        histories.findByChecklistIdAndRestaurantIdOrderByResetAtDescIdDesc(created.id(), f.restaurant().getId(), org.springframework.data.domain.PageRequest.of(0, 50))
+                .forEach(history -> history.setChecklist(null));
+        em.flush(); em.clear();
+        var legacy = svc.listArchiveCatalog(f.restaurant().getId(), f.user().getId()).stream().filter(entry -> entry.legacyHistoryId() != null).toList();
+        assertEquals(1, legacy.size());
+        var firstPage = svc.listLegacyHistory(f.restaurant().getId(), f.user().getId(), legacy.get(0).legacyHistoryId(), 0, 1);
+        var secondPage = svc.listLegacyHistory(f.restaurant().getId(), f.user().getId(), legacy.get(0).legacyHistoryId(), 1, 1);
+        assertEquals(1, firstPage.size()); assertEquals(1, secondPage.size());
+        assertNotEquals(firstPage.get(0).id(), secondPage.get(0).id());
+        assertThrows(NotFoundException.class, () -> svc.listLegacyHistory(-1L, f.user().getId(), legacy.get(0).legacyHistoryId(), 0, 50));
+    }
+
     @Test void emptyPositionsAndMidnight24AreRejectedAtTheServiceBoundary() {
         var f = fixture(); var svc = service(START);
         var empty = new ChecklistRequest("Invalid", null, "TRACKABLE", "MANUAL", null, null, null, List.of("Item"), null, List.of());
