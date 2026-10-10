@@ -84,6 +84,9 @@ importers:
       baseline-browser-mapping:
         specifier: ^2.9.11
         version: 2.9.11
+      esbuild:
+        specifier: 0.25.11
+        version: 0.25.11
       eslint:
         specifier: ^9.36.0
         version: 9.38.0(jiti@2.6.1)

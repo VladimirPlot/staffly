@@ -29,6 +29,9 @@ public class AuthSession {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "restaurant_id")
+    private Long restaurantId;
+
     @Column(name = "refresh_hash", nullable = false, length = 128, unique = true)
     private String refreshHash;
 

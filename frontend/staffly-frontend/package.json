@@ -50,6 +50,7 @@
     "autoprefixer": "^10.4.21",
     "baseline-browser-mapping": "^2.9.11",
     "eslint": "^9.36.0",
+    "esbuild": "0.25.11",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.22",

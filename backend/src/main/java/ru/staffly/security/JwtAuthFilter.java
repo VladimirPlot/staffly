@@ -1,6 +1,7 @@
 package ru.staffly.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -72,13 +73,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
 
-            chain.doFilter(request, response);
-        } catch (Exception ex) {
+        } catch (JwtException | IllegalArgumentException ex) {
             SecurityContextHolder.clearContext();
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             new ObjectMapper().writeValue(response.getWriter(),
-                    Map.of("error", "invalid_token", "message", ex.getMessage()));
+                    Map.of("error", "invalid_token", "message", "Invalid or expired access token"));
+            return;
         }
+        chain.doFilter(request, response);
     }
 }
