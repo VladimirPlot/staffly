@@ -112,20 +112,15 @@ public class ReminderDispatchService {
             return memberList;
         }
         if (reminder.getTargetType() == ReminderTargetType.POSITION) {
-            if (reminder.getTargetPosition() == null) {
-                return List.of();
-            }
-            Long positionId = reminder.getTargetPosition().getId();
+            var positionIds = reminder.effectivePositions().stream().map(position -> position.getId())
+                    .collect(Collectors.toSet());
             return memberList.stream()
-                    .filter(member -> member.getPosition() != null && positionId.equals(member.getPosition().getId()))
+                    .filter(member -> member.getPosition() != null && positionIds.contains(member.getPosition().getId()))
                     .toList();
         }
         if (reminder.getTargetType() == ReminderTargetType.MEMBER) {
-            if (reminder.getTargetMember() == null) {
-                return List.of();
-            }
-            RestaurantMember member = memberById.get(reminder.getTargetMember().getId());
-            return member == null ? List.of() : List.of(member);
+            return reminder.effectiveMembers().stream().map(member -> memberById.get(member.getId()))
+                    .filter(java.util.Objects::nonNull).toList();
         }
         return List.of();
     }

@@ -2,7 +2,6 @@ package ru.staffly.reminder.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import ru.staffly.reminder.model.Reminder;
 
@@ -12,16 +11,33 @@ import java.util.Optional;
 
 public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
-    int countByTargetMemberId(Long memberId);
-
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
-            update Reminder r
-            set r.targetMember = null, r.active = false, r.nextFireAt = null, r.updatedAt = :now
+            select distinct r from Reminder r left join r.targetMembers tm left join r.targetMember legacy
             where r.targetType = ru.staffly.reminder.model.ReminderTargetType.MEMBER
-              and r.targetMember.id = :memberId
+              and (legacy.id = :memberId or tm.id = :memberId)
             """)
-    int detachPersonalTarget(@Param("memberId") Long memberId, @Param("now") Instant now);
+    List<Reminder> findTargetingMember(@Param("memberId") Long memberId);
+
+    default int countByTargetMemberId(Long memberId) {
+        return findTargetingMember(memberId).size();
+    }
+
+    default int detachPersonalTarget(Long memberId, Instant now) {
+        List<Reminder> affected = findTargetingMember(memberId);
+        for (Reminder reminder : affected) {
+            reminder.getTargetMembers().removeIf(member -> memberId.equals(member.getId()));
+            if (reminder.getTargetMember() != null && memberId.equals(reminder.getTargetMember().getId())) {
+                reminder.setTargetMember(null);
+            }
+            if (reminder.effectiveMembers().isEmpty()) {
+                reminder.setActive(false);
+                reminder.setNextFireAt(null);
+            }
+            reminder.setUpdatedAt(now);
+        }
+        saveAll(affected);
+        return affected.size();
+    }
 
     Optional<Reminder> findByIdAndRestaurantId(Long id, Long restaurantId);
 

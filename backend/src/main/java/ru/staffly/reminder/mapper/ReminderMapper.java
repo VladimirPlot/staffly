@@ -19,8 +19,8 @@ public class ReminderMapper {
                 reminder.getDescription(),
                 reminder.isVisibleToAdmin(),
                 reminder.getTargetType() == null ? null : reminder.getTargetType().name(),
-                toPositionDto(reminder.getTargetPosition()),
-                toMemberDto(reminder.getTargetMember()),
+                reminder.effectivePositions().size() == 1 ? toPositionDto(reminder.effectivePositions().iterator().next()) : null,
+                reminder.effectiveMembers().size() == 1 ? toMemberDto(reminder.effectiveMembers().iterator().next()) : null,
                 reminder.getPeriodicity() == null ? null : reminder.getPeriodicity().name(),
                 reminder.getTime() == null ? null : reminder.getTime().toString(),
                 reminder.getDayOfWeek(),
@@ -29,7 +29,11 @@ public class ReminderMapper {
                 reminder.getOnceDate() == null ? null : reminder.getOnceDate().toString(),
                 reminder.getNextFireAt() == null ? null : reminder.getNextFireAt().toString(),
                 reminder.isActive(),
-                toMemberDto(reminder.getCreatedByMember())
+                toMemberDto(reminder.getCreatedByMember()),
+                reminder.effectivePositions().stream().map(this::toPositionDto)
+                        .sorted(java.util.Comparator.comparing(ReminderPositionDto::id)).toList(),
+                reminder.effectiveMembers().stream().map(this::toMemberDto).filter(java.util.Objects::nonNull)
+                        .sorted(java.util.Comparator.comparing(ReminderMemberDto::id)).toList()
         );
     }
 
