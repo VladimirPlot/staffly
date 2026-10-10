@@ -308,7 +308,7 @@ export default function TaskDetails({
         </section>
         <section className="space-y-2">
           <h3 className="font-semibold">История изменений</h3>
-          {task.events.map((e) => (
+          {[...task.events].reverse().map((e) => (
             <div key={e.id} className="border-subtle border-l-2 pl-3 text-sm">
               <p>
                 {e.actorName} · {e.text}
