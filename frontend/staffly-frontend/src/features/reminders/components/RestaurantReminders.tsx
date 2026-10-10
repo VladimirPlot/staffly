@@ -50,10 +50,14 @@ const RestaurantReminders = ({ restaurantId, canManage, currentUserId }: Restaur
     }
     try {
       const [positionsData, membersData] = await Promise.all([
-        listPositions(restaurantId, { includeInactive: false }),
+        listPositions(restaurantId, { includeInactive: true }),
         listMembers(restaurantId),
       ]);
-      setPositions(positionsData.filter((position) => position.active));
+      setPositions(
+        positionsData.filter(
+          (position) => position.active || membersData.some((member) => member.positionId === position.id),
+        ),
+      );
       setMembers(membersData);
     } catch (err) {
       console.error("Failed to load reminder dictionaries", err);
@@ -117,6 +121,8 @@ const RestaurantReminders = ({ restaurantId, canManage, currentUserId }: Restaur
       targetType: reminder.targetType,
       targetPositionId: reminder.targetPosition?.id ?? null,
       targetMemberId: reminder.targetMember?.id ?? null,
+      targetPositionIds: reminder.targetPositions?.map((position) => position.id),
+      targetMemberIds: reminder.targetMembers?.map((member) => member.id),
       periodicity: reminder.periodicity,
       time: reminder.time,
       dayOfWeek: reminder.dayOfWeek ?? undefined,
@@ -187,12 +193,22 @@ const RestaurantReminders = ({ restaurantId, canManage, currentUserId }: Restaur
       return "Всем";
     }
     if (reminder.targetType === "POSITION") {
-      return reminder.targetPosition?.name ?? "Должность";
+      return (
+        reminder.targetPositions?.map((position) => position.name).join(", ") ||
+        reminder.targetPosition?.name ||
+        "Должность"
+      );
     }
     if (reminder.targetType === "MEMBER") {
       return isDetachedReminder(reminder)
         ? "Сотрудник больше не работает"
-        : reminder.targetMember?.fullName || "Сотрудник";
+        : reminder.targetMembers
+            ?.map(
+              (member) => member.fullName || `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim() || "Сотрудник",
+            )
+            .join(", ") ||
+            reminder.targetMember?.fullName ||
+            "Сотрудник";
     }
     return "—";
   }, []);
