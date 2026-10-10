@@ -5,10 +5,8 @@ import { useAuth } from "../../../shared/providers/AuthProvider";
 import DashboardGrid, { type DashboardCardItem } from "../components/DashboardGrid";
 import { useDashboardDnD } from "../hooks/useDashboardDnD";
 import { useDashboardLayout } from "../hooks/useDashboardLayout";
-import AnnouncementsPreviewCard from "../components/AnnouncementsPreviewCard";
 import Toast from "../components/Toast";
 import { useRestaurantHomeData } from "../hooks/useRestaurantHomeData";
-import { useAnnouncementsPreviewVisibility } from "../hooks/useAnnouncementsPreviewVisibility";
 import { useOutsidePointerDown } from "../hooks/useOutsidePointerDown";
 import { useMeasuredHeight } from "../hooks/useMeasuredHeight";
 import { useViewportHeight } from "../hooks/useViewportHeight";
@@ -35,7 +33,6 @@ type DashboardAccess = {
   hasUnreadAnonymousLetters: boolean;
   hasScheduleIndicator: boolean;
   isManagerLike: boolean;
-  shouldShowNotificationsEntry: boolean;
 };
 
 function normalizeOrder(layout: string[], availableIds: string[]): string[] {
@@ -58,13 +55,11 @@ function createDashboardCards(access: DashboardAccess): DashboardCardItem[] {
     icon: Users,
   });
 
-  if (access.shouldShowNotificationsEntry) {
+  if (access.canManageNotifications) {
     cards.push({
       id: "announcements",
       title: "Объявления",
-      description: access.canManageNotifications
-        ? "Создавайте и редактируйте сообщения для сотрудников."
-        : "Посмотрите новые сообщения от руководства.",
+      description: "Отправляйте объявления сотрудникам и просматривайте историю рассылок.",
       to: "/announcements",
       icon: Megaphone,
     });
@@ -187,68 +182,17 @@ function getReorderContainerStyle(
   };
 }
 
-function renderAnnouncementsSection(params: {
-  announcementsPreview: React.ComponentProps<typeof AnnouncementsPreviewCard>["announcements"];
-  announcementsPreviewHidden: boolean;
-  canManageNotifications: boolean;
-  hasRelevantNotifications: boolean;
-  hideAnnouncementsPreview: () => void;
-  showAnnouncementsPreview: () => void;
-}) {
-  const {
-    announcementsPreview,
-    announcementsPreviewHidden,
-    canManageNotifications,
-    hasRelevantNotifications,
-    hideAnnouncementsPreview,
-    showAnnouncementsPreview,
-  } = params;
-
-  if (canManageNotifications || !hasRelevantNotifications) {
-    return null;
-  }
-
-  if (announcementsPreviewHidden) {
-    return (
-      <div className="flex justify-end">
-        <Button
-          variant="ghost"
-          className="text-sm text-zinc-600"
-          onClick={showAnnouncementsPreview}
-        >
-          Показать объявления
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <AnnouncementsPreviewCard
-      announcements={announcementsPreview}
-      onHide={hideAnnouncementsPreview}
-    />
-  );
-}
-
 export default function RestaurantHome() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
-  const userId = user?.id ?? null;
 
   const {
     restaurantName,
     access,
-    announcementsPreview,
     savedSchedules,
     hasUnreadAnonymousLetters,
     hasUnreadScheduleEvents,
   } = useRestaurantHomeData({ restaurantId, userRoles: user?.roles });
-
-  const {
-    hidden: announcementsPreviewHidden,
-    hide: hideAnnouncementsPreview,
-    show: showAnnouncementsPreview,
-  } = useAnnouncementsPreviewVisibility(restaurantId, userId);
 
   const {
     layout,
@@ -265,8 +209,6 @@ export default function RestaurantHome() {
   const canManageNotifications = access.isAdminLike || access.normalizedRestaurantRole === "MANAGER";
   const canAccessContacts = access.isManagerLike;
   const canAccessMasterSchedules = access.isManagerLike;
-  const hasRelevantNotifications = announcementsPreview.length > 0;
-  const shouldShowNotificationsEntry = canManageNotifications;
 
   const hasPendingSavedSchedules = React.useMemo(
     () => savedSchedules.some((item) => item.hasPendingShiftRequests),
@@ -284,7 +226,6 @@ export default function RestaurantHome() {
       hasUnreadAnonymousLetters,
       hasScheduleIndicator,
       isManagerLike: access.isManagerLike,
-      shouldShowNotificationsEntry,
     }),
     [
       canAccessContacts,
@@ -294,7 +235,6 @@ export default function RestaurantHome() {
       hasUnreadAnonymousLetters,
       hasScheduleIndicator,
       access.isManagerLike,
-      shouldShowNotificationsEntry,
     ]
   );
 
@@ -355,15 +295,6 @@ export default function RestaurantHome() {
     },
   });
 
-  const announcementsSection = renderAnnouncementsSection({
-    announcementsPreview,
-    announcementsPreviewHidden,
-    canManageNotifications,
-    hasRelevantNotifications,
-    hideAnnouncementsPreview,
-    showAnnouncementsPreview,
-  });
-
   const layoutStatus = isLayoutLoading ? (
     <div className="text-xs text-zinc-500">Загрузка порядка карточек…</div>
   ) : loadError ? (
@@ -391,7 +322,6 @@ export default function RestaurantHome() {
           <h2 className="text-2xl font-semibold">{restaurantName || "…"}</h2>
         </Card>
 
-        {announcementsSection}
         {layoutStatus}
         {reorderAction}
       </div>
