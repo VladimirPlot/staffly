@@ -8,6 +8,8 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByPhone(String phone);
+    @org.springframework.data.jpa.repository.Query(value = "select * from users where '+' || regexp_replace(phone, '[^0-9]', '', 'g') = :phone", nativeQuery = true)
+    Optional<User> findByCanonicalPhone(String phone);
     Optional<User> findByEmailIgnoreCase(String email);
 
     boolean existsByPhone(String phone);

@@ -79,7 +79,7 @@ public class TrainingCertificationNotificationService {
         }
 
         Map<Long, RestaurantMember> membersByUserId = memberRepository
-                .findByRestaurantIdAndUserIdIn(exam.getRestaurant().getId(), userIds)
+                .findActiveByRestaurantIdAndUserIdIn(exam.getRestaurant().getId(), userIds)
                 .stream()
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (first, second) -> first));
 
@@ -129,7 +129,7 @@ public class TrainingCertificationNotificationService {
             return;
         }
 
-        var memberOpt = memberRepository.findByUserIdAndRestaurantId(userId, exam.getRestaurant().getId());
+        var memberOpt = memberRepository.findActiveByUserIdAndRestaurantId(userId, exam.getRestaurant().getId());
         if (memberOpt.isEmpty()) {
             log.warn("Cannot send certification result notification: member not found (restaurantId={}, examId={}, attemptId={}, userId={})",
                     exam.getRestaurant().getId(), exam.getId(), attempt.getId(), userId);
@@ -273,13 +273,13 @@ public class TrainingCertificationNotificationService {
         Long ownerUserId = exam.getOwner() == null ? null : exam.getOwner().getId();
 
         if (ownerUserId != null) {
-            var ownerMember = memberRepository.findWithUserByUserIdAndRestaurantId(ownerUserId, restaurantId).orElse(null);
+            var ownerMember = memberRepository.findActiveWithUserByUserIdAndRestaurantId(ownerUserId, restaurantId).orElse(null);
             if (ownerMember != null && canManageTraining(ownerUserId, restaurantId)) {
                 return ownerMember;
             }
         }
 
-        var restaurantMembers = memberRepository.findWithUserByRestaurantId(restaurantId).stream()
+        var restaurantMembers = memberRepository.findActiveWithUserByRestaurantId(restaurantId).stream()
                 .sorted(Comparator.comparing(RestaurantMember::getId))
                 .toList();
         var admin = restaurantMembers.stream().filter(member -> member.getRole() == RestaurantRole.ADMIN).findFirst();

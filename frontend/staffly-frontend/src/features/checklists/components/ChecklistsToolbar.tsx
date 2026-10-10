@@ -1,22 +1,24 @@
-import { X } from "lucide-react";
+import { useRef } from "react";
+import { Archive, X } from "lucide-react";
 
 import Button from "../../../shared/ui/Button";
 import Icon from "../../../shared/ui/Icon";
-import Input from "../../../shared/ui/Input";
 import type { PositionDto } from "../../dictionaries/api";
 import type { ChecklistViewScope } from "../types";
+import ChecklistPositionSelect from "./ChecklistPositionSelect";
 
 type ChecklistsToolbarProps = {
   canManage: boolean;
   positions: PositionDto[];
   myPositionId: number | null;
   viewScope: ChecklistViewScope;
-  positionFilter: number | null;
+  positionFilters: number[];
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
   onViewScopeChange: (scope: ChecklistViewScope) => void;
-  onPositionFilterChange: (positionId: number | null) => void;
+  onPositionFilterChange: (positionIds: number[]) => void;
   onResetFilter: () => void;
+  onOpenArchive?: () => void;
 };
 
 export default function ChecklistsToolbar({
@@ -24,86 +26,100 @@ export default function ChecklistsToolbar({
   positions,
   myPositionId,
   viewScope,
-  positionFilter,
+  positionFilters,
   searchTerm,
   onSearchTermChange,
   onViewScopeChange,
   onPositionFilterChange,
   onResetFilter,
+  onOpenArchive,
 }: ChecklistsToolbarProps) {
-  const shouldShowReset =
-    positionFilter !== null || searchTerm !== "" || (canManage && myPositionId !== null && viewScope === "all");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const showPositionSelect = canManage && viewScope === "all" && positions.length > 0;
+  const shouldShowReset = positionFilters.length > 0 || searchTerm !== "";
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-end">
-        <Input
-          label="Поиск"
-          value={searchTerm}
-          onChange={(event) => onSearchTermChange(event.target.value)}
-          placeholder="Поиск по названию…"
-          className="md:max-w-sm"
-        />
-        {canManage && myPositionId !== null && (
-          <div className="flex gap-2 md:mb-0.5">
-            <Button
-              size="sm"
-              variant={viewScope === "my" ? "primary" : "outline"}
-              onClick={() => onViewScopeChange("my")}
-            >
-              Мои
-            </Button>
-            <Button
-              size="sm"
-              variant={viewScope === "all" ? "primary" : "outline"}
-              onClick={() => onViewScopeChange("all")}
-            >
-              Все
-            </Button>
-          </div>
-        )}
-        {shouldShowReset && (
-          <button
-            type="button"
-            onClick={onResetFilter}
-            className="text-muted hover:text-default flex items-center gap-1 rounded-full border border-transparent p-2 text-sm transition md:mb-1.5"
-            aria-label="Сбросить фильтры"
-          >
-            <Icon icon={X} size="sm" decorative />
-            <span>Сбросить</span>
-          </button>
-        )}
-      </div>
-      {canManage && viewScope === "all" && positions.length > 0 && (
-        <div className="relative">
-          <div className="no-scrollbar flex flex-nowrap gap-2 overflow-x-auto py-1 pr-12">
+        <div className="relative w-full min-w-0 md:max-w-sm md:flex-1">
+          <input
+            ref={searchInputRef}
+            type="text"
+            aria-label="Поиск по названию"
+            value={searchTerm}
+            onChange={(event) => onSearchTermChange(event.target.value)}
+            placeholder="Поиск по названию…"
+            className="border-subtle bg-surface text-default focus:ring-default h-10 w-full min-w-0 rounded-2xl border pr-11 pl-4 text-[16px] transition outline-none focus:ring-2 dark:[color-scheme:dark]"
+          />
+          {searchTerm.length > 0 && (
             <button
               type="button"
-              onClick={() => onPositionFilterChange(null)}
-              className={`inline-flex h-9 shrink-0 items-center justify-center rounded-2xl px-4 text-xs font-semibold shadow-sm transition focus:ring-2 focus:outline-none ${
-                positionFilter === null
-                  ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
-                  : "border border-[var(--staffly-border)] bg-[var(--staffly-control)] text-[var(--staffly-text)] hover:bg-[var(--staffly-control-hover)]"
-              }`}
+              aria-label="Очистить поиск"
+              title="Очистить поиск"
+              className="text-muted hover:text-strong focus:ring-default absolute top-0 right-0 flex h-10 w-10 items-center justify-center rounded-2xl focus-visible:ring-2 focus-visible:outline-none"
+              onClick={() => {
+                onSearchTermChange("");
+                searchInputRef.current?.focus();
+              }}
             >
-              Все должности
+              <Icon icon={X} size="xs" decorative />
             </button>
-            {positions.map((position) => (
+          )}
+        </div>
+        {(showPositionSelect || shouldShowReset) && (
+          <div className="flex min-w-0 items-end gap-2 md:max-w-md md:flex-1">
+            {showPositionSelect && (
+              <ChecklistPositionSelect
+                positions={positions}
+                selectedIds={positionFilters}
+                onChange={onPositionFilterChange}
+              />
+            )}
+            {shouldShowReset && (
               <button
-                key={position.id}
                 type="button"
-                onClick={() => onPositionFilterChange(position.id)}
-                className={`inline-flex h-9 shrink-0 items-center justify-center rounded-2xl px-4 text-xs font-semibold shadow-sm transition focus:ring-2 focus:outline-none ${
-                  positionFilter === position.id
-                    ? "bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
-                    : "border border-[var(--staffly-border)] bg-[var(--staffly-control)] text-[var(--staffly-text)] hover:bg-[var(--staffly-control-hover)]"
-                }`}
+                onClick={onResetFilter}
+                className="text-muted hover:text-default flex h-10 shrink-0 items-center gap-1 rounded-full border border-transparent px-2 text-sm transition"
+                aria-label="Сбросить фильтры"
               >
-                {position.name}
+                <Icon icon={X} size="sm" decorative />
+                <span>Сбросить</span>
               </button>
-            ))}
+            )}
           </div>
-          <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-12 bg-gradient-to-l from-[var(--staffly-surface)] to-transparent" />
+        )}
+      </div>
+      {((canManage && myPositionId !== null) || onOpenArchive) && (
+        <div className="flex items-center justify-between gap-3">
+          {canManage && myPositionId !== null && (
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={viewScope === "my" ? "primary" : "outline"}
+                onClick={() => onViewScopeChange("my")}
+              >
+                Мои
+              </Button>
+              <Button
+                size="sm"
+                variant={viewScope === "all" ? "primary" : "outline"}
+                onClick={() => onViewScopeChange("all")}
+              >
+                Все
+              </Button>
+            </div>
+          )}
+          {onOpenArchive && (
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={onOpenArchive}
+              className="ml-auto h-9 w-9 rounded-xl"
+              aria-label="Открыть архив чек-листов"
+              title="Архив чек-листов"
+              leftIcon={<Icon icon={Archive} size="sm" decorative />}
+            />
+          )}
         </div>
       )}
     </div>

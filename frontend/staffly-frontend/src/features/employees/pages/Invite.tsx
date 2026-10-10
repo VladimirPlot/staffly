@@ -14,7 +14,6 @@ import MembersFilterByPosition from "../components/MembersFilterByPosition";
 import MembersHeader from "../components/MembersHeader";
 import MembersList from "../components/MembersList";
 import RemoveMemberDialog from "../components/RemoveMemberDialog";
-import MemberResponsibilityHandoffDialog from "../components/MemberResponsibilityHandoffDialog";
 import { useInviteForm } from "../hooks/useInviteForm";
 import { useMemberEditPosition } from "../hooks/useMemberEditPosition";
 import { useMemberFilteringSorting } from "../hooks/useMemberFilteringSorting";
@@ -46,7 +45,7 @@ export default function InvitePage() {
 
   const isStaffInCurrentRestaurant = membersState.myRole === "STAFF";
   const canInvite = access.isManagerLike && !isStaffInCurrentRestaurant;
-  const canEditMembers = membersState.myRole === "ADMIN";
+  const canEditMembers = access.isManagerLike;
 
   const invitablePositions = useMemo(
     () =>
@@ -65,6 +64,7 @@ export default function InvitePage() {
   const editPositionState = useMemberEditPosition({
     restaurantId,
     allPositions: positionsState.allPositions,
+    isAdminLike: access.isAdminLike,
     restaurantTimeZone,
     onApplied: async () => {
       await membersState.refresh();
@@ -133,7 +133,10 @@ export default function InvitePage() {
             error={inviteForm.error}
             impact={inviteForm.impact}
             decisions={inviteForm.decisions}
+            taskChoices={inviteForm.taskChoices}
+            onTaskChoice={inviteForm.setTaskChoice}
             deadlines={inviteForm.deadlines}
+            deadlineValidations={inviteForm.deadlineValidations}
             restaurantTimeZone={restaurantTimeZone}
             submitting={inviteForm.submitting}
             isSubmitDisabled={inviteForm.isSubmitDisabled}
@@ -167,6 +170,7 @@ export default function InvitePage() {
           loading={membersState.loading}
           error={membersState.error}
           canEditMembers={canEditMembers}
+          canEditMember={(member) => member.userId !== currentUserId && (access.isAdminLike || member.role === "STAFF")}
           isSavingEditMemberId={
             editPositionState.saving && editPositionState.memberToEdit ? editPositionState.memberToEdit.id : null
           }
@@ -188,6 +192,10 @@ export default function InvitePage() {
         value={editPositionState.editPositionId}
         plan={editPositionState.plan}
         decisions={editPositionState.decisions}
+        responsibilities={editPositionState.responsibilities}
+        taskChoices={editPositionState.taskChoices}
+        onTaskChoice={(id, action)=>editPositionState.setTaskChoices(current=>({...current,[id]:action}))}
+        onResponsibility={(key, id) => editPositionState.setResponsibilities((current) => ({ ...current, [key]: id }))}
         restaurantTimeZone={restaurantTimeZone}
         saving={editPositionState.saving}
         loadingImpact={editPositionState.loadingImpact}
@@ -210,21 +218,12 @@ export default function InvitePage() {
         isSelf={removalState.memberToRemove?.userId === currentUserId}
         onConfirm={removalState.confirmRemove}
         onCancel={removalState.close}
+        taskSelections={removalState.taskSelections}
+        onTaskSelection={removalState.selectTaskReplacement}
+        ownershipSelections={removalState.ownershipSelections}
+        onOwnershipSelection={removalState.selectOwnershipReplacement}
       />
       <Toast message={removalState.success} onClose={() => removalState.setSuccess(null)} />
-
-      <MemberResponsibilityHandoffDialog
-        open={Boolean(removalState.pendingHandoffMember)}
-        loading={removalState.handoffLoading}
-        saving={removalState.handoffSaving || removalState.removing}
-        error={removalState.handoffError}
-        options={removalState.handoffOptions}
-        selectedOwnerUserIdsByKey={removalState.handoffSelections}
-        onSelect={removalState.selectHandoffOwner}
-        onClose={removalState.closeHandoff}
-        onSubmit={removalState.confirmHandoff}
-        isSelf={removalState.pendingHandoffMember?.userId === currentUserId}
-      />
 
       <EmployeeAvatarPreviewModal
         open={Boolean(avatarPreviewMember)}

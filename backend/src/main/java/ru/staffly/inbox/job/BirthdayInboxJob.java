@@ -48,7 +48,7 @@ public class BirthdayInboxJob {
             LocalDate weekAhead = today.plusDays(7);
             LocalDate tomorrow = today.plusDays(1);
 
-            List<RestaurantMember> membersList = members.findWithUserByRestaurantId(restaurant.getId());
+            List<RestaurantMember> membersList = members.findActiveWithUserByRestaurantId(restaurant.getId());
             List<RestaurantMember> todaysCelebrants = findCelebrantsByDate(membersList, today);
             List<RestaurantMember> tomorrowCelebrants = findCelebrantsByDate(membersList, tomorrow);
             List<RestaurantMember> weekCelebrants = findCelebrantsByDate(membersList, weekAhead);

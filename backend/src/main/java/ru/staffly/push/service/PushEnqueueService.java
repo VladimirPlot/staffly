@@ -13,6 +13,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.UUID;
+import org.springframework.transaction.annotation.Propagation;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +25,12 @@ public class PushEnqueueService {
     private final PushDeliveryRepository deliveryRepository;
     private final PushPayloadFactory payloadFactory;
     private final PushProperties properties;
+
+    @Transactional
+    public void cancelUnsentForInboxMessage(Long restaurantId, Long messageId) {
+        // Cancel even when push is disabled: previously queued deliveries may still exist.
+        deliveryRepository.cancelUnsentForInboxMessage(restaurantId, messageId, TimeProvider.now());
+    }
 
     @Transactional
     public void enqueueForMessage(InboxMessage message, List<RestaurantMember> recipients) {
@@ -53,5 +61,17 @@ public class PushEnqueueService {
                     now
             );
         }
+    }
+
+    /** Direct user push, intentionally not represented by a restaurant inbox item. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void enqueueDirectUser(Long restaurantId, Long userId, UUID operationId, String body) {
+        if (!properties.enabled() || userId == null) return;
+        Instant now = TimeProvider.now();
+        // push_deliveries uses a bigint ref_id; operation UUID + user is already the
+        // business dedup identity, so its stable high 64 bits are the pragmatic DB key.
+        deliveryRepository.enqueueDelivery("MEMBERSHIP_TERMINATED", operationId.getMostSignificantBits(),
+                restaurantId, userId, payloadFactory.buildDirect("Доступ к ресторану изменён", body,
+                        "membership-terminated:" + operationId, "/restaurants"), "PENDING", now, now);
     }
 }

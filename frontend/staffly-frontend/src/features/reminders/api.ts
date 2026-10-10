@@ -27,6 +27,8 @@ export type ReminderDto = {
   targetType: ReminderTargetType;
   targetPosition?: ReminderPositionDto | null;
   targetMember?: ReminderMemberDto | null;
+  targetPositions?: ReminderPositionDto[];
+  targetMembers?: ReminderMemberDto[];
   periodicity: ReminderPeriodicity;
   time: string;
   dayOfWeek?: number | null;
@@ -45,6 +47,8 @@ export type ReminderRequest = {
   targetType: ReminderTargetType;
   targetPositionId?: number | null;
   targetMemberId?: number | null;
+  targetPositionIds?: number[];
+  targetMemberIds?: number[];
   periodicity: ReminderPeriodicity;
   time: string;
   dayOfWeek?: number | null;
@@ -76,6 +80,8 @@ export async function createReminder(
     targetType: payload.targetType,
     targetPositionId: payload.targetPositionId,
     targetMemberId: payload.targetMemberId,
+    targetPositionIds: payload.targetPositionIds,
+    targetMemberIds: payload.targetMemberIds,
     periodicity: payload.periodicity,
     time: payload.time,
     dayOfWeek: payload.dayOfWeek,
@@ -99,6 +105,8 @@ export async function updateReminder(
     targetType: payload.targetType,
     targetPositionId: payload.targetPositionId,
     targetMemberId: payload.targetMemberId,
+    targetPositionIds: payload.targetPositionIds,
+    targetMemberIds: payload.targetMemberIds,
     periodicity: payload.periodicity,
     time: payload.time,
     dayOfWeek: payload.dayOfWeek,

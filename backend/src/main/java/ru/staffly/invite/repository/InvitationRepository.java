@@ -16,6 +16,14 @@ import java.util.Optional;
 public interface InvitationRepository extends JpaRepository<Invitation, Long> {
 
     Optional<Invitation> findByToken(String token);
+    /** Scalar projection only: do not load the mutable Invitation before lifecycle/contact locks. */
+    interface AdmissionIdentity {
+        Long getRestaurantId();
+        String getContact();
+    }
+
+    @Query("select i.restaurant.id as restaurantId, i.phoneOrEmail as contact from Invitation i where i.token = :token")
+    Optional<AdmissionIdentity> findAdmissionIdentityByToken(String token);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from Invitation i where i.token = :token")
@@ -32,8 +40,6 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
            """)
     List<Long> findExpiredPendingIds(InvitationStatus status, Instant now, Pageable pageable);
 
-    List<Invitation> findByRestaurantIdAndStatus(Long restaurantId, InvitationStatus status);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
            select i from Invitation i
@@ -44,7 +50,7 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
     Optional<Invitation> findPendingForUpdateByContact(Long restaurantId, String contact, InvitationStatus status);
 
     @Query("""
-       select i from Invitation i
+       select i from Invitation i join fetch i.restaurant
        where i.status = :status
          and i.expiresAt > :now
          and (
@@ -55,26 +61,8 @@ public interface InvitationRepository extends JpaRepository<Invitation, Long> {
     """)
     List<Invitation> findMyPending(String phone, String email, Instant now, InvitationStatus status);
 
-    @Query("""
-   select new ru.staffly.invite.dto.MyInviteDto(
-     i.token,
-     r.id,
-     r.name,
-     i.desiredRole,
-     p.id,
-     p.name,
-     i.expiresAt
-   )
-   from Invitation i
-     join i.restaurant r
-     left join i.position p
-   where i.status = :status
-     and i.expiresAt > :now
-     and (
-          (:phone is not null and i.phoneOrEmail = :phone)
-       or (:email is not null and lower(i.phoneOrEmail) = lower(:email))
-     )
-   order by i.expiresAt asc
-""")
-    List<MyInviteDto> findMyPendingDtos(String phone, String email, Instant now, InvitationStatus status);
+    /** Map Hibernate's typed JSON snapshot; the fetched restaurant avoids per-invitation queries. */
+    default List<MyInviteDto> findMyPendingDtos(String phone, String email, Instant now, InvitationStatus status) {
+        return findMyPending(phone, email, now, status).stream().map(MyInviteDto::from).toList();
+    }
 }

@@ -92,6 +92,10 @@ const TaskCreateModal = ({ open, positions, members, onClose, onCreate }: TaskCr
       description: description.trim() || undefined,
       priority,
       dueDate,
+      completionMode: "ANY",
+      audience: assignee === "all" ? "ALL" : positionId ? memberId ? "MEMBERS" : "POSITIONS" : "NONE",
+      positionIds: positionId ? [positionId] : [],
+      memberIds: memberId ? [memberId] : [],
     };
 
     if (assignee === "all") {

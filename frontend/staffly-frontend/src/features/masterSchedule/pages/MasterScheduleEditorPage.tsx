@@ -31,14 +31,13 @@ import { formatDayLabel, formatShortDate, getDateRange, getWeekdayToken } from "
 import MasterScheduleToolbar from "../components/MasterScheduleToolbar";
 import MasterScheduleTableView from "../components/MasterScheduleTableView";
 import RowSettingsModal from "../components/RowSettingsModal";
-import MasterScheduleWeekTemplateView, {
-  type WeekTemplateDay,
-} from "../components/MasterScheduleWeekTemplateView";
+import MasterScheduleWeekTemplateView, { type WeekTemplateDay } from "../components/MasterScheduleWeekTemplateView";
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { calcRowAmount } from "../utils/calc";
 import { parseCellValue } from "../utils/parse";
 import { formatNumber } from "../utils/format";
 import { comparePositions } from "../utils/positionSort";
+import { registerReloadPreparation, saveReloadDraft, takeReloadDraft } from "../../../shared/pwa/reloadSafety";
 
 const DEBOUNCE_MS = 200;
 const MAX_WAIT_MS = 1500;
@@ -75,20 +74,28 @@ export default function MasterScheduleEditorPage() {
   const [positionToAdd, setPositionToAdd] = React.useState<number | "">("");
   const [rowSettings, setRowSettings] = React.useState<MasterScheduleRowDto | null>(null);
   const [cellErrors, setCellErrors] = React.useState<Record<string, string>>({});
-  const [weekTemplateCells, setWeekTemplateCells] = React.useState<
-    MasterScheduleWeekTemplateCellDto[]
-  >([]);
+  const [weekTemplateCells, setWeekTemplateCells] = React.useState<MasterScheduleWeekTemplateCellDto[]>([]);
   const [weekTemplateLoaded, setWeekTemplateLoaded] = React.useState(false);
-  const pendingRef = React.useRef<Map<string, { rowId: number; workDate: string; valueRaw: string | null }>>(
-    new Map()
-  );
+  const pendingRef = React.useRef<Map<string, { rowId: number; workDate: string; valueRaw: string | null }>>(new Map());
   const [pendingTick, setPendingTick] = React.useState(0);
   const debounceTimerRef = React.useRef<number | null>(null);
   const maxWaitTimerRef = React.useRef<number | null>(null);
-  const templatePendingRef = React.useRef<Map<string, MasterScheduleWeekTemplateUpdatePayload>>(
-    new Map()
-  );
+  const templatePendingRef = React.useRef<Map<string, MasterScheduleWeekTemplateUpdatePayload>>(new Map());
   const [templatePendingTick, setTemplatePendingTick] = React.useState(0);
+  const reloadKey = `master-schedule:${user?.id}:${restaurantId}:${scheduleId}`;
+  const reloadSnapshot = React.useRef({ cells, cellErrors, weekTemplateCells, weekTemplateLoaded, viewMode });
+  reloadSnapshot.current = { cells, cellErrors, weekTemplateCells, weekTemplateLoaded, viewMode };
+  React.useEffect(
+    () =>
+      registerReloadPreparation(() => {
+        saveReloadDraft(reloadKey, {
+          ...reloadSnapshot.current,
+          pendingCells: Array.from(pendingRef.current.values()),
+          pendingTemplate: Array.from(templatePendingRef.current.values()),
+        });
+      }),
+    [reloadKey],
+  );
 
   const load = React.useCallback(async () => {
     if (!restaurantId || !scheduleId) return;
@@ -162,13 +169,16 @@ export default function MasterScheduleEditorPage() {
       maxWaitTimerRef.current = null;
     }
     const items = Array.from(pendingRef.current.values());
-    pendingRef.current.clear();
     if (!items.length || !restaurantId || !scheduleId) return;
     try {
       const updated: MasterScheduleCellDto[] = [];
       for (let i = 0; i < items.length; i += CELL_CHUNK_SIZE) {
         const chunk = items.slice(i, i + CELL_CHUNK_SIZE);
         const response = await batchUpdateMasterScheduleCells(restaurantId, scheduleId, chunk);
+        chunk.forEach((item) => {
+          const key = `${item.rowId}:${item.workDate}`;
+          if (pendingRef.current.get(key) === item) pendingRef.current.delete(key);
+        });
         updated.push(...response);
       }
       if (updated.length) {
@@ -215,14 +225,13 @@ export default function MasterScheduleEditorPage() {
     if (templatePendingTick === 0) return;
     const timer = window.setTimeout(async () => {
       const items = Array.from(templatePendingRef.current.values());
-      templatePendingRef.current.clear();
       if (!items.length || !restaurantId || !scheduleId) return;
       try {
-        const updated = await updateMasterScheduleWeekTemplate(
-          restaurantId,
-          scheduleId,
-          items
-        );
+        const updated = await updateMasterScheduleWeekTemplate(restaurantId, scheduleId, items);
+        items.forEach((item) => {
+          const key = `${item.positionId}:${item.weekday}`;
+          if (templatePendingRef.current.get(key) === item) templatePendingRef.current.delete(key);
+        });
         setWeekTemplateCells(updated);
       } catch (e: any) {
         setError(e?.friendlyMessage || "Ошибка сохранения шаблона");
@@ -230,6 +239,49 @@ export default function MasterScheduleEditorPage() {
     }, TEMPLATE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [templatePendingTick, restaurantId, scheduleId]);
+
+  const restoredKey = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (loading || error || !restaurantId || !user?.id || restoredKey.current === reloadKey) return;
+    restoredKey.current = reloadKey;
+    const draft = takeReloadDraft<
+      typeof reloadSnapshot.current & {
+        pendingCells: { rowId: number; workDate: string; valueRaw: string | null }[];
+        pendingTemplate: MasterScheduleWeekTemplateUpdatePayload[];
+      }
+    >(reloadKey);
+    if (!draft) return;
+    const pendingKeys = new Set(draft.pendingCells.map((item) => `${item.rowId}:${item.workDate}`));
+    Object.keys(draft.cellErrors).forEach((key) => pendingKeys.add(key));
+    setCells((fresh) => [
+      ...fresh.filter((cell) => !pendingKeys.has(`${cell.rowId}:${cell.workDate}`)),
+      ...draft.cells.filter((cell) => pendingKeys.has(`${cell.rowId}:${cell.workDate}`)),
+    ]);
+    setCellErrors(draft.cellErrors);
+    // Fetch a fresh template before overlaying unsent edits.
+    if (draft.weekTemplateLoaded) {
+      void getMasterScheduleWeekTemplate(restaurantId, scheduleId)
+        .then((fresh) => {
+          const editedKeys = new Set(draft.pendingTemplate.map((item) => `${item.positionId}:${item.weekday}`));
+          setWeekTemplateCells([
+            ...fresh.filter((cell) => !editedKeys.has(`${cell.positionId}:${cell.weekday}`)),
+            ...draft.weekTemplateCells.filter((cell) => editedKeys.has(`${cell.positionId}:${cell.weekday}`)),
+          ]);
+          setWeekTemplateLoaded(true);
+          draft.pendingTemplate.forEach((item) =>
+            templatePendingRef.current.set(`${item.positionId}:${item.weekday}`, item),
+          );
+          if (draft.pendingTemplate.length) setTemplatePendingTick((value) => value + 1);
+        })
+        .catch(() => {
+          saveReloadDraft(reloadKey, draft);
+          setError("Не удалось восстановить шаблон. Правки сохранены на этом устройстве.");
+        });
+    }
+    setViewMode(draft.viewMode);
+    draft.pendingCells.forEach((item) => pendingRef.current.set(`${item.rowId}:${item.workDate}`, item));
+    if (draft.pendingCells.length) setPendingTick((value) => value + 1);
+  }, [loading, error, restaurantId, user?.id, reloadKey, scheduleId]);
 
   const handleCellChange = (rowId: number, workDate: string, valueRaw: string) => {
     const trimmed = valueRaw.trim();
@@ -252,9 +304,7 @@ export default function MasterScheduleEditorPage() {
 
     const parsed = parseCellValue(valueRaw);
     setCells((prev) => {
-      const existingIndex = prev.findIndex(
-        (cell) => cell.rowId === rowId && cell.workDate === workDate
-      );
+      const existingIndex = prev.findIndex((cell) => cell.rowId === rowId && cell.workDate === workDate);
       if (existingIndex >= 0) {
         const next = [...prev];
         const existing = next[existingIndex];
@@ -303,14 +353,12 @@ export default function MasterScheduleEditorPage() {
     positionId: number,
     weekday: MasterScheduleWeekTemplateUpdatePayload["weekday"],
     staffCount: number | null,
-    units: number | null
+    units: number | null,
   ) => {
     const key = `${positionId}:${weekday}`;
     setWeekTemplateCells((prev) => {
       const next = [...prev];
-      const idx = next.findIndex(
-        (cell) => cell.positionId === positionId && cell.weekday === weekday
-      );
+      const idx = next.findIndex((cell) => cell.positionId === positionId && cell.weekday === weekday);
       if (idx >= 0) {
         next[idx] = { ...next[idx], staffCount, units };
         return next;
@@ -362,17 +410,12 @@ export default function MasterScheduleEditorPage() {
     const cellMap = new Map<string, MasterScheduleCellDto>();
     cells.forEach((cell) => cellMap.set(`${cell.rowId}:${cell.workDate}`, cell));
     return rows.reduce((sum, row) => {
-      const rowCells = dates
-        .map((date) => cellMap.get(`${row.id}:${date}`))
-        .filter(Boolean) as MasterScheduleCellDto[];
+      const rowCells = dates.map((date) => cellMap.get(`${row.id}:${date}`)).filter(Boolean) as MasterScheduleCellDto[];
       return sum + calcRowAmount(row, rowCells).amount;
     }, 0);
   }, [rows, cells, dates]);
 
-  const sortedPositions = React.useMemo(
-    () => [...positions].sort(comparePositions),
-    [positions]
-  );
+  const sortedPositions = React.useMemo(() => [...positions].sort(comparePositions), [positions]);
 
   const availablePositions = React.useMemo(() => {
     if (viewMode === "COMPACT") {
@@ -425,10 +468,7 @@ export default function MasterScheduleEditorPage() {
   return (
     <div className="mx-auto w-full max-w-screen-2xl space-y-4">
       <Breadcrumbs
-        items={[
-          { label: "Мастер-графики", to: "/master-schedules" },
-          { label: scheduleName || "Мастер-график" },
-        ]}
+        items={[{ label: "Мастер-графики", to: "/master-schedules" }, { label: scheduleName || "Мастер-график" }]}
       />
       <Card>
         {loading ? (
@@ -445,9 +485,7 @@ export default function MasterScheduleEditorPage() {
                 <SelectField
                   label="Добавить должность"
                   value={positionToAdd}
-                  onChange={(e) =>
-                    setPositionToAdd(e.target.value ? Number(e.target.value) : "")
-                  }
+                  onChange={(e) => setPositionToAdd(e.target.value ? Number(e.target.value) : "")}
                 >
                   <option value="">Выберите должность</option>
                   {availablePositions.map((pos) => (
@@ -464,11 +502,9 @@ export default function MasterScheduleEditorPage() {
                       if (!restaurantId || !scheduleId) return;
                       void (async () => {
                         try {
-                          const updated = await addMasterScheduleWeekTemplatePosition(
-                            restaurantId,
-                            scheduleId,
-                            { positionId: Number(positionToAdd) }
-                          );
+                          const updated = await addMasterScheduleWeekTemplatePosition(restaurantId, scheduleId, {
+                            positionId: Number(positionToAdd),
+                          });
                           setWeekTemplateCells(updated);
                           setWeekTemplateLoaded(true);
                           setPositionToAdd("");
@@ -493,7 +529,7 @@ export default function MasterScheduleEditorPage() {
               {viewMode === "DETAILED" && (
                 <div className="flex flex-wrap items-center gap-3">
                   {overviewMode && (
-                    <label className="flex items-center gap-3 text-sm text-muted">
+                    <label className="text-muted flex items-center gap-3 text-sm">
                       <input
                         type="range"
                         min={50}
@@ -507,9 +543,7 @@ export default function MasterScheduleEditorPage() {
                         className="w-32 accent-[var(--staffly-text-strong)] sm:w-40"
                         aria-label="Масштаб обзора"
                       />
-                      <span className="hidden sm:block text-muted">
-                        {overviewScale}%
-                      </span>
+                      <span className="text-muted hidden sm:block">{overviewScale}%</span>
                     </label>
                   )}
                   <Button
@@ -518,12 +552,7 @@ export default function MasterScheduleEditorPage() {
                     onClick={() => setOverviewMode((prev) => !prev)}
                     title={overviewMode ? "Обычный режим" : "Режим обзора"}
                     aria-label={overviewMode ? "Обычный режим" : "Режим обзора"}
-                    leftIcon={
-                      <Icon
-                        icon={overviewMode ? Minimize2 : Maximize2}
-                        size="xs"
-                      />
-                    }
+                    leftIcon={<Icon icon={overviewMode ? Minimize2 : Maximize2} size="xs" />}
                   />
                 </div>
               )}
@@ -538,14 +567,8 @@ export default function MasterScheduleEditorPage() {
                 onRemovePosition={async (positionId) => {
                   if (!restaurantId || !scheduleId) return;
                   try {
-                    await deleteMasterScheduleWeekTemplatePosition(
-                      restaurantId,
-                      scheduleId,
-                      positionId
-                    );
-                    setWeekTemplateCells((prev) =>
-                      prev.filter((cell) => cell.positionId !== positionId)
-                    );
+                    await deleteMasterScheduleWeekTemplatePosition(restaurantId, scheduleId, positionId);
+                    setWeekTemplateCells((prev) => prev.filter((cell) => cell.positionId !== positionId));
                     setWeekTemplateLoaded(true);
                   } catch (e: any) {
                     setError(e?.friendlyMessage || "Ошибка удаления должности");
@@ -581,17 +604,14 @@ export default function MasterScheduleEditorPage() {
               />
             )}
 
-            <div className="flex flex-wrap items-end justify-between gap-4 rounded-3xl border border-subtle bg-surface p-4">
+            <div className="border-subtle bg-surface flex flex-wrap items-end justify-between gap-4 rounded-3xl border p-4">
               <div className="space-y-2">
-
                 <Input
                   label="Плановая выручка"
                   type="number"
                   inputMode="decimal"
                   value={plannedRevenue ?? ""}
-                  onChange={(e) =>
-                    setPlannedRevenue(e.target.value ? Number(e.target.value) : null)
-                  }
+                  onChange={(e) => setPlannedRevenue(e.target.value ? Number(e.target.value) : null)}
                 />
                 <Button
                   variant="outline"
@@ -610,18 +630,14 @@ export default function MasterScheduleEditorPage() {
                 </Button>
               </div>
               <div className="text-right">
-                <div className="text-sm text-muted">LC%</div>
-                <div className="text-xl font-semibold text-strong">
-                  {plannedRevenue && plannedRevenue > 0
-                    ? formatNumber((totalPayroll / plannedRevenue) * 100)
-                    : "—"}
+                <div className="text-muted text-sm">LC%</div>
+                <div className="text-strong text-xl font-semibold">
+                  {plannedRevenue && plannedRevenue > 0 ? formatNumber((totalPayroll / plannedRevenue) * 100) : "—"}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm text-muted">Общий ФОТ</div>
-                <div className="text-xl font-semibold text-strong">
-                  {formatNumber(totalPayroll)}
-                </div>
+                <div className="text-muted text-sm">Общий ФОТ</div>
+                <div className="text-strong text-xl font-semibold">{formatNumber(totalPayroll)}</div>
               </div>
             </div>
           </div>
@@ -635,12 +651,7 @@ export default function MasterScheduleEditorPage() {
         onSave={async (payload) => {
           if (!restaurantId || !scheduleId || !rowSettings) return;
           try {
-            const updated = await updateMasterScheduleRow(
-              restaurantId,
-              scheduleId,
-              rowSettings.id,
-              payload
-            );
+            const updated = await updateMasterScheduleRow(restaurantId, scheduleId, rowSettings.id, payload);
             setRows((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
             setRowSettings(null);
           } catch (e: any) {

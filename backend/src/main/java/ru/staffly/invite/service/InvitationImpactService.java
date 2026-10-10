@@ -1,6 +1,6 @@
 package ru.staffly.invite.service;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
@@ -33,6 +33,7 @@ import static ru.staffly.common.util.InviteUtils.normalizePhone;
 @Service
 @RequiredArgsConstructor
 public class InvitationImpactService {
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.task.service.TaskBoardService taskBoard;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleRepository schedules;
@@ -41,7 +42,7 @@ public class InvitationImpactService {
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
 
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(readOnly = true)
     public InvitationImpactPlan calculate(Long restaurantId, Long actorUserId, InvitationImpactRequest request) {
         security.assertAtLeastManager(actorUserId, restaurantId);
         Restaurant restaurant = restaurants.findById(restaurantId)
@@ -57,7 +58,8 @@ public class InvitationImpactService {
 
         return new InvitationImpactPlan(now,
                 new InvitationImpactPlan.Candidate(phone, position.getId(), position.getName(), position.getLevel()),
-                opportunities);
+                opportunities, taskBoard == null ? List.of() : taskBoard.opportunities(restaurantId, position.getId(),
+                    users.findByCanonicalPhone(phone).map(user -> ru.staffly.member.model.RestaurantMember.builder().user(user).position(position).build()).orElse(null)));
     }
 
     public Position validatePosition(Long restaurantId, Long positionId, Long actorUserId) {
@@ -75,8 +77,8 @@ public class InvitationImpactService {
     public String validateCandidateIsNotMember(Long restaurantId, String rawPhone) {
         if (!isPhone(rawPhone)) throw new BadRequestException("Invalid phone");
         String phone = normalizePhone(rawPhone);
-        users.findByPhone(phone).ifPresent(user -> {
-            if (members.existsByRestaurantIdAndUserId(restaurantId, user.getId())) {
+        users.findByCanonicalPhone(phone).ifPresent(user -> {
+            if (members.existsByRestaurantIdAndUserIdAndEndedAtIsNull(restaurantId, user.getId())) {
                 throw new ConflictException("User already a member");
             }
         });
@@ -110,7 +112,9 @@ public class InvitationImpactService {
                     InvitationScheduleIntentAction.DO_NOT_ADD);
             case DRAFT_FROM_PREFERENCES -> List.of(InvitationScheduleIntentAction.ADD_AND_REOPEN_FOR_REBUILD,
                     InvitationScheduleIntentAction.DO_NOT_ADD);
-            case DRAFT, PUBLISHED -> List.of(InvitationScheduleIntentAction.INFORMATION_ONLY);
+            case DRAFT -> List.of(InvitationScheduleIntentAction.ADD_TO_DRAFT,
+                    InvitationScheduleIntentAction.DO_NOT_ADD_TO_DRAFT);
+            case PUBLISHED -> List.of(InvitationScheduleIntentAction.INFORMATION_ONLY);
         };
         Instant deadline = schedule.getPreferenceDeadline();
         boolean lessThanSixHours = deadline != null && deadline.isAfter(now)

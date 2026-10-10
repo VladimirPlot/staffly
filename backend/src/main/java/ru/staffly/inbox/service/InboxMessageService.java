@@ -22,7 +22,9 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -84,19 +86,17 @@ public class InboxMessageService {
 
     @Transactional
     public InboxMessage createAnnouncement(Restaurant restaurant,
-                                           User creator,
                                            String content,
-                                           LocalDate expiresAt,
                                            List<Position> positions,
-                                           List<RestaurantMember> targets) {
-        String meta = ensureMeta("announcement:" + TimeProvider.now().toEpochMilli() + ":" + creator.getId());
+                                           List<RestaurantMember> targets,
+                                           Map<String, Object> metadata) {
+        String meta = "announcement:" + UUID.randomUUID();
         InboxMessage message = InboxMessage.builder()
                 .restaurant(restaurant)
                 .type(InboxMessageType.ANNOUNCEMENT)
                 .content(content)
-                .expiresAt(expiresAt)
-                .createdBy(creator)
                 .meta(meta)
+                .metadata(metadata)
                 .positions(new HashSet<>(positions))
                 .build();
 

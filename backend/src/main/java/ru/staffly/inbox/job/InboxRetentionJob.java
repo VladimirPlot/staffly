@@ -32,7 +32,6 @@ public class InboxRetentionJob {
     @Transactional
     public void cleanupInbox() {
         Instant now = restaurantTime.nowInstant();
-        int announcementsRemoved = 0;
         int eventsRemoved = 0;
         int birthdaysRemoved = 0;
 
@@ -43,17 +42,9 @@ public class InboxRetentionJob {
                 continue;
             }
 
-            LocalDate announcementExpiresBefore = today.minusDays(30);
-            Instant announcementCreatedBefore = now.minus(30, ChronoUnit.DAYS);
             LocalDate birthdayExpiresBefore = today.minusDays(7);
             Instant eventCreatedBefore = now.minus(30, ChronoUnit.DAYS);
 
-            announcementsRemoved += deleteMessages(messages.findAnnouncementIdsForCleanup(
-                    InboxMessageType.ANNOUNCEMENT,
-                    restaurant.getId(),
-                    announcementExpiresBefore,
-                    announcementCreatedBefore
-            ));
             eventsRemoved += deleteMessages(messages.findEventIdsForCleanup(
                     InboxMessageType.EVENT,
                     restaurant.getId(),
@@ -66,9 +57,9 @@ public class InboxRetentionJob {
             ));
         }
 
-        if (announcementsRemoved + eventsRemoved + birthdaysRemoved > 0) {
-            log.info("Inbox retention cleanup completed: announcements={}, events={}, birthdays={}",
-                    announcementsRemoved, eventsRemoved, birthdaysRemoved);
+        if (eventsRemoved + birthdaysRemoved > 0) {
+            log.info("Inbox retention cleanup completed: events={}, birthdays={}",
+                    eventsRemoved, birthdaysRemoved);
         }
     }
 

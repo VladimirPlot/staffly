@@ -11,6 +11,7 @@ import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.reminder.dto.ReminderDto;
 import ru.staffly.reminder.dto.ReminderRequest;
 import ru.staffly.reminder.mapper.ReminderMapper;
@@ -45,13 +46,14 @@ public class ReminderServiceImpl implements ReminderService {
     private final ReminderMapper mapper;
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Override
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional
     public List<ReminderDto> list(Long restaurantId, Long currentUserId, List<String> globalRoles, Long positionFilterId) {
         security.assertMember(currentUserId, restaurantId);
 
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId).orElse(null);
         boolean isCreator = hasRole(globalRoles, "CREATOR");
         boolean canManage = isCreator || (member != null && isManagerOrAdmin(member));
         Long myPositionId = member != null && member.getPosition() != null ? member.getPosition().getId() : null;
@@ -68,32 +70,17 @@ public class ReminderServiceImpl implements ReminderService {
     @Override
     @Transactional
     public ReminderDto create(Long restaurantId, Long currentUserId, ReminderRequest request) {
+        lifecycleMutex.lock(restaurantId);
         security.assertMember(currentUserId, restaurantId);
 
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
 
         boolean canManage = isManagerOrAdmin(member);
 
-        ReminderTargetType targetType = parseTargetType(request.targetType());
-        Position targetPosition = null;
-        RestaurantMember targetMember = null;
-        if (!canManage) {
-            targetType = ReminderTargetType.MEMBER;
-            targetMember = member;
-        } else if (targetType == ReminderTargetType.POSITION) {
-            targetPosition = resolvePosition(restaurantId, request.targetPositionId());
-        } else if (targetType == ReminderTargetType.MEMBER) {
-            targetMember = resolveMember(restaurantId, request.targetMemberId());
-        }
-
-        if (!canManage) {
-            if (request.targetMemberId() != null && !Objects.equals(request.targetMemberId(), member.getId())) {
-                throw new BadRequestException("Можно создавать напоминания только для себя");
-            }
-        }
+        Targets targets = resolveTargets(restaurantId, member, canManage, request);
 
         ReminderPeriodicity periodicity = parsePeriodicity(request.periodicity());
         LocalTime time = parseTime(request.time());
@@ -110,9 +97,9 @@ public class ReminderServiceImpl implements ReminderService {
                 .description(normalize(request.description()))
                 .createdByMember(member)
                 .visibleToAdmin(resolveVisibleToAdminForCreate(canManage, request.visibleToAdmin()))
-                .targetType(targetType)
-                .targetPosition(targetPosition)
-                .targetMember(targetMember)
+                .targetType(targets.type())
+                .targetPositions(new java.util.LinkedHashSet<>(targets.positions()))
+                .targetMembers(new java.util.LinkedHashSet<>(targets.members()))
                 .periodicity(periodicity)
                 .time(time)
                 .active(true)
@@ -132,11 +119,12 @@ public class ReminderServiceImpl implements ReminderService {
     @Override
     @Transactional
     public ReminderDto update(Long restaurantId, Long currentUserId, Long reminderId, ReminderRequest request) {
+        lifecycleMutex.lock(restaurantId);
         security.assertMember(currentUserId, restaurantId);
 
         Reminder reminder = reminders.findByIdAndRestaurantId(reminderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Reminder not found"));
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         boolean canManage = isManagerOrAdmin(member);
         boolean isOwner = reminder.getCreatedByMember() != null
@@ -149,23 +137,7 @@ public class ReminderServiceImpl implements ReminderService {
             throw new ForbiddenException("Недостаточно прав");
         }
 
-        ReminderTargetType targetType = parseTargetType(request.targetType());
-        Position targetPosition = null;
-        RestaurantMember targetMember = null;
-        if (!canManage) {
-            targetType = ReminderTargetType.MEMBER;
-            targetMember = member;
-        } else if (targetType == ReminderTargetType.POSITION) {
-            targetPosition = resolvePosition(restaurantId, request.targetPositionId());
-        } else if (targetType == ReminderTargetType.MEMBER) {
-            targetMember = resolveMember(restaurantId, request.targetMemberId());
-        }
-
-        if (!canManage) {
-            if (request.targetMemberId() != null && !Objects.equals(request.targetMemberId(), member.getId())) {
-                throw new BadRequestException("Можно создавать напоминания только для себя");
-            }
-        }
+        Targets targets = resolveTargets(restaurantId, member, canManage, request);
 
         String title = normalize(request.title());
         if (title == null || title.isBlank()) {
@@ -174,9 +146,13 @@ public class ReminderServiceImpl implements ReminderService {
         reminder.setTitle(title);
         reminder.setDescription(normalize(request.description()));
         reminder.setVisibleToAdmin(resolveVisibleToAdminForUpdate(canManage, reminder, request.visibleToAdmin()));
-        reminder.setTargetType(targetType);
-        reminder.setTargetPosition(targetPosition);
-        reminder.setTargetMember(targetMember);
+        reminder.setTargetType(targets.type());
+        reminder.setTargetPosition(null);
+        reminder.setTargetMember(null);
+        reminder.getTargetPositions().clear();
+        reminder.getTargetPositions().addAll(targets.positions());
+        reminder.getTargetMembers().clear();
+        reminder.getTargetMembers().addAll(targets.members());
 
         ReminderPeriodicity periodicity = parsePeriodicity(request.periodicity());
         LocalTime time = parseTime(request.time());
@@ -203,7 +179,7 @@ public class ReminderServiceImpl implements ReminderService {
 
         Reminder reminder = reminders.findByIdAndRestaurantId(reminderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Reminder not found"));
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
 
         boolean canManage = isManagerOrAdmin(member);
@@ -237,13 +213,11 @@ public class ReminderServiceImpl implements ReminderService {
         }
         if (reminder.getTargetType() == ReminderTargetType.POSITION) {
             return myPositionId != null
-                    && reminder.getTargetPosition() != null
-                    && Objects.equals(reminder.getTargetPosition().getId(), myPositionId);
+                    && reminder.effectivePositions().stream().anyMatch(position -> Objects.equals(position.getId(), myPositionId));
         }
         if (reminder.getTargetType() == ReminderTargetType.MEMBER) {
             return member != null
-                    && reminder.getTargetMember() != null
-                    && Objects.equals(reminder.getTargetMember().getId(), member.getId());
+                    && reminder.effectiveMembers().stream().anyMatch(target -> Objects.equals(target.getId(), member.getId()));
         }
         return false;
     }
@@ -256,13 +230,11 @@ public class ReminderServiceImpl implements ReminderService {
             return true;
         }
         if (reminder.getTargetType() == ReminderTargetType.POSITION) {
-            return reminder.getTargetPosition() != null
-                    && Objects.equals(reminder.getTargetPosition().getId(), positionFilterId);
+            return reminder.effectivePositions().stream().anyMatch(position -> Objects.equals(position.getId(), positionFilterId));
         }
         if (reminder.getTargetType() == ReminderTargetType.MEMBER) {
-            return reminder.getTargetMember() != null
-                    && reminder.getTargetMember().getPosition() != null
-                    && Objects.equals(reminder.getTargetMember().getPosition().getId(), positionFilterId);
+            return reminder.effectiveMembers().stream().anyMatch(target -> target.getPosition() != null
+                    && Objects.equals(target.getPosition().getId(), positionFilterId));
         }
         return true;
     }
@@ -276,6 +248,50 @@ public class ReminderServiceImpl implements ReminderService {
         } catch (IllegalArgumentException ex) {
             throw new BadRequestException("Некорректный тип получателя");
         }
+    }
+
+    private record Targets(ReminderTargetType type, List<Position> positions, List<RestaurantMember> members) {}
+
+    private List<Long> targetIds(List<Long> ids, Long legacyId) {
+        List<Long> result = ids != null ? ids : legacyId == null ? List.of() : List.of(legacyId);
+        if (result.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new BadRequestException("Некорректные идентификаторы получателей");
+        }
+        return result.stream().distinct().toList();
+    }
+
+    private Targets resolveTargets(Long restaurantId, RestaurantMember actor, boolean canManage, ReminderRequest request) {
+        ReminderTargetType type = parseTargetType(request.targetType());
+        List<Long> positionIds = targetIds(request.targetPositionIds(), request.targetPositionId());
+        List<Long> memberIds = targetIds(request.targetMemberIds(), request.targetMemberId());
+        if (!canManage) {
+            if (type != ReminderTargetType.MEMBER || !positionIds.isEmpty()
+                    || memberIds.stream().anyMatch(id -> !Objects.equals(id, actor.getId()))) {
+                throw new BadRequestException("Можно создавать напоминания только для себя");
+            }
+            return new Targets(ReminderTargetType.MEMBER, List.of(), List.of(actor));
+        }
+        if (type == ReminderTargetType.ALL) {
+            if (!positionIds.isEmpty() || !memberIds.isEmpty()) {
+                throw new BadRequestException("Для отправки всем не нужно выбирать получателей");
+            }
+            return new Targets(type, List.of(), List.of());
+        }
+        if (type == ReminderTargetType.POSITION) {
+            if (positionIds.isEmpty() || !memberIds.isEmpty()) {
+                throw new BadRequestException("Выберите должности без ограничения по сотрудникам");
+            }
+            return new Targets(type, positionIds.stream().map(id -> resolvePosition(restaurantId, id)).toList(), List.of());
+        }
+        if (memberIds.isEmpty()) throw new BadRequestException("Выберите сотрудников");
+        List<RestaurantMember> targets = memberIds.stream().map(id -> resolveMember(restaurantId, id)).toList();
+        // Positions constrain selection only; personal reminders follow the membership after a position change.
+        positionIds.forEach(id -> resolvePosition(restaurantId, id));
+        if (!positionIds.isEmpty() && targets.stream().anyMatch(target -> target.getPosition() == null
+                || !positionIds.contains(target.getPosition().getId()))) {
+            throw new BadRequestException("Состав сотрудников изменился. Проверьте выбранные должности и получателей.");
+        }
+        return new Targets(type, List.of(), targets);
     }
 
     private ReminderPeriodicity parsePeriodicity(String periodicity) {
@@ -383,7 +399,7 @@ public class ReminderServiceImpl implements ReminderService {
         if (memberId == null) {
             throw new BadRequestException("Укажите сотрудника");
         }
-        RestaurantMember member = members.findById(memberId)
+        RestaurantMember member = members.findByIdAndEndedAtIsNull(memberId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
         if (!Objects.equals(member.getRestaurant().getId(), restaurantId)) {
             throw new BadRequestException("Сотрудник не принадлежит ресторану");

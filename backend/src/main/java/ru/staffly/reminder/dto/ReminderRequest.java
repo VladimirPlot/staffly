@@ -2,6 +2,7 @@ package ru.staffly.reminder.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 public record ReminderRequest(
         @NotBlank(message = "Название обязательно")
@@ -17,6 +18,8 @@ public record ReminderRequest(
         Integer dayOfWeek,
         Integer dayOfMonth,
         Boolean monthlyLastDay,
-        String onceDate
+        String onceDate,
+        List<Long> targetPositionIds,
+        List<Long> targetMemberIds
 ) {
 }

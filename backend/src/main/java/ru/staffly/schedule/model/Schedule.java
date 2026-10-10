@@ -130,6 +130,13 @@ public class Schedule {
     @Column(name = "preference_applied_at")
     private Instant preferenceAppliedAt;
 
+    @Column(name = "auto_build_stale_at")
+    private Instant autoBuildStaleAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auto_build_stale_reason", length = 32)
+    private AutoBuildStaleReason autoBuildStaleReason;
+
     @Column(name = "preference_all_submitted_notified_at")
     private Instant preferenceAllSubmittedNotifiedAt;
 

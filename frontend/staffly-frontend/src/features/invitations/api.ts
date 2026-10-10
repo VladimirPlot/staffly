@@ -27,6 +27,7 @@ export async function declineInvite(token: string): Promise<void> {
 }
 
 export type InviteEmployeePayload = {
+  taskDecisions?: import("../tasks/api").TaskAudienceDecision[];
   phone: string;
   positionId: number;
   scheduleIntents: InvitationScheduleDecision[];
@@ -37,6 +38,8 @@ export type InvitationIntentAction =
   | "DO_NOT_ADD"
   | "ADD_AND_REOPEN_COLLECTION"
   | "ADD_AND_REOPEN_FOR_REBUILD"
+  | "ADD_TO_DRAFT"
+  | "DO_NOT_ADD_TO_DRAFT"
   | "INFORMATION_ONLY";
 
 export type InvitationScheduleOpportunity = {
@@ -59,6 +62,7 @@ export type InvitationScheduleOpportunity = {
 };
 
 export type InvitationImpactPlan = {
+  taskOpportunities?: import("../tasks/api").TaskOpportunity[];
   calculatedAt: string;
   candidate: { phone: string; targetPositionId: number; targetPositionName: string; role: InviteRole };
   scheduleOpportunities: InvitationScheduleOpportunity[];

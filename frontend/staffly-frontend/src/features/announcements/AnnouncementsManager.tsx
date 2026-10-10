@@ -1,32 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Card from "../../shared/ui/Card";
 import Button from "../../shared/ui/Button";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
 import ContentText from "../../shared/ui/ContentText";
 import Icon from "../../shared/ui/Icon";
+import Modal from "../../shared/ui/Modal";
 import AnnouncementDialog from "./AnnouncementDialog";
-import type { AnnouncementDto, AnnouncementRequest } from "./api";
-import {
-  createAnnouncement,
-  deleteAnnouncement,
-  listAnnouncements,
-  updateAnnouncement,
-} from "./api";
-import { listPositions, type PositionDto } from "../dictionaries/api";
-import { Pencil, Trash2 } from "lucide-react";
-
-function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
-}
-
-function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit" }).format(d);
-}
+import type { AnnouncementAudienceOptionsDto, AnnouncementDto, AnnouncementRequest } from "./api";
+import { createAnnouncement, deleteAnnouncement, listAnnouncements, fetchAnnouncementAudience } from "./api";
+import { announcementAudienceLabel } from "./audience";
+import { Trash2 } from "lucide-react";
+import { formatAnnouncementSentAt } from "./sentAt";
 
 type AnnouncementsManagerProps = {
   restaurantId: number;
@@ -34,62 +18,89 @@ type AnnouncementsManagerProps = {
   hideHeader?: boolean;
 };
 
-const AnnouncementsManager = ({
-  restaurantId,
-  canManage,
-  hideHeader = false,
-}: AnnouncementsManagerProps) => {
+const AnnouncementsManager = ({ restaurantId, canManage, hideHeader = false }: AnnouncementsManagerProps) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [announcements, setAnnouncements] = useState<AnnouncementDto[]>([]);
-  const [positions, setPositions] = useState<PositionDto[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [viewed, setViewed] = useState<AnnouncementDto | null>(null);
+  const loadSequence = useRef(0);
+  const [audienceOptions, setAudienceOptions] = useState<AnnouncementAudienceOptionsDto | null>(null);
+  const [audienceLoading, setAudienceLoading] = useState(false);
+  const [audienceError, setAudienceError] = useState<string | null>(null);
+  const [audienceReload, setAudienceReload] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<AnnouncementDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AnnouncementDto | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const loadAnnouncements = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listAnnouncements(restaurantId);
-      setAnnouncements(data);
-    } catch (e) {
-      console.error("Failed to load announcements", e);
+  const loadAnnouncements = useCallback(
+    async (requestedPage: number) => {
+      const sequence = ++loadSequence.current;
+      setLoading(true);
+      setLoadError(null);
       setAnnouncements([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [restaurantId]);
+      try {
+        const data = await listAnnouncements(restaurantId, requestedPage);
+        if (sequence !== loadSequence.current) return;
+        const lastPage = Math.max(0, data.totalPages - 1);
+        if (requestedPage > lastPage) {
+          setPage(lastPage);
+          return;
+        }
+        setAnnouncements(data.items);
+        setTotalPages(data.totalPages);
+        setTimezone(data.timezone);
+      } catch (e) {
+        if (sequence !== loadSequence.current) return;
+        console.error("Failed to load announcements", e);
+        setLoadError("Не удалось загрузить объявления");
+      } finally {
+        if (sequence === loadSequence.current) setLoading(false);
+      }
+    },
+    [restaurantId],
+  );
+
+  const invalidateLoads = useCallback(() => {
+    ++loadSequence.current;
+  }, []);
 
   useEffect(() => {
-    void loadAnnouncements();
-  }, [loadAnnouncements]);
+    void loadAnnouncements(page);
+    return invalidateLoads;
+  }, [loadAnnouncements, page, invalidateLoads]);
 
   useEffect(() => {
-    if (!canManage) return;
+    if (!canManage || !dialogOpen) return;
+    let alive = true;
+    setAudienceLoading(true);
+    setAudienceError(null);
+    setAudienceOptions(null);
     (async () => {
       try {
-        const data = await listPositions(restaurantId, { includeInactive: true });
-        setPositions(data);
+        const data = await fetchAnnouncementAudience(restaurantId);
+        if (alive) setAudienceOptions(data);
       } catch (e) {
-        console.error("Failed to load positions", e);
+        console.error("Failed to load announcement audience", e);
+        if (alive) setAudienceError("Не удалось загрузить получателей");
+      } finally {
+        if (alive) setAudienceLoading(false);
       }
     })();
-  }, [canManage, restaurantId]);
+    return () => {
+      alive = false;
+    };
+  }, [canManage, restaurantId, dialogOpen, audienceReload]);
 
   const openCreate = useCallback(() => {
-    setEditing(null);
     setDialogError(null);
     setDialogOpen(true);
   }, []);
-
-  const openEdit = useCallback((announcement: AnnouncementDto) => {
-    setEditing(announcement);
-    setDialogError(null);
-    setDialogOpen(true);
-  }, []);
-
 
   useEffect(() => {
     function handleOpenDialog() {
@@ -107,7 +118,6 @@ const AnnouncementsManager = ({
     if (submitting) return;
     setDialogOpen(false);
     setDialogError(null);
-    setEditing(null);
   }, [submitting]);
 
   const handleSubmit = useCallback(
@@ -115,103 +125,111 @@ const AnnouncementsManager = ({
       setSubmitting(true);
       setDialogError(null);
       try {
-        if (editing) {
-          await updateAnnouncement(restaurantId, editing.id, payload);
-        } else {
-          await createAnnouncement(restaurantId, payload);
-        }
+        await createAnnouncement(restaurantId, payload);
         setDialogOpen(false);
-        setEditing(null);
-        await loadAnnouncements();
+        if (page === 0) await loadAnnouncements(0);
+        else setPage(0);
       } catch (e: any) {
         console.error("Failed to save announcement", e);
-        const message = e?.friendlyMessage || "Не удалось сохранить";
+        const message = e?.friendlyMessage || "Не удалось отправить объявление";
         setDialogError(message);
       } finally {
         setSubmitting(false);
       }
     },
-    [editing, loadAnnouncements, restaurantId],
+    [loadAnnouncements, restaurantId, page],
   );
 
   const openDelete = useCallback((announcement: AnnouncementDto) => {
+    setDeleteError(null);
     setDeleteTarget(announcement);
   }, []);
 
   const closeDelete = useCallback(() => {
     if (deleting) return;
     setDeleteTarget(null);
+    setDeleteError(null);
   }, [deleting]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await deleteAnnouncement(restaurantId, deleteTarget.id);
       setDeleteTarget(null);
-      await loadAnnouncements();
+      if (viewed?.id === deleteTarget.id) setViewed(null);
+      await loadAnnouncements(page);
     } catch (e) {
       console.error("Failed to delete announcement", e);
+      setDeleteError("Не удалось удалить объявление. Попробуйте ещё раз.");
     } finally {
       setDeleting(false);
     }
-  }, [deleteTarget, restaurantId, loadAnnouncements]);
+  }, [deleteTarget, restaurantId, loadAnnouncements, page, viewed]);
+
+  const pagination = (label: string) =>
+    totalPages > 1 && (
+      <nav aria-label={label} className="flex items-center justify-between gap-2 py-2">
+        <Button variant="outline" disabled={loading || page === 0} onClick={() => setPage(page - 1)}>
+          Назад
+        </Button>
+        <span className="text-muted text-center text-sm">
+          Страница {page + 1} из {totalPages}
+        </span>
+        <Button variant="outline" disabled={loading || page + 1 >= totalPages} onClick={() => setPage(page + 1)}>
+          Далее
+        </Button>
+      </nav>
+    );
 
   const renderAnnouncement = (announcement: AnnouncementDto) => {
     const createdLabel = announcement.createdAt
-      ? `${announcement.createdBy?.name ?? "Без имени"}, ${formatShortDate(announcement.createdAt)}`
-      : announcement.createdBy?.name ?? "Без имени";
+      ? `${announcement.createdBy?.name ?? "Без имени"}, ${formatAnnouncementSentAt(announcement.createdAt, timezone)}`
+      : (announcement.createdBy?.name ?? "Без имени");
 
     return (
       <div
         key={announcement.id}
-        className="rounded-2xl border border-subtle bg-surface p-4 shadow-[var(--staffly-shadow)]"
+        className="border-subtle bg-surface relative rounded-2xl border p-4 shadow-[var(--staffly-shadow)]"
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="text-xs text-muted">{createdLabel}</div>
-          {canManage && (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Изменить"
-                onClick={() => openEdit(announcement)}
-              >
-                <Icon icon={Pencil} size="sm" decorative />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                className="text-default"
-                aria-label="Удалить"
-                onClick={() => openDelete(announcement)}
-              >
-                <Icon icon={Trash2} size="sm" decorative />
-              </Button>
-            </div>
-          )}
-        </div>
-        <ContentText className="mt-2 text-base text-strong">{announcement.content}</ContentText>
-        {announcement.positions.length > 0 && (
-          <div className="mt-3 text-xs uppercase tracking-wide text-muted">
-            {announcement.positions
-              .map((position) => `${position.name}${!position.active ? " (неактивна)" : ""}`)
-              .join(", ")}
+        <button
+          type="button"
+          onClick={() => setViewed(announcement)}
+          aria-label={`Открыть объявление от ${createdLabel}`}
+          className="focus-visible:ring-default flex w-full min-w-0 flex-col gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2"
+        >
+          <div className="text-muted flex h-9 w-full gap-1 pr-12 text-xs">
+            <span className="min-w-0 truncate">{announcement.createdBy?.name ?? "Без имени"}</span>
+            <time dateTime={announcement.createdAt} className="shrink-0">
+              {formatAnnouncementSentAt(announcement.createdAt, timezone)}
+            </time>
           </div>
+          <ContentText className="text-strong line-clamp-3 max-h-[4.5rem] overflow-hidden text-base leading-6">
+            {announcement.content}
+          </ContentText>
+          <div className="w-full min-w-0">
+            <div className="text-muted text-xs">Получателей: {announcement.recipientCount}</div>
+            <div className="text-muted mt-1 truncate text-sm">{announcementAudienceLabel(announcement)}</div>
+          </div>
+        </button>
+        {canManage && (
+          <Button
+            variant="outline"
+            size="icon"
+            className="text-default absolute top-4 right-4"
+            aria-label="Удалить"
+            onClick={() => openDelete(announcement)}
+          >
+            <Icon icon={Trash2} size="sm" decorative />
+          </Button>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-          <span className="rounded-full bg-app px-3 py-1 text-sm text-strong">
-            {announcement.expiresAt
-              ? `Действует до ${formatDate(announcement.expiresAt)}`
-              : "Без даты окончания"}
-          </span>
-        </div>
       </div>
     );
   };
 
   const emptyState = (
-    <div className="rounded-2xl border border-subtle bg-surface p-4 text-sm text-muted">
+    <div className="border-subtle bg-surface text-muted rounded-2xl border p-4 text-sm">
       {loading ? "Загружаем объявления…" : "Пока нет объявлений"}
     </div>
   );
@@ -221,33 +239,64 @@ const AnnouncementsManager = ({
       {!hideHeader && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-lg font-semibold text-strong">Объявления</div>
-            <div className="text-sm text-muted">Сообщения руководства по должностям</div>
+            <div className="text-strong text-lg font-semibold">Объявления</div>
+            <div className="text-muted text-sm">Сообщения руководства участникам ресторана</div>
           </div>
           {canManage && <Button onClick={openCreate}>Создать объявление</Button>}
         </div>
       )}
 
-      <div className={`${hideHeader ? "" : "mt-4 "}space-y-3`}>
-        {announcements.length > 0 ? announcements.map(renderAnnouncement) : emptyState}
+      <div className={`${hideHeader ? "" : "mt-4"} space-y-3`}>
+        {pagination("Страницы объявлений сверху")}
+        {loadError && (
+          <div className="flex items-center justify-between gap-3 text-sm text-red-600" role="alert">
+            <span>{loadError}</span>
+            <Button variant="outline" onClick={() => void loadAnnouncements(page)} disabled={loading}>
+              Повторить
+            </Button>
+          </div>
+        )}
+        {loading
+          ? emptyState
+          : announcements.length > 0
+            ? announcements.map(renderAnnouncement)
+            : !loadError && emptyState}
+        {pagination("Страницы объявлений снизу")}
       </div>
+
+      <Modal
+        open={Boolean(viewed)}
+        onClose={() => setViewed(null)}
+        title="Объявление"
+        headerCloseButton
+        footer={
+          <Button variant="outline" onClick={() => setViewed(null)}>
+            Закрыть
+          </Button>
+        }
+      >
+        {viewed && (
+          <div className="space-y-4">
+            <div className="text-muted text-xs">
+              {viewed.createdBy?.name ?? "Без имени"}, {formatAnnouncementSentAt(viewed.createdAt, timezone)}
+            </div>
+            <ContentText>{viewed.content}</ContentText>
+            <div>
+              <div className="text-muted text-sm">Получателей: {viewed.recipientCount}</div>
+              <ContentText className="text-muted mt-1 text-sm">{announcementAudienceLabel(viewed)}</ContentText>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <AnnouncementDialog
         open={dialogOpen}
-        title={editing ? "Редактирование объявления" : "Создать объявление"}
-        positions={positions}
+        options={audienceOptions}
+        loading={audienceLoading}
+        loadingError={audienceError}
+        onReload={() => setAudienceReload((previous) => previous + 1)}
         submitting={submitting}
-        submitLabel={editing ? "Сохранить" : "Отправить"}
         error={dialogError}
-        initialData={
-          editing
-            ? {
-                content: editing.content,
-                expiresAt: editing.expiresAt ?? "",
-                positionIds: editing.positions.map((p) => p.id),
-              }
-            : undefined
-        }
         onClose={closeDialog}
         onSubmit={handleSubmit}
       />
@@ -255,7 +304,18 @@ const AnnouncementsManager = ({
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Удалить объявление?"
-        description="Объявление исчезнет у всех сотрудников."
+        description={
+          <>
+            <span>
+              Объявление исчезнет из входящих у всех получателей. Уже отправленные push останутся на устройствах.
+            </span>
+            {deleteError && (
+              <span className="mt-2 block text-red-600" role="alert">
+                {deleteError}
+              </span>
+            )}
+          </>
+        }
         confirming={deleting}
         confirmText="Удалить"
         onCancel={closeDelete}

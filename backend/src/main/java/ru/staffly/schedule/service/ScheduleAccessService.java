@@ -24,7 +24,7 @@ public class ScheduleAccessService {
         if (securityService.hasAtLeastManager(userId, restaurantId)) {
             return true;
         }
-        return members.findByUserIdAndRestaurantId(userId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .map(RestaurantMember::getRole)
                 .map(role -> role == RestaurantRole.ADMIN || role == RestaurantRole.MANAGER)
                 .orElse(false);
@@ -56,7 +56,7 @@ public class ScheduleAccessService {
     }
 
     private boolean staffCanViewScheduleWithStatuses(Long userId, Schedule schedule, ScheduleStatus... allowedStatuses) {
-        return members.findByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
+        return members.findActiveByUserIdAndRestaurantId(userId, schedule.getRestaurant().getId())
                 .map(member -> member.getRole() == RestaurantRole.STAFF
                         && matchesAnyStatus(schedule.getStatus(), allowedStatuses)
                         && participations.existsByScheduleIdAndMemberId(schedule.getId(), member.getId()))

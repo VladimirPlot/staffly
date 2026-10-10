@@ -7,6 +7,8 @@ import { monthLabelsBetween } from "../utils/date";
 import { getTodayInTimeZone } from "../utils/date";
 
 type TodayShift = {
+  rowKey: string;
+  historical: boolean;
   memberId: number;
   displayName: string;
   shift: string;
@@ -46,7 +48,7 @@ export default function useScheduleDerivedState({
 
   const currentMemberInSchedule = React.useMemo(() => {
     if (!scheduleRows || currentMemberId == null) return false;
-    return scheduleRows.some((row) => row.memberId === currentMemberId);
+    return scheduleRows.some((row) => row.memberId === currentMemberId && !row.historical);
   }, [currentMemberId, scheduleRows]);
 
   const hasMyShift = React.useMemo(() => {
@@ -110,8 +112,10 @@ export default function useScheduleDerivedState({
 
     return scheduleRows
       .map((row) => {
-        const value = scheduleCellValues[`${row.memberId}:${todayIso}`];
+        const value = scheduleCellValues[`${row.historical ? -row.id! : row.memberId}:${todayIso}`];
         return {
+          rowKey: row.historical ? `history:${row.id}` : `member:${row.memberId}`,
+          historical: Boolean(row.historical),
           memberId: row.memberId,
           displayName: row.displayName,
           shift: value?.trim() ?? "",

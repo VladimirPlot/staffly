@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import ru.staffly.checklist.dto.ChecklistArchiveEntryDto;
 import ru.staffly.checklist.dto.ChecklistDto;
 import ru.staffly.checklist.dto.ChecklistHistoryDetailDto;
 import ru.staffly.checklist.dto.ChecklistHistorySummaryDto;
@@ -48,16 +49,18 @@ public class ChecklistController {
     public ChecklistDto update(@PathVariable Long restaurantId,
                                @PathVariable Long checklistId,
                                @AuthenticationPrincipal UserPrincipal principal,
-                               @Valid @RequestBody ChecklistRequest request) {
-        return service.update(restaurantId, principal.userId(), checklistId, request);
+                               @Valid @RequestBody ChecklistRequest request,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.update(restaurantId, principal.userId(), checklistId, request, expectedVersion);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @DeleteMapping("/{checklistId}")
     public void delete(@PathVariable Long restaurantId,
                        @PathVariable Long checklistId,
-                       @AuthenticationPrincipal UserPrincipal principal) {
-        service.delete(restaurantId, principal.userId(), checklistId);
+                       @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        service.delete(restaurantId, principal.userId(), checklistId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -65,8 +68,9 @@ public class ChecklistController {
     public ChecklistDto reserveItem(@PathVariable Long restaurantId,
                                     @PathVariable Long checklistId,
                                     @PathVariable Long itemId,
-                                    @AuthenticationPrincipal UserPrincipal principal) {
-        return service.reserveItem(restaurantId, principal.userId(), checklistId, itemId);
+                                    @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.reserveItem(restaurantId, principal.userId(), checklistId, itemId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -74,8 +78,9 @@ public class ChecklistController {
     public ChecklistDto unreserveItem(@PathVariable Long restaurantId,
                                       @PathVariable Long checklistId,
                                       @PathVariable Long itemId,
-                                      @AuthenticationPrincipal UserPrincipal principal) {
-        return service.unreserveItem(restaurantId, principal.userId(), checklistId, itemId);
+                                      @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.unreserveItem(restaurantId, principal.userId(), checklistId, itemId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -83,8 +88,9 @@ public class ChecklistController {
     public ChecklistDto completeItem(@PathVariable Long restaurantId,
                                      @PathVariable Long checklistId,
                                      @PathVariable Long itemId,
-                                     @AuthenticationPrincipal UserPrincipal principal) {
-        return service.completeItem(restaurantId, principal.userId(), checklistId, itemId);
+                                     @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.completeItem(restaurantId, principal.userId(), checklistId, itemId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -92,16 +98,18 @@ public class ChecklistController {
     public ChecklistDto undoItem(@PathVariable Long restaurantId,
                                  @PathVariable Long checklistId,
                                  @PathVariable Long itemId,
-                                 @AuthenticationPrincipal UserPrincipal principal) {
-        return service.undoItem(restaurantId, principal.userId(), checklistId, itemId);
+                                 @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.undoItem(restaurantId, principal.userId(), checklistId, itemId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/{checklistId}/reset")
     public ChecklistDto reset(@PathVariable Long restaurantId,
                               @PathVariable Long checklistId,
-                              @AuthenticationPrincipal UserPrincipal principal) {
-        return service.reset(restaurantId, principal.userId(), checklistId);
+                              @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.reset(restaurantId, principal.userId(), checklistId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -110,8 +118,9 @@ public class ChecklistController {
                                            @PathVariable Long checklistId,
                                            @PathVariable Long itemId,
                                            @AuthenticationPrincipal UserPrincipal principal,
-                                           @RequestParam("file") MultipartFile file) throws IOException {
-        return service.uploadExamplePhoto(restaurantId, principal.userId(), checklistId, itemId, file);
+                                           @RequestParam("file") MultipartFile file,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) throws IOException {
+        return service.uploadExamplePhoto(restaurantId, principal.userId(), checklistId, itemId, file, expectedVersion);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -119,8 +128,9 @@ public class ChecklistController {
     public ChecklistDto deleteExamplePhoto(@PathVariable Long restaurantId,
                                            @PathVariable Long checklistId,
                                            @PathVariable Long itemId,
-                                           @AuthenticationPrincipal UserPrincipal principal) {
-        return service.deleteExamplePhoto(restaurantId, principal.userId(), checklistId, itemId);
+                                           @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.deleteExamplePhoto(restaurantId, principal.userId(), checklistId, itemId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -129,8 +139,9 @@ public class ChecklistController {
                                               @PathVariable Long checklistId,
                                               @PathVariable Long itemId,
                                               @AuthenticationPrincipal UserPrincipal principal,
-                                              @RequestParam("file") MultipartFile file) throws IOException {
-        return service.uploadCompletionPhoto(restaurantId, principal.userId(), checklistId, itemId, file);
+                                              @RequestParam("file") MultipartFile file,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) throws IOException {
+        return service.uploadCompletionPhoto(restaurantId, principal.userId(), checklistId, itemId, file, expectedVersion);
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
@@ -138,16 +149,41 @@ public class ChecklistController {
     public ChecklistDto deleteCompletionPhoto(@PathVariable Long restaurantId,
                                               @PathVariable Long checklistId,
                                               @PathVariable Long itemId,
-                                              @AuthenticationPrincipal UserPrincipal principal) {
-        return service.deleteCompletionPhoto(restaurantId, principal.userId(), checklistId, itemId);
+                                              @AuthenticationPrincipal UserPrincipal principal,
+            @RequestHeader("X-Checklist-Version") Long expectedVersion) {
+        return service.deleteCompletionPhoto(restaurantId, principal.userId(), checklistId, itemId, expectedVersion);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @GetMapping("/{checklistId}/history")
-    public List<ChecklistHistorySummaryDto> listHistory(@PathVariable Long restaurantId,
+    public List<ChecklistHistorySummaryDto> listHistory(@RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size, @PathVariable Long restaurantId,
                                                         @PathVariable Long checklistId,
                                                         @AuthenticationPrincipal UserPrincipal principal) {
-        return service.listHistory(restaurantId, principal.userId(), checklistId);
+        return service.listHistory(restaurantId, principal.userId(), checklistId, page, size);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/archive")
+    public List<ChecklistArchiveEntryDto> listArchiveCatalog(@PathVariable Long restaurantId,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return service.listArchiveCatalog(restaurantId, principal.userId());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/history/{historyId}/related")
+    public List<ChecklistHistorySummaryDto> listLegacyHistory(@PathVariable Long restaurantId, @PathVariable Long historyId,
+            @AuthenticationPrincipal UserPrincipal principal, @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.listLegacyHistory(restaurantId, principal.userId(), historyId, page, size);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/history")
+    public List<ChecklistHistorySummaryDto> listRestaurantHistory(@PathVariable Long restaurantId,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+        return service.listRestaurantHistory(restaurantId, principal.userId(), page, size);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

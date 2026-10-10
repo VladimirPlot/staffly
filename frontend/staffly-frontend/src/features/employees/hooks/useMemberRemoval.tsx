@@ -2,15 +2,10 @@ import { useMemo, useState } from "react";
 import {
   applyEmployeeRemoval,
   getEmployeeRemovalImpact,
-  getMemberResponsibilityHandoffOptions,
-  submitMemberResponsibilityHandoff,
   type ApplyEmployeeRemovalRequest,
   type EmployeeRemovalImpactPlan,
   type MemberDto,
-  type MemberResponsibilityHandoffOptionsDto,
-  type MemberResponsibilityHandoffRequest,
 } from "../api";
-import { getMemberResponsibilityItemKey } from "../components/MemberResponsibilityHandoffDialog";
 
 type ApiError = {
   friendlyMessage?: unknown;
@@ -55,20 +50,10 @@ export function useMemberRemoval({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [pendingHandoffMember, setPendingHandoffMember] = useState<MemberDto | null>(null);
-  const [handoffOptions, setHandoffOptions] = useState<MemberResponsibilityHandoffOptionsDto | null>(null);
-  const [handoffSelections, setHandoffSelections] = useState<Record<string, number | null>>({});
-  const [handoffLoading, setHandoffLoading] = useState(false);
-  const [handoffSaving, setHandoffSaving] = useState(false);
-  const [handoffError, setHandoffError] = useState<string | null>(null);
+  const [taskSelections, setTaskSelections] = useState<Record<string, number | null>>({});
+  const [ownershipSelections, setOwnershipSelections] = useState<Record<string, number | null>>({});
   const adminsCount = useMemo(() => members.filter((member) => member.role === "ADMIN").length, [members]);
 
-  const resetHandoff = () => {
-    setPendingHandoffMember(null);
-    setHandoffOptions(null);
-    setHandoffSelections({});
-    setHandoffError(null);
-  };
   const resetRemoval = () => {
     setMemberToRemove(null);
     setPlan(null);
@@ -89,7 +74,20 @@ export function useMemberRemoval({
     setError(null);
     setPlan(null);
     try {
-      setPlan(await getEmployeeRemovalImpact(restaurantId, member.id));
+      const impact = await getEmployeeRemovalImpact(restaurantId, member.id);
+      setPlan(impact);
+      const selections: Record<string, number | null> = {};
+      if (impact.mode === "FORCED") impact.taskImpact.assigneeResponsibilities.forEach((task) => {
+        selections[`assignee:${task.taskId}`] = task.candidates[0]?.memberId ?? null;
+      });
+      impact.taskImpact.setterResponsibilities.forEach((task) => {
+        selections[`setter:${task.taskId}`] = task.candidates[0]?.memberId ?? null;
+      });
+      setTaskSelections(selections);
+      const owners: Record<string, number | null> = {};
+      impact.scheduleOwnership.requiredTransfers.forEach((item) => owners[`schedule:${item.resourceId}`] = item.candidates[0]?.userId ?? null);
+      impact.certificationOwnership.requiredTransfers.forEach((item) => owners[`certification:${item.resourceId}`] = item.candidates[0]?.userId ?? null);
+      setOwnershipSelections(owners);
       setNotice(
         stale
           ? "Данные сотрудника или связанных графиков изменились. Мы обновили последствия удаления. Проверьте их ещё раз."
@@ -113,39 +111,6 @@ export function useMemberRemoval({
   const close = () => {
     if (!removing && !loadingImpact) resetRemoval();
   };
-  const closeHandoff = () => {
-    if (!handoffLoading && !handoffSaving) resetHandoff();
-  };
-
-  const openHandoff = async (member: MemberDto, originalError: unknown) => {
-    if (!restaurantId) return;
-    resetHandoff();
-    setHandoffLoading(true);
-    try {
-      const options = await getMemberResponsibilityHandoffOptions(restaurantId, member.id);
-      if (!options.groups.some((group) => group.items.length)) {
-        setError(errorMessage(originalError, "Сотрудника нельзя удалить, пока он отвечает за активные объекты."));
-        return;
-      }
-      resetRemoval();
-      setPendingHandoffMember(member);
-      setHandoffOptions(options);
-      setHandoffSelections(
-        options.groups.reduce<Record<string, number | null>>((result, group) => {
-          group.items.forEach((item) => {
-            result[getMemberResponsibilityItemKey(group.type, item.id)] =
-              member.userId === currentUserId ? null : (item.candidates[0]?.userId ?? null);
-          });
-          return result;
-        }, {}),
-      );
-    } catch (value) {
-      setError(errorMessage(value, errorMessage(originalError, "Не удалось открыть переназначение ответственностей.")));
-    } finally {
-      setHandoffLoading(false);
-    }
-  };
-
   const requestFrom = (source: EmployeeRemovalImpactPlan): ApplyEmployeeRemovalRequest => ({
     expectedMemberCreatedAt: source.employee.memberCreatedAt,
     expectedCurrentPositionId: source.employee.currentPosition?.id ?? null,
@@ -159,6 +124,24 @@ export function useMemberRemoval({
       expectedPreferenceSubmissionId: schedule.preferenceSubmissionId,
       expectedPreferenceSubmissionRevision: schedule.preferenceSubmissionRevision,
     })),
+    scheduleOwnershipTransfers: source.scheduleOwnership.requiredTransfers.map((item) => ({
+      resourceId: item.resourceId, expectedVersion: item.version, expectedOwnerUserId: item.expectedOwnerUserId,
+      newOwnerUserId: ownershipSelections[`schedule:${item.resourceId}`]!,
+    })),
+    certificationOwnershipTransfers: source.certificationOwnership.requiredTransfers.map((item) => ({
+      resourceId: item.resourceId, expectedVersion: item.version, expectedOwnerUserId: item.expectedOwnerUserId,
+      newOwnerUserId: ownershipSelections[`certification:${item.resourceId}`]!,
+    })),
+    tasks: {
+      assignees: source.taskImpact.assigneeResponsibilities.map((task) => ({
+        taskId: task.taskId, expectedVersion: task.version, expectedMemberId: source.employee.memberId,
+        newMemberId: source.mode === "FORCED" ? taskSelections[`assignee:${task.taskId}`]! : null,
+      })),
+      setters: source.taskImpact.setterResponsibilities.map((task) => ({
+        taskId: task.taskId, expectedVersion: task.version, expectedMemberId: source.employee.memberId,
+        newMemberId: taskSelections[`setter:${task.taskId}`]!,
+      })),
+    },
   });
   const confirmRemove = async () => {
     if (!restaurantId || !memberToRemove || !plan || removing) return;
@@ -173,59 +156,30 @@ export function useMemberRemoval({
       resetRemoval();
       const detail = [
         result.cancelledFutureShiftCount ? `Отменено будущих смен: ${result.cancelledFutureShiftCount}.` : null,
-        result.invalidatedAppliedPreferenceDraftCount
-          ? `Графики, требующие повторной сборки: ${result.invalidatedAppliedPreferenceDraftCount}.`
+        result.staleAutoBuildScheduleCount
+          ? `Результат автосборки устарел в графиках: ${result.staleAutoBuildScheduleCount}. Проверьте их вручную или запустите автосборку повторно.`
           : null,
+        result.taskAssigneeTransferCount ? `Передано задач: ${result.taskAssigneeTransferCount}.` : null,
+        result.taskOrphanedCount ? `Задач без исполнителя: ${result.taskOrphanedCount}.` : null,
+        result.taskSetterTransferCount ? `Передано постановщиков: ${result.taskSetterTransferCount}.` : null,
+        result.checklistReservationsReleased ? `Освобождено бронирований: ${result.checklistReservationsReleased}.` : null,
+        result.remindersDetached ? `Остановлено напоминаний: ${result.remindersDetached}.` : null,
       ]
         .filter(Boolean)
         .join(" ");
-      setSuccess(`Сотрудник удалён.${detail ? ` ${detail}` : ""}`);
+      setSuccess(`${plan.mode === "SELF_LEAVE" ? "Вы покинули ресторан" : "Сотрудник исключён"}.${detail ? ` ${detail}` : ""}`);
     } catch (value) {
       if (errorCode(value) === "EMPLOYEE_REMOVAL_PLAN_STALE") await fetchImpact(member, true);
       else if (errorStatus(value) === 404) {
         resetRemoval();
         await refreshMembers();
         setSuccess("Сотрудник уже отсутствует в ресторане.");
-      } else if (errorStatus(value) === 409) await openHandoff(member, value);
-      else setError(errorMessage(value, "Не удалось удалить сотрудника. Попробуйте ещё раз."));
+      } else setError(errorMessage(value, "Не удалось завершить membership. Проверьте решения и попробуйте ещё раз."));
     } finally {
       setRemoving(false);
     }
   };
 
-  const selectHandoffOwner = (key: string, owner: number | null) =>
-    setHandoffSelections((old) => ({ ...old, [key]: owner }));
-  const confirmHandoff = async () => {
-    if (!restaurantId || !pendingHandoffMember || !handoffOptions) return;
-    const payload: MemberResponsibilityHandoffRequest = { items: [] };
-    for (const group of handoffOptions.groups)
-      for (const item of group.items) {
-        const owner = handoffSelections[getMemberResponsibilityItemKey(group.type, item.id)];
-        if (owner == null) {
-          setHandoffError("Выберите нового ответственного для каждого объекта");
-          return;
-        }
-        payload.items.push({
-          type: group.type,
-          resourceId: item.id,
-          resourceVersion: item.version ?? null,
-          newOwnerUserId: owner,
-        });
-      }
-    setHandoffSaving(true);
-    setHandoffError(null);
-    try {
-      const member = pendingHandoffMember;
-      await submitMemberResponsibilityHandoff(restaurantId, member.id, payload);
-      resetHandoff();
-      setMemberToRemove(member);
-      await fetchImpact(member);
-    } catch (value) {
-      setHandoffError(errorMessage(value, "Не удалось переназначить ответственных"));
-    } finally {
-      setHandoffSaving(false);
-    }
-  };
   return {
     memberToRemove,
     plan,
@@ -239,14 +193,11 @@ export function useMemberRemoval({
     open,
     close,
     confirmRemove,
-    pendingHandoffMember,
-    handoffOptions,
-    handoffSelections,
-    handoffLoading,
-    handoffSaving,
-    handoffError,
-    closeHandoff,
-    selectHandoffOwner,
-    confirmHandoff,
+    taskSelections,
+    selectTaskReplacement: (key: string, memberId: number) =>
+      setTaskSelections((current) => ({ ...current, [key]: memberId })),
+    ownershipSelections,
+    selectOwnershipReplacement: (key: string, userId: number) =>
+      setOwnershipSelections((current) => ({ ...current, [key]: userId })),
   };
 }

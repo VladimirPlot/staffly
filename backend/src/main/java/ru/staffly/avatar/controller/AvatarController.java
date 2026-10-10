@@ -34,13 +34,13 @@
 //        Long restaurantId = principal.restaurantId();
 //
 //        if (restaurantId != null) {
-//            memberRepository.findByUserIdAndRestaurantId(userId, restaurantId)
+//            memberRepository.findActiveByUserIdAndRestaurantId(userId, restaurantId)
 //                    .ifPresent(m -> {
 //                        m.setAvatarUrl(url);
 //                        memberRepository.save(m);
 //                    });
 //        } else {
-//            var all = memberRepository.findByUserId(userId);
+//            var all = memberRepository.findByUserIdAndEndedAtIsNull(userId);
 //            if (!all.isEmpty()) {
 //                all.forEach(m -> m.setAvatarUrl(url));
 //                memberRepository.saveAll(all);

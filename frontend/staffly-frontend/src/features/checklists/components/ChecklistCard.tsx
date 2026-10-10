@@ -5,7 +5,7 @@ import ContentText from "../../../shared/ui/ContentText";
 import Icon from "../../../shared/ui/Icon";
 import { EXPANDED_PANEL_TRANSITION, PANEL_COLLAPSED, PANEL_EXPANDED } from "../constants";
 import type { ChecklistDto, ChecklistItemDto } from "../api";
-import type { ChecklistItemSectionKey, PhotoPreview } from "../types";
+import type { PhotoPreview } from "../types";
 import { getChecklistItemTotal, getChecklistWorkSummary, groupChecklistItems } from "../utils/checklistItems";
 import ChecklistActionMenu from "./ChecklistActionMenu";
 import ChecklistProgressIndicator from "./ChecklistProgressIndicator";
@@ -17,7 +17,6 @@ type ChecklistCardProps = {
   canManage: boolean;
   positionNames: Map<number, string>;
   isExpanded: boolean;
-  activeItemTab: ChecklistItemSectionKey;
   isResetting: boolean;
   isDownloading: boolean;
   isActionMenuOpen: boolean;
@@ -32,7 +31,6 @@ type ChecklistCardProps = {
   onEdit: (checklist: ChecklistDto) => void;
   onOpenHistory: (checklist: ChecklistDto) => void;
   onDelete: (checklist: ChecklistDto) => void;
-  onActiveItemTabChange: (tab: ChecklistItemSectionKey) => void;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
@@ -46,7 +44,6 @@ export default function ChecklistCard({
   canManage,
   positionNames,
   isExpanded,
-  activeItemTab,
   isResetting,
   isDownloading,
   isActionMenuOpen,
@@ -61,7 +58,6 @@ export default function ChecklistCard({
   onEdit,
   onOpenHistory,
   onDelete,
-  onActiveItemTabChange,
   onItemAction,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
@@ -75,7 +71,6 @@ export default function ChecklistCard({
   const doneCount = itemGroups.done.length;
   const showPeriodLabel = isTrackable && Boolean(checklist.periodLabel);
   const showPositions = canManage && checklist.positions.length > 0;
-  const showMeta = showPeriodLabel || canManage;
 
   return (
     <div className="border-subtle bg-app/70 rounded-2xl border p-4" ref={(node) => onChecklistRef(checklist.id, node)}>
@@ -103,19 +98,8 @@ export default function ChecklistCard({
               <div className="text-strong text-base leading-6 font-semibold [overflow-wrap:anywhere]">
                 {checklist.name}
               </div>
-              {showMeta && (
+              {canManage && (
                 <div className="text-muted mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-                  {showPeriodLabel && (
-                    <span className="text-default flex items-center gap-1">
-                      <Icon icon={Clock} size="xs" decorative />
-                      {checklist.periodLabel}
-                    </span>
-                  )}
-                  {showPeriodLabel && showPositions && (
-                    <span className="text-muted/40" aria-hidden>
-                      ·
-                    </span>
-                  )}
                   {showPositions ? (
                     <div className="flex flex-wrap items-center gap-1">
                       {checklist.positions.slice(0, 3).map((position) => (
@@ -139,16 +123,6 @@ export default function ChecklistCard({
               )}
             </div>
           </div>
-          {workSummary && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
-              <span
-                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${workSummary.badgeClassName}`}
-              >
-                {workSummary.label}
-              </span>
-              <span className="text-muted text-xs">{workSummary.detail}</span>
-            </div>
-          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {canManage && (
@@ -181,6 +155,26 @@ export default function ChecklistCard({
           </button>
         </div>
       </div>
+      {(workSummary || showPeriodLabel) && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          {showPeriodLabel && (
+            <span className="text-default inline-flex max-w-full items-center gap-1 text-xs">
+              <Icon icon={Clock} size="xs" className="shrink-0" decorative />
+              {checklist.periodLabel}
+            </span>
+          )}
+          {workSummary && (
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              <span
+                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${workSummary.badgeClassName}`}
+              >
+                {workSummary.label}
+              </span>
+              <span className="text-muted text-xs">{workSummary.detail}</span>
+            </div>
+          )}
+        </div>
+      )}
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
@@ -196,12 +190,9 @@ export default function ChecklistCard({
                   restaurantId={restaurantId}
                   checklist={checklist}
                   canManage={canManage}
-                  itemGroups={itemGroups}
-                  activeItemTab={activeItemTab}
                   resetting={isResetting}
                   itemActionLoading={itemActionLoading}
                   photoUploading={photoUploading}
-                  onActiveItemTabChange={onActiveItemTabChange}
                   onItemAction={onItemAction}
                   onCompletionPhotoUpload={onCompletionPhotoUpload}
                   onCompletionPhotoDelete={onCompletionPhotoDelete}

@@ -17,16 +17,9 @@ import {
   type ReminderRequest,
 } from "../api";
 import ReminderDialog, { type ReminderDialogInitial } from "./ReminderDialog";
+import { DETACHED_REMINDER_MESSAGE, isDetachedReminder } from "../reminderTarget";
 
-const weekdays = [
-  "Понедельник",
-  "Вторник",
-  "Среда",
-  "Четверг",
-  "Пятница",
-  "Суббота",
-  "Воскресенье",
-];
+const weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
 type RestaurantRemindersProps = {
   restaurantId: number;
@@ -34,11 +27,7 @@ type RestaurantRemindersProps = {
   currentUserId?: number | null;
 };
 
-const RestaurantReminders = ({
-  restaurantId,
-  canManage,
-  currentUserId,
-}: RestaurantRemindersProps) => {
+const RestaurantReminders = ({ restaurantId, canManage, currentUserId }: RestaurantRemindersProps) => {
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [members, setMembers] = useState<MemberDto[]>([]);
   const [reminders, setReminders] = useState<ReminderDto[]>([]);
@@ -61,10 +50,14 @@ const RestaurantReminders = ({
     }
     try {
       const [positionsData, membersData] = await Promise.all([
-        listPositions(restaurantId, { includeInactive: false }),
+        listPositions(restaurantId, { includeInactive: true }),
         listMembers(restaurantId),
       ]);
-      setPositions(positionsData.filter((position) => position.active));
+      setPositions(
+        positionsData.filter(
+          (position) => position.active || membersData.some((member) => member.positionId === position.id),
+        ),
+      );
       setMembers(membersData);
     } catch (err) {
       console.error("Failed to load reminder dictionaries", err);
@@ -80,7 +73,7 @@ const RestaurantReminders = ({
     try {
       const data = await listReminders(
         restaurantId,
-        canManage && positionFilter ? { positionId: positionFilter } : undefined
+        canManage && positionFilter ? { positionId: positionFilter } : undefined,
       );
       setReminders(data);
     } catch (err) {
@@ -128,6 +121,8 @@ const RestaurantReminders = ({
       targetType: reminder.targetType,
       targetPositionId: reminder.targetPosition?.id ?? null,
       targetMemberId: reminder.targetMember?.id ?? null,
+      targetPositionIds: reminder.targetPositions?.map((position) => position.id),
+      targetMemberIds: reminder.targetMembers?.map((member) => member.id),
       periodicity: reminder.periodicity,
       time: reminder.time,
       dayOfWeek: reminder.dayOfWeek ?? undefined,
@@ -167,7 +162,7 @@ const RestaurantReminders = ({
         setDialogSubmitting(false);
       }
     },
-    [restaurantId, editing, loadReminders]
+    [restaurantId, editing, loadReminders],
   );
 
   const openDeleteDialog = useCallback((reminder: ReminderDto) => {
@@ -198,10 +193,22 @@ const RestaurantReminders = ({
       return "Всем";
     }
     if (reminder.targetType === "POSITION") {
-      return reminder.targetPosition?.name ?? "Должность";
+      return (
+        reminder.targetPositions?.map((position) => position.name).join(", ") ||
+        reminder.targetPosition?.name ||
+        "Должность"
+      );
     }
     if (reminder.targetType === "MEMBER") {
-      return reminder.targetMember?.fullName || "Сотрудник";
+      return isDetachedReminder(reminder)
+        ? "Сотрудник больше не работает"
+        : reminder.targetMembers
+            ?.map(
+              (member) => member.fullName || `${member.firstName ?? ""} ${member.lastName ?? ""}`.trim() || "Сотрудник",
+            )
+            .join(", ") ||
+            reminder.targetMember?.fullName ||
+            "Сотрудник";
     }
     return "—";
   }, []);
@@ -243,7 +250,7 @@ const RestaurantReminders = ({
 
   const positionFilterOptions = useMemo(
     () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
-    [positions]
+    [positions],
   );
 
   const currentMemberId = useMemo(() => {
@@ -257,7 +264,7 @@ const RestaurantReminders = ({
       if (!currentUserId) return false;
       return reminder.createdBy?.userId === currentUserId;
     },
-    [canManage, currentUserId]
+    [canManage, currentUserId],
   );
 
   return (
@@ -291,41 +298,39 @@ const RestaurantReminders = ({
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
       )}
 
       {loading ? (
-        <Card className="text-sm text-muted">Загружаем напоминания…</Card>
+        <Card className="text-muted text-sm">Загружаем напоминания…</Card>
       ) : reminders.length === 0 ? (
-        <Card className="text-sm text-muted">Напоминаний пока нет.</Card>
+        <Card className="text-muted text-sm">Напоминаний пока нет.</Card>
       ) : (
         <div className="space-y-3">
           {reminders.map((reminder) => {
-            const nextFireLabel = formatNextFire(reminder.nextFireAt);
+            const detached = isDetachedReminder(reminder);
+            const nextFireLabel = reminder.active && !detached ? formatNextFire(reminder.nextFireAt) : null;
             const canEdit = canEditReminder(reminder);
             return (
               <Card key={reminder.id} className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-lg font-semibold text-strong">{reminder.title}</div>
+                    <div className="text-strong text-lg font-semibold">{reminder.title}</div>
                     {reminder.description && (
-                      <div className="mt-1 whitespace-pre-line text-sm text-muted">
-                        {reminder.description}
-                      </div>
+                      <div className="text-muted mt-1 text-sm whitespace-pre-line">{reminder.description}</div>
                     )}
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full bg-app px-3 py-1 text-default">
-                        {resolveTargetLabel(reminder)}
-                      </span>
+                      <span className="bg-app text-default rounded-full px-3 py-1">{resolveTargetLabel(reminder)}</span>
                       <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
                         {resolvePeriodLabel(reminder)}
                       </span>
                     </div>
-                    {nextFireLabel && (
-                      <div className="mt-2 text-xs text-muted">Следующее: {nextFireLabel}</div>
+                    {detached && (
+                      <div className="text-muted mt-2 text-sm" role="status">
+                        {DETACHED_REMINDER_MESSAGE}
+                      </div>
                     )}
+                    {nextFireLabel && <div className="text-muted mt-2 text-xs">Следующее: {nextFireLabel}</div>}
                   </div>
                   {canEdit && (
                     <div className="flex items-center gap-2">

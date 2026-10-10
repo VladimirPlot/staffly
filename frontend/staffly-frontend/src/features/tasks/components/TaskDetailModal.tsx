@@ -17,6 +17,7 @@ import {
   formatRelativeTaskDate,
   formatTaskDate,
   resolveTaskAssignee,
+  isUnassignedTask,
 } from "../utils";
 
 type TaskDetailModalProps = {
@@ -34,6 +35,7 @@ type TaskDetailModalProps = {
   onDelete: (task: TaskDto) => void;
   onClose: () => void;
   canDelete: boolean;
+  onAssign?: (task: TaskDto) => void;
 };
 
 const TaskDetailModal = ({
@@ -51,6 +53,7 @@ const TaskDetailModal = ({
   onDelete,
   onClose,
   canDelete,
+  onAssign,
 }: TaskDetailModalProps) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const lastActiveElementRef = useRef<HTMLElement | null>(null);
@@ -151,6 +154,11 @@ const TaskDetailModal = ({
                 {task.title}
               </div>
               <div className="text-muted mt-2 text-sm">{resolveTaskAssignee(task)}</div>
+              {onAssign && isUnassignedTask(task) && (
+                <Button variant="outline" className="mt-2" onClick={() => onAssign(task)}>
+                  Назначить исполнителя
+                </Button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {task.status !== "COMPLETED" && (

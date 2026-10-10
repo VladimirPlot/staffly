@@ -34,6 +34,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/ping",
+                                "/api/ready",
                                 "/api/auth/**",
                                 "/api/push/vapid-public-key",
                                 "/actuator/health",

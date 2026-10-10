@@ -4,6 +4,10 @@ package ru.staffly.training.dto;
 public record AppliedCertificationOwnershipTransfer(
         Long certificationId,
         String title,
-        Long newOwnerUserId
+        Long newOwnerUserId,
+        boolean active
 ) {
+    public AppliedCertificationOwnershipTransfer(Long certificationId, String title, Long newOwnerUserId) {
+        this(certificationId, title, newOwnerUserId, true);
+    }
 }

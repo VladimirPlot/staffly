@@ -57,6 +57,7 @@ export type ScheduleSummaryDto = ScheduleSummary;
 type ScheduleRowResponse = {
   id: number;
   memberId: number;
+  historical?: boolean;
   displayName: string;
   positionId: number | null;
   positionName: string | null;
@@ -506,6 +507,8 @@ function mapLifecycle(data: ScheduleLifecycleDto): ScheduleLifecycleDto {
     preferenceDeadline: nullableTimestamp(data.preferenceDeadline),
     preferenceClosedAt: nullableTimestamp(data.preferenceClosedAt),
     preferenceAppliedAt: nullableTimestamp(data.preferenceAppliedAt),
+    autoBuildStaleAt: nullableTimestamp(data.autoBuildStaleAt),
+    autoBuildStaleReason: data.autoBuildStaleReason ?? null,
     preferenceCollectionMode: data.preferenceCollectionMode ?? null,
     preferenceBuildTemplateId: data.preferenceBuildTemplateId ?? null,
   };
@@ -522,6 +525,7 @@ function mapSchedule(data: ScheduleResponse): ScheduleData {
     rows: (data.rows ?? []).map((row) => ({
       id: row.id,
       memberId: row.memberId,
+      historical: row.historical ?? false,
       displayName: row.displayName,
       positionId: row.positionId,
       positionName: row.positionName,

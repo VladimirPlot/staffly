@@ -33,6 +33,7 @@ public class ChecklistItemHistory {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_item_id")
+    @org.hibernate.annotations.OnDelete(action = org.hibernate.annotations.OnDeleteAction.SET_NULL)
     private ChecklistItem sourceItem;
 
     @Column(name = "item_order", nullable = false)

@@ -16,6 +16,7 @@ import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.schedule.dto.*;
@@ -31,6 +32,7 @@ import ru.staffly.schedule.service.ScheduleAuditService;
 import ru.staffly.schedule.service.ScheduleChangeService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.schedule.service.ScheduleParticipationCreator;
+import ru.staffly.schedule.service.ScheduleRowMaterializer;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
@@ -58,6 +60,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final SchedulePreferenceSubmissionRepository preferenceSubmissions;
     private final ScheduleParticipationRepository participations;
     private final ScheduleParticipationCreator participationCreator;
+    private final ScheduleRowMaterializer rowMaterializer;
     private final RestaurantMemberRepository members;
     private final SecurityService securityService;
     private final ScheduleAccessService scheduleAccessService;
@@ -65,6 +68,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final ScheduleChangeService scheduleChangeService;
     private final UserRepository users;
     private final InboxMessageService inboxMessages;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Override
     public ScheduleDto create(Long restaurantId, Long userId, CreateScheduleRequest request) {
@@ -81,6 +85,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                                          CreateScheduleRequest request,
                                          ScheduleStatus status,
                                          String auditDetails) {
+        // Outermost lifecycle boundary: owner/row members cannot end while this Schedule is created.
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -141,7 +147,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         securityService.assertRestaurantUnlocked(userId, restaurantId);
 
         final boolean canManage = scheduleAccessService.canManageSchedules(userId, restaurantId);
-        Optional<RestaurantMember> membership = members.findByUserIdAndRestaurantId(userId, restaurantId);
+        Optional<RestaurantMember> membership = members.findActiveByUserIdAndRestaurantId(userId, restaurantId);
         if (!canManage && membership.isEmpty()) {
             return List.of();
         }
@@ -185,6 +191,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                         s.getPreferenceDeadline(),
                         s.getPreferenceClosedAt(),
                         s.getPreferenceAppliedAt(),
+                        s.getAutoBuildStaleAt(),
+                        s.getAutoBuildStaleReason() == null ? null : s.getAutoBuildStaleReason().name(),
                         progress.submittedCount(),
                         progress.totalParticipants(),
                         myPreferenceSubmitted
@@ -256,6 +264,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public ScheduleDto update(Long restaurantId, Long scheduleId, Long userId, UpdateScheduleRequest request) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -299,6 +308,11 @@ public class ScheduleServiceImpl implements ScheduleService {
         List<ScheduleRowRequest> safeRows = requestedRows;
         Map<String, String> newValues = request.cellValues() != null ? request.cellValues() : Map.of();
         Set<Long> requestedPositionIds = schedulePositions.stream().map(Position::getId).collect(Collectors.toSet());
+        boolean removesParticipantPosition = participations.findByScheduleIdOrderById(scheduleId).stream()
+                .anyMatch(participation -> !requestedPositionIds.contains(participation.getPositionId()));
+        if (removesParticipantPosition) {
+            throw new ConflictException("Нельзя исключить должность действующего участника из графика");
+        }
         Map<Long, RestaurantMember> memberMap = validateAndMapMembers(
                 schedule, safeRows, requestedPositionIds, lockedRequestedMembers);
         Map<String, String> oldValueMap = buildCurrentValueMap(schedule);
@@ -378,6 +392,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     @Override
     @Transactional
     public ScheduleDto addMember(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion, Long memberId) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -393,7 +408,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 || !positionIds.contains(member.getPosition().getId())) {
             throw new BadRequestException("Сотрудник не подходит по должности для этого графика");
         }
-        if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId))) {
+        if (schedule.getRows().stream().anyMatch(row -> Objects.equals(row.getMemberId(), memberId) && !row.isHistorical())) {
             throw new ConflictException("Сотрудник уже представлен в графике");
         }
 
@@ -423,7 +438,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (allowedPositionIds.isEmpty()) {
             return List.of();
         }
-        return members.findWithUserAndPositionByRestaurantIdAndPositionIdIn(
+        return members.findActiveWithUserAndPositionByRestaurantIdAndPositionIdIn(
                 schedule.getRestaurant().getId(), allowedPositionIds
         );
     }
@@ -462,13 +477,14 @@ public class ScheduleServiceImpl implements ScheduleService {
                                                  Long scheduleId,
                                                  Long actorUserId,
                                                  StartPreferenceCollectionRequest request) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(actorUserId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(actorUserId, restaurantId);
 
         // Discover without locking, then acquire the global Member -> Schedule -> Template order.
         List<Long> discoveredPositionIds = schedules.findPositionIdsByIdAndRestaurantId(scheduleId, restaurantId);
         List<Long> candidateIds = discoveredPositionIds.isEmpty() ? List.of()
-                : members.findByRestaurantIdAndPositionIdIn(restaurantId, discoveredPositionIds).stream()
+                : members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(restaurantId, discoveredPositionIds).stream()
                 .map(RestaurantMember::getId).sorted().toList();
         List<RestaurantMember> lockedCandidates = candidateIds.isEmpty() ? List.of()
                 : members.findForUpdateByRestaurantIdAndIdInOrderByIdAsc(restaurantId, candidateIds);
@@ -516,7 +532,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                         && lockedSchedulePositionIds.contains(member.getPosition().getId()))
                 .toList();
         Set<Long> revalidatedCandidateIds = lockedSchedulePositionIds.isEmpty() ? Set.of()
-                : members.findByRestaurantIdAndPositionIdIn(
+                : members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(
                                 restaurantId, lockedSchedulePositionIds.stream().sorted().toList()).stream()
                         .map(RestaurantMember::getId).collect(Collectors.toSet());
         Set<Long> lockedEligibleCandidateIds = eligibleLockedCandidates.stream()
@@ -524,7 +540,10 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (!revalidatedCandidateIds.equals(lockedEligibleCandidateIds)) {
             throw new ConflictException("Состав подходящих сотрудников изменился. Повторите начало сбора пожеланий");
         }
-        ensureParticipations(schedule, eligibleLockedCandidates);
+        Map<Long, ScheduleParticipation> participationByMemberId =
+                ensureParticipations(schedule, eligibleLockedCandidates);
+        eligibleLockedCandidates.forEach(member -> rowMaterializer.ensureRowWithLocksHeld(
+                schedule, member, Objects.requireNonNull(participationByMemberId.get(member.getId()))));
         schedule.setStatus(ScheduleStatus.COLLECTING_PREFERENCES);
         schedule.setPreferenceCollectionMode(mode);
         schedule.setPreferenceBuildTemplate(preferenceBuildTemplate);
@@ -858,6 +877,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .findByScheduleIdOrderById(schedule.getId()).stream()
                 .collect(Collectors.toMap(value -> value.getMember().getId(), value -> value));
         Set<Long> historicalMemberIds = schedule.getRows().stream()
+                .filter(ScheduleRow::isHistorical)
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
@@ -911,7 +931,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private Map<String, String> buildCurrentValueMap(Schedule schedule) {
         return schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null)
+                .filter(row -> row.getMemberId() != null && !row.isHistorical())
                 .flatMap(row -> row.getCells().stream()
                         .map(cell -> Map.entry(row.getMemberId() + ":" + cell.getDay(), normalizeCellValue(cell.getValue()))))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -993,7 +1013,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                                Map<Long, RestaurantMember> memberMap,
                                Map<Long, ScheduleParticipation> participationByMemberId) {
         Map<Long, ScheduleRow> existingByMemberId = schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null)
+                .filter(row -> row.getMemberId() != null && !row.isHistorical())
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, r -> r, (left, right) -> left));
         Set<Long> requestedIds = new LinkedHashSet<>(memberMap.keySet());
         Set<ScheduleRow> activeRows = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -1005,11 +1025,11 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (row == null) {
                 row = ScheduleRow.builder().schedule(schedule).memberId(memberId).build();
                 schedule.getRows().add(row);
-                ScheduleParticipation participation = Objects.requireNonNull(
-                        participationByMemberId.get(memberId), "Active row requires ScheduleParticipation");
-                row.setPositionId(participation.getPositionId());
-                row.setPositionName(participation.getPositionName());
             }
+            ScheduleParticipation participation = Objects.requireNonNull(
+                    participationByMemberId.get(memberId), "Active row requires ScheduleParticipation");
+            row.setPositionId(participation.getPositionId());
+            row.setPositionName(participation.getPositionName());
             activeRows.add(row);
             row.setHistorical(false);
             row.setDisplayName(Optional.ofNullable(member.getUser().getFullName()).orElse(""));
@@ -1087,7 +1107,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             List<LocalDate> newDays,
             Map<String, String> requestedValues) {
         Map<Long, ScheduleRow> rowsByMember = schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null && activeMembers.containsKey(row.getMemberId()))
+                .filter(row -> row.getMemberId() != null && !row.isHistorical() && activeMembers.containsKey(row.getMemberId()))
                 .collect(Collectors.toMap(ScheduleRow::getMemberId, row -> row, (left, right) -> left));
         Set<LocalDate> newDaySet = new HashSet<>(newDays);
         List<PublishedScheduleCellChange> result = new ArrayList<>();
@@ -1217,8 +1237,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                                                ScheduleCellSource oldSource, ScheduleCellSource newSource) {}
 
     private void notifyAutoRejectedRequest(ScheduleShiftRequest request, Long actorUserId) {
-        RestaurantMember fromMember = members.findById(request.getFromMemberId()).orElse(null);
-        RestaurantMember toMember = members.findById(request.getToMemberId()).orElse(null);
+        RestaurantMember fromMember = members.findByIdAndEndedAtIsNull(request.getFromMemberId()).orElse(null);
+        RestaurantMember toMember = members.findByIdAndEndedAtIsNull(request.getToMemberId()).orElse(null);
         List<RestaurantMember> targets = deduplicateMembersByUserId(Stream.of(fromMember, toMember)
                 .filter(Objects::nonNull)
                 .filter(member -> member.getUser() != null)
@@ -1289,6 +1309,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         }
 
         Set<Long> activeRowMemberIds = schedule.getRows().stream()
+                .filter(row -> !row.isHistorical())
                 .map(ScheduleRow::getMemberId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
@@ -1359,7 +1380,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             if (cell.getValue() == null || cell.getValue().isBlank()) {
                 return;
             }
-            String key = row.getMemberId() + ":" + cell.getDay();
+            String key = (row.isHistorical() ? -row.getId() : row.getMemberId()) + ":" + cell.getDay();
             cellValues.put(key, cell.getValue());
             cellSources.put(key, cell.getSource() != null ? cell.getSource() : ScheduleCellSource.MANUAL);
             cell.structuredShift().ifPresent(interval -> cellShifts.put(key, ScheduleCellShiftDto.from(interval)));
@@ -1409,6 +1430,8 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceDeadline(),
                 schedule.getPreferenceClosedAt(),
                 schedule.getPreferenceAppliedAt(),
+                schedule.getAutoBuildStaleAt(),
+                schedule.getAutoBuildStaleReason() == null ? null : schedule.getAutoBuildStaleReason().name(),
                 schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );
@@ -1486,14 +1509,14 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private RestaurantMember resolveOwner(Long restaurantId, Long actorUserId, Long ownerUserId) {
         if (ownerUserId != null) {
-            RestaurantMember owner = members.findByUserIdAndRestaurantId(ownerUserId, restaurantId)
+            RestaurantMember owner = members.findActiveByUserIdAndRestaurantId(ownerUserId, restaurantId)
                     .orElseThrow(() -> new BadRequestException("ownerUserId must belong to the restaurant"));
             if (owner.getRole() != RestaurantRole.ADMIN && owner.getRole() != RestaurantRole.MANAGER) {
                 throw new BadRequestException("owner must be MANAGER or ADMIN");
             }
             return owner;
         }
-        RestaurantMember actorMember = members.findByUserIdAndRestaurantId(actorUserId, restaurantId)
+        RestaurantMember actorMember = members.findActiveByUserIdAndRestaurantId(actorUserId, restaurantId)
                 .orElseThrow(() -> new BadRequestException("ownerUserId is required for CREATOR without membership"));
         if (actorMember.getRole() != RestaurantRole.ADMIN && actorMember.getRole() != RestaurantRole.MANAGER) {
             throw new BadRequestException("ownerUserId is required for STAFF");

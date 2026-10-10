@@ -74,10 +74,10 @@ public class ChecklistHistoryMapper {
                 entity.getItemOrder() != null ? entity.getItemOrder() : 0,
                 entity.getText(),
                 entity.isDone(),
-                toMemberShort(entity.getDoneBy()),
+                toMemberShort(entity.getDoneBy(), entity.getDoneByName()),
                 entity.getDoneByName(),
                 entity.getDoneAt() != null ? entity.getDoneAt().toString() : null,
-                toMemberShort(entity.getReservedBy()),
+                toMemberShort(entity.getReservedBy(), entity.getReservedByName()),
                 entity.getReservedByName(),
                 entity.getReservedAt() != null ? entity.getReservedAt().toString() : null,
                 mode.name(),
@@ -94,11 +94,13 @@ public class ChecklistHistoryMapper {
         return item.isCompletionPhotoRequired() ? ChecklistPhotoMode.REQUIRED : ChecklistPhotoMode.NONE;
     }
 
-    private ChecklistMemberShortDto toMemberShort(RestaurantMember member) {
+    private ChecklistMemberShortDto toMemberShort(RestaurantMember member, String snapshotName) {
         if (member == null) {
             return null;
         }
-        String name = member.getUser() != null ? member.getUser().getFullName() : null;
+        String name = snapshotName != null ? snapshotName
+                : member.getUser() != null ? member.getUser().getFullName() : null;
+        if (name != null && !member.isActive()) name += " (исключен)";
         return new ChecklistMemberShortDto(member.getId(), name);
     }
 }

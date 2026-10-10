@@ -19,7 +19,8 @@ public class InvitationMapper {
                 inv.getInvitedBy() != null ? inv.getInvitedBy().getId() : null,
                 inv.getCreatedAt(),
                 inv.getDesiredRole(),
-                inv.getPosition() != null ? inv.getPosition().getId() : null
+                // Historical terminal invitations may predate V119 and have no trusted snapshot.
+                inv.getPositionSnapshot() != null ? inv.getPositionSnapshot().positionId() : null
         );
     }
 }

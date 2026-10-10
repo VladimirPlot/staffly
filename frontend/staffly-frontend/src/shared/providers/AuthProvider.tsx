@@ -1,6 +1,9 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { clearToken, getToken, saveToken } from "../utils/storage";
+import { clearToken, getAuthEpoch, getToken, saveToken, TOKEN_KEY } from "../utils/storage";
+import { isSessionRejected } from "../api/sessionLock";
+import Button from "../ui/Button";
+import { getTokenRestaurantId } from "../utils/tokenContext";
 import { logout as apiLogout, me as apiMe } from "../../features/auth/api";
 import { refreshSession } from "../api/apiClient";
 import type { MeResponse } from "../../entities/user/types";
@@ -31,9 +34,13 @@ export const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
   const navigate = useNavigate();
+  const navigateRef = React.useRef(navigate);
+  navigateRef.current = navigate;
   const [token, setToken] = React.useState<string | null>(getToken());
   const [user, setUser] = React.useState<UiUser | null>(null);
   const [loading, setLoading] = React.useState<boolean>(true);
+  const [connectionError, setConnectionError] = React.useState<string | null>(null);
+  const [retryVersion, setRetryVersion] = React.useState(0);
 
   const toUiUser = (m: MeResponse): UiUser => {
     const fullName = [m.firstName, m.lastName].filter(Boolean).join(" ").trim();
@@ -68,7 +75,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
    * Loads /api/me using current access token.
    * Important: token can be rotated by apiClient's auto-refresh, so we must read it again from storage after the call.
    */
-  const refreshMe = React.useCallback(async () => {
+  const refreshMe = React.useCallback(async (): Promise<void> => {
+    const epoch = getAuthEpoch();
     const t = getToken();
     if (!t) {
       setToken(null);
@@ -78,7 +86,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
     try {
       const me = await apiMe();
-      setUser(toUiUser(me));
+      if (epoch !== getAuthEpoch() || !getToken()) return;
+      if ((me.restaurantId ?? undefined) !== getTokenRestaurantId(getToken())) {
+        // A restaurant switch may have completed while /me was in flight.
+        await refreshMe();
+        return;
+      }
+      const nextUser = toUiUser(me);
+      setUser((previous) => (JSON.stringify(previous) === JSON.stringify(nextUser) ? previous : nextUser));
+      setConnectionError(null);
       if (isTheme(me.theme)) {
         setStoredTheme(me.theme);
         applyThemeToDom(me.theme);
@@ -86,13 +102,17 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setToken(getToken()); // ✅ актуальный токен после возможного refresh в interceptor
       void syncPushSubscription();
     } catch (e) {
+      if (epoch !== getAuthEpoch()) return;
       console.error("/api/me failed", e);
-      clearToken();
-      setToken(null);
-      setUser(null);
-      navigate("/login", { replace: true });
+      if (isSessionRejected(e) && getToken()) {
+        clearToken();
+        setToken(null);
+        setUser(null);
+        navigateRef.current("/login", { replace: true });
+      }
+      throw e;
     }
-  }, [navigate, syncPushSubscription]);
+  }, [syncPushSubscription]);
 
   const loginWithToken = React.useCallback(
     async (newToken: string) => {
@@ -101,24 +121,24 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       await refreshMe();
       navigate("/restaurants", { replace: true });
     },
-    [refreshMe, navigate]
+    [refreshMe, navigate],
   );
 
   const logout = React.useCallback(() => {
+    clearToken();
+    setToken(null);
+    setUser(null);
+    setConnectionError(null);
+    setLoading(false);
+    navigateRef.current("/login", { replace: true });
     void (async () => {
       try {
         await apiLogout();
       } catch (e) {
         console.warn("Logout failed", e);
-      } finally {
-        clearToken();
-        setToken(null);
-        setUser(null);
-        setLoading(false);
-        navigate("/login", { replace: true });
       }
     })();
-  }, [navigate]);
+  }, []);
 
   React.useEffect(() => {
     let active = true;
@@ -133,17 +153,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         }
 
         // 2) Otherwise try to restore session by refresh cookie
-        try {
-          await refreshSession(); // ✅ единая реализация refresh (/api/auth/refresh)
-        } catch {
-          if (active) {
-            clearToken();
-            setToken(null);
-            setUser(null);
-          }
-          return;
-        }
+        await refreshSession();
         await refreshMe();
+      } catch (error) {
+        if (!active) return;
+        if (isSessionRejected(error)) {
+          clearToken();
+          setToken(null);
+          setUser(null);
+          setConnectionError(null);
+        } else {
+          setConnectionError("Не удалось подключиться к Staffly. Проверьте интернет и повторите попытку.");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -153,7 +174,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     return () => {
       active = false;
     };
-  }, [refreshMe]);
+  }, [refreshMe, retryVersion]);
 
   React.useEffect(() => {
     const handleLogout = () => {
@@ -161,16 +182,45 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       setToken(null);
       setUser(null);
       setLoading(false);
-      navigate("/login", { replace: true });
+      setConnectionError(null);
+      navigateRef.current("/login", { replace: true });
     };
 
     window.addEventListener("auth:logout", handleLogout);
     return () => window.removeEventListener("auth:logout", handleLogout);
-  }, [navigate]);
+  }, []);
+
+  React.useEffect(() => {
+    const syncToken = () => {
+      const current = getToken();
+      setToken(current);
+      if (!current) setUser(null);
+    };
+    const syncStorage = (event: StorageEvent) => {
+      if (event.key !== TOKEN_KEY && event.key !== null) return;
+      syncToken();
+      if (getToken()) void refreshMe().catch(() => undefined);
+    };
+    window.addEventListener("auth:token-changed", syncToken);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener("auth:token-changed", syncToken);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, [refreshMe]);
 
   return (
     <AuthContext.Provider value={{ token, user, loading, loginWithToken, logout, refreshMe }}>
-      {children}
+      {connectionError && !user ? (
+        <div className="mx-auto max-w-md p-6 text-center" role="alert">
+          <p className="mb-4">{connectionError}</p>
+          <Button onClick={() => setRetryVersion((value) => value + 1)} disabled={loading}>
+            {loading ? "Подключаемся…" : "Повторить"}
+          </Button>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 };

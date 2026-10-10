@@ -10,6 +10,8 @@ import ru.staffly.restaurant.model.Restaurant;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "reminder",
@@ -59,6 +61,28 @@ public class Reminder {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "target_member_id")
     private RestaurantMember targetMember;
+
+    @ManyToMany
+    @JoinTable(name = "reminder_target_position", joinColumns = @JoinColumn(name = "reminder_id"),
+            inverseJoinColumns = @JoinColumn(name = "position_id"))
+    @Builder.Default
+    private Set<Position> targetPositions = new LinkedHashSet<>();
+
+    @ManyToMany
+    @JoinTable(name = "reminder_target_member", joinColumns = @JoinColumn(name = "reminder_id"),
+            inverseJoinColumns = @JoinColumn(name = "member_id"))
+    @Builder.Default
+    private Set<RestaurantMember> targetMembers = new LinkedHashSet<>();
+
+    public Set<Position> effectivePositions() {
+        if (!targetPositions.isEmpty()) return targetPositions;
+        return targetPosition == null ? Set.of() : Set.of(targetPosition);
+    }
+
+    public Set<RestaurantMember> effectiveMembers() {
+        if (!targetMembers.isEmpty()) return targetMembers;
+        return targetMember == null ? Set.of() : Set.of(targetMember);
+    }
 
     @Enumerated(EnumType.STRING)
     @Column(name = "periodicity", nullable = false, length = 20)

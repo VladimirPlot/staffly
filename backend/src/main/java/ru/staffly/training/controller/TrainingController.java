@@ -8,7 +8,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.ForbiddenException;
-import ru.staffly.security.SecurityService;
 import ru.staffly.security.UserPrincipal;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.model.TrainingExamMode;
@@ -33,7 +32,6 @@ public class TrainingController {
     private final ExamService examService;
     private final CertificationEmployeeAnalyticsService certificationEmployeeAnalyticsService;
     private final CertificationFolderManagementService certificationFolderManagementService;
-    private final SecurityService securityService;
     private final TrainingPolicyService trainingPolicyService;
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
@@ -46,7 +44,7 @@ public class TrainingController {
                 restaurantId, principal.userId(), folderId);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canReadTraining(#principal.userId, #restaurantId)")
     @GetMapping("/folders")
     public List<TrainingFolderDto> listFolders(@PathVariable Long restaurantId,
                                                @AuthenticationPrincipal UserPrincipal principal,
@@ -120,7 +118,7 @@ public class TrainingController {
         knowledgeService.deleteFolder(restaurantId, principal.userId(), folderId);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canReadTraining(#principal.userId, #restaurantId)")
     @GetMapping("/knowledge-items")
     public List<TrainingKnowledgeItemDto> listKnowledgeItems(@PathVariable Long restaurantId,
                                                               @AuthenticationPrincipal UserPrincipal principal,
@@ -245,7 +243,7 @@ public class TrainingController {
         questionService.deleteQuestion(restaurantId, principal.userId(), questionId);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canReadTraining(#principal.userId, #restaurantId)")
     @GetMapping("/exams")
     public List<TrainingExamDto> listExams(@PathVariable Long restaurantId,
                                            @AuthenticationPrincipal UserPrincipal principal,
@@ -258,14 +256,14 @@ public class TrainingController {
         return examService.listExams(restaurantId, principal.userId(), isManager, includeInactive, certificationOnly);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
     @GetMapping("/exams/my-certifications")
     public List<CurrentUserCertificationExamDto> listCurrentUserCertifications(@PathVariable Long restaurantId,
                                                                                @AuthenticationPrincipal UserPrincipal principal) {
         return examService.listCurrentUserCertificationExams(restaurantId, principal.userId());
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
     @GetMapping("/exams/{examId}/my-result")
     public CertificationMyResultDto getCurrentUserCertificationResult(@PathVariable Long restaurantId,
                                                                       @PathVariable Long examId,
@@ -278,7 +276,7 @@ public class TrainingController {
         );
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.canReadTraining(#principal.userId, #restaurantId)")
     @GetMapping("/knowledge-exams")
     public List<TrainingExamDto> listKnowledgeExams(@PathVariable Long restaurantId,
                                                     @AuthenticationPrincipal UserPrincipal principal,
@@ -383,7 +381,7 @@ public class TrainingController {
         examService.resetCertificationExamCycle(restaurantId, principal.userId(), examId);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
     @GetMapping("/exams/practice-progress")
     public List<TrainingExamProgressDto> listPracticeExamProgress(@PathVariable Long restaurantId, @AuthenticationPrincipal UserPrincipal principal) {
         return examService.listCurrentUserPracticeExamProgress(restaurantId, principal.userId());
@@ -475,13 +473,13 @@ public class TrainingController {
         return certificationEmployeeAnalyticsService.getCertificationEmployeeSummary(restaurantId, principal.userId(), userId);
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
     @PostMapping("/exams/{examId}/start")
     public StartExamResponseDto startExam(@PathVariable Long restaurantId, @PathVariable Long examId, @AuthenticationPrincipal UserPrincipal principal) {
         return examService.startExam(restaurantId, examId, principal.userId(), trainingPolicyService.canManageTraining(principal.userId(), restaurantId));
     }
 
-    @PreAuthorize("@securityService.isMember(#principal.userId, #restaurantId)")
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
     @PostMapping("/exam-attempts/{attemptId}/submit")
     public AttemptResultDto submitAttempt(@PathVariable Long restaurantId, @PathVariable Long attemptId,
                                           @AuthenticationPrincipal UserPrincipal principal,

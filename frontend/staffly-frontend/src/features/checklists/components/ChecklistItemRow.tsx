@@ -1,4 +1,5 @@
-import { Camera, Check, Image as ImageIcon, Lock, Unlock, X } from "lucide-react";
+import { useId, useState } from "react";
+import { Camera, Check, ChevronDown, ImagePlus, Lock, Unlock, X } from "lucide-react";
 
 import Button from "../../../shared/ui/Button";
 import ContentText from "../../../shared/ui/ContentText";
@@ -23,6 +24,7 @@ type ChecklistItemRowProps = {
   canManage: boolean;
   itemActionLoading: Set<string>;
   isPhotoUploading: boolean;
+  isChecklistBusy: boolean;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
@@ -40,11 +42,14 @@ export default function ChecklistItemRow({
   canManage,
   itemActionLoading,
   isPhotoUploading,
+  isChecklistBusy,
   onItemAction,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
   onPhotoPreview,
 }: ChecklistItemRowProps) {
+  const [mediaExpanded, setMediaExpanded] = useState(false);
+  const mediaPanelId = useId();
   const reserveKey = `${checklist.id}-${item.id}-reserve`;
   const unreserveKey = `${checklist.id}-${item.id}-unreserve`;
   const completeKey = `${checklist.id}-${item.id}-complete`;
@@ -53,7 +58,10 @@ export default function ChecklistItemRow({
   const unreserveLoading = itemActionLoading.has(unreserveKey);
   const completeLoading = itemActionLoading.has(completeKey);
   const undoLoading = itemActionLoading.has(undoKey);
-  const isBusy = reserveLoading || unreserveLoading || completeLoading || undoLoading;
+  const isBusy =
+    isChecklistBusy || isPhotoUploading || [...itemActionLoading].some((key) => key.startsWith(`${checklist.id}-`));
+  const isOwnReservation = item.reservedBy?.id === checklist.currentMemberId;
+  const canWork = checklist.currentMemberId != null && (!item.reservedBy || isOwnReservation);
   const hasExamplePhoto = hasPhoto(item.examplePhotoUrl);
   const hasCompletionPhoto = hasPhoto(item.completionPhotoUrl);
   const photoMode = resolvePhotoMode(item);
@@ -80,58 +88,29 @@ export default function ChecklistItemRow({
     : item.reservedBy
       ? "bg-amber-50/25 dark:bg-amber-500/[0.06]"
       : "bg-surface";
-  const shouldShowMedia = hasExamplePhoto || hasCompletionPhoto || hasCompletionPhotoEnabled;
+  const shouldShowMedia = hasExamplePhoto || hasCompletionPhoto || (hasCompletionPhotoEnabled && !item.done);
 
   return (
     <div className={`border-subtle border-b px-2.5 py-3 transition-colors last:border-b-0 sm:px-4 ${itemRowClass}`}>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
-            {hasCompletionPhotoEnabled && (
-              <span
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                  missingRequiredPhoto
-                    ? "border-red-300 bg-red-50 text-red-700 dark:border-red-500/45 dark:bg-red-500/15 dark:text-red-200"
-                    : "text-default border-emerald-300 bg-emerald-50 dark:border-emerald-500/45 dark:bg-emerald-500/15"
-                }`}
-              >
-                <span className="inline-flex items-center gap-1">
-                  <Icon icon={Camera} size="xs" decorative />
-                  {photoStatusLabel}
-                </span>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusClass}`}>{statusLabel}</span>
+          {hasCompletionPhotoEnabled && (
+            <span
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                missingRequiredPhoto
+                  ? "border-red-300 bg-red-50 text-red-700 dark:border-red-500/45 dark:bg-red-500/15 dark:text-red-200"
+                  : "text-default border-emerald-300 bg-emerald-50 dark:border-emerald-500/45 dark:bg-emerald-500/15"
+              }`}
+            >
+              <span className="inline-flex items-center gap-1">
+                <Icon icon={Camera} size="xs" decorative />
+                {photoStatusLabel}
               </span>
-            )}
-            {hasExamplePhoto && (
-              <span className="border-subtle bg-surface text-default inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs">
-                <Icon icon={ImageIcon} size="xs" decorative />
-                Есть эталон
-              </span>
-            )}
-          </div>
-          <ContentText
-            className={`text-[15px] leading-6 [overflow-wrap:anywhere] ${
-              item.done ? "text-muted line-through" : "text-strong"
-            }`}
-          >
-            {item.text}
-          </ContentText>
-          <div className="text-muted mt-1 text-xs">
-            {item.done ? (
-              <>
-                Выполнил: <span className="text-default font-medium">{doneByName}</span>
-                {item.doneAt ? ` · ${formatDateTime(item.doneAt)}` : ""}
-              </>
-            ) : item.reservedBy ? (
-              <>
-                <span className="text-strong font-semibold">{reservedByName}</span> взял пункт в работу
-              </>
-            ) : (
-              "Можно брать в работу"
-            )}
-          </div>
+            </span>
+          )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 md:max-w-[9rem] md:justify-self-end">
+        <div className="flex shrink-0 items-center gap-1.5">
           {!item.done && !item.reservedBy && (
             <Button
               variant="outline"
@@ -140,9 +119,13 @@ export default function ChecklistItemRow({
               leftIcon={!reserveLoading ? <Icon icon={Lock} size="sm" decorative /> : undefined}
               aria-label="Взять в работу"
               title="Взять в работу"
-              disabled={isBusy}
+              disabled={isBusy || checklist.currentMemberId == null}
               isLoading={reserveLoading}
-              onClick={() => onItemAction(reserveKey, () => reserveChecklistItem(restaurantId, checklist.id, item.id))}
+              onClick={() =>
+                onItemAction(reserveKey, () =>
+                  reserveChecklistItem(restaurantId, checklist.id, item.id, checklist.version),
+                )
+              }
             />
           )}
           {!item.done && item.reservedBy && (
@@ -153,10 +136,12 @@ export default function ChecklistItemRow({
               leftIcon={!unreserveLoading ? <Icon icon={Unlock} size="sm" decorative /> : undefined}
               aria-label="Снять бронь"
               title="Снять бронь"
-              disabled={isBusy}
+              disabled={isBusy || (!isOwnReservation && !canManage)}
               isLoading={unreserveLoading}
               onClick={() =>
-                onItemAction(unreserveKey, () => unreserveChecklistItem(restaurantId, checklist.id, item.id))
+                onItemAction(unreserveKey, () =>
+                  unreserveChecklistItem(restaurantId, checklist.id, item.id, checklist.version),
+                )
               }
             />
           )}
@@ -167,10 +152,12 @@ export default function ChecklistItemRow({
               leftIcon={!completeLoading ? <Icon icon={Check} size="sm" decorative /> : undefined}
               aria-label="Отметить как готово"
               title="Отметить как готово"
-              disabled={isBusy || missingRequiredPhoto}
+              disabled={isBusy || missingRequiredPhoto || !canWork}
               isLoading={completeLoading}
               onClick={() =>
-                onItemAction(completeKey, () => completeChecklistItem(restaurantId, checklist.id, item.id))
+                onItemAction(completeKey, () =>
+                  completeChecklistItem(restaurantId, checklist.id, item.id, checklist.version),
+                )
               }
             />
           )}
@@ -184,20 +171,93 @@ export default function ChecklistItemRow({
               title="Снять выполнение"
               disabled={isBusy}
               isLoading={undoLoading}
-              onClick={() => onItemAction(undoKey, () => undoChecklistItem(restaurantId, checklist.id, item.id))}
+              onClick={() =>
+                onItemAction(undoKey, () => undoChecklistItem(restaurantId, checklist.id, item.id, checklist.version))
+              }
             />
           )}
         </div>
       </div>
+      <ContentText
+        className={`text-[15px] leading-6 [overflow-wrap:anywhere] ${
+          item.done ? "text-muted line-through" : "text-strong"
+        }`}
+      >
+        {item.text}
+      </ContentText>
+      <div className="text-muted mt-1 flex items-center justify-between gap-2 text-xs">
+        <div className="min-w-0">
+          {item.done ? (
+            <>
+              Выполнил: <span className="text-default font-medium">{doneByName}</span>
+              {item.doneAt ? ` · ${formatDateTime(item.doneAt)}` : ""}
+            </>
+          ) : item.reservedBy ? (
+            <>
+              <span className="text-strong font-semibold">{reservedByName}</span> взял пункт в работу
+            </>
+          ) : (
+            "Можно брать в работу"
+          )}
+        </div>
+        {shouldShowMedia && (
+          <button
+            type="button"
+            className="text-muted hover:text-default focus:ring-default flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition hover:bg-[color:var(--staffly-control-hover)] focus:ring-2 focus:outline-none"
+            aria-expanded={mediaExpanded}
+            aria-controls={mediaPanelId}
+            aria-label={
+              mediaExpanded
+                ? "Скрыть фотографии"
+                : hasExamplePhoto
+                  ? "Показать эталон и фото выполнения"
+                  : hasCompletionPhoto
+                    ? "Показать фото выполнения"
+                    : "Добавить фото выполнения"
+            }
+            title={
+              mediaExpanded
+                ? "Скрыть фотографии"
+                : hasExamplePhoto
+                  ? "Эталон и фото выполнения"
+                  : hasCompletionPhoto
+                    ? "Фото выполнения"
+                    : "Добавить фото выполнения"
+            }
+            onClick={() => setMediaExpanded((expanded) => !expanded)}
+          >
+            {hasExamplePhoto ? (
+              <span
+                className={
+                  mediaExpanded
+                    ? "flex rotate-180 transition-transform duration-200"
+                    : "flex transition-transform duration-200"
+                }
+              >
+                <Icon icon={ChevronDown} size="sm" decorative />
+              </span>
+            ) : (
+              <Icon icon={hasCompletionPhoto ? Camera : ImagePlus} size="sm" decorative />
+            )}
+          </button>
+        )}
+      </div>
+
       {shouldShowMedia && (
-        <ChecklistItemMedia
-          checklist={checklist}
-          item={item}
-          isPhotoUploading={isPhotoUploading}
-          onCompletionPhotoUpload={onCompletionPhotoUpload}
-          onCompletionPhotoDelete={onCompletionPhotoDelete}
-          onPhotoPreview={onPhotoPreview}
-        />
+        <div id={mediaPanelId} hidden={!mediaExpanded}>
+          {mediaExpanded && (
+            <ChecklistItemMedia
+              checklist={checklist}
+              item={item}
+              isPhotoUploading={isPhotoUploading}
+              disabled={isBusy}
+              canManage={canManage}
+              onCompletionPhotoUpload={onCompletionPhotoUpload}
+              onCompletionPhotoDelete={onCompletionPhotoDelete}
+              onPhotoPreview={onPhotoPreview}
+            />
+          )}
+        </div>
       )}
     </div>
   );

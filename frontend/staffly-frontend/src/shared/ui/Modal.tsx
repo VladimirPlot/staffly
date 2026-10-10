@@ -12,6 +12,7 @@ type ModalProps = {
   onClose: () => void;
   footer?: React.ReactNode;
   className?: string;
+  placement?: "center" | "right";
   headerCloseButton?: boolean;
   headerCloseLabel?: string;
   overlayCloseButton?: boolean;
@@ -92,6 +93,7 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   footer,
   className = "",
+  placement = "center",
   headerCloseButton = false,
   headerCloseLabel = "Закрыть",
   overlayCloseButton = false,
@@ -197,7 +199,7 @@ const Modal: React.FC<ModalProps> = ({
         aria-hidden="true"
         onMouseDown={handleBackdropMouseDown}
       />
-      <div className="safe-area-overlay pointer-events-none relative flex min-h-[100vh] items-center justify-center supports-[height:100dvh]:min-h-[100dvh]">
+      <div className={`safe-area-overlay pointer-events-none relative flex min-h-[100vh] items-center supports-[height:100dvh]:min-h-[100dvh] ${placement === "right" ? "justify-end" : "justify-center"}`}>
         <div
           ref={dialogRef}
           role="dialog"
@@ -221,7 +223,7 @@ const Modal: React.FC<ModalProps> = ({
             </button>
           )}
 
-          <div className="border-subtle bg-surface flex max-h-[calc(100vh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:max-h-[calc(100vh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))]">
+          <div className={`border-subtle bg-surface flex max-h-[calc(100vh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:max-h-[calc(100vh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] ${placement === "right" ? "h-[calc(100dvh-2rem)]" : ""}`}>
             {hasHeader && (
               <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
                 <div className="min-w-0">

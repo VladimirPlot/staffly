@@ -1,4 +1,6 @@
 import SelectField from "../../../shared/ui/SelectField";
+import TaskAudienceChoices from "../../tasks/components/TaskAudienceChoices";
+import type { TaskAudienceAction } from "../../tasks/api";
 import Button from "../../../shared/ui/Button";
 import type { CountryCode } from "libphonenumber-js";
 import type { PositionDto } from "../../dictionaries/api";
@@ -9,7 +11,8 @@ import type {
   InvitationIntentAction,
   InvitationScheduleOpportunity,
 } from "../../invitations/api";
-import { formatInstantInTimeZone, instantToRestaurantLocalDateTime } from "../../schedule/utils/date";
+import { formatInstantInTimeZone } from "../../schedule/utils/date";
+import { actionAcceptsDeadline, type InvitationDeadlineValidation } from "../utils/invitationDeadline";
 
 type InvitePanelProps = {
   open: boolean;
@@ -24,7 +27,10 @@ type InvitePanelProps = {
   error: string | null;
   impact: InvitationImpactPlan | null;
   decisions: Record<number, InvitationIntentAction>;
+  taskChoices: Record<number, TaskAudienceAction>;
+  onTaskChoice: (id: number, action: TaskAudienceAction) => void;
   deadlines: Record<number, string>;
+  deadlineValidations: Record<number, InvitationDeadlineValidation>;
   restaurantTimeZone: string;
   submitting: boolean;
   isSubmitDisabled: boolean;
@@ -54,7 +60,10 @@ export default function InvitePanel({
   error,
   impact,
   decisions,
+  taskChoices,
+  onTaskChoice,
   deadlines,
+  deadlineValidations,
   restaurantTimeZone,
   submitting,
   isSubmitDisabled,
@@ -89,7 +98,7 @@ export default function InvitePanel({
       ) : impact ? (
         <div className="grid gap-4">
           <div>
-            <div className="text-strong font-medium">Влияние приглашения на графики</div>
+            <div className="text-strong font-medium">Последствия приглашения</div>
             <div className="text-muted mt-1 text-sm">
               {impact.candidate.phone} · {impact.candidate.targetPositionName}
             </div>
@@ -107,12 +116,20 @@ export default function InvitePanel({
                 action={decisions[item.scheduleId]}
                 deadline={deadlines[item.scheduleId] ?? ""}
                 timeZone={restaurantTimeZone}
+                validation={deadlineValidations[item.scheduleId]}
                 onAction={(action) => onChangeDecision(item.scheduleId, action)}
                 onDeadline={(value) => onChangeDeadline(item.scheduleId, value)}
               />
             ))
           )}
 
+          <TaskAudienceChoices
+            items={impact.taskOpportunities ?? []}
+            values={taskChoices}
+            onChange={onTaskChoice}
+            timezone={restaurantTimeZone}
+            disabled={submitting}
+          />
           {error && <div className="text-sm text-red-600">{error}</div>}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button disabled={isConfirmDisabled} onClick={onConfirm}>
@@ -174,8 +191,10 @@ export default function InvitePanel({
 const ACTION_LABEL: Record<InvitationIntentAction, string> = {
   ADD_TO_COLLECTION: "Добавить в сбор после принятия",
   DO_NOT_ADD: "Не добавлять",
-  ADD_AND_REOPEN_COLLECTION: "Добавить и переоткрыть сбор",
-  ADD_AND_REOPEN_FOR_REBUILD: "Добавить и переоткрыть для новой сборки",
+  ADD_AND_REOPEN_COLLECTION: "Добавить и переоткрыть сбор после принятия",
+  ADD_AND_REOPEN_FOR_REBUILD: "Добавить и переоткрыть для новой сборки после принятия",
+  ADD_TO_DRAFT: "Добавить в черновик после принятия",
+  DO_NOT_ADD_TO_DRAFT: "Не добавлять",
   INFORMATION_ONLY: "Информация",
 };
 
@@ -184,6 +203,7 @@ function ScheduleImpactCard({
   action,
   deadline,
   timeZone,
+  validation,
   onAction,
   onDeadline,
 }: {
@@ -191,26 +211,24 @@ function ScheduleImpactCard({
   action?: InvitationIntentAction;
   deadline: string;
   timeZone: string;
+  validation: InvitationDeadlineValidation;
   onAction: (action: InvitationIntentAction) => void;
   onDeadline: (value: string) => void;
 }) {
   const informational = item.allowedActions.length === 1 && item.allowedActions[0] === "INFORMATION_ONLY";
-  const asksDeadline =
-    action === "ADD_TO_COLLECTION" || action === "ADD_AND_REOPEN_COLLECTION" || action === "ADD_AND_REOPEN_FOR_REBUILD";
-  const minimum =
-    item.scheduleStatus === "COLLECTING_PREFERENCES" && item.currentPreferenceDeadline
-      ? instantToRestaurantLocalDateTime(item.currentPreferenceDeadline, timeZone)
-      : instantToRestaurantLocalDateTime(new Date(Date.now() + 60_000), timeZone);
+  const asksDeadline = actionAcceptsDeadline(action);
+  const helperId = `invitation-deadline-helper-${item.scheduleId}`;
+  const errorId = `invitation-deadline-error-${item.scheduleId}`;
   const description =
     item.scheduleStatus === "COLLECTING_PREFERENCES"
       ? "Сейчас идёт сбор пожеланий. Если сотрудник примет приглашение, его можно добавить в этот сбор."
       : item.scheduleStatus === "PREFERENCES_CLOSED"
         ? "Сбор пожеланий закрыт. После принятия приглашения его можно открыть повторно; пожелания остальных сотрудников сохранятся."
         : item.scheduleStatus === "DRAFT_FROM_PREFERENCES"
-          ? "График уже собран по пожеланиям. При добавлении сбор откроется повторно, а результат автосборки потребуется собрать заново. Пожелания остальных сотрудников сохранятся."
+          ? "График уже собран по пожеланиям. Если сотрудник примет приглашение, сбор откроется повторно, а результат автосборки потребуется собрать заново. Пожелания остальных сотрудников сохранятся."
           : item.scheduleStatus === "PUBLISHED"
             ? "Сотрудник не будет автоматически добавлен в опубликованный график. После принятия его можно добавить вручную из графика."
-            : "Сотрудник не будет автоматически добавлен в черновик. После принятия его можно добавить вручную.";
+            : "Если сотрудник примет приглашение, его можно добавить в черновик согласно выбранному действию.";
 
   return (
     <div className="border-subtle rounded-xl border bg-[var(--staffly-control)] p-4">
@@ -241,7 +259,8 @@ function ScheduleImpactCard({
       {!informational && (
         <div className="mt-3 grid gap-2">
           {item.allowedActions.map((allowed) => {
-            const disabled = allowed !== "DO_NOT_ADD" && item.eligibilityProblems.length > 0;
+            const disabled =
+              allowed !== "DO_NOT_ADD" && allowed !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0;
             return (
               <label key={allowed} className={`flex items-center gap-2 text-sm ${disabled ? "opacity-50" : ""}`}>
                 <input
@@ -260,17 +279,27 @@ function ScheduleImpactCard({
       {asksDeadline && (
         <div className="mt-3">
           <label className="text-default text-sm">
-            {item.newDeadlineRequired ? "Новый дедлайн" : "Продлить дедлайн (необязательно)"}
+            {validation.required ? "Новый дедлайн (обязательно)" : "Продлить дедлайн (необязательно)"}
             <input
               className="border-subtle bg-app mt-1 block w-full rounded-lg border px-3 py-2"
               type="datetime-local"
               value={deadline}
-              min={minimum ?? undefined}
-              required={item.newDeadlineRequired}
+              min={validation.minimum ?? undefined}
+              required={validation.required}
+              aria-invalid={!validation.valid}
+              aria-describedby={`${helperId}${validation.error ? ` ${errorId}` : ""}`}
               onChange={(event) => onDeadline(event.target.value)}
             />
           </label>
-          <div className="text-muted mt-1 text-xs">Новый дедлайн будет применён только после принятия приглашения.</div>
+          <div id={helperId} className="text-muted mt-1 text-xs">
+            <div>{validation.helper}</div>
+            <div>{validation.applicationHelper}</div>
+          </div>
+          {validation.error && (
+            <div id={errorId} role="alert" className="mt-1 text-sm text-red-600">
+              {validation.error}
+            </div>
+          )}
         </div>
       )}
     </div>

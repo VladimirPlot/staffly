@@ -29,6 +29,7 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             select distinct c
             from Checklist c
             where c.restaurant.id = :restaurantId
+              and c.deletedAt is null
               and (:positionId is null or exists (
                     select 1
                     from c.positions p
@@ -40,21 +41,12 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             """)
     List<Checklist> findListDetailedByRestaurantId(Long restaurantId, Long positionId, ChecklistKind kind, String query);
 
+    @EntityGraph(attributePaths = {"positions"})
+    @Query("select distinct c from Checklist c where c.restaurant.id = :restaurantId and (c.kind = ru.staffly.checklist.model.ChecklistKind.TRACKABLE or exists (select 1 from ChecklistHistory h where h.checklist = c and h.kind = ru.staffly.checklist.model.ChecklistKind.TRACKABLE))")
+    List<Checklist> findArchiveCatalog(Long restaurantId);
+
     @EntityGraph(attributePaths = {"positions", "restaurant"})
     Optional<Checklist> findWithPositionsById(Long id);
-
-    @EntityGraph(attributePaths = {
-            "positions",
-            "restaurant",
-            "items",
-            "items.doneBy",
-            "items.doneBy.user",
-            "items.reservedBy",
-            "items.reservedBy.user",
-            "items.completionPhotoUploadedBy",
-            "items.completionPhotoUploadedBy.user"
-    })
-    Optional<Checklist> findDetailedById(Long id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = {
@@ -74,4 +66,7 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             where c.id = :id
             """)
     Optional<Checklist> findDetailedByIdForUpdate(@Param("id") Long id);
+
+    @Query("select distinct c.restaurant.id from Checklist c where c.deletedAt is null and c.kind = ru.staffly.checklist.model.ChecklistKind.TRACKABLE and c.periodicity <> ru.staffly.checklist.model.ChecklistPeriodicity.MANUAL")
+    List<Long> findAutoResetRestaurantIds();
 }

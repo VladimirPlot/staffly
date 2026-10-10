@@ -28,6 +28,10 @@ public class ChecklistMapper {
     private final ChecklistImageStorage imageStorage;
 
     public ChecklistDto toDto(Checklist entity) {
+        return toDto(entity, null);
+    }
+
+    public ChecklistDto toDto(Checklist entity, Long currentMemberId) {
         List<ChecklistPositionDto> positions = entity.getPositions() == null
                 ? List.of()
                 : entity.getPositions().stream()
@@ -70,7 +74,9 @@ public class ChecklistMapper {
                 entity.getResetDayOfWeek(),
                 entity.getResetDayOfMonth(),
                 items,
-                positions
+                positions,
+                entity.getVersion(),
+                currentMemberId
         );
     }
 
@@ -84,6 +90,7 @@ public class ChecklistMapper {
             return null;
         }
         String name = member.getUser() != null ? member.getUser().getFullName() : null;
+        if (name != null && !member.isActive()) name += " (исключен)";
         return new ChecklistMemberShortDto(member.getId(), name);
     }
 

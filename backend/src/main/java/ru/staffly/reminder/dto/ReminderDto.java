@@ -1,5 +1,7 @@
 package ru.staffly.reminder.dto;
 
+import java.util.List;
+
 public record ReminderDto(
         Long id,
         Long restaurantId,
@@ -17,6 +19,8 @@ public record ReminderDto(
         String onceDate,
         String nextFireAt,
         boolean active,
-        ReminderMemberDto createdBy
+        ReminderMemberDto createdBy,
+        List<ReminderPositionDto> targetPositions,
+        List<ReminderMemberDto> targetMembers
 ) {
 }

@@ -4,6 +4,7 @@ import type { ChecklistDto } from "../api";
 type DeleteChecklistConfirmDialogProps = {
   target: ChecklistDto | null;
   deleting: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -11,6 +12,7 @@ type DeleteChecklistConfirmDialogProps = {
 export default function DeleteChecklistConfirmDialog({
   target,
   deleting,
+  error,
   onConfirm,
   onCancel,
 }: DeleteChecklistConfirmDialogProps) {
@@ -18,7 +20,7 @@ export default function DeleteChecklistConfirmDialog({
     <ConfirmDialog
       open={Boolean(target)}
       title={target ? `Удалить чек-лист «${target.name}»?` : ""}
-      description="Это действие нельзя будет отменить"
+      description={error || "Чек-лист будет удалён из рабочего списка. История сохранится."}
       confirming={deleting}
       confirmText="Удалить"
       tone="danger"

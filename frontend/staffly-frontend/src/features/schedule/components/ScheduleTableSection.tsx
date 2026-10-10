@@ -79,7 +79,7 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 
     schedule.rows.forEach((row) => {
       schedule.days.forEach((day) => {
-        const key: ScheduleCellKey = `${row.memberId}:${day.date}`;
+        const key: ScheduleCellKey = `${row.historical ? -row.id! : row.memberId}:${day.date}`;
         const value = schedule.cellValues[key] ?? "";
         const hasValue = value.trim().length > 0;
         const hints = preferenceHintsByCellKey?.[key] ?? [];

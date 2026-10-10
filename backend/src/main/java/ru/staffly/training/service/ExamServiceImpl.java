@@ -15,6 +15,7 @@ import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.dto.*;
 import ru.staffly.training.exception.StaleExamRevisionException;
@@ -34,6 +35,7 @@ import java.util.stream.IntStream;
 @Slf4j
 public class ExamServiceImpl implements ExamService {
     private final TrainingExamRepository exams;
+    private final RestaurantLifecycleMutex lifecycleMutex;
     private final EntityManager entityManager;
     private final TrainingExamSourceFolderRepository sourceFolders;
     private final TrainingExamSourceQuestionRepository sourceQuestions;
@@ -108,6 +110,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public List<CurrentUserCertificationExamDto> listCurrentUserCertificationExams(Long restaurantId, Long userId) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         // Read-repair semantics: listing certifications can finalize stale expired unfinished attempts
         // and update assignment derived fields/status to keep list/start/result consistent.
         Instant now = TimeProvider.now();
@@ -121,6 +124,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public CertificationMyResultDto getCurrentUserCertificationResult(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         // Read-repair semantics: self-result can mutate DB by repairing stale lifecycle state
         // (e.g. finalize expired unfinished attempt before building result).
         Instant now = TimeProvider.now();
@@ -155,6 +159,9 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto createExam(Long restaurantId, Long userId, CreateTrainingExamRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
+        // Initial operational ownership is serialized with membership termination.
+        lifecycleMutex.lock(restaurantId);
         validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
         validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
                 request.sourceQuestionIds(), request.questionCount());
@@ -175,12 +182,12 @@ public class ExamServiceImpl implements ExamService {
                 .active(true)
                 .version(1)
                 .build();
-        trainingExamOwnershipService.assignInitialOwner(examEntity, userId);
         var exam = exams.save(examEntity);
         trainingCertificationNotificationService.ensureStateExistsForExam(exam);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
+        trainingExamOwnershipService.assignInitialOwner(exam, userId);
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             var specification = certificationSpecificationService.createCurrent(exam);
             certificationAssignmentCycleService.createPublicationCycle(
@@ -251,7 +258,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
-        var exam = requireManageableExam(restaurantId, userId, examId);
+        var exam = requireManageableExam(restaurantId, userId, examId, true);
         if (!Objects.equals(exam.getEditorRevision(), request.expectedEditorRevision())) {
             throw new StaleExamRevisionException(exam.getId(), exam.getEditorRevision());
         }
@@ -264,6 +271,14 @@ public class ExamServiceImpl implements ExamService {
 
         if (exam.getMode() != request.mode()) {
             throw new BadRequestException("Нельзя менять режим теста после создания.");
+        }
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
+            validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
+            var requestedIds = new HashSet<>(request.visibilityPositionIds());
+            var resultingVisibility = positions.findByRestaurantId(restaurantId).stream()
+                    .filter(p -> requestedIds.contains(p.getId())).toList();
+            if (resultingVisibility.size() != requestedIds.size()) throw new NotFoundException("Position not found");
+            trainingExamOwnershipService.assertOwnerValidForActivation(exam, resultingVisibility);
         }
         boolean materialChanged = false;
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
@@ -367,9 +382,10 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableExam(restaurantId, userId, examId);
+        var exam = requireManageableExam(restaurantId, userId, examId, true);
         activeContainerValidator.requireActiveChain(exam.getFolder());
         boolean restoringCertification = exam.getMode() == TrainingExamMode.CERTIFICATION && !exam.isActive();
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) trainingExamOwnershipService.assertOwnerValidForActivation(exam);
         if (!exam.isActive()) {
             validateSourceCapacity(
                     restaurantId,
@@ -473,6 +489,7 @@ public class ExamServiceImpl implements ExamService {
 
     @Override
     public List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         // Practice-only progress endpoint: только по practice-экзаменам, доступным пользователю по visibility.
         var examIds = examAccessService.listVisiblePracticeExamIdsForUser(restaurantId, userId);
         if (examIds.isEmpty()) {
@@ -500,6 +517,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         Instant now = TimeProvider.now();
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
@@ -594,6 +612,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
         var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Attempt not found"));
         if (!Objects.equals(attempt.getUser().getId(), userId)) {
@@ -855,6 +874,7 @@ public class ExamServiceImpl implements ExamService {
     public ExamSourcesPreflightDto preflightSources(Long restaurantId,
                                                     Long userId,
                                                     ExamSourcesPreflightRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         try {
             int available = questionPoolResolver.resolveAvailableQuestionCount(
                     restaurantId, userId, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
@@ -913,7 +933,7 @@ public class ExamServiceImpl implements ExamService {
                                               Instant now) {
         Long positionAtStartId = null;
         if (assignment != null) {
-            var member = members.findByUserIdAndRestaurantIdWithPosition(userId, exam.getRestaurant().getId())
+            var member = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, exam.getRestaurant().getId())
                     .orElseThrow(() -> new ForbiddenException("Not a member"));
             positionAtStartId = member.getPosition() == null ? null : member.getPosition().getId();
         }
@@ -1237,9 +1257,16 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
+        return requireManageableExam(restaurantId, userId, examId, false);
+    }
+
+    private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId,
+                                                boolean serializeOwnership) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            // Activation cannot validate an owner and then race with their lifecycle transition.
+            if (serializeOwnership) lifecycleMutex.lock(restaurantId);
             return lockAndAuthorizeCertificationMutation(restaurantId, userId, exam);
         }
         var targetPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());

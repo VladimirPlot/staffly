@@ -3,25 +3,6 @@ import { getMyRoleIn } from "../../shared/api/memberships";
 import type { RestaurantRole } from "../../shared/types/restaurant";
 import { toAbsoluteUrl } from "../../shared/utils/url";
 
-/* ===== Приглашения (оставляем как было) ===== */
-export type InviteRequest = {
-  phone: string;
-  positionId: number;
-};
-
-export type InviteResponse = {
-  token: string;
-  restaurantId: number;
-  desiredRole: RestaurantRole;
-  positionId?: number;
-  expiresAt: string;
-};
-
-export async function sendInvite(restaurantId: number, payload: InviteRequest): Promise<InviteResponse> {
-  const { data } = await api.post(`/api/restaurants/${restaurantId}/employees/invite`, payload);
-  return data as InviteResponse;
-}
-
 /* ===== Помощник: узнать мою роль в текущем ресторане ===== */
 export async function fetchMyRoleIn(restaurantId: number): Promise<RestaurantRole | null> {
   return getMyRoleIn(restaurantId);
@@ -55,52 +36,6 @@ export async function listMembers(restaurantId: number): Promise<MemberDto[]> {
   }));
 }
 
-export type MemberResponsibilityType = "CERTIFICATION" | "SCHEDULE";
-
-export type MemberResponsibilityCandidateDto = {
-  userId: number;
-  memberId: number | null;
-  displayName: string;
-  role: string;
-  positionId: number | null;
-  positionName: string | null;
-};
-
-export type MemberResponsibilityPeriodDto = {
-  startDate: string;
-  endDate: string;
-};
-
-export type MemberResponsibilityItemDto = {
-  id: number;
-  version?: number | null;
-  title: string;
-  subtitle: string | null;
-  period: MemberResponsibilityPeriodDto | null;
-  candidates: MemberResponsibilityCandidateDto[];
-};
-
-export type MemberResponsibilityGroupDto = {
-  type: MemberResponsibilityType;
-  title: string;
-  items: MemberResponsibilityItemDto[];
-};
-
-export type MemberResponsibilityHandoffOptionsDto = {
-  userId: number;
-  fullName: string;
-  groups: MemberResponsibilityGroupDto[];
-};
-
-export type MemberResponsibilityHandoffRequest = {
-  items: {
-    type: MemberResponsibilityType;
-    resourceId: number;
-    resourceVersion?: number | null;
-    newOwnerUserId: number;
-  }[];
-};
-
 export type EmployeeRemovalPosition = { id: number; name: string };
 export type EmployeeRemovalScheduleImpact = {
   scheduleId: number;
@@ -115,13 +50,14 @@ export type EmployeeRemovalScheduleImpact = {
   participationWillBeRemoved: boolean;
   preferenceDataWillBeDeleted: boolean;
   progressDenominatorWillChange: boolean;
-  appliedPreferenceDraftWillBeInvalidated: boolean;
+  autoBuildWillBecomeStale: boolean;
   activeDraftRowWillBeRemoved: boolean;
   publishedRowBecomesHistorical: boolean;
   publishedShiftImpact: PublishedShiftImpact | null;
 };
 export type EmployeeRemovalImpactPlan = {
   calculatedAt: string;
+  mode: "FORCED" | "SELF_LEAVE";
   employee: {
     memberId: number;
     name: string;
@@ -129,6 +65,31 @@ export type EmployeeRemovalImpactPlan = {
     memberCreatedAt: string;
   };
   scheduleImpacts: EmployeeRemovalScheduleImpact[];
+  scheduleOwnership: EmployeeRemovalOwnershipImpact;
+  certificationOwnership: EmployeeRemovalOwnershipImpact;
+  taskImpact: {
+    assigneeResponsibilities: EmployeeRemovalTaskResponsibility[];
+    setterResponsibilities: EmployeeRemovalTaskResponsibility[];
+  };
+  checklistImpact: { affectedCount: number };
+  reminderImpact: { affectedCount: number };
+};
+export type EmployeeRemovalOwnershipImpact = { requiredTransfers: EmployeeRemovalOwnershipResource[] };
+export type EmployeeRemovalOwnershipResource = {
+  resourceId: number;
+  title: string;
+  version: number;
+  expectedOwnerUserId: number;
+  candidates: EmployeeRemovalCandidate[];
+};
+export type EmployeeRemovalCandidate = { memberId: number; userId: number; name: string; position: string | null };
+export type EmployeeRemovalTaskResponsibility = {
+  taskId: number;
+  version: number;
+  title: string;
+  dueDate: string | null;
+  replacementRequired: boolean;
+  candidates: EmployeeRemovalCandidate[];
 };
 export type EmployeeRemovalScheduleToken = {
   scheduleId: number;
@@ -144,6 +105,24 @@ export type ApplyEmployeeRemovalRequest = {
   expectedMemberCreatedAt: string;
   expectedCurrentPositionId: number | null;
   schedules: EmployeeRemovalScheduleToken[];
+  scheduleOwnershipTransfers: EmployeeRemovalOwnershipTransfer[];
+  certificationOwnershipTransfers: EmployeeRemovalOwnershipTransfer[];
+  tasks: {
+    assignees: EmployeeRemovalTaskTransfer[];
+    setters: EmployeeRemovalTaskTransfer[];
+  };
+};
+export type EmployeeRemovalOwnershipTransfer = {
+  resourceId: number;
+  expectedVersion: number;
+  expectedOwnerUserId: number;
+  newOwnerUserId: number;
+};
+export type EmployeeRemovalTaskTransfer = {
+  taskId: number;
+  expectedVersion: number;
+  expectedMemberId: number;
+  newMemberId: number | null;
 };
 export type ApplyEmployeeRemovalResult = {
   removedMemberId: number;
@@ -152,7 +131,14 @@ export type ApplyEmployeeRemovalResult = {
   historicalPublishedRowCount: number;
   removedPreferenceSubmissionCount: number;
   removedParticipationCount: number;
-  invalidatedAppliedPreferenceDraftCount: number;
+  staleAutoBuildScheduleCount: number;
+  scheduleOwnersTransferred: number;
+  certificationOwnersTransferred: number;
+  taskAssigneeTransferCount: number;
+  taskOrphanedCount: number;
+  taskSetterTransferCount: number;
+  checklistReservationsReleased: number;
+  remindersDetached: number;
 };
 
 export async function getEmployeeRemovalImpact(
@@ -177,51 +163,14 @@ export async function applyEmployeeRemoval(
   return data;
 }
 
-export async function getMemberResponsibilityHandoffOptions(
-  restaurantId: number,
-  memberId: number,
-): Promise<MemberResponsibilityHandoffOptionsDto> {
-  const { data } = await api.get<MemberResponsibilityHandoffOptionsDto>(
-    `/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff-options`,
-  );
-
-  return {
-    ...data,
-    groups: (data.groups ?? []).map((group) => ({
-      ...group,
-      items: (group.items ?? []).map((item) => ({
-        ...item,
-        candidates: item.candidates ?? [],
-      })),
-    })),
-  };
-}
-
-export async function submitMemberResponsibilityHandoff(
-  restaurantId: number,
-  memberId: number,
-  payload: MemberResponsibilityHandoffRequest,
-): Promise<void> {
-  await api.post(`/api/restaurants/${restaurantId}/members/${memberId}/responsibility-handoff`, payload);
-}
-
-export async function updateMemberRole(
-  restaurantId: number,
-  memberId: number,
-  role: RestaurantRole,
-): Promise<MemberDto> {
-  const { data } = await api.patch(`/api/restaurants/${restaurantId}/members/${memberId}/role`, {
-    role,
-  });
-  return data as MemberDto;
-}
-
 export type PositionChangeAction =
   | "ADD_TO_COLLECTION"
   | "DO_NOT_ADD"
   | "CHANGE_POSITION_AND_REOPEN_COLLECTION"
   | "CHANGE_POSITION_WITHOUT_ADDING_TO_THIS_SCHEDULE"
   | "REOPEN_AND_REBUILD_PREFERENCE_FLOW"
+  | "ADD_TO_DRAFT"
+  | "DO_NOT_ADD_TO_DRAFT"
   | "INFORMATION_ONLY";
 export type PositionChangeEligibilityProblem = "MISSING_PREFERENCE_MODE" | "MISSING_FROZEN_SHIFT_OPTIONS_FOR_POSITION";
 export type PositionChangePosition = { id: number; name: string };
@@ -251,7 +200,7 @@ export type OldPositionImpact = {
   preferenceSubmissionRevision: number | null;
   preferenceDataWillBeDeleted: boolean;
   progressDenominatorWillChange: boolean;
-  appliedDraftWillBeInvalidated: boolean;
+  autoBuildWillBecomeStale: boolean;
   activeRowWillBeRemoved: boolean;
   publishedRowBecomesHistorical: boolean;
   publishedShiftImpact: PublishedShiftImpact | null;
@@ -275,10 +224,27 @@ export type NewPositionOpportunity = {
   newDeadlineRequiredForReopen: boolean;
 };
 export type PositionChangeImpactPlan = {
+  taskOpportunities?: import("../tasks/api").TaskOpportunity[];
   calculatedAt: string;
   employee: PositionChangeEmployee;
   oldPositionImpacts: OldPositionImpact[];
   newPositionOpportunities: NewPositionOpportunity[];
+  currentPositionSnapshot: {
+    name: string;
+    level: "ADMIN" | "MANAGER" | "STAFF";
+    specializations: string[];
+    payType: string;
+    payRate: number | null;
+    normHours: number | null;
+  };
+  scheduleOwnershipState: { resourceId: number; version: number; ownerUserId: number }[];
+  certificationOwnershipState: { resourceId: number; version: number; ownerUserId: number }[];
+  targetPositionSnapshot: PositionChangeImpactPlan["currentPositionSnapshot"];
+  scheduleOwnership: EmployeeRemovalOwnershipResource[];
+  certificationOwnership: EmployeeRemovalOwnershipResource[];
+  taskSetters: EmployeeRemovalTaskResponsibility[];
+  certificationAudienceChanges: { certificationId: number; title: string; entersAudience: boolean }[];
+  reservationsToRelease: number;
 };
 export type ScheduleDecision = {
   scheduleId: number;
@@ -293,10 +259,18 @@ export type ScheduleDecision = {
   newDeadline: string | null;
 };
 export type ApplyPositionChangeRequest = {
+  taskDecisions?: import("../tasks/api").TaskAudienceDecision[];
   targetPositionId: number;
   expectedCurrentPositionId: number;
   expectedMemberCreatedAt: string;
   schedules: ScheduleDecision[];
+  expectedCurrentPosition: PositionChangeImpactPlan["currentPositionSnapshot"];
+  expectedScheduleOwnershipState: PositionChangeImpactPlan["scheduleOwnershipState"];
+  expectedCertificationOwnershipState: PositionChangeImpactPlan["certificationOwnershipState"];
+  expectedTargetPosition: PositionChangeImpactPlan["targetPositionSnapshot"];
+  scheduleOwnershipTransfers: EmployeeRemovalOwnershipTransfer[];
+  certificationOwnershipTransfers: EmployeeRemovalOwnershipTransfer[];
+  taskSetterTransfers: EmployeeRemovalTaskTransfer[];
 };
 export type ApplyPositionChangeResult = {
   member: MemberDto;

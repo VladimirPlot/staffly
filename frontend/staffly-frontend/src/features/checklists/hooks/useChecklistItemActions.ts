@@ -24,6 +24,7 @@ export function useChecklistItemActions({
   const [itemActionError, setItemActionError] = useState<string | null>(null);
   const [resetting, setResetting] = useState<number | null>(null);
   const [photoUploading, setPhotoUploading] = useState<Set<string>>(new Set());
+  const checklistLocks = useRef(new Set<number>());
   const errorTimeoutRef = useRef<number | null>(null);
 
   const reportItemActionError = useCallback((message: string | null) => {
@@ -54,7 +55,9 @@ export function useChecklistItemActions({
 
   const handleItemAction = useCallback(
     async (key: string, action: () => Promise<ChecklistDto>) => {
-      if (itemActionLoading.has(key)) return;
+      const checklistId = Number(key.split("-")[0]);
+      if (checklistLocks.current.has(checklistId)) return;
+      checklistLocks.current.add(checklistId);
       reportItemActionError(null);
       toggleItemAction(key, true);
       try {
@@ -63,16 +66,18 @@ export function useChecklistItemActions({
       } catch (e: any) {
         const status = e?.response?.status;
         if (status === 409 || status === 403) {
-          reportItemActionError("Пункт забронирован другим сотрудником");
+          reportItemActionError(e?.friendlyMessage || "Чек-лист изменился. Данные обновлены, повторите действие");
+          await reloadChecklists();
         } else {
           console.error("Failed to update checklist item", e);
           reportItemActionError(e?.friendlyMessage || "Не удалось обновить пункт");
         }
       } finally {
+        checklistLocks.current.delete(checklistId);
         toggleItemAction(key, false);
       }
     },
-    [itemActionLoading, reportItemActionError, toggleItemAction, updateChecklistInState],
+    [reportItemActionError, toggleItemAction, updateChecklistInState, reloadChecklists],
   );
 
   const togglePhotoUploading = useCallback((key: string, loading: boolean) => {
@@ -90,55 +95,76 @@ export function useChecklistItemActions({
   const handleCompletionPhotoUpload = useCallback(
     async (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => {
       const key = `${checklist.id}-${item.id}-completion-photo`;
-      if (photoUploading.has(key)) return;
+      if (checklistLocks.current.has(checklist.id)) return;
+      checklistLocks.current.add(checklist.id);
       reportItemActionError(null);
       togglePhotoUploading(key, true);
       try {
         const compressed = await compressImageFile(file);
-        const updated = await uploadChecklistItemCompletionPhoto(restaurantId, checklist.id, item.id, compressed);
+        const updated = await uploadChecklistItemCompletionPhoto(
+          restaurantId,
+          checklist.id,
+          item.id,
+          compressed,
+          checklist.version,
+        );
         updateChecklistInState(updated);
       } catch (e: any) {
         console.error("Failed to upload checklist item photo", e);
         reportItemActionError(e?.friendlyMessage || "Не удалось загрузить фото");
+        if (e?.response?.status === 409) await reloadChecklists();
       } finally {
+        checklistLocks.current.delete(checklist.id);
         togglePhotoUploading(key, false);
       }
     },
-    [photoUploading, reportItemActionError, restaurantId, togglePhotoUploading, updateChecklistInState],
+    [reportItemActionError, restaurantId, togglePhotoUploading, updateChecklistInState, reloadChecklists],
   );
 
   const handleCompletionPhotoDelete = useCallback(
     async (checklist: ChecklistDto, item: ChecklistItemDto) => {
       const key = `${checklist.id}-${item.id}-completion-photo`;
-      if (photoUploading.has(key)) return;
+      if (checklistLocks.current.has(checklist.id)) return;
+      checklistLocks.current.add(checklist.id);
       reportItemActionError(null);
       togglePhotoUploading(key, true);
       try {
-        const updated = await deleteChecklistItemCompletionPhoto(restaurantId, checklist.id, item.id);
+        const updated = await deleteChecklistItemCompletionPhoto(
+          restaurantId,
+          checklist.id,
+          item.id,
+          checklist.version,
+        );
         updateChecklistInState(updated);
       } catch (e: any) {
         console.error("Failed to delete checklist item photo", e);
         reportItemActionError(e?.friendlyMessage || "Не удалось удалить фото");
+        if (e?.response?.status === 409) await reloadChecklists();
       } finally {
+        checklistLocks.current.delete(checklist.id);
         togglePhotoUploading(key, false);
       }
     },
-    [photoUploading, reportItemActionError, restaurantId, togglePhotoUploading, updateChecklistInState],
+    [reportItemActionError, restaurantId, togglePhotoUploading, updateChecklistInState, reloadChecklists],
   );
 
   const handleReset = useCallback(
     async (checklist: ChecklistDto) => {
+      if (checklistLocks.current.has(checklist.id)) return;
+      checklistLocks.current.add(checklist.id);
       setResetting(checklist.id);
       try {
-        await resetChecklist(restaurantId, checklist.id);
+        await resetChecklist(restaurantId, checklist.id, checklist.version);
         await reloadChecklists();
-      } catch (e) {
-        console.error("Failed to reset checklist", e);
+      } catch (e: any) {
+        reportItemActionError(e?.friendlyMessage || "Не удалось сбросить чек-лист");
+        await reloadChecklists();
       } finally {
+        checklistLocks.current.delete(checklist.id);
         setResetting(null);
       }
     },
-    [restaurantId, reloadChecklists],
+    [restaurantId, reloadChecklists, reportItemActionError],
   );
 
   useEffect(() => {

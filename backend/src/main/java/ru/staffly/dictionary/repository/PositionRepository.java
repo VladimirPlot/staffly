@@ -11,6 +11,12 @@ import java.util.List;
 
 public interface PositionRepository extends JpaRepository<Position, Long> {
 
+    /** Writers lock before checking active occupants; admission holds the corresponding share lock. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Position p where p.id = :id and p.restaurant.id = :restaurantId")
+    java.util.Optional<Position> findForUpdateByIdAndRestaurantId(@Param("id") Long id,
+                                                                 @Param("restaurantId") Long restaurantId);
+
     @Lock(LockModeType.PESSIMISTIC_READ)
     @Query("select p from Position p where p.id = :id and p.restaurant.id = :restaurantId")
     java.util.Optional<Position> findForShareByIdAndRestaurantId(@Param("id") Long id,

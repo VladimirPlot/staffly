@@ -27,6 +27,13 @@ public class Checklist {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Aggregate revision advanced under the restaurant/parent locks, including item writes.
+    @Column(nullable = false)
+    private long version;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
     private Restaurant restaurant;

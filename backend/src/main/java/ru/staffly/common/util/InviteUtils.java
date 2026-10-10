@@ -30,11 +30,11 @@ public final class InviteUtils {
     }
 
     public static boolean isEmail(String s) {
-        return s != null && EMAIL.matcher(s.trim().toLowerCase()).matches();
+        return s != null && EMAIL.matcher(s.trim().toLowerCase(java.util.Locale.ROOT)).matches();
     }
 
     public static boolean isPhone(String s) {
-        return s != null && PHONE.matcher(s.trim()).matches();
+        return s != null && PHONE.matcher(normalizePhone(s)).matches();
     }
 
     /** Допускаем email ИЛИ телефон. */
@@ -43,11 +43,12 @@ public final class InviteUtils {
     }
 
     public static String normalizeEmail(String s) {
-        return s == null ? null : s.trim().toLowerCase();
+        return s == null ? null : s.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     public static String normalizePhone(String s) {
-        return s == null ? null : s.trim();
-        // при желании позже: убрать пробелы/дефисы, привести к E.164 и т.п.
+        if (s == null) return null;
+        String compact = s.trim().replaceAll("[\\s()\\-]", "");
+        return compact.startsWith("+") || compact.isEmpty() ? compact : "+" + compact;
     }
 }

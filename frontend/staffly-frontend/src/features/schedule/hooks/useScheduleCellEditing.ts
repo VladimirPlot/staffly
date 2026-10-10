@@ -3,6 +3,7 @@ import React from "react";
 import type { ScheduleCellChangeOptions, ScheduleCellKey, EditableScheduleData } from "../types";
 import { normalizeCellValue } from "../utils/cellFormatting";
 import { parseTimeRangeValue } from "../utils/timeValues";
+import { canEditScheduleCell } from "../utils/rowIdentity";
 
 type UseScheduleCellEditingParams = {
   onScheduleChanged: React.Dispatch<React.SetStateAction<EditableScheduleData | null>>;
@@ -12,7 +13,7 @@ export default function useScheduleCellEditing({ onScheduleChanged }: UseSchedul
   const changeCell = React.useCallback(
     (key: ScheduleCellKey, value: string, options?: ScheduleCellChangeOptions) => {
       onScheduleChanged((prev) => {
-        if (!prev) return prev;
+        if (!prev || !canEditScheduleCell(prev, key)) return prev;
         const nextValues = { ...prev.cellValues };
         const nextSources = { ...(prev.cellSources ?? {}) };
         const nextShifts = { ...(prev.cellShifts ?? {}) };

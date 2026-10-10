@@ -2,6 +2,8 @@ package ru.staffly.task.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import ru.staffly.task.model.Task;
 import ru.staffly.task.model.TaskStatus;
 
@@ -11,9 +13,19 @@ import java.util.Optional;
 
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
+    @Query("select t from Task t where t.restaurant.id = :restaurantId and t.deletedAt is null order by t.id")
+    List<Task> findBoard(Long restaurantId);
+    @Query("select t.id from Task t where t.deletedAt is null and t.status = ru.staffly.task.model.TaskStatus.ACTIVE and t.dueDate is not null")
+    List<Long> findOpenWithDeadline();
+
+    // Scalar lookup avoids caching a task snapshot before waiting on the lifecycle mutex.
+    @Query("select t.restaurant.id from Task t where t.id = :taskId and t.deletedAt is null")
+    Optional<Long> findRestaurantIdByActiveId(Long taskId);
+
     @Query("""
            select t from Task t
-           left join fetch t.assignedUser
+           left join fetch t.assignedMember am
+           left join fetch am.user
            left join fetch t.assignedPosition
            left join fetch t.createdBy
            where t.restaurant.id = :restaurantId
@@ -21,8 +33,10 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
              and (
                :viewAll = true
                or t.assignedToAll = true
-               or t.assignedUser.id = :userId
+               or t.assignedMember.id = :memberId
                or t.assignedPosition.id = :positionId
+               or (:positionId member of t.positionIds and t.audience = ru.staffly.task.model.TaskAudience.POSITIONS and t.completionMode = ru.staffly.task.model.TaskCompletionMode.ANY)
+               or exists (select p.id from TaskParticipant p where p.task = t and p.member.id = :memberId and p.active = true)
              )
              and (:status is null or t.status = :status)
              and (
@@ -40,7 +54,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
              t.dueDate
            """)
     List<Task> findActiveByFilters(Long restaurantId,
-                                   Long userId,
+                                   Long memberId,
                                    Long positionId,
                                    boolean viewAll,
                                    TaskStatus status,
@@ -49,11 +63,28 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     @Query("""
            select t from Task t
-           left join fetch t.assignedUser
+           left join fetch t.assignedMember am
+           left join fetch am.user
+           left join fetch t.setterMember sm
+           left join fetch sm.user
            left join fetch t.assignedPosition
            left join fetch t.createdBy
            where t.id = :taskId
              and t.deletedAt is null
            """)
     Optional<Task> findActiveById(Long taskId);
+
+    @Query("""
+           select distinct t from Task t
+           left join fetch t.assignedMember am left join fetch am.user
+           left join fetch t.setterMember sm left join fetch sm.user
+           where t.restaurant.id = :restaurantId and t.status = ru.staffly.task.model.TaskStatus.ACTIVE
+             and t.deletedAt is null and (am.id = :memberId or sm.id = :memberId)
+           order by t.id
+           """)
+    List<Task> findActiveResponsibilities(Long restaurantId, Long memberId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from Task t where t.restaurant.id = :restaurantId and t.id in :ids order by t.id")
+    List<Task> findAllForUpdate(Long restaurantId, List<Long> ids);
 }

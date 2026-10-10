@@ -23,6 +23,7 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
+import ru.staffly.member.repository.RestaurantMemberRepository;
 
 import java.util.Comparator;
 import java.util.List;
@@ -38,6 +39,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     private final PositionMapper positionMapper;
     private final ShiftMapper shiftMapper;
     private final SecurityService security;
+    private final RestaurantMemberRepository members;
 
     /* ===================== Positions ===================== */
 
@@ -102,7 +104,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     public PositionDto updatePosition(Long restaurantId, Long currentUserId, Long positionId, PositionDto dto) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
-        Position p = positions.findById(positionId)
+        Position p = positions.findForUpdateByIdAndRestaurantId(positionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
         if (!p.getRestaurant().getId().equals(restaurantId)) {
             throw new NotFoundException("Position not found in this restaurant");
@@ -126,6 +128,11 @@ public class DictionaryServiceImpl implements DictionaryService {
         Set<PositionSpecialization> specializations = dto.specializations() != null
                 ? PositionSpecializations.sortedCopy(dto.specializations())
                 : PositionSpecializations.sortedCopy(p.getSpecializations());
+        boolean permissionShapeChanged = newLevel != p.getLevel()
+                || !specializations.equals(PositionSpecializations.sortedCopy(p.getSpecializations()));
+        if (permissionShapeChanged && members.existsByPositionIdAndEndedAtIsNull(positionId)) {
+            throw new ConflictException("Нельзя изменить уровень доступа или специализации должности, пока на ней находятся сотрудники. Сначала переведите сотрудников на другие должности.");
+        }
         if (requestingSpecializationsWithoutAdmin(specializations, isAdmin)) {
             throw new ForbiddenException("Only admins can assign position specializations");
         }
@@ -153,7 +160,7 @@ public class DictionaryServiceImpl implements DictionaryService {
     public void deletePosition(Long restaurantId, Long currentUserId, Long positionId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
 
-        Position p = positions.findById(positionId)
+        Position p = positions.findForUpdateByIdAndRestaurantId(positionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Position not found: " + positionId));
         if (!p.getRestaurant().getId().equals(restaurantId)) {
             throw new NotFoundException("Position not found in this restaurant");

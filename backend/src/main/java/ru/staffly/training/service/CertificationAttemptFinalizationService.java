@@ -117,7 +117,7 @@ class CertificationAttemptFinalizationService {
         if (!attempt.isPositionAtStartCaptured()) {
             return false;
         }
-        Long currentPositionId = members.findByUserIdAndRestaurantIdWithPosition(
+        Long currentPositionId = members.findActiveByUserIdAndRestaurantIdWithPosition(
                         attempt.getUser().getId(), attempt.getRestaurant().getId())
                 .map(member -> member.getPosition() == null ? null : member.getPosition().getId())
                 .orElse(null);

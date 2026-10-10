@@ -25,23 +25,9 @@ public class RestaurantController {
     // только СОЗДАТЕЛЬ
     @PreAuthorize("hasRole('CREATOR')")
     @PostMapping
-    public RestaurantDto create(@AuthenticationPrincipal UserPrincipal principal,
-                                @RequestBody @Valid CreateRestaurantRequest req) {
-        // 1) создаём ресторан (код либо из req, либо сгенерируем уникальный)
-        Restaurant saved = service.create(req);
-        // 2) сразу делаем текущего пользователя (CREATOR) админом этого ресторана
-        service.assignAdmin(saved.getId(), principal.userId());
-        // 3) возвращаем созданный ресторан
-        return RestaurantDto.from(saved);
-    }
-
-    // только СОЗДАТЕЛЬ — назначить существующего пользователя как ADMIN
-    public record AssignAdminRequest(Long userId) {}
-
-    @PreAuthorize("hasRole('CREATOR')")
-    @PostMapping("/{restaurantId}/members/assign-admin")
-    public void assignAdmin(@PathVariable Long restaurantId, @RequestBody AssignAdminRequest req) {
-        service.assignAdmin(restaurantId, req.userId());
+    public RestaurantDto create(@RequestBody @Valid CreateRestaurantRequest req) {
+        // CREATOR has global access; restaurant creation must not create an employee membership.
+        return RestaurantDto.from(service.create(req));
     }
 
     @PreAuthorize("@securityService.isMember(principal.userId, #id)")

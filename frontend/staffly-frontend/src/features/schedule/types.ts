@@ -32,6 +32,8 @@ export type ScheduleLifecycleFields = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  autoBuildStaleAt?: string | null;
+  autoBuildStaleReason?: "MEMBER_TERMINATED" | "MEMBER_POSITION_CHANGED" | null;
   preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
 };
@@ -74,6 +76,7 @@ export type ScheduleDay = {
 
 export type ScheduleRow = {
   id?: number;
+  historical?: boolean;
   memberId: number;
   member?: MemberDto;
   displayName: string;
@@ -89,6 +92,8 @@ export type ScheduleData = {
   preferenceDeadline?: string | null;
   preferenceClosedAt?: string | null;
   preferenceAppliedAt?: string | null;
+  autoBuildStaleAt?: string | null;
+  autoBuildStaleReason?: "MEMBER_TERMINATED" | "MEMBER_POSITION_CHANGED" | null;
   preferenceCollectionMode?: PreferenceCollectionMode | null;
   preferenceBuildTemplateId?: number | null;
   title: string;

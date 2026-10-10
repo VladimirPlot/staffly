@@ -2,6 +2,9 @@ package ru.staffly.checklist.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -10,7 +13,7 @@ public record ChecklistRequest(
         @Size(max = 200, message = "Название не должно превышать 200 символов")
         String name,
 
-        String content,
+        @Size(max = 100000) String content,
 
         String kind,
 
@@ -22,10 +25,10 @@ public record ChecklistRequest(
 
         Integer resetDayOfMonth,
 
-        List<String> items,
+        @Size(max = 300) List<@NotBlank @Size(max = 4000) String> items,
 
-        List<ChecklistItemRequest> itemDetails,
+        @Size(max = 300) List<@NotNull @Valid ChecklistItemRequest> itemDetails,
 
-        List<Long> positionIds
+        @NotNull @Size(min = 1, max = 100) List<@NotNull @Positive Long> positionIds
 ) {
 }

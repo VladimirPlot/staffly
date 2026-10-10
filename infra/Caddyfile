@@ -1,5 +1,7 @@
 staffly.store, www.staffly.store {
   handle /api/* {
+    # Readiness is only for probes/operators inside the backend container.
+    respond /api/ready* 404
     reverse_proxy backend:8080
   }
 

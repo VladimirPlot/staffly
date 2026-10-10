@@ -43,7 +43,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
     @Transactional(Transactional.TxType.SUPPORTS)
     public List<AnonymousLetterSummaryDto> list(Long restaurantId, Long currentUserId) {
         security.assertMember(currentUserId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         if (member.getRole() == RestaurantRole.ADMIN) {
@@ -63,7 +63,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
     @Transactional
     public AnonymousLetterDto get(Long restaurantId, Long currentUserId, Long letterId) {
         security.assertMember(currentUserId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         AnonymousLetter letter = letters.findByIdAndRestaurantId(letterId, restaurantId)
@@ -91,7 +91,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
     @Transactional
     public AnonymousLetterDto create(Long restaurantId, Long currentUserId, AnonymousLetterRequest request) {
         security.assertMember(currentUserId, restaurantId);
-        RestaurantMember senderMember = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember senderMember = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         if (senderMember.getRole() == RestaurantRole.ADMIN) {
@@ -103,7 +103,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
         User sender = users.findById(currentUserId)
                 .orElseThrow(() -> new NotFoundException("User not found: " + currentUserId));
 
-        RestaurantMember recipient = members.findById(request.recipientMemberId())
+        RestaurantMember recipient = members.findByIdAndEndedAtIsNull(request.recipientMemberId())
                 .orElseThrow(() -> new BadRequestException("Получатель не найден"));
         if (!recipient.getRestaurant().getId().equals(restaurantId)) {
             throw new BadRequestException("Получатель принадлежит другому ресторану");
@@ -146,7 +146,7 @@ public class AnonymousLetterServiceImpl implements AnonymousLetterService {
     @Transactional(Transactional.TxType.SUPPORTS)
     public UnreadLettersDto hasUnread(Long restaurantId, Long currentUserId) {
         security.assertAdmin(currentUserId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(currentUserId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(currentUserId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
         long unread = letters.countByRestaurantIdAndRecipientIdAndReadAtIsNull(restaurantId, member.getId());
         return new UnreadLettersDto(unread > 0);

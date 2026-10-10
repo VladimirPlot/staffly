@@ -3,6 +3,8 @@ package ru.staffly.inbox.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import ru.staffly.inbox.model.InboxMessage;
 import ru.staffly.inbox.model.InboxMessageType;
 
@@ -28,21 +30,11 @@ public interface InboxMessageRepository extends JpaRepository<InboxMessage, Long
 
     List<InboxMessage> findByRestaurantIdAndTypeOrderByCreatedAtDesc(Long restaurantId, InboxMessageType type);
 
+    Page<InboxMessage> findByRestaurantIdAndType(Long restaurantId, InboxMessageType type, Pageable pageable);
+
     boolean existsByRestaurantIdAndTypeAndMeta(Long restaurantId, InboxMessageType type, String meta);
 
     Optional<InboxMessage> findByRestaurantIdAndTypeAndMeta(Long restaurantId, InboxMessageType type, String meta);
-
-    @Query("""
-        select m.id from InboxMessage m
-        where m.type = :type
-          and m.restaurant.id = :restaurantId
-          and ((m.expiresAt is not null and m.expiresAt < :expiresBefore)
-            or (m.expiresAt is null and m.createdAt < :createdBefore))
-        """)
-    List<Long> findAnnouncementIdsForCleanup(@Param("type") InboxMessageType type,
-                                             @Param("restaurantId") Long restaurantId,
-                                             @Param("expiresBefore") LocalDate expiresBefore,
-                                             @Param("createdBefore") Instant createdBefore);
 
     @Query("""
         select m.id from InboxMessage m

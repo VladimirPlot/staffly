@@ -113,6 +113,8 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
 
         schedule.setStatus(ScheduleStatus.DRAFT_FROM_PREFERENCES);
         schedule.setPreferenceAppliedAt(TimeProvider.now());
+        schedule.setAutoBuildStaleAt(null);
+        schedule.setAutoBuildStaleReason(null);
         Schedule saved = schedules.saveAndFlush(schedule);
 
         scheduleAuditService.record(
@@ -146,7 +148,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
             throw new BadRequestException("Переданный предпросмотр не содержит назначений");
         }
 
-        Map<Long, RestaurantMember> membersById = members.findWithUserByRestaurantId(restaurantId).stream()
+        Map<Long, RestaurantMember> membersById = members.findActiveWithUserByRestaurantId(restaurantId).stream()
                 .collect(Collectors.toMap(RestaurantMember::getId, member -> member));
         Map<Long, Long> participationPositionByMember = loadParticipationPositionByMember(schedule);
         Map<Long, ScheduleBuildPositionConfig> configsById = configsById(template);
@@ -358,7 +360,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
     private Map<Long, ScheduleRow> indexRowsByMember(Schedule schedule) {
         Map<Long, ScheduleRow> rowsByMember = new HashMap<>();
         for (ScheduleRow row : schedule.getRows()) {
-            if (row.getMemberId() != null) {
+            if (row.getMemberId() != null && !row.isHistorical()) {
                 rowsByMember.put(row.getMemberId(), row);
             }
         }
@@ -539,6 +541,7 @@ public class ScheduleAutoBuildApplyServiceImpl implements ScheduleAutoBuildApply
         LocalDate end = schedule.getEndDate();
 
         for (ScheduleRow row : schedule.getRows()) {
+            if (row.isHistorical()) continue;
             Long currentPositionId = row.getMemberId() == null
                     ? null
                     : participationPositionByMember.get(row.getMemberId());

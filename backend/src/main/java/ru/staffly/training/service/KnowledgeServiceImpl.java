@@ -43,6 +43,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional(readOnly = true)
     @Override
     public List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         boolean canManageTraining = trainingPolicyService.canManageTraining(userId, restaurantId);
         var entities = includeInactive && canManageTraining
                 ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, type)
@@ -63,6 +64,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, Long userId, TrainingExamMode mode, boolean includeInactive) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         var foldersList = folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, TrainingFolderType.QUESTION_BANK);
         var visibleFolders = foldersList.stream()
                 .filter(folder -> includeInactive || folder.isActive())
@@ -106,6 +108,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public TrainingFolderDto createFolder(Long restaurantId, Long userId, CreateTrainingFolderRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         TrainingFolder parent = resolveParentFolder(restaurantId, userId, request.parentId(), request.type());
         requireActiveParent(parent);
         assertCanUseVisibilityPositions(userId, restaurantId, request.type(), request.visibilityPositionIds());
@@ -269,6 +272,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Override
     @Transactional
     public void reorderObjects(Long restaurantId, Long userId, ReorderTrainingObjectsRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         TrainingFolder parent = request.folderId() == null ? null : requireManageableFolder(restaurantId, userId, request.folderId(), request.type());
         requireActiveParent(parent);
 
@@ -357,6 +361,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public List<TrainingKnowledgeItemDto> listKnowledgeItems(Long restaurantId, Long userId, Long folderId, boolean includeInactive) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         boolean canManageTraining = trainingPolicyService.canManageTraining(userId, restaurantId);
         if (folderId != null) {
             requireAccessibleKnowledgeFolder(restaurantId, userId, folderId);
@@ -367,6 +372,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
     @Override
     public TrainingKnowledgeItemDto createKnowledgeItem(Long restaurantId, Long userId, CreateTrainingKnowledgeItemRequest request) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         TrainingFolder folder = request.folderId() == null
                 ? null
                 : requireManageableKnowledgeFolder(restaurantId, userId, request.folderId());
@@ -613,6 +619,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private TrainingKnowledgeItem requireManageableKnowledgeItem(Long restaurantId, Long userId, Long itemId) {
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         var item = items.findByIdAndRestaurantId(itemId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Knowledge item not found"));
         if (item.getFolder() != null) {

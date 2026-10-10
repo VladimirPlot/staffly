@@ -2,8 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { randomUUID } from "node:crypto";
+
+const buildId = randomUUID();
 
 export default defineConfig({
+  define: { __APP_BUILD_ID__: JSON.stringify(buildId) },
   server: {
     host: true,
     proxy: {
@@ -18,6 +22,12 @@ export default defineConfig({
   },
 
   plugins: [
+    {
+      name: "staffly-version",
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ buildId }) });
+      },
+    },
     react(),
     tailwindcss(),
     VitePWA({
@@ -25,6 +35,7 @@ export default defineConfig({
       srcDir: "src",
       filename: "sw.js",
       registerType: "prompt",
+      injectRegister: false,
 
       manifest: {
         id: "/", // убирает warning в DevTools
@@ -49,6 +60,7 @@ export default defineConfig({
 
       injectManifest: {
         swSrc: "src/sw.ts",
+        globIgnores: ["**/version.json"],
       },
     }),
   ],
@@ -62,9 +74,6 @@ export default defineConfig({
 
           // 🔹 иконки (lucide реально много весит)
           icons: ["lucide-react"],
-
-          // 🔹 PWA / register (если будет использован в app-коде)
-          pwa: ["virtual:pwa-register"],
         },
       },
     },

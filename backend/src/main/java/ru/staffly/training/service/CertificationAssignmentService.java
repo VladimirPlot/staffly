@@ -494,7 +494,7 @@ class CertificationAssignmentService {
         var assignment = lockCurrentForMutation(restaurantId, examId, userId);
         validateAudienceAndState(assignment, true);
 
-        var memberPosition = members.findByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
+        var memberPosition = members.findActiveByUserIdAndRestaurantIdWithPosition(userId, restaurantId)
                 .map(RestaurantMember::getPosition)
                 .orElse(assignment.getAssignedPosition());
         var latestSpecification = specificationService.requireCurrent(assignment.getExam());
@@ -592,14 +592,18 @@ class CertificationAssignmentService {
         return assignment.getAttemptsLimitSnapshot() + assignment.getExtraAttempts();
     }
 
+    public static boolean isPositionInAudience(TrainingExam exam, Long positionId) {
+        return positionId != null && exam.getVisibilityPositions().stream().anyMatch(p -> positionId.equals(p.getId()));
+    }
+
     private List<RestaurantMember> resolveAudienceMembers(TrainingExam exam) {
-        var allMembers = members.findWithUserAndPositionByRestaurantId(exam.getRestaurant().getId());
+        var allMembers = members.findActiveWithUserAndPositionByRestaurantId(exam.getRestaurant().getId());
         var visibilityPositionIds = exam.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet());
         if (visibilityPositionIds.isEmpty()) {
             return List.of();
         }
         return allMembers.stream()
-                .filter(member -> member.getPosition() != null && visibilityPositionIds.contains(member.getPosition().getId()))
+                .filter(member -> member.getPosition() != null && isPositionInAudience(exam, member.getPosition().getId()))
                 .toList();
     }
 

@@ -11,6 +11,34 @@ import java.util.Optional;
 
 public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
+    @Query("""
+            select distinct r from Reminder r left join r.targetMembers tm left join r.targetMember legacy
+            where r.targetType = ru.staffly.reminder.model.ReminderTargetType.MEMBER
+              and (legacy.id = :memberId or tm.id = :memberId)
+            """)
+    List<Reminder> findTargetingMember(@Param("memberId") Long memberId);
+
+    default int countByTargetMemberId(Long memberId) {
+        return findTargetingMember(memberId).size();
+    }
+
+    default int detachPersonalTarget(Long memberId, Instant now) {
+        List<Reminder> affected = findTargetingMember(memberId);
+        for (Reminder reminder : affected) {
+            reminder.getTargetMembers().removeIf(member -> memberId.equals(member.getId()));
+            if (reminder.getTargetMember() != null && memberId.equals(reminder.getTargetMember().getId())) {
+                reminder.setTargetMember(null);
+            }
+            if (reminder.effectiveMembers().isEmpty()) {
+                reminder.setActive(false);
+                reminder.setNextFireAt(null);
+            }
+            reminder.setUpdatedAt(now);
+        }
+        saveAll(affected);
+        return affected.size();
+    }
+
     Optional<Reminder> findByIdAndRestaurantId(Long id, Long restaurantId);
 
     @Query("""

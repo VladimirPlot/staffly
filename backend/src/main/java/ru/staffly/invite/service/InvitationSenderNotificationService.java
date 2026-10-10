@@ -100,7 +100,7 @@ public class InvitationSenderNotificationService {
                 restaurant.getId(), "invitation.restaurant.id is required");
         Long senderUserId = Objects.requireNonNull(sender.getId(), "sender.id is required");
         try {
-            RestaurantMember recipient = members.findWithUserByUserIdAndRestaurantId(
+            RestaurantMember recipient = members.findActiveWithUserByUserIdAndRestaurantId(
                     senderUserId, restaurantId).orElse(null);
             if (recipient == null) {
                 log.warn("Skipping invitation outcome notification: sender is not a current member "

@@ -1,5 +1,5 @@
 import type { ChecklistDto, ChecklistItemDto, ChecklistKind } from "../api";
-import type { ChecklistItemGroups, ChecklistItemSectionKey, ChecklistWorkSummary } from "../types";
+import type { ChecklistItemGroups, ChecklistWorkSummary } from "../types";
 
 export function groupChecklistItems(items: ChecklistItemDto[]): ChecklistItemGroups {
   const groups: ChecklistItemGroups = {
@@ -23,13 +23,6 @@ export function groupChecklistItems(items: ChecklistItemDto[]): ChecklistItemGro
   });
 
   return groups;
-}
-
-export function getInitialItemTab(groups: ChecklistItemGroups): ChecklistItemSectionKey {
-  if (groups.available.length > 0) return "available";
-  if (groups.reserved.length > 0) return "reserved";
-  if (groups.done.length > 0) return "done";
-  return "available";
 }
 
 export function getChecklistItemTotal(groups: ChecklistItemGroups): number {

@@ -17,6 +17,9 @@ import java.time.Instant;
         })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Invitation {
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name="task_decisions", columnDefinition="jsonb") @Builder.Default
+    private java.util.List<ru.staffly.task.dto.TaskAudienceDecision> taskDecisions = new java.util.ArrayList<>();
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,6 +33,13 @@ public class Invitation {
     // Телефон или email, как в миграции
     @Column(name = "phone_or_email", nullable = false, length = 255)
     private String phoneOrEmail;
+
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "position_snapshot", columnDefinition = "jsonb", updatable = false)
+    private AdmissionPositionSnapshot positionSnapshot;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "accepted_member_id")
+    private ru.staffly.member.model.RestaurantMember acceptedMember;
 
     // Уникальный токен
     @Column(nullable = false, length = 64, unique = true)
@@ -58,6 +68,7 @@ public class Invitation {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "desired_role", nullable = false, length = 20)
+    /** Legacy/display snapshot, not authority: access is derived from Position.level. */
     private RestaurantRole desiredRole;
 
     @ManyToOne(fetch = FetchType.LAZY)

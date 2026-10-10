@@ -44,6 +44,19 @@ public class InvitationAcceptanceOwnerNotificationService {
                 .sorted(Comparator.comparing(AppliedCertificationAudienceEffect::certificationId))
                 .toList();
 
+        // New obligations retain the normal employee notification, with the admission operation identity.
+        var newRequirements = certificationEffects.stream()
+                .filter(effect -> effect.effectType() == ru.staffly.training.dto.CertificationAudienceEffectType.CREATED)
+                .toList();
+        if (!newRequirements.isEmpty()) {
+            String content = "Вам назначили аттестации:\n" + newRequirements.stream()
+                    .map(effect -> "• " + effect.certificationTitle()).collect(Collectors.joining("\n"));
+            afterCommit.submit(List.of(new BusinessNotificationCommand(acceptedMember.getRestaurant(), operationId,
+                    acceptedMember, null, BusinessNotificationKind.CERTIFICATION, content, content,
+                    Map.of("resourceIds", newRequirements.stream().map(AppliedCertificationAudienceEffect::certificationId).toList(),
+                            "memberId", acceptedMember.getId()), null)));
+        }
+
         var ownerUserIds = new java.util.HashSet<Long>();
         schedules.forEach(effect -> ownerUserIds.add(effect.ownerUserId()));
         certifications.forEach(effect -> ownerUserIds.add(effect.ownerUserId()));
@@ -52,7 +65,7 @@ public class InvitationAcceptanceOwnerNotificationService {
         }
         Long restaurantId = acceptedMember.getRestaurant().getId();
         Map<Long, RestaurantMember> recipients = members
-                .findByRestaurantIdAndUserIdIn(restaurantId, ownerUserIds).stream()
+                .findActiveByRestaurantIdAndUserIdIn(restaurantId, ownerUserIds).stream()
                 .filter(member -> member.getUser() != null)
                 .collect(Collectors.toMap(member -> member.getUser().getId(), Function.identity(), (a, b) -> a));
         ownerUserIds.stream().filter(id -> !recipients.containsKey(id)).forEach(id ->

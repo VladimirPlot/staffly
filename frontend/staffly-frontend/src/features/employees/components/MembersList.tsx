@@ -8,6 +8,7 @@ type MembersListProps = {
   loading: boolean;
   error: string | null;
   canEditMembers: boolean;
+  canEditMember: (member: MemberDto) => boolean;
   isSavingEditMemberId: number | null;
   isRemovingMemberId: number | null;
   canRemoveMember: (member: MemberDto) => boolean;
@@ -22,6 +23,7 @@ export default function MembersList({
   loading,
   error,
   canEditMembers,
+  canEditMember,
   isSavingEditMemberId,
   isRemovingMemberId,
   canRemoveMember,
@@ -45,7 +47,7 @@ export default function MembersList({
         <MemberRow
           key={member.id}
           member={member}
-          canEditMembers={canEditMembers}
+          canEditMembers={canEditMembers && canEditMember(member)}
           canRemove={canRemoveMember(member)}
           isSavingEdit={isSavingEditMemberId === member.id}
           isRemoving={isRemovingMemberId === member.id}

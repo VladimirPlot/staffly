@@ -1,6 +1,7 @@
 package ru.staffly.inbox.service;
 
 import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +28,7 @@ import ru.staffly.user.model.User;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +45,7 @@ public class InboxService {
     private final RestaurantMemberRepository members;
     private final SecurityService security;
     private final RestaurantTimeService restaurantTime;
+    private final ObjectMapper json;
 
     @Transactional(readOnly = true)
     public InboxPageDto list(Long restaurantId,
@@ -52,7 +55,7 @@ public class InboxService {
                              int page,
                              int size) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         LocalDate today = restaurantTime.today(restaurantId);
@@ -83,7 +86,7 @@ public class InboxService {
     @Transactional(readOnly = true)
     public InboxUnreadCountDto unreadCount(Long restaurantId, Long userId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         LocalDate today = restaurantTime.today(restaurantId);
@@ -102,7 +105,7 @@ public class InboxService {
     @Transactional(readOnly = true)
     public InboxMarkerDto markers(Long restaurantId, Long userId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         LocalDate today = restaurantTime.today(restaurantId);
@@ -119,7 +122,7 @@ public class InboxService {
     @Transactional
     public void markRead(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);
@@ -135,7 +138,7 @@ public class InboxService {
     @Transactional
     public void hide(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);
@@ -151,7 +154,7 @@ public class InboxService {
     @Transactional
     public void restore(Long restaurantId, Long userId, Long messageId) {
         security.assertMember(userId, restaurantId);
-        RestaurantMember member = members.findByUserIdAndRestaurantId(userId, restaurantId)
+        RestaurantMember member = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new ForbiddenException("Нет доступа к ресторану"));
 
         InboxRecipient recipient = recipients.findByMessageIdAndMemberId(messageId, member.getId()).orElse(null);
@@ -173,6 +176,13 @@ public class InboxService {
                 creator.getFirstName(),
                 creator.getLastName()
         );
+        if (message.getType() == InboxMessageType.ANNOUNCEMENT) {
+            var raw = message.getMetadata().get("announcement");
+            if (raw != null) {
+                var saved = json.convertValue(raw, Map.class).get("author");
+                author = saved == null ? null : json.convertValue(saved, InboxAuthorDto.class);
+            }
+        }
 
         boolean expired = message.getExpiresAt() != null && message.getExpiresAt().isBefore(today);
 
@@ -184,7 +194,7 @@ public class InboxService {
                 message.getExpiresAt(),
                 message.getCreatedAt(),
                 author,
-                message.getMetadata(),
+                message.getType() == InboxMessageType.ANNOUNCEMENT ? Map.of() : message.getMetadata(),
                 recipient.getReadAt() != null,
                 recipient.getArchivedAt() != null,
                 expired

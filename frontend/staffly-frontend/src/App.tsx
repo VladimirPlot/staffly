@@ -82,7 +82,7 @@ const AnonymousLettersPage = React.lazy(
   () => import("./features/anonymousLetters/pages/AnonymousLettersPage"),
 );
 const PushRedirectPage = React.lazy(() => import("./features/push/pages/PushRedirectPage"));
-const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksPage"));
+const TasksPage = React.lazy(() => import("./features/tasks/pages/TasksBoardPage"));
 const GamesPage = React.lazy(() => import("./features/games/pages/GamesPage"));
 const AliasPage = React.lazy(() => import("./features/games/pages/AliasPage"));
 const InventoriesPage = React.lazy(() => import("./features/inventories/pages/InventoriesPage"));

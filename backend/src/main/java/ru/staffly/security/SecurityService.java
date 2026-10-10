@@ -32,14 +32,14 @@ public class SecurityService {
     public boolean isMember(Long userId, Long restaurantId) {
         if (isCreator()) return true;
         if (isLocked(restaurantId)) return false;
-        return members.findByUserIdAndRestaurantId(userId, restaurantId).isPresent();
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent();
     }
 
     /** Является ли ADMIN */
     public boolean isAdmin(Long userId, Long restaurantId) {
         if (isCreator()) return true;
         if (isLocked(restaurantId)) return false;
-        return members.findByUserIdAndRestaurantId(userId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .map(RestaurantMember::getRole)
                 .map(role -> role == RestaurantRole.ADMIN)
                 .orElse(false);
@@ -49,7 +49,7 @@ public class SecurityService {
     public boolean hasAtLeastManager(Long userId, Long restaurantId) {
         if (isCreator()) return true;
         if (isLocked(restaurantId)) return false;
-        return members.findByUserIdAndRestaurantId(userId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .map(RestaurantMember::getRole)
                 .map(role -> role == RestaurantRole.ADMIN || role == RestaurantRole.MANAGER)
                 .orElse(false);
@@ -66,8 +66,13 @@ public class SecurityService {
         if (!isCreator() && isLocked(restaurantId)) throw new ForbiddenException("Restaurant is locked");
         if (!isAdmin(userId, restaurantId)) throw new ForbiddenException("Admin required"); }
 
+    /** Global CREATOR authority is exempt from the restaurant lock. */
+    public boolean isRestaurantUnlocked(Long restaurantId) {
+        return isCreator() || !isLocked(restaurantId);
+    }
+
     public void assertRestaurantUnlocked(Long userId, Long restaurantId) {
-        if (!isCreator() && isLocked(restaurantId)) {
+        if (!isRestaurantUnlocked(restaurantId)) {
             throw new ForbiddenException("Restaurant is locked");
         }
     }

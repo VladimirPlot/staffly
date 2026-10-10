@@ -4,14 +4,14 @@ server:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:dev-very-secret-key-change-me}
+    secret: ${JWT_SECRET}
   auth:
     access-ttl-minutes: ${ACCESS_TTL_MINUTES:15}
     refresh-ttl-days: ${REFRESH_TTL_DAYS:30}
     refresh-cookie-name: "refreshToken"
     refresh-cookie-path: "/api/auth"
   creator:
-    phones: "+79999999999"
+    phones: ${CREATOR_PHONES}
   hide-creator-emails:
     - admin@staffly.local
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
@@ -43,7 +43,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/staffly}
     username: ${DB_USER:app}
-    password: ${DB_PASSWORD:app}
+    password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 10
 

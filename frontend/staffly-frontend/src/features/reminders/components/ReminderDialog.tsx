@@ -8,6 +8,8 @@ import type { ReminderPeriodicity, ReminderRequest, ReminderTargetType } from ".
 import type { PositionDto } from "../../dictionaries/api";
 import type { MemberDto } from "../../employees/api";
 import TimeSelect from "./TimeSelect";
+import AnnouncementRecipientPicker from "../../announcements/AnnouncementRecipientPicker";
+import { DETACHED_REMINDER_MESSAGE } from "../reminderTarget";
 
 type ReminderDialogInitial = {
   title: string;
@@ -16,6 +18,8 @@ type ReminderDialogInitial = {
   targetType?: ReminderTargetType;
   targetPositionId?: number | null;
   targetMemberId?: number | null;
+  targetPositionIds?: number[];
+  targetMemberIds?: number[];
   periodicity: ReminderPeriodicity;
   time: string;
   dayOfWeek?: number | null;
@@ -66,48 +70,67 @@ const ReminderDialog = ({
   onClose,
   onSubmit,
 }: ReminderDialogProps) => {
-  const [targetSelection, setTargetSelection] = useState<"ALL" | "POSITION" | "ME">("ALL");
+  const initialMemberIds = useMemo(
+    () => initialData?.targetMemberIds ?? (initialData?.targetMemberId ? [initialData.targetMemberId] : []),
+    [initialData],
+  );
+  const initialPositionIds = useMemo(
+    () => initialData?.targetPositionIds ?? (initialData?.targetPositionId ? [initialData.targetPositionId] : []),
+    [initialData],
+  );
+  const detachedInitial = initialData?.targetType === "MEMBER" && initialMemberIds.length === 0;
+  const initialSelf =
+    initialData?.targetType === "MEMBER" && initialMemberIds.length === 1 && initialMemberIds[0] === currentMemberId;
+  const resolvedInitialPositions = useMemo(
+    () =>
+      initialPositionIds.length
+        ? initialPositionIds
+        : [
+            ...new Set(
+              members
+                .filter((member) => initialMemberIds.includes(member.id))
+                .flatMap((member) => (member.positionId ? [member.positionId] : [])),
+            ),
+          ],
+    [initialPositionIds, initialMemberIds, members],
+  );
+  const [targetSelection, setTargetSelection] = useState<"ALL" | "POSITION" | "ME" | "DETACHED">(
+    detachedInitial
+      ? "DETACHED"
+      : initialSelf
+        ? "ME"
+        : initialData?.targetType && initialData.targetType !== "ALL"
+          ? "POSITION"
+          : "ALL",
+  );
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [description, setDescription] = useState(initialData?.description ?? "");
-  const [periodicity, setPeriodicity] = useState<ReminderPeriodicity>(
-    initialData?.periodicity ?? "DAILY"
-  );
-  const [hour, setHour] = useState<number | "">(
-    initialData?.time ? Number(initialData.time.split(":")[0]) : ""
-  );
-  const [minute, setMinute] = useState<number | "">(
-    initialData?.time ? Number(initialData.time.split(":")[1]) : ""
-  );
-  const [dayOfWeek, setDayOfWeek] = useState<number | "">(
-    initialData?.dayOfWeek ?? ""
-  );
-  const [dayOfMonth, setDayOfMonth] = useState<number | "">(
-    initialData?.dayOfMonth ?? ""
-  );
-  const [monthlyLastDay, setMonthlyLastDay] = useState<boolean>(
-    initialData?.monthlyLastDay ?? false
-  );
+  const [periodicity, setPeriodicity] = useState<ReminderPeriodicity>(initialData?.periodicity ?? "DAILY");
+  const [hour, setHour] = useState<number | "">(initialData?.time ? Number(initialData.time.split(":")[0]) : "");
+  const [minute, setMinute] = useState<number | "">(initialData?.time ? Number(initialData.time.split(":")[1]) : "");
+  const [dayOfWeek, setDayOfWeek] = useState<number | "">(initialData?.dayOfWeek ?? "");
+  const [dayOfMonth, setDayOfMonth] = useState<number | "">(initialData?.dayOfMonth ?? "");
+  const [monthlyLastDay, setMonthlyLastDay] = useState<boolean>(initialData?.monthlyLastDay ?? false);
   const [onceDate, setOnceDate] = useState(initialData?.onceDate ?? "");
-  const [visibleToAdmin, setVisibleToAdmin] = useState(
-    initialData?.visibleToAdmin ?? true
-  );
-  const [positionId, setPositionId] = useState<number | null>(
-    initialData?.targetPositionId ?? null
-  );
-  const [memberId, setMemberId] = useState<number | null>(
-    initialData?.targetMemberId ?? null
-  );
+  const [visibleToAdmin, setVisibleToAdmin] = useState(initialData?.visibleToAdmin ?? true);
+  const [positionIds, setPositionIds] = useState<number[]>(resolvedInitialPositions);
+  const [memberIds, setMemberIds] = useState<number[]>(initialMemberIds);
+  const [specificMembers, setSpecificMembers] = useState(initialData?.targetType === "MEMBER");
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const initialTargetType = initialData?.targetType;
     const isSelfTarget =
-      initialTargetType === "MEMBER" &&
-      Boolean(initialData?.targetMemberId) &&
-      initialData?.targetMemberId === currentMemberId;
+      initialTargetType === "MEMBER" && initialMemberIds.length === 1 && initialMemberIds[0] === currentMemberId;
     setTargetSelection(
-      initialTargetType === "ALL" ? "ALL" : isSelfTarget ? "ME" : "POSITION"
+      detachedInitial
+        ? "DETACHED"
+        : !initialTargetType || initialTargetType === "ALL"
+          ? "ALL"
+          : isSelfTarget
+            ? "ME"
+            : "POSITION",
     );
     setTitle(initialData?.title ?? "");
     setDescription(initialData?.description ?? "");
@@ -119,15 +142,11 @@ const ReminderDialog = ({
     setMonthlyLastDay(initialData?.monthlyLastDay ?? false);
     setOnceDate(initialData?.onceDate ?? "");
     setVisibleToAdmin(initialData?.visibleToAdmin ?? true);
-    const resolvedMemberId = initialData?.targetMemberId ?? null;
-    const resolvedPositionId =
-      initialData?.targetPositionId ??
-      members.find((member) => member.id === resolvedMemberId)?.positionId ??
-      null;
-    setPositionId(resolvedPositionId);
-    setMemberId(isSelfTarget ? null : resolvedMemberId);
+    setPositionIds(resolvedInitialPositions);
+    setMemberIds(isSelfTarget ? [] : initialMemberIds);
+    setSpecificMembers(initialTargetType === "MEMBER");
     setLocalError(null);
-  }, [open, initialData, currentMemberId, members]);
+  }, [open, initialData, currentMemberId, initialMemberIds, resolvedInitialPositions, detachedInitial]);
 
   useEffect(() => {
     if (periodicity !== "MONTHLY") {
@@ -149,38 +168,46 @@ const ReminderDialog = ({
     return `${year}-${month}-${day}`;
   }, []);
 
-  const positionOptions = useMemo(
-    () => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")),
-    [positions]
-  );
+  const positionOptions = useMemo(() => [...positions].sort((a, b) => a.name.localeCompare(b.name, "ru")), [positions]);
 
   const filteredMembers = useMemo(() => {
-    if (!positionId) return [];
-    return members.filter((member) => member.positionId === positionId);
-  }, [members, positionId]);
+    return members.filter((member) => member.positionId != null && positionIds.includes(member.positionId));
+  }, [members, positionIds]);
 
   const handleTargetChange = (value: string) => {
     if (!value) {
       setTargetSelection("ALL");
-      setPositionId(null);
-      setMemberId(null);
+      setPositionIds([]);
+      setMemberIds([]);
       return;
     }
     if (value === "me") {
       setTargetSelection("ME");
-      setPositionId(null);
-      setMemberId(null);
+      setPositionIds([]);
+      setMemberIds([]);
+      return;
+    }
+    if (value === "selected") {
+      setTargetSelection("POSITION");
+      setPositionIds([]);
+      setMemberIds([]);
+      setSpecificMembers(false);
       return;
     }
     const id = Number(value);
     const resolvedId = Number.isNaN(id) ? null : id;
     setTargetSelection("POSITION");
-    setPositionId(resolvedId);
-    setMemberId(null);
+    setPositionIds(resolvedId ? [resolvedId] : []);
+    setMemberIds([]);
+    setSpecificMembers(false);
   };
 
   const handleSubmit = () => {
     setLocalError(null);
+    if (targetSelection === "DETACHED" || (detachedInitial && !canManage)) {
+      setLocalError("Выберите нового получателя, чтобы включить напоминание.");
+      return;
+    }
     if (!title.trim()) {
       setLocalError("Название обязательно");
       return;
@@ -227,32 +254,42 @@ const ReminderDialog = ({
         }
         targetType = "MEMBER";
         targetMemberId = currentMemberId;
-      } else if (memberId) {
+      } else if (specificMembers) {
+        if (!memberIds.length || memberIds.some((id) => !filteredMembers.some((member) => member.id === id))) {
+          setLocalError("Выберите действующих сотрудников выбранных должностей");
+          return;
+        }
         targetType = "MEMBER";
-        targetMemberId = memberId;
+        targetMemberId = memberIds.length === 1 ? memberIds[0] : null;
       } else {
+        if (!positionIds.length) {
+          setLocalError("Выберите получателя");
+          return;
+        }
         targetType = "POSITION";
-        targetPositionId = positionId;
+        targetPositionId = positionIds.length === 1 ? positionIds[0] : null;
       }
     }
 
     onSubmit({
       title: title.trim(),
       description: description.trim() || undefined,
-      visibleToAdmin:
-        canManage && targetSelection !== "ME" ? true : Boolean(visibleToAdmin),
+      visibleToAdmin: canManage && targetSelection !== "ME" ? true : Boolean(visibleToAdmin),
       targetType,
       targetPositionId,
       targetMemberId,
+      targetPositionIds: canManage && targetSelection === "POSITION" ? positionIds : [],
+      targetMemberIds:
+        canManage && targetSelection === "POSITION" && specificMembers
+          ? memberIds
+          : targetMemberId
+            ? [targetMemberId]
+            : [],
       periodicity,
       time,
       dayOfWeek: typeof dayOfWeek === "number" ? dayOfWeek : undefined,
       dayOfMonth:
-        periodicity === "MONTHLY"
-          ? typeof dayOfMonth === "number"
-            ? dayOfMonth
-            : Number(dayOfMonth)
-          : undefined,
+        periodicity === "MONTHLY" ? (typeof dayOfMonth === "number" ? dayOfMonth : Number(dayOfMonth)) : undefined,
       monthlyLastDay: periodicity === "MONTHLY" ? monthlyLastDay : undefined,
       onceDate: periodicity === "ONCE" ? onceDate : undefined,
     });
@@ -271,7 +308,10 @@ const ReminderDialog = ({
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Отмена
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
+          <Button
+            onClick={handleSubmit}
+            disabled={submitting || targetSelection === "DETACHED" || (detachedInitial && !canManage)}
+          >
             {submitting ? "Сохраняем…" : "Сохранить"}
           </Button>
         </>
@@ -293,54 +333,93 @@ const ReminderDialog = ({
           rows={4}
         />
 
+        {detachedInitial && (
+          <div className="border-subtle bg-app text-muted rounded-2xl border px-4 py-3 text-sm" role="status">
+            {DETACHED_REMINDER_MESSAGE}{" "}
+            {canManage
+              ? "Чтобы включить его снова, выберите нового получателя и сохраните изменения."
+              : "Создайте новое напоминание для себя."}
+          </div>
+        )}
+
         {canManage ? (
           <SelectField
             label="Кому"
             value={
-              targetSelection === "ALL"
-                ? ""
-                : targetSelection === "ME"
-                  ? "me"
-                  : positionId
-                    ? String(positionId)
-                    : ""
+              targetSelection === "DETACHED"
+                ? "detached"
+                : targetSelection === "ALL"
+                  ? ""
+                  : targetSelection === "ME"
+                    ? "me"
+                    : "selected"
             }
             onChange={(event) => handleTargetChange(event.target.value)}
           >
+            {detachedInitial && (
+              <option value="detached" disabled>
+                Сотрудник больше не работает
+              </option>
+            )}
             <option value="">Всем</option>
             <option value="me">Мне</option>
-            {positionOptions.map((position) => (
-              <option key={position.id} value={position.id}>
-                {position.name}
-              </option>
-            ))}
+            <option value="selected">Выбранным должностям или сотрудникам</option>
           </SelectField>
         ) : (
-          <SelectField label="Кому" value="me" onChange={() => undefined} disabled>
-            <option value="me">Мне</option>
+          <SelectField label="Кому" value={detachedInitial ? "detached" : "me"} onChange={() => undefined} disabled>
+            {detachedInitial ? (
+              <option value="detached">Сотрудник больше не работает</option>
+            ) : (
+              <option value="me">Мне</option>
+            )}
           </SelectField>
         )}
 
-        {canManage && targetSelection === "POSITION" && positionId && (
-          <SelectField
-            label="Выберите сотрудника"
-            value={memberId ? String(memberId) : "all"}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (value === "all") {
-                setMemberId(null);
-              } else {
-                setMemberId(Number(value));
-              }
-            }}
-          >
-            <option value="all">Всем</option>
-            {filteredMembers.map((member) => (
-              <option key={member.id} value={member.id}>
-                {formatMemberName(member)}
-              </option>
-            ))}
-          </SelectField>
+        {canManage && targetSelection === "POSITION" && (
+          <>
+            <AnnouncementRecipientPicker
+              label="Должности"
+              options={positionOptions.map((position) => ({ id: position.id, name: position.name }))}
+              selectedIds={positionIds}
+              placeholder="Выберите должности"
+              disabled={submitting}
+              onChange={(ids) => {
+                setPositionIds(ids);
+                setMemberIds((current) =>
+                  current.filter((id) =>
+                    members.some(
+                      (member) => member.id === id && member.positionId != null && ids.includes(member.positionId),
+                    ),
+                  ),
+                );
+              }}
+            />
+            {positionIds.length > 0 && (
+              <AnnouncementRecipientPicker
+                label="Сотрудники"
+                options={filteredMembers.map((member) => ({
+                  id: member.id,
+                  name: formatMemberName(member),
+                  detail: positions.find((position) => position.id === member.positionId)?.name,
+                }))}
+                selectedIds={memberIds}
+                placeholder={specificMembers ? "Выберите сотрудников" : "Все сотрудники выбранных должностей"}
+                disabled={submitting}
+                onChange={(ids) => {
+                  setSpecificMembers(true);
+                  setMemberIds(ids);
+                }}
+                resetOption={{
+                  label: "Все сотрудники выбранных должностей",
+                  selected: !specificMembers,
+                  onSelect: () => {
+                    setSpecificMembers(false);
+                    setMemberIds([]);
+                  },
+                }}
+              />
+            )}
+          </>
         )}
 
         {showVisibilityToggle && (
@@ -365,13 +444,7 @@ const ReminderDialog = ({
           <option value="ONCE">Один раз</option>
         </SelectField>
 
-        <TimeSelect
-          label="Время"
-          hour={hour}
-          minute={minute}
-          onHourChange={setHour}
-          onMinuteChange={setMinute}
-        />
+        <TimeSelect label="Время" hour={hour} minute={minute} onHourChange={setHour} onMinuteChange={setMinute} />
 
         {periodicity === "WEEKLY" && (
           <SelectField

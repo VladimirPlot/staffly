@@ -145,6 +145,7 @@ public interface InboxRecipientRepository extends JpaRepository<InboxRecipient, 
                    row_number() over (partition by r.member_id order by m.created_at desc) as rn
             from inbox_recipients r
             join inbox_messages m on m.id = r.message_id
+            where m.type <> 'ANNOUNCEMENT'
         )
         delete from inbox_recipients
         where id in (select id from ranked where rn > :limit)

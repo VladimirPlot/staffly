@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.exception.ForbiddenException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.time.RestaurantTimeService;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.dictionary.model.Position;
@@ -13,6 +15,7 @@ import ru.staffly.inbox.model.InboxEventSubtype;
 import ru.staffly.inbox.service.InboxMessageService;
 import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
@@ -30,9 +33,8 @@ import ru.staffly.user.repository.UserRepository;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -52,6 +54,7 @@ public class TaskService {
     private final InboxMessageService inboxMessages;
     private final RestaurantTimeService restaurantTime;
     private final SecurityService securityService;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Transactional(readOnly = true)
     public List<TaskDto> list(Long restaurantId,
@@ -69,7 +72,7 @@ public class TaskService {
         LocalDate today = restaurantTime.today(restaurantId);
         List<Task> tasksList = tasks.findActiveByFilters(
                 restaurantId,
-                userId,
+                member.getId(),
                 positionId,
                 viewAll,
                 status,
@@ -77,17 +80,8 @@ public class TaskService {
                 today
         );
 
-        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantId(restaurantId)
-                .stream()
-                .collect(Collectors.toMap(
-                        m -> m.getUser().getId(),
-                        m -> m,
-                        (first, second) -> first
-                ));
-
         return tasksList.stream()
-                .map(task -> toDto(task, memberByUser.get(task.getAssignedUser() != null ? task.getAssignedUser().getId() : null),
-                        memberByUser.get(task.getCreatedBy() != null ? task.getCreatedBy().getId() : null)))
+                .map(task -> toDto(task, task.getAssignedMember(), task.getSetterMember()))
                 .toList();
     }
 
@@ -100,14 +94,18 @@ public class TaskService {
         if (!isManager(member) && !isVisibleForMember(task, member)) {
             throw new NotFoundException("Task not found: " + taskId);
         }
-        RestaurantMember assignedMember = resolveMemberOrNull(task.getAssignedUser(), task.getRestaurant().getId());
-        RestaurantMember creatorMember = resolveMemberOrNull(task.getCreatedBy(), task.getRestaurant().getId());
-        return toDto(task, assignedMember, creatorMember);
+        return toDto(task, task.getAssignedMember(), task.getSetterMember());
     }
 
     @Transactional
     public TaskDto create(Long restaurantId, Long userId, TaskCreateRequest request) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertAtLeastManager(userId, restaurantId);
+        RestaurantMember creatorMembership = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
+                .orElseThrow(() -> new ForbiddenException("Operational tasks require an active restaurant membership"));
+        if (!isManager(creatorMembership)) {
+            throw new ForbiddenException("Only an employed MANAGER or ADMIN can create tasks");
+        }
         Restaurant restaurant = restaurants.findById(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
         User creator = users.findById(userId)
@@ -138,14 +136,17 @@ public class TaskService {
         }
 
         User assignedUser = null;
+        RestaurantMember assignedMember = null;
         Position assignedPosition = null;
         List<RestaurantMember> targets = List.of();
 
         if (assignedUserId != null) {
             assignedUser = users.findById(assignedUserId)
                     .orElseThrow(() -> new BadRequestException("Сотрудник не найден"));
-            RestaurantMember assignedMember = members.findByUserIdAndRestaurantId(assignedUserId, restaurantId)
+            RestaurantMember resolved = members.findActiveByUserIdAndRestaurantId(assignedUserId, restaurantId)
                     .orElseThrow(() -> new BadRequestException("Сотрудник не найден в ресторане"));
+            assignedMember = members.findForUpdateByIdAndRestaurantId(resolved.getId(), restaurantId)
+                    .orElseThrow(() -> new BadRequestException("Сотрудник больше не работает в ресторане"));
             targets = List.of(assignedMember);
         } else if (assignedPositionId != null) {
             assignedPosition = positions.findById(assignedPositionId)
@@ -153,11 +154,13 @@ public class TaskService {
             if (!Objects.equals(assignedPosition.getRestaurant().getId(), restaurantId)) {
                 throw new BadRequestException("Должность принадлежит другому ресторану");
             }
-            targets = members.findByRestaurantIdAndPositionIdIn(restaurantId, List.of(assignedPositionId));
+            targets = members.findByRestaurantIdAndPositionIdInAndEndedAtIsNull(restaurantId, List.of(assignedPositionId));
         } else if (assignedToAll) {
-            targets = members.findByRestaurantId(restaurantId);
+            targets = members.findByRestaurantIdAndEndedAtIsNull(restaurantId);
         }
 
+        RestaurantMember setterMember = members.findForUpdateByIdAndRestaurantId(creatorMembership.getId(), restaurantId)
+                .orElseThrow(() -> new BadRequestException("Task creator must have an active restaurant membership"));
         Task task = Task.builder()
                 .restaurant(restaurant)
                 .title(title)
@@ -167,8 +170,10 @@ public class TaskService {
                 .status(TaskStatus.ACTIVE)
                 .assignedToAll(assignedToAll)
                 .assignedUser(assignedUser)
+                .assignedMember(assignedMember)
                 .assignedPosition(assignedPosition)
                 .createdBy(creator)
+                .setterMember(setterMember)
                 .build();
 
         task = tasks.save(task);
@@ -186,9 +191,38 @@ public class TaskService {
             );
         }
 
-        RestaurantMember assignedMember = resolveMemberOrNull(task.getAssignedUser(), restaurantId);
-        RestaurantMember creatorMember = resolveMemberOrNull(task.getCreatedBy(), restaurantId);
-        return toDto(task, assignedMember, creatorMember);
+        return toDto(task, task.getAssignedMember(), task.getSetterMember());
+    }
+
+    @Transactional
+    public TaskDto assign(Long taskId, Long userId, TaskAssignRequest request) {
+        Long restaurantId = tasks.findRestaurantIdByActiveId(taskId)
+                .orElseThrow(() -> new NotFoundException("Task not found: " + taskId));
+        lifecycleMutex.lock(restaurantId);
+        securityService.assertAtLeastManager(userId, restaurantId);
+        RestaurantMember actor = members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
+                .orElseThrow(() -> new ForbiddenException("Для назначения нужен действующий MANAGER или ADMIN"));
+        if (!isManager(actor)) {
+            throw new ForbiddenException("Для назначения нужен действующий MANAGER или ADMIN");
+        }
+        RestaurantMember target = members.findForUpdateByIdAndRestaurantId(request.memberId(), restaurantId)
+                .orElseThrow(() -> new BadRequestException("Сотрудник больше не работает в ресторане. Обновите список."));
+        Task task = tasks.findAllForUpdate(restaurantId, List.of(taskId)).stream().findFirst()
+                .filter(candidate -> candidate.getDeletedAt() == null)
+                .orElseThrow(() -> new NotFoundException("Task not found: " + taskId));
+        if (!Objects.equals(request.expectedVersion(), task.getVersion())
+                || task.getStatus() != TaskStatus.ACTIVE || task.isAssignedToAll()
+                || task.getAssignedMember() != null || task.getAssignedUser() != null
+                || task.getAssignedPosition() != null) {
+            throw new ConflictException("Задача изменилась. Обновите её перед назначением.",
+                    Map.of("code", "TASK_ASSIGNMENT_STALE"));
+        }
+        task.setAssignedMember(target);
+        task.setAssignedUser(target.getUser());
+        task = tasks.saveAndFlush(task);
+        inboxMessages.createEvent(task.getRestaurant(), actor.getUser(), "Вам назначена задача: " + task.getTitle(),
+                InboxEventSubtype.TASK, "task-assignment:" + task.getId() + ":" + task.getVersion(), List.of(target), null);
+        return toDto(task, target, task.getSetterMember());
     }
 
     @Transactional
@@ -205,9 +239,7 @@ public class TaskService {
             task.setCompletedAt(TimeProvider.nowUtc());
             task = tasks.save(task);
         }
-        RestaurantMember assignedMember = resolveMemberOrNull(task.getAssignedUser(), task.getRestaurant().getId());
-        RestaurantMember creatorMember = resolveMemberOrNull(task.getCreatedBy(), task.getRestaurant().getId());
-        return toDto(task, assignedMember, creatorMember);
+        return toDto(task, task.getAssignedMember(), task.getSetterMember());
     }
 
     @Transactional
@@ -256,15 +288,9 @@ public class TaskService {
                 org.springframework.data.domain.Sort.by("createdAt").ascending()
         );
         var commentPage = comments.findByTaskId(taskId, pageable);
-        Map<Long, RestaurantMember> memberByUser = members.findByRestaurantId(task.getRestaurant().getId())
-                .stream()
-                .collect(Collectors.toMap(
-                        m -> m.getUser().getId(),
-                        m -> m,
-                        (first, second) -> first
-                ));
+        // Comments retain User actor identity; never borrow a later employment period.
         List<TaskCommentDto> items = commentPage.stream()
-                .map(comment -> toCommentDto(comment, memberByUser.get(comment.getAuthor().getId())))
+                .map(comment -> toCommentDto(comment, null))
                 .toList();
         return new TaskCommentPageDto(
                 items,
@@ -292,8 +318,10 @@ public class TaskService {
         TaskPositionDto assignedPosition = task.getAssignedPosition() == null
                 ? null
                 : new TaskPositionDto(task.getAssignedPosition().getId(), task.getAssignedPosition().getName());
-        TaskUserDto assignedUser = toUserDto(task.getAssignedUser(), assignedMember);
-        TaskUserDto createdBy = toUserDto(task.getCreatedBy(), creatorMember);
+        TaskUserDto assignedUser = toUserDto(assignedMember == null ? null : assignedMember.getUser(), assignedMember);
+        // Historical author must never borrow the current setter's position.
+        TaskUserDto createdBy = toUserDto(task.getCreatedBy(), null);
+        TaskUserDto setter = toUserDto(task.getSetterMember() == null ? null : task.getSetterMember().getUser(), creatorMember);
 
         return new TaskDto(
                 task.getId(),
@@ -308,7 +336,9 @@ public class TaskService {
                 assignedPosition,
                 assignedUser,
                 createdBy,
-                task.getCreatedAt() == null ? null : task.getCreatedAt().toString()
+                setter,
+                task.getCreatedAt() == null ? null : task.getCreatedAt().toString(),
+                task.getVersion()
         );
     }
 
@@ -324,7 +354,7 @@ public class TaskService {
         }
         return new TaskUserDto(
                 user.getId(),
-                user.getFullName(),
+                user.getFullName() + (member != null && !member.isActive() ? " (исключен)" : ""),
                 user.getFirstName(),
                 user.getLastName(),
                 positionId,
@@ -333,15 +363,8 @@ public class TaskService {
     }
 
     private RestaurantMember resolveMember(Long userId, Long restaurantId) {
-        return members.findByUserIdAndRestaurantId(userId, restaurantId)
+        return members.findActiveByUserIdAndRestaurantId(userId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Member not found"));
-    }
-
-    private RestaurantMember resolveMemberOrNull(User user, Long restaurantId) {
-        if (user == null) {
-            return null;
-        }
-        return members.findByUserIdAndRestaurantId(user.getId(), restaurantId).orElse(null);
     }
 
     private boolean isManager(RestaurantMember member) {
@@ -352,13 +375,16 @@ public class TaskService {
     }
 
     private boolean isVisibleForMember(Task task, RestaurantMember member) {
+        if (task.getAudience() != ru.staffly.task.model.TaskAudience.NONE) return TaskBoardService.visible(task, member);
+        if (TaskBoardService.visible(task, member)) return true;
+        if (task.getCompletionMode() == ru.staffly.task.model.TaskCompletionMode.EACH) return false;
         if (task.isAssignedToAll()) {
             return true;
         }
         if (member == null) {
             return false;
         }
-        if (task.getAssignedUser() != null && Objects.equals(task.getAssignedUser().getId(), member.getUser().getId())) {
+        if (task.getAssignedMember() != null && Objects.equals(task.getAssignedMember().getId(), member.getId())) {
             return true;
         }
         if (task.getAssignedPosition() != null && member.getPosition() != null) {

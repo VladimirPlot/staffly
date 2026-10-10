@@ -7,7 +7,6 @@ import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.repository.PositionRepository;
-import ru.staffly.member.model.RestaurantMember;
 import ru.staffly.member.repository.RestaurantMemberRepository;
 import ru.staffly.restaurant.dto.CreateRestaurantRequest;
 import ru.staffly.restaurant.dto.UpdateRestaurantRequest;
@@ -15,8 +14,6 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.restaurant.model.RestaurantRole;
 import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.restaurant.service.RestaurantService;
-import ru.staffly.user.model.User;
-import ru.staffly.user.repository.UserRepository;
 
 import java.text.Normalizer;
 import java.time.ZoneId;
@@ -28,7 +25,6 @@ import java.util.regex.Pattern;
 public class RestaurantServiceImpl implements RestaurantService {
 
     private final RestaurantRepository restaurants;
-    private final UserRepository users;
     private final RestaurantMemberRepository members;
     private final PositionRepository positions;
 
@@ -90,39 +86,15 @@ public class RestaurantServiceImpl implements RestaurantService {
     @Override
     @Transactional
     public void delete(Long restaurantId, Long creatorUserId) {
-        Restaurant restaurant = restaurants.findById(restaurantId)
+        // Admission locks this same row. Check all employment periods before allowing DB cascades.
+        Restaurant restaurant = restaurants.findLifecycleMutex(restaurantId)
                 .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
 
-        boolean hasOtherMembers = members.existsByRestaurantIdAndUserIdNot(restaurantId, creatorUserId);
-        if (hasOtherMembers) {
-            throw new ConflictException("Cannot delete restaurant with other participants");
+        if (members.existsByRestaurantId(restaurantId)) {
+            throw new ConflictException("Cannot delete restaurant with employment history");
         }
 
         restaurants.delete(restaurant);
-    }
-
-    @Override
-    @Transactional
-    public void assignAdmin(Long restaurantId, Long userId) {
-        Restaurant r = restaurants.findById(restaurantId)
-                .orElseThrow(() -> new NotFoundException("Restaurant not found: " + restaurantId));
-
-        User u = users.findById(userId)
-                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
-
-        var existing = members.findByUserIdAndRestaurantId(userId, restaurantId);
-        if (existing.isPresent()) {
-            var m = existing.get();
-            m.setRole(RestaurantRole.ADMIN);
-            members.save(m);
-        } else {
-            var m = RestaurantMember.builder()
-                    .user(u)
-                    .restaurant(r)
-                    .role(RestaurantRole.ADMIN)
-                    .build();
-            members.save(m);
-        }
     }
 
     /* ------- helpers ------- */
