@@ -28,9 +28,12 @@ public class ChecklistPositionChangeLifecycleHandler implements PositionChangeLi
                 .forEach(id -> checklists.findDetailedByIdForUpdate(id).orElseThrow(PositionChangeSupport::stale));
         var reserved = items.findReservedForUpdate(c.member().getId());
         int released = 0;
+        var changed = new java.util.HashSet<ru.staffly.checklist.model.Checklist>();
         for (var item : reserved) if (!eligible(item, c.targetPosition())) {
             item.setReservedBy(null); item.setReservedAt(null); released++;
+            changed.add(item.getChecklist());
         }
+        changed.forEach(checklist -> checklist.setVersion(checklist.getVersion() + 1));
         return new Result(released);
     }
     public record Impact(int reservationsToRelease) implements PositionChangeModuleImpact {

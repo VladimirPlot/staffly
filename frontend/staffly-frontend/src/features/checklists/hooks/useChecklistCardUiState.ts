@@ -10,10 +10,12 @@ import type { ChecklistDto } from "../api";
 import type { ChecklistItemSectionKey } from "../types";
 import { getInitialItemTab, groupChecklistItems } from "../utils/checklistItems";
 import { sanitizeFileName } from "../utils/formatters";
+import { createChecklistExportNode } from "../utils/checklistExport";
 
 export function useChecklistCardUiState() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [activeItemTab, setActiveItemTab] = useState<ChecklistItemSectionKey>("available");
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [actionMenuFor, setActionMenuFor] = useState<number | null>(null);
 
@@ -68,11 +70,17 @@ export function useChecklistCardUiState() {
   );
 
   const handleDownloadJpg = useCallback(async (checklist: ChecklistDto) => {
-    const node = checklistRefs.current.get(checklist.id);
-    if (!node) return;
+    const node = createChecklistExportNode(checklist);
+    const container = document.createElement("div");
+    Object.assign(container.style, { position: "fixed", left: "-10000px", top: "0", pointerEvents: "none" });
+    container.append(node);
+    document.body.append(container);
     setActionMenuFor(null);
     setDownloading(checklist.id);
+    setDownloadError(null);
     try {
+      await document.fonts.ready;
+      await Promise.all(Array.from(node.querySelectorAll("img")).map((image) => image.decode()));
       const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, backgroundColor: "#ffffff" });
       const link = document.createElement("a");
       link.href = dataUrl;
@@ -80,7 +88,9 @@ export function useChecklistCardUiState() {
       link.click();
     } catch (e) {
       console.error("Failed to download checklist", e);
+      setDownloadError("Не удалось скачать чек-лист. Обновите страницу и повторите попытку.");
     } finally {
+      container.remove();
       setDownloading(null);
     }
   }, []);
@@ -136,6 +146,7 @@ export function useChecklistCardUiState() {
     expandedId,
     activeItemTab,
     downloading,
+    downloadError,
     actionMenuFor,
     setActiveItemTab,
     resetExpandedState,

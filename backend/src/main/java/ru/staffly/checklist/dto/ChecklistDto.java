@@ -15,6 +15,8 @@ public record ChecklistDto(
         Integer resetDayOfWeek,
         Integer resetDayOfMonth,
         List<ChecklistItemDto> items,
-        List<ChecklistPositionDto> positions
+        List<ChecklistPositionDto> positions,
+        long version,
+        Long currentMemberId
 ) {
 }

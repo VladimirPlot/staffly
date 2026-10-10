@@ -17,6 +17,7 @@ type ChecklistsToolbarProps = {
   onViewScopeChange: (scope: ChecklistViewScope) => void;
   onPositionFilterChange: (positionId: number | null) => void;
   onResetFilter: () => void;
+  onOpenArchive?: () => void;
 };
 
 export default function ChecklistsToolbar({
@@ -30,6 +31,7 @@ export default function ChecklistsToolbar({
   onViewScopeChange,
   onPositionFilterChange,
   onResetFilter,
+  onOpenArchive,
 }: ChecklistsToolbarProps) {
   const shouldShowReset =
     positionFilter !== null || searchTerm !== "" || (canManage && myPositionId !== null && viewScope === "all");
@@ -61,6 +63,11 @@ export default function ChecklistsToolbar({
               Все
             </Button>
           </div>
+        )}
+        {onOpenArchive && (
+          <Button size="sm" variant="outline" onClick={onOpenArchive}>
+            Архив
+          </Button>
         )}
         {shouldShowReset && (
           <button

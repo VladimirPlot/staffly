@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { compressImageFile } from "../../../shared/lib/compressImageFile";
+import { restorePendingExamplePhotos } from "../utils/checklistPhotoDraft";
 import {
   createChecklist,
   deleteChecklistItemExamplePhoto,
@@ -90,25 +91,35 @@ export function useChecklistDialogController({
       setDialogSubmitting(true);
       setDialogError(null);
 
+      const remainingFiles = [...(payload.exampleFiles ?? [])];
+      const remainingDeletes = new Set(payload.examplePhotoDeletes ?? []);
       let savedAfterUpsert: ChecklistDto | null = null;
       try {
         const { exampleFiles = [], examplePhotoDeletes = [], ...checklistPayload } = payload;
         let saved = editing
-          ? await updateChecklist(restaurantId, editing.id, checklistPayload)
+          ? await updateChecklist(restaurantId, editing.id, checklistPayload, editing.version)
           : await createChecklist(restaurantId, checklistPayload);
         savedAfterUpsert = saved;
 
         for (const itemId of examplePhotoDeletes) {
-          saved = await deleteChecklistItemExamplePhoto(restaurantId, saved.id, itemId);
+          saved = await deleteChecklistItemExamplePhoto(restaurantId, saved.id, itemId, saved.version);
           savedAfterUpsert = saved;
+          remainingDeletes.delete(itemId);
         }
 
         for (const entry of exampleFiles) {
           const targetItem = saved.items[entry.index];
-          if (!targetItem) continue;
+          if (!targetItem) throw new Error("Пункт для загрузки эталона не найден");
           const compressed = await compressImageFile(entry.file);
-          saved = await uploadChecklistItemExamplePhoto(restaurantId, saved.id, targetItem.id, compressed);
+          saved = await uploadChecklistItemExamplePhoto(
+            restaurantId,
+            saved.id,
+            targetItem.id,
+            compressed,
+            saved.version,
+          );
           savedAfterUpsert = saved;
+          remainingFiles.shift();
         }
 
         setDialogOpen(false);
@@ -118,10 +129,13 @@ export function useChecklistDialogController({
         console.error("Failed to save checklist", e);
         if (savedAfterUpsert) {
           setEditing(savedAfterUpsert);
-          setDialogInitial(buildDialogInitialFromChecklist(savedAfterUpsert));
+          const initial = buildDialogInitialFromChecklist(savedAfterUpsert);
+          initial.items = restorePendingExamplePhotos(initial.items, remainingFiles, remainingDeletes);
+          setDialogInitial(initial);
           await reloadChecklists();
           setDialogError(
-            e?.friendlyMessage || "Чек-лист сохранён, но не удалось загрузить часть фото. Повторите сохранение.",
+            e?.friendlyMessage ||
+              "Чек-лист сохранён, но не удалось загрузить часть фото. Выбранные фото сохранены в форме. Повторите сохранение.",
           );
         } else {
           setDialogError(e?.friendlyMessage || "Не удалось сохранить чек-лист");

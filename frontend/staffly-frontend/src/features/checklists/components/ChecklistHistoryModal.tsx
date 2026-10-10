@@ -1,17 +1,19 @@
 import Button from "../../../shared/ui/Button";
 import ContentText from "../../../shared/ui/ContentText";
 import Modal from "../../../shared/ui/Modal";
-import type { ChecklistDto, ChecklistHistoryDetailDto, ChecklistHistorySummaryDto } from "../api";
+import type { ChecklistHistoryDetailDto, ChecklistHistorySummaryDto } from "../api";
 import type { PhotoPreview } from "../types";
 import { formatDateTime, resetReasonLabel } from "../utils/formatters";
 
 type ChecklistHistoryModalProps = {
-  target: ChecklistDto | null;
+  target: { id?: number; name: string } | null;
   summaries: ChecklistHistorySummaryDto[];
   detail: ChecklistHistoryDetailDto | null;
   loading: boolean;
   detailLoading: number | null;
   error: string | null;
+  hasMore: boolean;
+  onLoadMore: () => void;
   onClose: () => void;
   onLoadDetail: (historyId: number) => void;
   onPhotoPreview: (preview: PhotoPreview) => void;
@@ -24,6 +26,8 @@ export default function ChecklistHistoryModal({
   loading,
   detailLoading,
   error,
+  hasMore,
+  onLoadMore,
   onClose,
   onLoadDetail,
   onPhotoPreview,
@@ -35,7 +39,7 @@ export default function ChecklistHistoryModal({
       onClose={onClose}
       className="max-w-5xl"
       footer={
-        <Button variant="outline" onClick={onClose} disabled={loading || detailLoading !== null}>
+        <Button variant="outline" onClick={onClose}>
           Закрыть
         </Button>
       }
@@ -67,6 +71,7 @@ export default function ChecklistHistoryModal({
                     }`}
                   >
                     <div className="font-medium">{formatDateTime(summary.resetAt)}</div>
+                    {target?.id == null && <div className="text-xs">{summary.checklistName}</div>}
                     <div className="text-muted mt-1 text-xs">
                       {resetReasonLabel(summary.resetReason)} · {summary.completedItems}/{summary.totalItems}
                     </div>
@@ -74,6 +79,11 @@ export default function ChecklistHistoryModal({
                   </button>
                 );
               })}
+              {hasMore && (
+                <Button variant="outline" onClick={onLoadMore} disabled={loading}>
+                  Загрузить ещё
+                </Button>
+              )}
             </div>
 
             <div className="border-subtle min-w-0 rounded-2xl border p-3">
@@ -122,6 +132,7 @@ export default function ChecklistHistoryModal({
                                     title: "Эталон из истории",
                                     description: item.text,
                                     url: item.examplePhotoUrl!,
+                                    source: { kind: "history", itemId: item.id, photo: "example" },
                                   })
                                 }
                                 className="border-subtle bg-surface hover:bg-app focus:ring-default rounded-xl border p-2 text-left transition focus:ring-2 focus:outline-none"
@@ -142,6 +153,7 @@ export default function ChecklistHistoryModal({
                                     title: "Фото выполнения из истории",
                                     description: item.text,
                                     url: item.completionPhotoUrl!,
+                                    source: { kind: "history", itemId: item.id, photo: "completion" },
                                   })
                                 }
                                 className="border-subtle bg-surface hover:bg-app focus:ring-default rounded-xl border p-2 text-left transition focus:ring-2 focus:outline-none"

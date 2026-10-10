@@ -29,6 +29,7 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             select distinct c
             from Checklist c
             where c.restaurant.id = :restaurantId
+              and c.deletedAt is null
               and (:positionId is null or exists (
                     select 1
                     from c.positions p
@@ -61,4 +62,7 @@ public interface ChecklistRepository extends JpaRepository<Checklist, Long> {
             where c.id = :id
             """)
     Optional<Checklist> findDetailedByIdForUpdate(@Param("id") Long id);
+
+    @Query("select distinct c.restaurant.id from Checklist c where c.deletedAt is null and c.kind = ru.staffly.checklist.model.ChecklistKind.TRACKABLE and c.periodicity <> ru.staffly.checklist.model.ChecklistPeriodicity.MANUAL")
+    List<Long> findAutoResetRestaurantIds();
 }

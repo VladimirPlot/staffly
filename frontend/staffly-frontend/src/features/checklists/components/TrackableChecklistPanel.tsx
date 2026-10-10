@@ -47,6 +47,8 @@ export default function TrackableChecklistPanel({
   onPhotoPreview,
 }: TrackableChecklistPanelProps) {
   const activeItems = itemGroups[activeItemTab];
+  const isChecklistBusy =
+    resetting || [...itemActionLoading, ...photoUploading].some((key) => key.startsWith(`${checklist.id}-`));
 
   return (
     <div>
@@ -80,6 +82,7 @@ export default function TrackableChecklistPanel({
                     canManage={canManage}
                     itemActionLoading={itemActionLoading}
                     isPhotoUploading={photoUploading.has(completionPhotoKey)}
+                    isChecklistBusy={isChecklistBusy}
                     onItemAction={onItemAction}
                     onCompletionPhotoUpload={onCompletionPhotoUpload}
                     onCompletionPhotoDelete={onCompletionPhotoDelete}
@@ -98,7 +101,7 @@ export default function TrackableChecklistPanel({
             variant="outline"
             size="sm"
             onClick={() => onReset(checklist)}
-            disabled={resetting}
+            disabled={isChecklistBusy}
             aria-label="Сбросить чек-лист"
             title="Сбросить чек-лист"
             className="h-9 rounded-xl px-3 shadow-none"

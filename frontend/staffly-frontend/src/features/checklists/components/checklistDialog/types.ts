@@ -28,6 +28,8 @@ export type ChecklistDialogInitial = {
     completionPhotoMode?: ChecklistPhotoMode | null;
     completionPhotoRequired: boolean;
     examplePhotoUrl?: string | null;
+    exampleFile?: File;
+    removeExamplePhoto?: boolean;
   }>;
 };
 

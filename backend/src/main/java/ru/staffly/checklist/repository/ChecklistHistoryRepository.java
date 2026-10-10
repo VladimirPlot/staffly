@@ -7,11 +7,15 @@ import ru.staffly.checklist.model.ChecklistHistory;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 
 public interface ChecklistHistoryRepository extends JpaRepository<ChecklistHistory, Long> {
 
     @EntityGraph(attributePaths = {"checklist"})
-    List<ChecklistHistory> findTop50ByChecklistIdAndRestaurantIdOrderByResetAtDesc(Long checklistId, Long restaurantId);
+    List<ChecklistHistory> findByChecklistIdAndRestaurantIdOrderByResetAtDescIdDesc(Long checklistId, Long restaurantId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"checklist"})
+    List<ChecklistHistory> findByRestaurantIdOrderByResetAtDescIdDesc(Long restaurantId, Pageable pageable);
 
     @EntityGraph(attributePaths = {
             "checklist",

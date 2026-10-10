@@ -10,6 +10,8 @@ type ChecklistItemMediaProps = {
   checklist: ChecklistDto;
   item: ChecklistItemDto;
   isPhotoUploading: boolean;
+  disabled: boolean;
+  canManage: boolean;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
   onPhotoPreview: (preview: PhotoPreview) => void;
@@ -23,6 +25,8 @@ export default function ChecklistItemMedia({
   checklist,
   item,
   isPhotoUploading,
+  disabled,
+  canManage,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
   onPhotoPreview,
@@ -31,6 +35,9 @@ export default function ChecklistItemMedia({
   const hasCompletionPhoto = hasPhoto(item.completionPhotoUrl);
   const photoMode = resolvePhotoMode(item);
   const canAttachCompletionPhoto = photoMode !== "NONE";
+  const canChangePhoto =
+    (!item.reservedBy || item.reservedBy.id === checklist.currentMemberId) &&
+    (!item.completionPhotoUploadedBy || item.completionPhotoUploadedBy.id === checklist.currentMemberId || canManage);
   const showCompletionPhoto = canAttachCompletionPhoto || hasCompletionPhoto;
   const missingRequiredPhoto = photoMode === "REQUIRED" && !hasCompletionPhoto;
 
@@ -57,6 +64,7 @@ export default function ChecklistItemMedia({
                 title: "Эталон результата",
                 description: item.text,
                 url: item.examplePhotoUrl!,
+                source: { kind: "current", checklistId: checklist.id, itemId: item.id, photo: "example" },
               })
             }
             className="group hover:bg-app focus:ring-default flex w-full flex-col gap-2 rounded-lg text-left transition focus:ring-2 focus:outline-none xl:flex-row xl:items-center"
@@ -96,6 +104,7 @@ export default function ChecklistItemMedia({
                     title: "Фото выполнения",
                     description: item.text,
                     url: item.completionPhotoUrl!,
+                    source: { kind: "current", checklistId: checklist.id, itemId: item.id, photo: "completion" },
                   })
                 }
                 className="focus:ring-default shrink-0 rounded-lg focus:ring-2 focus:outline-none"
@@ -126,13 +135,13 @@ export default function ChecklistItemMedia({
                     ? "Без фото пункт нельзя закрыть"
                     : "Можно приложить по желанию"}
               </div>
-              {!item.done && canAttachCompletionPhoto && (
+              {!item.done && canAttachCompletionPhoto && canChangePhoto && checklist.currentMemberId != null && (
                 <div className="mt-2 flex flex-col gap-2 xl:flex-row xl:flex-wrap">
                   <label
                     className={`border-subtle text-default inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border bg-[var(--staffly-control)] px-2 text-sm font-medium transition hover:bg-[var(--staffly-control-hover)] xl:min-h-9 xl:w-auto xl:px-3 ${
-                      isPhotoUploading ? "pointer-events-none opacity-60" : ""
+                      disabled ? "pointer-events-none opacity-60" : ""
                     }`}
-                    aria-disabled={isPhotoUploading}
+                    aria-disabled={disabled}
                   >
                     <Icon icon={Camera} size="sm" decorative />
                     <span>{hasCompletionPhoto ? "Заменить" : "Прикрепить"}</span>
@@ -140,7 +149,7 @@ export default function ChecklistItemMedia({
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
-                      disabled={isPhotoUploading}
+                      disabled={disabled}
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) {
@@ -155,7 +164,7 @@ export default function ChecklistItemMedia({
                       type="button"
                       variant="danger-ghost"
                       onClick={() => onCompletionPhotoDelete(checklist, item)}
-                      disabled={isPhotoUploading}
+                      disabled={disabled}
                       className="min-h-12 w-full text-sm sm:min-h-9 sm:w-auto"
                     >
                       Удалить

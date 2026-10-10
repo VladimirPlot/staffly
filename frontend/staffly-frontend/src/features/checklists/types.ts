@@ -7,6 +7,9 @@ export type PhotoPreview = {
   title: string;
   url: string;
   description?: string;
+  source?:
+    | { kind: "current"; checklistId: number; itemId: number; photo: "example" | "completion" }
+    | { kind: "history"; itemId: number; photo: "example" | "completion" };
 };
 
 export type ChecklistItemSectionKey = "available" | "reserved" | "done";

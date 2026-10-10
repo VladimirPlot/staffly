@@ -52,8 +52,24 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
   const history = useChecklistHistory(restaurantId);
 
   const [deleteTarget, setDeleteTarget] = useState<ChecklistDto | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<PhotoPreview | null>(null);
+  useEffect(() => {
+    setPhotoPreview((previous) => {
+      if (!previous?.source) return previous;
+      const source = previous.source;
+      const item =
+        source.kind === "current"
+          ? data.checklists
+              .find((checklist) => checklist.id === source.checklistId)
+              ?.items.find((entry) => entry.id === source.itemId)
+          : history.historyDetail?.items.find((entry) => entry.id === source.itemId);
+      const url = source.photo === "completion" ? item?.completionPhotoUrl : item?.examplePhotoUrl;
+      if (!url) return null;
+      return url === previous.url ? previous : { ...previous, url };
+    });
+  }, [data.checklists, history.historyDetail]);
   const lastCreateDialogRequestKey = useRef(createDialogRequestKey);
   const resetExpandedState = cardUi.resetExpandedState;
   const openCreateDialog = dialog.openCreateDialog;
@@ -71,6 +87,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
   }, [createDialogRequestKey, openCreateDialog]);
 
   const openDeleteDialog = useCallback((checklist: ChecklistDto) => {
+    setDeleteError(null);
     setDeleteTarget(checklist);
   }, []);
 
@@ -83,11 +100,12 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteChecklist(restaurantId, deleteTarget.id);
+      await deleteChecklist(restaurantId, deleteTarget.id, deleteTarget.version);
       setDeleteTarget(null);
       await reloadChecklists();
-    } catch (e) {
-      console.error("Failed to delete checklist", e);
+    } catch (e: any) {
+      setDeleteError(e?.friendlyMessage || "Не удалось удалить чек-лист");
+      await reloadChecklists();
     } finally {
       setDeleting(false);
     }
@@ -118,6 +136,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         onViewScopeChange={data.handleViewScopeChange}
         onPositionFilterChange={data.handlePositionFilterChange}
         onResetFilter={data.resetFilter}
+        onOpenArchive={activeKind === "TRACKABLE" && canManage ? history.openArchiveModal : undefined}
       />
 
       <ChecklistList
@@ -128,7 +147,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         emptyStateLabel={emptyStateLabel}
         isListLoading={data.isListLoading}
         error={data.error}
-        itemActionError={itemActions.itemActionError}
+        itemActionError={itemActions.itemActionError || cardUi.downloadError}
         expandedId={cardUi.expandedId}
         activeItemTab={cardUi.activeItemTab}
         resetting={itemActions.resetting}
@@ -166,6 +185,7 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
 
       <DeleteChecklistConfirmDialog
         target={deleteTarget}
+        error={deleteError}
         deleting={deleting}
         onConfirm={confirmDelete}
         onCancel={closeDeleteDialog}
@@ -178,6 +198,8 @@ const RestaurantChecklists = ({ restaurantId, canManage, createDialogRequestKey 
         loading={history.historyLoading}
         detailLoading={history.historyDetailLoading}
         error={history.historyError}
+        hasMore={history.hasMoreHistory}
+        onLoadMore={history.loadMoreHistory}
         onClose={closeHistoryModal}
         onLoadDetail={history.loadHistoryDetail}
         onPhotoPreview={setPhotoPreview}

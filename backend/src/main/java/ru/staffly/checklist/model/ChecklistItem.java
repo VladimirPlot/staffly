@@ -11,7 +11,7 @@ import ru.staffly.member.model.RestaurantMember;
 import java.time.Instant;
 
 @Entity
-@Table(name = "checklist_item")
+@Table(name = "checklist_item", uniqueConstraints = @UniqueConstraint(name = "uq_checklist_item_order", columnNames = {"checklist_id", "item_order"}))
 @Getter
 @Setter
 @NoArgsConstructor
