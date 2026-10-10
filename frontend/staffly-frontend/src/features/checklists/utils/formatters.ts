@@ -19,6 +19,8 @@ export function formatDateTime(value?: string | null): string {
 export function resetReasonLabel(reason?: string | null): string {
   if (reason === "AUTO") return "Авто";
   if (reason === "MANUAL") return "Вручную";
+  if (reason === "EDIT") return "Редактирование";
+  if (reason === "DELETED") return "Удаление";
   return "—";
 }
 

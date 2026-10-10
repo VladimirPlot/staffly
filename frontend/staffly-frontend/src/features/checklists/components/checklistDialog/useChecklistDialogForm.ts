@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ChecklistPeriodicity, ChecklistPhotoMode } from "../../api";
 import type { PositionDto } from "../../../dictionaries/api";
@@ -47,10 +47,25 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
   const [resetDayOfMonth, setResetDayOfMonth] = useState<number | "">(initialData?.resetDayOfMonth ?? "");
   const [positionFields, setPositionFields] = useState<PositionField[]>([]);
   const [items, setItems] = useState<ChecklistItemField[]>([]);
+  const allocatedPreviews = useRef(new Set<string>());
+  const createPreview = useCallback((file: File) => {
+    const url = URL.createObjectURL(file);
+    allocatedPreviews.current.add(url);
+    return url;
+  }, []);
+  useEffect(() => {
+    const previews = allocatedPreviews.current;
+    return () => {
+      previews.forEach((url) => URL.revokeObjectURL(url));
+      previews.clear();
+    };
+  }, []);
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    allocatedPreviews.current.forEach((url) => URL.revokeObjectURL(url));
+    allocatedPreviews.current.clear();
     setKind(initialData?.kind ?? "INFO");
     setName(initialData?.name ?? "");
     setContent(initialData?.content ?? "");
@@ -72,11 +87,14 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
             value: item.text,
             completionPhotoMode: resolvePhotoMode(item),
             examplePhotoUrl: item.examplePhotoUrl,
+            exampleFile: item.exampleFile,
+            examplePreviewUrl: item.exampleFile ? createPreview(item.exampleFile) : undefined,
+            removeExamplePhoto: item.removeExamplePhoto,
           }))
         : [{ clientId: createId(), value: "", completionPhotoMode: "NONE" }],
     );
     setLocalError(null);
-  }, [open, initialData]);
+  }, [open, initialData, createPreview]);
 
   useEffect(() => {
     if (!open) {
@@ -141,25 +159,28 @@ export function useChecklistDialogForm({ open, positions, initialData, onSubmit 
     );
   }, []);
 
-  const handleExampleFileChange = useCallback((clientId: string, file?: File) => {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.clientId !== clientId) return item;
-        if (item.examplePreviewUrl) {
-          URL.revokeObjectURL(item.examplePreviewUrl);
-        }
-        if (!file) {
-          return { ...item, exampleFile: undefined, examplePreviewUrl: undefined };
-        }
-        return {
-          ...item,
-          exampleFile: file,
-          examplePreviewUrl: URL.createObjectURL(file),
-          removeExamplePhoto: false,
-        };
-      }),
-    );
-  }, []);
+  const handleExampleFileChange = useCallback(
+    (clientId: string, file?: File) => {
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.clientId !== clientId) return item;
+          if (item.examplePreviewUrl) {
+            URL.revokeObjectURL(item.examplePreviewUrl);
+          }
+          if (!file) {
+            return { ...item, exampleFile: undefined, examplePreviewUrl: undefined };
+          }
+          return {
+            ...item,
+            exampleFile: file,
+            examplePreviewUrl: createPreview(file),
+            removeExamplePhoto: false,
+          };
+        }),
+      );
+    },
+    [createPreview],
+  );
 
   const handleRemoveExamplePhoto = useCallback((clientId: string) => {
     setItems((prev) =>

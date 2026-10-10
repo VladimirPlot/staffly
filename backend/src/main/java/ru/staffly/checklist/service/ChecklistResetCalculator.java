@@ -28,7 +28,7 @@ final class ChecklistResetCalculator {
             case DAILY -> {
                 ZonedDateTime candidate = ZonedDateTime.of(baseZoned.toLocalDate(), resetTime, zone);
                 if (!candidate.isAfter(baseZoned)) {
-                    candidate = candidate.plusDays(1);
+                    candidate = ZonedDateTime.of(baseZoned.toLocalDate().plusDays(1), resetTime, zone);
                 }
                 yield candidate.toInstant();
             }
@@ -38,10 +38,10 @@ final class ChecklistResetCalculator {
                     yield null;
                 }
                 DayOfWeek target = DayOfWeek.of(dow);
-                ZonedDateTime candidate = ZonedDateTime.of(baseZoned.toLocalDate(), resetTime, zone)
-                        .with(TemporalAdjusters.nextOrSame(target));
+                LocalDate targetDate = baseZoned.toLocalDate().with(TemporalAdjusters.nextOrSame(target));
+                ZonedDateTime candidate = ZonedDateTime.of(targetDate, resetTime, zone);
                 if (!candidate.isAfter(baseZoned)) {
-                    candidate = candidate.plusWeeks(1);
+                    candidate = ZonedDateTime.of(targetDate.plusWeeks(1), resetTime, zone);
                 }
                 yield candidate.toInstant();
             }
@@ -80,7 +80,7 @@ final class ChecklistResetCalculator {
         ZonedDateTime candidate = switch (periodicity) {
             case DAILY -> {
                 ZonedDateTime today = ZonedDateTime.of(nowZoned.toLocalDate(), resetTime, zone);
-                yield today.isAfter(nowZoned) ? today.minusDays(1) : today;
+                yield today.isAfter(nowZoned) ? ZonedDateTime.of(nowZoned.toLocalDate().minusDays(1), resetTime, zone) : today;
             }
             case WEEKLY -> {
                 Integer dow = checklist.getResetDayOfWeek();
@@ -88,9 +88,9 @@ final class ChecklistResetCalculator {
                     yield null;
                 }
                 DayOfWeek target = DayOfWeek.of(dow);
-                ZonedDateTime thisWeek = ZonedDateTime.of(nowZoned.toLocalDate(), resetTime, zone)
-                        .with(TemporalAdjusters.previousOrSame(target));
-                yield thisWeek.isAfter(nowZoned) ? thisWeek.minusWeeks(1) : thisWeek;
+                LocalDate targetDate = nowZoned.toLocalDate().with(TemporalAdjusters.previousOrSame(target));
+                ZonedDateTime thisWeek = ZonedDateTime.of(targetDate, resetTime, zone);
+                yield thisWeek.isAfter(nowZoned) ? ZonedDateTime.of(targetDate.minusWeeks(1), resetTime, zone) : thisWeek;
             }
             case MONTHLY -> {
                 Integer dom = checklist.getResetDayOfMonth();

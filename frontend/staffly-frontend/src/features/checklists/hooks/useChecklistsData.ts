@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { listPositions, type PositionDto } from "../../dictionaries/api";
 import { listMembers } from "../../employees/api";
 import { listChecklists, type ChecklistDto, type ChecklistKind } from "../api";
 import type { ChecklistViewScope } from "../types";
 import { sortVisibleChecklists } from "../utils/checklistItems";
+import { mergeChecklistList, mergeChecklistUpdate } from "../utils/checklistSync";
 
 type UseChecklistsDataParams = {
   restaurantId: number;
@@ -31,21 +32,32 @@ export function useChecklistsData({
   const [viewScope, setViewScope] = useState<ChecklistViewScope>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const requestSequence = useRef(0);
+  const foregroundRequest = useRef(false);
+  const positionsSequence = useRef(0);
+  const loadedScope = useRef<string | null>(null);
 
   const loadPositions = useCallback(async () => {
+    const request = ++positionsSequence.current;
     try {
       const data = await listPositions(restaurantId, { includeInactive: true });
-      setPositions(data);
+      if (request === positionsSequence.current) setPositions(data);
     } catch (e) {
       console.error("Failed to load positions", e);
     }
   }, [restaurantId]);
 
   const loadChecklists = useCallback(
-    async (signal?: AbortSignal) => {
+    async (signal?: AbortSignal, background = false) => {
       if (canManage && !myPositionLoaded) return;
-      setLoading(true);
-      setError(null);
+      if (background && foregroundRequest.current) return;
+      if (!background) foregroundRequest.current = true;
+      const requestId = ++requestSequence.current;
+      const scope = `${restaurantId}-${activeKind}-${viewScope}-${positionFilter}-${myPositionId}-${debouncedQuery}`;
+      if (!background) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const effectivePositionFilter = canManage ? (viewScope === "my" ? myPositionId : positionFilter) : undefined;
         const data = await listChecklists(
@@ -57,17 +69,24 @@ export function useChecklistsData({
           },
           signal,
         );
-        setChecklists(data);
-        onListLoaded?.();
+        if (requestId !== requestSequence.current || signal?.aborted) return;
+        const sameScope = loadedScope.current === scope;
+        setChecklists((prev) => (sameScope ? mergeChecklistList(prev, data) : data));
+        loadedScope.current = scope;
+        setError(null);
+        if (!background) onListLoaded?.();
       } catch (e: any) {
+        if (requestId !== requestSequence.current) return;
         if (e?.name === "CanceledError" || e?.code === "ERR_CANCELED") {
           return;
         }
         console.error("Failed to load checklists", e);
-        setError("Не удалось загрузить список");
-        setChecklists([]);
+        if (!background) {
+          setError("Не удалось загрузить список");
+        }
       } finally {
-        if (!signal?.aborted) {
+        if (!background && requestId === requestSequence.current) foregroundRequest.current = false;
+        if (!background && requestId === requestSequence.current && !signal?.aborted) {
           setLoading(false);
         }
       }
@@ -147,6 +166,26 @@ export function useChecklistsData({
     };
   }, [loadChecklists]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const refresh = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void loadChecklists(controller.signal, true);
+      }
+    };
+    const interval = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadChecklists]);
+
   const positionNames = useMemo(() => {
     const map = new Map<number, string>();
     positions.forEach((position) => map.set(position.id, position.name));
@@ -158,7 +197,7 @@ export function useChecklistsData({
   const isListLoading = loading || (canManage && !myPositionLoaded);
 
   const updateChecklistInState = useCallback((updated: ChecklistDto) => {
-    setChecklists((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    setChecklists((prev) => mergeChecklistUpdate(prev, updated));
   }, []);
 
   const handleViewScopeChange = useCallback((scope: ChecklistViewScope) => {

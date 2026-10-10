@@ -23,6 +23,7 @@ type ChecklistItemRowProps = {
   canManage: boolean;
   itemActionLoading: Set<string>;
   isPhotoUploading: boolean;
+  isChecklistBusy: boolean;
   onItemAction: (key: string, action: () => Promise<ChecklistDto>) => void;
   onCompletionPhotoUpload: (checklist: ChecklistDto, item: ChecklistItemDto, file: File) => void;
   onCompletionPhotoDelete: (checklist: ChecklistDto, item: ChecklistItemDto) => void;
@@ -40,6 +41,7 @@ export default function ChecklistItemRow({
   canManage,
   itemActionLoading,
   isPhotoUploading,
+  isChecklistBusy,
   onItemAction,
   onCompletionPhotoUpload,
   onCompletionPhotoDelete,
@@ -53,7 +55,10 @@ export default function ChecklistItemRow({
   const unreserveLoading = itemActionLoading.has(unreserveKey);
   const completeLoading = itemActionLoading.has(completeKey);
   const undoLoading = itemActionLoading.has(undoKey);
-  const isBusy = reserveLoading || unreserveLoading || completeLoading || undoLoading;
+  const isBusy =
+    isChecklistBusy || isPhotoUploading || [...itemActionLoading].some((key) => key.startsWith(`${checklist.id}-`));
+  const isOwnReservation = item.reservedBy?.id === checklist.currentMemberId;
+  const canWork = checklist.currentMemberId != null && (!item.reservedBy || isOwnReservation);
   const hasExamplePhoto = hasPhoto(item.examplePhotoUrl);
   const hasCompletionPhoto = hasPhoto(item.completionPhotoUrl);
   const photoMode = resolvePhotoMode(item);
@@ -140,9 +145,13 @@ export default function ChecklistItemRow({
               leftIcon={!reserveLoading ? <Icon icon={Lock} size="sm" decorative /> : undefined}
               aria-label="Взять в работу"
               title="Взять в работу"
-              disabled={isBusy}
+              disabled={isBusy || checklist.currentMemberId == null}
               isLoading={reserveLoading}
-              onClick={() => onItemAction(reserveKey, () => reserveChecklistItem(restaurantId, checklist.id, item.id))}
+              onClick={() =>
+                onItemAction(reserveKey, () =>
+                  reserveChecklistItem(restaurantId, checklist.id, item.id, checklist.version),
+                )
+              }
             />
           )}
           {!item.done && item.reservedBy && (
@@ -156,7 +165,9 @@ export default function ChecklistItemRow({
               disabled={isBusy}
               isLoading={unreserveLoading}
               onClick={() =>
-                onItemAction(unreserveKey, () => unreserveChecklistItem(restaurantId, checklist.id, item.id))
+                onItemAction(unreserveKey, () =>
+                  unreserveChecklistItem(restaurantId, checklist.id, item.id, checklist.version),
+                )
               }
             />
           )}
@@ -167,10 +178,12 @@ export default function ChecklistItemRow({
               leftIcon={!completeLoading ? <Icon icon={Check} size="sm" decorative /> : undefined}
               aria-label="Отметить как готово"
               title="Отметить как готово"
-              disabled={isBusy || missingRequiredPhoto}
+              disabled={isBusy || missingRequiredPhoto || !canWork}
               isLoading={completeLoading}
               onClick={() =>
-                onItemAction(completeKey, () => completeChecklistItem(restaurantId, checklist.id, item.id))
+                onItemAction(completeKey, () =>
+                  completeChecklistItem(restaurantId, checklist.id, item.id, checklist.version),
+                )
               }
             />
           )}
@@ -184,7 +197,9 @@ export default function ChecklistItemRow({
               title="Снять выполнение"
               disabled={isBusy}
               isLoading={undoLoading}
-              onClick={() => onItemAction(undoKey, () => undoChecklistItem(restaurantId, checklist.id, item.id))}
+              onClick={() =>
+                onItemAction(undoKey, () => undoChecklistItem(restaurantId, checklist.id, item.id, checklist.version))
+              }
             />
           )}
         </div>
@@ -194,6 +209,8 @@ export default function ChecklistItemRow({
           checklist={checklist}
           item={item}
           isPhotoUploading={isPhotoUploading}
+          disabled={isBusy}
+          canManage={canManage}
           onCompletionPhotoUpload={onCompletionPhotoUpload}
           onCompletionPhotoDelete={onCompletionPhotoDelete}
           onPhotoPreview={onPhotoPreview}

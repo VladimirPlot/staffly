@@ -28,6 +28,10 @@ public class ChecklistMapper {
     private final ChecklistImageStorage imageStorage;
 
     public ChecklistDto toDto(Checklist entity) {
+        return toDto(entity, null);
+    }
+
+    public ChecklistDto toDto(Checklist entity, Long currentMemberId) {
         List<ChecklistPositionDto> positions = entity.getPositions() == null
                 ? List.of()
                 : entity.getPositions().stream()
@@ -70,7 +74,9 @@ public class ChecklistMapper {
                 entity.getResetDayOfWeek(),
                 entity.getResetDayOfMonth(),
                 items,
-                positions
+                positions,
+                entity.getVersion(),
+                currentMemberId
         );
     }
 

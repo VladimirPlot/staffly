@@ -20,7 +20,10 @@ public class ChecklistTerminationLifecycleHandler implements TerminationLifecycl
             TerminationModuleDecision decision) {
         // Match ordinary edits: parent before item; stale edit flushes must not restore cleared reservations.
         items.findReservedChecklistIds(context.target().getId()).stream().distinct().sorted()
-                .forEach(id -> checklists.findDetailedByIdForUpdate(id).orElseThrow());
+                .forEach(id -> {
+                    var checklist = checklists.findDetailedByIdForUpdate(id).orElseThrow();
+                    checklist.setVersion(checklist.getVersion() + 1);
+                });
         return new ChecklistTerminationResult(items.releaseActiveReservationsForMember(context.target().getId()));
     }
 }
