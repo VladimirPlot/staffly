@@ -44,7 +44,8 @@ import useScheduleShiftRequests from "../hooks/useScheduleShiftRequests";
 import useScheduleShiftRequestDialogs from "../hooks/useScheduleShiftRequestDialogs";
 import type { EditableScheduleData, ScheduleData, ScheduleOwnerDto } from "../types";
 import type { AdjustedScheduleAutoBuildAssignment, ScheduleSummary } from "../api";
-import { addScheduleMember, getAddableScheduleMembers, type AddableScheduleMember } from "../api";
+import { addScheduleMember, fetchSchedule, getAddableScheduleMembers, type AddableScheduleMember } from "../api";
+import { registerReloadPreparation, saveReloadDraft, takeReloadDraft } from "../../../shared/pwa/reloadSafety";
 import { buildMemberDisplayNameMap } from "../utils/names";
 import { canShowPreferenceHints, canViewSchedulePreferences } from "../utils/status";
 import type { MemberDto } from "../../employees/api";
@@ -474,6 +475,47 @@ const SchedulePage: React.FC = () => {
     onAutoTabReset: resetAutoTab,
   });
   const { closeSavedSchedule, deleteSavedSchedule, openSavedSchedule } = savedScheduleActions;
+
+  const reloadKey = `schedule:${user?.id}:${restaurantId}`;
+  const reloadSnapshot = React.useRef({ schedule, scheduleReadOnly, lastRange, activeTab, activePageTab });
+  reloadSnapshot.current = { schedule, scheduleReadOnly, lastRange, activeTab, activePageTab };
+  React.useEffect(
+    () =>
+      registerReloadPreparation(() => {
+        if (reloadSnapshot.current.schedule) saveReloadDraft(reloadKey, reloadSnapshot.current);
+      }),
+    [reloadKey],
+  );
+
+  const restoredKey = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (loading || error || !restaurantId || !user?.id || restoredKey.current === reloadKey) return;
+    restoredKey.current = reloadKey;
+    const draft = takeReloadDraft<typeof reloadSnapshot.current>(reloadKey);
+    if (!draft?.schedule) return;
+    void (async () => {
+      try {
+        if (draft.scheduleReadOnly && draft.schedule?.id) {
+          await openSavedSchedule(draft.schedule.id);
+        } else if (canManage && draft.schedule) {
+          // Recheck server access before restoring edits; the original version
+          // stays attached so saving cannot silently overwrite newer changes.
+          if (draft.schedule.id) await fetchSchedule(restaurantId, draft.schedule.id);
+          setSchedule(draft.schedule);
+          setScheduleReadOnly(false);
+          setScheduleMessage("Несохранённые правки восстановлены после обновления приложения.");
+        }
+        setLastRange(draft.lastRange);
+        setActiveTab(draft.activeTab);
+        setActivePageTab(draft.activePageTab);
+      } catch {
+        saveReloadDraft(reloadKey, draft);
+        setScheduleError(
+          "Не удалось восстановить график. Правки сохранены на этом устройстве; откройте страницу повторно после восстановления соединения.",
+        );
+      }
+    })();
+  }, [loading, error, restaurantId, user?.id, reloadKey, canManage, openSavedSchedule]);
 
   const preferenceActions = useSchedulePreferenceMeActions({
     restaurantId,

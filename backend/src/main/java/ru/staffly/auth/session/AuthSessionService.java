@@ -20,16 +20,21 @@ public class AuthSessionService {
     private final AuthProperties authProperties;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public record RotationResult(Long userId, String refreshToken) {}
+    public record RotationResult(Long userId, Long restaurantId, String refreshToken) {}
 
     @Transactional
     public String createSession(Long userId, String userAgent, String ip) {
+        return createSession(userId, null, userAgent, ip);
+    }
+
+    private String createSession(Long userId, Long restaurantId, String userAgent, String ip) {
         String refreshToken = generateRefreshToken();
         String refreshHash = hash(refreshToken);
         LocalDateTime now = TimeProvider.nowUtc();
         LocalDateTime expiresAt = now.plusDays(authProperties.refreshTtlDays());
         AuthSession session = AuthSession.builder()
                 .userId(userId)
+                .restaurantId(restaurantId)
                 .refreshHash(refreshHash)
                 .createdAt(now)
                 .expiresAt(expiresAt)
@@ -40,21 +45,33 @@ public class AuthSessionService {
         return refreshToken;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidRefreshSessionException.class)
     public RotationResult rotateSession(String refreshToken, String userAgent, String ip) {
         String refreshHash = hash(refreshToken);
         AuthSession session = repository.findByRefreshHashAndRevokedAtIsNull(refreshHash)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+                .orElseThrow(() -> new InvalidRefreshSessionException("Invalid refresh token"));
         LocalDateTime now = TimeProvider.nowUtc();
         if (!session.getExpiresAt().isAfter(now)) {
             session.setRevokedAt(now);
             repository.save(session);
-            throw new IllegalArgumentException("Refresh token expired");
+            throw new InvalidRefreshSessionException("Refresh token expired");
         }
         session.setRevokedAt(now);
         repository.save(session);
-        String newRefresh = createSession(session.getUserId(), userAgent, ip);
-        return new RotationResult(session.getUserId(), newRefresh);
+        String newRefresh = createSession(session.getUserId(), session.getRestaurantId(), userAgent, ip);
+        return new RotationResult(session.getUserId(), session.getRestaurantId(), newRefresh);
+    }
+
+    @Transactional
+    public void selectRestaurant(String refreshToken, Long userId, Long restaurantId) {
+        if (refreshToken == null || refreshToken.isBlank()) return;
+        var session = repository.findByRefreshHashAndRevokedAtIsNull(hash(refreshToken))
+                .orElseThrow(() -> new InvalidRefreshSessionException("Invalid refresh token"));
+        if (!session.getUserId().equals(userId) || !session.getExpiresAt().isAfter(TimeProvider.nowUtc())) {
+            throw new InvalidRefreshSessionException("Invalid refresh session");
+        }
+        session.setRestaurantId(restaurantId);
+        repository.save(session);
     }
 
     @Transactional

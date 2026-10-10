@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import Card from "../../../shared/ui/Card";
+import PwaDiagnostics from "../../../shared/pwa/PwaDiagnostics";
 import Button from "../../../shared/ui/Button";
 import BirthDateInput from "../../../shared/ui/BirthDateInput";
 import EmailInput from "../../../shared/ui/EmailInput";
@@ -323,10 +324,7 @@ export default function Profile() {
     const supported = hasNotification && "serviceWorker" in navigator && "PushManager" in window;
     setPushSupported(supported);
     setPushPermission(hasNotification ? Notification.permission : "denied");
-    setIsStandalone(
-      window.matchMedia("(display-mode: standalone)").matches ||
-        Boolean((navigator as any).standalone),
-    );
+    setIsStandalone(window.matchMedia("(display-mode: standalone)").matches || Boolean((navigator as any).standalone));
     setIsIOS(/iphone|ipad|ipod/i.test(navigator.userAgent));
     if (!supported || (hasNotification ? Notification.permission : "denied") !== "granted") {
       setPushEnabled(false);
@@ -437,11 +435,7 @@ export default function Profile() {
             {/* Контактные данные */}
             <div className="mt-6 grid gap-4">
               <Input label="Имя" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              <Input
-                label="Фамилия"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
+              <Input label="Фамилия" value={lastName} onChange={(e) => setLastName(e.target.value)} />
               <LazyPhoneInputField
                 label="Телефон"
                 autoComplete="tel"
@@ -484,18 +478,12 @@ export default function Profile() {
 
             {/* Push уведомления */}
             <div className="mb-2 text-sm font-medium">Push уведомления</div>
-            {!pushSupported && (
-              <div className="text-muted text-xs">
-                Ваш браузер не поддерживает push-уведомления.
-              </div>
-            )}
+            {!pushSupported && <div className="text-muted text-xs">Ваш браузер не поддерживает push-уведомления.</div>}
             {pushSupported && (
               <div className="border-subtle rounded-2xl border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium">
-                      {pushEnabled ? "Включены" : "Выключены"}
-                    </div>
+                    <div className="text-sm font-medium">{pushEnabled ? "Включены" : "Выключены"}</div>
                     <div className="text-muted text-xs">Разрешение: {pushPermission}</div>
                   </div>
                   <Button
@@ -538,9 +526,7 @@ export default function Profile() {
                           setPushEnabled(false);
                         }
                       } catch (e: any) {
-                        setPushError(
-                          e?.friendlyMessage || (e as Error)?.message || "Ошибка настройки push",
-                        );
+                        setPushError(e?.friendlyMessage || (e as Error)?.message || "Ошибка настройки push");
                       } finally {
                         setPushBusy(false);
                       }
@@ -562,10 +548,7 @@ export default function Profile() {
 
             {/* Смена пароля */}
             <div className="mb-2 text-sm font-medium">Сменить пароль</div>
-            <form
-              className="border-subtle grid gap-3 rounded-2xl border p-4"
-              onSubmit={handlePasswordSubmit}
-            >
+            <form className="border-subtle grid gap-3 rounded-2xl border p-4" onSubmit={handlePasswordSubmit}>
               <Input
                 label="Текущий пароль"
                 type="password"
@@ -599,6 +582,7 @@ export default function Profile() {
             </form>
           </>
         )}
+        <PwaDiagnostics />
       </Card>
     </div>
   );

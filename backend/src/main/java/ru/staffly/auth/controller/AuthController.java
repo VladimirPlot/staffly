@@ -16,14 +16,17 @@ import ru.staffly.auth.config.AuthProperties;
 import ru.staffly.auth.dto.AuthResponse;
 import ru.staffly.auth.dto.LoginRequest;
 import ru.staffly.auth.dto.RegisterRequest;
+import ru.staffly.auth.dto.RefreshRequest;
 import ru.staffly.auth.dto.SwitchRestaurantRequest;
 import ru.staffly.auth.session.AuthSessionService;
+import ru.staffly.auth.session.InvalidRefreshSessionException;
 import ru.staffly.auth.session.RefreshCookieService;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
 import ru.staffly.member.repository.RestaurantMemberRepository;
+import ru.staffly.restaurant.repository.RestaurantRepository;
 import ru.staffly.security.SecurityService;
 import ru.staffly.security.GlobalCreatorPolicy;
 import ru.staffly.security.JwtService;
@@ -44,6 +47,7 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final RestaurantMemberRepository memberRepository;
+    private final RestaurantRepository restaurants;
     private final SecurityService securityService;
     private final GlobalCreatorPolicy creatorPolicy;
     private final AuthSessionService authSessionService;
@@ -59,7 +63,8 @@ public class AuthController {
                           AuthSessionService authSessionService,
                           RefreshCookieService refreshCookieService,
                           AuthProperties authProperties,
-                          GlobalCreatorPolicy creatorPolicy) {
+                          GlobalCreatorPolicy creatorPolicy,
+                          RestaurantRepository restaurants) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
@@ -69,6 +74,7 @@ public class AuthController {
         this.refreshCookieService = refreshCookieService;
         this.authProperties = authProperties;
         this.creatorPolicy = creatorPolicy;
+        this.restaurants = restaurants;
     }
 
     @PostMapping("/register")
@@ -126,7 +132,7 @@ public class AuthController {
                                               HttpServletRequest request) {
         var u = users.findByPhone(req.phone())
                 .orElseThrow(() -> new NotFoundException("Пользователь не найдет"));
-        if (!encoder.matches(req.password(), u.getPasswordHash())) {
+        if (!u.isActive() || !encoder.matches(req.password(), u.getPasswordHash())) {
             throw new BadRequestException("Неверные учетные данные");
         }
         List<String> roles = creatorPolicy.isCreator(u) ? List.of("CREATOR") : List.of();
@@ -140,22 +146,39 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(HttpServletRequest request) {
+    @Transactional
+    public ResponseEntity<AuthResponse> refresh(HttpServletRequest request,
+                                               @RequestBody(required = false) RefreshRequest hint) {
         String refreshToken = extractRefreshToken(request);
         if (refreshToken == null || refreshToken.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         try {
             var rotation = authSessionService.rotateSession(refreshToken, request.getHeader("User-Agent"), resolveIp(request));
-            var user = users.findById(rotation.userId()).orElseThrow();
+            var user = users.findById(rotation.userId()).orElse(null);
+            if (user == null || !user.isActive()) {
+                authSessionService.revokeSession(rotation.refreshToken());
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
             List<String> roles = creatorPolicy.isCreator(user) ? List.of("CREATOR") : List.of();
-            var principal = new UserPrincipal(user.getId(), user.getPhone(), null, roles);
+            Long restaurantId = rotation.restaurantId();
+            if (restaurantId == null && hint != null) restaurantId = hint.restaurantId();
+            if (restaurantId != null && (!restaurants.existsById(restaurantId) ||
+                    (!roles.contains("CREATOR") &&
+                     (!securityService.isRestaurantUnlocked(restaurantId) ||
+                      memberRepository.findActiveByUserIdAndRestaurantId(user.getId(), restaurantId).isEmpty())))) {
+                restaurantId = null;
+            }
+            if (!java.util.Objects.equals(restaurantId, rotation.restaurantId())) {
+                authSessionService.selectRestaurant(rotation.refreshToken(), user.getId(), restaurantId);
+            }
+            var principal = new UserPrincipal(user.getId(), user.getPhone(), restaurantId, roles);
             String token = jwt.generateToken(principal);
             var cookie = refreshCookieService.buildRefreshCookie(rotation.refreshToken(), request);
             return ResponseEntity.ok()
                     .header(HttpHeaders.SET_COOKIE, cookie.toString())
                     .body(new AuthResponse(token));
-        } catch (Exception e) {
+        } catch (InvalidRefreshSessionException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
     }
@@ -175,14 +198,19 @@ public class AuthController {
     @PreAuthorize("isAuthenticated()")
     @PostMapping("/switch-restaurant")
     public ResponseEntity<AuthResponse> switchRestaurant(@AuthenticationPrincipal UserPrincipal principal,
-                                                         @RequestBody @Valid SwitchRestaurantRequest req) {
+                                                         @RequestBody @Valid SwitchRestaurantRequest req,
+                                                         HttpServletRequest request) {
         Long userId = principal.userId();
         Long restaurantId = req.restaurantId();
+
+        if (!restaurants.existsById(restaurantId)) throw new NotFoundException("Ресторан не найден");
 
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         boolean creator = principal.roles() != null && principal.roles().contains("CREATOR");
         boolean member = memberRepository.findActiveByUserIdAndRestaurantId(userId, restaurantId).isPresent();
         if (!creator && !member) throw new ForbiddenException("Не является сотрудником ресторана");
+
+        authSessionService.selectRestaurant(extractRefreshToken(request), userId, restaurantId);
 
         var newPrincipal = new UserPrincipal(
                 userId,
