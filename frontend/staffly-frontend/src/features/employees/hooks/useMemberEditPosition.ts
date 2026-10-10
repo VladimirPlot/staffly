@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 import { restaurantLocalDateTimeToInstant } from "../../schedule/utils/date";
+import type { TaskAudienceAction } from "../../tasks/api";
 
 export type ResponsibilityChoices = Record<string, number>;
 export type PositionDecision = { action: PositionChangeAction; newDeadline: string };
@@ -19,12 +20,16 @@ export function buildPositionChangeRequest(
   decisions: Record<number, PositionDecision>,
   restaurantTimeZone: string,
   responsibilities: ResponsibilityChoices = {},
+  taskChoices: Record<number, TaskAudienceAction> = {},
 ): ApplyPositionChangeRequest {
   const oldById = new Map(plan.oldPositionImpacts.map((impact) => [impact.scheduleId, impact]));
   const newById = new Map(plan.newPositionOpportunities.map((opportunity) => [opportunity.scheduleId, opportunity]));
   const scheduleIds = new Set([...oldById.keys(), ...newById.keys()]);
   return {
     targetPositionId: plan.employee.newPosition.id,
+    taskDecisions: (plan.taskOpportunities ?? [])
+      .filter((t) => t.completionMode === "EACH" && !t.leaving)
+      .map((t) => ({ taskId: t.taskId, expectedVersion: t.version, action: taskChoices[t.taskId] })),
     expectedCurrentPositionId: plan.employee.oldPosition.id,
     expectedMemberCreatedAt: plan.employee.memberCreatedAt,
     expectedCurrentPosition: plan.currentPositionSnapshot,
@@ -107,6 +112,7 @@ export function useMemberEditPosition({
   const [plan, setPlan] = useState<PositionChangeImpactPlan | null>(null);
   const [decisions, setDecisions] = useState<Record<number, PositionDecision>>({});
   const [responsibilities, setResponsibilities] = useState<ResponsibilityChoices>({});
+  const [taskChoices, setTaskChoices] = useState<Record<number, TaskAudienceAction>>({});
   const [saving, setSaving] = useState(false);
   const [loadingImpact, setLoadingImpact] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +128,7 @@ export function useMemberEditPosition({
     setPlan(null);
     setDecisions({});
     setResponsibilities({});
+    setTaskChoices({});
     setError(null);
   };
   const close = () => {
@@ -130,6 +137,7 @@ export function useMemberEditPosition({
       setPlan(null);
       setDecisions({});
       setResponsibilities({});
+      setTaskChoices({});
       setError(null);
     }
   };
@@ -141,6 +149,7 @@ export function useMemberEditPosition({
       setPlan(await getPositionChangeImpact(restaurantId, memberToEdit.id, editPositionId));
       setDecisions({});
       setResponsibilities({});
+      setTaskChoices({});
     } catch (e) {
       setError(getFriendlyEmployeeErrorMessage(e, "Не удалось проверить последствия"));
     } finally {
@@ -155,13 +164,14 @@ export function useMemberEditPosition({
       const result = await applyPositionChange(
         restaurantId,
         memberToEdit.id,
-        buildPositionChangeRequest(plan, decisions, restaurantTimeZone, responsibilities),
+        buildPositionChangeRequest(plan, decisions, restaurantTimeZone, responsibilities, taskChoices),
       );
       await onApplied(result.member);
       setMemberToEdit(null);
       setPlan(null);
       setDecisions({});
       setResponsibilities({});
+      setTaskChoices({});
       setSuccess(
         `Должность сотрудника изменена${result.cancelledFutureShiftCount ? `. Отменено будущих смен: ${result.cancelledFutureShiftCount}` : ""}`,
       );
@@ -171,6 +181,7 @@ export function useMemberEditPosition({
           setPlan(await getPositionChangeImpact(restaurantId, memberToEdit.id, plan.employee.newPosition.id));
           setDecisions({});
           setResponsibilities({});
+          setTaskChoices({});
           setError(
             "Данные изменились, пока вы подтверждали смену должности. Мы обновили информацию — проверьте изменения ещё раз.",
           );
@@ -178,6 +189,7 @@ export function useMemberEditPosition({
           setPlan(null);
           setDecisions({});
           setResponsibilities({});
+          setTaskChoices({});
           setError(getFriendlyEmployeeErrorMessage(refreshError, "Не удалось обновить информацию"));
         }
       } else setError(getFriendlyEmployeeErrorMessage(e, "Не удалось сменить должность"));
@@ -193,6 +205,8 @@ export function useMemberEditPosition({
     decisions,
     setDecisions,
     responsibilities,
+    taskChoices,
+    setTaskChoices,
     setResponsibilities,
     saving,
     loadingImpact,

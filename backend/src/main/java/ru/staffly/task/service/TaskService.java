@@ -375,6 +375,9 @@ public class TaskService {
     }
 
     private boolean isVisibleForMember(Task task, RestaurantMember member) {
+        if (task.getAudience() != ru.staffly.task.model.TaskAudience.NONE) return TaskBoardService.visible(task, member);
+        if (TaskBoardService.visible(task, member)) return true;
+        if (task.getCompletionMode() == ru.staffly.task.model.TaskCompletionMode.EACH) return false;
         if (task.isAssignedToAll()) {
             return true;
         }

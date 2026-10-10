@@ -20,8 +20,26 @@ public record PositionChangeImpactPlan(
         List<ru.staffly.member.dto.EmployeeRemovalImpactPlan.OwnershipResource> certificationOwnership,
         List<ru.staffly.member.dto.EmployeeRemovalImpactPlan.TaskResponsibility> taskSetters,
         List<CertificationAudienceChange> certificationAudienceChanges,
+        int reservationsToRelease,
+        List<ru.staffly.task.dto.TaskOpportunityDto> taskOpportunities) {
+    public PositionChangeImpactPlan(
+        Instant calculatedAt,
+        Employee employee,
+        List<OldPositionImpact> oldPositionImpacts,
+        List<NewPositionOpportunity> newPositionOpportunities,
+        PositionSnapshot currentPositionSnapshot,
+        PositionSnapshot targetPositionSnapshot,
+        List<OwnershipState> scheduleOwnershipState,
+        List<OwnershipState> certificationOwnershipState,
+        List<ru.staffly.member.dto.EmployeeRemovalImpactPlan.OwnershipResource> scheduleOwnership,
+        List<ru.staffly.member.dto.EmployeeRemovalImpactPlan.OwnershipResource> certificationOwnership,
+        List<ru.staffly.member.dto.EmployeeRemovalImpactPlan.TaskResponsibility> taskSetters,
+        List<CertificationAudienceChange> certificationAudienceChanges,
         int reservationsToRelease
 ) {
+        this(calculatedAt, employee, oldPositionImpacts, newPositionOpportunities, currentPositionSnapshot, targetPositionSnapshot, scheduleOwnershipState, certificationOwnershipState, scheduleOwnership, certificationOwnership, taskSetters, certificationAudienceChanges, reservationsToRelease, List.of());
+    }
+
     public record Position(Long id, String name) { }
     public record CertificationAudienceChange(Long certificationId, String title, boolean entersAudience) { }
     public record OwnershipState(Long resourceId, long version, Long ownerUserId) { }

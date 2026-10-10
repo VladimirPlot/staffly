@@ -15,8 +15,16 @@ import java.util.List;
 public record InviteRequest(
         @NotBlank @Size(max = 32) String phone,
         @NotNull Long positionId,
+        @NotNull @Valid List<ScheduleDecision> scheduleIntents,
+        @Valid List<ru.staffly.task.dto.TaskAudienceDecision> taskDecisions) {
+    public InviteRequest(
+        @NotBlank @Size(max = 32) String phone,
+        @NotNull Long positionId,
         @NotNull @Valid List<ScheduleDecision> scheduleIntents
 ) {
+        this(phone, positionId, scheduleIntents, List.of());
+    }
+
     public record ScheduleDecision(
             @NotNull Long scheduleId,
             @NotNull InvitationScheduleIntentAction selectedAction,

@@ -20,9 +20,26 @@ public record ApplyPositionChangeRequest(
         @NotNull List<PositionChangeImpactPlan.OwnershipState> expectedCertificationOwnershipState,
         @Valid List<ApplyEmployeeRemovalRequest.OwnershipTransfer> scheduleOwnershipTransfers,
         @Valid List<ApplyEmployeeRemovalRequest.OwnershipTransfer> certificationOwnershipTransfers,
+        @Valid List<ApplyEmployeeRemovalRequest.TaskTransfer> taskSetterTransfers,
+        @Valid List<ru.staffly.task.dto.TaskAudienceDecision> taskDecisions) {
+    public ApplyPositionChangeRequest(
+        @NotNull Long targetPositionId,
+        @NotNull Long expectedCurrentPositionId,
+        @NotNull Instant expectedMemberCreatedAt,
+        @NotNull @Valid List<ScheduleDecision> schedules,
+        @NotNull @Valid PositionChangeImpactPlan.PositionSnapshot expectedCurrentPosition,
+        @NotNull @Valid PositionChangeImpactPlan.PositionSnapshot expectedTargetPosition,
+        @NotNull List<PositionChangeImpactPlan.OwnershipState> expectedScheduleOwnershipState,
+        @NotNull List<PositionChangeImpactPlan.OwnershipState> expectedCertificationOwnershipState,
+        @Valid List<ApplyEmployeeRemovalRequest.OwnershipTransfer> scheduleOwnershipTransfers,
+        @Valid List<ApplyEmployeeRemovalRequest.OwnershipTransfer> certificationOwnershipTransfers,
         @Valid List<ApplyEmployeeRemovalRequest.TaskTransfer> taskSetterTransfers
 ) {
+        this(targetPositionId, expectedCurrentPositionId, expectedMemberCreatedAt, schedules, expectedCurrentPosition, expectedTargetPosition, expectedScheduleOwnershipState, expectedCertificationOwnershipState, scheduleOwnershipTransfers, certificationOwnershipTransfers, taskSetterTransfers, List.of());
+    }
+
     public ApplyPositionChangeRequest {
+        taskDecisions = taskDecisions == null ? List.of() : List.copyOf(taskDecisions);
         scheduleOwnershipTransfers = scheduleOwnershipTransfers == null ? List.of() : List.copyOf(scheduleOwnershipTransfers);
         certificationOwnershipTransfers = certificationOwnershipTransfers == null ? List.of() : List.copyOf(certificationOwnershipTransfers);
         taskSetterTransfers = taskSetterTransfers == null ? List.of() : List.copyOf(taskSetterTransfers);

@@ -17,6 +17,9 @@ import java.time.Instant;
         })
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Invitation {
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name="task_decisions", columnDefinition="jsonb") @Builder.Default
+    private java.util.List<ru.staffly.task.dto.TaskAudienceDecision> taskDecisions = new java.util.ArrayList<>();
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

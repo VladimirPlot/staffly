@@ -11,6 +11,7 @@ import type { PositionDto } from "../../dictionaries/api";
 import { DEFAULT_PHONE_COUNTRY, normalizePhoneForSubmit } from "../../../shared/utils/phone";
 import { getFriendlyEmployeeErrorMessage } from "../utils/errorMessages";
 import { actionAcceptsDeadline, deadlineValidation } from "../utils/invitationDeadline";
+import type { TaskAudienceAction } from "../../tasks/api";
 
 type AccessFlags = {
   isManagerLike: boolean;
@@ -32,6 +33,7 @@ export function useInviteForm(
   const [error, setError] = useState<string | null>(null);
   const [impact, setImpact] = useState<InvitationImpactPlan | null>(null);
   const [decisions, setDecisions] = useState<Record<number, InvitationIntentAction>>({});
+  const [taskChoices, setTaskChoices] = useState<Record<number, TaskAudienceAction>>({});
   const [deadlines, setDeadlines] = useState<Record<number, string>>({});
   const [validationNow, setValidationNow] = useState(Date.now);
 
@@ -65,6 +67,7 @@ export function useInviteForm(
     setError(null);
     setImpact(null);
     setDecisions({});
+    setTaskChoices({});
     setDeadlines({});
   };
 
@@ -86,7 +89,9 @@ export function useInviteForm(
       });
       setValidationNow(Date.now());
       setImpact(plan);
+      setTaskChoices({});
       setDecisions({});
+      setTaskChoices({});
       setDeadlines({});
     } catch (error: unknown) {
       setError(getFriendlyEmployeeErrorMessage(error, "Не удалось отправить приглашение"));
@@ -114,15 +119,20 @@ export function useInviteForm(
 
   const allRequiredScheduleDecisionsSelected = useMemo(() => {
     if (!impact) return false;
-    return impact.scheduleOpportunities.every((item) => {
-      if (isInformationOnly(item.allowedActions)) return true;
-      const action = decisions[item.scheduleId];
-      if (!action || !item.allowedActions.includes(action)) return false;
-      if (action !== "DO_NOT_ADD" && action !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0)
-        return false;
-      return deadlineValidations[item.scheduleId].valid;
-    });
-  }, [decisions, deadlineValidations, impact]);
+    return (
+      (impact.taskOpportunities ?? [])
+        .filter((t) => t.completionMode === "EACH" && !t.leaving)
+        .every((t) => !!taskChoices[t.taskId]) &&
+      impact.scheduleOpportunities.every((item) => {
+        if (isInformationOnly(item.allowedActions)) return true;
+        const action = decisions[item.scheduleId];
+        if (!action || !item.allowedActions.includes(action)) return false;
+        if (action !== "DO_NOT_ADD" && action !== "DO_NOT_ADD_TO_DRAFT" && item.eligibilityProblems.length > 0)
+          return false;
+        return deadlineValidations[item.scheduleId].valid;
+      })
+    );
+  }, [decisions, deadlineValidations, impact, taskChoices]);
 
   const confirm = async () => {
     if (!restaurantId || !impact || !normalizedPhone.e164 || !positionId || !allRequiredScheduleDecisionsSelected)
@@ -153,7 +163,10 @@ export function useInviteForm(
           expectedPreferenceMode: item.preferenceMode,
         };
       });
-      await inviteEmployee(restaurantId, { phone: normalizedPhone.e164, positionId, scheduleIntents });
+      const taskDecisions = (impact.taskOpportunities ?? [])
+        .filter((t) => t.completionMode === "EACH" && !t.leaving)
+        .map((t) => ({ taskId: t.taskId, expectedVersion: t.version, action: taskChoices[t.taskId] }));
+      await inviteEmployee(restaurantId, { phone: normalizedPhone.e164, positionId, scheduleIntents, taskDecisions });
       setInviteDone(true);
       setImpact(null);
     } catch (error: unknown) {
@@ -193,6 +206,9 @@ export function useInviteForm(
     error,
     impact,
     decisions,
+    taskChoices,
+    setTaskChoice: (id: number, action: TaskAudienceAction) =>
+      setTaskChoices((current) => ({ ...current, [id]: action })),
     deadlines,
     deadlineValidations,
     allRequiredScheduleDecisionsSelected,
@@ -211,6 +227,7 @@ export function useInviteForm(
     backToDetails: () => {
       setImpact(null);
       setDecisions({});
+      setTaskChoices({});
       setDeadlines({});
       setError(null);
     },

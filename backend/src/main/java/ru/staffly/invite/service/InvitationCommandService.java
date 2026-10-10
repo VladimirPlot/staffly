@@ -56,10 +56,13 @@ public class InvitationCommandService {
     private final InvitationSenderNotificationService invitationSenderNotifications;
     private final InvitationContactLock contactLock;
     private final ru.staffly.dictionary.repository.PositionRepository positions;
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.task.service.TaskBoardService taskBoard;
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.member.lifecycle.RestaurantLifecycleMutex taskMutex;
     private static final Duration INVITE_TTL = Duration.ofHours(48);
 
     @Transactional
     public InviteResponse invite(Long restaurantId, Long currentUserId, InviteRequest req) {
+        if(taskMutex != null) taskMutex.lock(restaurantId);
         security.assertAtLeastManager(currentUserId, restaurantId);
 
         Restaurant restaurant = restaurants.findById(restaurantId)
@@ -103,9 +106,11 @@ public class InvitationCommandService {
         }
         validateDecisions(relevant, decisions, desiredPosition.getId());
 
+        if(taskBoard != null) taskBoard.validateChoices(restaurantId, desiredPosition.getId(), null, req.taskDecisions() == null ? List.of() : req.taskDecisions());
         String token = genToken(); // дефолт 24 байта
         Invitation inv = Invitation.builder()
                 .restaurant(restaurant)
+                .taskDecisions(req.taskDecisions() == null ? List.of() : req.taskDecisions())
                 .phoneOrEmail(contact)
                 .token(token)
                 .status(InvitationStatus.PENDING)
