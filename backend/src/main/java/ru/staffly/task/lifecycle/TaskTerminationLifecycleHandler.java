@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 public class TaskTerminationLifecycleHandler implements TerminationLifecycleHandler {
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.task.service.TaskBoardService board;
     private final TaskRepository tasks;
     private final RestaurantMemberRepository members;
 
@@ -90,11 +91,14 @@ public class TaskTerminationLifecycleHandler implements TerminationLifecycleHand
             if (task.getSetterMember() != null && Objects.equals(task.getSetterMember().getId(), context.target().getId())) {
                 RestaurantMember replacementSetter = replacement(context, task, setterTransfers.get(task.getId()), true);
                 task.setSetterMember(replacementSetter);
+                task.setOverdueNotifiedFor(null);
+                if(board != null) board.event(task,null,"Передана ответственность: " + replacementSetter.getUser().getFullName());
                 setterFacts.add(new TaskTerminationResult.Transfer(task.getId(), task.getTitle(), replacementSetter.getId()));
                 setters++;
             }
         }
         tasks.saveAll(locked);
+        if(board != null) board.leave(context.target(), null);
         List<TaskTerminationResult.Orphan> orphanFacts = orphanedTasks.stream().map(task ->
                 new TaskTerminationResult.Orphan(task.getId(), task.getTitle(),
                         task.getSetterMember() == null ? null : task.getSetterMember().getId())).toList();

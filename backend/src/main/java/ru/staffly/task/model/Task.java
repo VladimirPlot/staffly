@@ -26,6 +26,24 @@ import java.time.LocalDateTime;
 @Builder
 public class Task {
 
+    @Enumerated(EnumType.STRING) @Builder.Default
+    private TaskCompletionMode completionMode = TaskCompletionMode.ANY;
+    @Enumerated(EnumType.STRING) @Builder.Default
+    private TaskAudience audience = TaskAudience.NONE;
+    private long definitionVersion;
+    private long activityVersion;
+    @ElementCollection @CollectionTable(name="task_position", joinColumns=@JoinColumn(name="task_id"))
+    @Column(name="position_id") @Builder.Default
+    private java.util.Set<Long> positionIds = new java.util.HashSet<>();
+    @OneToMany(mappedBy="task", cascade=CascadeType.ALL) @Builder.Default
+    private java.util.List<TaskParticipant> participants = new java.util.ArrayList<>();
+    @OneToMany(mappedBy="task", cascade=CascadeType.ALL) @OrderBy("createdAt ASC, id ASC") @Builder.Default
+    private java.util.List<TaskEvent> events = new java.util.ArrayList<>();
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="completed_by_member_id")
+    private RestaurantMember completedByMember;
+    private String completionReason;
+    private LocalDate overdueNotifiedFor;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -49,6 +67,9 @@ public class Task {
 
     @Column(name = "due_date")
     private LocalDate dueDate;
+
+    /** Optional deadline in the restaurant's local time; null means end of day. */
+    private java.time.LocalTime dueTime;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -1,4 +1,6 @@
 import Modal from "../../../shared/ui/Modal";
+import TaskAudienceChoices from "../../tasks/components/TaskAudienceChoices";
+import type { TaskAudienceAction } from "../../tasks/api";
 import Button from "../../../shared/ui/Button";
 import SelectField from "../../../shared/ui/SelectField";
 import type { PositionDto } from "../../dictionaries/api";
@@ -190,6 +192,8 @@ export default function EditMemberPositionModal(props: {
   plan: PositionChangeImpactPlan | null;
   decisions: Record<number, PositionDecision>;
   responsibilities: ResponsibilityChoices;
+  taskChoices: Record<number, TaskAudienceAction>;
+  onTaskChoice: (id: number, action: TaskAudienceAction) => void;
   onResponsibility: (key: string, id: number) => void;
   saving: boolean;
   loadingImpact: boolean;
@@ -237,6 +241,9 @@ export default function EditMemberPositionModal(props: {
     ),
   );
   const valid =
+    (plan?.taskOpportunities ?? [])
+      .filter((t) => t.completionMode === "EACH" && !t.leaving)
+      .every((t) => !!props.taskChoices[t.taskId]) &&
     responsibilityValid &&
     Boolean(plan) &&
     plan!.newPositionOpportunities.every((o) => {
@@ -358,6 +365,14 @@ export default function EditMemberPositionModal(props: {
                 ))}
               </section>
             ))}
+          {plan.reservationsToRelease > 0 && <></>}
+          <TaskAudienceChoices
+            items={plan.taskOpportunities ?? []}
+            values={props.taskChoices}
+            onChange={props.onTaskChoice}
+            timezone={props.restaurantTimeZone}
+            disabled={props.saving}
+          />
           {plan.reservationsToRelease > 0 && (
             <section>
               <h3 className="mb-2 font-semibold">Чек-листы</h3>

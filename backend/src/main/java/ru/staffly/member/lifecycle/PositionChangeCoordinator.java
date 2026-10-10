@@ -35,6 +35,7 @@ public class PositionChangeCoordinator {
     private final RestaurantTimeService restaurantTime;
     private final PositionChangeNotificationService notifications;
     private final ru.staffly.user.repository.UserRepository users;
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.task.service.TaskBoardService taskBoard;
     private final RestaurantLifecycleMutex lifecycleMutex;
 
     @PostConstruct
@@ -70,7 +71,7 @@ public class PositionChangeCoordinator {
                 schedule.ownership(), require(impacts, CertificationPositionChangeImpact.class).ownership(),
                 require(impacts, ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Impact.class).setters(),
                 require(impacts, CertificationPositionChangeImpact.class).audienceChanges(),
-                require(impacts, ru.staffly.checklist.lifecycle.ChecklistPositionChangeLifecycleHandler.Impact.class).reservationsToRelease());
+                require(impacts, ru.staffly.checklist.lifecycle.ChecklistPositionChangeLifecycleHandler.Impact.class).reservationsToRelease(), taskBoard == null ? List.of() : taskBoard.opportunities(restaurantId, target.getId(), member));
     }
 
     @Transactional
@@ -98,7 +99,7 @@ public class PositionChangeCoordinator {
         Map<LifecycleModule, PositionChangeModuleDecision> decisions = Map.of(
                 LifecycleModule.SCHEDULE, new SchedulePositionChangeDecision(request.schedules(), request.scheduleOwnershipTransfers(), request.expectedScheduleOwnershipState()),
                 LifecycleModule.CERTIFICATION, new CertificationPositionChangeDecision(request.certificationOwnershipTransfers(), request.expectedCertificationOwnershipState()),
-                LifecycleModule.TASK, new ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Decision(request.taskSetterTransfers()));
+                LifecycleModule.TASK, new ru.staffly.task.lifecycle.TaskPositionChangeLifecycleHandler.Decision(request.taskSetterTransfers(), request.taskDecisions()));
         Map<LifecycleModule, PositionChangeModulePreparation> preparations = new EnumMap<>(LifecycleModule.class);
         for (var handler : handlers) {
             var preparation = handler.applyBeforePositionChange(context, requireDecision(decisions, handler.module()));

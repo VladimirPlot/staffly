@@ -16,6 +16,7 @@ import static ru.staffly.member.lifecycle.PositionChangeSupport.*;
 @Component
 @RequiredArgsConstructor
 public class TaskPositionChangeLifecycleHandler implements PositionChangeLifecycleHandler {
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.task.service.TaskBoardService board;
     private final TaskRepository tasks;
     private final RestaurantMemberRepository members;
     @Override public LifecycleModule module() { return LifecycleModule.TASK; }
@@ -35,6 +36,7 @@ public class TaskPositionChangeLifecycleHandler implements PositionChangeLifecyc
     }
     @Override public Preparation applyBeforePositionChange(PositionChangeApplyContext c, PositionChangeModuleDecision raw) {
         if (!(raw instanceof Decision d)) throw stale();
+        if(board != null) board.validateChoices(c.restaurantId(), c.targetPosition().getId(), c.member(), d.taskDecisions());
         var expected = required(c.restaurantId(), c.member().getId(), c.targetPosition());
         var ids = expected.stream().map(Task::getId).sorted().toList();
         var tokens = new TreeMap<Long, TaskTransfer>();
@@ -55,18 +57,22 @@ public class TaskPositionChangeLifecycleHandler implements PositionChangeLifecyc
                     .orElseThrow(PositionChangeSupport::stale);
             if (Objects.equals(replacement.getId(), c.member().getId()) || replacement.getPosition() == null || !management(replacement.getPosition())) throw stale();
             task.setSetterMember(replacement);
+            task.setOverdueNotifiedFor(null);
+            if(board != null) board.event(task,null,"Передана ответственность: " + replacement.getUser().getFullName());
             facts.add(new TaskTerminationResult.Transfer(task.getId(), task.getTitle(), replacement.getId()));
         }
         tasks.saveAll(locked);
         return new Preparation(List.copyOf(facts));
     }
     @Override public Result applyAfterPositionChange(PositionChangeApplyContext c, PositionChangeModuleDecision d, PositionChangeModulePreparation p) {
+        if(board != null) board.changePosition(c.member(), c.targetPosition().getId(), ((Decision)d).taskDecisions(), null);
         return new Result(((Preparation)p).transfers());
     }
     public record Impact(List<TaskResponsibility> setters) implements PositionChangeModuleImpact {
         public LifecycleModule module() { return LifecycleModule.TASK; }
     }
-    public record Decision(List<TaskTransfer> transfers) implements PositionChangeModuleDecision {
+    public record Decision(List<TaskTransfer> transfers, List<ru.staffly.task.dto.TaskAudienceDecision> taskDecisions) implements PositionChangeModuleDecision {
+        public Decision(List<TaskTransfer> transfers) { this(transfers, List.of()); }
         public LifecycleModule module() { return LifecycleModule.TASK; }
     }
     public record Preparation(List<TaskTerminationResult.Transfer> transfers) implements PositionChangeModulePreparation {

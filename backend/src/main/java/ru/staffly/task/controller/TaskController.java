@@ -23,6 +23,7 @@ import java.util.List;
 public class TaskController {
 
     private final TaskService service;
+    private final ru.staffly.task.service.TaskBoardService board;
 
     @PreAuthorize("@securityService.isMember(principal.userId, #restaurantId)")
     @GetMapping("/restaurants/{restaurantId}/tasks")
@@ -31,22 +32,22 @@ public class TaskController {
                               @RequestParam(name = "scope", defaultValue = "MINE") TaskService.TaskScope scope,
                               @RequestParam(name = "status", required = false) TaskStatus status,
                               @RequestParam(name = "overdue", required = false) Boolean overdue) {
-        return service.list(restaurantId, principal.userId(), scope, status, overdue);
+        return board.list(restaurantId, principal.userId(), scope, status, overdue);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/restaurants/{restaurantId}/tasks")
     public TaskDto create(@PathVariable Long restaurantId,
                           @AuthenticationPrincipal UserPrincipal principal,
-                          @Valid @RequestBody TaskCreateRequest request) {
-        return service.create(restaurantId, principal.userId(), request);
+                          @Valid @RequestBody ru.staffly.task.dto.TaskWriteRequest request) {
+        return board.create(restaurantId, principal.userId(), request);
     }
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/tasks/{taskId}")
     public TaskDto get(@PathVariable Long taskId,
                        @AuthenticationPrincipal UserPrincipal principal) {
-        return service.get(taskId, principal.userId());
+        return board.get(taskId, principal.userId());
     }
 
     @PreAuthorize("isAuthenticated()")
@@ -54,21 +55,40 @@ public class TaskController {
     public TaskDto assign(@PathVariable Long taskId,
                           @AuthenticationPrincipal UserPrincipal principal,
                           @Valid @RequestBody TaskAssignRequest request) {
-        return service.assign(taskId, principal.userId(), request);
+        return board.assign(taskId, principal.userId(), request);
     }
 
     @PreAuthorize("isAuthenticated()")
     @PatchMapping("/tasks/{taskId}/complete")
     public TaskDto complete(@PathVariable Long taskId,
                             @AuthenticationPrincipal UserPrincipal principal) {
-        return service.complete(taskId, principal.userId());
+        return board.complete(taskId, principal.userId(), false);
+    }
+
+    @PreAuthorize("isAuthenticated()")
+    @PatchMapping("/tasks/{taskId}")
+    public TaskDto update(@PathVariable Long taskId, @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ru.staffly.task.dto.TaskWriteRequest request) {
+        return board.update(taskId, principal.userId(), request);
+    }
+    @PreAuthorize("isAuthenticated()")
+    @PatchMapping("/tasks/{taskId}/undo-completion")
+    public TaskDto undo(@PathVariable Long taskId, @AuthenticationPrincipal UserPrincipal principal) {
+        return board.complete(taskId, principal.userId(), true);
+    }
+    public record ReopenRequest(@jakarta.validation.constraints.NotNull Long expectedVersion) {}
+    @PreAuthorize("isAuthenticated()")
+    @PatchMapping("/tasks/{taskId}/reopen")
+    public TaskDto reopen(@PathVariable Long taskId, @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ReopenRequest request) {
+        return board.reopen(taskId, principal.userId(), request.expectedVersion());
     }
 
     @PreAuthorize("isAuthenticated()")
     @DeleteMapping("/tasks/{taskId}")
     public void delete(@PathVariable Long taskId,
                        @AuthenticationPrincipal UserPrincipal principal) {
-        service.delete(taskId, principal.userId());
+        board.delete(taskId, principal.userId());
     }
 
     @PreAuthorize("isAuthenticated()")

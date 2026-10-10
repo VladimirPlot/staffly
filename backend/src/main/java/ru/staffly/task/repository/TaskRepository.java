@@ -13,6 +13,11 @@ import java.util.Optional;
 
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
+    @Query("select t from Task t where t.restaurant.id = :restaurantId and t.deletedAt is null order by t.id")
+    List<Task> findBoard(Long restaurantId);
+    @Query("select t.id from Task t where t.deletedAt is null and t.status = ru.staffly.task.model.TaskStatus.ACTIVE and t.dueDate is not null")
+    List<Long> findOpenWithDeadline();
+
     // Scalar lookup avoids caching a task snapshot before waiting on the lifecycle mutex.
     @Query("select t.restaurant.id from Task t where t.id = :taskId and t.deletedAt is null")
     Optional<Long> findRestaurantIdByActiveId(Long taskId);
@@ -30,6 +35,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
                or t.assignedToAll = true
                or t.assignedMember.id = :memberId
                or t.assignedPosition.id = :positionId
+               or (:positionId member of t.positionIds and t.audience = ru.staffly.task.model.TaskAudience.POSITIONS and t.completionMode = ru.staffly.task.model.TaskCompletionMode.ANY)
+               or exists (select p.id from TaskParticipant p where p.task = t and p.member.id = :memberId and p.active = true)
              )
              and (:status is null or t.status = :status)
              and (

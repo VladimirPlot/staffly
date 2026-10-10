@@ -33,6 +33,7 @@ import static ru.staffly.common.util.InviteUtils.normalizePhone;
 @Service
 @RequiredArgsConstructor
 public class InvitationImpactService {
+    @org.springframework.beans.factory.annotation.Autowired private ru.staffly.task.service.TaskBoardService taskBoard;
     private final RestaurantRepository restaurants;
     private final PositionRepository positions;
     private final ScheduleRepository schedules;
@@ -57,7 +58,8 @@ public class InvitationImpactService {
 
         return new InvitationImpactPlan(now,
                 new InvitationImpactPlan.Candidate(phone, position.getId(), position.getName(), position.getLevel()),
-                opportunities);
+                opportunities, taskBoard == null ? List.of() : taskBoard.opportunities(restaurantId, position.getId(),
+                    users.findByCanonicalPhone(phone).map(user -> ru.staffly.member.model.RestaurantMember.builder().user(user).position(position).build()).orElse(null)));
     }
 
     public Position validatePosition(Long restaurantId, Long positionId, Long actorUserId) {

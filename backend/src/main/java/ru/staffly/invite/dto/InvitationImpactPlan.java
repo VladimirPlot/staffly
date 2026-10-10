@@ -11,8 +11,16 @@ import java.util.List;
 public record InvitationImpactPlan(
         Instant calculatedAt,
         Candidate candidate,
+        List<ScheduleOpportunity> scheduleOpportunities,
+        List<ru.staffly.task.dto.TaskOpportunityDto> taskOpportunities) {
+    public InvitationImpactPlan(
+        Instant calculatedAt,
+        Candidate candidate,
         List<ScheduleOpportunity> scheduleOpportunities
 ) {
+        this(calculatedAt, candidate, scheduleOpportunities, List.of());
+    }
+
     public record Candidate(String phone, Long targetPositionId, String targetPositionName,
                             RestaurantRole role) { }
 

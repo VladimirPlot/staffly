@@ -14,6 +14,7 @@ type Props = {
   disabled: boolean;
   onChange: (ids: number[]) => void;
   resetOption?: { label: string; selected: boolean; onSelect: () => void };
+  compact?: boolean;
 };
 
 export default function AnnouncementRecipientPicker({
@@ -24,20 +25,23 @@ export default function AnnouncementRecipientPicker({
   disabled,
   onChange,
   resetOption,
+  compact = false,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   const selected = new Set(selectedIds);
-  const filtered = useMemo(
-    () => filterAnnouncementOptions(options, query),
-    [options, query],
-  );
+  const filtered = useMemo(() => filterAnnouncementOptions(options, query), [options, query]);
   const selectedOptions = options.filter((option) => selected.has(option.id));
-  const title = selectedOptions.length > 0 ? `Выбрано: ${selectedOptions.length}` : placeholder;
+  const title =
+    selectedOptions.length > 0
+      ? compact
+        ? selectedOptions.map((option) => option.name).join(", ")
+        : `Выбрано: ${selectedOptions.length}`
+      : placeholder;
 
   return (
-    <div ref={anchor} className="space-y-2">
+    <div ref={anchor} className="min-w-0 space-y-2">
       <div className="text-muted text-sm">{label}</div>
       <DropdownMenu
         disabled={disabled}
@@ -56,10 +60,11 @@ export default function AnnouncementRecipientPicker({
           <button
             type="button"
             aria-label={label}
+            title={title}
             className="border-subtle bg-surface focus:ring-default flex h-9 w-full items-center justify-between rounded-xl border px-3 text-left text-sm focus:ring-2 focus:outline-none disabled:opacity-50"
             {...props}
           >
-            <span className="truncate">{title}</span>
+            <span className="min-w-0 truncate">{title}</span>
             <ChevronDown className="text-muted ml-3 h-4 w-4 shrink-0" />
           </button>
         )}
@@ -81,7 +86,7 @@ export default function AnnouncementRecipientPicker({
               label={`Поиск: ${label.toLowerCase()}`}
               value={query}
               onValueChange={setQuery}
-              placeholder={label === "Участники" ? "Имя или фамилия" : "Название должности"}
+              placeholder={label === "Участники" || label === "Исполнители" ? "Имя или фамилия" : "Название должности"}
               disabled={disabled}
             />
             <div className="max-h-[18.75rem] space-y-0.5 overflow-y-auto overscroll-contain pr-1">
@@ -115,7 +120,7 @@ export default function AnnouncementRecipientPicker({
           </div>
         )}
       </DropdownMenu>
-      {selectedOptions.length > 0 && (
+      {!compact && selectedOptions.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {selectedOptions.map((option) => (
             <span

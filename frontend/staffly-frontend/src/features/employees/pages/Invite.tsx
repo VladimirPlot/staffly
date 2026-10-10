@@ -133,6 +133,8 @@ export default function InvitePage() {
             error={inviteForm.error}
             impact={inviteForm.impact}
             decisions={inviteForm.decisions}
+            taskChoices={inviteForm.taskChoices}
+            onTaskChoice={inviteForm.setTaskChoice}
             deadlines={inviteForm.deadlines}
             deadlineValidations={inviteForm.deadlineValidations}
             restaurantTimeZone={restaurantTimeZone}
@@ -191,6 +193,8 @@ export default function InvitePage() {
         plan={editPositionState.plan}
         decisions={editPositionState.decisions}
         responsibilities={editPositionState.responsibilities}
+        taskChoices={editPositionState.taskChoices}
+        onTaskChoice={(id, action)=>editPositionState.setTaskChoices(current=>({...current,[id]:action}))}
         onResponsibility={(key, id) => editPositionState.setResponsibilities((current) => ({ ...current, [key]: id }))}
         restaurantTimeZone={restaurantTimeZone}
         saving={editPositionState.saving}

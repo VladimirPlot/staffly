@@ -224,6 +224,7 @@ export type NewPositionOpportunity = {
   newDeadlineRequiredForReopen: boolean;
 };
 export type PositionChangeImpactPlan = {
+  taskOpportunities?: import("../tasks/api").TaskOpportunity[];
   calculatedAt: string;
   employee: PositionChangeEmployee;
   oldPositionImpacts: OldPositionImpact[];
@@ -258,6 +259,7 @@ export type ScheduleDecision = {
   newDeadline: string | null;
 };
 export type ApplyPositionChangeRequest = {
+  taskDecisions?: import("../tasks/api").TaskAudienceDecision[];
   targetPositionId: number;
   expectedCurrentPositionId: number;
   expectedMemberCreatedAt: string;

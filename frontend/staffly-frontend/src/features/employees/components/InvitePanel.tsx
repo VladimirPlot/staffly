@@ -1,4 +1,6 @@
 import SelectField from "../../../shared/ui/SelectField";
+import TaskAudienceChoices from "../../tasks/components/TaskAudienceChoices";
+import type { TaskAudienceAction } from "../../tasks/api";
 import Button from "../../../shared/ui/Button";
 import type { CountryCode } from "libphonenumber-js";
 import type { PositionDto } from "../../dictionaries/api";
@@ -25,6 +27,8 @@ type InvitePanelProps = {
   error: string | null;
   impact: InvitationImpactPlan | null;
   decisions: Record<number, InvitationIntentAction>;
+  taskChoices: Record<number, TaskAudienceAction>;
+  onTaskChoice: (id: number, action: TaskAudienceAction) => void;
   deadlines: Record<number, string>;
   deadlineValidations: Record<number, InvitationDeadlineValidation>;
   restaurantTimeZone: string;
@@ -56,6 +60,8 @@ export default function InvitePanel({
   error,
   impact,
   decisions,
+  taskChoices,
+  onTaskChoice,
   deadlines,
   deadlineValidations,
   restaurantTimeZone,
@@ -92,7 +98,7 @@ export default function InvitePanel({
       ) : impact ? (
         <div className="grid gap-4">
           <div>
-            <div className="text-strong font-medium">Влияние приглашения на графики</div>
+            <div className="text-strong font-medium">Последствия приглашения</div>
             <div className="text-muted mt-1 text-sm">
               {impact.candidate.phone} · {impact.candidate.targetPositionName}
             </div>
@@ -117,6 +123,13 @@ export default function InvitePanel({
             ))
           )}
 
+          <TaskAudienceChoices
+            items={impact.taskOpportunities ?? []}
+            values={taskChoices}
+            onChange={onTaskChoice}
+            timezone={restaurantTimeZone}
+            disabled={submitting}
+          />
           {error && <div className="text-sm text-red-600">{error}</div>}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button disabled={isConfirmDisabled} onClick={onConfirm}>
