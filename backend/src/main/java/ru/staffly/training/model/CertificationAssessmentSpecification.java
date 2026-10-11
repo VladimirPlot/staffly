@@ -42,6 +42,9 @@ public class CertificationAssessmentSpecification {
     @Column(name = "attempt_limit")
     private Integer attemptLimit;
 
+    @Column(name = "question_pool_json", nullable = false, columnDefinition = "text")
+    private String questionPoolJson;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = TimeProvider.now();

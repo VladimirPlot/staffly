@@ -7,7 +7,9 @@ import type { ExamEditorProps } from "./examEditor/types";
 
 export default function ExamEditorModal(props: ExamEditorProps) {
   const state = useExamEditorState(props);
-  const title = props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
+  const title = props.exam
+    ? props.mode === "PRACTICE" ? "Редактировать тест" : "Редактировать аттестацию"
+    : props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
   const submitLabel = props.exam ? "Сохранить" : props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
 
   const currentVersion = state.newCycleConfirmation?.metadata.currentVersion;
@@ -80,9 +82,20 @@ export default function ExamEditorModal(props: ExamEditorProps) {
         description={
           <div className="space-y-2">
             <p>Изменения создадут новую версию аттестации.</p>
-            <p>Результаты сотрудников, которые уже прошли тест, сохранятся.</p>
-            <p>Сотрудники, которые ещё не начали тест или завершили попытки неуспешно и сейчас не проходят тест, будут переведены на новую версию.</p>
-            <p>Уже начатые попытки можно будет завершить.</p>
+            <p>Вопросы и правильные ответы новой версии будут зафиксированы при сохранении.</p>
+            <label className="flex items-start gap-2">
+              <input type="checkbox" checked={state.requireRecertification} disabled={state.saving}
+                onChange={(event) => state.setRequireRecertification(event.target.checked)} className="mt-1" />
+              <span>Назначить повторное прохождение всем сотрудникам</span>
+            </label>
+            {state.requireRecertification ? (
+              <p>Все сотрудники получат новое назначение, включая уже прошедших аттестацию. Прошлые результаты сохранятся в истории; начатые попытки останутся в прежнем назначении и не заменят новое прохождение.</p>
+            ) : (
+              <>
+                <p>Результаты уже прошедших сохранятся. Начатые попытки можно будет завершить по прежней версии.</p>
+                <p>Сотрудники, которые ещё не начали или завершили попытки неуспешно и сейчас не проходят тест, перейдут на новую версию.</p>
+              </>
+            )}
             {typeof currentVersion === "number" && typeof proposedVersion === "number" && (
               <p className="text-slate-500">
                 Версия {currentVersion} → {proposedVersion}

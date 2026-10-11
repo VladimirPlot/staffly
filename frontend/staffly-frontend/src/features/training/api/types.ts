@@ -291,6 +291,7 @@ export type CertificationPreviousValidResultDto = {
 export type UpsertExamPayload = {
   expectedEditorRevision?: number;
   confirmNewVersion?: boolean;
+  requireRecertification?: boolean;
   title: string;
   description?: string | null;
   mode: TrainingExamMode;

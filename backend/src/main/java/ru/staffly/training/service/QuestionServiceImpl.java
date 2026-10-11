@@ -1,6 +1,8 @@
 package ru.staffly.training.service;
 
 import lombok.RequiredArgsConstructor;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
@@ -37,6 +39,7 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingQuestionNestedPersistence nestedPersistence;
     private final TrainingPolicyService trainingPolicyService;
     private final TrainingActiveContainerValidator activeContainerValidator;
+    private final EntityManager entityManager;
 
     @Override
     @Transactional(readOnly = true)
@@ -241,6 +244,8 @@ public class QuestionServiceImpl implements QuestionService {
     private TrainingQuestion requireManageableQuestion(Long restaurantId, Long userId, Long questionId) {
         var question = questions.findByIdAndRestaurantIdWithFolderVisibility(questionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Question not found"));
+        entityManager.lock(question, LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(question);
         trainingPolicyService.assertCanManageQuestionBankByVisibility(
                 userId,
                 restaurantId,
@@ -256,6 +261,7 @@ public class QuestionServiceImpl implements QuestionService {
     private void assertQuestionDoesNotGrowActiveAllSource(Long restaurantId,
                                                            Long folderId,
                                                            TrainingQuestionGroup questionGroup) {
+        if (questionGroup == TrainingQuestionGroup.CERTIFICATION) return;
         var usages = folderSources.findActiveExamUsagesByFolderAndPickModeAndExamMode(
                 restaurantId,
                 folderId,
@@ -275,8 +281,10 @@ public class QuestionServiceImpl implements QuestionService {
     private void assertQuestionNotUsedInActiveExamsForMutation(Long restaurantId, TrainingQuestion question) {
         var usagesByExamId = new LinkedHashMap<Long, ru.staffly.training.repository.projection.TrainingExamUsageProjection>();
         questionSources.findActiveExamUsagesByRestaurantIdAndQuestionId(restaurantId, question.getId())
+                .stream().filter(usage -> usage.getMode() != TrainingExamMode.CERTIFICATION)
                 .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
         folderSources.findActiveExamUsagesByRestaurantIdAndQuestionViaFolder(restaurantId, question.getId())
+                .stream().filter(usage -> usage.getMode() != TrainingExamMode.CERTIFICATION)
                 .forEach(usage -> usagesByExamId.put(usage.getId(), usage));
 
         var usages = List.copyOf(usagesByExamId.values());

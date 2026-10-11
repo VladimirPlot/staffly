@@ -52,6 +52,7 @@ export function useExamEditorState({
   const [manageablePositionIds, setManageablePositionIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [requireRecertification, setRequireRecertification] = useState(false);
   const [staleConflict, setStaleConflict] = useState(false);
   const [newCycleConfirmation, setNewCycleConfirmation] = useState<{
     metadata: Record<string, unknown>;
@@ -82,6 +83,7 @@ export function useExamEditorState({
     setError(null);
     setStaleConflict(false);
     setNewCycleConfirmation(null);
+    setRequireRecertification(false);
     setPositionMenuOpen(false);
   }, [open, exam]);
 
@@ -392,6 +394,7 @@ export function useExamEditorState({
             metadata: parsedError.payload.meta ?? {},
             payload: attemptedUpdatePayload,
           });
+          setRequireRecertification(false);
         }
         setError(null);
       } else {
@@ -416,6 +419,7 @@ export function useExamEditorState({
       await updateExam(restaurantId, exam.id, {
         ...frozenPayload,
         confirmNewVersion: true,
+        requireRecertification,
       });
       await onSaved();
       onClose();
@@ -471,5 +475,7 @@ export function useExamEditorState({
     newCycleConfirmation,
     cancelNewCycleConfirmation: () => setNewCycleConfirmation(null),
     confirmNewVersion: () => void confirmNewVersion(),
+    requireRecertification,
+    setRequireRecertification,
   };
 }

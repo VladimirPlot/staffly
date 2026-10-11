@@ -3,6 +3,7 @@ package ru.staffly.training.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.staffly.common.exception.ConflictException;
+import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.training.dto.ExamSourceFolderDto;
 import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
@@ -19,6 +20,8 @@ class CertificationAssessmentSpecificationService {
     private final CertificationAssessmentQuestionSourceRepository specificationQuestions;
     private final TrainingExamSourceFolderRepository currentFolders;
     private final TrainingExamSourceQuestionRepository currentQuestions;
+    private final CertificationQuestionSnapshotService questionSnapshots;
+    private final ExamQuestionPoolResolver poolResolver;
 
     CertificationAssessmentSpecification createCurrent(TrainingExam exam) {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
@@ -34,21 +37,25 @@ class CertificationAssessmentSpecificationService {
                 .passPercent(exam.getPassPercent())
                 .timeLimitSec(exam.getTimeLimitSec())
                 .attemptLimit(exam.getAttemptLimit())
+                .questionPoolJson(questionSnapshots.capture(exam))
                 .build());
-        specificationFolders.saveAll(currentFolders.findByExamId(exam.getId()).stream()
+        specification.getFolderSources().addAll(specificationFolders.saveAll(currentFolders.findByExamId(exam.getId()).stream()
                 .map(source -> CertificationAssessmentFolderSource.builder()
                         .specification(specification)
                         .folder(source.getFolder())
                         .pickMode(source.getPickMode())
                         .randomCount(source.getRandomCount())
                         .build())
-                .toList());
-        specificationQuestions.saveAll(currentQuestions.findByExamId(exam.getId()).stream()
+                .toList()));
+        specification.getQuestionSources().addAll(specificationQuestions.saveAll(currentQuestions.findByExamId(exam.getId()).stream()
                 .map(source -> CertificationAssessmentQuestionSource.builder()
                         .specification(specification)
                         .question(source.getQuestion())
                         .build())
-                .toList());
+                .toList()));
+        if (poolResolver.buildQuestionPool(exam.getRestaurant().getId(), specification).questions().size() != specification.getQuestionCount()) {
+            throw new BadRequestException("Источники изменились во время публикации. Обновите вопросы и повторите сохранение.");
+        }
         return specification;
     }
 
@@ -83,6 +90,10 @@ class CertificationAssessmentSpecificationService {
         var changedFields = new java.util.ArrayList<String>();
         if (!expectedFolders.equals(actualFolders)) changedFields.add("sourcesFolders");
         if (!expectedQuestions.equals(actualQuestions)) changedFields.add("sourceQuestionIds");
+        if (expectedFolders.equals(actualFolders) && expectedQuestions.equals(actualQuestions)
+                && !questionSnapshots.sameContent(specification.getQuestionPoolJson(), questionSnapshots.capture(exam))) {
+            changedFields.add("questionContent");
+        }
         if (questionCount != specification.getQuestionCount()) changedFields.add("questionCount");
         if (passPercent != specification.getPassPercent()) changedFields.add("passPercent");
         if (!Objects.equals(timeLimitSec, specification.getTimeLimitSec())) changedFields.add("timeLimitSec");
