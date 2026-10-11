@@ -467,6 +467,7 @@ export type ExamAttemptDto = {
   examVersion: number;
   exam: RuntimeExamDto;
   questions: AttemptQuestionSnapshotDto[];
+  savedAnswers?: ExamSubmitAnswerDto[];
 };
 
 export type ExamSubmitAnswerDto = { questionId: number; answerJson?: string | null };

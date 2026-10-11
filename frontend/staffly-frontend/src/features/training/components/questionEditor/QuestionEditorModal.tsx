@@ -106,11 +106,14 @@ export default function QuestionEditorModal({
     const duplicateKeys = new Set<string>();
 
     if (type === "MATCH") {
-      const seen = new Set<string>();
+      const seenLeft = new Set<string>();
+      const seenRight = new Set<string>();
       pairs.forEach((pair, index) => {
-        const key = `${pair.leftText.trim().toLowerCase()}|||${pair.rightText.trim().toLowerCase()}`;
-        if (pair.leftText.trim() && pair.rightText.trim() && seen.has(key)) duplicateKeys.add(`pair-${index}`);
-        seen.add(key);
+        const left = pair.leftText.trim().toLowerCase();
+        const right = pair.rightText.trim().toLowerCase();
+        if ((left && seenLeft.has(left)) || (right && seenRight.has(right))) duplicateKeys.add(`pair-${index}`);
+        seenLeft.add(left);
+        seenRight.add(right);
       });
     } else if (type === "FILL_SELECT") {
       blanks.forEach((blank) => {
@@ -167,6 +170,10 @@ export default function QuestionEditorModal({
   };
 
   const submit = async () => {
+    if (duplicates.size > 0) {
+      setError(type === "MATCH" ? "Значения слева и справа должны быть уникальными." : "Уберите повторяющиеся варианты ответа.");
+      return;
+    }
     setSaving(true);
     setError(null);
 

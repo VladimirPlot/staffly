@@ -605,7 +605,8 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
                 toRuntimeExamDto(attempt),
-                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getAssignment(), attempt.getId())
+                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getAssignment(), attempt.getId()),
+                List.of()
         );
     }
 
@@ -639,6 +640,18 @@ public class ExamServiceImpl implements ExamService {
             }
         }
         return toAttemptResultDto(finalizedAttempt);
+    }
+
+    @Override
+    @Transactional
+    public void saveAttemptAnswer(Long restaurantId, Long attemptId, Long userId, SubmitAttemptAnswerDto answer) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
+        var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Attempt not found"));
+        if (!Objects.equals(attempt.getUser().getId(), userId)) {
+            throw new ForbiddenException("Attempt belongs to another user");
+        }
+        certificationAttemptFinalizationService.saveAnswer(attempt, answer);
     }
 
     @Override
@@ -705,7 +718,8 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private StartExamResponseDto resumeAttempt(TrainingExam exam, TrainingExamAttempt existingAttempt) {
-        var snapshots = attemptQuestions.findByAttemptId(existingAttempt.getId()).stream()
+        var savedQuestions = attemptQuestions.findByAttemptId(existingAttempt.getId());
+        var snapshots = savedQuestions.stream()
                 .map(item -> snapshotService.readSnapshot(item.getQuestionSnapshotJson()))
                 .toList();
 
@@ -714,7 +728,13 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
                 toRuntimeExamDto(existingAttempt),
-                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getAssignment(), existingAttempt.getId())
+                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getAssignment(), existingAttempt.getId()),
+                savedQuestions.stream()
+                        .filter(item -> item.getChosenAnswerJson() != null)
+                        .map(item -> new SubmitAttemptAnswerDto(
+                                snapshotService.readSnapshot(item.getQuestionSnapshotJson()).questionId(),
+                                item.getChosenAnswerJson()))
+                        .toList()
         );
     }
 

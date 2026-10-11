@@ -26,7 +26,7 @@ export default function MatchQuestionEditor({ pairs, duplicates, onPairsChange }
                 prev.map((item, idx) => (idx === index ? { ...item, leftText: e.target.value } : item)),
               )
             }
-            error={duplicates.has(`pair-${index}`) ? "Дубликат пары" : undefined}
+            error={duplicates.has(`pair-${index}`) ? "Повтор значения слева или справа" : undefined}
           />
           <Input
             label="Правая часть"
@@ -36,7 +36,7 @@ export default function MatchQuestionEditor({ pairs, duplicates, onPairsChange }
                 prev.map((item, idx) => (idx === index ? { ...item, rightText: e.target.value } : item)),
               )
             }
-            error={duplicates.has(`pair-${index}`) ? "Дубликат пары" : undefined}
+            error={duplicates.has(`pair-${index}`) ? "Повтор значения слева или справа" : undefined}
           />
           <div className="flex items-end justify-end">
             <IconButton onClick={() => onPairsChange((prev) => prev.filter((_, idx) => idx !== index))}>

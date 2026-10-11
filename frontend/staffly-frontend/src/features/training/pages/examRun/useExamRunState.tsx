@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
-import { listFolders, startExam, submitExamAttempt } from "../../api/trainingApi";
+import { listFolders, saveExamAnswer, startExam, submitExamAttempt } from "../../api/trainingApi";
 import type {
   AttemptQuestionSnapshotDto,
   ExamAttemptDto,
@@ -22,6 +22,7 @@ import {
   writePersistedExamRunState,
 } from "./storage";
 import type { FillBlankAnswer } from "./types";
+import { restoreExamRun } from "./resumeState";
 
 function formatRemainingTime(totalSec: number) {
   const safeSec = Math.max(0, totalSec);
@@ -44,7 +45,9 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   const [confirmedQuestionIds, setConfirmedQuestionIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [savingAnswer, setSavingAnswer] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorAction, setErrorAction] = useState<"load" | "submit">("load");
   const [result, setResult] = useState<ExamSubmitResultDto | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [questionError, setQuestionError] = useState<string | null>(null);
@@ -54,6 +57,8 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   const loadRequestSeqRef = useRef(0);
   const submitRequestRef = useRef<Promise<void> | null>(null);
   const finishedAttemptRef = useRef<number | null>(null);
+  const answerRequestRef = useRef<Promise<void> | null>(null);
+  const timeoutSubmitAttemptRef = useRef<number | null>(null);
 
   const backRoute =
     origin === "knowledge" && folderId != null
@@ -77,31 +82,28 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     const requestSeq = ++loadRequestSeqRef.current;
     setLoading(true);
     setError(null);
+    setErrorAction("load");
+    setAttempt(null);
     try {
       const response = await startExam(restaurantId, examId);
       if (requestSeq !== loadRequestSeqRef.current) {
         return;
       }
       const persisted = readPersistedExamRunState(examId);
-
-      if (persisted && persisted.attemptId === response.attemptId) {
-        setAnswers(persisted.answers ?? {});
-        setCurrentIndex(
-          Math.min(Math.max(persisted.currentIndex ?? 0, 0), Math.max(response.questions.length - 1, 0)),
-        );
-        setConfirmedQuestionIds(persisted.confirmedQuestionIds ?? []);
-      } else {
+      const restored = restoreExamRun(response, persisted);
+      if (persisted?.attemptId !== response.attemptId) {
         removePersistedExamRunState(examId);
-        setAnswers({});
-        setConfirmedQuestionIds([]);
-        setCurrentIndex(0);
-        setRemainingSec(null);
       }
+      setAnswers(restored.answers);
+      setConfirmedQuestionIds(restored.confirmedQuestionIds);
+      setCurrentIndex(restored.currentIndex);
+      setRemainingSec(null);
 
       setAttempt(response);
       setQuestionError(null);
       setResult(null);
       setTimeExpired(false);
+      timeoutSubmitAttemptRef.current = null;
     } catch (loadError) {
       if (requestSeq !== loadRequestSeqRef.current) {
         return;
@@ -116,6 +118,8 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
 
   useEffect(() => {
     void loadAttempt();
+    const requestSequence = loadRequestSeqRef;
+    return () => { requestSequence.current++; };
   }, [loadAttempt]);
 
   useEffect(() => {
@@ -216,6 +220,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     if (!options?.force) {
       const validationError = validateAllAnswered(attempt);
       if (validationError) {
+        setErrorAction("submit");
         setError(validationError);
         return;
       }
@@ -224,6 +229,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     const submitPromise = (async () => {
       setSubmitting(true);
       setError(null);
+      setErrorAction("submit");
       try {
         const response = await submitExamAttempt(restaurantId, attempt.attemptId, {
           answers: attempt.questions.map((question) => ({
@@ -246,17 +252,19 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
   }, [answers, attempt, examId, restaurantId, validateAllAnswered]);
 
   useEffect(() => {
-    if (!timeExpired || remainingSec !== 0 || !attempt || result || submitting) return;
+    if (!timeExpired || remainingSec !== 0 || !attempt || result || submitting || savingAnswer) return;
+    if (timeoutSubmitAttemptRef.current === attempt.attemptId) return;
+    timeoutSubmitAttemptRef.current = attempt.attemptId;
     void submit({ force: true });
-  }, [attempt, remainingSec, result, submit, submitting, timeExpired]);
+  }, [attempt, remainingSec, result, savingAnswer, submit, submitting, timeExpired]);
 
   useEffect(() => {
     if (!result || !isCertificationExam || !resultRoute) return;
     navigate(resultRoute, { replace: true });
   }, [isCertificationExam, navigate, result, resultRoute]);
 
-  const confirmCurrentAnswer = () => {
-    if (!currentQuestion) return;
+  const confirmCurrentAnswer = async () => {
+    if (!currentQuestion || !attempt || !restaurantId || timeExpired || answerRequestRef.current) return;
     setQuestionError(null);
     const validationError = getQuestionValidationError(currentQuestion, answers[currentQuestion.questionId]);
     if (validationError) {
@@ -264,9 +272,25 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
       return;
     }
 
-    setConfirmedQuestionIds((current) =>
-      current.includes(currentQuestion.questionId) ? current : [...current, currentQuestion.questionId],
-    );
+    const requestSeq = loadRequestSeqRef.current;
+    const questionId = currentQuestion.questionId;
+    setSavingAnswer(true);
+    const request = (async () => {
+      try {
+        await saveExamAnswer(restaurantId, attempt.attemptId, questionId, answers[questionId]);
+        if (requestSeq !== loadRequestSeqRef.current) return;
+        setConfirmedQuestionIds((current) => current.includes(questionId) ? current : [...current, questionId]);
+      } catch (saveError) {
+        if (requestSeq === loadRequestSeqRef.current) {
+          setQuestionError(getTrainingErrorMessage(saveError, "Ответ не сохранён. Попробуйте отправить его ещё раз."));
+        }
+      } finally {
+        answerRequestRef.current = null;
+        setSavingAnswer(false);
+      }
+    })();
+    answerRequestRef.current = request;
+    await request;
   };
 
   const goToNext = () => {
@@ -285,7 +309,7 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
 
   const handleExit = () => {
     if (hasUnsavedAnswers) {
-      const confirmed = window.confirm("Вы уверены? Прогресс сохранён, можно продолжить позже.");
+      const confirmed = window.confirm("Подтверждённые ответы сохранены. Если у теста есть таймер, время продолжит идти после выхода. Выйти к списку?");
       if (!confirmed) return;
     }
     navigate(backRoute);
@@ -324,6 +348,8 @@ export function useExamRunState({ restaurantId, examId, folderId, navigate }: Pa
     setSingleAnswer,
     submit,
     submitting,
+    savingAnswer,
+    retry: () => errorAction === "submit" ? void submit({ force: timeExpired }) : void loadAttempt(),
     timeExpired,
     confirmCurrentAnswer,
     goToNext,

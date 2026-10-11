@@ -247,6 +247,10 @@ export async function submitExamAttempt(restaurantId: number, attemptId: number,
   return data as ExamSubmitResultDto;
 }
 
+export async function saveExamAnswer(restaurantId: number, attemptId: number, questionId: number, answerJson: string): Promise<void> {
+  await apiClient.put(`/api/restaurants/${restaurantId}/training/exam-attempts/${attemptId}/answer`, { questionId, answerJson });
+}
+
 export async function listQuestionBankTree(restaurantId: number, mode: "PRACTICE" | "CERTIFICATION", includeInactive = false): Promise<QuestionBankTreeNodeDto[]> {
   const { data } = await apiClient.get(`/api/restaurants/${restaurantId}/training/question-bank/tree`, { params: { mode, includeInactive } });
   return data as QuestionBankTreeNodeDto[];

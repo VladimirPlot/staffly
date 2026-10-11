@@ -26,7 +26,7 @@ export default function ExamRunPage() {
       <h2 className="text-2xl font-semibold text-default">Прохождение теста</h2>
 
       {state.loading && <LoadingState label="Запускаем тест…" />}
-      {state.error && <ErrorState message={state.error} onRetry={state.loadAttempt} />}
+      {state.error && <ErrorState message={state.error} onRetry={state.retry} />}
 
       {state.attempt && !state.loading && (
         <ExamRunLayout
@@ -38,7 +38,7 @@ export default function ExamRunPage() {
           timeExpired={state.timeExpired}
           result={state.result}
           isCurrentQuestionConfirmed={state.isCurrentQuestionConfirmed}
-          submitting={state.submitting}
+          submitting={state.submitting || state.savingAnswer}
           onConfirm={state.confirmCurrentAnswer}
           onNext={state.goToNext}
           onExit={state.handleExit}
@@ -52,7 +52,7 @@ export default function ExamRunPage() {
                   question={state.currentQuestion}
                   index={state.currentIndex}
                   selected={state.answers[state.currentQuestion.questionId]}
-                  isConfirmed={state.isCurrentQuestionConfirmed}
+                  isConfirmed={state.isCurrentQuestionConfirmed || state.savingAnswer || state.timeExpired || state.submitting}
                   explanation={state.renderQuestionExplanation(state.currentQuestion)}
                   onSingleChange={(value) => state.setSingleAnswer(state.currentQuestion!, value)}
                   onMultiChange={(value, checked) => state.setMultiAnswer(state.currentQuestion!, value, checked)}

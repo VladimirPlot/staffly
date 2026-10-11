@@ -487,4 +487,12 @@ public class TrainingController {
         return examService.submitAttempt(restaurantId, attemptId, principal.userId(), request);
     }
 
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
+    @PutMapping("/exam-attempts/{attemptId}/answer")
+    public void saveAttemptAnswer(@PathVariable Long restaurantId, @PathVariable Long attemptId,
+                                  @AuthenticationPrincipal UserPrincipal principal,
+                                  @Valid @RequestBody SubmitAttemptAnswerDto answer) {
+        examService.saveAttemptAnswer(restaurantId, attemptId, principal.userId(), answer);
+    }
+
 }
