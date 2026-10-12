@@ -911,10 +911,25 @@ public class ExamServiceImpl implements ExamService {
                 return new ExamSourcesPreflightDto(available, false, List.of(
                         "Количество вопросов в попытке должно совпадать с доступным пулом (" + available + ")."));
             }
-            return new ExamSourcesPreflightDto(available, true, List.of());
+            return new ExamSourcesPreflightDto(available, true, List.of(), folderVisibilityWarnings(restaurantId, userId, request));
         } catch (BadRequestException | NotFoundException validationError) {
             return new ExamSourcesPreflightDto(0, false, List.of(validationError.getMessage()));
         }
+    }
+
+    private List<String> folderVisibilityWarnings(Long restaurantId, Long userId, ExamSourcesPreflightRequest request) {
+        // Count-only preflight calls and older clients do not request an audience check.
+        if (request.visibilityPositionIds() == null) return List.of();
+        validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
+        var ids = new HashSet<>(request.visibilityPositionIds());
+        if (!ids.isEmpty()) trainingPolicyService.assertCanUseExamTargetPositions(userId, restaurantId, ids);
+        var restaurantPositions = positions.findByRestaurantId(restaurantId);
+        var knownIds = restaurantPositions.stream().map(Position::getId).collect(Collectors.toSet());
+        if (!knownIds.containsAll(ids)) throw new BadRequestException("Выбранная должность не найдена в ресторане.");
+        var folder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
+        var audience = restaurantPositions.stream()
+                .filter(position -> ids.isEmpty() ? position.isActive() : ids.contains(position.getId())).toList();
+        return ExamFolderVisibilityWarnings.build(request.mode(), folder, audience);
     }
 
     private int validateSourceCapacity(Long restaurantId,

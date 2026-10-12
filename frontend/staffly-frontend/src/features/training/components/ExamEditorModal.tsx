@@ -71,6 +71,7 @@ export default function ExamEditorModal(props: ExamEditorProps) {
             positions={state.positions}
             manageablePositionIds={state.manageablePositionIds}
             visibilityPositionIds={state.form.visibilityPositionIds}
+            allPositionsSelected={state.allPositionsSelected}
             availabilityLabel={state.availabilityLabel}
             positionMenuOpen={state.positionMenuOpen}
             tree={state.tree}
@@ -110,6 +111,22 @@ export default function ExamEditorModal(props: ExamEditorProps) {
         {state.error && <div className="mt-5 text-sm text-red-600">{state.error}</div>}
       </Modal>
       {guard.discardDialog}
+      <ConfirmDialog
+        open={state.folderVisibilityConfirmation != null}
+        title="Аудитория теста шире видимости папки"
+        description={
+          <div className="max-h-[40dvh] space-y-3 overflow-y-auto pr-1">
+            {state.folderVisibilityConfirmation?.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        }
+        confirmText="Сохранить"
+        cancelText="Вернуться"
+        confirming={state.saving}
+        onCancel={state.cancelFolderVisibilityConfirmation}
+        onConfirm={state.confirmFolderVisibility}
+      />
       <ConfirmDialog
         open={state.newCycleConfirmation != null}
         title="Создать новую версию аттестации?"

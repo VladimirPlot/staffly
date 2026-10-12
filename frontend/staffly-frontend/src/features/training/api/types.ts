@@ -144,6 +144,7 @@ export type ExamSourcesPreflightDto = {
   availableQuestionCount: number;
   valid: boolean;
   issues: string[];
+  folderVisibilityWarnings?: string[];
 };
 
 export type ExamSourcesPreflightPayload = {
@@ -151,6 +152,9 @@ export type ExamSourcesPreflightPayload = {
   questionCount?: number | null;
   sourcesFolders: ExamSourceFolderDto[];
   sourceQuestionIds: number[];
+  knowledgeFolderId?: number | null;
+  folderId?: number | null;
+  visibilityPositionIds?: number[];
 };
 
 export type TrainingExamDto = {

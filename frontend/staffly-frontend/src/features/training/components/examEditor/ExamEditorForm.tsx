@@ -26,6 +26,7 @@ type Props = {
   positions: PositionDto[];
   manageablePositionIds: Set<number>;
   visibilityPositionIds: number[];
+  allPositionsSelected: boolean;
   availabilityLabel: string;
   positionMenuOpen: boolean;
   tree: QuestionBankTreeNodeDto[];
@@ -78,6 +79,7 @@ export default function ExamEditorForm(props: Props) {
         positions={props.positions}
         manageablePositionIds={props.manageablePositionIds}
         visibilityPositionIds={props.visibilityPositionIds}
+        allSelected={props.allPositionsSelected}
         availabilityLabel={props.availabilityLabel}
         positionMenuOpen={props.positionMenuOpen}
         onToggleMenu={props.onToggleMenu}

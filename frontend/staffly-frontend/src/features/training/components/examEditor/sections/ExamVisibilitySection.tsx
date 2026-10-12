@@ -7,6 +7,7 @@ type Props = {
   positions: PositionDto[];
   manageablePositionIds: Set<number>;
   visibilityPositionIds: number[];
+  allSelected: boolean;
   availabilityLabel: string;
   positionMenuOpen: boolean;
   onToggleMenu: () => void;
@@ -19,6 +20,7 @@ export default function ExamVisibilitySection({
   positions,
   manageablePositionIds,
   visibilityPositionIds,
+  allSelected,
   availabilityLabel,
   positionMenuOpen,
   onToggleMenu,
@@ -33,6 +35,8 @@ export default function ExamVisibilitySection({
         <button
           type="button"
           onClick={onToggleMenu}
+          aria-expanded={positionMenuOpen}
+          aria-label="Кому доступен тест"
           className="border-subtle bg-surface text-default hover:bg-app flex h-11 w-full items-center justify-between rounded-2xl border px-3 text-left text-sm shadow-[var(--staffly-shadow)] transition"
         >
           <span>{availabilityLabel}</span>
@@ -44,25 +48,25 @@ export default function ExamVisibilitySection({
             <button
               type="button"
               onClick={onSelectAll}
-              className={`hover:bg-app flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${(mode === "PRACTICE" ? visibilityPositionIds.length === 0 : positions.length > 0 && visibilityPositionIds.length === positions.length) ? "bg-app font-medium" : ""}`}
+              className={`hover:bg-app flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${allSelected ? "bg-app font-medium" : ""}`}
             >
               <span>Всем сотрудникам</span>
-              {(mode === "PRACTICE"
-                ? visibilityPositionIds.length === 0
-                : positions.length > 0 && visibilityPositionIds.length === positions.length) && <span>✓</span>}
+              {allSelected && <span>✓</span>}
             </button>
 
             <div className="border-subtle my-2 border-t" />
 
             <div className="max-h-56 space-y-1 overflow-auto">
               {positions.map((position) => {
-                const checked = visibilityPositionIds.includes(position.id);
-                const canChange = manageablePositionIds.has(position.id) && (position.active || checked);
+                const selected = visibilityPositionIds.includes(position.id);
+                const checked =
+                  selected && (!allSelected || !position.active || !manageablePositionIds.has(position.id));
+                const canChange = manageablePositionIds.has(position.id) && (position.active || selected);
 
                 return (
                   <label
                     key={position.id}
-                    className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm transition ${canChange ? "text-default hover:bg-app cursor-pointer" : "text-muted cursor-not-allowed"}`}
+                    className={`flex min-h-11 items-center justify-between rounded-xl px-3 py-2 text-sm transition ${canChange ? "text-default hover:bg-app cursor-pointer" : "text-muted cursor-not-allowed"}`}
                   >
                     <span className="flex items-center gap-2">
                       {position.name}
@@ -88,8 +92,8 @@ export default function ExamVisibilitySection({
 
       <div className="text-muted text-xs">
         {mode === "CERTIFICATION"
-          ? "Для аттестации нужно выбрать минимум одну должность. Выбор «Всем сотрудникам» отметит все должности."
-          : "Если не ограничивать доступ по должностям, тест будет доступен всем сотрудникам."}
+          ? "Выберите нужные должности или «Всем сотрудникам» в пределах вашей доступной аудитории."
+          : "Выберите нужные должности или «Всем сотрудникам»."}
       </div>
     </section>
   );
