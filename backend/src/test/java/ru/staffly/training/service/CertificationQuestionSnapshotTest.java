@@ -68,12 +68,41 @@ class CertificationQuestionSnapshotTest {
         var json = capture();
         clearInvocations(questions, folders, explicit, options, pairs, blanks, blankOptions);
         var specification = CertificationAssessmentSpecification.builder().exam(exam).questionPoolJson(json)
-                .folderSources(List.of(CertificationAssessmentFolderSource.builder().folder(folder)
+                .folderSources(List.of(CertificationAssessmentFolderSource.builder().folderId(2L)
                         .pickMode(TrainingExamSourcePickMode.RANDOM).randomCount(1).build()))
                 .questionSources(List.of(CertificationAssessmentQuestionSource.builder()
-                        .question(TrainingQuestion.builder().id(10L).build()).build())).build();
+                        .questionId(10L).build())).build();
         var resolver = new ExamQuestionPoolResolver(folders, explicit, questions, mock(TrainingFolderRepository.class),
                 mock(TrainingPolicyService.class), mock(TrainingActiveContainerValidator.class), service);
+        var pool = resolver.buildQuestionPool(1L, specification);
+        assertEquals(Set.of(10L, 11L), new HashSet<>(pool.questions().stream().map(TrainingQuestion::getId).toList()));
+        assertEquals(Set.of(10L), pool.mandatoryQuestionIds());
+        verifyNoInteractions(questions, folders, explicit, options, pairs, blanks, blankOptions);
+    }
+
+    @Test void publicationPersistsHistoricalIdsAndKeepsRandomSelectionRules() {
+        capture();
+        exam.setQuestionCount(2);
+        when(explicit.findByExamId(3L)).thenReturn(List.of(TrainingExamSourceQuestion.builder()
+                .question(TrainingQuestion.builder().id(10L).build()).build()));
+        var specifications = mock(CertificationAssessmentSpecificationRepository.class);
+        var publishedFolders = mock(CertificationAssessmentFolderSourceRepository.class);
+        var publishedQuestions = mock(CertificationAssessmentQuestionSourceRepository.class);
+        when(specifications.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(publishedFolders.saveAll(any())).thenAnswer(call -> call.getArgument(0));
+        when(publishedQuestions.saveAll(any())).thenAnswer(call -> call.getArgument(0));
+        var resolver = new ExamQuestionPoolResolver(folders, explicit, questions, mock(TrainingFolderRepository.class),
+                mock(TrainingPolicyService.class), mock(TrainingActiveContainerValidator.class), service);
+        var publisher = new CertificationAssessmentSpecificationService(specifications, publishedFolders,
+                publishedQuestions, folders, explicit, service, resolver);
+
+        var specification = publisher.createCurrent(exam);
+        assertEquals(2L, specification.getFolderSources().get(0).getFolderId());
+        assertEquals(TrainingExamSourcePickMode.RANDOM, specification.getFolderSources().get(0).getPickMode());
+        assertEquals(1, specification.getFolderSources().get(0).getRandomCount());
+        assertEquals(10L, specification.getQuestionSources().get(0).getQuestionId());
+        clearInvocations(questions, folders, explicit, options, pairs, blanks, blankOptions);
+        // IDs in the publication are sufficient even when no live sources are available.
         var pool = resolver.buildQuestionPool(1L, specification);
         assertEquals(Set.of(10L, 11L), new HashSet<>(pool.questions().stream().map(TrainingQuestion::getId).toList()));
         assertEquals(Set.of(10L), pool.mandatoryQuestionIds());
@@ -109,7 +138,7 @@ class CertificationQuestionSnapshotTest {
         var json = capture();
         var specification = CertificationAssessmentSpecification.builder().exam(exam).version(1)
                 .questionCount(1).passPercent(70).questionPoolJson(json)
-                .folderSources(List.of(CertificationAssessmentFolderSource.builder().folder(folder)
+                .folderSources(List.of(CertificationAssessmentFolderSource.builder().folderId(2L)
                         .pickMode(TrainingExamSourcePickMode.RANDOM).randomCount(1).build())).build();
         var repository = mock(CertificationAssessmentSpecificationRepository.class);
         when(repository.findByExamIdAndVersion(3L, 1)).thenReturn(Optional.of(specification));

@@ -188,7 +188,7 @@ public class QuestionServiceImpl implements QuestionService {
         var usages = questionSources.findExamUsagesByRestaurantIdAndQuestionId(restaurantId, questionId);
         if (!usages.isEmpty()) {
             throw new ConflictException(
-                    "Вопрос используется в экзаменах. Уберите папку из области экзамена и повторите.",
+                    "Вопрос выбран источником теста. Сначала уберите его из источников теста и повторите удаление.",
                     Map.of("exams", usages)
             );
         }

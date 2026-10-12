@@ -42,7 +42,7 @@ class CertificationAssessmentSpecificationService {
         specification.getFolderSources().addAll(specificationFolders.saveAll(currentFolders.findByExamId(exam.getId()).stream()
                 .map(source -> CertificationAssessmentFolderSource.builder()
                         .specification(specification)
-                        .folder(source.getFolder())
+                        .folderId(source.getFolder().getId())
                         .pickMode(source.getPickMode())
                         .randomCount(source.getRandomCount())
                         .build())
@@ -50,7 +50,7 @@ class CertificationAssessmentSpecificationService {
         specification.getQuestionSources().addAll(specificationQuestions.saveAll(currentQuestions.findByExamId(exam.getId()).stream()
                 .map(source -> CertificationAssessmentQuestionSource.builder()
                         .specification(specification)
-                        .question(source.getQuestion())
+                        .questionId(source.getQuestion().getId())
                         .build())
                 .toList()));
         if (poolResolver.buildQuestionPool(exam.getRestaurant().getId(), specification).questions().size() != specification.getQuestionCount()) {
@@ -74,7 +74,7 @@ class CertificationAssessmentSpecificationService {
                               Integer attemptLimit) {
         var specification = requireCurrent(exam);
         var expectedFolders = specification.getFolderSources().stream()
-                .map(source -> new FolderDefinition(source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                .map(source -> new FolderDefinition(source.getFolderId(), source.getPickMode(), source.getRandomCount()))
                 .sorted(Comparator.comparing(FolderDefinition::folderId))
                 .toList();
         var actualFolders = (requestedFolders == null ? List.<ExamSourceFolderDto>of() : requestedFolders).stream()
@@ -84,7 +84,7 @@ class CertificationAssessmentSpecificationService {
                 .sorted(Comparator.comparing(FolderDefinition::folderId))
                 .toList();
         var expectedQuestions = specification.getQuestionSources().stream()
-                .map(source -> source.getQuestion().getId()).distinct().sorted().toList();
+                .map(CertificationAssessmentQuestionSource::getQuestionId).distinct().sorted().toList();
         var actualQuestions = (requestedQuestionIds == null ? List.<Long>of() : requestedQuestionIds).stream()
                 .filter(Objects::nonNull).distinct().sorted().toList();
         var changedFields = new java.util.ArrayList<String>();

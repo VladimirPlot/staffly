@@ -87,12 +87,12 @@ class ExamQuestionPoolResolver {
                                            CertificationAssessmentSpecification specification) {
         var frozen = questionSnapshots.read(specification.getQuestionPoolJson());
         var explicitIds = specification.getQuestionSources().stream()
-                .map(source -> source.getQuestion().getId()).distinct().toList();
+                .map(CertificationAssessmentQuestionSource::getQuestionId).distinct().toList();
         var explicitQuestions = frozen.stream().filter(question -> explicitIds.contains(question.questionId()))
                 .map(question -> TrainingQuestion.builder().id(question.questionId()).build()).toList();
         var selections = specification.getFolderSources().stream()
                 .map(source -> new FolderSelection(source.getPickMode(), source.getRandomCount(),
-                        frozen.stream().filter(question -> Objects.equals(question.folderId(), source.getFolder().getId()))
+                        frozen.stream().filter(question -> Objects.equals(question.folderId(), source.getFolderId()))
                                 .map(question -> TrainingQuestion.builder().id(question.questionId()).build()).toList()))
                 .toList();
         return assembleQuestionPool(selections, explicitQuestions);
