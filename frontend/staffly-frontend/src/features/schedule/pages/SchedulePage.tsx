@@ -13,6 +13,7 @@ import AddScheduleMemberDialog from "../components/AddScheduleMemberDialog";
 import ChangeScheduleOwnerDialog from "../components/ChangeScheduleOwnerDialog";
 import CreateScheduleDialog from "../components/CreateScheduleDialog";
 import SavedSchedulesSection from "../components/SavedSchedulesSection";
+import CommonSchedulesSection from "../../commonSchedule/components/CommonSchedulesSection";
 import ScheduleBuildTemplatesSection from "../components/ScheduleBuildTemplatesSection";
 import SchedulePreferenceMeView from "../components/SchedulePreferenceMeView";
 import SchedulePreferenceManagerDialog from "../components/SchedulePreferenceManagerDialog";
@@ -89,6 +90,7 @@ const SchedulePage: React.FC = () => {
 
   const [schedule, setSchedule] = React.useState<EditableScheduleData | null>(null);
   const [scheduleReadOnly, setScheduleReadOnly] = React.useState(false);
+  const [commonScheduleOpen, setCommonScheduleOpen] = React.useState(false);
   const [scheduleMessage, setScheduleMessage] = React.useState<string | null>(null);
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
@@ -743,7 +745,7 @@ const SchedulePage: React.FC = () => {
           текущего черновика остаётся доступна.
         </div>
       )}
-      {derived.showLandingHeader && (
+      {derived.showLandingHeader && !commonScheduleOpen && (
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-strong text-2xl font-semibold">Графики</h1>
@@ -756,7 +758,7 @@ const SchedulePage: React.FC = () => {
         </div>
       )}
 
-      {showPageTabs && canManage && (
+      {showPageTabs && canManage && !commonScheduleOpen && (
         <div
           className="border-subtle bg-surface inline-flex rounded-2xl border p-1 shadow-[var(--staffly-shadow)]"
           role="tablist"
@@ -805,7 +807,10 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && showSchedulesTabContent && (
         <>
-          <SavedSchedulesSection
+          {restaurantId != null && <CommonSchedulesSection key={`${restaurantId}:${canManage}`} restaurantId={restaurantId}
+            canManage={canManage} schedules={savedSchedules} timeZone={restaurantTimeZone}
+            onViewingChange={setCommonScheduleOpen} onRefreshSources={reloadSavedSchedules} />}
+          {!commonScheduleOpen && <SavedSchedulesSection
             canManage={canManage}
             savedSchedules={derived.filteredSavedSchedules}
             positions={positions}
@@ -829,7 +834,7 @@ const SchedulePage: React.FC = () => {
             scheduleLoading={savedScheduleActions.scheduleLoading}
             hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
             deletingId={savedScheduleActions.deletingId}
-          />
+          />}
         </>
       )}
 
@@ -854,6 +859,7 @@ const SchedulePage: React.FC = () => {
       {!loading &&
         !error &&
         !canManage &&
+        !commonScheduleOpen &&
         derived.filteredSavedSchedules.length === 0 &&
         showSchedulesTabContent &&
         !savedScheduleActions.scheduleLoading && (
@@ -867,6 +873,7 @@ const SchedulePage: React.FC = () => {
       {!loading &&
         !error &&
         canManage &&
+        !commonScheduleOpen &&
         derived.filteredSavedSchedules.length === 0 &&
         showSchedulesTabContent &&
         !savedScheduleActions.scheduleLoading && (
