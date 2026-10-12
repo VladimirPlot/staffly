@@ -8,5 +8,6 @@ public record StartExamResponseDto(
         Instant startedAt,
         Integer examVersion,
         RuntimeExamDto exam,
-        List<RuntimeQuestionDto> questions
+        List<RuntimeQuestionDto> questions,
+        List<SubmitAttemptAnswerDto> savedAnswers
 ) {}

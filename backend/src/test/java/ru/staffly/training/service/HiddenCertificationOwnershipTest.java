@@ -171,7 +171,7 @@ class HiddenCertificationOwnershipTest {
         when(members.findActiveByUserIdAndRestaurantIdWithPosition(101L, 1L)).thenReturn(Optional.empty());
         var service = examService();
         var request = new UpdateTrainingExamRequest(4L, "Changed", null, 1, 80, null,
-                TrainingExamMode.CERTIFICATION, null, null, null, true, List.of(1L), List.of(), List.of(), false);
+                TrainingExamMode.CERTIFICATION, null, null, null, true, List.of(1L), List.of(), List.of(), false, false);
         var conflict = assertThrows(ConflictException.class, () -> service.updateExam(1L, 102L, 10L, request));
         assertEquals("CERTIFICATION_OWNER_INVALID", conflict.getMeta().get("code"));
         assertEquals("Hidden", hidden.getTitle());
@@ -182,7 +182,7 @@ class HiddenCertificationOwnershipTest {
 
     @Test void updateActivationChecksResultingVisibilityRatherThanOldScope() {
         var request = new UpdateTrainingExamRequest(4L, "Changed", null, 1, 80, null,
-                TrainingExamMode.CERTIFICATION, null, null, null, true, List.of(3L), List.of(), List.of(), false);
+                TrainingExamMode.CERTIFICATION, null, null, null, true, List.of(3L), List.of(), List.of(), false, false);
         var conflict = assertThrows(ConflictException.class, () -> examService().updateExam(1L, 102L, 10L, request));
         assertEquals("CERTIFICATION_OWNER_INVALID", conflict.getMeta().get("code"));
         assertFalse(hidden.isActive());
@@ -234,6 +234,12 @@ class HiddenCertificationOwnershipTest {
         ReflectionTestUtils.setField(service, "sourceFolders", mock(TrainingExamSourceFolderRepository.class));
         ReflectionTestUtils.setField(service, "sourceQuestions", mock(TrainingExamSourceQuestionRepository.class));
         var pool = mock(ExamQuestionPoolResolver.class);
+        var specifications = mock(CertificationAssessmentSpecificationService.class);
+        var specification = CertificationAssessmentSpecification.builder().exam(hidden).questionCount(1).build();
+        when(specifications.requireCurrent(hidden)).thenReturn(specification);
+        when(pool.buildQuestionPool(1L, specification)).thenReturn(new ExamQuestionPoolResolver.ResolvedQuestionPool(
+                List.of(TrainingQuestion.builder().id(1L).build()), Set.of()));
+        ReflectionTestUtils.setField(service, "certificationSpecificationService", specifications);
         when(pool.resolveAvailableQuestionCount(anyLong(), anyLong(), any(), anyList(), anyList())).thenReturn(1);
         ReflectionTestUtils.setField(service, "questionPoolResolver", pool);
         return service;

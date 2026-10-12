@@ -20,9 +20,9 @@ public class CertificationAssessmentFolderSource {
     @JoinColumn(name = "specification_id", nullable = false)
     private CertificationAssessmentSpecification specification;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "folder_id", nullable = false)
-    private TrainingFolder folder;
+    /** Historical identity, retained even after the live source folder is deleted. */
+    @Column(name = "folder_id", nullable = false, updatable = false)
+    private Long folderId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pick_mode", nullable = false, length = 20)

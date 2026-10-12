@@ -665,6 +665,12 @@ class CertificationAssignmentService {
         if (!olderHistorical) {
             return RecertificationPredecessorShape.INVALID;
         }
+        // Publishing a new specification and requiring everyone to retake is one transaction.
+        // The preceding cycle can therefore belong to the previous material version.
+        if (assignmentSpecification.getId().equals(expectedCurrentCycle.getAssessmentSpecification().getId())
+                && assignmentCycle.getId().equals(expectedCurrentCycle.getId())) {
+            return RecertificationPredecessorShape.CURRENT;
+        }
         if (unfinishedAssignmentIds.contains(assignment.getId())) {
             return RecertificationPredecessorShape.GRACEFUL_HISTORICAL;
         }

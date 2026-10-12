@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.util.List;
 
 public interface KnowledgeService {
+    TrainingKnowledgeItemDto saveKnowledgeItem(Long restaurantId, Long userId, SaveTrainingKnowledgeItemRequest request, MultipartFile image) throws IOException;
+    TrainingKnowledgeItemDto saveKnowledgeItem(Long restaurantId, Long userId, SaveTrainingKnowledgeItemRequest request, MultipartFile image, MultipartFile originalImage) throws IOException;
     List<TrainingFolderDto> listFolders(Long restaurantId, Long userId, TrainingFolderType type, boolean includeInactive);
     List<QuestionBankTreeNodeDto> getQuestionBankTree(Long restaurantId, Long userId, TrainingExamMode mode, boolean includeInactive);
     TrainingFolderDto createFolder(Long restaurantId, Long userId, CreateTrainingFolderRequest request);

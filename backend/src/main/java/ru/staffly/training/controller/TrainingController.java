@@ -136,6 +136,16 @@ public class TrainingController {
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
+    @PostMapping(value = "/knowledge-items/save", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public TrainingKnowledgeItemDto saveKnowledgeItem(@PathVariable Long restaurantId,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestPart("request") SaveTrainingKnowledgeItemRequest request,
+            @RequestPart(value = "image", required = false) MultipartFile image,
+            @RequestPart(value = "originalImage", required = false) MultipartFile originalImage) throws IOException {
+        return knowledgeService.saveKnowledgeItem(restaurantId, principal.userId(), request, image, originalImage);
+    }
+
+    @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
     @PutMapping("/knowledge-items/{itemId}")
     public TrainingKnowledgeItemDto updateKnowledgeItem(@PathVariable Long restaurantId,
                                                          @PathVariable Long itemId,
@@ -485,6 +495,14 @@ public class TrainingController {
                                           @AuthenticationPrincipal UserPrincipal principal,
                                           @Valid @RequestBody SubmitAttemptRequestDto request) {
         return examService.submitAttempt(restaurantId, attemptId, principal.userId(), request);
+    }
+
+    @PreAuthorize("@trainingPolicyService.isActiveTrainingMember(#principal.userId, #restaurantId)")
+    @PutMapping("/exam-attempts/{attemptId}/answer")
+    public void saveAttemptAnswer(@PathVariable Long restaurantId, @PathVariable Long attemptId,
+                                  @AuthenticationPrincipal UserPrincipal principal,
+                                  @Valid @RequestBody SubmitAttemptAnswerDto answer) {
+        examService.saveAttemptAnswer(restaurantId, attemptId, principal.userId(), answer);
     }
 
 }

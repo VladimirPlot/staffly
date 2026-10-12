@@ -1,9 +1,21 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
+import Modal from "../../../../../shared/ui/Modal";
+import Button from "../../../../../shared/ui/Button";
+import { QUESTION_TYPE_LABELS } from "../../../utils/questionLabels";
+import QuestionSourcePreview from "../QuestionSourcePreview";
 import Input from "../../../../../shared/ui/Input";
+import ErrorState from "../../ErrorState";
+import LoadingState from "../../LoadingState";
 import type { QuestionBankTreeNodeDto, TrainingQuestionDto } from "../../../api/types";
 import type { FlatTreeNode } from "../types";
 
 type Props = {
+  treeLoading: boolean;
+  treeError: string | null;
+  questionsLoading: boolean;
+  questionsError: string | null;
+  onRetryTree: () => void;
+  onRetryQuestions: () => void;
   tree: QuestionBankTreeNodeDto[];
   selectedFolderId: number | null;
   folderQuestions: TrainingQuestionDto[];
@@ -49,23 +61,23 @@ function FolderTreeNode({
 
   return (
     <div key={node.id} className="space-y-1">
-      <div className="rounded-xl border border-subtle bg-app/40 p-2" style={{ marginLeft: `${level * 12}px` }}>
+      <div className="border-subtle bg-app/40 rounded-xl border p-2" style={{ marginLeft: `${level * 12}px` }}>
         <div className="flex flex-wrap items-start gap-2">
           <button type="button" className="min-w-0 flex-1 text-left" onClick={() => onSelectFolder(node.id)}>
-            <div className="truncate text-sm font-medium text-default">{node.name}</div>
-            <div className="text-xs text-muted">{node.questionCount} вопросов</div>
+            <div className="text-default truncate text-sm font-medium">{node.name}</div>
+            <div className="text-muted text-xs">{node.questionCount} вопросов</div>
           </button>
 
-          <label className="flex items-center gap-2 text-sm text-default">
+          <label className="text-default flex items-center gap-2 text-sm">
             <input type="checkbox" checked={Boolean(source)} onChange={() => onToggleFolder(node.id)} />
             Добавить
           </label>
         </div>
 
         {source && (
-          <div className="mt-2 space-y-2 rounded-xl bg-surface p-2">
+          <div className="bg-surface mt-2 space-y-2 rounded-xl p-2">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm text-default">
+              <label className="text-default flex items-center gap-2 text-sm">
                 <input
                   type="radio"
                   name={`pick-mode-${node.id}`}
@@ -75,7 +87,7 @@ function FolderTreeNode({
                 Все вопросы
               </label>
 
-              <label className="flex items-center gap-2 text-sm text-default">
+              <label className="text-default flex items-center gap-2 text-sm">
                 <input
                   type="radio"
                   name={`pick-mode-${node.id}`}
@@ -87,22 +99,24 @@ function FolderTreeNode({
 
               {source.pickMode === "RANDOM" && (
                 <input
-                  className="h-9 w-24 rounded-xl border border-subtle bg-surface px-3 text-sm text-default"
+                  className="border-subtle bg-surface text-default h-9 w-24 rounded-xl border px-3 text-sm"
                   type="number"
                   min={1}
                   max={node.questionCount}
                   value={source.randomCount ?? 1}
-                  onChange={(event: ChangeEvent<HTMLInputElement>) => onUpdateFolderRandomCount(node.id, Number(event.target.value))}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    onUpdateFolderRandomCount(node.id, Number(event.target.value))
+                  }
                 />
               )}
             </div>
 
-            <div className="text-xs text-muted">В тест попадёт: {sourceQuestionCount}</div>
+            <div className="text-muted text-xs">В тест попадёт: {sourceQuestionCount}</div>
           </div>
         )}
 
         {isCurrentFolderSelectedAsSource && (
-          <div className="mt-2 text-xs text-muted">
+          <div className="text-muted mt-2 text-xs">
             Эта папка уже добавлена в тест. Отдельные вопросы из неё выбрать нельзя.
           </div>
         )}
@@ -127,6 +141,12 @@ function FolderTreeNode({
 }
 
 export default function ExamSourcesSection({
+  treeLoading,
+  treeError,
+  questionsLoading,
+  questionsError,
+  onRetryTree,
+  onRetryQuestions,
   tree,
   selectedFolderId,
   folderQuestions,
@@ -141,15 +161,20 @@ export default function ExamSourcesSection({
   onQueryChange,
   onToggleQuestion,
 }: Props) {
+  const [preview, setPreview] = useState<TrainingQuestionDto | null>(null);
   return (
     <section className="space-y-3">
-      <div className="text-sm font-semibold text-default">Вопросы для теста</div>
+      <div className="text-default text-sm font-semibold">Вопросы для теста</div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="space-y-2 rounded-2xl border border-subtle p-3">
-          <div className="text-sm font-medium text-default">Папки банка вопросов</div>
+        <div className="border-subtle space-y-2 rounded-2xl border p-3">
+          <div className="text-default text-sm font-medium">Папки банка вопросов</div>
           <div className="max-h-80 space-y-2 overflow-auto">
-            {tree.length > 0 ? (
+            {treeLoading ? (
+              <LoadingState label="Загружаем папки банка вопросов…" />
+            ) : treeError ? (
+              <ErrorState message={treeError} onRetry={onRetryTree} />
+            ) : tree.length > 0 ? (
               tree.map((node) => (
                 <FolderTreeNode
                   key={node.id}
@@ -164,55 +189,90 @@ export default function ExamSourcesSection({
                 />
               ))
             ) : (
-              <div className="text-sm text-muted">Нет доступных папок.</div>
+              <div className="text-muted text-sm">Нет доступных папок.</div>
             )}
           </div>
         </div>
 
-        <div className="space-y-2 rounded-2xl border border-subtle p-3">
-          <div className="text-sm font-medium text-default">
+        <div className="border-subtle space-y-2 rounded-2xl border p-3">
+          <div className="text-default text-sm font-medium">
             {selectedFolderId
               ? `Вопросы из папки "${folderMetaMap.get(selectedFolderId)?.name ?? ""}"`
-              : "Выберите папку слева"}
+              : "Выберите папку банка вопросов"}
           </div>
 
-          <Input label="Поиск по вопросам" value={query} onChange={(event: ChangeEvent<HTMLInputElement>) => onQueryChange(event.target.value)} disabled={!selectedFolderId} />
+          <Input
+            label="Поиск по вопросам"
+            value={query}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => onQueryChange(event.target.value)}
+            disabled={!selectedFolderId}
+          />
 
           <div className="max-h-64 space-y-2 overflow-auto">
             {!selectedFolderId && (
-              <div className="text-sm text-muted">Сначала выберите папку, чтобы посмотреть вопросы.</div>
+              <div className="text-muted text-sm">Сначала выберите папку, чтобы посмотреть вопросы.</div>
             )}
 
+            {selectedFolderId && questionsLoading && <LoadingState label="Загружаем вопросы…" />}
+            {selectedFolderId && !questionsLoading && questionsError && (
+              <ErrorState message={questionsError} onRetry={onRetryQuestions} />
+            )}
             {selectedFolderId &&
+              !questionsLoading &&
+              !questionsError &&
               folderQuestions.map((question) => {
                 const disabled = folderSourceMap.has(selectedFolderId);
 
                 return (
-                  <label
+                  <div
                     key={question.id}
                     className={`flex items-start gap-2 rounded-xl px-2 py-2 text-sm ${disabled ? "opacity-60" : ""}`}
                   >
-                    <input
-                      type="checkbox"
-                      disabled={disabled}
-                      checked={sourceQuestionIds.includes(question.id)}
-                      onChange={() => onToggleQuestion(question.id)}
-                    />
+                    <label className="flex min-w-0 flex-1 items-start gap-2">
+                      <input
+                        type="checkbox"
+                        disabled={disabled}
+                        checked={sourceQuestionIds.includes(question.id)}
+                        onChange={() => onToggleQuestion(question.id)}
+                      />
 
-                    <div className="min-w-0">
-                      <div className="truncate text-default">{question.title}</div>
-                      <div className="text-xs text-muted">{question.type}</div>
-                    </div>
-                  </label>
+                      <div className="min-w-0">
+                        <div className="text-default [overflow-wrap:anywhere]">{question.title}</div>
+                        <div className="text-muted text-xs">{QUESTION_TYPE_LABELS[question.type]}</div>
+                        <p className="text-muted mt-1 line-clamp-2 whitespace-pre-wrap">{question.prompt}</p>
+                      </div>
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label={`Просмотреть вопрос «${question.title}»`}
+                      onClick={() => setPreview(question)}
+                    >
+                      Просмотр
+                    </Button>
+                  </div>
                 );
               })}
 
-            {selectedFolderId && folderQuestions.length === 0 && (
-              <div className="text-sm text-muted">В этой папке нет вопросов по текущему фильтру.</div>
+            {selectedFolderId && !questionsLoading && !questionsError && folderQuestions.length === 0 && (
+              <div className="text-muted text-sm">В этой папке нет вопросов по текущему фильтру.</div>
             )}
           </div>
         </div>
       </div>
+      <Modal
+        open={preview != null}
+        title={preview?.title ?? "Просмотр вопроса"}
+        onClose={() => setPreview(null)}
+        headerCloseButton
+        footer={
+          <Button variant="outline" onClick={() => setPreview(null)}>
+            Закрыть просмотр
+          </Button>
+        }
+      >
+        {preview && <QuestionSourcePreview question={preview} />}
+      </Modal>
     </section>
   );
 }
