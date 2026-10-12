@@ -1,6 +1,7 @@
 package ru.staffly.media;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.config.S3Config;
@@ -15,6 +16,7 @@ import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class TrainingImageStorage {
 
     private final S3Client s3;
@@ -75,7 +77,8 @@ public class TrainingImageStorage {
                     .bucket(bk.bucket())
                     .key(bk.key())
                     .build());
-        } catch (S3Exception ignored) {
+        } catch (S3Exception exception) {
+            log.warn("Cannot delete training image, bucket={}, key={}", bk.bucket(), bk.key(), exception);
         }
     }
 
@@ -102,15 +105,17 @@ public class TrainingImageStorage {
                             .map(o -> ObjectIdentifier.builder().key(o.key()).build())
                             .toList();
 
-                    s3.deleteObjects(DeleteObjectsRequest.builder()
+                    var deleted = s3.deleteObjects(DeleteObjectsRequest.builder()
                             .bucket(bucket)
                             .delete(Delete.builder().objects(ids).build())
                             .build());
+                    if (deleted.hasErrors()) log.warn("Training image cleanup partially failed, bucket={}, prefix={}, errors={}", bucket, prefix, deleted.errors());
                 }
 
                 token = res.nextContinuationToken();
             } while (token != null);
-        } catch (S3Exception ignored) {
+        } catch (S3Exception exception) {
+            log.warn("Cannot clean up training image folder, bucket={}, prefix={}", bucket, prefix, exception);
         }
     }
 

@@ -45,7 +45,6 @@ class KnowledgeItemSaveTest {
         ReflectionTestUtils.setField(service, "lifecycleMutex", mock(RestaurantLifecycleMutex.class));
         ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
         ReflectionTestUtils.setField(service, "activeContainerValidator", mock(TrainingActiveContainerValidator.class));
-        ReflectionTestUtils.setField(service, "activeContainerValidator", mock(TrainingActiveContainerValidator.class));
         when(items.findByIdAndRestaurantId(5L, 1L)).thenReturn(Optional.of(existing));
         when(items.findByRestaurantIdAndCreationRequestId(1L, key)).thenAnswer(call -> Optional.ofNullable(created));
         when(items.saveAndFlush(any())).thenAnswer(call -> {
@@ -163,5 +162,107 @@ class KnowledgeItemSaveTest {
         doThrow(new ForbiddenException("Locked restaurant")).when(policy).assertRestaurantUnlocked(8L, 1L);
         assertThrows(ForbiddenException.class, () -> service.saveKnowledgeItem(1L, 8L, request, null));
         verify(items, times(1)).saveAndFlush(any());
+    }
+
+    MockMultipartFile original(int size) throws IOException {
+        var bytes = Arrays.copyOf(image.getBytes(), size);
+        return new MockMultipartFile("originalImage", "full.png", "image/png", bytes);
+    }
+
+    @Test void fullAndPreviewReplaceBothPreviousFilesOnlyAfterCommit() throws IOException {
+        existing.setOriginalImageUrl("old-full");
+        var full = original(20);
+        when(storage.saveForItem(5L, image)).thenReturn("new-preview");
+        when(storage.saveForItem(5L, full)).thenReturn("new-full");
+        var saved = service.saveKnowledgeItem(1L, 7L, request(5L, "Updated", false), image, full);
+        assertEquals("new-preview", saved.imageUrl());
+        assertEquals("new-full", saved.originalImageUrl());
+        verify(storage, never()).deleteByPublicUrl(any());
+        complete(TransactionSynchronization.STATUS_COMMITTED);
+        verify(storage).deleteByPublicUrl("old-photo");
+        verify(storage).deleteByPublicUrl("old-full");
+        verify(storage, never()).deleteByPublicUrl("new-full");
+    }
+
+    @Test void rollbackRetiresBothNewFiles() throws IOException {
+        existing.setOriginalImageUrl("old-full");
+        var full = original(20);
+        when(storage.saveForItem(5L, full)).thenReturn("new-full");
+        service.saveKnowledgeItem(1L, 7L, request(5L, "Updated", false), image, full);
+        complete(TransactionSynchronization.STATUS_ROLLED_BACK);
+        verify(storage).deleteByPublicUrl("new-photo");
+        verify(storage).deleteByPublicUrl("new-full");
+        verify(storage, never()).deleteByPublicUrl("old-full");
+    }
+
+    @Test void failedSecondUploadRetiresFirstAndKeepsPreviousReferences() throws IOException {
+        existing.setOriginalImageUrl("old-full");
+        var full = original(20);
+        when(storage.saveForItem(5L, full)).thenThrow(new IOException("S3 unavailable"));
+        assertThrows(IOException.class, () -> service.saveKnowledgeItem(1L, 7L, request(5L, "Updated", false), image, full));
+        assertEquals("old-photo", existing.getImageUrl());
+        assertEquals("old-full", existing.getOriginalImageUrl());
+        complete(TransactionSynchronization.STATUS_ROLLED_BACK);
+        verify(storage).deleteByPublicUrl("new-photo");
+        verify(storage, never()).deleteByPublicUrl("old-photo");
+    }
+
+    @Test void dualUploadRetryDoesNotDuplicateFilesAndDetectsChangedFullPhoto() throws IOException {
+        var full = original(20);
+        var request = request(null, "Created", false);
+        service.saveKnowledgeItem(1L, 7L, request, image, full);
+        service.saveKnowledgeItem(1L, 7L, request, image, full);
+        assertThrows(ConflictException.class, () -> service.saveKnowledgeItem(1L, 7L, request, image, original(21)));
+        verify(storage, times(1)).saveForItem(6L, image);
+        verify(storage, times(1)).saveForItem(6L, full);
+        verify(items, times(1)).saveAndFlush(any());
+    }
+
+    @Test void dualImageBudgetsAreEnforcedBeforeSavingOrUploading() {
+        assertThrows(BadRequestException.class, () -> service.saveKnowledgeItem(1L, 7L, request(null, "Created", false), null, original(20)));
+        assertThrows(BadRequestException.class, () -> service.saveKnowledgeItem(1L, 7L, request(null, "Created", false), image, original(1024 * 1024 + 1)));
+        assertThrows(BadRequestException.class, () -> service.saveKnowledgeItem(1L, 7L, request(null, "Created", false), original(256 * 1024 + 1), original(20)));
+        verify(items, never()).saveAndFlush(any());
+        verifyNoInteractions(storage);
+    }
+
+    @Test void hidingAndRestoringDoNotCopyOrDeleteImages() {
+        when(items.save(any())).thenAnswer(call -> call.getArgument(0));
+        existing.setOriginalImageUrl("old-full");
+        service.hideKnowledgeItem(1L, 7L, 5L);
+        service.restoreKnowledgeItem(1L, 7L, 5L);
+        assertEquals("old-photo", existing.getImageUrl());
+        assertEquals("old-full", existing.getOriginalImageUrl());
+        verifyNoInteractions(storage);
+    }
+
+    @Test void permanentDeletionRetiresBothImagesAndTheirFolderAfterCommit() {
+        existing.setOriginalImageUrl("old-full");
+        existing.setActive(false);
+        service.deleteKnowledgeItem(1L, 7L, 5L);
+        verifyNoInteractions(storage);
+        complete(TransactionSynchronization.STATUS_COMMITTED);
+        verify(storage).deleteByPublicUrl("old-photo");
+        verify(storage).deleteByPublicUrl("old-full");
+        verify(storage).deleteItemFolder(5L);
+    }
+
+    @Test void editingTextPreservesBothPhotosWithoutUploading() throws IOException {
+        existing.setOriginalImageUrl("old-full");
+        var saved = service.saveKnowledgeItem(1L, 7L, request(5L, "New title", false), null, null);
+        assertEquals("old-photo", saved.imageUrl());
+        assertEquals("old-full", saved.originalImageUrl());
+        verifyNoInteractions(storage);
+    }
+
+    @Test void removingPhotoClearsBothReferencesAndRetiresBothFilesOnCommit() throws IOException {
+        existing.setOriginalImageUrl("old-full");
+        var saved = service.saveKnowledgeItem(1L, 7L, request(5L, "Updated", true), null, null);
+        assertNull(saved.imageUrl());
+        assertNull(saved.originalImageUrl());
+        verifyNoInteractions(storage);
+        complete(TransactionSynchronization.STATUS_COMMITTED);
+        verify(storage).deleteByPublicUrl("old-photo");
+        verify(storage).deleteByPublicUrl("old-full");
     }
 }

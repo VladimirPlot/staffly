@@ -36,6 +36,7 @@ export type TrainingKnowledgeItemDto = {
   composition?: string | null;
   allergens?: string | null;
   imageUrl?: string | null;
+  originalImageUrl?: string | null;
   sortOrder: number;
   active: boolean;
 };

@@ -21,6 +21,7 @@ type Props = {
   onEditObject: (object: TrainingKnowledgeItemObject) => void;
   onMoveObject: (object: TrainingKnowledgeItemObject) => void;
   onArchiveObject: (object: TrainingKnowledgeItemObject) => void;
+  onOpenPhoto: (object: TrainingKnowledgeItemObject) => void;
 };
 
 const mediaControlClassName =
@@ -35,6 +36,7 @@ function SortableKnowledgeItemCard({
   onEdit,
   onMove,
   onArchive,
+  onOpenPhoto,
 }: {
   object: TrainingKnowledgeItemObject;
   selected: boolean;
@@ -44,6 +46,7 @@ function SortableKnowledgeItemCard({
   onEdit: () => void;
   onMove: () => void;
   onArchive: () => void;
+  onOpenPhoto: () => void;
 }) {
   const sortableId = trainingObjectId(object.kind, object.id);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -71,10 +74,11 @@ function SortableKnowledgeItemCard({
         selected={selected}
         dragging={isDragging}
         onSelect={onSelect}
+        onOpenPhoto={onOpenPhoto}
         mediaControls={
           canManage ? (
             <div
-              className="contents"
+              className="pointer-events-auto contents"
               onClick={(event) => event.stopPropagation()}
               onDoubleClick={(event) => event.stopPropagation()}
             >
@@ -116,6 +120,7 @@ export default function KnowledgeItemsSortableGrid({
   onEditObject,
   onMoveObject,
   onArchiveObject,
+  onOpenPhoto,
 }: Props) {
   return (
     <div
@@ -136,6 +141,7 @@ export default function KnowledgeItemsSortableGrid({
             onEdit={() => onEditObject(object)}
             onMove={() => onMoveObject(object)}
             onArchive={() => onArchiveObject(object)}
+            onOpenPhoto={() => onOpenPhoto(object)}
           />
         );
       })}

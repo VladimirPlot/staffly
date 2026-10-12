@@ -75,10 +75,11 @@ export async function listKnowledgeItems(restaurantId: number, folderId?: number
 }
 export async function hideKnowledgeItem(restaurantId: number, itemId: number): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.patch(`/api/restaurants/${restaurantId}/training/knowledge-items/${itemId}/hide`); return data as TrainingKnowledgeItemDto; }
 export async function createKnowledgeItem(restaurantId: number, payload: CreateKnowledgeItemPayload): Promise<TrainingKnowledgeItemDto> { const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-items`, payload); return data as TrainingKnowledgeItemDto; }
-export async function saveKnowledgeItem(restaurantId: number, payload: SaveKnowledgeItemPayload, image: File | null): Promise<TrainingKnowledgeItemDto> {
+export async function saveKnowledgeItem(restaurantId: number, payload: SaveKnowledgeItemPayload, image: File | null, originalImage: File | null = null): Promise<TrainingKnowledgeItemDto> {
   const formData = new FormData();
   formData.append("request", new Blob([JSON.stringify(payload)], { type: "application/json" }));
   if (image) formData.append("image", image);
+  if (originalImage) formData.append("originalImage", originalImage);
   const { data } = await apiClient.post(`/api/restaurants/${restaurantId}/training/knowledge-items/save`, formData);
   return data as TrainingKnowledgeItemDto;
 }

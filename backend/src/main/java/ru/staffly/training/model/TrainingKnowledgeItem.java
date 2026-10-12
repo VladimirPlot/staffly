@@ -49,6 +49,9 @@ public class TrainingKnowledgeItem {
     @Column(name = "image_url")
     private String imageUrl;
 
+    @Column(name = "original_image_url")
+    private String originalImageUrl;
+
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private int sortOrder = 0;

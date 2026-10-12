@@ -34,6 +34,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class KnowledgeServiceImpl implements KnowledgeService {
     private static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
+    private static final long MAX_PREVIEW_BYTES = 256L * 1024;
+    private static final long MAX_ORIGINAL_BYTES = 1024L * 1024;
 
     private final TrainingFolderRepository folders;
     private final TrainingKnowledgeItemRepository items;
@@ -55,15 +57,28 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional(rollbackFor = IOException.class)
     public TrainingKnowledgeItemDto saveKnowledgeItem(Long restaurantId, Long userId,
             SaveTrainingKnowledgeItemRequest request, MultipartFile image) throws IOException {
+        return saveKnowledgeItem(restaurantId, userId, request, image, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = IOException.class)
+    public TrainingKnowledgeItemDto saveKnowledgeItem(Long restaurantId, Long userId,
+            SaveTrainingKnowledgeItemRequest request, MultipartFile image, MultipartFile originalImage) throws IOException {
         lifecycleMutex.lock(restaurantId);
         trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
+        if (originalImage != null && image == null) throw new BadRequestException("Для полного фото необходимо превью.");
         if (image != null) {
             if (request.removeImage()) throw new BadRequestException("Нельзя одновременно загрузить и удалить фото.");
             validateKnowledgeImage(image);
         }
+        if (originalImage != null) {
+            validateKnowledgeImage(originalImage);
+            if (originalImage.getSize() > MAX_ORIGINAL_BYTES) throw new BadRequestException("Полное фото больше 1 МБ.");
+            if (image.getSize() > MAX_PREVIEW_BYTES) throw new BadRequestException("Превью больше 256 КБ.");
+        }
         String creationHash = null;
         if (request.itemId() == null) {
-            creationHash = knowledgeCreationHash(request, image);
+            creationHash = knowledgeCreationHash(request, image, originalImage);
             var previous = items.findByRestaurantIdAndCreationRequestId(restaurantId, request.creationRequestId());
             if (previous.isPresent()) {
                 var existing = requireManageableKnowledgeItem(restaurantId, userId, previous.get().getId());
@@ -94,12 +109,12 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (request.sortOrder() != null) entity.setSortOrder(normalizeSortOrder(request.sortOrder()));
         else if (request.itemId() == null || folderChanged) entity.setSortOrder(nextKnowledgeItemSortOrder(restaurantId, request.folderId()));
         entity = items.saveAndFlush(entity);
-        if (image != null || request.removeImage()) replaceKnowledgeImage(entity, image);
+        if (image != null || request.removeImage()) replaceKnowledgeImage(entity, image, originalImage);
         items.flush();
         return toDto(entity);
     }
 
-    private String knowledgeCreationHash(SaveTrainingKnowledgeItemRequest request, MultipartFile image) throws IOException {
+    private String knowledgeCreationHash(SaveTrainingKnowledgeItemRequest request, MultipartFile image, MultipartFile originalImage) throws IOException {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
             digest.update(objectMapper.writeValueAsBytes(request));
@@ -109,6 +124,13 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 digest.update((byte) 0);
                 digest.update(image.getBytes());
             }
+            // Keep the legacy hash unchanged for requests without a full image.
+            if (originalImage != null) {
+                digest.update((byte) 1);
+                digest.update(originalImage.getContentType().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(originalImage.getBytes());
+            }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 unavailable", exception);
@@ -116,31 +138,50 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void replaceKnowledgeImage(TrainingKnowledgeItem entity, MultipartFile image) throws IOException {
-        var previousUrl = entity.getImageUrl();
-        var nextUrl = image == null ? null : storage.saveForItem(entity.getId(), image);
+        replaceKnowledgeImage(entity, image, null);
+    }
+
+    private void replaceKnowledgeImage(TrainingKnowledgeItem entity, MultipartFile image, MultipartFile originalImage) throws IOException {
+        var previousUrls = knowledgeImageUrls(entity);
+        var nextUrls = new HashSet<String>();
+        // Register before the first upload: failure of the second must retire the first on rollback.
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCompletion(int status) {
                 if (status == STATUS_UNKNOWN) {
                     log.warn("Unknown transaction outcome; retaining knowledge item images, itemId={}", entity.getId());
                     return;
                 }
-                var obsoleteUrl = status == STATUS_COMMITTED ? previousUrl : nextUrl;
-                if (obsoleteUrl == null || Objects.equals(previousUrl, nextUrl)) return;
-                try { storage.deleteByPublicUrl(obsoleteUrl); }
-                catch (RuntimeException exception) { log.warn("Cannot clean up knowledge item image, itemId={}", entity.getId(), exception); }
+                var obsoleteUrls = new HashSet<>(status == STATUS_COMMITTED ? previousUrls : nextUrls);
+                obsoleteUrls.removeAll(status == STATUS_COMMITTED ? nextUrls : previousUrls);
+                for (var url : obsoleteUrls) {
+                    try { storage.deleteByPublicUrl(url); }
+                    catch (RuntimeException exception) { log.warn("Cannot clean up knowledge item image, itemId={}", entity.getId(), exception); }
+                }
             }
         });
+        var nextUrl = image == null ? null : storage.saveForItem(entity.getId(), image);
+        if (nextUrl != null) nextUrls.add(nextUrl);
+        var nextOriginalUrl = originalImage == null ? null : storage.saveForItem(entity.getId(), originalImage);
+        if (nextOriginalUrl != null) nextUrls.add(nextOriginalUrl);
         entity.setImageUrl(nextUrl);
+        entity.setOriginalImageUrl(nextOriginalUrl);
+    }
+
+    private Set<String> knowledgeImageUrls(TrainingKnowledgeItem item) {
+        var urls = new HashSet<String>();
+        if (item.getImageUrl() != null) urls.add(item.getImageUrl());
+        if (item.getOriginalImageUrl() != null) urls.add(item.getOriginalImageUrl());
+        return urls;
     }
 
     private void retireKnowledgeItemImagesAfterCommit(TrainingKnowledgeItem item) {
         var itemId = item.getId();
-        var imageUrl = item.getImageUrl();
+        var imageUrls = knowledgeImageUrls(item);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCompletion(int status) {
                 if (status != STATUS_COMMITTED) return;
                 try {
-                    storage.deleteByPublicUrl(imageUrl);
+                    for (var url : imageUrls) storage.deleteByPublicUrl(url);
                     storage.deleteItemFolder(itemId);
                 } catch (RuntimeException exception) {
                     log.warn("Cannot clean up deleted knowledge item images, itemId={}", itemId, exception);
@@ -1117,6 +1158,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 entity.getComposition(),
                 entity.getAllergens(),
                 entity.getImageUrl(),
+                entity.getOriginalImageUrl(),
                 entity.getSortOrder(),
                 entity.isActive()
         );
