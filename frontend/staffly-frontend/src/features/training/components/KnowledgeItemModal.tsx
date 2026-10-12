@@ -4,7 +4,7 @@ import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import ImageCropperModal from "../../../shared/ui/ImageCropperModal";
 import Input from "../../../shared/ui/Input";
 import Modal from "../../../shared/ui/Modal";
-import { exportCroppedImageToFile } from "../../../shared/lib/imageCrop/canvasExport";
+import { KNOWLEDGE_SOURCE_MAX_BYTES, prepareKnowledgeImages } from "../utils/knowledgeImages";
 import {
   TRAINING_ALLOWED_MIME_TYPES,
   isAllowedMimeType,
@@ -56,6 +56,7 @@ export default function KnowledgeItemModal({
   const [allergens, setAllergens] = useState("");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [croppedFile, setCroppedFile] = useState<File | null>(null);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [saveCommitted, setSaveCommitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -89,6 +90,7 @@ export default function KnowledgeItemModal({
     setImageUrl(toAbsoluteUrl(initial?.imageUrl) ?? null);
 
     setCroppedFile(null);
+    setOriginalFile(null);
     setRemoveImage(false);
     setSaveCommitted(false);
     setLoading(false);
@@ -137,6 +139,11 @@ export default function KnowledgeItemModal({
   const handleSelectFile = (file: File | null) => {
     if (!file) return;
     setError(null);
+    if (file.size > KNOWLEDGE_SOURCE_MAX_BYTES) {
+      setError("Выберите фото до 20 МБ. Перед загрузкой оно будет автоматически уменьшено.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     if (!isAllowedMimeType(file.type, TRAINING_ALLOWED_MIME_TYPES)) {
       setError("Разрешены только файлы JPEG, PNG или WEBP.");
@@ -162,20 +169,18 @@ export default function KnowledgeItemModal({
     setError(null);
 
     try {
-      const { file, previewUrl } = await exportCroppedImageToFile({
+      const {
+        file,
+        originalFile: fullFile,
+        previewUrl,
+      } = await prepareKnowledgeImages({
         imageSrc: sourceImageUrl,
         crop: croppedAreaPixels,
-        exportOptions: {
-          outputWidth: 800,
-          outputHeight: 500,
-          mimeType: pickOutputMimeType({
-            supportsWebp: supportsWebp(),
-            backendAllowsWebp: TRAINING_ALLOWED_MIME_TYPES.has("image/webp"),
-            fallback: "image/jpeg",
-          }),
-          quality: 0.9,
-          baseFileName: selectedFileRef.current.name,
-        },
+        mimeType: pickOutputMimeType({
+          supportsWebp: supportsWebp(),
+          backendAllowsWebp: TRAINING_ALLOWED_MIME_TYPES.has("image/webp"),
+          fallback: "image/jpeg",
+        }),
       });
 
       if (session !== sessionRef.current) {
@@ -184,6 +189,7 @@ export default function KnowledgeItemModal({
       }
 
       setCroppedFile(file);
+      setOriginalFile(fullFile);
       setRemoveImage(false);
       setImageUrl(previewUrl);
       resetCropState();
@@ -199,6 +205,7 @@ export default function KnowledgeItemModal({
     setRemoveImage(Boolean(effectiveItem?.imageUrl));
     setImageUrl(null);
     setCroppedFile(null);
+    setOriginalFile(null);
     setConfirmDeleteImageOpen(false);
   };
 
@@ -230,10 +237,11 @@ export default function KnowledgeItemModal({
           allergens: allergens.trim() || null,
           removeImage,
         };
-        const savedItem = await saveKnowledgeItem(restaurantId, payload, croppedFile);
+        const savedItem = await saveKnowledgeItem(restaurantId, payload, croppedFile, originalFile);
         if (session !== sessionRef.current) return;
         setImageUrl(toAbsoluteUrl(savedItem.imageUrl) ?? null);
         setCroppedFile(null);
+        setOriginalFile(null);
         setRemoveImage(false);
         setSaveCommitted(true);
         guard.markSaved();
@@ -350,7 +358,7 @@ export default function KnowledgeItemModal({
       <ImageCropperModal
         open={cropOpen}
         title="Обрезать фото карточки"
-        description="Подгоните фото под формат карточки"
+        description="Выберите область для превью. Полное фото сохранится без обрезки и будет автоматически уменьшено."
         imageUrl={sourceImageUrl}
         frame={{ shape: "rect", frameWidth: 320, frameHeight: 200, borderRadius: 16 }}
         busy={cropBusy}

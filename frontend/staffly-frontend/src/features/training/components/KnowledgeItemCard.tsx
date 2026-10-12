@@ -1,4 +1,4 @@
-import { Image } from "lucide-react";
+import { Image, Expand } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { cn } from "../../../shared/lib/cn";
@@ -12,6 +12,7 @@ type Props = {
   dragging?: boolean;
   mediaControls?: ReactNode;
   onSelect?: () => void;
+  onOpenPhoto: () => void;
 };
 
 export default function KnowledgeItemCard({
@@ -21,13 +22,14 @@ export default function KnowledgeItemCard({
   dragging = false,
   mediaControls,
   onSelect,
+  onOpenPhoto,
 }: Props) {
   const description = item.description?.trim() ?? "";
   const composition = item.composition?.trim() ?? "";
   const allergens = item.allergens?.trim() ?? "";
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return;
+    if (event.target !== event.currentTarget || !onSelect || (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
     onSelect();
   };
@@ -48,7 +50,20 @@ export default function KnowledgeItemCard({
     >
       <div className="bg-app relative aspect-[16/10] w-full">
         {item.imageUrl ? (
-          <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+          <button
+            type="button"
+            className="relative h-full w-full cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-[-4px]"
+            aria-label={`Открыть фото «${item.title}»`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenPhoto();
+            }}
+          >
+            <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
+            <span className="pointer-events-none absolute right-3 bottom-3 rounded-lg bg-black/40 p-2 text-white">
+              <Expand size={18} aria-hidden="true" />
+            </span>
+          </button>
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
             <Icon icon={Image} size="lg" className="text-icon" decorative />
@@ -57,7 +72,9 @@ export default function KnowledgeItemCard({
           </div>
         )}
         {mediaControls ? (
-          <div className="absolute inset-x-0 top-0 z-10 flex items-start justify-between p-1.5">{mediaControls}</div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between p-1.5">
+            {mediaControls}
+          </div>
         ) : null}
       </div>
 

@@ -13,6 +13,10 @@ import TrainingBreadcrumbs from "../components/TrainingBreadcrumbs";
 import TrainingMoveModal from "../components/TrainingMoveModal";
 import TrainingObjectList, { TrainingDragOverlayCard } from "../components/TrainingObjectList";
 import KnowledgeItemsSortableGrid from "../components/KnowledgeItemsSortableGrid";
+import KnowledgeSection from "../components/KnowledgeSection";
+import KnowledgeBackToTop from "../components/KnowledgeBackToTop";
+import KnowledgePhotoViewer from "../components/KnowledgePhotoViewer";
+import { toAbsoluteUrl } from "../../../shared/utils/url";
 import TrainingSelectionToolbar from "../components/TrainingSelectionToolbar";
 import { useSortableDnd } from "../../../shared/hooks/useSortableDnd";
 import { useTrainingAccess } from "../hooks/useTrainingAccess";
@@ -63,36 +67,28 @@ type Props = {
   currentFolderId: number | null;
 };
 
-function SectionHeading({ id, children }: { id: string; children: ReactNode }) {
-  return (
-    <div className="border-b border-[var(--staffly-border)] pb-2">
-      <h3 id={id} className="text-muted text-sm font-semibold tracking-wide uppercase">
-        {children}
-      </h3>
-    </div>
-  );
-}
-
 function TrainingObjectsSection({
   title,
   objects,
   children,
+  disabled,
+  onCollapse,
 }: {
   title: string;
   objects: TrainingFolderListObject[];
   children: ReactNode;
+  disabled: boolean;
+  onCollapse: () => void;
 }) {
-  const sectionId = `knowledge-section-${objects[0].kind}`;
   return (
-    <section aria-labelledby={sectionId} className="space-y-3">
-      <SectionHeading id={sectionId}>{title}</SectionHeading>
+    <KnowledgeSection title={title} count={objects.length} disabled={disabled} onCollapse={onCollapse}>
       <SortableContext
         items={objects.map((object) => trainingObjectId(object.kind, object.id))}
         strategy={verticalListSortingStrategy}
       >
         {children}
       </SortableContext>
-    </section>
+    </KnowledgeSection>
   );
 }
 
@@ -105,10 +101,12 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
     [state.currentFolder, state.folderMap],
   );
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const knowledgeHeaderRef = useRef<HTMLDivElement | null>(null);
   const sortableDnd = useSortableDnd({ scrollContainerRef });
   const [activeObject, setActiveObject] = useState<TrainingFolderListObject | null>(null);
   const [dragOverlayWidth, setDragOverlayWidth] = useState<number | null>(null);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<{ url: string; title: string } | null>(null);
   const [toolbarObjectId, setToolbarObjectId] = useState<string | null>(null);
   const [toolbarVisible, setToolbarVisible] = useState(false);
   const [moveTarget, setMoveTarget] = useState<TrainingMoveTarget | null>(null);
@@ -532,28 +530,30 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         onDragEnd={(event) => void handleDragEnd(event)}
         onDragCancel={finishDrag}
       >
-        <TrainingBreadcrumbs
-          ariaLabel="Путь к базе знаний"
-          rootLabel="База знаний"
-          currentFolderId={currentFolderId}
-          folderChain={folderChain}
-          activeObjectId={sortableDnd.activeId}
-          blockedFolderIds={blockedDropFolderIds}
-          onOpenRoot={openKnowledgeRoot}
-          onOpenFolder={openKnowledgeFolder}
-        />
-        <h2 className="text-2xl font-semibold">{state.currentFolder?.name ?? "База знаний"}</h2>
+        <div ref={knowledgeHeaderRef} tabIndex={-1} className="space-y-4 outline-none">
+          <TrainingBreadcrumbs
+            ariaLabel="Путь к базе знаний"
+            rootLabel="База знаний"
+            currentFolderId={currentFolderId}
+            folderChain={folderChain}
+            activeObjectId={sortableDnd.activeId}
+            blockedFolderIds={blockedDropFolderIds}
+            onOpenRoot={openKnowledgeRoot}
+            onOpenFolder={openKnowledgeFolder}
+          />
+          <h2 className="text-2xl font-semibold">{state.currentFolder?.name ?? "База знаний"}</h2>
 
-        <KnowledgeHeader
-          canManage={canManage}
-          onOpenArchive={() => setArchiveOpen(true)}
-          positions={state.visiblePositions}
-          positionFilter={state.positionFilter}
-          onChangePositionFilter={state.setPositionFilter}
-          onCreateFolder={state.openCreateFolderModal}
-          onCreateCard={state.openCreateItemModal}
-          onCreateTest={state.openCreateExamModal}
-        />
+          <KnowledgeHeader
+            canManage={canManage}
+            onOpenArchive={() => setArchiveOpen(true)}
+            positions={state.visiblePositions}
+            positionFilter={state.positionFilter}
+            onChangePositionFilter={state.setPositionFilter}
+            onCreateFolder={state.openCreateFolderModal}
+            onCreateCard={state.openCreateItemModal}
+            onCreateTest={state.openCreateExamModal}
+          />
+        </div>
 
         {state.foldersState.loading && <LoadingState label="Загрузка папок базы знаний…" />}
         {state.foldersState.error && (
@@ -569,7 +569,15 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         {!state.foldersState.loading && !state.itemsLoading && !state.examsLoading && currentObjects.length > 0 ? (
           <div ref={scrollContainerRef} className="space-y-7">
             {folderObjects.length > 0 ? (
-              <TrainingObjectsSection title="Папки" objects={folderObjects}>
+              <TrainingObjectsSection
+                key={`${currentFolderId}-folders`}
+                title="Папки"
+                objects={folderObjects}
+                disabled={Boolean(sortableDnd.activeId)}
+                onCollapse={() => {
+                  if (selectedObjectId?.startsWith("folder:")) setSelectedObjectId(null);
+                }}
+              >
                 <TrainingObjectList
                   objects={folderObjects}
                   activeObjectId={sortableDnd.activeId}
@@ -595,8 +603,15 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
             ) : null}
 
             {knowledgeItemObjects.length > 0 ? (
-              <section aria-labelledby="knowledge-section-knowledgeItem" className="space-y-3">
-                <SectionHeading id="knowledge-section-knowledgeItem">Карточки</SectionHeading>
+              <KnowledgeSection
+                key={`${currentFolderId}-cards`}
+                title="Карточки"
+                count={knowledgeItemObjects.length}
+                disabled={Boolean(sortableDnd.activeId)}
+                onCollapse={() => {
+                  if (selectedObjectId?.startsWith("knowledgeItem:")) setSelectedObjectId(null);
+                }}
+              >
                 <SortableContext
                   items={knowledgeItemObjects.map((object) => trainingObjectId(object.kind, object.id))}
                   strategy={rectSortingStrategy}
@@ -610,13 +625,25 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
                     onEditObject={editObject}
                     onMoveObject={startMove}
                     onArchiveObject={(object) => void archiveObject(object)}
+                    onOpenPhoto={({ item }) => {
+                      const url = toAbsoluteUrl(item.originalImageUrl ?? item.imageUrl);
+                      if (url) setPhoto({ url, title: item.title });
+                    }}
                   />
                 </SortableContext>
-              </section>
+              </KnowledgeSection>
             ) : null}
 
             {practiceExamObjects.length > 0 ? (
-              <TrainingObjectsSection title="Учебные тесты" objects={practiceExamObjects}>
+              <TrainingObjectsSection
+                key={`${currentFolderId}-tests`}
+                title="Учебные тесты"
+                objects={practiceExamObjects}
+                disabled={Boolean(sortableDnd.activeId)}
+                onCollapse={() => {
+                  if (selectedObjectId?.startsWith("practiceExam:")) setSelectedObjectId(null);
+                }}
+              >
                 <TrainingObjectList
                   objects={practiceExamObjects}
                   activeObjectId={sortableDnd.activeId}
@@ -649,6 +676,8 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
           <TrainingDragOverlayCard object={activeObject} width={dragOverlayWidth} />
         </DragOverlay>
       </DndContext>
+      <KnowledgeBackToTop headerRef={knowledgeHeaderRef} raised={toolbarVisible} />
+      {photo ? <KnowledgePhotoViewer key={photo.url} {...photo} onClose={() => setPhoto(null)} /> : null}
 
       <KnowledgeModals
         restaurantId={state.restaurantId}
@@ -678,7 +707,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
 
       <TrainingSelectionToolbar
         object={toolbarObject}
-        visible={toolbarVisible}
+        visible={toolbarVisible && !photo}
         actionLoading={actionLoading}
         canManage={canManage}
         onOpen={openObject}

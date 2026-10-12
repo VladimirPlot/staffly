@@ -13,6 +13,7 @@ public record TrainingKnowledgeItemDto(
         String composition,
         String allergens,
         String imageUrl,
+        String originalImageUrl,
         Integer sortOrder,
         Boolean active
 ) {}

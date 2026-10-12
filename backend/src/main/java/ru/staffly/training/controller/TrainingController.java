@@ -140,8 +140,9 @@ public class TrainingController {
     public TrainingKnowledgeItemDto saveKnowledgeItem(@PathVariable Long restaurantId,
             @AuthenticationPrincipal UserPrincipal principal,
             @Valid @RequestPart("request") SaveTrainingKnowledgeItemRequest request,
-            @RequestPart(value = "image", required = false) MultipartFile image) throws IOException {
-        return knowledgeService.saveKnowledgeItem(restaurantId, principal.userId(), request, image);
+            @RequestPart(value = "image", required = false) MultipartFile image,
+            @RequestPart(value = "originalImage", required = false) MultipartFile originalImage) throws IOException {
+        return knowledgeService.saveKnowledgeItem(restaurantId, principal.userId(), request, image, originalImage);
     }
 
     @PreAuthorize("@trainingPolicyService.canManageTraining(#principal.userId, #restaurantId)")
