@@ -42,9 +42,8 @@ public class TrainingImageStorage {
             default -> "bin";
         };
 
-        // ✅ НАДЁЖНО: чистим весь prefix item-а перед загрузкой
+        // Each upload gets a new key; the caller retires the old image after DB commit.
         String prefix = "training/items/" + itemId + "/";
-        deleteByPrefix(s3cfg.getPublicBucket(), prefix);
 
         String key = prefix + UUID.randomUUID() + "." + ext;
 

@@ -1,9 +1,13 @@
 package ru.staffly.training.service;
 
 import jakarta.persistence.EntityManager;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.common.exception.ConflictException;
@@ -18,12 +22,16 @@ import ru.staffly.training.model.*;
 import ru.staffly.training.repository.*;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class KnowledgeServiceImpl implements KnowledgeService {
     private static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
 
@@ -41,6 +49,111 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final ExamService examService;
     private final TrainingActiveContainerValidator activeContainerValidator;
     private final RestaurantLifecycleMutex lifecycleMutex;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    @Transactional(rollbackFor = IOException.class)
+    public TrainingKnowledgeItemDto saveKnowledgeItem(Long restaurantId, Long userId,
+            SaveTrainingKnowledgeItemRequest request, MultipartFile image) throws IOException {
+        lifecycleMutex.lock(restaurantId);
+        trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
+        if (image != null) {
+            if (request.removeImage()) throw new BadRequestException("Нельзя одновременно загрузить и удалить фото.");
+            validateKnowledgeImage(image);
+        }
+        String creationHash = null;
+        if (request.itemId() == null) {
+            creationHash = knowledgeCreationHash(request, image);
+            var previous = items.findByRestaurantIdAndCreationRequestId(restaurantId, request.creationRequestId());
+            if (previous.isPresent()) {
+                var existing = requireManageableKnowledgeItem(restaurantId, userId, previous.get().getId());
+                if (!Objects.equals(existing.getCreationRequestHash(), creationHash)) {
+                    throw new ConflictException("Карточка уже сохранена с другими данными. Обновите список и откройте её для редактирования.");
+                }
+                return toDto(existing);
+            }
+        }
+
+        var entity = request.itemId() == null ? TrainingKnowledgeItem.builder()
+                .restaurant(Restaurant.builder().id(restaurantId).build())
+                .creationRequestId(request.creationRequestId()).creationRequestHash(creationHash).build()
+                : requireManageableKnowledgeItem(restaurantId, userId, request.itemId());
+        var currentFolderId = entity.getFolder() == null ? null : entity.getFolder().getId();
+        boolean folderChanged = !Objects.equals(currentFolderId, request.folderId());
+        if (request.itemId() == null || folderChanged) {
+            var targetFolder = request.folderId() == null ? null
+                    : requireManageableKnowledgeFolder(restaurantId, userId, request.folderId());
+            requireActiveParent(targetFolder);
+            entity.setFolder(targetFolder);
+            if (folderChanged) entity.setHiddenByFolderId(null);
+        }
+        entity.setTitle(request.title().trim());
+        entity.setDescription(request.description());
+        entity.setComposition(request.composition());
+        entity.setAllergens(request.allergens());
+        if (request.sortOrder() != null) entity.setSortOrder(normalizeSortOrder(request.sortOrder()));
+        else if (request.itemId() == null || folderChanged) entity.setSortOrder(nextKnowledgeItemSortOrder(restaurantId, request.folderId()));
+        entity = items.saveAndFlush(entity);
+        if (image != null || request.removeImage()) replaceKnowledgeImage(entity, image);
+        items.flush();
+        return toDto(entity);
+    }
+
+    private String knowledgeCreationHash(SaveTrainingKnowledgeItemRequest request, MultipartFile image) throws IOException {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            digest.update(objectMapper.writeValueAsBytes(request));
+            digest.update((byte) (image == null ? 0 : 1));
+            if (image != null) {
+                digest.update(image.getContentType().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(image.getBytes());
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 unavailable", exception);
+        }
+    }
+
+    private void replaceKnowledgeImage(TrainingKnowledgeItem entity, MultipartFile image) throws IOException {
+        var previousUrl = entity.getImageUrl();
+        var nextUrl = image == null ? null : storage.saveForItem(entity.getId(), image);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+                if (status == STATUS_UNKNOWN) {
+                    log.warn("Unknown transaction outcome; retaining knowledge item images, itemId={}", entity.getId());
+                    return;
+                }
+                var obsoleteUrl = status == STATUS_COMMITTED ? previousUrl : nextUrl;
+                if (obsoleteUrl == null || Objects.equals(previousUrl, nextUrl)) return;
+                try { storage.deleteByPublicUrl(obsoleteUrl); }
+                catch (RuntimeException exception) { log.warn("Cannot clean up knowledge item image, itemId={}", entity.getId(), exception); }
+            }
+        });
+        entity.setImageUrl(nextUrl);
+    }
+
+    private void retireKnowledgeItemImagesAfterCommit(TrainingKnowledgeItem item) {
+        var itemId = item.getId();
+        var imageUrl = item.getImageUrl();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) return;
+                try {
+                    storage.deleteByPublicUrl(imageUrl);
+                    storage.deleteItemFolder(itemId);
+                } catch (RuntimeException exception) {
+                    log.warn("Cannot clean up deleted knowledge item images, itemId={}", itemId, exception);
+                }
+            }
+        });
+    }
+
+    private void validateKnowledgeImage(MultipartFile image) throws IOException {
+        if (image == null || image.isEmpty()) throw new BadRequestException("Файл не выбран");
+        if (image.getSize() > MAX_IMAGE_BYTES) throw new BadRequestException("Файл больше 2MB");
+        validateImage(image);
+    }
 
     @Transactional(readOnly = true)
     @Override
@@ -229,8 +342,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         var relatedItems = items.findByRestaurantIdAndFolderIdIn(restaurantId, allFolderIds);
         for (var item : relatedItems) {
-            storage.deleteByPublicUrl(item.getImageUrl());
-            storage.deleteItemFolder(item.getId());
+            retireKnowledgeItemImagesAfterCommit(item);
         }
         folders.delete(root);
     }
@@ -452,25 +564,16 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (entity.isActive()) {
             throw new ConflictException("Сначала скройте материал, затем удаляйте.");
         }
-        storage.deleteByPublicUrl(entity.getImageUrl());
-        storage.deleteItemFolder(itemId);
+        retireKnowledgeItemImagesAfterCommit(entity);
         items.delete(entity);
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = IOException.class)
     public TrainingKnowledgeItemDto uploadKnowledgeImage(Long restaurantId, Long userId, Long itemId, MultipartFile file) throws IOException {
-        if (file == null || file.isEmpty()) {
-            throw new BadRequestException("Файл не выбран");
-        }
-        if (file.getSize() > MAX_IMAGE_BYTES) {
-            throw new BadRequestException("Файл больше 2MB");
-        }
-
-        validateImage(file);
+        validateKnowledgeImage(file);
         var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
-        storage.deleteByPublicUrl(entity.getImageUrl());
-        entity.setImageUrl(storage.saveForItem(itemId, file));
+        replaceKnowledgeImage(entity, file);
         return toDto(entity);
     }
 
@@ -478,8 +581,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     @Transactional
     public TrainingKnowledgeItemDto deleteKnowledgeImage(Long restaurantId, Long userId, Long itemId) throws IOException {
         var entity = requireManageableKnowledgeItem(restaurantId, userId, itemId);
-        storage.deleteByPublicUrl(entity.getImageUrl());
-        entity.setImageUrl(null);
+        replaceKnowledgeImage(entity, null);
         return toDto(entity);
     }
 

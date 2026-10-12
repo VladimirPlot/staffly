@@ -59,6 +59,12 @@ export type UpdateKnowledgeItemPayload = {
   sortOrder?: number;
 };
 
+export type SaveKnowledgeItemPayload = UpdateKnowledgeItemPayload & {
+  creationRequestId: string;
+  itemId?: number | null;
+  removeImage: boolean;
+};
+
 export type TrainingQuestionType = "SINGLE" | "MULTI" | "TRUE_FALSE" | "FILL_SELECT" | "MATCH";
 export type TrainingExamMode = "CERTIFICATION" | "PRACTICE";
 

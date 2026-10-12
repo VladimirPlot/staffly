@@ -6,6 +6,7 @@ import ru.staffly.common.time.TimeProvider;
 import ru.staffly.restaurant.model.Restaurant;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "training_knowledge_item")
@@ -18,6 +19,12 @@ public class TrainingKnowledgeItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(name = "creation_request_id", updatable = false)
+    private UUID creationRequestId;
+
+    @Column(name = "creation_request_hash", length = 64, updatable = false)
+    private String creationRequestHash;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
