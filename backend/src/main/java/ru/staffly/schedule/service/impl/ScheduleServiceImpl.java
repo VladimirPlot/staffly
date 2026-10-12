@@ -9,6 +9,7 @@ import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.common.time.TimeProvider;
+import ru.staffly.common_schedule.service.CommonScheduleDependencies;
 import ru.staffly.dictionary.repository.PositionRepository;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.inbox.model.InboxEventSubtype;
@@ -33,6 +34,7 @@ import ru.staffly.schedule.service.ScheduleChangeService;
 import ru.staffly.schedule.service.ScheduleService;
 import ru.staffly.schedule.service.ScheduleParticipationCreator;
 import ru.staffly.schedule.service.ScheduleRowMaterializer;
+import ru.staffly.schedule.service.ScheduleContentMapper;
 import ru.staffly.security.SecurityService;
 import ru.staffly.user.model.User;
 import ru.staffly.user.repository.UserRepository;
@@ -48,7 +50,6 @@ import java.util.stream.Stream;
 @Transactional
 public class ScheduleServiceImpl implements ScheduleService {
 
-    private static final String[] WEEKDAY_LABELS = {"", "пн", "вт", "ср", "чт", "пт", "сб", "вс"};
     private static final String AUTO_REJECT_COMMENT = "Заявка отклонена автоматически: график был изменён.";
     private static final int HISTORY_LIMIT = 20;
 
@@ -69,6 +70,8 @@ public class ScheduleServiceImpl implements ScheduleService {
     private final UserRepository users;
     private final InboxMessageService inboxMessages;
     private final RestaurantLifecycleMutex lifecycleMutex;
+    private final CommonScheduleDependencies commonScheduleDependencies;
+    private final ScheduleContentMapper contentMapper;
 
     @Override
     public ScheduleDto create(Long restaurantId, Long userId, CreateScheduleRequest request) {
@@ -287,6 +290,7 @@ public class ScheduleServiceImpl implements ScheduleService {
             throw new BadRequestException("Schedule cannot be longer than 32 days");
         }
 
+        commonScheduleDependencies.assertCompatiblePeriod(schedule, startDate, endDate);
         ScheduleShiftMode shiftMode = Objects.requireNonNull(config.shiftMode(), "shiftMode");
 
         Set<Position> schedulePositions = resolvePositions(restaurantId, config.positionIds());
@@ -781,6 +785,7 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     @Override
     public void delete(Long restaurantId, Long scheduleId, Long userId, Long expectedVersion) {
+        lifecycleMutex.lock(restaurantId);
         securityService.assertRestaurantUnlocked(userId, restaurantId);
         scheduleAccessService.assertCanManageSchedules(userId, restaurantId);
 
@@ -788,6 +793,7 @@ public class ScheduleServiceImpl implements ScheduleService {
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + scheduleId));
         assertExpectedVersion(schedule, expectedVersion);
 
+        commonScheduleDependencies.assertCanDelete(scheduleId);
         scheduleAuditService.record(schedule, userId, ScheduleAuditAction.DELETED, "График удалён");
         schedules.delete(schedule);
     }
@@ -1367,61 +1373,18 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     private ScheduleDto toDto(Schedule schedule, List<LocalDate> days) {
-        Set<Long> activeScheduleMemberIds = resolveActiveScheduleMemberIds(schedule);
-        List<ScheduleRow> visibleRows = schedule.getRows().stream()
-                .filter(row -> row.getMemberId() != null && (activeScheduleMemberIds.contains(row.getMemberId())
-                        || schedule.getStatus() == ScheduleStatus.PUBLISHED && row.isHistorical()))
-                .toList();
-
-        Map<String, String> cellValues = new HashMap<>();
-        Map<String, ScheduleCellSource> cellSources = new HashMap<>();
-        Map<String, ScheduleCellShiftDto> cellShifts = new HashMap<>();
-        visibleRows.forEach(row -> row.getCells().forEach(cell -> {
-            if (cell.getValue() == null || cell.getValue().isBlank()) {
-                return;
-            }
-            String key = (row.isHistorical() ? -row.getId() : row.getMemberId()) + ":" + cell.getDay();
-            cellValues.put(key, cell.getValue());
-            cellSources.put(key, cell.getSource() != null ? cell.getSource() : ScheduleCellSource.MANUAL);
-            cell.structuredShift().ifPresent(interval -> cellShifts.put(key, ScheduleCellShiftDto.from(interval)));
-        }));
-
-        List<ScheduleDayDto> dayDtos = days.stream()
-                .map(this::toDayDto)
-                .toList();
-
-        List<ScheduleRowDto> rowDtos = visibleRows.stream()
-                .sorted(Comparator.comparing(ScheduleRow::isHistorical)
-                        .thenComparing(row -> row.isHistorical() ? row.getDisplayName() : "", String.CASE_INSENSITIVE_ORDER)
-                        .thenComparingInt(ScheduleRow::getSortOrder))
-                .map(row -> new ScheduleRowDto(
-                        row.getId(),
-                        row.getMemberId(),
-                        row.getDisplayName(),
-                        row.getPositionId(),
-                        row.getPositionName(),
-                        row.isHistorical()
-                ))
-                .toList();
-
-        ScheduleConfigDto config = new ScheduleConfigDto(
-                schedule.getStartDate().toString(),
-                schedule.getEndDate().toString(),
-                new ArrayList<>(SchedulePositionIds.ids(schedule)),
-                schedule.isShowFullName(),
-                schedule.getShiftMode()
-        );
+        ScheduleContentDto content = contentMapper.toContent(schedule, days);
 
         return new ScheduleDto(
                 schedule.getId(),
                 schedule.getVersion(),
                 schedule.getTitle(),
-                config,
-                dayDtos,
-                rowDtos,
-                cellValues,
-                cellSources,
-                cellShifts,
+                content.config(),
+                content.days(),
+                content.rows(),
+                content.cellValues(),
+                content.cellSources(),
+                content.cellShifts(),
                 buildOwnerDto(schedule),
                 buildCreatedByDto(schedule),
                 scheduleAuditService.getRecentHistory(schedule, HISTORY_LIMIT),
@@ -1435,18 +1398,6 @@ public class ScheduleServiceImpl implements ScheduleService {
                 schedule.getPreferenceCollectionMode(),
                 schedule.getPreferenceBuildTemplate() == null ? null : schedule.getPreferenceBuildTemplate().getId()
         );
-    }
-
-    private Set<Long> resolveActiveScheduleMemberIds(Schedule schedule) {
-        return participations.findByScheduleIdOrderById(schedule.getId()).stream()
-                .map(value -> value.getMember().getId())
-                .collect(Collectors.toSet());
-    }
-
-    private ScheduleDayDto toDayDto(LocalDate day) {
-        int dayOfWeek = day.getDayOfWeek().getValue();
-        String weekday = WEEKDAY_LABELS[dayOfWeek == 7 ? 7 : dayOfWeek];
-        return new ScheduleDayDto(day.toString(), weekday, Integer.toString(day.getDayOfMonth()));
     }
 
     private LocalDate parseDate(String value, String field) {
