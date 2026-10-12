@@ -17,7 +17,9 @@ public interface TrainingQuestionRepository extends JpaRepository<TrainingQuesti
               and q.folder.id = :folderId
               and (:group is null or q.questionGroup = :group)
               and (:includeInactive = true or q.active = true)
-              and (:q is null or trim(:q) = '' or lower(q.title) like lower(concat('%', :q, '%')) or lower(q.prompt) like lower(concat('%', :q, '%')))
+              and (trim(coalesce(cast(:q as string), '')) = ''
+                   or lower(q.title) like lower(concat('%', cast(:q as string), '%'))
+                   or lower(q.prompt) like lower(concat('%', cast(:q as string), '%')))
             order by q.sortOrder asc, q.id asc
             """)
     List<TrainingQuestion> listForFolder(
