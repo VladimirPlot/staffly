@@ -48,6 +48,8 @@ export function useExamEditorState({
   onSaved,
 }: ExamEditorProps) {
   const [form, setForm] = useState<ExamEditorFormState>(initialFormState);
+  const [refreshQuestionBank, setRefreshQuestionBank] = useState(false);
+  const sourcesReadOnly = mode === "CERTIFICATION" && Boolean(exam) && !refreshQuestionBank;
   const [tree, setTree] = useState<QuestionBankTreeNodeDto[]>([]);
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [manageablePositionIds, setManageablePositionIds] = useState<Set<number>>(new Set());
@@ -82,6 +84,7 @@ export function useExamEditorState({
   useEffect(() => {
     if (!open) return;
     audienceInitialized.current = false;
+    setRefreshQuestionBank(false);
     setPositions([]);
     setManageablePositionIds(new Set());
     setAllPositionsSelected(mode === "PRACTICE" ? !exam?.visibilityPositionIds.length : !exam);
@@ -94,7 +97,7 @@ export function useExamEditorState({
       visibilityPositionIds: exam?.visibilityPositionIds ?? [],
       sourcesFolders: exam?.sourcesFolders ?? [],
       sourceQuestionIds: exam?.sourceQuestionIds ?? [],
-      selectedFolderId: null,
+      selectedFolderId: exam?.sourcesFolders[0]?.folderId ?? null,
       folderQuestions: [],
       query: "",
     });
@@ -230,6 +233,9 @@ export function useExamEditorState({
     const timer = window.setTimeout(() => {
       void preflightExamSources(restaurantId, {
         mode,
+        examId: exam?.id,
+        expectedEditorRevision: exam?.editorRevision,
+        refreshQuestionBank,
         sourcesFolders: form.sourcesFolders,
         sourceQuestionIds: form.sourceQuestionIds,
       })
@@ -252,7 +258,7 @@ export function useExamEditorState({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [form.sourceQuestionIds, form.sourcesFolders, mode, open, restaurantId]);
+  }, [form.sourceQuestionIds, form.sourcesFolders, mode, open, restaurantId, exam, refreshQuestionBank]);
 
   const availabilityLabel = useMemo(
     () => buildAvailabilityLabel(mode, form.visibilityPositionIds, positions, isDesktop, allPositionsSelected),
@@ -286,6 +292,7 @@ export function useExamEditorState({
   };
 
   const toggleFolder = (folderId: number) => {
+    if (sourcesReadOnly) return;
     const alreadySelected = folderSourceMap.has(folderId);
 
     if (alreadySelected) {
@@ -297,43 +304,23 @@ export function useExamEditorState({
       return;
     }
 
-    const selectedFolderIds = new Set(form.sourcesFolders.map((source) => source.folderId));
-    const ancestorSelected = getAncestorIds(folderId).find((id) => selectedFolderIds.has(id));
+    const ancestorSelected = getAncestorIds(folderId).find((id) => folderSourceMap.get(id)?.includeDescendants);
     if (ancestorSelected != null) {
       const parentName = folderMetaMap.get(ancestorSelected)?.name ?? "родительская папка";
       setError(`Нельзя добавить эту папку, потому что уже выбрана родительская папка "${parentName}".`);
       return;
     }
 
-    const descendantSelected = getDescendantIds(folderId).find((id) => selectedFolderIds.has(id));
-    if (descendantSelected != null) {
-      const childName = folderMetaMap.get(descendantSelected)?.name ?? "вложенная папка";
-      setError(`Нельзя добавить эту папку, потому что уже выбрана вложенная папка "${childName}".`);
-      return;
-    }
-
-    setForm((current) => {
-      const next = {
-        ...current,
-        sourcesFolders: [...current.sourcesFolders, { folderId, pickMode: "ALL" as const }],
-      };
-
-      if (current.selectedFolderId !== folderId) {
-        return next;
-      }
-
-      return {
-        ...next,
-        sourceQuestionIds: current.sourceQuestionIds.filter(
-          (id) => !current.folderQuestions.some((question) => question.id === id),
-        ),
-      };
-    });
+    setForm((current) => ({
+      ...current,
+      sourcesFolders: [...current.sourcesFolders, { folderId, pickMode: "ALL" as const }],
+    }));
 
     setError(null);
   };
 
   const updateFolderPickMode = (folderId: number, value: "ALL" | "RANDOM") => {
+    if (sourcesReadOnly) return;
     setForm((current) => ({
       ...current,
       sourcesFolders: current.sourcesFolders.map((source) =>
@@ -349,6 +336,7 @@ export function useExamEditorState({
   };
 
   const updateFolderRandomCount = (folderId: number, value: number) => {
+    if (sourcesReadOnly) return;
     setForm((current) => ({
       ...current,
       sourcesFolders: current.sourcesFolders.map((source) =>
@@ -358,6 +346,7 @@ export function useExamEditorState({
   };
 
   const toggleQuestion = (questionId: number) => {
+    if (sourcesReadOnly) return;
     setForm((current) => ({
       ...current,
       sourceQuestionIds: current.sourceQuestionIds.includes(questionId)
@@ -438,6 +427,9 @@ export function useExamEditorState({
     try {
       const preflight = await preflightExamSources(restaurantId, {
         mode,
+        examId: exam?.id,
+        expectedEditorRevision: exam?.editorRevision,
+        refreshQuestionBank,
         sourcesFolders: form.sourcesFolders,
         sourceQuestionIds: form.sourceQuestionIds,
         knowledgeFolderId: mode === "PRACTICE" ? (knowledgeFolderId ?? exam?.knowledgeFolderId ?? null) : null,
@@ -451,6 +443,7 @@ export function useExamEditorState({
       }
       const authoritativeQuestionCount = preflight.availableQuestionCount;
       const payload: UpsertExamPayload = {
+        refreshQuestionBank,
         title: form.title.trim(),
         description: form.description.trim() || null,
         mode,
@@ -472,7 +465,13 @@ export function useExamEditorState({
       }
       await persistPayload(payload);
     } catch (preflightError) {
-      setError(getTrainingErrorMessage(preflightError, "Не удалось проверить тест перед сохранением."));
+      const parsedError = parseTrainingApiError(preflightError);
+      if (parsedError.payload?.error === "STALE_EXAM_REVISION") {
+        setStaleConflict(true);
+        setError("Тест уже изменён другим пользователем. Обновите данные перед сохранением.");
+      } else {
+        setError(getTrainingErrorMessage(preflightError, "Не удалось проверить тест перед сохранением."));
+      }
     } finally {
       setSaving(false);
     }
@@ -511,6 +510,32 @@ export function useExamEditorState({
   };
 
   return {
+    sourcesReadOnly,
+    refreshQuestionBank,
+    enableQuestionBankRefresh: () => setRefreshQuestionBank(true),
+    keepPublishedSources: () => {
+      setRefreshQuestionBank(false);
+      setForm((current) => ({
+        ...current,
+        sourcesFolders: exam?.sourcesFolders ?? [],
+        sourceQuestionIds: exam?.sourceQuestionIds ?? [],
+      }));
+      setError(null);
+    },
+    updateFolderScope: (folderId: number, includeDescendants: boolean) => {
+      if (sourcesReadOnly) return;
+      if (includeDescendants && getDescendantIds(folderId).some((id) => folderSourceMap.has(id))) {
+        setError("Сначала уберите выбранные подпапки: они уже входят в общую область этой папки.");
+        return;
+      }
+      setForm((current) => ({
+        ...current,
+        sourcesFolders: current.sourcesFolders.map((source) =>
+          source.folderId === folderId ? { ...source, includeDescendants } : source,
+        ),
+      }));
+      setError(null);
+    },
     form,
     tree,
     positions,

@@ -31,5 +31,15 @@ public record UpdateTrainingExamRequest(
         List<ExamSourceFolderDto> sourcesFolders,
         List<Long> sourceQuestionIds,
         @JsonAlias("confirmNewCycle") Boolean confirmNewVersion,
-        Boolean requireRecertification
-) {}
+        Boolean requireRecertification,
+        Boolean refreshQuestionBank
+) {
+    public UpdateTrainingExamRequest(Long expectedEditorRevision, String title, String description, Integer questionCount,
+            Integer passPercent, Integer timeLimitSec, TrainingExamMode mode, Long knowledgeFolderId, Long folderId,
+            Integer attemptLimit, Boolean active, List<Long> visibilityPositionIds, List<ExamSourceFolderDto> sourcesFolders,
+            List<Long> sourceQuestionIds, Boolean confirmNewVersion, Boolean requireRecertification) {
+        this(expectedEditorRevision, title, description, questionCount, passPercent, timeLimitSec, mode, knowledgeFolderId,
+                folderId, attemptLimit, active, visibilityPositionIds, sourcesFolders, sourceQuestionIds, confirmNewVersion,
+                requireRecertification, false);
+    }
+}

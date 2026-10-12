@@ -13,6 +13,8 @@ import ru.staffly.restaurant.model.Restaurant;
 import ru.staffly.training.model.*;
 
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -51,6 +53,31 @@ class TrainingQuestionPostgresPersistenceTest {
     void add(String title, String prompt, TrainingQuestionGroup group, boolean active, int order) {
         em.persist(TrainingQuestion.builder().restaurant(restaurant).folder(folder).title(title).prompt(prompt)
                 .type(TrainingQuestionType.SINGLE).questionGroup(group).active(active).sortOrder(order).build());
+    }
+
+    @Test void sourceScopeMigrationPreservesLegacyDirectScopesAndPersistsRecursiveScopes() throws Exception {
+        var exam = TrainingExam.builder().restaurant(em.getReference(Restaurant.class, restaurant.getId()))
+                .title("Fixture exam").mode(TrainingExamMode.CERTIFICATION).questionCount(1).passPercent(80).attemptLimit(2).build();
+        em.persist(exam);
+        var source = TrainingExamSourceFolder.builder().exam(exam).folder(em.getReference(TrainingFolder.class, folder.getId()))
+                .pickMode(TrainingExamSourcePickMode.ALL).build();
+        em.persist(source);
+        var spec = CertificationAssessmentSpecification.builder().exam(exam).version(1).questionCount(1)
+                .passPercent(80).questionPoolJson("[]").build();
+        em.persist(spec);
+        var frozenSource = CertificationAssessmentFolderSource.builder().specification(spec).folderId(folder.getId())
+                .pickMode(TrainingExamSourcePickMode.ALL).build();
+        em.persist(frozenSource); em.flush(); em.clear();
+        em.createNativeQuery("ALTER TABLE training_exam_source_folder DROP COLUMN include_descendants").executeUpdate();
+        em.createNativeQuery("ALTER TABLE certification_assessment_folder_source DROP COLUMN include_descendants").executeUpdate();
+        for (var sql : Files.readString(Path.of("src/main/resources/db/migration/V133__exam_source_folder_scope.sql")).split(";")) {
+            if (!sql.isBlank()) em.createNativeQuery(sql).executeUpdate();
+        }
+        assertFalse(em.find(TrainingExamSourceFolder.class, source.getId()).isIncludeDescendants());
+        assertFalse(em.find(CertificationAssessmentFolderSource.class, frozenSource.getId()).isIncludeDescendants());
+        em.find(TrainingExamSourceFolder.class, source.getId()).setIncludeDescendants(true);
+        em.flush(); em.clear();
+        assertTrue(em.find(TrainingExamSourceFolder.class, source.getId()).isIncludeDescendants());
     }
 
     List<String> list(String query, TrainingQuestionGroup group, boolean inactive) {

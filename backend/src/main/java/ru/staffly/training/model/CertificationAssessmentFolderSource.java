@@ -30,4 +30,7 @@ public class CertificationAssessmentFolderSource {
 
     @Column(name = "random_count")
     private Integer randomCount;
+
+    @Column(name = "include_descendants", nullable = false, updatable = false)
+    private boolean includeDescendants;
 }

@@ -138,6 +138,7 @@ export type ExamSourceFolderDto = {
   folderId: number;
   pickMode: ExamSourceFolderPickMode;
   randomCount?: number | null;
+  includeDescendants?: boolean;
 };
 
 export type ExamSourcesPreflightDto = {
@@ -148,6 +149,9 @@ export type ExamSourcesPreflightDto = {
 };
 
 export type ExamSourcesPreflightPayload = {
+  examId?: number;
+  expectedEditorRevision?: number;
+  refreshQuestionBank?: boolean;
   mode: TrainingExamMode;
   questionCount?: number | null;
   sourcesFolders: ExamSourceFolderDto[];
@@ -300,6 +304,7 @@ export type CertificationPreviousValidResultDto = {
 };
 
 export type UpsertExamPayload = {
+  refreshQuestionBank?: boolean;
   expectedEditorRevision?: number;
   confirmNewVersion?: boolean;
   requireRecertification?: boolean;
