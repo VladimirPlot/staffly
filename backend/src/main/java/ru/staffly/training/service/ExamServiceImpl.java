@@ -259,7 +259,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
-        var exam = requireManageableExam(restaurantId, userId, examId, true);
+        var exam = requireManageableExam(restaurantId, userId, examId);
         if (!Objects.equals(exam.getEditorRevision(), request.expectedEditorRevision())) {
             throw new StaleExamRevisionException(exam.getId(), exam.getEditorRevision());
         }
@@ -343,6 +343,7 @@ public class ExamServiceImpl implements ExamService {
         }
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(willBeActive);
+        if (wasActive != willBeActive) exam.setHiddenByFolderId(null);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
@@ -382,6 +383,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
+        exam.setHiddenByFolderId(null);
         certificationAudienceSyncService.syncExamAudience(exam);
         exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
@@ -390,24 +392,31 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableExam(restaurantId, userId, examId, true);
+        var exam = requireManageableExam(restaurantId, userId, examId);
         activeContainerValidator.requireActiveChain(exam.getFolder());
         boolean restoringCertification = exam.getMode() == TrainingExamMode.CERTIFICATION && !exam.isActive();
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) trainingExamOwnershipService.assertOwnerValidForActivation(exam);
         if (!exam.isActive()) {
-            validateSourceCapacity(
-                    restaurantId,
-                    userId,
-                    exam.getMode(),
-                    sourceFolders.findByExamId(exam.getId()).stream()
-                            .map(source -> new ExamSourceFolderDto(
-                                    source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
-                            .toList(),
-                    sourceQuestions.findByExamId(exam.getId()).stream()
-                            .map(source -> source.getQuestion().getId())
-                            .toList(),
-                    exam.getQuestionCount()
-            );
+            if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+                var specification = certificationSpecificationService.requireCurrent(exam);
+                if (questionPoolResolver.buildQuestionPool(restaurantId, specification).questions().size() < specification.getQuestionCount()) {
+                    throw new BadRequestException("В опубликованной версии недостаточно вопросов. Опубликуйте новую версию.");
+                }
+            } else {
+                validateSourceCapacity(
+                        restaurantId,
+                        userId,
+                        exam.getMode(),
+                        sourceFolders.findByExamId(exam.getId()).stream()
+                                .map(source -> new ExamSourceFolderDto(
+                                        source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                                .toList(),
+                        sourceQuestions.findByExamId(exam.getId()).stream()
+                                .map(source -> source.getQuestion().getId())
+                                .toList(),
+                        exam.getQuestionCount()
+                );
+            }
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
                 exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
             } else {
@@ -417,6 +426,7 @@ public class ExamServiceImpl implements ExamService {
                 ));
             }
             exam.setActive(true);
+            exam.setHiddenByFolderId(null);
         }
         if (restoringCertification) {
             // Under the authoritative exam lock, restore the exact obligations hidden
@@ -1293,16 +1303,11 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
-        return requireManageableExam(restaurantId, userId, examId, false);
-    }
-
-    private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId,
-                                                boolean serializeOwnership) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             // Activation cannot validate an owner and then race with their lifecycle transition.
-            if (serializeOwnership) lifecycleMutex.lock(restaurantId);
+            lifecycleMutex.lock(restaurantId);
             return lockAndAuthorizeCertificationMutation(restaurantId, userId, exam);
         }
         var targetPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());

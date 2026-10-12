@@ -234,6 +234,12 @@ class HiddenCertificationOwnershipTest {
         ReflectionTestUtils.setField(service, "sourceFolders", mock(TrainingExamSourceFolderRepository.class));
         ReflectionTestUtils.setField(service, "sourceQuestions", mock(TrainingExamSourceQuestionRepository.class));
         var pool = mock(ExamQuestionPoolResolver.class);
+        var specifications = mock(CertificationAssessmentSpecificationService.class);
+        var specification = CertificationAssessmentSpecification.builder().exam(hidden).questionCount(1).build();
+        when(specifications.requireCurrent(hidden)).thenReturn(specification);
+        when(pool.buildQuestionPool(1L, specification)).thenReturn(new ExamQuestionPoolResolver.ResolvedQuestionPool(
+                List.of(TrainingQuestion.builder().id(1L).build()), Set.of()));
+        ReflectionTestUtils.setField(service, "certificationSpecificationService", specifications);
         when(pool.resolveAvailableQuestionCount(anyLong(), anyLong(), any(), anyList(), anyList())).thenReturn(1);
         ReflectionTestUtils.setField(service, "questionPoolResolver", pool);
         return service;

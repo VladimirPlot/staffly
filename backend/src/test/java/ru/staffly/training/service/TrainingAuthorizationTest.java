@@ -49,6 +49,7 @@ class TrainingAuthorizationTest {
     @Mock PositionRepository positions;
     @Mock RestaurantRepository restaurants;
     @Mock TrainingExamRepository exams;
+    @Mock ru.staffly.member.lifecycle.RestaurantLifecycleMutex lifecycleMutex;
     @Mock TrainingFolderRepository folders;
     @Mock TrainingExamSourceFolderRepository sourceFolders;
     @Mock TrainingExamSourceQuestionRepository sourceQuestions;

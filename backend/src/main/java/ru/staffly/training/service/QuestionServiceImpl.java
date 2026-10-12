@@ -3,6 +3,7 @@ package ru.staffly.training.service;
 import lombok.RequiredArgsConstructor;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
+import ru.staffly.member.lifecycle.RestaurantLifecycleMutex;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.BadRequestException;
@@ -40,6 +41,7 @@ public class QuestionServiceImpl implements QuestionService {
     private final TrainingPolicyService trainingPolicyService;
     private final TrainingActiveContainerValidator activeContainerValidator;
     private final EntityManager entityManager;
+    private final RestaurantLifecycleMutex lifecycleMutex;
 
     @Override
     @Transactional(readOnly = true)
@@ -51,6 +53,7 @@ public class QuestionServiceImpl implements QuestionService {
     @Override
     @Transactional
     public TrainingQuestionDto createQuestion(Long restaurantId, Long userId, CreateTrainingQuestionRequest request) {
+        lifecycleMutex.lock(restaurantId);
         validator.validateQuestion(request.type(), request.title(), request.prompt(), request.options(), request.matchPairs(), request.blanks());
 
         var folder = requireManageableQuestionBankFolder(restaurantId, userId, request.folderId());
@@ -117,6 +120,7 @@ public class QuestionServiceImpl implements QuestionService {
         entity.setFolder(targetFolder);
         entity.setSortOrder(targetSortOrder);
         entity.setActive(willBeActive);
+        if (wasActive != willBeActive || folderChanged) entity.setHiddenByFolderId(null);
 
         nestedPersistence.replaceNested(entity, request.options(), request.matchPairs(), request.blanks());
         return toDtos(List.of(entity)).get(0);
@@ -150,6 +154,7 @@ public class QuestionServiceImpl implements QuestionService {
         var entity = requireManageableQuestion(restaurantId, userId, questionId);
         assertQuestionNotUsedInActiveExamsForMutation(restaurantId, entity);
         entity.setActive(false);
+        entity.setHiddenByFolderId(null);
         return toDtos(List.of(entity)).get(0);
     }
 
@@ -167,6 +172,7 @@ public class QuestionServiceImpl implements QuestionService {
                     entity.getQuestionGroup()
             ));
             entity.setActive(true);
+            entity.setHiddenByFolderId(null);
         }
         return toDtos(List.of(entity)).get(0);
     }
@@ -242,6 +248,7 @@ public class QuestionServiceImpl implements QuestionService {
 
     /** Questions have no independent visibility; management authority is inherited from their folder. */
     private TrainingQuestion requireManageableQuestion(Long restaurantId, Long userId, Long questionId) {
+        lifecycleMutex.lock(restaurantId);
         var question = questions.findByIdAndRestaurantIdWithFolderVisibility(questionId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Question not found"));
         entityManager.lock(question, LockModeType.PESSIMISTIC_WRITE);

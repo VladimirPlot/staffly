@@ -50,6 +50,9 @@ public class TrainingKnowledgeItem {
     @Builder.Default
     private boolean active = true;
 
+    @Column(name = "hidden_by_folder_id")
+    private Long hiddenByFolderId;
+
     @Column(name = "created_at", nullable = false)
     @Builder.Default
     private Instant createdAt = TimeProvider.now();

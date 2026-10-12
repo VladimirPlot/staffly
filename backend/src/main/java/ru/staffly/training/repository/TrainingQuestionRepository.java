@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TrainingQuestionRepository extends JpaRepository<TrainingQuestion, Long> {
+    List<TrainingQuestion> findByRestaurantIdAndFolderIdIn(Long restaurantId, List<Long> folderIds);
     @Query("""
             select q from TrainingQuestion q
             where q.restaurant.id = :restaurantId
