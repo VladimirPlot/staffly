@@ -215,9 +215,7 @@ export default function KnowledgePageBase({ currentFolderId }: Props) {
         folderIds.map((folderId) => listKnowledgeItems(restaurantId, folderId ?? undefined, true)),
       );
       const examsByFolder = await Promise.all(
-        allFolders.map((folder) =>
-          listKnowledgeExams(restaurantId, folder.id, true).catch(() => [] as TrainingExamDto[]),
-        ),
+        allFolders.map((folder) => listKnowledgeExams(restaurantId, folder.id, true)),
       );
       const uniqueItems = new Map(itemsByFolder.flat().map((item) => [item.id, item]));
       const uniqueExams = new Map(examsByFolder.flat().map((exam) => [exam.id, exam]));

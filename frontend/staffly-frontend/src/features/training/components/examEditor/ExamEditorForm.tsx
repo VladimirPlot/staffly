@@ -11,6 +11,12 @@ import type { QuestionBankTreeNodeDto, TrainingQuestionDto } from "../../api/typ
 type FolderSourceMap = Map<number, { folderId: number; pickMode: "ALL" | "RANDOM"; randomCount?: number | null }>;
 
 type Props = {
+  treeLoading: boolean;
+  treeError: string | null;
+  questionsLoading: boolean;
+  questionsError: string | null;
+  onRetryTree: () => void;
+  onRetryQuestions: () => void;
   mode: TrainingExamMode;
   title: string;
   description: string;
@@ -80,6 +86,12 @@ export default function ExamEditorForm(props: Props) {
       />
 
       <ExamSourcesSection
+        treeLoading={props.treeLoading}
+        treeError={props.treeError}
+        questionsLoading={props.questionsLoading}
+        questionsError={props.questionsError}
+        onRetryTree={props.onRetryTree}
+        onRetryQuestions={props.onRetryQuestions}
         tree={props.tree}
         selectedFolderId={props.selectedFolderId}
         folderQuestions={props.folderQuestions}

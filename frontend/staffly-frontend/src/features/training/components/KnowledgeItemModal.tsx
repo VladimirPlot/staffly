@@ -15,6 +15,7 @@ import { toAbsoluteUrl } from "../../../shared/utils/url";
 import { saveKnowledgeItem } from "../api/trainingApi";
 import type { TrainingKnowledgeItemDto } from "../api/types";
 import { getTrainingErrorMessage } from "../utils/errors";
+import { useTrainingEditorGuard } from "../hooks/useTrainingEditorGuard";
 
 type KnowledgeItemModalProps = {
   open: boolean;
@@ -69,6 +70,7 @@ export default function KnowledgeItemModal({
   const creationRequestId = useRef<string | null>(null);
   const busyRef = useRef(false);
   const sessionRef = useRef(0);
+  const guard = useTrainingEditorGuard(open, loading || cropBusy, onClose);
 
   const hasImage = Boolean(imageUrl);
 
@@ -193,6 +195,7 @@ export default function KnowledgeItemModal({
   };
 
   const handleDeleteImage = () => {
+    guard.markDirty();
     setRemoveImage(Boolean(effectiveItem?.imageUrl));
     setImageUrl(null);
     setCroppedFile(null);
@@ -233,6 +236,7 @@ export default function KnowledgeItemModal({
         setCroppedFile(null);
         setRemoveImage(false);
         setSaveCommitted(true);
+        guard.markSaved();
         persisted = true;
       }
 
@@ -262,13 +266,12 @@ export default function KnowledgeItemModal({
         open={open}
         title={modalTitle}
         onClose={() => {
-          if (loading) return;
-          onClose();
+          guard.requestClose();
         }}
         className="max-w-xl"
         footer={
           <>
-            <Button variant="outline" onClick={onClose} disabled={loading}>
+            <Button variant="outline" onClick={guard.requestClose} disabled={loading || cropBusy}>
               Отмена
             </Button>
             <Button onClick={handleSubmit} disabled={!title.trim() || cropBusy || cropOpen} isLoading={loading}>
@@ -277,7 +280,7 @@ export default function KnowledgeItemModal({
           </>
         }
       >
-        <fieldset disabled={loading || saveCommitted} className="min-w-0 space-y-4">
+        <fieldset disabled={loading || saveCommitted} className="min-w-0 space-y-4" onChangeCapture={guard.markDirty}>
           {imageUrl && (
             <div className="border-subtle bg-app aspect-[16/10] overflow-hidden rounded-2xl border">
               <img src={imageUrl} alt="Фото карточки" className="h-full w-full object-cover" />
@@ -342,6 +345,7 @@ export default function KnowledgeItemModal({
           <p className="text-muted mt-3 text-sm">Карточка сохранена. Если список не обновился, повторите обновление.</p>
         )}
       </Modal>
+      {guard.discardDialog}
 
       <ImageCropperModal
         open={cropOpen}

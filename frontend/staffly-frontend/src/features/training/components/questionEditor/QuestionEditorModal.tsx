@@ -2,12 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Button from "../../../../shared/ui/Button";
 import Modal from "../../../../shared/ui/Modal";
 import { createQuestion, updateQuestion } from "../../api/trainingApi";
-import type {
-  TrainingQuestionDto,
-  TrainingQuestionGroup,
-  TrainingQuestionType,
-} from "../../api/types";
+import type { TrainingQuestionDto, TrainingQuestionGroup, TrainingQuestionType } from "../../api/types";
 import { getTrainingErrorMessage } from "../../utils/errors";
+import { useTrainingEditorGuard } from "../../hooks/useTrainingEditorGuard";
 import FillSelectEditor from "./editors/FillSelectEditor";
 import MatchQuestionEditor from "./editors/MatchQuestionEditor";
 import MultiChoiceEditor from "./editors/MultiChoiceEditor";
@@ -16,16 +13,8 @@ import TrueFalseEditor from "./editors/TrueFalseEditor";
 import QuestionEditorCommonFields from "./QuestionEditorCommonFields";
 import QuestionEditorStepType from "./QuestionEditorStepType";
 import QuestionEditorStepUsage from "./QuestionEditorStepUsage";
-import {
-  insertBlankIntoPromptAtCursor,
-  removeBlankFromPrompt,
-  syncBlanksWithPrompt,
-} from "./shared/fillSelectUtils";
-import type {
-  QuestionEditorStep,
-  QuestionOptionDraft,
-  QuestionPairDraft,
-} from "./shared/questionEditorTypes";
+import { insertBlankIntoPromptAtCursor, removeBlankFromPrompt, syncBlanksWithPrompt } from "./shared/fillSelectUtils";
+import type { QuestionEditorStep, QuestionOptionDraft, QuestionPairDraft } from "./shared/questionEditorTypes";
 
 type Props = {
   open: boolean;
@@ -46,14 +35,7 @@ const DEFAULT_PAIRS: QuestionPairDraft[] = [
   { leftText: "", rightText: "" },
 ];
 
-export default function QuestionEditorModal({
-  open,
-  restaurantId,
-  folderId,
-  question,
-  onClose,
-  onSaved,
-}: Props) {
+export default function QuestionEditorModal({ open, restaurantId, folderId, question, onClose, onSaved }: Props) {
   const [step, setStep] = useState<QuestionEditorStep>("usage");
   const [questionGroup, setQuestionGroup] = useState<TrainingQuestionGroup>("PRACTICE");
   const [type, setType] = useState<TrainingQuestionType>("SINGLE");
@@ -66,6 +48,7 @@ export default function QuestionEditorModal({
   const [blanks, setBlanks] = useState(question?.blanks?.length ? question.blanks : []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useTrainingEditorGuard(open, saving, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -171,7 +154,11 @@ export default function QuestionEditorModal({
 
   const submit = async () => {
     if (duplicates.size > 0) {
-      setError(type === "MATCH" ? "Значения слева и справа должны быть уникальными." : "Уберите повторяющиеся варианты ответа.");
+      setError(
+        type === "MATCH"
+          ? "Значения слева и справа должны быть уникальными."
+          : "Уберите повторяющиеся варианты ответа.",
+      );
       return;
     }
     setSaving(true);
@@ -220,9 +207,7 @@ export default function QuestionEditorModal({
   };
 
   const editorByType: Record<TrainingQuestionType, ReactNode> = {
-    SINGLE: (
-      <SingleChoiceEditor options={options} duplicates={duplicates} onOptionsChange={setOptions} />
-    ),
+    SINGLE: <SingleChoiceEditor options={options} duplicates={duplicates} onOptionsChange={setOptions} />,
     MULTI: <MultiChoiceEditor options={options} duplicates={duplicates} onOptionsChange={setOptions} />,
     TRUE_FALSE: <TrueFalseEditor options={options} onChange={setOptions} />,
     FILL_SELECT: (
@@ -239,7 +224,7 @@ export default function QuestionEditorModal({
   const footer =
     step === "usage" ? (
       <>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={guard.requestClose} disabled={saving}>
           Отмена
         </Button>
         <Button onClick={() => setStep("type")}>Далее</Button>
@@ -249,14 +234,14 @@ export default function QuestionEditorModal({
         <Button variant="outline" onClick={() => setStep("usage")}>
           Назад
         </Button>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={guard.requestClose} disabled={saving}>
           Отмена
         </Button>
         <Button onClick={() => setStep("editor")}>Далее</Button>
       </>
     ) : (
       <>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={guard.requestClose} disabled={saving}>
           Отмена
         </Button>
         <Button onClick={submit} isLoading={saving} disabled={!title.trim() || !prompt.trim()}>
@@ -266,45 +251,55 @@ export default function QuestionEditorModal({
     );
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={
-        question
-          ? "Редактирование вопроса"
-          : step === "usage"
-            ? "Вид вопроса"
-            : step === "type"
-              ? "Тип вопроса"
-              : "Новый вопрос"
-      }
-      footer={footer}
-    >
-      {step === "usage" && (
-        <QuestionEditorStepUsage value={questionGroup} onChange={setQuestionGroup} />
-      )}
+    <>
+      <Modal
+        open={open}
+        onClose={guard.requestClose}
+        title={
+          question
+            ? "Редактирование вопроса"
+            : step === "usage"
+              ? "Вид вопроса"
+              : step === "type"
+                ? "Тип вопроса"
+                : "Новый вопрос"
+        }
+        footer={footer}
+      >
+        <fieldset
+          disabled={saving}
+          className="min-w-0"
+          onChangeCapture={guard.markDirty}
+          onClickCapture={(event) => {
+            if ((event.target as HTMLElement).closest("button")) guard.markDirty();
+          }}
+        >
+          {step === "usage" && <QuestionEditorStepUsage value={questionGroup} onChange={setQuestionGroup} />}
 
-      {step === "type" && <QuestionEditorStepType value={type} onChange={setType} />}
+          {step === "type" && <QuestionEditorStepType value={type} onChange={setType} />}
 
-      {step === "editor" && (
-        <div className="space-y-4">
-          <QuestionEditorCommonFields
-            type={type}
-            title={title}
-            prompt={prompt}
-            explanation={explanation}
-            onTitleChange={setTitle}
-            onPromptChange={applyPromptChange}
-            onExplanationChange={setExplanation}
-            onPromptSelectionChange={setPromptSelection}
-            onAddBlank={handleAddBlank}
-          />
+          {step === "editor" && (
+            <div className="space-y-4">
+              <QuestionEditorCommonFields
+                type={type}
+                title={title}
+                prompt={prompt}
+                explanation={explanation}
+                onTitleChange={setTitle}
+                onPromptChange={applyPromptChange}
+                onExplanationChange={setExplanation}
+                onPromptSelectionChange={setPromptSelection}
+                onAddBlank={handleAddBlank}
+              />
 
-          {editorByType[type]}
+              {editorByType[type]}
 
-          {error && <div className="text-sm [overflow-wrap:anywhere] text-red-600">{error}</div>}
-        </div>
-      )}
-    </Modal>
+              {error && <div className="text-sm [overflow-wrap:anywhere] text-red-600">{error}</div>}
+            </div>
+          )}
+        </fieldset>
+      </Modal>
+      {guard.discardDialog}
+    </>
   );
 }

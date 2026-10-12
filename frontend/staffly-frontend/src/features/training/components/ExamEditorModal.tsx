@@ -4,12 +4,20 @@ import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import ExamEditorForm from "./examEditor/ExamEditorForm";
 import { useExamEditorState } from "./examEditor/useExamEditorState";
 import type { ExamEditorProps } from "./examEditor/types";
+import { useTrainingEditorGuard } from "../hooks/useTrainingEditorGuard";
+import ErrorState from "./ErrorState";
+import LoadingState from "./LoadingState";
 
 export default function ExamEditorModal(props: ExamEditorProps) {
   const state = useExamEditorState(props);
+  const guard = useTrainingEditorGuard(props.open, state.saving, props.onClose);
   const title = props.exam
-    ? props.mode === "PRACTICE" ? "Редактировать тест" : "Редактировать аттестацию"
-    : props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
+    ? props.mode === "PRACTICE"
+      ? "Редактировать тест"
+      : "Редактировать аттестацию"
+    : props.mode === "PRACTICE"
+      ? "Создать тест"
+      : "Создать аттестацию";
   const submitLabel = props.exam ? "Сохранить" : props.mode === "PRACTICE" ? "Создать тест" : "Создать аттестацию";
 
   const currentVersion = state.newCycleConfirmation?.metadata.currentVersion;
@@ -19,63 +27,89 @@ export default function ExamEditorModal(props: ExamEditorProps) {
     <>
       <Modal
         open={props.open}
-        onClose={props.onClose}
+        onClose={guard.requestClose}
         title={title}
         footer={
           <>
-            <Button variant="outline" onClick={props.onClose}>
+            <Button variant="outline" onClick={guard.requestClose} disabled={state.saving}>
               Отмена
             </Button>
             {state.staleConflict ? (
               <Button onClick={state.refreshAfterConflict}>Обновить</Button>
             ) : (
-              <Button onClick={state.submit} isLoading={state.saving}>
+              <Button
+                onClick={state.submit}
+                isLoading={state.saving}
+                disabled={
+                  state.treeLoading || state.positionsLoading || Boolean(state.treeError || state.positionsError)
+                }
+              >
                 {submitLabel}
               </Button>
             )}
           </>
         }
       >
-        <ExamEditorForm
-          mode={props.mode}
-          title={state.form.title}
-          description={state.form.description}
-          passPercent={state.form.passPercent}
-          timeLimitSec={state.form.timeLimitSec}
-          attemptLimit={state.form.attemptLimit}
-          positions={state.positions}
-          manageablePositionIds={state.manageablePositionIds}
-          visibilityPositionIds={state.form.visibilityPositionIds}
-          availabilityLabel={state.availabilityLabel}
-          positionMenuOpen={state.positionMenuOpen}
-          tree={state.tree}
-          selectedFolderId={state.form.selectedFolderId}
-          folderQuestions={state.form.folderQuestions}
-          folderSourceMap={state.folderSourceMap}
-          folderMetaMap={state.folderMetaMap}
-          query={state.form.query}
-          sourceQuestionIds={state.form.sourceQuestionIds}
-          totalQuestions={state.totalQuestions}
-          sourceIssues={state.sourceIssues}
-          sourcePreflightLoading={state.sourcePreflightLoading}
-          onTitleChange={state.setTitle}
-          onDescriptionChange={state.setDescription}
-          onPassPercentChange={state.setPassPercent}
-          onTimeLimitChange={state.setTimeLimitSec}
-          onAttemptLimitChange={state.setAttemptLimit}
-          onToggleMenu={() => state.setPositionMenuOpen(!state.positionMenuOpen)}
-          onSelectAllPositions={state.handleSelectAllPositions}
-          onTogglePosition={state.togglePosition}
-          onSelectFolder={state.setSelectedFolderId}
-          onToggleFolder={state.toggleFolder}
-          onUpdateFolderPickMode={state.updateFolderPickMode}
-          onUpdateFolderRandomCount={state.updateFolderRandomCount}
-          onQueryChange={state.setQuery}
-          onToggleQuestion={state.toggleQuestion}
-        />
+        {state.positionsLoading && <LoadingState label="Загружаем должности…" />}
+        {!state.positionsLoading && state.positionsError && (
+          <ErrorState message={state.positionsError} onRetry={state.retryEditorData} />
+        )}
+        <fieldset disabled={state.saving} className="min-w-0" onChangeCapture={guard.markDirty}>
+          <ExamEditorForm
+            treeLoading={state.treeLoading}
+            treeError={state.treeError}
+            questionsLoading={state.questionsLoading}
+            questionsError={state.questionsError}
+            onRetryTree={state.retryEditorData}
+            onRetryQuestions={state.retryQuestions}
+            mode={props.mode}
+            title={state.form.title}
+            description={state.form.description}
+            passPercent={state.form.passPercent}
+            timeLimitSec={state.form.timeLimitSec}
+            attemptLimit={state.form.attemptLimit}
+            positions={state.positions}
+            manageablePositionIds={state.manageablePositionIds}
+            visibilityPositionIds={state.form.visibilityPositionIds}
+            availabilityLabel={state.availabilityLabel}
+            positionMenuOpen={state.positionMenuOpen}
+            tree={state.tree}
+            selectedFolderId={state.form.selectedFolderId}
+            folderQuestions={state.form.folderQuestions}
+            folderSourceMap={state.folderSourceMap}
+            folderMetaMap={state.folderMetaMap}
+            query={state.form.query}
+            sourceQuestionIds={state.form.sourceQuestionIds}
+            totalQuestions={state.totalQuestions}
+            sourceIssues={state.sourceIssues}
+            sourcePreflightLoading={state.sourcePreflightLoading}
+            onTitleChange={state.setTitle}
+            onDescriptionChange={state.setDescription}
+            onPassPercentChange={state.setPassPercent}
+            onTimeLimitChange={state.setTimeLimitSec}
+            onAttemptLimitChange={state.setAttemptLimit}
+            onToggleMenu={() => state.setPositionMenuOpen(!state.positionMenuOpen)}
+            onSelectAllPositions={() => {
+              guard.markDirty();
+              state.handleSelectAllPositions();
+            }}
+            onTogglePosition={(positionId) => {
+              if (state.saving) return;
+              guard.markDirty();
+              state.togglePosition(positionId);
+            }}
+            onSelectFolder={state.setSelectedFolderId}
+            onToggleFolder={state.toggleFolder}
+            onUpdateFolderPickMode={state.updateFolderPickMode}
+            onUpdateFolderRandomCount={state.updateFolderRandomCount}
+            onQueryChange={state.setQuery}
+            onToggleQuestion={state.toggleQuestion}
+          />
+        </fieldset>
 
         {state.error && <div className="mt-5 text-sm text-red-600">{state.error}</div>}
       </Modal>
+      {guard.discardDialog}
       <ConfirmDialog
         open={state.newCycleConfirmation != null}
         title="Создать новую версию аттестации?"
@@ -84,16 +118,27 @@ export default function ExamEditorModal(props: ExamEditorProps) {
             <p>Изменения создадут новую версию аттестации.</p>
             <p>Вопросы и правильные ответы новой версии будут зафиксированы при сохранении.</p>
             <label className="flex items-start gap-2">
-              <input type="checkbox" checked={state.requireRecertification} disabled={state.saving}
-                onChange={(event) => state.setRequireRecertification(event.target.checked)} className="mt-1" />
+              <input
+                type="checkbox"
+                checked={state.requireRecertification}
+                disabled={state.saving}
+                onChange={(event) => state.setRequireRecertification(event.target.checked)}
+                className="mt-1"
+              />
               <span>Назначить повторное прохождение всем сотрудникам</span>
             </label>
             {state.requireRecertification ? (
-              <p>Все сотрудники получат новое назначение, включая уже прошедших аттестацию. Прошлые результаты сохранятся в истории; начатые попытки останутся в прежнем назначении и не заменят новое прохождение.</p>
+              <p>
+                Все сотрудники получат новое назначение, включая уже прошедших аттестацию. Прошлые результаты сохранятся
+                в истории; начатые попытки останутся в прежнем назначении и не заменят новое прохождение.
+              </p>
             ) : (
               <>
                 <p>Результаты уже прошедших сохранятся. Начатые попытки можно будет завершить по прежней версии.</p>
-                <p>Сотрудники, которые ещё не начали или завершили попытки неуспешно и сейчас не проходят тест, перейдут на новую версию.</p>
+                <p>
+                  Сотрудники, которые ещё не начали или завершили попытки неуспешно и сейчас не проходят тест, перейдут
+                  на новую версию.
+                </p>
               </>
             )}
             {typeof currentVersion === "number" && typeof proposedVersion === "number" && (
