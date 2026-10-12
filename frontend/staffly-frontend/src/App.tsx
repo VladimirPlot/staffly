@@ -197,7 +197,7 @@ function TopBar() {
           <span className="staffly-brand-mark">
             <span className="staffly-brand-text">Staffly</span>
           </span>
-          <span className="staffly-release-badge">alpha 3.2.7</span>
+          <span className="staffly-release-badge">beta 0.1.1</span>
         </Link>
 
         {token ? (
