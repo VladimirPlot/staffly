@@ -1,5 +1,5 @@
 import type { PositionDto } from "../../../dictionaries/api";
-import type { ExamSourceFolderDto, QuestionBankTreeNodeDto } from "../../api/types";
+import type { QuestionBankTreeNodeDto } from "../../api/types";
 import type { FlatTreeNode } from "./types";
 import type { TrainingExamMode } from "../../api/types";
 
@@ -53,37 +53,20 @@ export function createTreeHelpers(flatTree: FlatTreeNode[]) {
   return { folderMetaMap, getAncestorIds, getDescendantIds };
 }
 
-export function calculateTotalQuestions(
-  sourcesFolders: ExamSourceFolderDto[],
-  sourceQuestionIds: number[],
-  folderMetaMap: Map<number, FlatTreeNode>,
-) {
-  const foldersCount = sourcesFolders.reduce((sum, source) => {
-    const folder = folderMetaMap.get(source.folderId);
-    if (!folder) return sum;
-
-    if (source.pickMode === "RANDOM") {
-      const requested = Math.max(0, Number(source.randomCount ?? 0));
-      return sum + Math.min(requested, folder.questionCount);
-    }
-
-    return sum + folder.questionCount;
-  }, 0);
-
-  return foldersCount + sourceQuestionIds.length;
-}
-
 export function buildAvailabilityLabel(
   mode: TrainingExamMode,
   visibilityPositionIds: number[],
   positions: PositionDto[],
   isDesktop: boolean,
+  allSelected?: boolean,
 ) {
-  if (mode === "PRACTICE" && visibilityPositionIds.length === 0) return "Всем сотрудникам";
+  const everyone =
+    allSelected ??
+    (mode === "PRACTICE"
+      ? visibilityPositionIds.length === 0
+      : positions.length > 0 && visibilityPositionIds.length === positions.length);
+  if (everyone) return "Всем сотрудникам";
   if (mode === "CERTIFICATION" && visibilityPositionIds.length === 0) return "Должности не выбраны";
-  if (mode === "CERTIFICATION" && positions.length > 0 && visibilityPositionIds.length === positions.length) {
-    return "Всем сотрудникам";
-  }
 
   const selected = positions.filter((position) => visibilityPositionIds.includes(position.id));
   if (selected.length === 0) return mode === "PRACTICE" ? "Всем сотрудникам" : "Должности не выбраны";

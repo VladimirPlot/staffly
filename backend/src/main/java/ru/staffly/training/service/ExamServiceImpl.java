@@ -282,10 +282,15 @@ public class ExamServiceImpl implements ExamService {
             trainingExamOwnershipService.assertOwnerValidForActivation(exam, resultingVisibility);
         }
         boolean materialChanged = false;
+        boolean preservePublishedSources = false;
+        CertificationAssessmentSpecification preservedSpecification = null;
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             var materialDiff = certificationSpecificationService.materialDiff(
                     exam, request.sourcesFolders(), request.sourceQuestionIds(), request.questionCount(),
-                    request.passPercent(), request.timeLimitSec(), request.attemptLimit());
+                    request.passPercent(), request.timeLimitSec(), request.attemptLimit(), Boolean.TRUE.equals(request.refreshQuestionBank()));
+            preservePublishedSources = !Boolean.TRUE.equals(request.refreshQuestionBank())
+                    && !materialDiff.changedFields().contains("sourcesFolders") && !materialDiff.changedFields().contains("sourceQuestionIds");
+            if (preservePublishedSources) preservedSpecification = certificationSpecificationService.requireCurrent(exam);
             materialChanged = materialDiff.materialChanged();
             if (materialChanged && !Boolean.TRUE.equals(request.confirmNewVersion())) {
                 throw new MaterialChangeRequiresNewCycleException(
@@ -298,8 +303,12 @@ public class ExamServiceImpl implements ExamService {
         // Only accepted saves force editorRevision. In particular, the material-change
         // preview above must leave the editor token and every projection untouched.
         entityManager.lock(exam, LockModeType.OPTIMISTIC_FORCE_INCREMENT);
-        validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
-                request.sourceQuestionIds(), request.questionCount());
+        if (!preservePublishedSources) {
+            validateSourceCapacity(restaurantId, userId, request.mode(), request.sourcesFolders(),
+                    request.sourceQuestionIds(), request.questionCount());
+        } else if (request.questionCount() != certificationSpecificationService.requireCurrent(exam).getQuestionCount()) {
+            throw new BadRequestException("Для изменения состава вопросов обновите источники из банка.");
+        }
         if (request.mode() == TrainingExamMode.CERTIFICATION && !wasActive && willBeActive) {
             activeContainerValidator.requireActiveChain(exam.getFolder());
         }
@@ -345,7 +354,7 @@ public class ExamServiceImpl implements ExamService {
         exam.setActive(willBeActive);
         if (wasActive != willBeActive) exam.setHiddenByFolderId(null);
 
-        replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
+        if (!preservePublishedSources) replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
         var visibilityPositionIds = exam.getVisibilityPositions().stream()
                 .map(Position::getId)
@@ -356,7 +365,7 @@ public class ExamServiceImpl implements ExamService {
             // can be created for a newly-added audience member.
             advanceCertificationMaterialVersion(exam);
             exams.flush();
-            var specification = certificationSpecificationService.createCurrent(exam);
+            var specification = certificationSpecificationService.createCurrent(exam, preservedSpecification);
             List<TrainingExamAssignment> createdAssignments;
             if (Boolean.TRUE.equals(request.requireRecertification())) {
                 var cycle = certificationAssignmentCycleService.createRecertificationCycle(
@@ -409,7 +418,7 @@ public class ExamServiceImpl implements ExamService {
                         exam.getMode(),
                         sourceFolders.findByExamId(exam.getId()).stream()
                                 .map(source -> new ExamSourceFolderDto(
-                                        source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                                        source.getFolder().getId(), source.getPickMode(), source.getRandomCount(), source.isIncludeDescendants()))
                                 .toList(),
                         sourceQuestions.findByExamId(exam.getId()).stream()
                                 .map(source -> source.getQuestion().getId())
@@ -905,16 +914,54 @@ public class ExamServiceImpl implements ExamService {
                                                     ExamSourcesPreflightRequest request) {
         trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         try {
-            int available = questionPoolResolver.resolveAvailableQuestionCount(
-                    restaurantId, userId, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
+            TrainingExam editorExam = null;
+            if (request.examId() != null) {
+                editorExam = exams.findByIdAndRestaurantIdWithVisibility(request.examId(), restaurantId)
+                        .orElseThrow(() -> new NotFoundException("Exam not found"));
+                var audienceIds = editorExam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
+                if (editorExam.getMode() == TrainingExamMode.CERTIFICATION) {
+                    trainingPolicyService.assertCanManageCertificationTargets(userId, restaurantId, audienceIds);
+                    assertCertificationCurrentContainerManageable(restaurantId, userId, editorExam);
+                } else {
+                    trainingPolicyService.assertCanAccessExamTargetByVisibility(userId, restaurantId, audienceIds);
+                }
+                if (editorExam.getMode() != request.mode()) throw new BadRequestException("Режим теста не совпадает.");
+                if (!Objects.equals(editorExam.getEditorRevision(), request.expectedEditorRevision())) {
+                    throw new StaleExamRevisionException(editorExam.getId(), editorExam.getEditorRevision());
+                }
+            }
+            boolean preserved = false;
+            if (editorExam != null && editorExam.getMode() == TrainingExamMode.CERTIFICATION && !Boolean.TRUE.equals(request.refreshQuestionBank())) {
+                var diff = certificationSpecificationService.materialDiff(editorExam, request.sourcesFolders(), request.sourceQuestionIds(),
+                        editorExam.getQuestionCount(), editorExam.getPassPercent(), editorExam.getTimeLimitSec(), editorExam.getAttemptLimit(), false);
+                preserved = !diff.changedFields().contains("sourcesFolders") && !diff.changedFields().contains("sourceQuestionIds");
+            }
+            int available = preserved ? certificationSpecificationService.requireCurrent(editorExam).getQuestionCount()
+                    : questionPoolResolver.resolveAvailableQuestionCount(
+                            restaurantId, userId, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
             if (request.questionCount() != null && request.questionCount() != available) {
                 return new ExamSourcesPreflightDto(available, false, List.of(
                         "Количество вопросов в попытке должно совпадать с доступным пулом (" + available + ")."));
             }
-            return new ExamSourcesPreflightDto(available, true, List.of());
+            return new ExamSourcesPreflightDto(available, true, List.of(), folderVisibilityWarnings(restaurantId, userId, request));
         } catch (BadRequestException | NotFoundException validationError) {
             return new ExamSourcesPreflightDto(0, false, List.of(validationError.getMessage()));
         }
+    }
+
+    private List<String> folderVisibilityWarnings(Long restaurantId, Long userId, ExamSourcesPreflightRequest request) {
+        // Count-only preflight calls and older clients do not request an audience check.
+        if (request.visibilityPositionIds() == null) return List.of();
+        validateCertificationVisibility(request.mode(), request.visibilityPositionIds());
+        var ids = new HashSet<>(request.visibilityPositionIds());
+        if (!ids.isEmpty()) trainingPolicyService.assertCanUseExamTargetPositions(userId, restaurantId, ids);
+        var restaurantPositions = positions.findByRestaurantId(restaurantId);
+        var knownIds = restaurantPositions.stream().map(Position::getId).collect(Collectors.toSet());
+        if (!knownIds.containsAll(ids)) throw new BadRequestException("Выбранная должность не найдена в ресторане.");
+        var folder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
+        var audience = restaurantPositions.stream()
+                .filter(position -> ids.isEmpty() ? position.isActive() : ids.contains(position.getId())).toList();
+        return ExamFolderVisibilityWarnings.build(request.mode(), folder, audience);
     }
 
     private int validateSourceCapacity(Long restaurantId,
@@ -1056,11 +1103,8 @@ public class ExamServiceImpl implements ExamService {
                     && (folderSource.randomCount() == null || folderSource.randomCount() < 1)) {
                 throw new BadRequestException("randomCount is required for RANDOM pick mode");
             }
-            var folderHasQuestionsInExamMode = !questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
-                    restaurantId,
-                    folder.getId(),
-                    requiredGroup
-            ).isEmpty();
+            var folderHasQuestionsInExamMode = !questionPoolResolver.folderCandidates(
+                    restaurantId, folder, folderSource.includeDescendants(), requiredGroup).isEmpty();
             if (!folderHasQuestionsInExamMode) {
                 throw new BadRequestException("Folder does not contain active questions for selected exam mode");
             }
@@ -1069,6 +1113,7 @@ public class ExamServiceImpl implements ExamService {
                     .folder(folder)
                     .pickMode(folderSource.pickMode())
                     .randomCount(folderSource.pickMode() == TrainingExamSourcePickMode.RANDOM ? folderSource.randomCount() : null)
+                    .includeDescendants(folderSource.includeDescendants())
                     .build());
         }
         if (!folderEntities.isEmpty()) {
@@ -1114,7 +1159,8 @@ public class ExamServiceImpl implements ExamService {
             }
 
             boolean sameDefinition = existing.pickMode() == source.pickMode()
-                    && Objects.equals(existing.randomCount(), source.randomCount());
+                    && Objects.equals(existing.randomCount(), source.randomCount())
+                    && existing.includeDescendants() == source.includeDescendants();
             if (!sameDefinition) {
                 throw new BadRequestException("Folder source contains duplicate folderId with different pick settings");
             }
@@ -1148,11 +1194,17 @@ public class ExamServiceImpl implements ExamService {
 
     private TrainingExamDto toDtoWithSourcesAndVisibility(TrainingExam exam, CertificationExamSummaryPreviewDto summaryPreview) {
         var folders = sourceFolders.findByExamId(exam.getId()).stream()
-                .map(source -> new ExamSourceFolderDto(source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                .map(source -> new ExamSourceFolderDto(source.getFolder().getId(), source.getPickMode(), source.getRandomCount(), source.isIncludeDescendants()))
                 .toList();
         var questionIds = sourceQuestions.findByExamId(exam.getId()).stream()
                 .map(source -> source.getQuestion().getId())
                 .toList();
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            var published = certificationSpecificationService.requireCurrent(exam);
+            folders = published.getFolderSources().stream().map(source -> new ExamSourceFolderDto(source.getFolderId(),
+                    source.getPickMode(), source.getRandomCount(), source.isIncludeDescendants())).toList();
+            questionIds = published.getQuestionSources().stream().map(CertificationAssessmentQuestionSource::getQuestionId).toList();
+        }
         var visibilityIds = exam.getVisibilityPositions().stream().map(Position::getId).sorted().toList();
 
         return new TrainingExamDto(

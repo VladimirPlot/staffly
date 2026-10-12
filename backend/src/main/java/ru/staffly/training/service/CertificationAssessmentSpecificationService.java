@@ -24,6 +24,10 @@ class CertificationAssessmentSpecificationService {
     private final ExamQuestionPoolResolver poolResolver;
 
     CertificationAssessmentSpecification createCurrent(TrainingExam exam) {
+        return createCurrent(exam, null);
+    }
+
+    CertificationAssessmentSpecification createCurrent(TrainingExam exam, CertificationAssessmentSpecification preserved) {
         if (exam.getMode() != TrainingExamMode.CERTIFICATION) {
             throw new IllegalArgumentException("Assessment specifications belong to Certification exams only");
         }
@@ -37,22 +41,33 @@ class CertificationAssessmentSpecificationService {
                 .passPercent(exam.getPassPercent())
                 .timeLimitSec(exam.getTimeLimitSec())
                 .attemptLimit(exam.getAttemptLimit())
-                .questionPoolJson(questionSnapshots.capture(exam))
+                .questionPoolJson(preserved == null ? questionSnapshots.capture(exam) : preserved.getQuestionPoolJson())
                 .build());
-        specification.getFolderSources().addAll(specificationFolders.saveAll(currentFolders.findByExamId(exam.getId()).stream()
-                .map(source -> CertificationAssessmentFolderSource.builder()
-                        .specification(specification)
-                        .folderId(source.getFolder().getId())
-                        .pickMode(source.getPickMode())
-                        .randomCount(source.getRandomCount())
-                        .build())
-                .toList()));
-        specification.getQuestionSources().addAll(specificationQuestions.saveAll(currentQuestions.findByExamId(exam.getId()).stream()
-                .map(source -> CertificationAssessmentQuestionSource.builder()
-                        .specification(specification)
-                        .questionId(source.getQuestion().getId())
-                        .build())
-                .toList()));
+        if (preserved != null) {
+            specification.getFolderSources().addAll(specificationFolders.saveAll(preserved.getFolderSources().stream()
+                    .map(source -> CertificationAssessmentFolderSource.builder().specification(specification)
+                            .folderId(source.getFolderId()).pickMode(source.getPickMode()).randomCount(source.getRandomCount())
+                            .includeDescendants(source.isIncludeDescendants()).build()).toList()));
+            specification.getQuestionSources().addAll(specificationQuestions.saveAll(preserved.getQuestionSources().stream()
+                    .map(source -> CertificationAssessmentQuestionSource.builder().specification(specification)
+                            .questionId(source.getQuestionId()).build()).toList()));
+        } else {
+            specification.getFolderSources().addAll(specificationFolders.saveAll(currentFolders.findByExamId(exam.getId()).stream()
+                    .map(source -> CertificationAssessmentFolderSource.builder()
+                            .specification(specification)
+                            .folderId(source.getFolder().getId())
+                            .pickMode(source.getPickMode())
+                            .randomCount(source.getRandomCount())
+                            .includeDescendants(source.isIncludeDescendants())
+                            .build())
+                    .toList()));
+            specification.getQuestionSources().addAll(specificationQuestions.saveAll(currentQuestions.findByExamId(exam.getId()).stream()
+                    .map(source -> CertificationAssessmentQuestionSource.builder()
+                            .specification(specification)
+                            .questionId(source.getQuestion().getId())
+                            .build())
+                    .toList()));
+        }
         if (poolResolver.buildQuestionPool(exam.getRestaurant().getId(), specification).questions().size() != specification.getQuestionCount()) {
             throw new BadRequestException("Источники изменились во время публикации. Обновите вопросы и повторите сохранение.");
         }
@@ -72,14 +87,20 @@ class CertificationAssessmentSpecificationService {
                               int passPercent,
                               Integer timeLimitSec,
                               Integer attemptLimit) {
+        return materialDiff(exam, requestedFolders, requestedQuestionIds, questionCount, passPercent, timeLimitSec, attemptLimit, true);
+    }
+
+    MaterialDiff materialDiff(TrainingExam exam, List<ExamSourceFolderDto> requestedFolders,
+                             List<Long> requestedQuestionIds, int questionCount, int passPercent,
+                             Integer timeLimitSec, Integer attemptLimit, boolean refreshQuestionBank) {
         var specification = requireCurrent(exam);
         var expectedFolders = specification.getFolderSources().stream()
-                .map(source -> new FolderDefinition(source.getFolderId(), source.getPickMode(), source.getRandomCount()))
+                .map(source -> new FolderDefinition(source.getFolderId(), source.getPickMode(), source.getRandomCount(), source.isIncludeDescendants()))
                 .sorted(Comparator.comparing(FolderDefinition::folderId))
                 .toList();
         var actualFolders = (requestedFolders == null ? List.<ExamSourceFolderDto>of() : requestedFolders).stream()
                 .map(source -> new FolderDefinition(source.folderId(), source.pickMode(),
-                        source.pickMode() == TrainingExamSourcePickMode.RANDOM ? source.randomCount() : null))
+                        source.pickMode() == TrainingExamSourcePickMode.RANDOM ? source.randomCount() : null, source.includeDescendants()))
                 .distinct()
                 .sorted(Comparator.comparing(FolderDefinition::folderId))
                 .toList();
@@ -90,7 +111,7 @@ class CertificationAssessmentSpecificationService {
         var changedFields = new java.util.ArrayList<String>();
         if (!expectedFolders.equals(actualFolders)) changedFields.add("sourcesFolders");
         if (!expectedQuestions.equals(actualQuestions)) changedFields.add("sourceQuestionIds");
-        if (expectedFolders.equals(actualFolders) && expectedQuestions.equals(actualQuestions)
+        if (refreshQuestionBank && expectedFolders.equals(actualFolders) && expectedQuestions.equals(actualQuestions)
                 && !questionSnapshots.sameContent(specification.getQuestionPoolJson(), questionSnapshots.capture(exam))) {
             changedFields.add("questionContent");
         }
@@ -102,5 +123,5 @@ class CertificationAssessmentSpecificationService {
     }
 
     record MaterialDiff(boolean materialChanged, List<String> changedFields) {}
-    private record FolderDefinition(Long folderId, TrainingExamSourcePickMode pickMode, Integer randomCount) {}
+    private record FolderDefinition(Long folderId, TrainingExamSourcePickMode pickMode, Integer randomCount, boolean includeDescendants) {}
 }

@@ -26,6 +26,7 @@ export default function ExamEditorModal(props: ExamEditorProps) {
   return (
     <>
       <Modal
+        className="lg:max-w-5xl"
         open={props.open}
         onClose={guard.requestClose}
         title={title}
@@ -41,7 +42,9 @@ export default function ExamEditorModal(props: ExamEditorProps) {
                 onClick={state.submit}
                 isLoading={state.saving}
                 disabled={
-                  state.treeLoading || state.positionsLoading || Boolean(state.treeError || state.positionsError)
+                  state.positionsLoading ||
+                  Boolean(state.positionsError) ||
+                  (!state.sourcesReadOnly && (state.treeLoading || Boolean(state.treeError)))
                 }
               >
                 {submitLabel}
@@ -55,7 +58,40 @@ export default function ExamEditorModal(props: ExamEditorProps) {
           <ErrorState message={state.positionsError} onRetry={state.retryEditorData} />
         )}
         <fieldset disabled={state.saving} className="min-w-0" onChangeCapture={guard.markDirty}>
+          {props.exam && props.mode === "CERTIFICATION" && (
+            <div className="border-subtle mb-4 space-y-2 rounded-xl border p-3 text-sm">
+              <p>
+                Опубликованная версия {props.exam.version}: {props.exam.questionCount} вопросов. Переносы и изменения в
+                банке не меняют её состав.
+              </p>
+              {state.sourcesReadOnly ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    guard.markDirty();
+                    state.enableQuestionBankRefresh();
+                  }}
+                >
+                  Обновить вопросы из банка
+                </Button>
+              ) : (
+                <>
+                  <p>
+                    Вы выбираете актуальные вопросы для новой версии. До подтверждения сохранения опубликованная
+                    аттестация продолжает работать.
+                  </p>
+                  <Button variant="outline" onClick={state.keepPublishedSources}>
+                    Оставить опубликованные вопросы
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
           <ExamEditorForm
+            sourcesReadOnly={state.sourcesReadOnly}
+            publishedVersion={props.mode === "CERTIFICATION" ? props.exam?.version : undefined}
+            publishedQuestionCount={props.mode === "CERTIFICATION" ? props.exam?.questionCount : undefined}
+            onUpdateFolderScope={state.updateFolderScope}
             treeLoading={state.treeLoading}
             treeError={state.treeError}
             questionsLoading={state.questionsLoading}
@@ -71,6 +107,7 @@ export default function ExamEditorModal(props: ExamEditorProps) {
             positions={state.positions}
             manageablePositionIds={state.manageablePositionIds}
             visibilityPositionIds={state.form.visibilityPositionIds}
+            allPositionsSelected={state.allPositionsSelected}
             availabilityLabel={state.availabilityLabel}
             positionMenuOpen={state.positionMenuOpen}
             tree={state.tree}
@@ -99,11 +136,17 @@ export default function ExamEditorModal(props: ExamEditorProps) {
               state.togglePosition(positionId);
             }}
             onSelectFolder={state.setSelectedFolderId}
-            onToggleFolder={state.toggleFolder}
+            onToggleFolder={(id) => {
+              guard.markDirty();
+              state.toggleFolder(id);
+            }}
             onUpdateFolderPickMode={state.updateFolderPickMode}
             onUpdateFolderRandomCount={state.updateFolderRandomCount}
             onQueryChange={state.setQuery}
-            onToggleQuestion={state.toggleQuestion}
+            onToggleQuestion={(id) => {
+              guard.markDirty();
+              state.toggleQuestion(id);
+            }}
           />
         </fieldset>
 
@@ -111,12 +154,32 @@ export default function ExamEditorModal(props: ExamEditorProps) {
       </Modal>
       {guard.discardDialog}
       <ConfirmDialog
+        open={state.folderVisibilityConfirmation != null}
+        title="Аудитория теста шире видимости папки"
+        description={
+          <div className="max-h-[40dvh] space-y-3 overflow-y-auto pr-1">
+            {state.folderVisibilityConfirmation?.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
+          </div>
+        }
+        confirmText="Сохранить"
+        cancelText="Вернуться"
+        confirming={state.saving}
+        onCancel={state.cancelFolderVisibilityConfirmation}
+        onConfirm={state.confirmFolderVisibility}
+      />
+      <ConfirmDialog
         open={state.newCycleConfirmation != null}
         title="Создать новую версию аттестации?"
         description={
           <div className="space-y-2">
             <p>Изменения создадут новую версию аттестации.</p>
-            <p>Вопросы и правильные ответы новой версии будут зафиксированы при сохранении.</p>
+            <p>
+              {state.newCycleConfirmation?.payload.refreshQuestionBank
+                ? "Актуальные вопросы и правильные ответы из банка будут зафиксированы в новой версии."
+                : "Состав вопросов и правильные ответы сохранятся из опубликованной версии. Новая версия применит изменения правил."}
+            </p>
             <label className="flex items-start gap-2">
               <input
                 type="checkbox"
@@ -149,7 +212,7 @@ export default function ExamEditorModal(props: ExamEditorProps) {
           </div>
         }
         cancelText="Отмена"
-        confirmText="Создать новую версию и сохранить"
+        confirmText="Создать версию"
         confirming={state.saving}
         onCancel={state.cancelNewCycleConfirmation}
         onConfirm={state.confirmNewVersion}

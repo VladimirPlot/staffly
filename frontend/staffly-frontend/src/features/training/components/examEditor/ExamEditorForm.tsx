@@ -6,11 +6,15 @@ import ExamSourcesSection from "./sections/ExamSourcesSection";
 import ExamSummarySection from "./sections/ExamSummarySection";
 import ExamVisibilitySection from "./sections/ExamVisibilitySection";
 import type { FlatTreeNode } from "./types";
-import type { QuestionBankTreeNodeDto, TrainingQuestionDto } from "../../api/types";
+import type { ExamSourceFolderDto, QuestionBankTreeNodeDto, TrainingQuestionDto } from "../../api/types";
 
-type FolderSourceMap = Map<number, { folderId: number; pickMode: "ALL" | "RANDOM"; randomCount?: number | null }>;
+type FolderSourceMap = Map<number, ExamSourceFolderDto>;
 
 type Props = {
+  sourcesReadOnly: boolean;
+  publishedVersion?: number;
+  publishedQuestionCount?: number;
+  onUpdateFolderScope: (folderId: number, value: boolean) => void;
   treeLoading: boolean;
   treeError: string | null;
   questionsLoading: boolean;
@@ -26,6 +30,7 @@ type Props = {
   positions: PositionDto[];
   manageablePositionIds: Set<number>;
   visibilityPositionIds: number[];
+  allPositionsSelected: boolean;
   availabilityLabel: string;
   positionMenuOpen: boolean;
   tree: QuestionBankTreeNodeDto[];
@@ -78,6 +83,7 @@ export default function ExamEditorForm(props: Props) {
         positions={props.positions}
         manageablePositionIds={props.manageablePositionIds}
         visibilityPositionIds={props.visibilityPositionIds}
+        allSelected={props.allPositionsSelected}
         availabilityLabel={props.availabilityLabel}
         positionMenuOpen={props.positionMenuOpen}
         onToggleMenu={props.onToggleMenu}
@@ -86,6 +92,10 @@ export default function ExamEditorForm(props: Props) {
       />
 
       <ExamSourcesSection
+        sourcesReadOnly={props.sourcesReadOnly}
+        publishedVersion={props.publishedVersion}
+        publishedQuestionCount={props.publishedQuestionCount}
+        onUpdateFolderScope={props.onUpdateFolderScope}
         treeLoading={props.treeLoading}
         treeError={props.treeError}
         questionsLoading={props.questionsLoading}

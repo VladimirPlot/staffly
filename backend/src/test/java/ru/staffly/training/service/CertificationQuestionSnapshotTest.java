@@ -24,8 +24,9 @@ class CertificationQuestionSnapshotTest {
     final TrainingQuestionBlankRepository blanks = mock(TrainingQuestionBlankRepository.class);
     final TrainingQuestionBlankOptionRepository blankOptions = mock(TrainingQuestionBlankOptionRepository.class);
     final ExamSnapshotService snapshots = new ExamSnapshotService(mapper);
+    final TrainingFolderRepository bankFolders = mock(TrainingFolderRepository.class);
     final CertificationQuestionSnapshotService service = new CertificationQuestionSnapshotService(
-            folders, explicit, questions, options, pairs, blanks, blankOptions, snapshots, mapper, mock(EntityManager.class));
+            folders, explicit, questions, options, pairs, blanks, blankOptions, snapshots, mapper, mock(EntityManager.class), bankFolders);
     final TrainingFolder folder = TrainingFolder.builder().id(2L).build();
     final TrainingExam exam = TrainingExam.builder().id(3L).restaurant(Restaurant.builder().id(1L).build())
             .mode(TrainingExamMode.CERTIFICATION).version(1).build();
@@ -153,5 +154,64 @@ class CertificationQuestionSnapshotTest {
         var diff = specificationService.materialDiff(exam, definitions, List.of(), 1, 70, null, null);
         assertTrue(diff.materialChanged());
         assertEquals(List.of("questionContent"), diff.changedFields());
+        clearInvocations(questions, options);
+        assertFalse(specificationService.materialDiff(exam, definitions, List.of(), 1, 70, null, null, false).materialChanged());
+        verifyNoInteractions(questions, options);
+    }
+
+    @Test void frozenRecursiveMembershipSurvivesMovingTheLiveQuestionAndLegacyJsonStillWorks() {
+        String json = """
+                [{"questionId":10,"folderId":9,"snapshotJson":"{}","correctKeyJson":"null","sourceFolderIds":[2]}]
+                """;
+        var specification = CertificationAssessmentSpecification.builder().questionPoolJson(json)
+                .folderSources(List.of(CertificationAssessmentFolderSource.builder().folderId(2L)
+                        .includeDescendants(true).pickMode(TrainingExamSourcePickMode.ALL).build())).build();
+        var resolver = new ExamQuestionPoolResolver(folders, explicit, questions, mock(TrainingFolderRepository.class),
+                mock(TrainingPolicyService.class), mock(TrainingActiveContainerValidator.class), service);
+        assertEquals(List.of(10L), resolver.buildQuestionPool(1L, specification).questions().stream().map(TrainingQuestion::getId).toList());
+        assertTrue(service.read("[{\"questionId\":10,\"folderId\":2,\"snapshotJson\":\"{}\",\"correctKeyJson\":\"null\"}]").get(0).belongsTo(2L));
+        assertTrue(service.sameContent(
+                "[{\"questionId\":10,\"folderId\":2,\"snapshotJson\":\"{}\",\"correctKeyJson\":\"null\"}]",
+                "[{\"questionId\":10,\"folderId\":2,\"snapshotJson\":\"{}\",\"correctKeyJson\":\"null\",\"sourceFolderIds\":[]}]"));
+        verifyNoInteractions(questions, folders, explicit);
+    }
+    @Test void recursivePublicationTagsChildQuestionsWithTheirSelectedParentSource() {
+        var child = TrainingFolder.builder().id(9L).parent(folder).build();
+        when(bankFolders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, TrainingFolderType.QUESTION_BANK))
+                .thenReturn(List.of(folder, child));
+        when(folders.findByExamId(3L)).thenReturn(List.of(TrainingExamSourceFolder.builder().folder(folder)
+                .pickMode(TrainingExamSourcePickMode.ALL).includeDescendants(true).build()));
+        var question = TrainingQuestion.builder().id(20L).folder(child).type(TrainingQuestionType.SINGLE)
+                .prompt("Child question").questionGroup(TrainingQuestionGroup.CERTIFICATION).build();
+        when(questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(1L, 9L, TrainingQuestionGroup.CERTIFICATION))
+                .thenReturn(List.of(question));
+        var frozen = service.read(service.capture(exam));
+        assertEquals(1, frozen.size());
+        assertEquals(9L, frozen.get(0).folderId()); assertEquals(List.of(2L), frozen.get(0).sourceFolderIds());
+        assertTrue(frozen.get(0).belongsTo(2L)); assertFalse(frozen.get(0).belongsTo(9L));
+    }
+
+    @Test void ruleVersionCopiesPublishedSourcesEvenWhenLiveReferencesAreGone() {
+        var json = capture();
+        var old = CertificationAssessmentSpecification.builder().questionPoolJson(json)
+                .folderSources(List.of(CertificationAssessmentFolderSource.builder().folderId(2L)
+                        .pickMode(TrainingExamSourcePickMode.RANDOM).randomCount(1).build())).build();
+        exam.setVersion(2); exam.setQuestionCount(1); exam.setPassPercent(90);
+        var repository = mock(CertificationAssessmentSpecificationRepository.class);
+        var publishedFolders = mock(CertificationAssessmentFolderSourceRepository.class);
+        var publishedQuestions = mock(CertificationAssessmentQuestionSourceRepository.class);
+        when(repository.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        when(publishedFolders.saveAll(any())).thenAnswer(call -> call.getArgument(0));
+        when(publishedQuestions.saveAll(any())).thenAnswer(call -> call.getArgument(0));
+        var resolver = new ExamQuestionPoolResolver(folders, explicit, questions, mock(TrainingFolderRepository.class),
+                mock(TrainingPolicyService.class), mock(TrainingActiveContainerValidator.class), service);
+        var publisher = new CertificationAssessmentSpecificationService(repository, publishedFolders, publishedQuestions,
+                folders, explicit, service, resolver);
+        clearInvocations(questions, folders, explicit);
+        var created = publisher.createCurrent(exam, old);
+        assertEquals(json, created.getQuestionPoolJson());
+        assertEquals(90, created.getPassPercent());
+        assertEquals(2L, created.getFolderSources().get(0).getFolderId());
+        verifyNoInteractions(questions, folders, explicit);
     }
 }

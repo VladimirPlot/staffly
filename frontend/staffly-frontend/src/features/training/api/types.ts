@@ -138,19 +138,27 @@ export type ExamSourceFolderDto = {
   folderId: number;
   pickMode: ExamSourceFolderPickMode;
   randomCount?: number | null;
+  includeDescendants?: boolean;
 };
 
 export type ExamSourcesPreflightDto = {
   availableQuestionCount: number;
   valid: boolean;
   issues: string[];
+  folderVisibilityWarnings?: string[];
 };
 
 export type ExamSourcesPreflightPayload = {
+  examId?: number;
+  expectedEditorRevision?: number;
+  refreshQuestionBank?: boolean;
   mode: TrainingExamMode;
   questionCount?: number | null;
   sourcesFolders: ExamSourceFolderDto[];
   sourceQuestionIds: number[];
+  knowledgeFolderId?: number | null;
+  folderId?: number | null;
+  visibilityPositionIds?: number[];
 };
 
 export type TrainingExamDto = {
@@ -296,6 +304,7 @@ export type CertificationPreviousValidResultDto = {
 };
 
 export type UpsertExamPayload = {
+  refreshQuestionBank?: boolean;
   expectedEditorRevision?: number;
   confirmNewVersion?: boolean;
   requireRecertification?: boolean;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listPositions, type PositionDto } from "../../../dictionaries/api";
 import {
   createExam,
@@ -13,6 +13,7 @@ import { getTrainingErrorMessage } from "../../utils/errors";
 import { parseTrainingApiError } from "../../utils/trainingApiError";
 import { getManageablePositions } from "../../utils/certificationRoleScope";
 import type { ExamEditorProps, ExamEditorFormState } from "./types";
+import { allExamAudienceIds, toggleExamAudience } from "./audience";
 import {
   buildAvailabilityLabel,
   createTreeHelpers,
@@ -47,9 +48,17 @@ export function useExamEditorState({
   onSaved,
 }: ExamEditorProps) {
   const [form, setForm] = useState<ExamEditorFormState>(initialFormState);
+  const [refreshQuestionBank, setRefreshQuestionBank] = useState(false);
+  const sourcesReadOnly = mode === "CERTIFICATION" && Boolean(exam) && !refreshQuestionBank;
   const [tree, setTree] = useState<QuestionBankTreeNodeDto[]>([]);
   const [positions, setPositions] = useState<PositionDto[]>([]);
   const [manageablePositionIds, setManageablePositionIds] = useState<Set<number>>(new Set());
+  const [allPositionsSelected, setAllPositionsSelected] = useState(true);
+  const [folderVisibilityConfirmation, setFolderVisibilityConfirmation] = useState<{
+    payload: UpsertExamPayload;
+    warnings: string[];
+  } | null>(null);
+  const audienceInitialized = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [requireRecertification, setRequireRecertification] = useState(false);
@@ -74,7 +83,11 @@ export function useExamEditorState({
 
   useEffect(() => {
     if (!open) return;
-
+    audienceInitialized.current = false;
+    setRefreshQuestionBank(false);
+    setPositions([]);
+    setManageablePositionIds(new Set());
+    setAllPositionsSelected(mode === "PRACTICE" ? !exam?.visibilityPositionIds.length : !exam);
     setForm({
       title: exam?.title ?? "",
       description: exam?.description ?? "",
@@ -84,25 +97,17 @@ export function useExamEditorState({
       visibilityPositionIds: exam?.visibilityPositionIds ?? [],
       sourcesFolders: exam?.sourcesFolders ?? [],
       sourceQuestionIds: exam?.sourceQuestionIds ?? [],
-      selectedFolderId: null,
+      selectedFolderId: exam?.sourcesFolders[0]?.folderId ?? null,
       folderQuestions: [],
       query: "",
     });
     setError(null);
     setStaleConflict(false);
     setNewCycleConfirmation(null);
+    setFolderVisibilityConfirmation(null);
     setRequireRecertification(false);
     setPositionMenuOpen(false);
-  }, [open, exam]);
-
-  useEffect(() => {
-    if (!open || positions.length === 0) return;
-    const allPositionIds = positions.map((position) => position.id);
-    setForm((current) => ({
-      ...current,
-      visibilityPositionIds: resolveInitialVisibilityPositionIds(mode, current.visibilityPositionIds, allPositionIds),
-    }));
-  }, [mode, open, positions]);
+  }, [open, exam, mode, restaurantId]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,21 +146,37 @@ export function useExamEditorState({
     void listPositions(restaurantId, { includeInactive: mode === "CERTIFICATION" && exam != null })
       .then((restaurantPositions) => {
         if (cancelled) return;
-        if (mode !== "CERTIFICATION") {
-          setPositions(restaurantPositions);
-          setManageablePositionIds(new Set(restaurantPositions.map(({ id }) => id)));
-          return;
-        }
-
-        const manageable = getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? []);
+        const manageable =
+          mode === "CERTIFICATION"
+            ? getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? [])
+            : restaurantPositions;
         const manageableIds = new Set(manageable.map(({ id }) => id));
         const referencedIds = new Set(exam?.visibilityPositionIds ?? []);
         setManageablePositionIds(manageableIds);
-        setPositions(
-          restaurantPositions.filter(
-            (position) => (position.active && manageableIds.has(position.id)) || referencedIds.has(position.id),
-          ),
-        );
+        const visiblePositions =
+          mode === "CERTIFICATION"
+            ? restaurantPositions.filter(
+                (position) => (position.active && manageableIds.has(position.id)) || referencedIds.has(position.id),
+              )
+            : restaurantPositions;
+        setPositions(visiblePositions);
+        if (!audienceInitialized.current) {
+          audienceInitialized.current = true;
+          const ids = resolveInitialVisibilityPositionIds(
+            mode,
+            exam?.visibilityPositionIds,
+            visiblePositions
+              .filter((position) => position.active && manageableIds.has(position.id))
+              .map((position) => position.id),
+          );
+          setForm((current) => ({ ...current, visibilityPositionIds: ids }));
+          const allIds = allExamAudienceIds(visiblePositions, manageableIds, ids);
+          setAllPositionsSelected(
+            mode === "PRACTICE"
+              ? ids.length === 0
+              : ids.length > 0 && ids.length === allIds.length && allIds.every((id) => ids.includes(id)),
+          );
+        }
       })
       .catch((error) => {
         if (!cancelled) setPositionsError(getTrainingErrorMessage(error, "Не удалось загрузить должности."));
@@ -212,6 +233,9 @@ export function useExamEditorState({
     const timer = window.setTimeout(() => {
       void preflightExamSources(restaurantId, {
         mode,
+        examId: exam?.id,
+        expectedEditorRevision: exam?.editorRevision,
+        refreshQuestionBank,
         sourcesFolders: form.sourcesFolders,
         sourceQuestionIds: form.sourceQuestionIds,
       })
@@ -234,49 +258,41 @@ export function useExamEditorState({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [form.sourceQuestionIds, form.sourcesFolders, mode, open, restaurantId]);
+  }, [form.sourceQuestionIds, form.sourcesFolders, mode, open, restaurantId, exam, refreshQuestionBank]);
 
   const availabilityLabel = useMemo(
-    () => buildAvailabilityLabel(mode, form.visibilityPositionIds, positions, isDesktop),
-    [mode, form.visibilityPositionIds, positions, isDesktop],
+    () => buildAvailabilityLabel(mode, form.visibilityPositionIds, positions, isDesktop, allPositionsSelected),
+    [mode, form.visibilityPositionIds, positions, isDesktop, allPositionsSelected],
   );
 
   const togglePosition = (positionId: number) => {
-    setForm((current) => ({
-      ...current,
-      visibilityPositionIds: current.visibilityPositionIds.includes(positionId)
-        ? manageablePositionIds.has(positionId)
-          ? current.visibilityPositionIds.filter((id) => id !== positionId)
-          : current.visibilityPositionIds
-        : positions.some((position) => position.id === positionId && position.active) &&
-            manageablePositionIds.has(positionId)
-          ? [...current.visibilityPositionIds, positionId]
-          : current.visibilityPositionIds,
-    }));
+    if (positionsLoading) return;
+    const selection = toggleExamAudience(
+      mode,
+      allPositionsSelected,
+      form.visibilityPositionIds,
+      positionId,
+      positions,
+      manageablePositionIds,
+    );
+    setAllPositionsSelected(selection.allSelected);
+    setForm((current) => ({ ...current, visibilityPositionIds: selection.ids }));
   };
 
   const handleSelectAllPositions = () => {
+    if (positionsLoading) return;
+    setAllPositionsSelected(true);
     setForm((current) => ({
       ...current,
       visibilityPositionIds:
         mode === "CERTIFICATION"
-          ? Array.from(
-              new Set([
-                ...current.visibilityPositionIds.filter((id) =>
-                  positions.some(
-                    (position) => position.id === id && (!position.active || !manageablePositionIds.has(position.id)),
-                  ),
-                ),
-                ...positions
-                  .filter((position) => position.active && manageablePositionIds.has(position.id))
-                  .map((position) => position.id),
-              ]),
-            )
+          ? allExamAudienceIds(positions, manageablePositionIds, current.visibilityPositionIds)
           : [],
     }));
   };
 
   const toggleFolder = (folderId: number) => {
+    if (sourcesReadOnly) return;
     const alreadySelected = folderSourceMap.has(folderId);
 
     if (alreadySelected) {
@@ -288,43 +304,23 @@ export function useExamEditorState({
       return;
     }
 
-    const selectedFolderIds = new Set(form.sourcesFolders.map((source) => source.folderId));
-    const ancestorSelected = getAncestorIds(folderId).find((id) => selectedFolderIds.has(id));
+    const ancestorSelected = getAncestorIds(folderId).find((id) => folderSourceMap.get(id)?.includeDescendants);
     if (ancestorSelected != null) {
       const parentName = folderMetaMap.get(ancestorSelected)?.name ?? "родительская папка";
       setError(`Нельзя добавить эту папку, потому что уже выбрана родительская папка "${parentName}".`);
       return;
     }
 
-    const descendantSelected = getDescendantIds(folderId).find((id) => selectedFolderIds.has(id));
-    if (descendantSelected != null) {
-      const childName = folderMetaMap.get(descendantSelected)?.name ?? "вложенная папка";
-      setError(`Нельзя добавить эту папку, потому что уже выбрана вложенная папка "${childName}".`);
-      return;
-    }
-
-    setForm((current) => {
-      const next = {
-        ...current,
-        sourcesFolders: [...current.sourcesFolders, { folderId, pickMode: "ALL" as const }],
-      };
-
-      if (current.selectedFolderId !== folderId) {
-        return next;
-      }
-
-      return {
-        ...next,
-        sourceQuestionIds: current.sourceQuestionIds.filter(
-          (id) => !current.folderQuestions.some((question) => question.id === id),
-        ),
-      };
-    });
+    setForm((current) => ({
+      ...current,
+      sourcesFolders: [...current.sourcesFolders, { folderId, pickMode: "ALL" as const }],
+    }));
 
     setError(null);
   };
 
   const updateFolderPickMode = (folderId: number, value: "ALL" | "RANDOM") => {
+    if (sourcesReadOnly) return;
     setForm((current) => ({
       ...current,
       sourcesFolders: current.sourcesFolders.map((source) =>
@@ -340,6 +336,7 @@ export function useExamEditorState({
   };
 
   const updateFolderRandomCount = (folderId: number, value: number) => {
+    if (sourcesReadOnly) return;
     setForm((current) => ({
       ...current,
       sourcesFolders: current.sourcesFolders.map((source) =>
@@ -349,6 +346,7 @@ export function useExamEditorState({
   };
 
   const toggleQuestion = (questionId: number) => {
+    if (sourcesReadOnly) return;
     setForm((current) => ({
       ...current,
       sourceQuestionIds: current.sourceQuestionIds.includes(questionId)
@@ -357,59 +355,11 @@ export function useExamEditorState({
     }));
   };
 
-  const save = async () => {
-    if (saving || treeLoading || positionsLoading || treeError || positionsError) return;
-    if (!form.title.trim()) {
-      setError("Название обязательно.");
-      return;
-    }
-
-    if (mode === "CERTIFICATION" && form.attemptLimit === "") {
-      setError("Для аттестации лимит попыток обязателен.");
-      return;
-    }
-
-    if (mode === "CERTIFICATION" && form.visibilityPositionIds.length === 0) {
-      setError("Для аттестации нужно выбрать хотя бы одну должность в блоке видимости.");
-      return;
-    }
-
-    if (form.sourcesFolders.length === 0 && form.sourceQuestionIds.length === 0) {
-      setError("Добавьте хотя бы один источник вопросов.");
-      return;
-    }
-
+  const persistPayload = async (payload: UpsertExamPayload) => {
     setSaving(true);
     setError(null);
-
     let attemptedUpdatePayload: UpsertExamPayload | null = null;
     try {
-      const preflight = await preflightExamSources(restaurantId, {
-        mode,
-        sourcesFolders: form.sourcesFolders,
-        sourceQuestionIds: form.sourceQuestionIds,
-      });
-      if (!preflight.valid || preflight.availableQuestionCount <= 0) {
-        setSourceIssues(preflight.issues);
-        setError(preflight.issues[0] ?? "В тесте должен быть хотя бы один доступный вопрос.");
-        return;
-      }
-      const authoritativeQuestionCount = preflight.availableQuestionCount;
-      const payload: UpsertExamPayload = {
-        title: form.title.trim(),
-        description: form.description.trim() || null,
-        mode,
-        knowledgeFolderId: mode === "PRACTICE" ? (knowledgeFolderId ?? exam?.knowledgeFolderId ?? null) : null,
-        folderId: mode === "CERTIFICATION" ? (exam ? (exam.folderId ?? null) : (initialFolderId ?? null)) : null,
-        questionCount: authoritativeQuestionCount,
-        passPercent: form.passPercent,
-        timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
-        attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
-        visibilityPositionIds: [...normalizeVisibilityForSubmit(mode, form.visibilityPositionIds)],
-        sourcesFolders: form.sourcesFolders.map((source) => ({ ...source })),
-        sourceQuestionIds: [...form.sourceQuestionIds],
-      };
-
       if (exam) {
         attemptedUpdatePayload = {
           ...payload,
@@ -449,6 +399,84 @@ export function useExamEditorState({
     }
   };
 
+  const save = async () => {
+    if (saving || treeLoading || positionsLoading || treeError || positionsError) return;
+    if (!form.title.trim()) {
+      setError("Название обязательно.");
+      return;
+    }
+
+    if (mode === "CERTIFICATION" && form.attemptLimit === "") {
+      setError("Для аттестации лимит попыток обязателен.");
+      return;
+    }
+
+    if (mode === "CERTIFICATION" && form.visibilityPositionIds.length === 0) {
+      setError("Для аттестации нужно выбрать хотя бы одну должность в блоке видимости.");
+      return;
+    }
+
+    if (form.sourcesFolders.length === 0 && form.sourceQuestionIds.length === 0) {
+      setError("Добавьте хотя бы один источник вопросов.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const preflight = await preflightExamSources(restaurantId, {
+        mode,
+        examId: exam?.id,
+        expectedEditorRevision: exam?.editorRevision,
+        refreshQuestionBank,
+        sourcesFolders: form.sourcesFolders,
+        sourceQuestionIds: form.sourceQuestionIds,
+        knowledgeFolderId: mode === "PRACTICE" ? (knowledgeFolderId ?? exam?.knowledgeFolderId ?? null) : null,
+        folderId: mode === "CERTIFICATION" ? (exam ? (exam.folderId ?? null) : (initialFolderId ?? null)) : null,
+        visibilityPositionIds: normalizeVisibilityForSubmit(mode, form.visibilityPositionIds),
+      });
+      if (!preflight.valid || preflight.availableQuestionCount <= 0) {
+        setSourceIssues(preflight.issues);
+        setError(preflight.issues[0] ?? "В тесте должен быть хотя бы один доступный вопрос.");
+        return;
+      }
+      const authoritativeQuestionCount = preflight.availableQuestionCount;
+      const payload: UpsertExamPayload = {
+        refreshQuestionBank,
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        mode,
+        knowledgeFolderId: mode === "PRACTICE" ? (knowledgeFolderId ?? exam?.knowledgeFolderId ?? null) : null,
+        folderId: mode === "CERTIFICATION" ? (exam ? (exam.folderId ?? null) : (initialFolderId ?? null)) : null,
+        questionCount: authoritativeQuestionCount,
+        passPercent: form.passPercent,
+        timeLimitSec: form.timeLimitSec === "" ? null : Number(form.timeLimitSec),
+        attemptLimit: form.attemptLimit === "" ? null : Number(form.attemptLimit),
+        visibilityPositionIds: [...normalizeVisibilityForSubmit(mode, form.visibilityPositionIds)],
+        sourcesFolders: form.sourcesFolders.map((source) => ({ ...source })),
+        sourceQuestionIds: [...form.sourceQuestionIds],
+      };
+
+      const warnings = preflight.folderVisibilityWarnings ?? [];
+      if (warnings.length > 0) {
+        setFolderVisibilityConfirmation({ payload, warnings });
+        return;
+      }
+      await persistPayload(payload);
+    } catch (preflightError) {
+      const parsedError = parseTrainingApiError(preflightError);
+      if (parsedError.payload?.error === "STALE_EXAM_REVISION") {
+        setStaleConflict(true);
+        setError("Тест уже изменён другим пользователем. Обновите данные перед сохранением.");
+      } else {
+        setError(getTrainingErrorMessage(preflightError, "Не удалось проверить тест перед сохранением."));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const confirmNewVersion = async () => {
     if (!exam || !newCycleConfirmation) return;
 
@@ -482,10 +510,45 @@ export function useExamEditorState({
   };
 
   return {
+    sourcesReadOnly,
+    refreshQuestionBank,
+    enableQuestionBankRefresh: () => setRefreshQuestionBank(true),
+    keepPublishedSources: () => {
+      setRefreshQuestionBank(false);
+      setForm((current) => ({
+        ...current,
+        sourcesFolders: exam?.sourcesFolders ?? [],
+        sourceQuestionIds: exam?.sourceQuestionIds ?? [],
+      }));
+      setError(null);
+    },
+    updateFolderScope: (folderId: number, includeDescendants: boolean) => {
+      if (sourcesReadOnly) return;
+      if (includeDescendants && getDescendantIds(folderId).some((id) => folderSourceMap.has(id))) {
+        setError("Сначала уберите выбранные подпапки: они уже входят в общую область этой папки.");
+        return;
+      }
+      setForm((current) => ({
+        ...current,
+        sourcesFolders: current.sourcesFolders.map((source) =>
+          source.folderId === folderId ? { ...source, includeDescendants } : source,
+        ),
+      }));
+      setError(null);
+    },
     form,
     tree,
     positions,
     manageablePositionIds,
+    allPositionsSelected,
+    folderVisibilityConfirmation,
+    cancelFolderVisibilityConfirmation: () => setFolderVisibilityConfirmation(null),
+    confirmFolderVisibility: () => {
+      if (!folderVisibilityConfirmation || saving) return;
+      const payload = folderVisibilityConfirmation.payload;
+      setFolderVisibilityConfirmation(null);
+      void persistPayload(payload);
+    },
     error,
     saving,
     staleConflict,

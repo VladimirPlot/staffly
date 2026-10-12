@@ -26,16 +26,23 @@ class CertificationQuestionSnapshotService {
     private final ExamSnapshotService snapshots;
     private final ObjectMapper mapper;
     private final EntityManager entityManager;
+    private final TrainingFolderRepository bankFolders;
 
     String capture(TrainingExam exam) {
         var candidates = new TreeMap<Long, TrainingQuestion>();
         var restaurantId = exam.getRestaurant().getId();
         var selectedFolders = sourceFolders.findByExamId(exam.getId());
-        var folderIds = selectedFolders.stream().map(source -> source.getFolder().getId()).collect(Collectors.toSet());
+        var sourceMembership = new TreeMap<Long, Set<Long>>();
         for (var source : selectedFolders) {
-            questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
-                    restaurantId, source.getFolder().getId(), TrainingQuestionGroup.CERTIFICATION)
-                    .forEach(question -> candidates.put(question.getId(), question));
+            var scope = new ExamSourceFolderScope().resolve(source.getFolder(), source.isIncludeDescendants(),
+                    source.isIncludeDescendants() ? bankFolders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(
+                            restaurantId, TrainingFolderType.QUESTION_BANK) : List.of());
+            for (var folder : scope) {
+                sourceMembership.computeIfAbsent(folder.getId(), ignored -> new TreeSet<>()).add(source.getFolder().getId());
+                questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                        restaurantId, folder.getId(), TrainingQuestionGroup.CERTIFICATION)
+                        .forEach(question -> candidates.put(question.getId(), question));
+            }
         }
         var ids = sourceQuestions.findByExamId(exam.getId()).stream()
                 .map(source -> source.getQuestion().getId()).distinct().toList();
@@ -64,14 +71,15 @@ class CertificationQuestionSnapshotService {
                 .collect(Collectors.groupingBy(option -> option.getBlank().getId()));
         return serialize(candidates.values().stream()
                 .filter(question -> question.isActive() && question.getQuestionGroup() == TrainingQuestionGroup.CERTIFICATION)
-                .filter(question -> ids.contains(question.getId()) || folderIds.contains(question.getFolder().getId()))
+                .filter(question -> ids.contains(question.getId()) || sourceMembership.containsKey(question.getFolder().getId()))
                 .map(question -> {
             var payload = snapshots.buildSnapshot(question,
                     optionsByQuestion.getOrDefault(question.getId(), List.of()),
                     pairsByQuestion.getOrDefault(question.getId(), List.of()),
                     blanksByQuestion.getOrDefault(question.getId(), List.of()), blankOptionsByBlank);
             return new FrozenQuestion(question.getId(), question.getFolder().getId(),
-                    payload.snapshotJson(), payload.correctKeyJson());
+                    payload.snapshotJson(), payload.correctKeyJson(),
+                    new ArrayList<>(sourceMembership.getOrDefault(question.getFolder().getId(), Set.of())));
         }).toList());
     }
 
@@ -99,6 +107,8 @@ class CertificationQuestionSnapshotService {
         var result = new TreeMap<Long, Object>();
         for (var question : pool) {
             result.put(question.questionId(), List.of(question.folderId(),
+                    question.sourceFolderIds() == null || question.sourceFolderIds().isEmpty()
+                            ? List.of(question.folderId()) : question.sourceFolderIds(),
                     mapper.readTree(question.snapshotJson()), mapper.readTree(question.correctKeyJson())));
         }
         return result;
@@ -109,5 +119,10 @@ class CertificationQuestionSnapshotService {
         catch (Exception exception) { throw new IllegalStateException("Cannot freeze question pool", exception); }
     }
 
-    record FrozenQuestion(Long questionId, Long folderId, String snapshotJson, String correctKeyJson) {}
+    record FrozenQuestion(Long questionId, Long folderId, String snapshotJson, String correctKeyJson,
+                          List<Long> sourceFolderIds) {
+        boolean belongsTo(Long sourceId) {
+            return sourceFolderIds == null ? Objects.equals(folderId, sourceId) : sourceFolderIds.contains(sourceId);
+        }
+    }
 }
