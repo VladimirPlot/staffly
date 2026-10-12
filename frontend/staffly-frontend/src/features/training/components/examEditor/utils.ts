@@ -1,5 +1,5 @@
 import type { PositionDto } from "../../../dictionaries/api";
-import type { ExamSourceFolderDto, QuestionBankTreeNodeDto } from "../../api/types";
+import type { QuestionBankTreeNodeDto } from "../../api/types";
 import type { FlatTreeNode } from "./types";
 import type { TrainingExamMode } from "../../api/types";
 
@@ -51,26 +51,6 @@ export function createTreeHelpers(flatTree: FlatTreeNode[]) {
   };
 
   return { folderMetaMap, getAncestorIds, getDescendantIds };
-}
-
-export function calculateTotalQuestions(
-  sourcesFolders: ExamSourceFolderDto[],
-  sourceQuestionIds: number[],
-  folderMetaMap: Map<number, FlatTreeNode>,
-) {
-  const foldersCount = sourcesFolders.reduce((sum, source) => {
-    const folder = folderMetaMap.get(source.folderId);
-    if (!folder) return sum;
-
-    if (source.pickMode === "RANDOM") {
-      const requested = Math.max(0, Number(source.randomCount ?? 0));
-      return sum + Math.min(requested, folder.questionCount);
-    }
-
-    return sum + folder.questionCount;
-  }, 0);
-
-  return foldersCount + sourceQuestionIds.length;
 }
 
 export function buildAvailabilityLabel(

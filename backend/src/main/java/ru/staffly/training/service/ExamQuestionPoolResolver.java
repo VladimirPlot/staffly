@@ -25,6 +25,19 @@ class ExamQuestionPoolResolver {
     private final TrainingActiveContainerValidator activeContainerValidator;
     private final CertificationQuestionSnapshotService questionSnapshots;
 
+    List<TrainingFolder> scopeFolders(Long restaurantId, TrainingFolder root, boolean includeDescendants) {
+        return new ExamSourceFolderScope().resolve(root, includeDescendants, includeDescendants
+                ? folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, TrainingFolderType.QUESTION_BANK)
+                : List.of());
+    }
+
+    List<TrainingQuestion> folderCandidates(Long restaurantId, TrainingFolder root, boolean includeDescendants,
+                                           TrainingQuestionGroup group) {
+        return scopeFolders(restaurantId, root, includeDescendants).stream()
+                .flatMap(folder -> questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(restaurantId, folder.getId(), group).stream())
+                .toList();
+    }
+
     int resolveAvailableQuestionCount(Long restaurantId,
                                       Long userId,
                                       TrainingExamMode mode,
@@ -34,6 +47,7 @@ class ExamQuestionPoolResolver {
         var explicitQuestions = resolveAndValidateExplicitQuestions(
                 restaurantId, userId, group, explicitQuestionIds);
         var selections = new ArrayList<FolderSelection>();
+        var scopes = new ArrayList<Set<Long>>();
 
         for (var source : normalizeFolderSources(folderSources)) {
             var folder = folders.findByIdAndRestaurantIdWithVisibility(source.folderId(), restaurantId)
@@ -47,13 +61,21 @@ class ExamQuestionPoolResolver {
                     userId, restaurantId,
                     folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
 
-            var folderQuestions = questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
-                    restaurantId, folder.getId(), group);
+            var scope = scopeFolders(restaurantId, folder, source.includeDescendants());
+            for (var included : scope) {
+                activeContainerValidator.requireActiveChain(included);
+                trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId,
+                        included.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+            }
+            scopes.add(scope.stream().map(TrainingFolder::getId).collect(Collectors.toSet()));
+            var folderQuestions = scope.stream().flatMap(included -> questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
+                    restaurantId, included.getId(), group).stream()).toList();
             validateFolderSelection(folder.getName(), source.pickMode(), source.randomCount(),
                     folderQuestions, explicitQuestions);
             selections.add(new FolderSelection(source.pickMode(), source.randomCount(), folderQuestions));
         }
 
+        new ExamSourceFolderScope().assertDisjoint(scopes);
         var resolved = assembleQuestionPool(selections, explicitQuestions);
         if (resolved.questions().isEmpty()) {
             throw new BadRequestException("Добавьте хотя бы один доступный вопрос.");
@@ -77,8 +99,7 @@ class ExamQuestionPoolResolver {
                 .map(source -> new FolderSelection(
                         source.getPickMode(),
                         source.getRandomCount(),
-                        questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
-                                restaurantId, source.getFolder().getId(), group)))
+                        folderCandidates(restaurantId, source.getFolder(), source.isIncludeDescendants(), group)))
                 .toList();
         return assembleQuestionPool(selections, explicitQuestions);
     }
@@ -92,7 +113,7 @@ class ExamQuestionPoolResolver {
                 .map(question -> TrainingQuestion.builder().id(question.questionId()).build()).toList();
         var selections = specification.getFolderSources().stream()
                 .map(source -> new FolderSelection(source.getPickMode(), source.getRandomCount(),
-                        frozen.stream().filter(question -> Objects.equals(question.folderId(), source.getFolderId()))
+                        frozen.stream().filter(question -> question.belongsTo(source.getFolderId()))
                                 .map(question -> TrainingQuestion.builder().id(question.questionId()).build()).toList()))
                 .toList();
         return assembleQuestionPool(selections, explicitQuestions);
@@ -183,7 +204,8 @@ class ExamQuestionPoolResolver {
             }
             var previous = unique.putIfAbsent(source.folderId(), source);
             if (previous != null && (previous.pickMode() != source.pickMode()
-                    || !Objects.equals(previous.randomCount(), source.randomCount()))) {
+                    || !Objects.equals(previous.randomCount(), source.randomCount())
+                    || previous.includeDescendants() != source.includeDescendants())) {
                 throw new BadRequestException("Одна папка выбрана несколько раз с разными настройками.");
             }
         }

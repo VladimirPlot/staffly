@@ -56,6 +56,7 @@ class TrainingAuthorizationTest {
     @Mock TrainingExamAssignmentRepository assignments;
     @Mock TrainingExamAttemptRepository attempts;
     @Mock CertificationAnalyticsService certificationAnalyticsService;
+    @Mock CertificationAssessmentSpecificationService certificationSpecificationService;
     @InjectMocks ExamServiceImpl examService;
     @InjectMocks KnowledgeServiceImpl knowledgeService;
 
@@ -77,6 +78,8 @@ class TrainingAuthorizationTest {
     @BeforeEach void setUp() {
         SecurityContextHolder.clearContext();
         mocks = MockitoAnnotations.openMocks(this);
+        when(certificationSpecificationService.requireCurrent(any())).thenAnswer(call ->
+                CertificationAssessmentSpecification.builder().exam(call.getArgument(0)).build());
         var security = new SecurityService(members, restaurants);
         policy = new TrainingPolicyService(members, positions, security);
         access = new TrainingExamAccessService(exams, members, policy);

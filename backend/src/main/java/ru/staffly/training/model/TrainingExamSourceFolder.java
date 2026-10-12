@@ -29,5 +29,8 @@ public class TrainingExamSourceFolder {
 
     @Column(name = "random_count")
     private Integer randomCount;
+
+    @Column(name = "include_descendants", nullable = false)
+    private boolean includeDescendants;
 }
 
