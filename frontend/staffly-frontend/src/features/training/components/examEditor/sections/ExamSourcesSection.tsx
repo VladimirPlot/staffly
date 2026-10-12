@@ -1,4 +1,8 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
+import Modal from "../../../../../shared/ui/Modal";
+import Button from "../../../../../shared/ui/Button";
+import { QUESTION_TYPE_LABELS } from "../../../utils/questionLabels";
+import QuestionSourcePreview from "../QuestionSourcePreview";
 import Input from "../../../../../shared/ui/Input";
 import ErrorState from "../../ErrorState";
 import LoadingState from "../../LoadingState";
@@ -157,6 +161,7 @@ export default function ExamSourcesSection({
   onQueryChange,
   onToggleQuestion,
 }: Props) {
+  const [preview, setPreview] = useState<TrainingQuestionDto | null>(null);
   return (
     <section className="space-y-3">
       <div className="text-default text-sm font-semibold">Вопросы для теста</div>
@@ -193,7 +198,7 @@ export default function ExamSourcesSection({
           <div className="text-default text-sm font-medium">
             {selectedFolderId
               ? `Вопросы из папки "${folderMetaMap.get(selectedFolderId)?.name ?? ""}"`
-              : "Выберите папку слева"}
+              : "Выберите папку банка вопросов"}
           </div>
 
           <Input
@@ -219,22 +224,33 @@ export default function ExamSourcesSection({
                 const disabled = folderSourceMap.has(selectedFolderId);
 
                 return (
-                  <label
+                  <div
                     key={question.id}
                     className={`flex items-start gap-2 rounded-xl px-2 py-2 text-sm ${disabled ? "opacity-60" : ""}`}
                   >
-                    <input
-                      type="checkbox"
-                      disabled={disabled}
-                      checked={sourceQuestionIds.includes(question.id)}
-                      onChange={() => onToggleQuestion(question.id)}
-                    />
+                    <label className="flex min-w-0 flex-1 items-start gap-2">
+                      <input
+                        type="checkbox"
+                        disabled={disabled}
+                        checked={sourceQuestionIds.includes(question.id)}
+                        onChange={() => onToggleQuestion(question.id)}
+                      />
 
-                    <div className="min-w-0">
-                      <div className="text-default truncate">{question.title}</div>
-                      <div className="text-muted text-xs">{question.type}</div>
-                    </div>
-                  </label>
+                      <div className="min-w-0">
+                        <div className="text-default [overflow-wrap:anywhere]">{question.title}</div>
+                        <div className="text-muted text-xs">{QUESTION_TYPE_LABELS[question.type]}</div>
+                        <p className="text-muted mt-1 line-clamp-2 whitespace-pre-wrap">{question.prompt}</p>
+                      </div>
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label={`Просмотреть вопрос «${question.title}»`}
+                      onClick={() => setPreview(question)}
+                    >
+                      Просмотр
+                    </Button>
+                  </div>
                 );
               })}
 
@@ -244,6 +260,19 @@ export default function ExamSourcesSection({
           </div>
         </div>
       </div>
+      <Modal
+        open={preview != null}
+        title={preview?.title ?? "Просмотр вопроса"}
+        onClose={() => setPreview(null)}
+        headerCloseButton
+        footer={
+          <Button variant="outline" onClick={() => setPreview(null)}>
+            Закрыть просмотр
+          </Button>
+        }
+      >
+        {preview && <QuestionSourcePreview question={preview} />}
+      </Modal>
     </section>
   );
 }

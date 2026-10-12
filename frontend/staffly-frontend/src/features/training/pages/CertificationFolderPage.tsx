@@ -593,6 +593,7 @@ export default function CertificationFolderPage() {
         title="Скрытые"
         emptyText="В этой папке нет скрытых объектов."
         folders={hiddenChildFolders.filter((folder) => folder.manageable)}
+        contextFolders={foldersState.folders}
         certificationExams={hiddenCurrentExams}
         loading={loading}
         error={foldersState.error ?? contentError}

@@ -9,10 +9,17 @@ import ExamEditorModal from "../src/features/training/components/ExamEditorModal
 import QuestionEditorModal from "../src/features/training/components/questionEditor/QuestionEditorModal";
 import TrainingFolderModal from "../src/features/training/components/TrainingFolderModal";
 import KnowledgeItemModal from "../src/features/training/components/KnowledgeItemModal";
+import TrainingArchiveModal from "../src/features/training/components/TrainingArchiveModal";
+import type {
+  TrainingFolderDto,
+  TrainingKnowledgeItemDto,
+  TrainingQuestionDto,
+} from "../src/features/training/api/types";
 import "../src/index.css";
 
 let starts = 0;
 let saves = 0;
+let savedTimeLimit: number | null | undefined;
 let failTree = true;
 const failureScenario = new URL(window.location.href).searchParams.get("failure");
 let failPositions = failureScenario === "positions";
@@ -42,6 +49,91 @@ const exam = {
   version: 1,
   attemptLimit: 3,
 };
+const sourceQuestion: TrainingQuestionDto = {
+  id: 10,
+  restaurantId: 1,
+  folderId: 1,
+  title: "Похожее название вопроса",
+  prompt: "Какой из вариантов нужно выбрать?",
+  type: "SINGLE",
+  questionGroup: "CERTIFICATION",
+  active: true,
+  sortOrder: 0,
+  options: [
+    { text: "Первый вариант", correct: true, sortOrder: 0 },
+    { text: "Второй вариант", correct: false, sortOrder: 1 },
+  ],
+  matchPairs: [],
+  blanks: [],
+  explanation: "Пояснение правильного ответа.",
+};
+const sourceQuestions: TrainingQuestionDto[] = [
+  sourceQuestion,
+  { ...sourceQuestion, id: 11, type: "MULTI" },
+  {
+    ...sourceQuestion,
+    id: 12,
+    type: "TRUE_FALSE",
+    options: [
+      { text: "Правда", correct: true, sortOrder: 0 },
+      { text: "Ложь", correct: false, sortOrder: 1 },
+    ],
+  },
+  {
+    ...sourceQuestion,
+    id: 13,
+    type: "MATCH",
+    options: [],
+    matchPairs: [{ leftText: "Блюдо", rightText: "Ингредиент", sortOrder: 0 }],
+  },
+  {
+    ...sourceQuestion,
+    id: 14,
+    type: "FILL_SELECT",
+    prompt: "Выберите {{1}}.",
+    options: [],
+    blanks: [{ index: 1, options: [{ text: "Пропущенное слово", correct: true, sortOrder: 0 }] }],
+  },
+];
+const archiveFolders: TrainingFolderDto[] = [
+  {
+    id: 201,
+    restaurantId: 1,
+    parentId: null,
+    name: "Кухня",
+    type: "KNOWLEDGE",
+    active: false,
+    sortOrder: 0,
+    visibilityPositionIds: [],
+    manageable: true,
+  },
+  {
+    id: 301,
+    restaurantId: 1,
+    parentId: 201,
+    name: "Инструкции",
+    type: "KNOWLEDGE",
+    active: false,
+    sortOrder: 0,
+    visibilityPositionIds: [],
+    manageable: true,
+  },
+  {
+    id: 202,
+    restaurantId: 1,
+    parentId: null,
+    name: "Зал",
+    type: "KNOWLEDGE",
+    active: true,
+    sortOrder: 0,
+    visibilityPositionIds: [],
+    manageable: true,
+  },
+];
+const archiveItems: TrainingKnowledgeItemDto[] = [
+  { id: 401, restaurantId: 1, folderId: 301, title: "Инструкция", sortOrder: 0, active: false },
+  { id: 402, restaurantId: 1, folderId: 202, title: "Инструкция", sortOrder: 0, active: false },
+];
 apiClient.defaults.adapter = async (config) => {
   let data: unknown = [];
   const url = config.url ?? "";
@@ -79,9 +171,13 @@ apiClient.defaults.adapter = async (config) => {
       failQuestions = false;
       throw new Error("Тестовая ошибка загрузки вопросов");
     }
-    data = [{ id: 10, title: "Вопрос", type: "SINGLE", questionGroup: "CERTIFICATION", prompt: "Первый?" }];
+    data = sourceQuestions;
   } else if (config.method !== "get") {
     if (!url.includes("/answer")) {
+      if (typeof config.data === "string") {
+        const payload = JSON.parse(config.data);
+        if ("timeLimitSec" in payload) savedTimeLimit = payload.timeLimitSec;
+      }
       saves++;
       notify();
       await new Promise((resolve) => setTimeout(resolve, 10000));
@@ -100,10 +196,11 @@ function Fixture() {
     <div className="space-y-4 p-5">
       <p>
         Изолированные данные · Запусков: {starts} · Сохранений: {saves}
+        {savedTimeLimit !== undefined && <> · Сохранённый лимит: {savedTimeLimit ?? "без ограничения"} сек</>}
       </p>
       <Link to="/tests/training-ux.html/run">Открыть аттестацию</Link>
-      <div className="flex gap-3">
-        {["Тест", "Вопрос", "Папка", "Карточка"].map((name) => (
+      <div className="flex flex-wrap gap-3">
+        {["Тест", "Вопрос", "Папка", "Карточка", "Архив"].map((name) => (
           <button key={name} onClick={() => setEditor(name)}>
             Редактор: {name}
           </button>
@@ -138,6 +235,22 @@ function Fixture() {
         mode="create"
         onClose={close}
         onSaved={() => {}}
+      />
+      <TrainingArchiveModal
+        open={editor === "Архив"}
+        folders={archiveFolders}
+        knowledgeItems={archiveItems}
+        loading={false}
+        error={null}
+        actionLoading={null}
+        onClose={close}
+        showDeleteAll={false}
+        onDelete={() => {}}
+        onDeleteAll={() => {}}
+        onRestore={(object) => {
+          object.value.active = true;
+          update((value) => value + 1);
+        }}
       />
     </div>
   );

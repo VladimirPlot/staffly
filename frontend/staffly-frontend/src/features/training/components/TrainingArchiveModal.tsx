@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import TrashModal, { type TrashModalItem } from "../../../shared/ui/TrashModal";
 import type { TrainingExamDto, TrainingFolderDto, TrainingKnowledgeItemDto, TrainingQuestionDto } from "../api/types";
 import { bySortOrderAndName } from "../utils/sort";
+import { trainingArchiveContext } from "../utils/archiveContext";
 
 export type ArchivedTrainingObject =
   | { kind: "folder"; id: number; title: string; description?: string | null; value: TrainingFolderDto }
@@ -34,6 +35,7 @@ type TrainingArchiveModalCommonProps<TObject extends ArchivedTrainingObject> = {
   loadingText?: string;
   emptyText?: string;
   folders: TrainingFolderDto[];
+  contextFolders?: TrainingFolderDto[];
   knowledgeItems?: TrainingKnowledgeItemDto[];
   questions?: TrainingQuestionDto[];
   practiceExams?: TrainingExamDto[];
@@ -63,6 +65,7 @@ function TrainingArchiveModal({
   loadingText = "Загружаем архив...",
   emptyText = "Архив пуст.",
   folders,
+  contextFolders = folders,
   knowledgeItems = [],
   questions = [],
   practiceExams = [],
@@ -130,18 +133,37 @@ function TrainingArchiveModal({
   ];
 
   const items: Array<TrashModalItem<ArchivedTrainingObject["kind"], ArchivedTrainingObject>> = archivedObjects.map(
-    (object) => ({
-      key: `${object.kind}-${object.id}`,
-      kind: object.kind,
-      value: object,
-      typeLabel: typeLabelForKind(object.kind),
-      typePluralLabel: typePluralLabelForKind(object.kind),
-      title: object.title,
-      description: object.description,
-      icon: iconForKind(object.kind),
-      restoreActionKey: `restore-${object.kind}-${object.id}`,
-      deleteActionKey: `delete-${object.kind}-${object.id}`,
-    }),
+    (object) => {
+      const parentId =
+        object.kind === "folder"
+          ? object.value.parentId
+          : object.kind === "practiceExam"
+            ? object.value.knowledgeFolderId
+            : object.value.folderId;
+      const rootLabel =
+        object.kind === "folder"
+          ? { KNOWLEDGE: "База знаний", QUESTION_BANK: "Банк вопросов", CERTIFICATION: "Аттестации" }[object.value.type]
+          : object.kind === "question"
+            ? "Банк вопросов"
+            : object.kind === "certificationExam"
+              ? "Аттестации"
+              : "База знаний";
+      const context = trainingArchiveContext(parentId, contextFolders, rootLabel);
+      return {
+        key: `${object.kind}-${object.id}`,
+        kind: object.kind,
+        value: object,
+        typeLabel: typeLabelForKind(object.kind),
+        typePluralLabel: typePluralLabelForKind(object.kind),
+        title: object.title,
+        description: object.description,
+        meta: `Расположение: ${context.path}`,
+        restoreDisabledReason: context.restoreDisabledReason,
+        icon: iconForKind(object.kind),
+        restoreActionKey: `restore-${object.kind}-${object.id}`,
+        deleteActionKey: `delete-${object.kind}-${object.id}`,
+      };
+    },
   );
 
   return (

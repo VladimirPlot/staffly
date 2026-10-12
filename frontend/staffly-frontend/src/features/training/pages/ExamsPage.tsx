@@ -749,6 +749,7 @@ export default function ExamsPage() {
         title="Скрытые"
         emptyText="В корне нет скрытых объектов."
         folders={hiddenRootFolders}
+        contextFolders={foldersState.folders}
         certificationExams={hiddenRootExams}
         loading={loadingManageExams || foldersState.loading}
         error={foldersState.error ?? manageExamsError}
