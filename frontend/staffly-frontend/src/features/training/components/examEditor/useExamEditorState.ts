@@ -52,6 +52,7 @@ export function useExamEditorState({
   const [manageablePositionIds, setManageablePositionIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [requireRecertification, setRequireRecertification] = useState(false);
   const [staleConflict, setStaleConflict] = useState(false);
   const [newCycleConfirmation, setNewCycleConfirmation] = useState<{
     metadata: Record<string, unknown>;
@@ -62,6 +63,14 @@ export function useExamEditorState({
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [sourceIssues, setSourceIssues] = useState<string[]>([]);
   const [sourcePreflightLoading, setSourcePreflightLoading] = useState(false);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [positionsLoading, setPositionsLoading] = useState(false);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [treeError, setTreeError] = useState<string | null>(null);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [questionsError, setQuestionsError] = useState<string | null>(null);
+  const [dataRetry, setDataRetry] = useState(0);
+  const [questionsRetry, setQuestionsRetry] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -82,6 +91,7 @@ export function useExamEditorState({
     setError(null);
     setStaleConflict(false);
     setNewCycleConfirmation(null);
+    setRequireRecertification(false);
     setPositionMenuOpen(false);
   }, [open, exam]);
 
@@ -112,13 +122,25 @@ export function useExamEditorState({
 
   useEffect(() => {
     if (!open) return;
-
+    let cancelled = false;
+    setTreeLoading(true);
+    setPositionsLoading(true);
+    setTreeError(null);
+    setPositionsError(null);
     void listQuestionBankTree(restaurantId, mode, false)
-      .then(setTree)
-      .catch(() => setTree([]));
+      .then((value) => {
+        if (!cancelled) setTree(value);
+      })
+      .catch((error) => {
+        if (!cancelled) setTreeError(getTrainingErrorMessage(error, "Не удалось загрузить папки банка вопросов."));
+      })
+      .finally(() => {
+        if (!cancelled) setTreeLoading(false);
+      });
 
     void listPositions(restaurantId, { includeInactive: mode === "CERTIFICATION" && exam != null })
       .then((restaurantPositions) => {
+        if (cancelled) return;
         if (mode !== "CERTIFICATION") {
           setPositions(restaurantPositions);
           setManageablePositionIds(new Set(restaurantPositions.map(({ id }) => id)));
@@ -135,20 +157,43 @@ export function useExamEditorState({
           ),
         );
       })
-      .catch(() => {
-        setPositions([]);
-        setManageablePositionIds(new Set());
+      .catch((error) => {
+        if (!cancelled) setPositionsError(getTrainingErrorMessage(error, "Не удалось загрузить должности."));
+      })
+      .finally(() => {
+        if (!cancelled) setPositionsLoading(false);
       });
-  }, [certificationAllowedAudienceRoles, exam, open, restaurantId, mode]);
+    return () => {
+      cancelled = true;
+    };
+  }, [certificationAllowedAudienceRoles, exam, open, restaurantId, mode, dataRetry]);
 
   useEffect(() => {
-    if (!open || !form.selectedFolderId) return;
+    if (!open || !form.selectedFolderId) {
+      setQuestionsLoading(false);
+      setQuestionsError(null);
+      return;
+    }
+    let cancelled = false;
+    setQuestionsLoading(true);
+    setQuestionsError(null);
+    setForm((current) => ({ ...current, folderQuestions: [] }));
     const group = mode === "PRACTICE" ? "PRACTICE" : "CERTIFICATION";
 
     void listQuestions(restaurantId, form.selectedFolderId, false, form.query || undefined, group)
-      .then((folderQuestions) => setForm((current) => ({ ...current, folderQuestions })))
-      .catch(() => setForm((current) => ({ ...current, folderQuestions: [] })));
-  }, [form.query, form.selectedFolderId, mode, open, restaurantId]);
+      .then((folderQuestions) => {
+        if (!cancelled) setForm((current) => ({ ...current, folderQuestions }));
+      })
+      .catch((error) => {
+        if (!cancelled) setQuestionsError(getTrainingErrorMessage(error, "Не удалось загрузить вопросы."));
+      })
+      .finally(() => {
+        if (!cancelled) setQuestionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.query, form.selectedFolderId, mode, open, restaurantId, questionsRetry]);
 
   const folderSourceMap = useMemo(
     () => new Map(form.sourcesFolders.map((source) => [source.folderId, source])),
@@ -313,6 +358,7 @@ export function useExamEditorState({
   };
 
   const save = async () => {
+    if (saving || treeLoading || positionsLoading || treeError || positionsError) return;
     if (!form.title.trim()) {
       setError("Название обязательно.");
       return;
@@ -392,6 +438,7 @@ export function useExamEditorState({
             metadata: parsedError.payload.meta ?? {},
             payload: attemptedUpdatePayload,
           });
+          setRequireRecertification(false);
         }
         setError(null);
       } else {
@@ -416,6 +463,7 @@ export function useExamEditorState({
       await updateExam(restaurantId, exam.id, {
         ...frozenPayload,
         confirmNewVersion: true,
+        requireRecertification,
       });
       await onSaved();
       onClose();
@@ -453,6 +501,14 @@ export function useExamEditorState({
     totalQuestions,
     sourceIssues,
     sourcePreflightLoading,
+    treeLoading,
+    positionsLoading,
+    questionsLoading,
+    treeError,
+    positionsError,
+    questionsError,
+    retryEditorData: () => setDataRetry((value) => value + 1),
+    retryQuestions: () => setQuestionsRetry((value) => value + 1),
     availabilityLabel,
     setTitle: (title: string) => setForm((current) => ({ ...current, title })),
     setDescription: (description: string) => setForm((current) => ({ ...current, description })),
@@ -471,5 +527,7 @@ export function useExamEditorState({
     newCycleConfirmation,
     cancelNewCycleConfirmation: () => setNewCycleConfirmation(null),
     confirmNewVersion: () => void confirmNewVersion(),
+    requireRecertification,
+    setRequireRecertification,
   };
 }

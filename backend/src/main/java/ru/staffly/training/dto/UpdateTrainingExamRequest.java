@@ -30,5 +30,6 @@ public record UpdateTrainingExamRequest(
         List<Long> visibilityPositionIds,
         List<ExamSourceFolderDto> sourcesFolders,
         List<Long> sourceQuestionIds,
-        @JsonAlias("confirmNewCycle") Boolean confirmNewVersion
+        @JsonAlias("confirmNewCycle") Boolean confirmNewVersion,
+        Boolean requireRecertification
 ) {}

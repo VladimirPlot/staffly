@@ -59,6 +59,12 @@ export type UpdateKnowledgeItemPayload = {
   sortOrder?: number;
 };
 
+export type SaveKnowledgeItemPayload = UpdateKnowledgeItemPayload & {
+  creationRequestId: string;
+  itemId?: number | null;
+  removeImage: boolean;
+};
+
 export type TrainingQuestionType = "SINGLE" | "MULTI" | "TRUE_FALSE" | "FILL_SELECT" | "MATCH";
 export type TrainingExamMode = "CERTIFICATION" | "PRACTICE";
 
@@ -291,6 +297,7 @@ export type CertificationPreviousValidResultDto = {
 export type UpsertExamPayload = {
   expectedEditorRevision?: number;
   confirmNewVersion?: boolean;
+  requireRecertification?: boolean;
   title: string;
   description?: string | null;
   mode: TrainingExamMode;
@@ -467,6 +474,7 @@ export type ExamAttemptDto = {
   examVersion: number;
   exam: RuntimeExamDto;
   questions: AttemptQuestionSnapshotDto[];
+  savedAnswers?: ExamSubmitAnswerDto[];
 };
 
 export type ExamSubmitAnswerDto = { questionId: number; answerJson?: string | null };

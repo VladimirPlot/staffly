@@ -14,13 +14,25 @@ export function parseJson<T>(raw: string | undefined): T | null {
 }
 
 export function readPersistedExamRunState(examId: number) {
-  return parseJson<PersistedExamRunState>(localStorage.getItem(getStorageKey(examId)) ?? undefined);
+  try {
+    return parseJson<PersistedExamRunState>(localStorage.getItem(getStorageKey(examId)) ?? undefined);
+  } catch {
+    return null;
+  }
 }
 
 export function writePersistedExamRunState(examId: number, state: PersistedExamRunState) {
-  localStorage.setItem(getStorageKey(examId), JSON.stringify(state));
+  try {
+    localStorage.setItem(getStorageKey(examId), JSON.stringify(state));
+  } catch {
+    // Server confirmations remain available even when browser draft storage is blocked/full.
+  }
 }
 
 export function removePersistedExamRunState(examId: number) {
-  localStorage.removeItem(getStorageKey(examId));
+  try {
+    localStorage.removeItem(getStorageKey(examId));
+  } catch {
+    // A stale draft is ignored by its attempt id when the next attempt starts.
+  }
 }

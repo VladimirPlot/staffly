@@ -8,8 +8,10 @@ import ru.staffly.training.model.TrainingKnowledgeItem;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface TrainingKnowledgeItemRepository extends JpaRepository<TrainingKnowledgeItem, Long> {
+    Optional<TrainingKnowledgeItem> findByRestaurantIdAndCreationRequestId(Long restaurantId, UUID requestId);
     List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIdOrderBySortOrderAscTitleAsc(Long restaurantId, Long folderId);
     List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIdAndActiveTrueOrderBySortOrderAscTitleAsc(Long restaurantId, Long folderId);
     List<TrainingKnowledgeItem> findByRestaurantIdAndFolderIsNullOrderBySortOrderAscTitleAsc(Long restaurantId);

@@ -22,6 +22,7 @@ public interface ExamService {
     List<TrainingExamProgressDto> listCurrentUserPracticeExamProgress(Long restaurantId, Long userId);
     StartExamResponseDto startExam(Long restaurantId, Long examId, Long userId, boolean isManager);
     AttemptResultDto submitAttempt(Long restaurantId, Long attemptId, Long userId, SubmitAttemptRequestDto request);
+    void saveAttemptAnswer(Long restaurantId, Long attemptId, Long userId, SubmitAttemptAnswerDto answer);
 
     void resetEmployeeCertificationAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId);
     void grantEmployeeCertificationExtraAttempts(Long restaurantId, Long actorUserId, Long examId, Long userId, Integer amount);

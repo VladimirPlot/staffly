@@ -13,12 +13,10 @@ import { formatDateTime } from "../utils/certificationResultFormatting";
 import { getTrainingErrorMessage } from "../utils/errors";
 import { normalizeTrainingExamsReturnTo } from "../utils/returnTo";
 import { trainingRoutes } from "../utils/trainingRoutes";
+import { formatTrainingDuration } from "../utils/duration";
 
 function formatDuration(durationSec?: number | null): string {
-  if (durationSec == null) return "—";
-  const minutes = Math.floor(durationSec / 60);
-  const seconds = durationSec % 60;
-  return `${minutes}м ${seconds}с`;
+  return formatTrainingDuration(durationSec, "—");
 }
 
 export default function CertificationAttemptDetailsPage() {
@@ -67,7 +65,7 @@ export default function CertificationAttemptDetailsPage() {
         ]}
       />
 
-      <h2 className="text-2xl font-semibold text-default">Детальный разбор попытки</h2>
+      <h2 className="text-default text-2xl font-semibold">Детальный разбор попытки</h2>
       {loading && <LoadingState label="Загрузка попытки..." />}
       {error && <ErrorState message={error} onRetry={load} />}
 
@@ -75,24 +73,25 @@ export default function CertificationAttemptDetailsPage() {
         <>
           <Card className="space-y-3">
             <div className="text-lg font-semibold">{data.examTitle}</div>
-            <div className="text-sm text-muted">
-              Сотрудник: {data.userFullName} · Статус: {data.passed ? "сдано" : "не сдано"} · Итог: {data.scorePercent ?? "—"}% · Проходной балл: {data.passPercent}%
+            <div className="text-muted text-sm">
+              Сотрудник: {data.userFullName} · Статус: {data.passed ? "сдано" : "не сдано"} · Итог:{" "}
+              {data.scorePercent ?? "—"}% · Проходной балл: {data.passPercent}%
             </div>
-            <div className="text-sm text-muted">
-              Начало: {formatDateTime(data.startedAt)} · Завершение: {formatDateTime(data.finishedAt)} · Длительность: {formatDuration(data.durationSec)}
+            <div className="text-muted text-sm">
+              Начало: {formatDateTime(data.startedAt)} · Завершение: {formatDateTime(data.finishedAt)} · Длительность:{" "}
+              {formatDuration(data.durationSec)}
             </div>
-            <div className="text-sm text-muted">
+            <div className="text-muted text-sm">
               Версия экзамена: {data.examVersion ?? "—"} · Вопросов: {data.questionCount ?? data.questions.length}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link to={returnTo}><Button variant="outline">Назад к аналитике</Button></Link>
+              <Link to={returnTo}>
+                <Button variant="outline">Назад к аналитике</Button>
+              </Link>
             </div>
           </Card>
 
-          <CertificationQuestionReviewSection
-            questions={data.questions}
-            revealCorrectAnswers
-          />
+          <CertificationQuestionReviewSection questions={data.questions} revealCorrectAnswers />
         </>
       )}
     </div>

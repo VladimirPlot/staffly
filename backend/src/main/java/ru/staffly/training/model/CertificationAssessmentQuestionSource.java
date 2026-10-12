@@ -20,7 +20,7 @@ public class CertificationAssessmentQuestionSource {
     @JoinColumn(name = "specification_id", nullable = false)
     private CertificationAssessmentSpecification specification;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "question_id", nullable = false)
-    private TrainingQuestion question;
+    /** Historical identity; question content and keys live in the published pool. */
+    @Column(name = "question_id", nullable = false, updatable = false)
+    private Long questionId;
 }

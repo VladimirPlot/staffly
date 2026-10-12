@@ -16,6 +16,7 @@ export type TrashModalItem<TKind extends string = string, TValue = unknown> = {
   title: string;
   description?: string | null;
   meta?: string | null;
+  restoreDisabledReason?: string;
   icon: LucideIcon;
   restoreActionKey?: string;
   deleteActionKey?: string;
@@ -135,21 +136,23 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
     >
       <div className="space-y-3">
         {hasItems ? (
-          <div className="bg-surface sticky top-0 z-10 space-y-3 border-b border-subtle pb-3">
+          <div className="bg-surface border-subtle sticky top-0 z-10 space-y-3 border-b pb-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-muted text-sm">
                 {items.length} в корзине
                 {visibleItems.length !== items.length ? ` · показано ${visibleItems.length}` : ""}
               </div>
-              {showDeleteAll && <Button
-                size="sm"
-                variant="outline"
-                className="w-full text-red-600 sm:w-auto"
-                leftIcon={<Icon icon={Trash2} size="sm" decorative />}
-                onClick={onDeleteAll}
-              >
-                Удалить все
-              </Button>}
+              {showDeleteAll && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-red-600 sm:w-auto"
+                  leftIcon={<Icon icon={Trash2} size="sm" decorative />}
+                  onClick={onDeleteAll}
+                >
+                  Удалить все
+                </Button>
+              )}
             </div>
 
             <SearchBar
@@ -171,7 +174,7 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
                     key={filter.kind}
                     type="button"
                     className={cn(
-                      "inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border px-3 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-default",
+                      "focus:ring-default inline-flex h-9 shrink-0 items-center gap-2 rounded-2xl border px-3 text-sm font-medium transition focus:ring-2 focus:outline-none",
                       selected
                         ? "border-[var(--staffly-text-strong)] bg-[var(--staffly-text-strong)] text-[var(--staffly-surface)]"
                         : "border-subtle bg-app text-default hover:bg-[var(--staffly-control-hover)]",
@@ -212,13 +215,17 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
                             <div className="text-muted mt-1 line-clamp-2 text-sm">{item.description}</div>
                           ) : null}
                           {item.meta ? <div className="text-muted mt-1 text-sm">{item.meta}</div> : null}
+                          {item.restoreDisabledReason && (
+                            <p className="text-muted mt-1 text-sm">{item.restoreDisabledReason}</p>
+                          )}
                         </div>
                         <div className="flex shrink-0 gap-1">
                           <Button
                             size="icon"
                             variant="outline"
                             className="h-9 w-9"
-                            title="Восстановить"
+                            title={item.restoreDisabledReason ?? "Восстановить"}
+                            disabled={Boolean(item.restoreDisabledReason) || Boolean(actionLoading)}
                             aria-label={`Восстановить ${item.title}`}
                             isLoading={actionLoading === item.restoreActionKey}
                             leftIcon={<Icon icon={RotateCcw} size="sm" decorative />}

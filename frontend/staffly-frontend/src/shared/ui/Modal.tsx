@@ -32,6 +32,7 @@ type BodyScrollLockSnapshot = {
 };
 
 let bodyScrollLockCount = 0;
+const modalStack: string[] = [];
 let bodyScrollLockSnapshot: BodyScrollLockSnapshot | null = null;
 
 function lockBodyScroll() {
@@ -60,7 +61,8 @@ function lockBodyScroll() {
     body.style.right = "0";
     body.style.width = "100%";
     body.style.boxSizing = "border-box";
-    body.style.paddingRight = scrollbarWidth > 0 ? `${currentPaddingRight + scrollbarWidth}px` : body.style.paddingRight;
+    body.style.paddingRight =
+      scrollbarWidth > 0 ? `${currentPaddingRight + scrollbarWidth}px` : body.style.paddingRight;
   }
 
   bodyScrollLockCount += 1;
@@ -112,11 +114,7 @@ const Modal: React.FC<ModalProps> = ({
 
   const titleId = React.useId();
   const descriptionId = React.useId();
-  const dialogLabelProps = title
-    ? { "aria-labelledby": titleId }
-    : ariaLabel
-      ? { "aria-label": ariaLabel }
-      : {};
+  const dialogLabelProps = title ? { "aria-labelledby": titleId } : ariaLabel ? { "aria-label": ariaLabel } : {};
 
   React.useEffect(() => {
     if (!open || typeof window === "undefined") return;
@@ -130,9 +128,10 @@ const Modal: React.FC<ModalProps> = ({
     if (!open) return;
 
     lastActiveElementRef.current = document.activeElement as HTMLElement | null;
+    modalStack.push(titleId);
 
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && modalStack.at(-1) === titleId) {
         onCloseRef.current();
       }
     };
@@ -150,9 +149,11 @@ const Modal: React.FC<ModalProps> = ({
 
     return () => {
       window.removeEventListener("keydown", handler);
+      const index = modalStack.indexOf(titleId);
+      if (index >= 0) modalStack.splice(index, 1);
       window.clearTimeout(focusTimer);
     };
-  }, [open]);
+  }, [open, titleId]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -194,12 +195,10 @@ const Modal: React.FC<ModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" onMouseDown={handleBackdropMouseDown} />
       <div
-        className="absolute inset-0 bg-black/40"
-        aria-hidden="true"
-        onMouseDown={handleBackdropMouseDown}
-      />
-      <div className={`safe-area-overlay pointer-events-none relative flex min-h-[100vh] items-center supports-[height:100dvh]:min-h-[100dvh] ${placement === "right" ? "justify-end" : "justify-center"}`}>
+        className={`safe-area-overlay pointer-events-none relative flex min-h-[100vh] items-center supports-[height:100dvh]:min-h-[100dvh] ${placement === "right" ? "justify-end" : "justify-center"}`}
+      >
         <div
           ref={dialogRef}
           role="dialog"
@@ -223,7 +222,9 @@ const Modal: React.FC<ModalProps> = ({
             </button>
           )}
 
-          <div className={`border-subtle bg-surface flex max-h-[calc(100vh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:max-h-[calc(100vh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] ${placement === "right" ? "h-[calc(100dvh-2rem)]" : ""}`}>
+          <div
+            className={`border-subtle bg-surface flex max-h-[calc(100vh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] w-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-1rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:max-h-[calc(100vh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] sm:rounded-3xl sm:supports-[height:100dvh]:max-h-[calc(100dvh-2rem-var(--staffly-safe-area-top)-var(--staffly-safe-area-bottom))] ${placement === "right" ? "h-[calc(100dvh-2rem)]" : ""}`}
+          >
             {hasHeader && (
               <div className="border-subtle flex items-start justify-between gap-4 border-b px-4 py-4 sm:px-6 sm:py-5">
                 <div className="min-w-0">
@@ -238,17 +239,11 @@ const Modal: React.FC<ModalProps> = ({
                     </div>
                   )}
                 </div>
-                {headerCloseButton && (
-                  <CloseButton label={headerCloseLabel} onClick={onClose} />
-                )}
+                {headerCloseButton && <CloseButton label={headerCloseLabel} onClick={onClose} />}
               </div>
             )}
 
-            {children && (
-              <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-6 sm:py-4">
-                {children}
-              </div>
-            )}
+            {children && <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 sm:px-6 sm:py-4">{children}</div>}
 
             {footer && (
               <div className="border-subtle border-t px-3 py-3 sm:px-6 sm:py-4">

@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
+import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.time.TimeProvider;
 import ru.staffly.training.dto.SubmitAttemptAnswerDto;
 import ru.staffly.training.model.TrainingExamAttempt;
 import ru.staffly.training.model.TrainingExamAttemptQuestion;
@@ -33,6 +35,43 @@ class CertificationAttemptFinalizationService {
     private final CertificationAssignmentService assignmentService;
     private final RestaurantMemberRepository members;
 
+    /** Confirmed answers are immutable and share the finalizer's assignment -> attempt locks. */
+    @Transactional
+    public void saveAnswer(TrainingExamAttempt candidate, SubmitAttemptAnswerDto answer) {
+        Long restaurantId = candidate.getRestaurant().getId();
+        if (candidate.getExam() == null) throw new ConflictException("Тест удалён.");
+        if (candidate.getExam().getMode() == TrainingExamMode.CERTIFICATION) {
+            if (candidate.getAssignment() == null) throw new ConflictException("Назначение отсутствует.");
+            var assignment = assignments.findByIdAndRestaurantIdForFinalizationUpdate(
+                            candidate.getAssignment().getId(), restaurantId)
+                    .orElseThrow(() -> new NotFoundException("Assignment not found"));
+            entityManager.refresh(assignment, LockModeType.PESSIMISTIC_WRITE);
+        }
+        var attempt = attempts.findByIdAndRestaurantIdForFinalizationUpdate(candidate.getId(), restaurantId)
+                .orElseThrow(() -> new NotFoundException("Attempt not found"));
+        entityManager.refresh(attempt, LockModeType.PESSIMISTIC_WRITE);
+        var item = attemptQuestions.findByAttemptId(attempt.getId()).stream()
+                .filter(question -> snapshotService.readSnapshot(question.getQuestionSnapshotJson()).questionId().equals(answer.questionId()))
+                .findFirst().orElseThrow(() -> new BadRequestException("Вопрос не принадлежит этой попытке."));
+        if (answer.answerJson() == null || answer.answerJson().isBlank()) {
+            throw new BadRequestException("Ответ не может быть пустым.");
+        }
+        if (item.getChosenAnswerJson() != null) {
+            if (item.getChosenAnswerJson().equals(answer.answerJson())) return; // Lost acknowledgement retry.
+            throw new ConflictException("Ответ уже подтверждён и не может быть изменён.");
+        }
+        if (attempt.getFinishedAt() != null || isExpired(attempt, TimeProvider.now())) {
+            throw new ConflictException("Время вышло или попытка уже завершена.");
+        }
+        attemptEvaluator.validateAnswerForType(answer.answerJson(), snapshotService.readSnapshot(item.getQuestionSnapshotJson()));
+        item.setChosenAnswerJson(answer.answerJson());
+    }
+
+    private boolean isExpired(TrainingExamAttempt attempt, Instant now) {
+        return attempt.getTimeLimitSecSnapshot() != null
+                && !attempt.getStartedAt().plusSeconds(attempt.getTimeLimitSecSnapshot()).isAfter(now);
+    }
+
     // Single source of truth for any certification attempt completion:
     // user submit, expired timeout auto-close, and lifecycle repair all converge here.
     @Transactional
@@ -40,7 +79,11 @@ class CertificationAttemptFinalizationService {
                                                           Map<Long, SubmitAttemptAnswerDto> answersByQuestionId,
                                                           Instant finishedAt) {
         if (attempt.getExam() == null || attempt.getExam().getMode() != TrainingExamMode.CERTIFICATION) {
-            return finalizeMutation(attempt, answersByQuestionId, finishedAt, AttemptFinalizationMode.USER_SUBMIT);
+            var locked = attempts.findByIdAndRestaurantIdForFinalizationUpdate(attempt.getId(), attempt.getRestaurant().getId())
+                    .orElseThrow(() -> new NotFoundException("Attempt not found"));
+            entityManager.refresh(locked, LockModeType.PESSIMISTIC_WRITE);
+            return finalizeMutation(locked, answersByQuestionId, finishedAt,
+                    isExpired(locked, finishedAt) ? AttemptFinalizationMode.EXPIRED_TIMEOUT : AttemptFinalizationMode.USER_SUBMIT);
         }
         boolean expired = attempt.getTimeLimitSecSnapshot() != null
                 && attempt.getStartedAt().plusSeconds(attempt.getTimeLimitSecSnapshot()).compareTo(finishedAt) <= 0;
@@ -138,7 +181,7 @@ class CertificationAttemptFinalizationService {
         for (var item : existingQuestions) {
             var snapshot = snapshotService.readSnapshot(item.getQuestionSnapshotJson());
 
-            if (mode == AttemptFinalizationMode.USER_SUBMIT) {
+            if (mode == AttemptFinalizationMode.USER_SUBMIT && item.getChosenAnswerJson() == null) {
                 var answer = answersByQuestionId.get(snapshot.questionId());
                 if (answer != null) {
                     if (answer.answerJson() == null || answer.answerJson().isBlank()) {

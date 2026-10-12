@@ -51,15 +51,16 @@ class TrainingQuestionValidator {
         if (pairDtos == null || pairDtos.size() < 2) {
             throw new BadRequestException("MATCH requires at least 2 pairs");
         }
-        var uniquePairs = new HashSet<String>();
+        var uniqueLeft = new HashSet<String>();
+        var uniqueRight = new HashSet<String>();
         for (var pair : pairDtos) {
             var left = pair.leftText() == null ? "" : pair.leftText().trim();
             var right = pair.rightText() == null ? "" : pair.rightText().trim();
             if (left.isEmpty() || right.isEmpty()) {
                 throw new BadRequestException("MATCH pairs must be complete");
             }
-            if (!uniquePairs.add((left + "|||" + right).toLowerCase())) {
-                throw new ConflictException("MATCH contains duplicate pairs");
+            if (!uniqueLeft.add(left.toLowerCase(Locale.ROOT)) || !uniqueRight.add(right.toLowerCase(Locale.ROOT))) {
+                throw new ConflictException("В сопоставлении значения слева и справа должны быть уникальными.");
             }
         }
     }

@@ -58,6 +58,7 @@ public class ExamServiceImpl implements ExamService {
     private final TrainingExamAccessService examAccessService;
     private final ExamQuestionPoolResolver questionPoolResolver;
     private final ExamSnapshotService snapshotService;
+    private final CertificationQuestionSnapshotService certificationQuestionSnapshots;
     private final CertificationAssignmentService certificationAssignmentService;
     private final CertificationAudienceSyncService certificationAudienceSyncService;
     private final CertificationAssignmentLifecycleService certificationAssignmentLifecycleService;
@@ -258,7 +259,7 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto updateExam(Long restaurantId, Long userId, Long examId, UpdateTrainingExamRequest request) {
-        var exam = requireManageableExam(restaurantId, userId, examId, true);
+        var exam = requireManageableExam(restaurantId, userId, examId);
         if (!Objects.equals(exam.getEditorRevision(), request.expectedEditorRevision())) {
             throw new StaleExamRevisionException(exam.getId(), exam.getEditorRevision());
         }
@@ -290,6 +291,9 @@ public class ExamServiceImpl implements ExamService {
                 throw new MaterialChangeRequiresNewCycleException(
                         exam.getId(), exam.getVersion(), materialDiff.changedFields());
             }
+        }
+        if (Boolean.TRUE.equals(request.requireRecertification()) && !materialChanged) {
+            throw new BadRequestException("Повторное прохождение при сохранении доступно только для новой версии аттестации.");
         }
         // Only accepted saves force editorRevision. In particular, the material-change
         // preview above must leave the editor token and every projection untouched.
@@ -339,6 +343,7 @@ public class ExamServiceImpl implements ExamService {
         }
         exam.setAttemptLimit(request.attemptLimit());
         exam.setActive(willBeActive);
+        if (wasActive != willBeActive) exam.setHiddenByFolderId(null);
 
         replaceSources(restaurantId, userId, exam, request.mode(), request.sourcesFolders(), request.sourceQuestionIds());
         replaceVisibility(restaurantId, userId, exam, request.visibilityPositionIds());
@@ -352,13 +357,17 @@ public class ExamServiceImpl implements ExamService {
             advanceCertificationMaterialVersion(exam);
             exams.flush();
             var specification = certificationSpecificationService.createCurrent(exam);
-            var publicationCycle = certificationAssignmentCycleService.createPublicationCycle(
-                    exam, specification, entityManager.getReference(User.class, userId));
-            var createdAssignments = certificationAssignmentService.publishMaterialVersion(
-                    exam, specification, publicationCycle);
-            // Publication classifies pre-existing obligations first; the authoritative
-            // audience sync then adds only genuinely new members to this same cycle.
-            createdAssignments.addAll(certificationAssignmentService.syncAudienceAssignments(exam));
+            List<TrainingExamAssignment> createdAssignments;
+            if (Boolean.TRUE.equals(request.requireRecertification())) {
+                var cycle = certificationAssignmentCycleService.createRecertificationCycle(
+                        exam, specification, entityManager.getReference(User.class, userId));
+                createdAssignments = certificationAssignmentService.launchRecertificationCycle(exam, specification, cycle);
+            } else {
+                var publicationCycle = certificationAssignmentCycleService.createPublicationCycle(
+                        exam, specification, entityManager.getReference(User.class, userId));
+                createdAssignments = certificationAssignmentService.publishMaterialVersion(exam, specification, publicationCycle);
+                createdAssignments.addAll(certificationAssignmentService.syncAudienceAssignments(exam));
+            }
             trainingCertificationNotificationService.notifyAssignmentsCreated(exam, createdAssignments);
         } else if (wasActive != willBeActive || !previousVisibilityPositionIds.equals(visibilityPositionIds)) {
             certificationAudienceSyncService.syncExamAudience(exam);
@@ -374,6 +383,7 @@ public class ExamServiceImpl implements ExamService {
     public TrainingExamDto hideExam(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableExam(restaurantId, userId, examId);
         exam.setActive(false);
+        exam.setHiddenByFolderId(null);
         certificationAudienceSyncService.syncExamAudience(exam);
         exams.flush();
         return toDtoWithSourcesAndVisibility(exam, null);
@@ -382,24 +392,31 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto restoreExam(Long restaurantId, Long userId, Long examId) {
-        var exam = requireManageableExam(restaurantId, userId, examId, true);
+        var exam = requireManageableExam(restaurantId, userId, examId);
         activeContainerValidator.requireActiveChain(exam.getFolder());
         boolean restoringCertification = exam.getMode() == TrainingExamMode.CERTIFICATION && !exam.isActive();
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) trainingExamOwnershipService.assertOwnerValidForActivation(exam);
         if (!exam.isActive()) {
-            validateSourceCapacity(
-                    restaurantId,
-                    userId,
-                    exam.getMode(),
-                    sourceFolders.findByExamId(exam.getId()).stream()
-                            .map(source -> new ExamSourceFolderDto(
-                                    source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
-                            .toList(),
-                    sourceQuestions.findByExamId(exam.getId()).stream()
-                            .map(source -> source.getQuestion().getId())
-                            .toList(),
-                    exam.getQuestionCount()
-            );
+            if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+                var specification = certificationSpecificationService.requireCurrent(exam);
+                if (questionPoolResolver.buildQuestionPool(restaurantId, specification).questions().size() < specification.getQuestionCount()) {
+                    throw new BadRequestException("В опубликованной версии недостаточно вопросов. Опубликуйте новую версию.");
+                }
+            } else {
+                validateSourceCapacity(
+                        restaurantId,
+                        userId,
+                        exam.getMode(),
+                        sourceFolders.findByExamId(exam.getId()).stream()
+                                .map(source -> new ExamSourceFolderDto(
+                                        source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
+                                .toList(),
+                        sourceQuestions.findByExamId(exam.getId()).stream()
+                                .map(source -> source.getQuestion().getId())
+                                .toList(),
+                        exam.getQuestionCount()
+                );
+            }
             if (exam.getMode() == TrainingExamMode.PRACTICE) {
                 exam.setSortOrder(nextPracticeExamSortOrder(restaurantId, exam.getFolder().getId()));
             } else {
@@ -409,6 +426,7 @@ public class ExamServiceImpl implements ExamService {
                 ));
             }
             exam.setActive(true);
+            exam.setHiddenByFolderId(null);
         }
         if (restoringCertification) {
             // Under the authoritative exam lock, restore the exact obligations hidden
@@ -466,20 +484,10 @@ public class ExamServiceImpl implements ExamService {
     public void resetCertificationExamCycle(Long restaurantId, Long userId, Long examId) {
         var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
         activeContainerValidator.requireActiveChain(exam.getFolder());
-        validateSourceCapacity(
-                restaurantId,
-                userId,
-                exam.getMode(),
-                sourceFolders.findByExamId(exam.getId()).stream()
-                        .map(source -> new ExamSourceFolderDto(
-                                source.getFolder().getId(), source.getPickMode(), source.getRandomCount()))
-                        .toList(),
-                sourceQuestions.findByExamId(exam.getId()).stream()
-                        .map(source -> source.getQuestion().getId())
-                        .toList(),
-                exam.getQuestionCount()
-        );
         var specification = certificationSpecificationService.requireCurrent(exam);
+        if (questionPoolResolver.buildQuestionPool(restaurantId, specification).questions().size() < specification.getQuestionCount()) {
+            throw new BadRequestException("В опубликованной версии недостаточно вопросов. Опубликуйте новую версию.");
+        }
         var cycle = certificationAssignmentCycleService.createRecertificationCycle(
                 exam, specification, entityManager.getReference(User.class, userId));
         var created = certificationAssignmentService.launchRecertificationCycle(exam, specification, cycle);
@@ -588,12 +596,13 @@ public class ExamServiceImpl implements ExamService {
         if (selectedQuestions.size() != runtimeQuestionCount) {
             throw new BadRequestException("Не удалось сформировать точное количество вопросов для попытки.");
         }
-        var relationData = loadQuestionRelations(selectedQuestions);
+        var relationData = specification == null ? loadQuestionRelations(selectedQuestions) : null;
         TrainingExamAttempt attempt;
         List<AttemptQuestionSnapshotDto> snapshots;
         try {
             attempt = createAttempt(exam, userId, assignment, specification, attemptVersion, now);
-            snapshots = persistAttemptQuestions(attempt, selectedQuestions, relationData);
+            snapshots = specification == null ? persistAttemptQuestions(attempt, selectedQuestions, relationData)
+                    : persistPublishedQuestions(attempt, selectedQuestions, specification);
         } catch (DataIntegrityViolationException duplicateStartError) {
             var resumed = attempts.findTopUnfinishedForStartContext(examId, restaurantId, userId, attemptVersion, assignmentId)
                     .orElseThrow(() -> duplicateStartError);
@@ -605,7 +614,8 @@ public class ExamServiceImpl implements ExamService {
                 attempt.getStartedAt(),
                 attempt.getExamVersion(),
                 toRuntimeExamDto(attempt),
-                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getAssignment(), attempt.getId())
+                toRuntimeQuestions(snapshots, exam.getMode(), attempt.getAssignment(), attempt.getId()),
+                List.of()
         );
     }
 
@@ -639,6 +649,18 @@ public class ExamServiceImpl implements ExamService {
             }
         }
         return toAttemptResultDto(finalizedAttempt);
+    }
+
+    @Override
+    @Transactional
+    public void saveAttemptAnswer(Long restaurantId, Long attemptId, Long userId, SubmitAttemptAnswerDto answer) {
+        trainingPolicyService.assertActiveTrainingMember(userId, restaurantId);
+        var attempt = attempts.findByIdAndRestaurantId(attemptId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Attempt not found"));
+        if (!Objects.equals(attempt.getUser().getId(), userId)) {
+            throw new ForbiddenException("Attempt belongs to another user");
+        }
+        certificationAttemptFinalizationService.saveAnswer(attempt, answer);
     }
 
     @Override
@@ -705,7 +727,8 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private StartExamResponseDto resumeAttempt(TrainingExam exam, TrainingExamAttempt existingAttempt) {
-        var snapshots = attemptQuestions.findByAttemptId(existingAttempt.getId()).stream()
+        var savedQuestions = attemptQuestions.findByAttemptId(existingAttempt.getId());
+        var snapshots = savedQuestions.stream()
                 .map(item -> snapshotService.readSnapshot(item.getQuestionSnapshotJson()))
                 .toList();
 
@@ -714,7 +737,13 @@ public class ExamServiceImpl implements ExamService {
                 existingAttempt.getStartedAt(),
                 existingAttempt.getExamVersion(),
                 toRuntimeExamDto(existingAttempt),
-                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getAssignment(), existingAttempt.getId())
+                toRuntimeQuestions(snapshots, exam.getMode(), existingAttempt.getAssignment(), existingAttempt.getId()),
+                savedQuestions.stream()
+                        .filter(item -> item.getChosenAnswerJson() != null)
+                        .map(item -> new SubmitAttemptAnswerDto(
+                                snapshotService.readSnapshot(item.getQuestionSnapshotJson()).questionId(),
+                                item.getChosenAnswerJson()))
+                        .toList()
         );
     }
 
@@ -951,6 +980,23 @@ public class ExamServiceImpl implements ExamService {
                 .positionAtStartId(positionAtStartId)
                 .positionAtStartCaptured(assignment != null)
                 .build());
+    }
+
+    private List<AttemptQuestionSnapshotDto> persistPublishedQuestions(TrainingExamAttempt attempt,
+            List<TrainingQuestion> selected, CertificationAssessmentSpecification specification) {
+        var frozen = certificationQuestionSnapshots.read(specification.getQuestionPoolJson()).stream()
+                .collect(Collectors.toMap(CertificationQuestionSnapshotService.FrozenQuestion::questionId, Function.identity()));
+        var entities = new ArrayList<TrainingExamAttemptQuestion>();
+        var result = new ArrayList<AttemptQuestionSnapshotDto>();
+        for (var question : selected) {
+            var payload = Objects.requireNonNull(frozen.get(question.getId()), "Missing published question");
+            result.add(snapshotService.readSnapshot(payload.snapshotJson()));
+            entities.add(TrainingExamAttemptQuestion.builder().attempt(attempt)
+                    .questionSnapshotJson(payload.snapshotJson()).correctKeyJson(payload.correctKeyJson())
+                    .correct(false).build());
+        }
+        attemptQuestions.saveAll(entities);
+        return result;
     }
 
     private List<AttemptQuestionSnapshotDto> persistAttemptQuestions(TrainingExamAttempt attempt,
@@ -1257,16 +1303,11 @@ public class ExamServiceImpl implements ExamService {
     }
 
     private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId) {
-        return requireManageableExam(restaurantId, userId, examId, false);
-    }
-
-    private TrainingExam requireManageableExam(Long restaurantId, Long userId, Long examId,
-                                                boolean serializeOwnership) {
         var exam = exams.findByIdAndRestaurantIdWithVisibility(examId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Exam not found"));
         if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
             // Activation cannot validate an owner and then race with their lifecycle transition.
-            if (serializeOwnership) lifecycleMutex.lock(restaurantId);
+            lifecycleMutex.lock(restaurantId);
             return lockAndAuthorizeCertificationMutation(restaurantId, userId, exam);
         }
         var targetPositionIds = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
