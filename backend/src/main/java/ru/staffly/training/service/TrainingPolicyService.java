@@ -89,12 +89,55 @@ public class TrainingPolicyService {
     }
 
     public boolean canAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
-        return canAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.QUESTION_BANK);
+        return canManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds);
+    }
+
+    /** EXAMINER is a training-only override, including when the member's base role is STAFF. */
+    public boolean canPrepareForRole(Long userId, Long restaurantId, RestaurantRole targetRole) {
+        var context = resolveContext(userId, restaurantId);
+        return targetRole != null && context.canManageTraining()
+                && allowedLevelsByContext(context, PolicyContext.CERTIFICATION).contains(targetRole);
+    }
+
+    public void assertCanPrepareForRole(Long userId, Long restaurantId, RestaurantRole targetRole) {
+        if (!canPrepareForRole(userId, restaurantId, targetRole)) {
+            throw new ForbiddenException("У вас нет права готовить проверки для выбранной роли.");
+        }
+    }
+
+    /** Check the entire container chain so direct IDs cannot bypass a protected parent. */
+    public boolean canAccessManagementFolder(Long userId, Long restaurantId,
+            ru.staffly.training.model.TrainingFolder folder) {
+        var visited = new java.util.HashSet<Long>();
+        for (var current = folder; current != null; current = current.getParent()) {
+            if (current.getId() != null && !visited.add(current.getId())) return false;
+            if (current.getRestaurant() == null || !restaurantId.equals(current.getRestaurant().getId())) return false;
+            if (current.getTargetRole() != null) {
+                if (!canPrepareForRole(userId, restaurantId, current.getTargetRole())) return false;
+            } else {
+                // Compatibility for pre-migration objects: require the whole legacy scope.
+                var ids = current.getVisibilityPositions().stream().map(p -> p.getId()).collect(Collectors.toSet());
+                if (current.getType() == ru.staffly.training.model.TrainingFolderType.QUESTION_BANK) {
+                    if (!canManageQuestionBankByVisibility(userId, restaurantId, ids)) return false;
+                } else if (current.getType() == ru.staffly.training.model.TrainingFolderType.CERTIFICATION) {
+                    if (!canManageCertificationFolderOwnScope(userId, restaurantId, ids)) return false;
+                } else return false;
+            }
+        }
+        return folder != null;
+    }
+
+    public void assertCanAccessManagementFolder(Long userId, Long restaurantId,
+            ru.staffly.training.model.TrainingFolder folder) {
+        if (!canAccessManagementFolder(userId, restaurantId, folder)) {
+            throw new ForbiddenException("Папка предназначена для проверки роли вне ваших полномочий.");
+        }
     }
 
     /** Reading is intersection-based; managing a question-bank object requires authority over its full scope. */
     public boolean canManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertRestaurantUnlocked(userId, restaurantId);
+        if (!resolveContext(userId, restaurantId).canManageTraining()) return false;
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return true;
         }
@@ -112,6 +155,7 @@ public class TrainingPolicyService {
 
     public boolean canManageCertificationTargets(Long userId, Long restaurantId, Set<Long> targetPositionIds) {
         assertRestaurantUnlocked(userId, restaurantId);
+        if (!resolveContext(userId, restaurantId).canManageTraining()) return false;
         if (targetPositionIds == null || targetPositionIds.isEmpty()) {
             return false;
         }
@@ -122,6 +166,7 @@ public class TrainingPolicyService {
     /** Folder navigation is intersection-based, but changing a folder requires its entire scope. */
     public boolean canManageCertificationFolderOwnScope(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
         assertRestaurantUnlocked(userId, restaurantId);
+        if (!resolveContext(userId, restaurantId).canManageTraining()) return false;
         if (visibilityPositionIds == null || visibilityPositionIds.isEmpty()) {
             return true;
         }
@@ -152,8 +197,7 @@ public class TrainingPolicyService {
     }
 
     public void assertCanAccessQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
-        assertCanAccessByVisibility(userId, restaurantId, visibilityPositionIds, PolicyContext.QUESTION_BANK,
-                "Training question-bank policy does not allow access to this visibility scope.");
+        assertCanManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds);
     }
 
     public void assertCanManageQuestionBankByVisibility(Long userId, Long restaurantId, Set<Long> visibilityPositionIds) {
@@ -271,6 +315,21 @@ public class TrainingPolicyService {
         if (!examiner && !management) return false;
         var context = new TrainingPolicyContext(true, false, examiner, position.getLevel());
         return visibility.stream().allMatch(p -> allowedLevelsByContext(context, PolicyContext.EXAM_TARGET).contains(p.getLevel()));
+    }
+
+    public boolean canPrepareFolderAsPosition(ru.staffly.dictionary.model.Position position,
+            ru.staffly.training.model.TrainingFolder folder) {
+        boolean examiner = PositionSpecializations.hasExaminer(position.getSpecializations());
+        boolean manager = position.getLevel() == RestaurantRole.ADMIN || position.getLevel() == RestaurantRole.MANAGER;
+        if (!examiner && !manager) return false;
+        var context = new TrainingPolicyContext(true, false, examiner, position.getLevel());
+        var levels = allowedLevelsByContext(context, PolicyContext.CERTIFICATION);
+        var visited = new java.util.HashSet<Long>();
+        for (var current = folder; current != null; current = current.getParent()) {
+            if (current.getId() != null && !visited.add(current.getId())) return false;
+            if (current.getTargetRole() != null && !levels.contains(current.getTargetRole())) return false;
+        }
+        return true;
     }
 
     boolean isCreator() {

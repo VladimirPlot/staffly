@@ -203,21 +203,13 @@ public class QuestionServiceImpl implements QuestionService {
         if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
             throw new BadRequestException("Wrong folder type");
         }
-        trainingPolicyService.assertCanAccessQuestionBankByVisibility(
-                userId,
-                restaurantId,
-                folder.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
-        );
+        trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         return folder;
     }
 
     private ru.staffly.training.model.TrainingFolder requireManageableQuestionBankFolder(Long restaurantId, Long userId, Long folderId) {
         var folder = requireQuestionBankFolder(restaurantId, folderId);
-        trainingPolicyService.assertCanManageQuestionBankByVisibility(
-                userId,
-                restaurantId,
-                folder.getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
-        );
+        trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         return folder;
     }
 
@@ -253,11 +245,7 @@ public class QuestionServiceImpl implements QuestionService {
                 .orElseThrow(() -> new NotFoundException("Question not found"));
         entityManager.lock(question, LockModeType.PESSIMISTIC_WRITE);
         entityManager.refresh(question);
-        trainingPolicyService.assertCanManageQuestionBankByVisibility(
-                userId,
-                restaurantId,
-                question.getFolder().getVisibilityPositions().stream().map(position -> position.getId()).collect(Collectors.toSet())
-        );
+        trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, question.getFolder());
         return question;
     }
 

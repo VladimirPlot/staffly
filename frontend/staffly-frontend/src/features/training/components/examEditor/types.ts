@@ -16,6 +16,7 @@ export type ExamEditorProps = {
   knowledgeFolderId?: number | null;
   initialFolderId?: number | null;
   certificationAllowedAudienceRoles?: RestaurantRole[];
+  certificationFolderRole?: RestaurantRole | null;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 };

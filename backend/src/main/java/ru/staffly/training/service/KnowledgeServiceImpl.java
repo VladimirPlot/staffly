@@ -226,11 +226,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var foldersList = folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(restaurantId, TrainingFolderType.QUESTION_BANK);
         var visibleFolders = foldersList.stream()
                 .filter(folder -> includeInactive || folder.isActive())
-                .filter(folder -> trainingPolicyService.canAccessQuestionBankByVisibility(
-                        userId,
-                        restaurantId,
-                        folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
-                ))
+                .filter(folder -> trainingPolicyService.canAccessManagementFolder(userId, restaurantId, folder))
                 .toList();
         var group = mode == TrainingExamMode.PRACTICE ? TrainingQuestionGroup.PRACTICE : TrainingQuestionGroup.CERTIFICATION;
         var counts = questions.countByFolderForMode(restaurantId, group, includeInactive).stream()
@@ -271,8 +267,20 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         trainingPolicyService.assertRestaurantUnlocked(userId, restaurantId);
         TrainingFolder parent = resolveParentFolder(restaurantId, userId, request.parentId(), request.type());
         requireActiveParent(parent);
-        assertCanUseVisibilityPositions(userId, restaurantId, request.type(), request.visibilityPositionIds());
-        var visibilityPositions = resolveVisibilityPositionsForCreate(restaurantId, parent, request.visibilityPositionIds());
+        var targetRole = request.targetRole();
+        Set<Position> visibilityPositions;
+        if (request.type() == TrainingFolderType.KNOWLEDGE) {
+            if (targetRole != null) throw new BadRequestException("Для базы знаний выбираются должности, а не роль проверки.");
+            assertCanUseVisibilityPositions(userId, restaurantId, request.type(), request.visibilityPositionIds());
+            visibilityPositions = resolveVisibilityPositionsForCreate(restaurantId, parent, request.visibilityPositionIds());
+        } else {
+            rejectManagementPositionVisibility(request.visibilityPositionIds());
+            if (targetRole == null && parent != null) targetRole = parent.getTargetRole();
+            if (targetRole == null) throw new BadRequestException("Выберите роль сотрудников, для которых предназначена папка.");
+            trainingPolicyService.assertCanPrepareForRole(userId, restaurantId, targetRole);
+            validateManagementParentRole(parent, targetRole);
+            visibilityPositions = new HashSet<>();
+        }
 
         var entity = TrainingFolder.builder()
                 .restaurant(Restaurant.builder().id(restaurantId).build())
@@ -280,6 +288,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .name(request.name())
                 .description(request.description())
                 .type(request.type())
+                .targetRole(targetRole)
                 .sortOrder(request.sortOrder() == null ? nextFolderSortOrder(restaurantId, request.type(), request.parentId()) : normalizeSortOrder(request.sortOrder()))
                 .active(true)
                 .visibilityPositions(visibilityPositions)
@@ -294,14 +303,24 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         lifecycleMutex.lock(restaurantId);
         var entity = requireManageableFolder(restaurantId, userId, folderId);
         assertQuestionBankSubtreeManageable(restaurantId, userId, entity);
-        entity.setName(request.name());
-        entity.setDescription(request.description());
-        entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : normalizeSortOrder(request.sortOrder()));
-
-        if (request.visibilityPositionIds() != null) {
+        if (entity.getType() != TrainingFolderType.KNOWLEDGE) {
+            rejectManagementPositionVisibility(request.visibilityPositionIds());
+            var role = request.targetRole() == null ? entity.getTargetRole() : request.targetRole();
+            if (role == null) throw new BadRequestException("Выберите роль сотрудников для папки.");
+            trainingPolicyService.assertCanPrepareForRole(userId, restaurantId, role);
+            validateManagementParentRole(entity.getParent(), role);
+            if (role != entity.getTargetRole()) validateManagementRoleChange(restaurantId, entity, role);
+            entity.setTargetRole(role);
+            entity.getVisibilityPositions().clear();
+        } else if (request.targetRole() != null) {
+            throw new BadRequestException("Для базы знаний выбираются должности, а не роль проверки.");
+        } else if (request.visibilityPositionIds() != null) {
             assertCanUseVisibilityPositions(userId, restaurantId, entity.getType(), request.visibilityPositionIds());
             applyUpdatedVisibility(restaurantId, entity, request.visibilityPositionIds());
         }
+        entity.setName(request.name());
+        entity.setDescription(request.description());
+        entity.setSortOrder(request.sortOrder() == null ? entity.getSortOrder() : normalizeSortOrder(request.sortOrder()));
         return toDto(folders.save(entity), true);
     }
 
@@ -320,7 +339,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (parent != null) {
             ensureNotMovingIntoSelfOrDescendant(restaurantId, entity.getId(), parent.getId(), entity.getType());
         }
-        validateChildVisibility(parent, entity.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+        if (entity.getType() == TrainingFolderType.KNOWLEDGE) {
+            validateChildVisibility(parent, entity.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+        } else validateManagementParentRole(parent, entity.getTargetRole());
 
         entity.setParent(parent);
         entity.setSortOrder(request.sortOrder() == null
@@ -456,8 +477,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         for (Long id : request.orderedIds()) {
             var question = questions.findByIdAndRestaurantIdWithFolderVisibility(id, restaurantId)
                     .orElseThrow(() -> new NotFoundException("Question not found"));
-            trainingPolicyService.assertCanManageQuestionBankByVisibility(
-                    userId, restaurantId, visibilityPositionIds(question.getFolder()));
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, question.getFolder());
         }
         applyOrder(request.orderedIds(), byId, TrainingQuestion::setSortOrder);
     }
@@ -673,9 +693,32 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var visibilityIds = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
         return switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.canAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
-            case QUESTION_BANK -> trainingPolicyService.canAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
-            case CERTIFICATION -> trainingPolicyService.canAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
+            case QUESTION_BANK, CERTIFICATION -> trainingPolicyService.canAccessManagementFolder(userId, restaurantId, folder);
         };
+    }
+
+    private void rejectManagementPositionVisibility(List<Long> ids) {
+        if (ids != null && !ids.isEmpty()) throw new BadRequestException("Для папки проверки выберите одну роль, а не должности.");
+    }
+
+    private void validateManagementParentRole(TrainingFolder parent, ru.staffly.restaurant.model.RestaurantRole role) {
+        if (parent != null && parent.getTargetRole() != role) {
+            throw new BadRequestException("Роль подпапки должна совпадать с ролью родительской папки.");
+        }
+    }
+
+    private void validateManagementRoleChange(Long restaurantId, TrainingFolder folder,
+            ru.staffly.restaurant.model.RestaurantRole role) {
+        var ids = collectFolderIds(restaurantId, folder.getId(), folder.getType());
+        var descendants = folders.findAllByRestaurantIdAndIdInWithVisibility(restaurantId, ids);
+        if (descendants.stream().anyMatch(child -> !child.getId().equals(folder.getId()) && child.getTargetRole() != role)) {
+            throw new BadRequestException("Сначала перенесите подпапки: их роль отличается от выбранной.");
+        }
+        if (folder.getType() == TrainingFolderType.CERTIFICATION
+                && exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, ids).stream()
+                .anyMatch(exam -> exam.getVisibilityPositions().stream().anyMatch(p -> p.getLevel() != role))) {
+            throw new BadRequestException("Сначала перенесите аттестации для других ролей в подходящие папки.");
+        }
     }
 
     private void assertCanUseVisibilityPositions(Long userId, Long restaurantId, TrainingFolderType type, List<Long> positionIds) {
@@ -702,7 +745,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var folder = folders.findByIdAndRestaurantIdWithVisibility(folderId, restaurantId)
                 .orElseThrow(() -> new NotFoundException("Folder not found"));
         if (folder.getType() == TrainingFolderType.QUESTION_BANK) {
-            trainingPolicyService.assertCanManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds(folder));
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         } else {
             assertFolderAccessByType(userId, restaurantId, folder);
             if (folder.getType() == TrainingFolderType.CERTIFICATION) {
@@ -734,8 +777,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var visibilityIds = visibilityPositionIds(folder);
         switch (folder.getType()) {
             case KNOWLEDGE -> trainingPolicyService.assertCanAccessKnowledgeByVisibility(userId, restaurantId, visibilityIds);
-            case QUESTION_BANK -> trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId, visibilityIds);
-            case CERTIFICATION -> trainingPolicyService.assertCanAccessCertificationByVisibility(userId, restaurantId, visibilityIds);
+            case QUESTION_BANK, CERTIFICATION -> trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         }
     }
 
@@ -752,7 +794,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             Map<Long, Boolean> memo, Long restaurantId, Long userId) {
         if (memo.containsKey(folder.getId())) return memo.get(folder.getId());
         memo.put(folder.getId(), false);
-        boolean allowed = trainingPolicyService.canManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds(folder))
+        boolean allowed = trainingPolicyService.canAccessManagementFolder(userId, restaurantId, folder)
                 && children.getOrDefault(folder.getId(), List.of()).stream()
                 .allMatch(child -> questionBankSubtreeManageable(child, children, memo, restaurantId, userId));
         memo.put(folder.getId(), allowed);
@@ -764,7 +806,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         var subtree = folders.findAllByRestaurantIdAndIdInWithVisibility(restaurantId,
                 collectFolderIds(restaurantId, root.getId(), root.getType()));
         for (var folder : subtree) {
-            trainingPolicyService.assertCanManageQuestionBankByVisibility(userId, restaurantId, visibilityPositionIds(folder));
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         }
     }
 
@@ -1034,7 +1076,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 entity.getSortOrder(),
                 entity.isActive(),
                 visibilityPositionIds,
-                manageable
+                manageable,
+                entity.getTargetRole()
         );
     }
 

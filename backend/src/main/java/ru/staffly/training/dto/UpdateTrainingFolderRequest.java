@@ -9,5 +9,10 @@ public record UpdateTrainingFolderRequest(
         @NotBlank @Size(max = 150) String name,
         String description,
         Integer sortOrder,
-        List<Long> visibilityPositionIds
-) {}
+        List<Long> visibilityPositionIds,
+        ru.staffly.restaurant.model.RestaurantRole targetRole
+) {
+    public UpdateTrainingFolderRequest(String name, String description, Integer sortOrder, List<Long> visibilityPositionIds) {
+        this(name, description, sortOrder, visibilityPositionIds, null);
+    }
+}

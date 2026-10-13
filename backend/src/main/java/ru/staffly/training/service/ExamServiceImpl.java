@@ -82,8 +82,14 @@ public class ExamServiceImpl implements ExamService {
                 : (certificationOnly ? TrainingExamMode.CERTIFICATION : TrainingExamMode.PRACTICE);
 
         var visibleExams = examAccessService.listVisibleExams(restaurantId, userId, isManager, includeInactive, modeFilter);
+        if (!isManager) {
+            // Certification definitions belong to the preparation area. Participants use assignments.
+            visibleExams = visibleExams.stream().filter(exam -> exam.getMode() == TrainingExamMode.PRACTICE).toList();
+        }
         if (isManager) {
             visibleExams = visibleExams.stream()
+                    .filter(exam -> exam.getMode() != TrainingExamMode.CERTIFICATION || exam.getFolder() == null
+                            || trainingPolicyService.canAccessManagementFolder(userId, restaurantId, exam.getFolder()))
                     .filter(exam -> exam.getMode() != TrainingExamMode.CERTIFICATION
                             || trainingPolicyService.canManageCertificationTargets(
                                     userId,
@@ -223,11 +229,14 @@ public class ExamServiceImpl implements ExamService {
     @Override
     @Transactional
     public TrainingExamDto moveCertificationExam(Long restaurantId, Long userId, Long examId, MoveTrainingCertificationExamRequest request) {
+        // Serialize with folder role changes so a move cannot race the audience check.
+        lifecycleMutex.lock(restaurantId);
         var exam = requireManageableCertificationExamMutation(restaurantId, userId, examId);
         if (!exam.isActive()) {
             throw new BadRequestException("Скрытый тест нельзя перемещать.");
         }
         var targetFolder = resolveCertificationFolder(restaurantId, userId, request.folderId());
+        validateCertificationFolderAudience(targetFolder, exam.getVisibilityPositions());
         exam.setFolder(targetFolder);
         exam.setSortOrder(request.sortOrder() == null
                 ? nextCertificationExamSortOrder(restaurantId, request.folderId())
@@ -961,6 +970,7 @@ public class ExamServiceImpl implements ExamService {
         var folder = resolveExamFolder(restaurantId, userId, request.mode(), request.knowledgeFolderId(), request.folderId());
         var audience = restaurantPositions.stream()
                 .filter(position -> ids.isEmpty() ? position.isActive() : ids.contains(position.getId())).toList();
+        if (request.mode() == TrainingExamMode.CERTIFICATION) validateCertificationFolderAudience(folder, audience);
         return ExamFolderVisibilityWarnings.build(request.mode(), folder, audience);
     }
 
@@ -1094,11 +1104,7 @@ public class ExamServiceImpl implements ExamService {
             if (folder.getType() != TrainingFolderType.QUESTION_BANK) {
                 throw new BadRequestException("Exam scope accepts only QUESTION_BANK folders");
             }
-            trainingPolicyService.assertCanAccessQuestionBankByVisibility(
-                    userId,
-                    restaurantId,
-                    folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
-            );
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
             if (folderSource.pickMode() == TrainingExamSourcePickMode.RANDOM
                     && (folderSource.randomCount() == null || folderSource.randomCount() < 1)) {
                 throw new BadRequestException("randomCount is required for RANDOM pick mode");
@@ -1130,11 +1136,7 @@ public class ExamServiceImpl implements ExamService {
             if (question.getQuestionGroup() != requiredGroup) {
                 throw new BadRequestException("Question group does not match exam mode");
             }
-            trainingPolicyService.assertCanAccessQuestionBankByVisibility(
-                    userId,
-                    restaurantId,
-                    question.getFolder().getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet())
-            );
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, question.getFolder());
             questionEntities.add(TrainingExamSourceQuestion.builder().exam(exam).question(question).build());
         }
         if (!questionEntities.isEmpty()) {
@@ -1189,6 +1191,17 @@ public class ExamServiceImpl implements ExamService {
                 throw new NotFoundException("Position not found");
             }
             exam.getVisibilityPositions().add(position);
+        }
+        if (exam.getMode() == TrainingExamMode.CERTIFICATION) {
+            validateCertificationFolderAudience(exam.getFolder(), exam.getVisibilityPositions());
+        }
+    }
+
+    private void validateCertificationFolderAudience(TrainingFolder folder, Collection<Position> audience) {
+        if (folder != null && folder.getTargetRole() != null
+                && audience.stream().anyMatch(position -> position.getLevel() != folder.getTargetRole())) {
+            throw new BadRequestException("Выберите должности роли " + folder.getTargetRole()
+                    + " или перенесите аттестацию в папку для подходящей роли.");
         }
     }
 
@@ -1321,6 +1334,7 @@ public class ExamServiceImpl implements ExamService {
             throw new BadRequestException("Для аттестации нужна папка аттестаций.");
         }
         activeContainerValidator.requireActiveChain(folder);
+        trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         // A readable certification folder may only be a navigation container. Creating or
         // moving an exam into it is a structural mutation and therefore needs subtree authority.
         certificationFolderManagementService.assertSubtreeManageable(restaurantId, userId, folderId);
@@ -1375,6 +1389,9 @@ public class ExamServiceImpl implements ExamService {
         }
         trainingPolicyService.assertCanManageCertificationTargets(userId, restaurantId,
                 exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+        if (exam.getFolder() != null) {
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, exam.getFolder());
+        }
         return exam;
     }
 
