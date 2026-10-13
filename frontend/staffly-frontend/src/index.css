@@ -1,8 +1,21 @@
 @import "tailwindcss";
 @import "react-phone-number-input/style.css";
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* Keep grid lines at one screen CSS pixel even when the table is zoomed out.
+   Separate borders also avoid collapsed-border painting bugs on sticky Safari cells. */
+.common-schedule-table th,
+.common-schedule-table td {
+  border-bottom-width: var(--common-grid-line);
+  border-left-width: var(--common-grid-line);
+}
 
+.common-schedule-table th[scope="row"],
+.common-schedule-table thead th:first-child {
+  border-left-width: 0;
+  border-right-width: var(--common-grid-line);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
