@@ -6,6 +6,9 @@ import { daysBetween, formatDayNumber, formatWeekdayShort, getTodayInTimeZone } 
 import { scheduleRowCellKey, scheduleRowKey } from "../../schedule/utils/rowIdentity";
 import { normalizeCellValue } from "../../schedule/utils/cellFormatting";
 import { commonScheduleTodaySources, formatScheduleDate } from "../utils";
+import CommonScheduleShift from "./CommonScheduleShift";
+import { useScheduleTableZoom } from "../../schedule/hooks/useScheduleTableZoom";
+import ScheduleTableZoomControls from "../../schedule/components/ScheduleTableZoomControls";
 
 type Props = {
   schedule: CommonSchedule;
@@ -27,6 +30,17 @@ export default function CommonScheduleView({
   onEdit,
 }: Props) {
   const [tab, setTab] = React.useState<"table" | "today">("table");
+  const tableZoom = useScheduleTableZoom();
+  const tableRef = React.useRef<HTMLTableElement>(null);
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const fitTable = () => {
+    if (!tableRef.current || !viewportRef.current) return;
+    const fullWidth = tableRef.current.getBoundingClientRect().width / tableZoom.zoomScale;
+    if (fullWidth <= 0) return;
+    const percent =
+      Math.floor(((viewportRef.current.clientWidth / fullWidth) * 100) / tableZoom.zoomStep) * tableZoom.zoomStep;
+    tableZoom.setZoom(Math.min(100, percent));
+  };
   const { summary, sources } = schedule;
   const days = daysBetween(summary.startDate, summary.endDate);
   const today = getTodayInTimeZone(timeZone);
@@ -106,87 +120,105 @@ export default function CommonScheduleView({
             ))}
         </Card>
       ) : (
-        <div className="border-subtle overflow-x-auto rounded-2xl border">
-          <table className="text-default w-full border-collapse text-sm">
-            <caption className="sr-only">{summary.title}, общий график с группировкой по исходным графикам</caption>
-            <thead>
-              <tr className="bg-surface">
-                <th scope="col" className="border-subtle bg-surface sticky left-0 z-20 min-w-52 border-b p-3 text-left">
-                  Сотрудник / должность
-                </th>
-                {days.map((day) => (
+        <div className="space-y-3">
+          <ScheduleTableZoomControls {...tableZoom} showFullPeriod={fitTable} />
+          <div ref={viewportRef} className="border-subtle overflow-x-auto rounded-2xl border">
+            <table
+              ref={tableRef}
+              className="text-default w-max border-collapse text-xs"
+              style={{ zoom: tableZoom.zoomScale }}
+              data-common-schedule-table-zoom={tableZoom.zoom}
+            >
+              <caption className="sr-only">{summary.title}, общий график с группировкой по исходным графикам</caption>
+              <thead>
+                <tr className="bg-surface">
                   <th
-                    key={day}
                     scope="col"
-                    className={`border-subtle min-w-20 border-b p-2 ${day === today ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100" : ""}`}
+                    className="border-subtle bg-surface sticky left-0 z-20 w-px border-b px-2 py-1 text-left"
                   >
-                    <span className="block">{formatDayNumber(day)}</span>
-                    <span className="text-xs">{formatWeekdayShort(day)}</span>
+                    <span className="block">Сотрудник</span>
+                    <span className="text-muted block font-normal">Должность</span>
                   </th>
-                ))}
-              </tr>
-            </thead>
-            {sources.map((source) => (
-              <tbody key={source.id}>
-                <tr>
-                  <th
-                    colSpan={days.length + 1}
-                    scope="rowgroup"
-                    className="bg-app border-subtle border-b p-3 text-left"
-                  >
-                    <span className="sticky left-3 inline-block max-w-72 break-words">
-                      {source.title}
-                      <span className="text-muted block text-xs font-normal">
-                        {formatScheduleDate(source.content.config.startDate)} —{" "}
-                        {formatScheduleDate(source.content.config.endDate)}
-                      </span>
-                    </span>
-                  </th>
-                </tr>
-                {source.content.rows.length === 0 && (
-                  <tr>
-                    <td colSpan={days.length + 1} className="text-muted p-3">
-                      В графике нет сотрудников.
-                    </td>
-                  </tr>
-                )}
-                {source.content.rows.map((row) => (
-                  <tr key={scheduleRowKey(row)}>
+                  {days.map((day) => (
                     <th
-                      scope="row"
-                      className="border-subtle bg-surface sticky left-0 z-10 border-b p-3 text-left font-normal"
+                      key={day}
+                      scope="col"
+                      className={`border-subtle min-w-10 border-b px-1 py-1 ${day === today ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100" : ""}`}
                     >
-                      <span className="block max-w-64 break-words">{row.displayName}</span>
-                      <span className="text-muted block text-xs">
-                        {row.positionName ?? "Без должности"}
-                        {row.historical ? " · История" : ""}
-                      </span>
+                      <span className="block">{formatDayNumber(day)}</span>
+                      <span className="text-xs">{formatWeekdayShort(day)}</span>
                     </th>
-                    {days.map((day) => {
-                      const outside = day < source.content.config.startDate || day > source.content.config.endDate;
-                      const value = source.content.cellValues[scheduleRowCellKey(row, day)] ?? "";
-                      return (
-                        <td
-                          key={day}
-                          className={`border-subtle border-b border-l p-2 text-center whitespace-nowrap ${outside ? "bg-app text-muted" : "bg-surface"}`}
-                          title={outside ? "Вне периода графика" : undefined}
-                        >
-                          {outside ? (
-                            <>
-                              <span aria-hidden="true">—</span>
-                              <span className="sr-only">Вне периода графика</span>
-                            </>
-                          ) : (
-                            normalizeCellValue(value, source.content.config.shiftMode)
-                          )}
-                        </td>
-                      );
-                    })}
+                  ))}
+                </tr>
+              </thead>
+              {sources.map((source) => (
+                <tbody key={source.id}>
+                  <tr>
+                    <th
+                      colSpan={days.length + 1}
+                      scope="rowgroup"
+                      className="bg-app border-subtle relative h-6 border-y p-0 text-left"
+                    >
+                      <div
+                        className="absolute inset-0 overflow-hidden px-2 text-xs leading-6 whitespace-nowrap"
+                        title={`${source.title} · ${formatScheduleDate(source.content.config.startDate)} — ${formatScheduleDate(source.content.config.endDate)}`}
+                      >
+                        <span className="sticky left-2 inline-block">
+                          {source.title}
+                          <span className="text-muted ml-2 font-normal">
+                            {formatScheduleDate(source.content.config.startDate)} —{" "}
+                            {formatScheduleDate(source.content.config.endDate)}
+                          </span>
+                        </span>
+                      </div>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            ))}
-          </table>
+                  {source.content.rows.length === 0 && (
+                    <tr>
+                      <td colSpan={days.length + 1} className="text-muted px-2 py-1">
+                        В графике нет сотрудников.
+                      </td>
+                    </tr>
+                  )}
+                  {source.content.rows.map((row) => (
+                    <tr key={scheduleRowKey(row)}>
+                      <th
+                        scope="row"
+                        className="border-subtle bg-surface sticky left-0 z-10 w-px border-b px-2 py-1 text-left font-normal whitespace-nowrap"
+                        title={row.historical ? "Историческая строка" : undefined}
+                      >
+                        <span className="block">{row.displayName}</span>
+                        <span className="text-muted block text-[11px]">
+                          {row.positionName ?? "Без должности"}
+                          {row.historical && <span className="sr-only"> · История</span>}
+                        </span>
+                      </th>
+                      {days.map((day) => {
+                        const outside = day < source.content.config.startDate || day > source.content.config.endDate;
+                        const value = source.content.cellValues[scheduleRowCellKey(row, day)] ?? "";
+                        return (
+                          <td
+                            key={day}
+                            className={`border-subtle border-b border-l px-1 py-1 text-center whitespace-nowrap ${outside ? "bg-app text-muted" : "bg-surface"}`}
+                            title={outside ? "Вне периода графика" : undefined}
+                          >
+                            {outside ? (
+                              <>
+                                <span aria-hidden="true">—</span>
+                                <span className="sr-only">Вне периода графика</span>
+                              </>
+                            ) : (
+                              <CommonScheduleShift value={value} mode={source.content.config.shiftMode} />
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
+            </table>
+          </div>
         </div>
       )}
     </div>

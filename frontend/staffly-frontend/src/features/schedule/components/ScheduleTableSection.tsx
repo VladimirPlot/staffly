@@ -3,6 +3,7 @@ import React from "react";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ScheduleTable from "./ScheduleTable";
+import ScheduleTableZoomControls from "./ScheduleTableZoomControls";
 import { useScheduleTableZoom } from "../hooks/useScheduleTableZoom";
 import {
   type EditableScheduleData,
@@ -62,10 +63,8 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
 }) => {
   const showControls = canManage && schedule && !scheduleReadOnly && !loading && !error && !scheduleLoading;
   const showTableZoomControls = schedule.rows.length > 0 && !loading && !error && !scheduleLoading;
-  const { zoom, zoomScale, isDefaultZoom, minZoom, maxZoom, zoomStep, setZoom, showFullPeriod, resetZoom } =
-    useScheduleTableZoom({
-      readOnly: scheduleReadOnly,
-    });
+  const tableZoom = useScheduleTableZoom();
+  const { zoomScale } = tableZoom;
   const saveDisabled = saving || savingDraft;
   const showDraftFromPreferencesNotice = canManage && schedule.status === "DRAFT_FROM_PREFERENCES";
   const reviewSummary = React.useMemo(() => {
@@ -173,35 +172,8 @@ const ScheduleTableSection: React.FC<ScheduleTableSectionProps> = ({
         )}
 
         {showTableZoomControls && (
-          <div className="border-subtle bg-app mb-3 rounded-2xl border px-3 py-3">
-            <div className="grid grid-cols-[auto_auto] items-center gap-3 lg:grid-cols-[auto_1fr_auto_auto]">
-              <span className="text-strong shrink-0 text-sm font-medium">Масштаб</span>
-
-              <div className="justify-self-end lg:col-start-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0 whitespace-nowrap"
-                  onClick={isDefaultZoom ? showFullPeriod : resetZoom}
-                >
-                  {isDefaultZoom ? "Показать весь период" : "Обычный вид"}
-                </Button>
-              </div>
-
-              <div className="col-span-2 flex w-full items-center gap-2 lg:col-span-1 lg:col-start-4 lg:w-[16rem]">
-                <input
-                  type="range"
-                  min={minZoom}
-                  max={maxZoom}
-                  step={zoomStep}
-                  value={zoom}
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                  className="min-w-0 flex-1 accent-[var(--staffly-text-strong)]"
-                  aria-label="Масштаб таблицы"
-                />
-                <span className="text-strong w-10 shrink-0 text-right text-xs tabular-nums">{zoom}%</span>
-              </div>
-            </div>
+          <div className="mb-3">
+            <ScheduleTableZoomControls {...tableZoom} />
           </div>
         )}
 
