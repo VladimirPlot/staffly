@@ -122,11 +122,24 @@ export default function CommonScheduleView({
       ) : (
         <div className="space-y-3">
           <ScheduleTableZoomControls {...tableZoom} showFullPeriod={fitTable} />
-          <div ref={viewportRef} className="border-subtle overflow-x-auto rounded-2xl border">
+          <div
+            ref={viewportRef}
+            className="border-subtle max-h-[70dvh] overflow-auto rounded-2xl border"
+            tabIndex={0}
+            role="region"
+            aria-label="Таблица общего графика"
+          >
             <table
               ref={tableRef}
-              className="text-default w-max border-collapse text-xs"
-              style={{ zoom: tableZoom.zoomScale }}
+              className="common-schedule-table text-default w-max border-separate border-spacing-0 text-xs"
+              style={
+                {
+                  zoom: tableZoom.zoomScale,
+                  WebkitTextSizeAdjust: "none",
+                  textSizeAdjust: "none",
+                  "--common-grid-line": `${1 / tableZoom.zoomScale}px`,
+                } as React.CSSProperties
+              }
               data-common-schedule-table-zoom={tableZoom.zoom}
             >
               <caption className="sr-only">{summary.title}, общий график с группировкой по исходным графикам</caption>
@@ -134,7 +147,7 @@ export default function CommonScheduleView({
                 <tr className="bg-surface">
                   <th
                     scope="col"
-                    className="border-subtle bg-surface sticky left-0 z-20 w-px border-b px-2 py-1 text-left"
+                    className="border-subtle bg-surface sticky top-0 left-0 z-40 w-px border-r border-b px-2 py-1 text-left"
                   >
                     <span className="block">Сотрудник</span>
                     <span className="text-muted block font-normal">Должность</span>
@@ -143,7 +156,7 @@ export default function CommonScheduleView({
                     <th
                       key={day}
                       scope="col"
-                      className={`border-subtle min-w-10 border-b px-1 py-1 ${day === today ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100" : ""}`}
+                      className={`border-subtle sticky top-0 z-30 min-w-10 border-b border-l px-1 py-1 ${day === today ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100" : "bg-surface"}`}
                     >
                       <span className="block">{formatDayNumber(day)}</span>
                       <span className="text-xs">{formatWeekdayShort(day)}</span>
@@ -184,7 +197,7 @@ export default function CommonScheduleView({
                     <tr key={scheduleRowKey(row)}>
                       <th
                         scope="row"
-                        className="border-subtle bg-surface sticky left-0 z-10 w-px border-b px-2 py-1 text-left font-normal whitespace-nowrap"
+                        className="border-subtle bg-surface sticky left-0 z-20 w-px border-r border-b px-2 py-1 text-left font-normal whitespace-nowrap"
                         title={row.historical ? "Историческая строка" : undefined}
                       >
                         <span className="block">{row.displayName}</span>
