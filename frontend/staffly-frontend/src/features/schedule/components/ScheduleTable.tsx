@@ -211,9 +211,9 @@ const ScheduleTable: React.FC<Props> = ({
         : Math.max(3.25, 4.75 * layoutZoomScale)
       : Math.max(5.5, 8.5 * layoutZoomScale);
     const shiftsColWidth = readOnly ? dayColWidth : Math.max(3.75, 5.75 * layoutZoomScale);
-    const firstCol = `minmax(${Math.max(6, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
-    const dayCols = days.map(() => `minmax(${dayColWidth.toFixed(2)}rem, 1fr)`).join(" ");
-    const shiftsCol = `minmax(${shiftsColWidth.toFixed(2)}rem, ${readOnly ? "1fr" : `${shiftsColWidth.toFixed(2)}rem`})`;
+    const firstCol = `${firstColWidth.toFixed(2)}rem`;
+    const dayCols = days.map(() => `${dayColWidth.toFixed(2)}rem`).join(" ");
+    const shiftsCol = `${shiftsColWidth.toFixed(2)}rem`;
     return `${firstCol} ${dayCols} ${shiftsCol}`;
   }, [days, readOnly, layoutZoomScale]);
 
@@ -222,14 +222,18 @@ const ScheduleTable: React.FC<Props> = ({
   return (
     // ❗️скролл только в ScheduleTableSection (overflow-auto)
     <div
-      className="inline-block min-w-full align-top"
+      className="inline-block align-top"
       data-schedule-table-zoom={Math.round(zoomScale * 100)}
-      style={{ "--schedule-zoom": layoutZoomScale, zoom: zoomScale / layoutZoomScale } as ScheduleTableZoomStyle}
+      style={
+        {
+          "--schedule-zoom": layoutZoomScale,
+          zoom: zoomScale / layoutZoomScale,
+          WebkitTextSizeAdjust: "none",
+          textSizeAdjust: "none",
+        } as ScheduleTableZoomStyle
+      }
     >
-      <div
-        className="border-subtle bg-surface grid border"
-        style={{ gridTemplateColumns, width: "100%", minWidth: "max-content" }}
-      >
+      <div className="border-subtle bg-surface grid border" style={{ gridTemplateColumns, width: "max-content" }}>
         <ScheduleTableHeader title={data.title} days={days} />
 
         {rows.map((row, rowIndex) => (
