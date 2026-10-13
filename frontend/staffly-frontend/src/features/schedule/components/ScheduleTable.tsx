@@ -165,6 +165,8 @@ const ScheduleTable: React.FC<Props> = ({
   const days = data?.days ?? EMPTY_DAYS;
   const rows = data?.rows ?? EMPTY_ROWS;
   const cellValues = data?.cellValues ?? EMPTY_CELL_VALUES;
+  // Below the previous layout limit, scale the whole table, including CSS minimum sizes.
+  const layoutZoomScale = Math.max(readOnly ? 0.5 : 0.65, zoomScale);
 
   const { memberShiftCounts, dayShiftCounts, totalShifts } = React.useMemo(() => {
     const nextMemberShiftCounts = rows.map(() => 0);
@@ -201,19 +203,19 @@ const ScheduleTable: React.FC<Props> = ({
     // В editable режиме колонкам нужно место под две пары селектов времени,
     // но внутренние controls теперь тоже пропорционально уменьшаются через --schedule-zoom.
     // В readOnly режиме оставляем таблицу компактнее, особенно для длинных периодов.
-    const firstColWidth = Math.max(6.25, 9 * zoomScale);
+    const firstColWidth = Math.max(6.25, 9 * layoutZoomScale);
     const shouldCompact = readOnly && days.length >= 20;
     const dayColWidth = readOnly
       ? shouldCompact
-        ? Math.max(2.6, 3.75 * zoomScale)
-        : Math.max(3.25, 4.75 * zoomScale)
-      : Math.max(5.5, 8.5 * zoomScale);
-    const shiftsColWidth = readOnly ? dayColWidth : Math.max(3.75, 5.75 * zoomScale);
+        ? Math.max(2.6, 3.75 * layoutZoomScale)
+        : Math.max(3.25, 4.75 * layoutZoomScale)
+      : Math.max(5.5, 8.5 * layoutZoomScale);
+    const shiftsColWidth = readOnly ? dayColWidth : Math.max(3.75, 5.75 * layoutZoomScale);
     const firstCol = `minmax(${Math.max(6, firstColWidth - 0.5).toFixed(2)}rem, ${firstColWidth.toFixed(2)}rem)`;
     const dayCols = days.map(() => `minmax(${dayColWidth.toFixed(2)}rem, 1fr)`).join(" ");
     const shiftsCol = `minmax(${shiftsColWidth.toFixed(2)}rem, ${readOnly ? "1fr" : `${shiftsColWidth.toFixed(2)}rem`})`;
     return `${firstCol} ${dayCols} ${shiftsCol}`;
-  }, [days, readOnly, zoomScale]);
+  }, [days, readOnly, layoutZoomScale]);
 
   if (!data) return null;
 
@@ -222,7 +224,7 @@ const ScheduleTable: React.FC<Props> = ({
     <div
       className="inline-block min-w-full align-top"
       data-schedule-table-zoom={Math.round(zoomScale * 100)}
-      style={{ "--schedule-zoom": zoomScale } as ScheduleTableZoomStyle}
+      style={{ "--schedule-zoom": layoutZoomScale, zoom: zoomScale / layoutZoomScale } as ScheduleTableZoomStyle}
     >
       <div
         className="border-subtle bg-surface grid border"
