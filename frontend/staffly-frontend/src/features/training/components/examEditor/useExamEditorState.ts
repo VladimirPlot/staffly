@@ -44,6 +44,7 @@ export function useExamEditorState({
   knowledgeFolderId,
   initialFolderId,
   certificationAllowedAudienceRoles,
+  certificationFolderRole,
   onClose,
   onSaved,
 }: ExamEditorProps) {
@@ -148,7 +149,9 @@ export function useExamEditorState({
         if (cancelled) return;
         const manageable =
           mode === "CERTIFICATION"
-            ? getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? [])
+            ? getManageablePositions(restaurantPositions, certificationAllowedAudienceRoles ?? []).filter(
+                (position) => !certificationFolderRole || position.level === certificationFolderRole,
+              )
             : restaurantPositions;
         const manageableIds = new Set(manageable.map(({ id }) => id));
         const referencedIds = new Set(exam?.visibilityPositionIds ?? []);
@@ -187,7 +190,7 @@ export function useExamEditorState({
     return () => {
       cancelled = true;
     };
-  }, [certificationAllowedAudienceRoles, exam, open, restaurantId, mode, dataRetry]);
+  }, [certificationAllowedAudienceRoles, certificationFolderRole, exam, open, restaurantId, mode, dataRetry]);
 
   useEffect(() => {
     if (!open || !form.selectedFolderId) {

@@ -20,7 +20,7 @@ export default function VisibilityPositionsField({
 }: Props) {
   const isParentRestricted = parentVisibilityPositionIds.length > 0;
   const allowedPositionIds = new Set(
-    isParentRestricted ? parentVisibilityPositionIds : positions.map((position) => position.id)
+    isParentRestricted ? parentVisibilityPositionIds : positions.map((position) => position.id),
   );
 
   const availablePositions = positions.filter((position) => allowedPositionIds.has(position.id));
@@ -54,14 +54,15 @@ export default function VisibilityPositionsField({
     onChange([...allowedPositionIds]);
   };
 
-  const triggerLabel = (isParentRestricted
-    ? buildVisibilityLabel(selectedPositionIds, positionNameById)
-    : buildVisibilityLabel(value, positionNameById)
+  const triggerLabel = (
+    isParentRestricted
+      ? buildVisibilityLabel(selectedPositionIds, positionNameById)
+      : buildVisibilityLabel(value, positionNameById)
   ).replace("ВСЕМ", "Всем");
 
   return (
     <div className="space-y-2">
-      <label className="block text-sm text-muted">Кто видит</label>
+      <label className="text-muted block text-sm">Кому доступны материалы для изучения</label>
       <DropdownMenu
         disabled={disabled}
         menuClassName="w-[min(28rem,calc(100vw-1rem))]"
@@ -69,11 +70,11 @@ export default function VisibilityPositionsField({
         trigger={(triggerProps) => (
           <button
             type="button"
-            className="border-subtle bg-surface focus:ring-default flex h-11 w-full items-center justify-between rounded-2xl border px-4 text-left text-sm text-default transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="border-subtle bg-surface focus:ring-default text-default flex h-11 w-full items-center justify-between rounded-2xl border px-4 text-left text-sm transition focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
             {...triggerProps}
           >
             <span className="truncate">{triggerLabel}</span>
-            <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted" />
+            <ChevronDown className="text-muted ml-2 h-4 w-4 shrink-0" />
           </button>
         )}
       >
@@ -88,7 +89,7 @@ export default function VisibilityPositionsField({
                 onClick={setAll}
               >
                 <span>Всем</span>
-                {value.length === 0 && <Check className="h-4 w-4 text-default" />}
+                {value.length === 0 && <Check className="text-default h-4 w-4" />}
               </button>
             )}
 
@@ -104,7 +105,7 @@ export default function VisibilityPositionsField({
                   onClick={() => togglePosition(position.id)}
                 >
                   <span>{position.name}</span>
-                  {checked && <Check className="h-4 w-4 text-default" />}
+                  {checked && <Check className="text-default h-4 w-4" />}
                 </button>
               );
             })}
@@ -112,9 +113,7 @@ export default function VisibilityPositionsField({
         )}
       </DropdownMenu>
 
-      {isParentRestricted && (
-        <p className="text-xs text-muted">Доступные должности ограничены родительской папкой.</p>
-      )}
+      {isParentRestricted && <p className="text-muted text-xs">Доступные должности ограничены родительской папкой.</p>}
     </div>
   );
 }

@@ -65,7 +65,7 @@ export function buildAvailabilityLabel(
     (mode === "PRACTICE"
       ? visibilityPositionIds.length === 0
       : positions.length > 0 && visibilityPositionIds.length === positions.length);
-  if (everyone) return "Всем сотрудникам";
+  if (everyone) return mode === "CERTIFICATION" ? "Все доступные должности" : "Всем сотрудникам";
   if (mode === "CERTIFICATION" && visibilityPositionIds.length === 0) return "Должности не выбраны";
 
   const selected = positions.filter((position) => visibilityPositionIds.includes(position.id));

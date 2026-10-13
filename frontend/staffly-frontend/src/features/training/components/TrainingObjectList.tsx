@@ -21,6 +21,8 @@ import {
   trainingObjectArchiveActionKey,
 } from "./trainingObjectManagementActions";
 
+import { folderRoleLabel } from "../utils/folderRole";
+
 const objectCardClassName =
   "group hover:bg-app relative touch-manipulation select-none overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
 const selectedCardClassName = "bg-[color:var(--staffly-control)]/25 shadow-[0_14px_34px_rgba(15,23,42,0.08)]";
@@ -54,7 +56,7 @@ function objectDescription(
 ) {
   switch (object.kind) {
     case "folder":
-      return object.folder.description || "Папка";
+      return [folderRoleLabel(object.folder), object.folder.description].filter(Boolean).join(" · ") || "Папка";
     case "knowledgeItem":
       return object.item.description || object.item.composition || "Карточка базы знаний";
     case "question":

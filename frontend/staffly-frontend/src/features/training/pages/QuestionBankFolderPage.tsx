@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import Button from "../../../shared/ui/Button";
+import { folderRoleLabel, trainingPreparationAccess } from "../utils/folderRole";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
@@ -520,6 +521,12 @@ export default function QuestionBankFolderPage() {
           onOpenFolder={openQuestionBankFolder}
         />
         <h2 className="text-2xl font-semibold">{currentFolder?.name ?? "Папка"}</h2>
+        {currentFolder?.targetRole && (
+          <p className="text-muted text-sm">
+            {folderRoleLabel(currentFolder)}. Доступ к подготовке: {trainingPreparationAccess(currentFolder.targetRole)}
+            .
+          </p>
+        )}
 
         {canManageCurrentFolder ? (
           <div className="border-subtle bg-surface rounded-2xl border p-3">

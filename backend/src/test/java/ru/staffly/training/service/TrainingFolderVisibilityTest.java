@@ -165,8 +165,7 @@ class TrainingFolderVisibilityTest {
         var child = folder(11, root, root.getType()); child.setActive(false);
         child.setVisibilityPositions(Set.of(Position.builder().id(99L).build()));
         when(policy.canManageTraining(7L, 1L)).thenReturn(true);
-        when(policy.canAccessQuestionBankByVisibility(eq(7L), eq(1L), anySet())).thenReturn(true);
-        when(policy.canManageQuestionBankByVisibility(7L, 1L, Set.of())).thenReturn(true);
+        when(policy.canAccessManagementFolder(7L, 1L, root)).thenReturn(true);
         when(folders.findByRestaurantIdAndTypeAndActiveTrueWithVisibilityOrderBySortOrderAscNameAsc(1L, root.getType()))
                 .thenReturn(List.of(root));
         when(folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, root.getType())).thenReturn(tree);
@@ -180,7 +179,7 @@ class TrainingFolderVisibilityTest {
         child.setActive(false);
         child.setVisibilityPositions(Set.of(Position.builder().id(99L).build()));
         doThrow(new ForbiddenException("Outside management scope")).when(policy)
-                .assertCanManageQuestionBankByVisibility(7L, 1L, Set.of(99L));
+                .assertCanAccessManagementFolder(7L, 1L, child);
         assertThrows(ForbiddenException.class, () -> service.hideFolder(1L, 7L, 10L));
         assertTrue(root.isActive()); assertFalse(child.isActive());
         assertThrows(ForbiddenException.class, () -> service.moveFolder(1L, 7L, 10L,

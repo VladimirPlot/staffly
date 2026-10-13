@@ -57,15 +57,12 @@ class ExamQuestionPoolResolver {
                 throw new BadRequestException("Источником может быть только папка Банка вопросов.");
             }
             activeContainerValidator.requireActiveChain(folder);
-            trainingPolicyService.assertCanAccessQuestionBankByVisibility(
-                    userId, restaurantId,
-                    folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
 
             var scope = scopeFolders(restaurantId, folder, source.includeDescendants());
             for (var included : scope) {
                 activeContainerValidator.requireActiveChain(included);
-                trainingPolicyService.assertCanAccessQuestionBankByVisibility(userId, restaurantId,
-                        included.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+                trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, included);
             }
             scopes.add(scope.stream().map(TrainingFolder::getId).collect(Collectors.toSet()));
             var folderQuestions = scope.stream().flatMap(included -> questions.findActiveByRestaurantIdAndFolderIdAndQuestionGroup(
@@ -140,9 +137,7 @@ class ExamQuestionPoolResolver {
                         "Вопрос «" + question.getTitle() + "» не относится к выбранному режиму теста.");
             }
             activeContainerValidator.requireActiveChain(question.getFolder());
-            trainingPolicyService.assertCanAccessQuestionBankByVisibility(
-                    userId, restaurantId,
-                    question.getFolder().getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet()));
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, question.getFolder());
             resolved.add(question);
         }
         return resolved;

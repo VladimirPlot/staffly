@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import Button from "../../../shared/ui/Button";
 import DropdownSelect from "../../../shared/ui/DropdownSelect";
 import Modal from "../../../shared/ui/Modal";
-import type { TrainingFolderDto, TrainingFolderType } from "../api/types";
+import type { TrainingExamDto, TrainingFolderDto, TrainingFolderType } from "../api/types";
+import type { PositionDto } from "../../dictionaries/api";
 import { getTrainingFolderPathLabel, trainingDescendantIds } from "../trainingFolderDnd";
 import type { TrainingMoveTarget } from "../trainingFolderObjects";
 
@@ -11,6 +12,8 @@ export default function TrainingMoveModal({
   target,
   type,
   folders,
+  certificationExams,
+  positions,
   currentFolderId,
   submitting,
   error,
@@ -20,6 +23,8 @@ export default function TrainingMoveModal({
   target: TrainingMoveTarget | null;
   type: TrainingFolderType;
   folders: TrainingFolderDto[];
+  certificationExams?: TrainingExamDto[];
+  positions?: PositionDto[];
   currentFolderId: number | null;
   submitting: boolean;
   error: string | null;
@@ -38,11 +43,22 @@ export default function TrainingMoveModal({
     [folders, target],
   );
   const folderMap = useMemo(() => new Map(folders.map((folder) => [folder.id, folder])), [folders]);
+  const movingExam =
+    target?.kind === "certificationExam" ? certificationExams?.find((exam) => exam.id === target.id) : undefined;
+  const positionRoles = new Map(positions?.map((position) => [position.id, position.level]));
   const options = folders.filter(
     (folder) =>
       folder.type === type &&
       folder.active &&
       !blocked.has(folder.id) &&
+      (target?.kind !== "certificationExam" ||
+        !certificationExams ||
+        (movingExam != null &&
+          movingExam.visibilityPositionIds.length > 0 &&
+          movingExam.visibilityPositionIds.every((id) => positionRoles.get(id) === folder.targetRole))) &&
+      (target?.kind !== "folder" ||
+        type === "KNOWLEDGE" ||
+        folder.targetRole === folderMap.get(target.id)?.targetRole) &&
       (type !== "CERTIFICATION" || folder.manageable),
   );
   const allowRoot =
@@ -72,6 +88,7 @@ export default function TrainingMoveModal({
           {options.map((folder) => (
             <option key={folder.id} value={folder.id}>
               {getTrainingFolderPathLabel(folder, folderMap)}
+              {folder.targetRole ? ` · Для ${folder.targetRole}` : ""}
             </option>
           ))}
         </DropdownSelect>
