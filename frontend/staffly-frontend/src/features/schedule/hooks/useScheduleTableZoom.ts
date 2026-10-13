@@ -2,22 +2,15 @@ import React from "react";
 
 const DEFAULT_ZOOM = 100;
 const FIT_ZOOM = 65;
-const MIN_ZOOM = 50;
-const EDITABLE_MIN_ZOOM = 65;
+const MIN_ZOOM = 10;
 const MAX_ZOOM = 120;
 const STEP = 5;
 
-export function useScheduleTableZoom({ readOnly = true }: { readOnly?: boolean } = {}) {
+export function useScheduleTableZoom() {
   const [zoom, setZoomState] = React.useState(DEFAULT_ZOOM);
 
-  const safeMinZoom = readOnly ? MIN_ZOOM : EDITABLE_MIN_ZOOM;
+  const safeMinZoom = MIN_ZOOM;
   const isDefaultZoom = zoom === DEFAULT_ZOOM;
-
-  React.useEffect(() => {
-    if (zoom < safeMinZoom) {
-      setZoomState(safeMinZoom);
-    }
-  }, [safeMinZoom, zoom]);
 
   const setZoom = React.useCallback(
     (value: number) => {

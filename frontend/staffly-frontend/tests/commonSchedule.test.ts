@@ -142,6 +142,7 @@ test("common table keeps overlapping employees in source blocks and history sepa
   assert.match(html, /10:00/);
   assert.match(html, /Вне периода графика/);
   assert.match(html, /Смена сегодня/);
-  assert.doesNotMatch(html, /WRONG|<input|contenteditable|Заявки|Настройки/);
+  assert.doesNotMatch(html, /WRONG|<input(?![^>]*type="range")|contenteditable|Заявки|Настройки/);
+  assert.match(html, /type="range" min="10" max="120"/);
   assert.equal((html.match(/>Анна</g) ?? []).length, 2);
 });
