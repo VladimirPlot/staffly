@@ -1,3 +1,4 @@
+import { folderRoleLabel, trainingPreparationAccess } from "../utils/folderRole";
 import { Archive, Eye, Folder, FolderPlus, Lock, MoveRight, Pencil, Plus } from "lucide-react";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
@@ -340,12 +341,21 @@ export default function CertificationFolderPage() {
 
         {currentFolder && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
-            {canManage && currentFolder.manageable && (
+            <div className="space-y-1">
+              <h2 className="text-2xl font-semibold">{currentFolder.name}</h2>
+              {currentFolder.targetRole && (
+                <p className="text-muted text-sm">
+                  {folderRoleLabel(currentFolder)}. Доступ к подготовке:{" "}
+                  {trainingPreparationAccess(currentFolder.targetRole)}.
+                </p>
+              )}
+            </div>
+            {canManage && (currentFolder.manageable || currentFolder.organizational) && (
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   variant="outline"
                   leftIcon={<Archive className="h-4 w-4" />}
+                  disabled={!currentFolder.manageable}
                   onClick={() => setArchiveOpen(true)}
                 >
                   Скрытые
@@ -360,6 +370,7 @@ export default function CertificationFolderPage() {
                 <Button
                   variant="outline"
                   leftIcon={<Plus className="h-4 w-4" />}
+                  disabled={currentFolder.organizational}
                   onClick={() => setExamModalOpen(true)}
                 >
                   Создать аттестацию
@@ -369,6 +380,12 @@ export default function CertificationFolderPage() {
           </div>
         )}
         {loading && <LoadingState label="Загрузка папки..." />}
+        {currentFolder?.organizational && (
+          <p className="text-muted text-sm">
+            Без роли — организационная папка. Здесь могут работать менеджеры, администраторы и экзаменаторы. Создайте
+            подпапки для STAFF, MANAGER или ADMIN. Доступ к каждой подпапке определяется её ролью.
+          </p>
+        )}
         {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
         {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
         {capabilityState.error && <ErrorState message={capabilityState.error} onRetry={capabilityState.reload} />}
@@ -414,6 +431,9 @@ export default function CertificationFolderPage() {
                               </span>
                               <div className="min-w-0 flex-1">
                                 <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
+                                {folderRoleLabel(folder) && (
+                                  <div className="text-muted mt-1 text-xs">{folderRoleLabel(folder)}</div>
+                                )}
                                 {folder.description && (
                                   <div className="text-muted mt-1 text-sm">{folder.description}</div>
                                 )}
@@ -518,7 +538,7 @@ export default function CertificationFolderPage() {
         )}
       </CertificationManagementDnd>
 
-      {restaurantId && currentFolder?.manageable && (
+      {restaurantId && (currentFolder?.manageable || currentFolder?.organizational) && (
         <TrainingFolderModal
           open={folderModalOpen}
           mode="create"
@@ -543,13 +563,14 @@ export default function CertificationFolderPage() {
         />
       )}
 
-      {restaurantId && currentFolder?.manageable && (
+      {restaurantId && currentFolder?.manageable && !currentFolder.organizational && (
         <ExamEditorModal
           open={examModalOpen}
           exam={editingExam}
           restaurantId={restaurantId}
           mode="CERTIFICATION"
           certificationAllowedAudienceRoles={allowedAudienceRoles}
+          certificationFolderRole={currentFolder?.targetRole}
           initialFolderId={currentFolderId}
           onClose={() => {
             setExamModalOpen(false);
@@ -577,6 +598,8 @@ export default function CertificationFolderPage() {
         target={moveTarget}
         type="CERTIFICATION"
         folders={foldersState.folders}
+        certificationExams={exams}
+        positions={positions}
         currentFolderId={currentFolderId}
         submitting={moveSubmitting}
         error={moveError}

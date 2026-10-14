@@ -13,5 +13,17 @@ public record CreateTrainingFolderRequest(
         String description,
         @NotNull TrainingFolderType type,
         Integer sortOrder,
-        List<Long> visibilityPositionIds
-) {}
+        List<Long> visibilityPositionIds,
+        ru.staffly.restaurant.model.RestaurantRole targetRole,
+        Boolean organizational
+) {
+    public CreateTrainingFolderRequest(Long parentId, String name, String description,
+            TrainingFolderType type, Integer sortOrder, List<Long> visibilityPositionIds,
+            ru.staffly.restaurant.model.RestaurantRole targetRole) {
+        this(parentId, name, description, type, sortOrder, visibilityPositionIds, targetRole, false);
+    }
+    public CreateTrainingFolderRequest(Long parentId, String name, String description,
+            TrainingFolderType type, Integer sortOrder, List<Long> visibilityPositionIds) {
+        this(parentId, name, description, type, sortOrder, visibilityPositionIds, null);
+    }
+}

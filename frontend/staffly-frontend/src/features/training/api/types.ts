@@ -1,3 +1,5 @@
+import type { RestaurantRole } from "../../../shared/types/restaurant";
+
 export type TrainingFolderType = "KNOWLEDGE" | "QUESTION_BANK" | "CERTIFICATION";
 
 export type TrainingFolderDto = {
@@ -11,6 +13,8 @@ export type TrainingFolderDto = {
   active: boolean;
   visibilityPositionIds: number[];
   manageable: boolean;
+  targetRole?: RestaurantRole | null;
+  organizational?: boolean;
 };
 
 export type CreateTrainingFolderPayload = {
@@ -19,12 +23,16 @@ export type CreateTrainingFolderPayload = {
   parentId?: number | null;
   type: TrainingFolderType;
   visibilityPositionIds?: number[];
+  targetRole?: RestaurantRole | null;
+  organizational?: boolean;
 };
 
 export type UpdateTrainingFolderPayload = {
   name: string;
   description?: string | null;
   visibilityPositionIds?: number[] | null;
+  targetRole?: RestaurantRole | null;
+  organizational?: boolean;
 };
 
 export type TrainingKnowledgeItemDto = {

@@ -176,6 +176,7 @@ public class TrainingExamOwnershipService {
                     .filter(m -> m.getUser() != null && m.getPosition() != null)
                     .filter(this::canManageTrainingAsMember)
                     .filter(m -> trainingPolicyService.canOwnCertificationAsPosition(m.getPosition(), resultingVisibility))
+                    .filter(m -> trainingPolicyService.canPrepareFolderAsPosition(m.getPosition(), exam.getFolder()))
                     .isPresent();
         }
         if (!valid) throw new ConflictException(
@@ -184,7 +185,8 @@ public class TrainingExamOwnershipService {
     }
 
     public boolean canRetainOwnership(TrainingExam exam, Position resultingPosition) {
-        return trainingPolicyService.canOwnCertificationAsPosition(resultingPosition, exam.getVisibilityPositions());
+        return trainingPolicyService.canOwnCertificationAsPosition(resultingPosition, exam.getVisibilityPositions())
+                && trainingPolicyService.canPrepareFolderAsPosition(resultingPosition, exam.getFolder());
     }
 
     public List<RestaurantMember> lifecycleCandidates(TrainingExam exam, Long excludedMemberId, Position target) {
@@ -233,6 +235,7 @@ public class TrainingExamOwnershipService {
         if (candidateMember.getUser() == null) {
             return false;
         }
+        if (!canRetainOwnership(exam, candidateMember.getPosition())) return false;
         try {
             trainingPolicyService.assertCanUseExamTargetPositions(
                     candidateMember.getUser().getId(),

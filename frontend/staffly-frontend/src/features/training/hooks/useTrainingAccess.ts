@@ -23,6 +23,7 @@ export function useTrainingAccess() {
 
     if (hasTrainingManagementAccess(user?.roles)) {
       setMyRole(null);
+      setIsTrainingExaminer(false);
       setSpecializations([]);
       setLoading(false);
       return;
@@ -61,7 +62,7 @@ export function useTrainingAccess() {
 
   const canManage = useMemo(
     () => hasTrainingManagementAccess(user?.roles, myRole, specializations),
-    [user?.roles, myRole, specializations]
+    [user?.roles, myRole, specializations],
   );
 
   return { canManage, myRole, isTrainingExaminer, specializations, loading, restaurantId };

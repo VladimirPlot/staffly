@@ -18,6 +18,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.staffly.common.exception.ForbiddenException;
+import ru.staffly.common.exception.BadRequestException;
 import ru.staffly.dictionary.model.Position;
 import ru.staffly.dictionary.model.PositionSpecialization;
 import ru.staffly.dictionary.repository.PositionRepository;
@@ -174,11 +175,11 @@ class TrainingAuthorizationTest {
         });
         when(positions.findAllById(Set.of(13L))).thenReturn(List.of(adminPosition));
         var request = new CreateTrainingFolderRequest(null, "Certification", null,
-                TrainingFolderType.CERTIFICATION, 0, List.of(13L));
+                TrainingFolderType.CERTIFICATION, 0, List.of(), RestaurantRole.ADMIN);
         var created = controller.createFolder(1L, principal, request);
         assertEquals(50L, created.id());
         var folder = TrainingFolder.builder().id(50L).restaurant(restaurant).type(TrainingFolderType.CERTIFICATION)
-                .name("Certification").visibilityPositions(Set.of(adminPosition)).build();
+                .name("Certification").targetRole(RestaurantRole.ADMIN).build();
         when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(folder));
         when(folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, TrainingFolderType.CERTIFICATION))
                 .thenReturn(List.of(folder));
@@ -253,6 +254,133 @@ class TrainingAuthorizationTest {
         assertTrue(policy.canManageCertificationTargets(7L, 1L, Set.of(11L, 12L, 13L)));
         verify(members, atLeastOnce()).findActiveByUserIdAndRestaurantIdWithPosition(7L, 1L);
         assertDoesNotThrow(() -> controller.listCurrentUserCertifications(1L, principal));
+    }
+
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void staffExaminerCreatesAdminFolderWithoutSelectingAdminJobTitles(TrainingFolderType type) {
+        member(RestaurantRole.STAFF, true);
+        when(folders.save(any())).thenAnswer(call -> {
+            TrainingFolder folder = call.getArgument(0); folder.setId(50L); return folder;
+        });
+        var dto = controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(null, "Admin assessment", null, type, null, List.of(), RestaurantRole.ADMIN));
+        assertEquals(RestaurantRole.ADMIN, dto.targetRole());
+        assertEquals(List.of(), dto.visibilityPositionIds());
+        verify(positions, never()).findAllById(any());
+    }
+
+    @Test void ordinaryAdminCannotCreateAnAdminAssessmentFolder() {
+        member(RestaurantRole.ADMIN, false);
+        assertThrows(ForbiddenException.class, () -> controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(null, "Admin", null, TrainingFolderType.CERTIFICATION, null, List.of(), RestaurantRole.ADMIN)));
+        verify(folders, never()).save(any());
+    }
+
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void managerCanAddStaffFolderInsideSharedKitchenWithProtectedAdminBranch(TrainingFolderType type) {
+        member(RestaurantRole.MANAGER, false);
+        var kitchen = TrainingFolder.builder().id(50L).restaurant(restaurant).name("Kitchen").type(type).organizational(true).build();
+        var admin = TrainingFolder.builder().id(51L).restaurant(restaurant).parent(kitchen).name("Admin").type(type).targetRole(RestaurantRole.ADMIN).build();
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(kitchen));
+        when(folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, type)).thenReturn(List.of(kitchen, admin));
+        when(folders.save(any())).thenAnswer(call -> { TrainingFolder value = call.getArgument(0); value.setId(52L); return value; });
+        var created = controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(50L, "Staff", null, type, null, null, RestaurantRole.STAFF));
+        assertEquals(RestaurantRole.STAFF, created.targetRole());
+        var visible = controller.listFolders(1L, principal, type, true);
+        assertEquals(List.of(50L), visible.stream().map(dto -> dto.id()).toList());
+        assertFalse(visible.get(0).manageable());
+    }
+
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void managerCanCreateOrganizationWithoutAnyTargetRole(TrainingFolderType type) {
+        member(RestaurantRole.MANAGER, false);
+        when(folders.save(any())).thenAnswer(call -> { TrainingFolder value = call.getArgument(0); value.setId(50L); return value; });
+        var created = controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(null, "Kitchen", null, type, null, null, null, true));
+        assertTrue(created.organizational());
+        assertNull(created.targetRole());
+    }
+
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void populatedRoleFolderCannotBecomeAnUnrestrictedOrganization(TrainingFolderType type) {
+        member(RestaurantRole.ADMIN, false);
+        var folder = TrainingFolder.builder().id(50L).restaurant(restaurant).name("Original").type(type)
+                .targetRole(RestaurantRole.MANAGER).build();
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(folder));
+        when(folders.findByRestaurantIdAndType(1L, type)).thenReturn(List.of(folder));
+        when(folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, type)).thenReturn(List.of(folder));
+        when(folders.findAllByRestaurantIdAndIdInWithVisibility(eq(1L), anyList())).thenReturn(List.of(folder));
+        if (type == TrainingFolderType.QUESTION_BANK) {
+            var questionRepository = mock(TrainingQuestionRepository.class);
+            ReflectionTestUtils.setField(knowledgeService, "questions", questionRepository);
+            when(questionRepository.findByRestaurantIdAndFolderIdIn(1L, List.of(50L)))
+                    .thenReturn(List.of(TrainingQuestion.builder().id(100L).folder(folder).build()));
+        } else {
+            when(exams.findCertificationByRestaurantIdAndFolderIdIn(1L, List.of(50L)))
+                    .thenReturn(List.of(certification(100L, managerPosition, true)));
+        }
+        assertThrows(BadRequestException.class, () -> controller.updateFolder(1L, 50L, principal,
+                new UpdateTrainingFolderRequest("Changed", null, null, null, null, true)));
+        assertEquals(RestaurantRole.MANAGER, folder.getTargetRole());
+        assertFalse(folder.isOrganizational());
+        verify(folders, never()).save(any());
+    }
+
+    @Test void newSubfolderInheritsRoleAndCannotIntroduceAnotherLevel() {
+        member(RestaurantRole.ADMIN, false);
+        var parent = TrainingFolder.builder().id(50L).restaurant(restaurant).type(TrainingFolderType.QUESTION_BANK)
+                .targetRole(RestaurantRole.STAFF).build();
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(parent));
+        when(folders.save(any())).thenAnswer(call -> { TrainingFolder value = call.getArgument(0); value.setId(51L); return value; });
+        var inherited = controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(50L, "Child", null, TrainingFolderType.QUESTION_BANK, null, null, null));
+        assertEquals(RestaurantRole.STAFF, inherited.targetRole());
+        clearInvocations(folders);
+        assertThrows(BadRequestException.class, () -> controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(50L, "Other level", null, TrainingFolderType.QUESTION_BANK, null, null, RestaurantRole.MANAGER)));
+        verify(folders, never()).save(any());
+    }
+
+    @Test void changingParentRoleDoesNotExposeOrRelabelItsDescendants() {
+        member(RestaurantRole.ADMIN, false);
+        var parent = TrainingFolder.builder().id(50L).restaurant(restaurant).name("Original")
+                .type(TrainingFolderType.QUESTION_BANK).targetRole(RestaurantRole.MANAGER).build();
+        var child = TrainingFolder.builder().id(51L).restaurant(restaurant).parent(parent)
+                .type(TrainingFolderType.QUESTION_BANK).targetRole(RestaurantRole.MANAGER).build();
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(parent));
+        when(folders.findByRestaurantIdAndType(1L, TrainingFolderType.QUESTION_BANK)).thenReturn(List.of(parent, child));
+        when(folders.findAllByRestaurantIdAndIdInWithVisibility(eq(1L), anyList())).thenReturn(List.of(parent, child));
+        assertThrows(BadRequestException.class, () -> controller.updateFolder(1L, 50L, principal,
+                new UpdateTrainingFolderRequest("Changed", null, null, null, RestaurantRole.STAFF)));
+        assertEquals("Original", parent.getName());
+        assertEquals(RestaurantRole.MANAGER, parent.getTargetRole());
+        verify(folders, never()).save(any());
+    }
+
+    @Test void managementFolderRejectsMissingRoleAndLegacyJobTitleSelector() {
+        member(RestaurantRole.ADMIN, false);
+        assertThrows(BadRequestException.class, () -> controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(null, "Missing role", null, TrainingFolderType.QUESTION_BANK, null, List.of(), null)));
+        assertThrows(BadRequestException.class, () -> controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(null, "Mixed semantics", null, TrainingFolderType.QUESTION_BANK, null, List.of(11L), RestaurantRole.STAFF)));
+        verify(folders, never()).save(any());
+    }
+
+    @Test void directExamDefinitionListingRespectsContainerRoleEvenForLowerAudience() {
+        member(RestaurantRole.MANAGER, false);
+        var exam = certification(100L, staffPosition, true);
+        exam.setFolder(TrainingFolder.builder().id(50L).restaurant(restaurant).type(TrainingFolderType.CERTIFICATION)
+                .targetRole(RestaurantRole.MANAGER).build());
+        when(exams.findByRestaurantIdWithVisibilityOrderByCreatedAtDesc(1L)).thenReturn(List.of(exam));
+        assertEquals(List.of(), controller.listExams(1L, principal, true, true));
+    }
+
+    @Test void participantCannotUseGeneralListingToReadCertificationDefinitions() {
+        member(RestaurantRole.STAFF, false);
+        when(exams.listVisibleForStaff(1L, 20L, TrainingExamMode.CERTIFICATION))
+                .thenReturn(List.of(certification(100L, staffPosition, true)));
+        assertTrue(controller.listExams(1L, principal, false, true).isEmpty());
     }
 
     @Test void staffExamReadKeepsPositionFilterAndIgnoresInactiveFlag() {

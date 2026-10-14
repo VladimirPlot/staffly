@@ -11,6 +11,12 @@ import { useTrainingEditorGuard } from "../hooks/useTrainingEditorGuard";
 import ErrorState from "./ErrorState";
 import LoadingState from "./LoadingState";
 
+import { useAuth } from "../../../shared/providers/AuthProvider";
+import type { RestaurantRole } from "../../../shared/types/restaurant";
+import { useTrainingAccess } from "../hooks/useTrainingAccess";
+import { getManageableAudienceRoles } from "../utils/certificationRoleScope";
+import { trainingRoleLabels, trainingPreparationAccess } from "../utils/folderRole";
+
 type Props = {
   open: boolean;
   mode: "create" | "edit";
@@ -38,6 +44,29 @@ export default function TrainingFolderModal({
   onClose,
   onSaved,
 }: Props) {
+  const roleFolder = type !== "KNOWLEDGE";
+  const { user } = useAuth();
+  const access = useTrainingAccess();
+  const allowedRoles = useMemo(
+    () =>
+      getManageableAudienceRoles({
+        isCreator: user?.roles?.includes("CREATOR") ?? false,
+        isExaminer: access.isTrainingExaminer,
+        membershipRole: access.myRole,
+      }),
+    [user?.roles, access.isTrainingExaminer, access.myRole],
+  );
+  const [targetRole, setTargetRole] = useState<RestaurantRole | "ORGANIZATIONAL" | "">("");
+  const roleOptions = parentFolder?.targetRole
+    ? allowedRoles.filter((role) => role === parentFolder.targetRole)
+    : allowedRoles;
+  const organizational = targetRole === "ORGANIZATIONAL";
+  const roleReady =
+    !roleFolder ||
+    (!access.loading &&
+      (organizational
+        ? access.canManage && !parentFolder?.targetRole
+        : targetRole !== "" && roleOptions.includes(targetRole)));
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedPositionIds, setSelectedPositionIds] = useState<number[]>([]);
@@ -51,7 +80,7 @@ export default function TrainingFolderModal({
   const [positionsRetry, setPositionsRetry] = useState(0);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || roleFolder) return;
     let cancelled = false;
     setPositionsLoading(true);
     setPositionsError(null);
@@ -68,7 +97,7 @@ export default function TrainingFolderModal({
     return () => {
       cancelled = true;
     };
-  }, [open, restaurantId, positionsRetry]);
+  }, [open, restaurantId, positionsRetry, roleFolder]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,6 +114,15 @@ export default function TrainingFolderModal({
     setError(null);
     setConflicts([]);
   }, [open, mode, initialFolder, parentFolder]);
+
+  useEffect(() => {
+    if (!open || !roleFolder) return;
+    setTargetRole(
+      mode === "edit" && initialFolder?.organizational
+        ? "ORGANIZATIONAL"
+        : ((mode === "edit" ? initialFolder?.targetRole : parentFolder?.targetRole) ?? allowedRoles[0] ?? ""),
+    );
+  }, [open, roleFolder, mode, initialFolder, parentFolder, allowedRoles]);
 
   const parentVisibilityPositionIds = useMemo(() => parentFolder?.visibilityPositionIds ?? [], [parentFolder]);
 
@@ -108,7 +146,7 @@ export default function TrainingFolderModal({
   const handleSave = async () => {
     const trimmedName = name.trim();
     const trimmedDescription = description.trim();
-    if (!trimmedName || submitting || positionsLoading || positionsError) return;
+    if (!trimmedName || submitting || !roleReady || (!roleFolder && (positionsLoading || positionsError))) return;
 
     setSubmitting(true);
     setError(null);
@@ -120,13 +158,17 @@ export default function TrainingFolderModal({
           type,
           name: trimmedName,
           description: trimmedDescription || null,
-          visibilityPositionIds: selectedPositionIds,
+          ...(roleFolder
+            ? { targetRole: organizational ? null : (targetRole as RestaurantRole), organizational }
+            : { visibilityPositionIds: selectedPositionIds }),
         });
       } else if (initialFolder) {
         await updateFolder(restaurantId, initialFolder.id, {
           name: trimmedName,
           description: trimmedDescription || null,
-          visibilityPositionIds: selectedPositionIds,
+          ...(roleFolder
+            ? { targetRole: organizational ? null : (targetRole as RestaurantRole), organizational }
+            : { visibilityPositionIds: selectedPositionIds }),
         });
       }
       await onSaved();
@@ -155,7 +197,12 @@ export default function TrainingFolderModal({
             </Button>
             <Button
               onClick={handleSave}
-              disabled={submitting || positionsLoading || Boolean(positionsError) || !name.trim()}
+              disabled={
+                submitting ||
+                !roleReady ||
+                (!roleFolder && (positionsLoading || Boolean(positionsError))) ||
+                !name.trim()
+              }
             >
               {mode === "edit" ? "Сохранить" : "Создать"}
             </Button>
@@ -166,7 +213,45 @@ export default function TrainingFolderModal({
           <Input label="Название" value={name} onChange={(event) => setName(event.target.value)} />
           <Input label="Описание" value={description} onChange={(event) => setDescription(event.target.value)} />
 
-          {positionsLoading ? (
+          {roleFolder ? (
+            <div className="space-y-2">
+              <label className="text-muted block text-sm" htmlFor="training-folder-role">
+                {type === "QUESTION_BANK"
+                  ? "Для сотрудников какой роли предназначены вопросы?"
+                  : "Для сотрудников какой роли предназначены аттестации?"}
+              </label>
+              <select
+                id="training-folder-role"
+                value={targetRole}
+                disabled={submitting || access.loading || Boolean(parentFolder?.targetRole)}
+                className="border-subtle bg-surface text-default h-11 w-full rounded-2xl border px-3 text-sm"
+                onChange={(event) => setTargetRole(event.target.value as RestaurantRole | "ORGANIZATIONAL")}
+              >
+                {!targetRole && <option value="">Выберите роль</option>}
+                {!parentFolder?.targetRole && <option value="ORGANIZATIONAL">Без роли — организационная папка</option>}
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>
+                    {trainingRoleLabels[role]}
+                  </option>
+                ))}
+              </select>
+              {targetRole && (
+                <p className="text-muted text-sm">
+                  Доступ к подготовке:{" "}
+                  {trainingPreparationAccess(organizational ? null : (targetRole as RestaurantRole))}.
+                </p>
+              )}
+              <p className="text-muted text-xs">
+                {organizational
+                  ? "Папка объединяет подпапки для разных ролей. Здесь могут работать менеджеры, администраторы и экзаменаторы. Вопросы и аттестации размещаются в подпапках с ролью; доступ к ним проверяется отдельно."
+                  : "Сотрудники выбранной роли не могут просматривать вопросы и ответы или редактировать содержимое. Специализация EXAMINER даёт полный доступ в Тренинге независимо от основной роли."}
+              </p>
+              {parentFolder?.targetRole && (
+                <p className="text-muted text-xs">Роль наследуется от родительской папки.</p>
+              )}
+              {access.loading && <LoadingState label="Проверяем права…" />}
+            </div>
+          ) : positionsLoading ? (
             <LoadingState label="Загружаем должности…" />
           ) : positionsError ? (
             <ErrorState message={positionsError} onRetry={() => setPositionsRetry((value) => value + 1)} />

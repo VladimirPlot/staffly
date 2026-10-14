@@ -27,10 +27,10 @@ public class CertificationFolderManagementService {
     @Transactional(readOnly = true)
     public Set<Long> manageableFolderIds(Long restaurantId, Long userId) {
         var scopes = policy.certificationManagementScopes(userId, restaurantId);
-        return manageableFolderIds(restaurantId, scopes.folderPositionIds(), scopes.targetPositionIds());
+        return manageableFolderIds(restaurantId, userId, scopes.folderPositionIds(), scopes.targetPositionIds());
     }
 
-    private Set<Long> manageableFolderIds(Long restaurantId,
+    private Set<Long> manageableFolderIds(Long restaurantId, Long userId,
                                           Set<Long> allowedFolderPositions,
                                           Set<Long> allowedExamTargets) {
         var allFolders = folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(
@@ -43,7 +43,7 @@ public class CertificationFolderManagementService {
                 .collect(Collectors.groupingBy(exam -> exam.getFolder().getId()));
         var memo = new HashMap<Long, Boolean>();
         for (var folder : allFolders) {
-            isManageable(folder, children, examsByFolder, memo, allowedFolderPositions, allowedExamTargets);
+            isManageable(folder, children, examsByFolder, memo, userId, restaurantId, allowedFolderPositions, allowedExamTargets);
         }
         return memo.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey).collect(Collectors.toSet());
     }
@@ -60,7 +60,7 @@ public class CertificationFolderManagementService {
         var scopes = policy.certificationManagementScopes(userId, restaurantId);
         var allowedFolderPositions = scopes.folderPositionIds();
         var allowedExamTargets = scopes.targetPositionIds();
-        var manageableFolderIds = manageableFolderIds(restaurantId, allowedFolderPositions, allowedExamTargets);
+        var manageableFolderIds = manageableFolderIds(restaurantId, userId, allowedFolderPositions, allowedExamTargets);
 
         if (folderId != null) {
             var current = folders.findByIdAndRestaurantId(folderId, restaurantId).orElse(null);
@@ -89,19 +89,21 @@ public class CertificationFolderManagementService {
     private boolean isManageable(TrainingFolder folder,
                                   Map<Long, List<TrainingFolder>> children,
                                   Map<Long, List<ru.staffly.training.model.TrainingExam>> examsByFolder,
-                                  Map<Long, Boolean> memo,
+                                  Map<Long, Boolean> memo, Long userId, Long restaurantId,
                                   Set<Long> allowedFolderPositions,
                                   Set<Long> allowedExamTargets) {
         var cached = memo.get(folder.getId());
         if (cached != null) return cached;
         var visibility = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
-        boolean manageable = (visibility.isEmpty() || allowedFolderPositions.containsAll(visibility))
+        boolean manageable = (folder.getTargetRole() != null || folder.isOrganizational()
+                ? policy.canAccessManagementFolder(userId, restaurantId, folder)
+                : visibility.isEmpty() || allowedFolderPositions.containsAll(visibility))
                 && examsByFolder.getOrDefault(folder.getId(), List.of()).stream().allMatch(exam -> {
                     var targets = exam.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
                     return !targets.isEmpty() && allowedExamTargets.containsAll(targets);
                 })
                 && children.getOrDefault(folder.getId(), List.of()).stream().allMatch(child ->
-                    isManageable(child, children, examsByFolder, memo, allowedFolderPositions, allowedExamTargets));
+                    isManageable(child, children, examsByFolder, memo, userId, restaurantId, allowedFolderPositions, allowedExamTargets));
         memo.put(folder.getId(), manageable);
         return manageable;
     }

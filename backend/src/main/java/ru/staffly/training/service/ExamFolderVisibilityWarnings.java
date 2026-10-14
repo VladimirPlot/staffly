@@ -12,6 +12,8 @@ final class ExamFolderVisibilityWarnings {
 
     static List<String> build(TrainingExamMode mode, TrainingFolder folder, List<Position> audience) {
         if (folder == null) return List.of();
+        // Certification containers describe the assessed role, not employee visibility.
+        if (mode == TrainingExamMode.CERTIFICATION && folder.getTargetRole() != null) return List.of();
         var restrictions = new ArrayList<Set<Long>>();
         var visited = new HashSet<Long>();
         for (var current = folder; current != null; current = current.getParent()) {

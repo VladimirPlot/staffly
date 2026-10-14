@@ -1,3 +1,4 @@
+import { folderRoleLabel, folderMatchesPositionRole } from "../utils/folderRole";
 import { Archive, Eye, Folder, FolderPlus, MoveRight, Pencil, Plus } from "lucide-react";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
@@ -236,12 +237,11 @@ export default function ExamsPage() {
     const filtered =
       positionFilter == null
         ? activeRootFolders
-        : activeRootFolders.filter(
-            (folder) =>
-              folder.visibilityPositionIds.length === 0 || folder.visibilityPositionIds.includes(positionFilter),
+        : activeRootFolders.filter((folder) =>
+            folderMatchesPositionRole(folder, positionById.get(positionFilter)?.level),
           );
     return filtered.sort(bySortOrderAndName);
-  }, [foldersState.folders, positionFilter]);
+  }, [foldersState.folders, positionFilter, positionById]);
   const folderReorderEnabled = Boolean(
     capabilityState.capabilities?.folderReorderAllowed && positionFilter == null && rootFolders.length > 1,
   );
@@ -541,6 +541,9 @@ export default function ExamsPage() {
                                       </span>
                                       <div className="min-w-0 flex-1">
                                         <div className="font-semibold [overflow-wrap:anywhere]">{folder.name}</div>
+                                        {folderRoleLabel(folder) && (
+                                          <div className="text-muted mt-1 text-xs">{folderRoleLabel(folder)}</div>
+                                        )}
                                         {folder.description && (
                                           <div className="text-muted mt-1 text-sm">{folder.description}</div>
                                         )}
@@ -707,6 +710,7 @@ export default function ExamsPage() {
           restaurantId={restaurantId}
           mode="CERTIFICATION"
           certificationAllowedAudienceRoles={allowedAudienceRoles}
+          certificationFolderRole={editingExam?.folderId ? folderMap.get(editingExam.folderId)?.targetRole : null}
           onClose={() => {
             setModalOpen(false);
             setEditingExam(null);
@@ -733,6 +737,8 @@ export default function ExamsPage() {
         target={moveTarget}
         type="CERTIFICATION"
         folders={foldersState.folders}
+        certificationExams={manageExams}
+        positions={positions}
         currentFolderId={null}
         submitting={moveSubmitting}
         error={moveError}

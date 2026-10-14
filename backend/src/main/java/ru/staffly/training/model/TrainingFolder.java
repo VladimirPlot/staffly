@@ -40,6 +40,15 @@ public class TrainingFolder {
     @Column(nullable = false, length = 30)
     private TrainingFolderType type;
 
+    /** Level being assessed; knowledge folders continue to use position visibility. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_role", length = 20)
+    private ru.staffly.restaurant.model.RestaurantRole targetRole;
+
+    @Column(name = "organizational", nullable = false)
+    @Builder.Default
+    private boolean organizational = false;
+
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private int sortOrder = 0;

@@ -29,14 +29,16 @@ export default function ExamVisibilitySection({
 }: Props) {
   return (
     <section className="space-y-3">
-      <div className="text-default text-sm font-semibold">Кому доступен тест</div>
+      <div className="text-default text-sm font-semibold">
+        {mode === "CERTIFICATION" ? "Кому назначается аттестация" : "Кому доступен тест"}
+      </div>
 
       <div className="relative">
         <button
           type="button"
           onClick={onToggleMenu}
           aria-expanded={positionMenuOpen}
-          aria-label="Кому доступен тест"
+          aria-label={mode === "CERTIFICATION" ? "Кому назначается аттестация" : "Кому доступен тест"}
           className="border-subtle bg-surface text-default hover:bg-app flex h-11 w-full items-center justify-between rounded-2xl border px-3 text-left text-sm shadow-[var(--staffly-shadow)] transition"
         >
           <span>{availabilityLabel}</span>
@@ -50,7 +52,7 @@ export default function ExamVisibilitySection({
               onClick={onSelectAll}
               className={`hover:bg-app flex min-h-11 w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${allSelected ? "bg-app font-medium" : ""}`}
             >
-              <span>Всем сотрудникам</span>
+              <span>{mode === "CERTIFICATION" ? "Все доступные должности" : "Всем сотрудникам"}</span>
               {allSelected && <span>✓</span>}
             </button>
 
@@ -92,7 +94,7 @@ export default function ExamVisibilitySection({
 
       <div className="text-muted text-xs">
         {mode === "CERTIFICATION"
-          ? "Выберите нужные должности или «Всем сотрудникам» в пределах вашей доступной аудитории."
+          ? "Выберите должности для назначения. Доступ к подготовке определяется ролью папки; назначение его не предоставляет."
           : "Выберите нужные должности или «Всем сотрудникам»."}
       </div>
     </section>
