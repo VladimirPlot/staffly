@@ -112,7 +112,9 @@ public class TrainingPolicyService {
         for (var current = folder; current != null; current = current.getParent()) {
             if (current.getId() != null && !visited.add(current.getId())) return false;
             if (current.getRestaurant() == null || !restaurantId.equals(current.getRestaurant().getId())) return false;
-            if (current.getTargetRole() != null) {
+            if (current.isOrganizational()) {
+                if (!canManageTraining(userId, restaurantId)) return false;
+            } else if (current.getTargetRole() != null) {
                 if (!canPrepareForRole(userId, restaurantId, current.getTargetRole())) return false;
             } else {
                 // Compatibility for pre-migration objects: require the whole legacy scope.

@@ -521,6 +521,12 @@ export default function QuestionBankFolderPage() {
           onOpenFolder={openQuestionBankFolder}
         />
         <h2 className="text-2xl font-semibold">{currentFolder?.name ?? "Папка"}</h2>
+        {currentFolder?.organizational && (
+          <p className="text-muted text-sm">
+            Без роли — организационная папка. Здесь могут работать менеджеры, администраторы и экзаменаторы. Создайте
+            подпапки для разных ролей; вопросы хранятся в подпапках с указанной ролью.
+          </p>
+        )}
         {currentFolder?.targetRole && (
           <p className="text-muted text-sm">
             {folderRoleLabel(currentFolder)}. Доступ к подготовке: {trainingPreparationAccess(currentFolder.targetRole)}
@@ -528,7 +534,7 @@ export default function QuestionBankFolderPage() {
           </p>
         )}
 
-        {canManageCurrentFolder ? (
+        {canManageCurrentFolder || (canManage && currentFolder?.organizational) ? (
           <div className="border-subtle bg-surface rounded-2xl border p-3">
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
               <Input
@@ -555,6 +561,7 @@ export default function QuestionBankFolderPage() {
                     setEditingQuestion(null);
                     setQuestionModalOpen(true);
                   }}
+                  disabled={currentFolder?.organizational}
                 >
                   Создать вопрос
                 </Button>

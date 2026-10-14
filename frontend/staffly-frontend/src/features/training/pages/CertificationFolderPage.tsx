@@ -350,11 +350,12 @@ export default function CertificationFolderPage() {
                 </p>
               )}
             </div>
-            {canManage && currentFolder.manageable && (
+            {canManage && (currentFolder.manageable || currentFolder.organizational) && (
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   variant="outline"
                   leftIcon={<Archive className="h-4 w-4" />}
+                  disabled={!currentFolder.manageable}
                   onClick={() => setArchiveOpen(true)}
                 >
                   Скрытые
@@ -369,6 +370,7 @@ export default function CertificationFolderPage() {
                 <Button
                   variant="outline"
                   leftIcon={<Plus className="h-4 w-4" />}
+                  disabled={currentFolder.organizational}
                   onClick={() => setExamModalOpen(true)}
                 >
                   Создать аттестацию
@@ -378,6 +380,12 @@ export default function CertificationFolderPage() {
           </div>
         )}
         {loading && <LoadingState label="Загрузка папки..." />}
+        {currentFolder?.organizational && (
+          <p className="text-muted text-sm">
+            Без роли — организационная папка. Здесь могут работать менеджеры, администраторы и экзаменаторы. Создайте
+            подпапки для STAFF, MANAGER или ADMIN. Доступ к каждой подпапке определяется её ролью.
+          </p>
+        )}
         {foldersState.error && <ErrorState message={foldersState.error} onRetry={foldersState.reload} />}
         {contentError && <ErrorState message={contentError} onRetry={loadContent} />}
         {capabilityState.error && <ErrorState message={capabilityState.error} onRetry={capabilityState.reload} />}
@@ -530,7 +538,7 @@ export default function CertificationFolderPage() {
         )}
       </CertificationManagementDnd>
 
-      {restaurantId && currentFolder?.manageable && (
+      {restaurantId && (currentFolder?.manageable || currentFolder?.organizational) && (
         <TrainingFolderModal
           open={folderModalOpen}
           mode="create"
@@ -555,7 +563,7 @@ export default function CertificationFolderPage() {
         />
       )}
 
-      {restaurantId && currentFolder?.manageable && (
+      {restaurantId && currentFolder?.manageable && !currentFolder.organizational && (
         <ExamEditorModal
           open={examModalOpen}
           exam={editingExam}

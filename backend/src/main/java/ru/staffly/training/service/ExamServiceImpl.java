@@ -1333,6 +1333,7 @@ public class ExamServiceImpl implements ExamService {
         if (folder.getType() != TrainingFolderType.CERTIFICATION) {
             throw new BadRequestException("Для аттестации нужна папка аттестаций.");
         }
+        if (folder.isOrganizational()) throw new BadRequestException("Создайте подпапку с ролью: организационная папка содержит только подпапки.");
         activeContainerValidator.requireActiveChain(folder);
         trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
         // A readable certification folder may only be a navigation container. Creating or

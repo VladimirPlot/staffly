@@ -45,6 +45,10 @@ public class TrainingFolder {
     @Column(name = "target_role", length = 20)
     private ru.staffly.restaurant.model.RestaurantRole targetRole;
 
+    @Column(name = "organizational", nullable = false)
+    @Builder.Default
+    private boolean organizational = false;
+
     @Column(name = "sort_order", nullable = false)
     @Builder.Default
     private int sortOrder = 0;

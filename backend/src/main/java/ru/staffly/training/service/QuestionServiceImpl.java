@@ -210,6 +210,7 @@ public class QuestionServiceImpl implements QuestionService {
     private ru.staffly.training.model.TrainingFolder requireManageableQuestionBankFolder(Long restaurantId, Long userId, Long folderId) {
         var folder = requireQuestionBankFolder(restaurantId, folderId);
         trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, folder);
+        if (folder.isOrganizational()) throw new BadRequestException("Создайте подпапку с ролью: организационная папка содержит только подпапки.");
         return folder;
     }
 

@@ -95,7 +95,7 @@ public class CertificationFolderManagementService {
         var cached = memo.get(folder.getId());
         if (cached != null) return cached;
         var visibility = folder.getVisibilityPositions().stream().map(Position::getId).collect(Collectors.toSet());
-        boolean manageable = (folder.getTargetRole() != null
+        boolean manageable = (folder.getTargetRole() != null || folder.isOrganizational()
                 ? policy.canAccessManagementFolder(userId, restaurantId, folder)
                 : visibility.isEmpty() || allowedFolderPositions.containsAll(visibility))
                 && examsByFolder.getOrDefault(folder.getId(), List.of()).stream().allMatch(exam -> {

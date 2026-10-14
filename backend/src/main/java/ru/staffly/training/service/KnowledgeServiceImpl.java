@@ -10,6 +10,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ForbiddenException;
+import ru.staffly.common.exception.ForbiddenException;
 import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.dictionary.model.Position;
@@ -268,16 +270,23 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         TrainingFolder parent = resolveParentFolder(restaurantId, userId, request.parentId(), request.type());
         requireActiveParent(parent);
         var targetRole = request.targetRole();
+        boolean organizational = Boolean.TRUE.equals(request.organizational());
         Set<Position> visibilityPositions;
         if (request.type() == TrainingFolderType.KNOWLEDGE) {
+            if (organizational) throw new BadRequestException("Организационные папки доступны в банке вопросов и аттестациях.");
             if (targetRole != null) throw new BadRequestException("Для базы знаний выбираются должности, а не роль проверки.");
             assertCanUseVisibilityPositions(userId, restaurantId, request.type(), request.visibilityPositionIds());
             visibilityPositions = resolveVisibilityPositionsForCreate(restaurantId, parent, request.visibilityPositionIds());
         } else {
             rejectManagementPositionVisibility(request.visibilityPositionIds());
-            if (targetRole == null && parent != null) targetRole = parent.getTargetRole();
-            if (targetRole == null) throw new BadRequestException("Выберите роль сотрудников, для которых предназначена папка.");
-            trainingPolicyService.assertCanPrepareForRole(userId, restaurantId, targetRole);
+            if (organizational) {
+                if (targetRole != null) throw new BadRequestException("Организационная папка не имеет роли.");
+                if (!trainingPolicyService.canManageTraining(userId, restaurantId)) throw new ForbiddenException("Нет доступа к управлению тренингом.");
+            } else {
+                if (targetRole == null && parent != null) targetRole = parent.getTargetRole();
+                if (targetRole == null) throw new BadRequestException("Выберите роль сотрудников или организационную папку без роли.");
+                trainingPolicyService.assertCanPrepareForRole(userId, restaurantId, targetRole);
+            }
             validateManagementParentRole(parent, targetRole);
             visibilityPositions = new HashSet<>();
         }
@@ -289,6 +298,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .description(request.description())
                 .type(request.type())
                 .targetRole(targetRole)
+                .organizational(organizational)
                 .sortOrder(request.sortOrder() == null ? nextFolderSortOrder(restaurantId, request.type(), request.parentId()) : normalizeSortOrder(request.sortOrder()))
                 .active(true)
                 .visibilityPositions(visibilityPositions)
@@ -305,14 +315,19 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         assertQuestionBankSubtreeManageable(restaurantId, userId, entity);
         if (entity.getType() != TrainingFolderType.KNOWLEDGE) {
             rejectManagementPositionVisibility(request.visibilityPositionIds());
-            var role = request.targetRole() == null ? entity.getTargetRole() : request.targetRole();
-            if (role == null) throw new BadRequestException("Выберите роль сотрудников для папки.");
-            trainingPolicyService.assertCanPrepareForRole(userId, restaurantId, role);
+            boolean organizational = request.organizational() == null ? entity.isOrganizational() : request.organizational();
+            var role = organizational ? null : request.targetRole() == null ? entity.getTargetRole() : request.targetRole();
+            if (organizational && request.targetRole() != null) throw new BadRequestException("Организационная папка не имеет роли.");
+            if (!organizational) {
+                if (role == null) throw new BadRequestException("Выберите роль сотрудников для папки.");
+                trainingPolicyService.assertCanPrepareForRole(userId, restaurantId, role);
+            }
             validateManagementParentRole(entity.getParent(), role);
             if (role != entity.getTargetRole()) validateManagementRoleChange(restaurantId, entity, role);
             entity.setTargetRole(role);
+            entity.setOrganizational(organizational);
             entity.getVisibilityPositions().clear();
-        } else if (request.targetRole() != null) {
+        } else if (request.targetRole() != null || Boolean.TRUE.equals(request.organizational())) {
             throw new BadRequestException("Для базы знаний выбираются должности, а не роль проверки.");
         } else if (request.visibilityPositionIds() != null) {
             assertCanUseVisibilityPositions(userId, restaurantId, entity.getType(), request.visibilityPositionIds());
@@ -664,6 +679,13 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         if (parentId == null) {
             return null;
         }
+        var parent = folders.findByIdAndRestaurantIdWithVisibility(parentId, restaurantId)
+                .orElseThrow(() -> new NotFoundException("Folder not found"));
+        if (parent.isOrganizational()) {
+            if (parent.getType() != expectedType) throw new BadRequestException("Parent folder type mismatch");
+            trainingPolicyService.assertCanAccessManagementFolder(userId, restaurantId, parent);
+            return parent;
+        }
         return requireManageableFolder(restaurantId, userId, parentId, expectedType);
     }
 
@@ -702,13 +724,20 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     }
 
     private void validateManagementParentRole(TrainingFolder parent, ru.staffly.restaurant.model.RestaurantRole role) {
-        if (parent != null && parent.getTargetRole() != role) {
+        if (parent != null && !parent.isOrganizational() && parent.getTargetRole() != role) {
             throw new BadRequestException("Роль подпапки должна совпадать с ролью родительской папки.");
         }
     }
 
     private void validateManagementRoleChange(Long restaurantId, TrainingFolder folder,
             ru.staffly.restaurant.model.RestaurantRole role) {
+        if (role == null) {
+            boolean hasContent = folder.getType() == TrainingFolderType.QUESTION_BANK
+                    ? !questions.findByRestaurantIdAndFolderIdIn(restaurantId, List.of(folder.getId())).isEmpty()
+                    : !exams.findCertificationByRestaurantIdAndFolderIdIn(restaurantId, List.of(folder.getId())).isEmpty();
+            if (hasContent) throw new BadRequestException("Сначала перенесите вопросы или аттестации в папку с ролью. Организационная папка содержит только подпапки.");
+            return;
+        }
         var ids = collectFolderIds(restaurantId, folder.getId(), folder.getType());
         var descendants = folders.findAllByRestaurantIdAndIdInWithVisibility(restaurantId, ids);
         if (descendants.stream().anyMatch(child -> !child.getId().equals(folder.getId()) && child.getTargetRole() != role)) {
@@ -1077,7 +1106,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 entity.isActive(),
                 visibilityPositionIds,
                 manageable,
-                entity.getTargetRole()
+                entity.getTargetRole(),
+                entity.isOrganizational()
         );
     }
 
