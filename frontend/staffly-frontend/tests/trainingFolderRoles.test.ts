@@ -37,7 +37,15 @@ test("folder navigation follows the job level rather than a list of job IDs", ()
 });
 
 test("access descriptions explain the training-only overrides", () => {
-  assert.equal(trainingPreparationAccess("STAFF"), "MANAGER, ADMIN, EXAMINER и CREATOR");
-  assert.equal(trainingPreparationAccess("MANAGER"), "ADMIN, EXAMINER и CREATOR");
-  assert.equal(trainingPreparationAccess("ADMIN"), "EXAMINER и CREATOR");
+  assert.equal(trainingPreparationAccess("STAFF"), "MANAGER, ADMIN и EXAMINER");
+  assert.equal(trainingPreparationAccess("MANAGER"), "ADMIN и EXAMINER");
+  assert.equal(trainingPreparationAccess("ADMIN"), "EXAMINER");
+  assert.equal(trainingPreparationAccess(null), "MANAGER, ADMIN и EXAMINER");
+});
+
+test("organizational folders remain in navigation for every role filter", () => {
+  const folder = { type: "CERTIFICATION", organizational: true, targetRole: null } as TrainingFolderDto;
+  assert.equal(folderMatchesPositionRole(folder, "STAFF"), true);
+  assert.equal(folderMatchesPositionRole(folder, "MANAGER"), true);
+  assert.equal(folderMatchesPositionRole(folder, "ADMIN"), true);
 });

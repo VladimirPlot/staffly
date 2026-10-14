@@ -44,4 +44,22 @@ begin
         raise exception 'Knowledge role accepted';
     exception when check_violation then null; end;
 end $$;
+\ir ../../main/resources/db/migration/V136__training_organizational_folders.sql
+insert into training_folder (id, parent_id, type, is_active, target_role, organizational)
+values (8, null, 'QUESTION_BANK', true, null, true),
+       (9, 8, 'QUESTION_BANK', true, 'STAFF', false),
+       (10, 8, 'QUESTION_BANK', true, 'ADMIN', false);
+do $$
+begin
+    if exists (select 1 from training_folder where id < 8 and organizational)
+        then raise exception 'Existing folders changed'; end if;
+    begin
+        update training_folder set target_role = 'STAFF' where id = 8;
+        raise exception 'Organizational role accepted';
+    exception when check_violation then null; end;
+    begin
+        update training_folder set organizational = true where id = 1;
+        raise exception 'Organizational knowledge folder accepted';
+    exception when check_violation then null; end;
+end $$;
 rollback;

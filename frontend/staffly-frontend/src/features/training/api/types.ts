@@ -14,6 +14,7 @@ export type TrainingFolderDto = {
   visibilityPositionIds: number[];
   manageable: boolean;
   targetRole?: RestaurantRole | null;
+  organizational?: boolean;
 };
 
 export type CreateTrainingFolderPayload = {
@@ -23,6 +24,7 @@ export type CreateTrainingFolderPayload = {
   type: TrainingFolderType;
   visibilityPositionIds?: number[];
   targetRole?: RestaurantRole | null;
+  organizational?: boolean;
 };
 
 export type UpdateTrainingFolderPayload = {
@@ -30,6 +32,7 @@ export type UpdateTrainingFolderPayload = {
   description?: string | null;
   visibilityPositionIds?: number[] | null;
   targetRole?: RestaurantRole | null;
+  organizational?: boolean;
 };
 
 export type TrainingKnowledgeItemDto = {

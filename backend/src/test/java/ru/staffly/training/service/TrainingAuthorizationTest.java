@@ -276,6 +276,57 @@ class TrainingAuthorizationTest {
         verify(folders, never()).save(any());
     }
 
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void managerCanAddStaffFolderInsideSharedKitchenWithProtectedAdminBranch(TrainingFolderType type) {
+        member(RestaurantRole.MANAGER, false);
+        var kitchen = TrainingFolder.builder().id(50L).restaurant(restaurant).name("Kitchen").type(type).organizational(true).build();
+        var admin = TrainingFolder.builder().id(51L).restaurant(restaurant).parent(kitchen).name("Admin").type(type).targetRole(RestaurantRole.ADMIN).build();
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(kitchen));
+        when(folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, type)).thenReturn(List.of(kitchen, admin));
+        when(folders.save(any())).thenAnswer(call -> { TrainingFolder value = call.getArgument(0); value.setId(52L); return value; });
+        var created = controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(50L, "Staff", null, type, null, null, RestaurantRole.STAFF));
+        assertEquals(RestaurantRole.STAFF, created.targetRole());
+        var visible = controller.listFolders(1L, principal, type, true);
+        assertEquals(List.of(50L), visible.stream().map(dto -> dto.id()).toList());
+        assertFalse(visible.get(0).manageable());
+    }
+
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void managerCanCreateOrganizationWithoutAnyTargetRole(TrainingFolderType type) {
+        member(RestaurantRole.MANAGER, false);
+        when(folders.save(any())).thenAnswer(call -> { TrainingFolder value = call.getArgument(0); value.setId(50L); return value; });
+        var created = controller.createFolder(1L, principal,
+                new CreateTrainingFolderRequest(null, "Kitchen", null, type, null, null, null, true));
+        assertTrue(created.organizational());
+        assertNull(created.targetRole());
+    }
+
+    @ParameterizedTest @EnumSource(value = TrainingFolderType.class, names = {"QUESTION_BANK", "CERTIFICATION"})
+    void populatedRoleFolderCannotBecomeAnUnrestrictedOrganization(TrainingFolderType type) {
+        member(RestaurantRole.ADMIN, false);
+        var folder = TrainingFolder.builder().id(50L).restaurant(restaurant).name("Original").type(type)
+                .targetRole(RestaurantRole.MANAGER).build();
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(folder));
+        when(folders.findByRestaurantIdAndType(1L, type)).thenReturn(List.of(folder));
+        when(folders.findByRestaurantIdAndTypeWithVisibilityOrderBySortOrderAscNameAsc(1L, type)).thenReturn(List.of(folder));
+        when(folders.findAllByRestaurantIdAndIdInWithVisibility(eq(1L), anyList())).thenReturn(List.of(folder));
+        if (type == TrainingFolderType.QUESTION_BANK) {
+            var questionRepository = mock(TrainingQuestionRepository.class);
+            ReflectionTestUtils.setField(knowledgeService, "questions", questionRepository);
+            when(questionRepository.findByRestaurantIdAndFolderIdIn(1L, List.of(50L)))
+                    .thenReturn(List.of(TrainingQuestion.builder().id(100L).folder(folder).build()));
+        } else {
+            when(exams.findCertificationByRestaurantIdAndFolderIdIn(1L, List.of(50L)))
+                    .thenReturn(List.of(certification(100L, managerPosition, true)));
+        }
+        assertThrows(BadRequestException.class, () -> controller.updateFolder(1L, 50L, principal,
+                new UpdateTrainingFolderRequest("Changed", null, null, null, null, true)));
+        assertEquals(RestaurantRole.MANAGER, folder.getTargetRole());
+        assertFalse(folder.isOrganizational());
+        verify(folders, never()).save(any());
+    }
+
     @Test void newSubfolderInheritsRoleAndCannotIntroduceAnotherLevel() {
         member(RestaurantRole.ADMIN, false);
         var parent = TrainingFolder.builder().id(50L).restaurant(restaurant).type(TrainingFolderType.QUESTION_BANK)

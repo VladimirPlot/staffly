@@ -50,6 +50,7 @@ export default function TrainingMoveModal({
     (folder) =>
       folder.type === type &&
       folder.active &&
+      ((target?.kind !== "question" && target?.kind !== "certificationExam") || !folder.organizational) &&
       !blocked.has(folder.id) &&
       (target?.kind !== "certificationExam" ||
         !certificationExams ||
@@ -58,8 +59,9 @@ export default function TrainingMoveModal({
           movingExam.visibilityPositionIds.every((id) => positionRoles.get(id) === folder.targetRole))) &&
       (target?.kind !== "folder" ||
         type === "KNOWLEDGE" ||
+        folder.organizational ||
         folder.targetRole === folderMap.get(target.id)?.targetRole) &&
-      (type !== "CERTIFICATION" || folder.manageable),
+      (type !== "CERTIFICATION" || folder.manageable || (target?.kind === "folder" && folder.organizational)),
   );
   const allowRoot =
     target?.kind === "folder" || target?.kind === "knowledgeItem" || target?.kind === "certificationExam";

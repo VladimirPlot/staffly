@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -90,6 +91,19 @@ class TrainingFolderRolePolicyTest {
         assertFalse(policy.canAccessManagementFolder(7L, 1L, child));
     }
 
+    @ParameterizedTest @EnumSource(RestaurantRole.class)
+    void sharedKitchenDoesNotGiveAccessToProtectedRoleChildren(RestaurantRole actor) {
+        member(actor, false);
+        var kitchen = folder(TrainingFolderType.QUESTION_BANK, null); kitchen.setOrganizational(true);
+        var child = folder(TrainingFolderType.QUESTION_BANK, RestaurantRole.ADMIN);
+        child.setId(51L); child.setParent(kitchen);
+        assertEquals(actor != RestaurantRole.STAFF, policy.canAccessManagementFolder(7L, 1L, kitchen));
+        assertFalse(policy.canAccessManagementFolder(7L, 1L, child));
+        member(actor, true);
+        assertTrue(policy.canAccessManagementFolder(7L, 1L, kitchen));
+        assertTrue(policy.canAccessManagementFolder(7L, 1L, child));
+    }
+
     @Test void managerCannotReadOtherManagerQuestionsByDirectFolderId() {
         member(RestaurantRole.MANAGER, false);
         var folders = mock(TrainingFolderRepository.class);
@@ -128,12 +142,14 @@ class TrainingFolderRolePolicyTest {
         assertFalse(policy.canAccessQuestionBankByVisibility(7L, 1L, Set.of(11L, 12L)));
     }
 
-    @Test void movingCertificationCannotPutStaffAudienceIntoManagerFolder() {
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void movingCertificationRejectsOrganizationalOrIncompatibleRoleFolder(boolean organizational) {
         member(RestaurantRole.ADMIN, false);
         var exams = mock(TrainingExamRepository.class);
         var folders = mock(TrainingFolderRepository.class);
         var oldFolder = folder(TrainingFolderType.CERTIFICATION, RestaurantRole.STAFF);
         var target = folder(TrainingFolderType.CERTIFICATION, RestaurantRole.MANAGER); target.setId(51L);
+        if (organizational) { target.setTargetRole(null); target.setOrganizational(true); }
         var exam = TrainingExam.builder().id(100L).restaurant(restaurant).mode(TrainingExamMode.CERTIFICATION)
                 .folder(oldFolder).visibilityPositions(Set.of(Position.builder().level(RestaurantRole.STAFF).build())).build();
         var policyMock = mock(TrainingPolicyService.class);
@@ -153,5 +169,23 @@ class TrainingFolderRolePolicyTest {
         assertSame(oldFolder, exam.getFolder());
         verify(mutex).lock(1L);
         verify(exams, never()).flush();
+    }
+
+    @Test void questionsCannotBeCreatedDirectlyInSharedOrganization() {
+        member(RestaurantRole.MANAGER, false);
+        var kitchen = folder(TrainingFolderType.QUESTION_BANK, null); kitchen.setOrganizational(true);
+        var folders = mock(TrainingFolderRepository.class);
+        var questions = mock(TrainingQuestionRepository.class);
+        when(folders.findByIdAndRestaurantIdWithVisibility(50L, 1L)).thenReturn(Optional.of(kitchen));
+        var service = mock(QuestionServiceImpl.class, CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(service, "folders", folders);
+        ReflectionTestUtils.setField(service, "questions", questions);
+        ReflectionTestUtils.setField(service, "trainingPolicyService", policy);
+        ReflectionTestUtils.setField(service, "validator", mock(TrainingQuestionValidator.class));
+        ReflectionTestUtils.setField(service, "lifecycleMutex", mock(ru.staffly.member.lifecycle.RestaurantLifecycleMutex.class));
+        assertThrows(ru.staffly.common.exception.BadRequestException.class, () -> service.createQuestion(1L, 7L,
+                new ru.staffly.training.dto.CreateTrainingQuestionRequest(50L, TrainingQuestionType.SINGLE,
+                        TrainingQuestionGroup.CERTIFICATION, "Question", "Prompt", null, null, List.of(), List.of(), List.of())));
+        verifyNoInteractions(questions);
     }
 }

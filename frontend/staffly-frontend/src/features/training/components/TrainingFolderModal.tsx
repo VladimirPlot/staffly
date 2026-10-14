@@ -56,11 +56,17 @@ export default function TrainingFolderModal({
       }),
     [user?.roles, access.isTrainingExaminer, access.myRole],
   );
-  const [targetRole, setTargetRole] = useState<RestaurantRole | "">("");
+  const [targetRole, setTargetRole] = useState<RestaurantRole | "ORGANIZATIONAL" | "">("");
   const roleOptions = parentFolder?.targetRole
     ? allowedRoles.filter((role) => role === parentFolder.targetRole)
     : allowedRoles;
-  const roleReady = !roleFolder || (!access.loading && targetRole !== "" && roleOptions.includes(targetRole));
+  const organizational = targetRole === "ORGANIZATIONAL";
+  const roleReady =
+    !roleFolder ||
+    (!access.loading &&
+      (organizational
+        ? access.canManage && !parentFolder?.targetRole
+        : targetRole !== "" && roleOptions.includes(targetRole)));
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedPositionIds, setSelectedPositionIds] = useState<number[]>([]);
@@ -111,7 +117,11 @@ export default function TrainingFolderModal({
 
   useEffect(() => {
     if (!open || !roleFolder) return;
-    setTargetRole((mode === "edit" ? initialFolder?.targetRole : parentFolder?.targetRole) ?? allowedRoles[0] ?? "");
+    setTargetRole(
+      mode === "edit" && initialFolder?.organizational
+        ? "ORGANIZATIONAL"
+        : ((mode === "edit" ? initialFolder?.targetRole : parentFolder?.targetRole) ?? allowedRoles[0] ?? ""),
+    );
   }, [open, roleFolder, mode, initialFolder, parentFolder, allowedRoles]);
 
   const parentVisibilityPositionIds = useMemo(() => parentFolder?.visibilityPositionIds ?? [], [parentFolder]);
@@ -149,7 +159,7 @@ export default function TrainingFolderModal({
           name: trimmedName,
           description: trimmedDescription || null,
           ...(roleFolder
-            ? { targetRole: targetRole as RestaurantRole }
+            ? { targetRole: organizational ? null : (targetRole as RestaurantRole), organizational }
             : { visibilityPositionIds: selectedPositionIds }),
         });
       } else if (initialFolder) {
@@ -157,7 +167,7 @@ export default function TrainingFolderModal({
           name: trimmedName,
           description: trimmedDescription || null,
           ...(roleFolder
-            ? { targetRole: targetRole as RestaurantRole }
+            ? { targetRole: organizational ? null : (targetRole as RestaurantRole), organizational }
             : { visibilityPositionIds: selectedPositionIds }),
         });
       }
@@ -215,9 +225,10 @@ export default function TrainingFolderModal({
                 value={targetRole}
                 disabled={submitting || access.loading || Boolean(parentFolder?.targetRole)}
                 className="border-subtle bg-surface text-default h-11 w-full rounded-2xl border px-3 text-sm"
-                onChange={(event) => setTargetRole(event.target.value as RestaurantRole)}
+                onChange={(event) => setTargetRole(event.target.value as RestaurantRole | "ORGANIZATIONAL")}
               >
                 {!targetRole && <option value="">Выберите роль</option>}
+                {!parentFolder?.targetRole && <option value="ORGANIZATIONAL">Без роли — организационная папка</option>}
                 {roleOptions.map((role) => (
                   <option key={role} value={role}>
                     {trainingRoleLabels[role]}
@@ -225,11 +236,15 @@ export default function TrainingFolderModal({
                 ))}
               </select>
               {targetRole && (
-                <p className="text-muted text-sm">Доступ к подготовке: {trainingPreparationAccess(targetRole)}.</p>
+                <p className="text-muted text-sm">
+                  Доступ к подготовке:{" "}
+                  {trainingPreparationAccess(organizational ? null : (targetRole as RestaurantRole))}.
+                </p>
               )}
               <p className="text-muted text-xs">
-                Сотрудники выбранной роли не могут просматривать вопросы и ответы или редактировать содержимое.
-                Специализация EXAMINER и роль CREATOR дают полный доступ в Тренинге независимо от основной роли.
+                {organizational
+                  ? "Папка объединяет подпапки для разных ролей. Здесь могут работать менеджеры, администраторы и экзаменаторы. Вопросы и аттестации размещаются в подпапках с ролью; доступ к ним проверяется отдельно."
+                  : "Сотрудники выбранной роли не могут просматривать вопросы и ответы или редактировать содержимое. Специализация EXAMINER даёт полный доступ в Тренинге независимо от основной роли."}
               </p>
               {parentFolder?.targetRole && (
                 <p className="text-muted text-xs">Роль наследуется от родительской папки.</p>
