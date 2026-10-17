@@ -7,6 +7,8 @@ import type { ScheduleSummary } from "../../schedule/api";
 import { formatScheduleDate, sortCommonScheduleCandidates } from "../utils";
 import CommonScheduleDialog from "./CommonScheduleDialog";
 import CommonScheduleView from "./CommonScheduleView";
+import CommonScheduleDownload from "./CommonScheduleDownload";
+import { getCommonSchedule } from "../api";
 
 type Props = {
   restaurantId: number;
@@ -63,6 +65,9 @@ export default function CommonSchedulesSection({
         detail ? (
           <CommonScheduleView
             schedule={detail}
+            downloadControl={
+              <CommonScheduleDownload loadSchedule={() => getCommonSchedule(restaurantId, detail.summary.id)} />
+            }
             timeZone={timeZone}
             refreshing={refreshing}
             canManage={canManage}
@@ -73,7 +78,7 @@ export default function CommonSchedulesSection({
         ) : (
           <Card>
             <Button variant="outline" onClick={back}>
-              Ко всем графикам
+              К общим графикам
             </Button>
             {refreshing && <p className="text-muted mt-3 text-sm">Загрузка общего графика…</p>}
           </Card>
@@ -118,6 +123,7 @@ export default function CommonSchedulesSection({
                   <Button size="sm" onClick={() => open(item.id)}>
                     Открыть
                   </Button>
+                  <CommonScheduleDownload loadSchedule={() => getCommonSchedule(restaurantId, item.id)} />
                   {canManage && (
                     <>
                       <Button size="sm" variant="outline" onClick={() => edit(item)}>

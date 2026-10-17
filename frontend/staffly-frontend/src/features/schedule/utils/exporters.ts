@@ -1,13 +1,13 @@
 import type { EditableScheduleData } from "../types";
 
-function sanitizeFileName(name: string, extension: string): string {
+export function sanitizeFileName(name: string, extension: string): string {
   const fallback = "График";
   const trimmed = name?.trim() || fallback;
-  const sanitized = trimmed.replace(/[/:*?"<>|]+/g, "_");
+  const sanitized = trimmed.replace(/[\\/:*?"<>|]+/g, "_");
   return `${sanitized}.${extension}`;
 }
 
-function escapeXml(value: string): string {
+export function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -16,7 +16,7 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function columnLetter(index: number): string {
+export function columnLetter(index: number): string {
   let dividend = index;
   let columnName = "";
   while (dividend > 0) {
@@ -229,7 +229,7 @@ function createZip(entries: ZipEntry[]): Uint8Array {
     const localHeader = new DataView(new ArrayBuffer(30));
     localHeader.setUint32(0, 0x04034b50, true);
     localHeader.setUint16(4, 20, true);
-    localHeader.setUint16(6, 0, true);
+    localHeader.setUint16(6, 0x0800, true);
     localHeader.setUint16(8, 0, true);
     localHeader.setUint16(10, time, true);
     localHeader.setUint16(12, day, true);
@@ -250,7 +250,7 @@ function createZip(entries: ZipEntry[]): Uint8Array {
     centralHeader.setUint32(0, 0x02014b50, true);
     centralHeader.setUint16(4, 20, true);
     centralHeader.setUint16(6, 20, true);
-    centralHeader.setUint16(8, 0, true);
+    centralHeader.setUint16(8, 0x0800, true);
     centralHeader.setUint16(10, 0, true);
     centralHeader.setUint16(12, time, true);
     centralHeader.setUint16(14, day, true);
@@ -305,7 +305,7 @@ function createZip(entries: ZipEntry[]): Uint8Array {
   return result;
 }
 
-function downloadBlob(blob: Blob, fileName: string): void {
+export function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -314,28 +314,40 @@ function downloadBlob(blob: Blob, fileName: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  // Give mobile browsers time to begin reading the download before releasing it.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export function createXlsxBlob(sheetXml: string, stylesXml = buildStylesXml()): Blob {
+  const entries: ZipEntry[] = [
+    { filename: "[Content_Types].xml", data: encodeUtf8(buildContentTypesXml()) },
+    { filename: "_rels/.rels", data: encodeUtf8(buildRootRelsXml()) },
+    { filename: "xl/workbook.xml", data: encodeUtf8(buildWorkbookXml()) },
+    { filename: "xl/_rels/workbook.xml.rels", data: encodeUtf8(buildWorkbookRelsXml()) },
+    { filename: "xl/styles.xml", data: encodeUtf8(stylesXml) },
+    { filename: "xl/worksheets/sheet1.xml", data: encodeUtf8(sheetXml) },
+  ];
+
+  const zipContent = createZip(entries);
+  const buffer = zipContent.buffer as ArrayBuffer;
+  const arrayBuffer = buffer.slice(zipContent.byteOffset, zipContent.byteOffset + zipContent.byteLength);
+  return new Blob([arrayBuffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+export function createZipBlob(files: { filename: string; data: Uint8Array }[]): Blob {
+  const bytes = createZip(files);
+  return new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], {
+    type: "application/zip",
+  });
 }
 
 export function exportScheduleToXlsx(schedule: EditableScheduleData): void {
   if (typeof document === "undefined") {
     throw new Error("Экспорт доступен только в браузере");
   }
-  const entries: ZipEntry[] = [
-    { filename: "[Content_Types].xml", data: encodeUtf8(buildContentTypesXml()) },
-    { filename: "_rels/.rels", data: encodeUtf8(buildRootRelsXml()) },
-    { filename: "xl/workbook.xml", data: encodeUtf8(buildWorkbookXml()) },
-    { filename: "xl/_rels/workbook.xml.rels", data: encodeUtf8(buildWorkbookRelsXml()) },
-    { filename: "xl/styles.xml", data: encodeUtf8(buildStylesXml()) },
-    { filename: "xl/worksheets/sheet1.xml", data: encodeUtf8(buildSheetXml(schedule)) },
-  ];
-
-  const zipContent = createZip(entries);
-  const buffer = zipContent.buffer as ArrayBuffer;
-  const arrayBuffer = buffer.slice(zipContent.byteOffset, zipContent.byteOffset + zipContent.byteLength);
-  const blob = new Blob([arrayBuffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const blob = createXlsxBlob(buildSheetXml(schedule));
   downloadBlob(blob, sanitizeFileName(schedule.title || "График", "xlsx"));
 }
 

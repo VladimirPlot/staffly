@@ -22,6 +22,7 @@ import ScheduleDetailHeader from "../components/ScheduleDetailHeader";
 import ScheduleHistoryBlock from "../components/ScheduleHistoryBlock";
 import ScheduleTableSection from "../components/ScheduleTableSection";
 import ScheduleTabsNav from "../components/ScheduleTabsNav";
+import SchedulePageTabs, { type SchedulePageTab } from "../components/SchedulePageTabs";
 import StartPreferenceCollectionDialog from "../components/StartPreferenceCollectionDialog";
 import ShiftReplacementDialog from "../components/ShiftReplacementDialog";
 import ShiftRequestsSection from "../components/ShiftRequestsSection";
@@ -95,7 +96,7 @@ const SchedulePage: React.FC = () => {
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
   const [lastRange, setLastRange] = React.useState<{ start: string; end: string } | null>(null);
   const [positionFilter, setPositionFilter] = React.useState<number | "all">("all");
-  const [activePageTab, setActivePageTab] = React.useState<"schedules" | "templates">("schedules");
+  const [activePageTab, setActivePageTab] = React.useState<SchedulePageTab>("schedules");
   const [activeTab, setActiveTab] = React.useState<"today" | "table" | "requests">("table");
   const [downloadMenuFor, setDownloadMenuFor] = React.useState<number | null>(null);
   const [applyPreferencesDialogOpen, setApplyPreferencesDialogOpen] = React.useState(false);
@@ -538,6 +539,7 @@ const SchedulePage: React.FC = () => {
   const showPageTabs = !schedule && !preferenceActions.preferenceViewScheduleId;
   const showSchedulesTabContent = showPageTabs && activePageTab === "schedules";
   const showTemplatesTabContent = showPageTabs && canManage && activePageTab === "templates";
+  const showCommonTabContent = showPageTabs && activePageTab === "common";
 
   React.useEffect(() => {
     if (!canManage && activePageTab === "templates") {
@@ -758,41 +760,8 @@ const SchedulePage: React.FC = () => {
         </div>
       )}
 
-      {showPageTabs && canManage && !commonScheduleOpen && (
-        <div
-          className="border-subtle bg-surface inline-flex rounded-2xl border p-1 shadow-[var(--staffly-shadow)]"
-          role="tablist"
-          aria-label="Разделы графиков"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activePageTab === "schedules"}
-            onClick={() => setActivePageTab("schedules")}
-            className={
-              "rounded-xl px-4 py-2 text-sm font-medium transition " +
-              (activePageTab === "schedules"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "text-muted hover:bg-app hover:text-default")
-            }
-          >
-            Графики
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activePageTab === "templates"}
-            onClick={() => setActivePageTab("templates")}
-            className={
-              "rounded-xl px-4 py-2 text-sm font-medium transition " +
-              (activePageTab === "templates"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "text-muted hover:bg-app hover:text-default")
-            }
-          >
-            Шаблоны
-          </button>
-        </div>
+      {showPageTabs && !commonScheduleOpen && (
+        <SchedulePageTabs value={activePageTab} canManage={canManage} onChange={setActivePageTab} />
       )}
 
       {loading && <Card>Загрузка…</Card>}
@@ -807,35 +776,46 @@ const SchedulePage: React.FC = () => {
 
       {!loading && !error && showSchedulesTabContent && (
         <>
-          {restaurantId != null && <CommonSchedulesSection key={`${restaurantId}:${canManage}`} restaurantId={restaurantId}
-            canManage={canManage} schedules={savedSchedules} timeZone={restaurantTimeZone}
-            onViewingChange={setCommonScheduleOpen} onRefreshSources={reloadSavedSchedules} />}
-          {!commonScheduleOpen && <SavedSchedulesSection
-            canManage={canManage}
-            savedSchedules={derived.filteredSavedSchedules}
-            positions={positions}
-            positionFilter={positionFilter}
-            onPositionFilterChange={setPositionFilter}
-            onOpenSavedSchedule={handleOpenSavedSchedule}
-            getOpenButtonLabel={(item) =>
-              getSavedScheduleOpenButtonLabel({
-                summary: item,
-                currentMember: derived.currentMember,
-              })
-            }
-            onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
-            onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
-            onDownloadXlsx={exportActions.downloadXlsx}
-            onDownloadJpg={exportActions.downloadJpg}
-            downloadMenuFor={downloadMenuFor}
-            onToggleDownloadMenu={setDownloadMenuFor}
-            downloading={exportActions.downloading}
-            selectedSavedId={savedScheduleActions.selectedSavedId}
-            scheduleLoading={savedScheduleActions.scheduleLoading}
-            hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
-            deletingId={savedScheduleActions.deletingId}
-          />}
+          {!commonScheduleOpen && (
+            <SavedSchedulesSection
+              canManage={canManage}
+              savedSchedules={derived.filteredSavedSchedules}
+              positions={positions}
+              positionFilter={positionFilter}
+              onPositionFilterChange={setPositionFilter}
+              onOpenSavedSchedule={handleOpenSavedSchedule}
+              getOpenButtonLabel={(item) =>
+                getSavedScheduleOpenButtonLabel({
+                  summary: item,
+                  currentMember: derived.currentMember,
+                })
+              }
+              onEditSavedSchedule={savedScheduleActions.editSavedSchedule}
+              onDeleteSavedSchedule={savedScheduleActions.deleteSavedSchedule}
+              onDownloadXlsx={exportActions.downloadXlsx}
+              onDownloadJpg={exportActions.downloadJpg}
+              downloadMenuFor={downloadMenuFor}
+              onToggleDownloadMenu={setDownloadMenuFor}
+              downloading={exportActions.downloading}
+              selectedSavedId={savedScheduleActions.selectedSavedId}
+              scheduleLoading={savedScheduleActions.scheduleLoading}
+              hasPendingSavedSchedules={derived.hasPendingSavedSchedules}
+              deletingId={savedScheduleActions.deletingId}
+            />
+          )}
         </>
+      )}
+
+      {!loading && !error && showCommonTabContent && restaurantId != null && (
+        <CommonSchedulesSection
+          key={`${restaurantId}:${canManage}`}
+          restaurantId={restaurantId}
+          canManage={canManage}
+          schedules={savedSchedules}
+          timeZone={restaurantTimeZone}
+          onViewingChange={setCommonScheduleOpen}
+          onRefreshSources={reloadSavedSchedules}
+        />
       )}
 
       {!loading && !error && showTemplatesTabContent && (

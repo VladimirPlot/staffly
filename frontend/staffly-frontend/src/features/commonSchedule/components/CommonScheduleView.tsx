@@ -12,6 +12,7 @@ import ScheduleTableZoomControls from "../../schedule/components/ScheduleTableZo
 
 type Props = {
   schedule: CommonSchedule;
+  downloadControl?: React.ReactNode;
   timeZone: string;
   refreshing: boolean;
   canManage: boolean;
@@ -22,6 +23,7 @@ type Props = {
 
 export default function CommonScheduleView({
   schedule,
+  downloadControl,
   timeZone,
   refreshing,
   canManage,
@@ -51,9 +53,10 @@ export default function CommonScheduleView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="outline" onClick={onBack}>
-          Ко всем графикам
+          К общим графикам
         </Button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {downloadControl}
           <Button variant="outline" onClick={onRefresh} isLoading={refreshing}>
             Обновить
           </Button>
