@@ -23,7 +23,6 @@ public interface DishwareInventoryRepository extends JpaRepository<DishwareInven
     Optional<DishwareInventory> findByIdAndRestaurantId(Long inventoryId, Long restaurantId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @EntityGraph(attributePaths = {"restaurant", "sourceInventory", "folder", "items"})
     Optional<DishwareInventory> findWithLockByIdAndRestaurantId(Long inventoryId, Long restaurantId);
 
     boolean existsBySourceInventoryId(Long sourceInventoryId);

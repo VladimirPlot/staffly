@@ -4,6 +4,20 @@ export function sortFolders(a: DishwareInventoryFolderDto, b: DishwareInventoryF
   return (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, "ru");
 }
 
+export function isDishwareFolderHidden(folderId: number | null | undefined, folders: DishwareInventoryFolderDto[]) {
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  const seen = new Set<number>();
+  let id = folderId;
+  while (id != null) {
+    if (seen.has(id)) return true;
+    seen.add(id);
+    const folder = byId.get(id);
+    if (!folder || folder.trashedAt) return true;
+    id = folder.parentId;
+  }
+  return false;
+}
+
 export function buildFolderChain(
   folder: DishwareInventoryFolderDto | null,
   folderMap: Map<number, DishwareInventoryFolderDto>,

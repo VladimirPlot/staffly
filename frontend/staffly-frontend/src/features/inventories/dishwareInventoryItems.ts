@@ -39,7 +39,7 @@ export function createEmptyDishwareInventoryItem(sortOrder: number): DishwareInv
 
 export function toEditableDishwareInventoryItems(inventory: DishwareInventoryDto): DishwareInventoryEditableItem[] {
   return inventory.items.map((item, index) => ({
-    clientId: String(item.id ?? createDishwareInventoryClientId()),
+    clientId: item.clientKey ?? String(item.id ?? createDishwareInventoryClientId()),
     id: item.id,
     name: item.name,
     photoUrl: item.photoUrl ?? null,
@@ -57,6 +57,7 @@ export function buildDishwareInventoryItemsPayload(
 ): UpdateDishwareInventoryItemRequest[] {
   return items.map((item, index) => ({
     id: item.id,
+    clientKey: item.clientId,
     name: item.name,
     previousQty: parseDishwareCountInput(String(item.previousQty)),
     incomingQty: parseDishwareCountInput(String(item.incomingQty)),

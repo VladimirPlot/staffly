@@ -33,7 +33,8 @@ public class DishwareInventoryMapper {
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
                 entity.getCompletedAt(),
-                entity.getTrashedAt()
+                entity.getTrashedAt(),
+                entity.getVersion()
         );
     }
 
@@ -64,7 +65,8 @@ public class DishwareInventoryMapper {
                 entity.getUpdatedAt(),
                 entity.getCompletedAt(),
                 entity.getTrashedAt(),
-                items
+                items,
+                entity.getVersion()
         );
     }
 
@@ -85,7 +87,8 @@ public class DishwareInventoryMapper {
                 metrics.diffQty(),
                 metrics.lossQty(),
                 metrics.gainQty(),
-                metrics.lossAmount()
+                metrics.lossAmount(),
+                item.getClientKey()
         );
     }
 

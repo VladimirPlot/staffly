@@ -19,6 +19,7 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
+import DishwareConflictModal from "../components/DishwareConflictModal";
 import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
@@ -38,11 +39,7 @@ import {
   uploadDishwareItemImage,
   type DishwareInventoryDto,
 } from "../api";
-import {
-  createEmptyDishwareInventoryItem,
-  findDishwareServerItemById,
-  type DishwareInventoryEditableItem,
-} from "../dishwareInventoryItems";
+import { createEmptyDishwareInventoryItem, type DishwareInventoryEditableItem } from "../dishwareInventoryItems";
 import { downloadDishwareFile } from "../downloadDishwareFile";
 import { getFriendlyInventoryError } from "../inventoryErrors";
 import { openDishwareInventoryPrintWindow, printDishwareInventoryBlank } from "../printDishwareInventoryBlank";
@@ -74,7 +71,6 @@ function AuthorizedDishwareInventoryEditorPage() {
   const { user } = useAuth();
   const restaurantId = user?.restaurantId ?? null;
 
-  const [inventory, setInventory] = useState<DishwareInventoryDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -94,7 +90,8 @@ function AuthorizedDishwareInventoryEditorPage() {
     Number(inventoryId),
     saving || deleting || exitPending || uploadingItemId !== null,
   );
-  const { draft, setDraft, initialize, discard } = editor;
+  const { draft, setDraft, initialize, discard, captureConflict, adoptPhoto } = editor;
+  const inventory = editor.server;
   const { title, inventoryDate, comment, items } = draft;
   const setTitle = (value: string) => setDraft((prev) => ({ ...prev, title: value }));
   const setInventoryDate = (value: string) => setDraft((prev) => ({ ...prev, inventoryDate: value }));
@@ -108,7 +105,12 @@ function AuthorizedDishwareInventoryEditorPage() {
   const blocker = useBlocker(
     () =>
       !leaving.current &&
-      (editor.dirty || editor.busy || saving || uploadingItemId !== null || Boolean(editor.recovery)),
+      (editor.dirty ||
+        editor.busy ||
+        saving ||
+        uploadingItemId !== null ||
+        Boolean(editor.recovery) ||
+        Boolean(editor.conflict)),
   );
   useEffect(() => {
     setExitPending(blocker.state === "blocked");
@@ -120,7 +122,6 @@ function AuthorizedDishwareInventoryEditorPage() {
     setError(null);
     try {
       const data = await getDishwareInventory(restaurantId, Number(inventoryId));
-      setInventory(data);
       initialize(data);
     } catch (e) {
       console.error("Failed to load inventory", e);
@@ -138,7 +139,7 @@ function AuthorizedDishwareInventoryEditorPage() {
     return computeDishwareSummary(items);
   }, [items]);
   const isCompleted = inventory?.status === "COMPLETED";
-  const isEditingLocked = isCompleted || saving || exitPending || Boolean(editor.recovery);
+  const isEditingLocked = isCompleted || saving || exitPending || Boolean(editor.recovery) || Boolean(editor.conflict);
   const dishwareListPath = useMemo(() => getDishwareListPath(inventory?.folderId), [inventory?.folderId]);
 
   const updateItem = useCallback(
@@ -163,31 +164,8 @@ function AuthorizedDishwareInventoryEditorPage() {
     [setItems],
   );
 
-  const mergeItemPhotoFromServer = useCallback(
-    (updatedInventory: DishwareInventoryDto, itemId: number) => {
-      const serverItem = findDishwareServerItemById(updatedInventory, itemId);
-      setInventory(updatedInventory);
-      if (!serverItem) {
-        return;
-      }
-
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === itemId
-            ? {
-                ...item,
-                photoUrl: serverItem.photoUrl ?? null,
-              }
-            : item,
-        ),
-      );
-    },
-    [setItems],
-  );
-
   const applyLoadedInventory = useCallback(
     (data: DishwareInventoryDto) => {
-      setInventory(data);
       initialize(data);
     },
     [initialize],
@@ -209,12 +187,13 @@ function AuthorizedDishwareInventoryEditorPage() {
         await action(restaurantId, numericInventoryId);
       } catch (e) {
         console.error(logMessage, e);
+        if (captureConflict(e)) return;
         setSaveError(getFriendlyInventoryError(e, e instanceof Error ? e.message : fallbackMessage));
       } finally {
         setSaving(false);
       }
     },
-    [inventoryId, restaurantId],
+    [captureConflict, inventoryId, restaurantId],
   );
 
   const handleSave = useCallback(async () => {
@@ -224,8 +203,8 @@ function AuthorizedDishwareInventoryEditorPage() {
   const handleComplete = useCallback(async () => {
     await runSaveAction(
       async (restaurantId, inventoryId) => {
-        await saveDraft();
-        const completed = await completeDishwareInventory(restaurantId, inventoryId);
+        const saved = await saveDraft();
+        const completed = await completeDishwareInventory(restaurantId, inventoryId, saved.version);
         applyLoadedInventory(completed);
       },
       "Failed to complete inventory",
@@ -236,13 +215,13 @@ function AuthorizedDishwareInventoryEditorPage() {
   const handleReopen = useCallback(async () => {
     await runSaveAction(
       async (restaurantId, inventoryId) => {
-        const reopened = await reopenDishwareInventory(restaurantId, inventoryId);
+        const reopened = await reopenDishwareInventory(restaurantId, inventoryId, inventory!.version);
         applyLoadedInventory(reopened);
       },
       "Failed to reopen inventory",
       "Не удалось вернуть документ в черновик",
     );
-  }, [applyLoadedInventory, runSaveAction]);
+  }, [applyLoadedInventory, inventory, runSaveAction]);
 
   const handleDownloadPrintForm = useCallback(async () => {
     if (!restaurantId || !inventoryId || saving || downloadingPrintForm) return;
@@ -259,12 +238,13 @@ function AuthorizedDishwareInventoryEditorPage() {
       downloadDishwareFile(file.blob, file.fileName);
     } catch (e) {
       console.error("Failed to download inventory print form", e);
+      if (captureConflict(e)) return;
       setSaveError(getFriendlyInventoryError(e, "Не удалось скачать бланк"));
     } finally {
       setSaving(false);
       setDownloadingPrintForm(false);
     }
-  }, [downloadingPrintForm, inventoryId, isCompleted, restaurantId, saveDraft, saving, title]);
+  }, [captureConflict, downloadingPrintForm, inventoryId, isCompleted, restaurantId, saveDraft, saving, title]);
 
   const handlePrintForm = useCallback(async () => {
     if (!restaurantId || !inventoryId || saving || printingPrintForm) return;
@@ -289,12 +269,13 @@ function AuthorizedDishwareInventoryEditorPage() {
     } catch (e) {
       printWindow.close();
       console.error("Failed to print inventory form", e);
+      if (captureConflict(e)) return;
       setSaveError(getFriendlyInventoryError(e, "Не удалось подготовить бланк к печати"));
     } finally {
       setSaving(false);
       setPrintingPrintForm(false);
     }
-  }, [inventoryId, isCompleted, printingPrintForm, restaurantId, saveDraft, saving]);
+  }, [captureConflict, inventoryId, isCompleted, printingPrintForm, restaurantId, saveDraft, saving]);
 
   const handleDelete = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -306,6 +287,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       navigate(dishwareListPath);
     } catch (e) {
       console.error("Failed to delete inventory", e);
+      setSaveError(getFriendlyInventoryError(e, "Не удалось переместить документ в корзину. Повторите попытку."));
     } finally {
       setDeleting(false);
     }
@@ -317,16 +299,23 @@ function AuthorizedDishwareInventoryEditorPage() {
       setUploadingItemId(itemId);
       setSaveError(null);
       try {
-        const updated = await uploadDishwareItemImage(restaurantId, Number(inventoryId), itemId, file);
-        mergeItemPhotoFromServer(updated, itemId);
+        const updated = await uploadDishwareItemImage(
+          restaurantId,
+          Number(inventoryId),
+          itemId,
+          file,
+          inventory!.version,
+        );
+        adoptPhoto(updated, itemId);
       } catch (e) {
         console.error("Failed to upload item image", e);
+        if (captureConflict(e)) return;
         setSaveError(getFriendlyInventoryError(e, "Не удалось загрузить фото"));
       } finally {
         setUploadingItemId(null);
       }
     },
-    [inventoryId, mergeItemPhotoFromServer, restaurantId],
+    [adoptPhoto, captureConflict, inventory, inventoryId, restaurantId],
   );
 
   const handleDeleteImage = useCallback(
@@ -335,16 +324,17 @@ function AuthorizedDishwareInventoryEditorPage() {
       setUploadingItemId(itemId);
       setSaveError(null);
       try {
-        const updated = await deleteDishwareItemImage(restaurantId, Number(inventoryId), itemId);
-        mergeItemPhotoFromServer(updated, itemId);
+        const updated = await deleteDishwareItemImage(restaurantId, Number(inventoryId), itemId, inventory!.version);
+        adoptPhoto(updated, itemId);
       } catch (e) {
         console.error("Failed to delete item image", e);
+        if (captureConflict(e)) return;
         setSaveError(getFriendlyInventoryError(e, "Не удалось удалить фото"));
       } finally {
         setUploadingItemId(null);
       }
     },
-    [inventoryId, mergeItemPhotoFromServer, restaurantId],
+    [adoptPhoto, captureConflict, inventory, inventoryId, restaurantId],
   );
 
   const printFormButtons: EditorActionButton[] = [
@@ -357,7 +347,15 @@ function AuthorizedDishwareInventoryEditorPage() {
         actionButton("Сохранить", Save, () => void handleSave(), { isLoading: saving }),
         ...printFormButtons,
         actionButton("Завершить", Check, () => void handleComplete(), { isLoading: saving }),
-        actionButton("В корзину", Trash2, () => setDeleteOpen(true), { disabled: saving, className: "text-red-600" }),
+        actionButton(
+          "В корзину",
+          Trash2,
+          () => {
+            setSaveError(null);
+            setDeleteOpen(true);
+          },
+          { disabled: saving, className: "text-red-600" },
+        ),
       ];
 
   if (loading) {
@@ -430,7 +428,7 @@ function AuthorizedDishwareInventoryEditorPage() {
                 className={["min-h-11", className].filter(Boolean).join(" ")}
                 isLoading={isLoading}
                 leftIcon={<Icon icon={icon} size="sm" decorative />}
-                disabled={disabled || saving || editor.busy || uploadingItemId !== null}
+                disabled={disabled || saving || editor.busy || uploadingItemId !== null || Boolean(editor.conflict)}
                 onClick={onClick}
               >
                 {label}
@@ -485,7 +483,7 @@ function AuthorizedDishwareInventoryEditorPage() {
             {editor.localError}
           </div>
         ) : null}
-        {saveError || editor.saveError ? (
+        {!editor.conflict && (saveError || editor.saveError) ? (
           <div className="text-sm text-red-600" role="alert">
             {saveError ?? editor.saveError}
           </div>
@@ -512,7 +510,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       />
 
       <Modal
-        open={blocker.state === "blocked"}
+        open={blocker.state === "blocked" && !editor.conflict}
         title="Выйти из инвентаризации?"
         description="Можно сохранить последние изменения или выйти без их сохранения. Изменения, уже сохранённые автоматически, останутся в документе."
         onClose={() => {
@@ -570,7 +568,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       </Modal>
 
       <Modal
-        open={Boolean(editor.recovery) && blocker.state !== "blocked"}
+        open={Boolean(editor.recovery) && !editor.conflict && blocker.state !== "blocked"}
         title="Найдена локальная копия"
         description="Документ на сервере изменился после создания локальной копии. Восстановите свои правки для проверки или используйте документ с сервера."
         onClose={() => {}}
@@ -584,10 +582,32 @@ function AuthorizedDishwareInventoryEditorPage() {
         }
       />
 
+      <DishwareConflictModal
+        conflict={editor.conflict}
+        busy={editor.busy}
+        pending={editor.hasPendingSave}
+        error={editor.saveError}
+        onResolve={(mode) => {
+          setSaveError(null);
+          void editor.resolveConflict(mode);
+        }}
+        onCancel={editor.cancelConflict}
+        onAcceptCurrent={editor.acceptCurrent}
+      />
+
       <ConfirmDialog
         open={deleteOpen}
         title="Переместить в корзину"
-        description="Документ исчезнет из активного списка. В корзине его можно восстановить или удалить навсегда."
+        description={
+          <div className="space-y-2">
+            <p>Документ исчезнет из активного списка. В корзине его можно восстановить или удалить навсегда.</p>
+            {saveError ? (
+              <p role="alert" className="text-red-600">
+                {saveError}
+              </p>
+            ) : null}
+          </div>
+        }
         confirming={deleting}
         confirmText={deleting ? "Перемещаем…" : "В корзину"}
         onCancel={() => {

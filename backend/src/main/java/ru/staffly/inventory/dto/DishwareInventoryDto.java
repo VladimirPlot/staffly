@@ -23,5 +23,6 @@ public record DishwareInventoryDto(
         Instant updatedAt,
         Instant completedAt,
         Instant trashedAt,
-        List<DishwareInventoryItemDto> items
+        List<DishwareInventoryItemDto> items,
+        long version
 ) {}

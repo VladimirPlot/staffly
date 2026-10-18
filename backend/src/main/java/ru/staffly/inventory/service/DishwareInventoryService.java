@@ -47,9 +47,9 @@ public interface DishwareInventoryService {
 
     DishwareInventoryDto update(Long restaurantId, Long currentUserId, Long inventoryId, UpdateDishwareInventoryRequest request);
 
-    DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId);
+    DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion);
 
-    DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId);
+    DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion);
 
     void delete(Long restaurantId, Long currentUserId, Long inventoryId);
 
@@ -61,7 +61,7 @@ public interface DishwareInventoryService {
 
     DishwareInventoryDto restore(Long restaurantId, Long currentUserId, Long inventoryId);
 
-    DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, MultipartFile file) throws IOException;
+    DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file) throws IOException;
 
-    DishwareInventoryDto deleteItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId) throws IOException;
+    DishwareInventoryDto deleteItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion) throws IOException;
 }

@@ -12,7 +12,22 @@ export type DishwareDraft = {
   comment: string;
   items: DishwareInventoryEditableItem[];
 };
-export type StoredDishwareDraft = { version: 1; base: string; draft: DishwareDraft; needsReview?: boolean };
+export type PendingDishwareSave = {
+  requestId: string;
+  expectedVersion: number;
+  folderId: number | null;
+  snapshot: DishwareDraft;
+  input: DishwareDraft;
+  base: DishwareDraft | null;
+};
+export type StoredDishwareDraft = {
+  version: 1;
+  base: string;
+  draft: DishwareDraft;
+  needsReview?: boolean;
+  baseDraft?: DishwareDraft;
+  pendingSave?: PendingDishwareSave;
+};
 export const emptyDishwareDraft: DishwareDraft = { title: "", inventoryDate: "", comment: "", items: [] };
 
 export function dishwareDraftFromServer(data: DishwareInventoryDto): DishwareDraft {
@@ -95,6 +110,28 @@ export function readDishwareDraft(storage: Pick<Storage, "getItem">, key: string
     )
       return null;
     const ids = new Set<string>();
+    if (
+      value.baseDraft &&
+      !readDishwareDraft({ getItem: () => JSON.stringify({ version: 1, base: "", draft: value.baseDraft }) }, key)
+    )
+      return null;
+    if (value.pendingSave) {
+      const operation = value.pendingSave;
+      if (
+        typeof operation.requestId !== "string" ||
+        !Number.isSafeInteger(operation.expectedVersion) ||
+        operation.expectedVersion < 0 ||
+        (operation.folderId != null && !Number.isSafeInteger(operation.folderId)) ||
+        !readDishwareDraft(
+          { getItem: () => JSON.stringify({ version: 1, base: "", draft: operation.snapshot }) },
+          key,
+        ) ||
+        !readDishwareDraft({ getItem: () => JSON.stringify({ version: 1, base: "", draft: operation.input }) }, key) ||
+        (operation.base != null &&
+          !readDishwareDraft({ getItem: () => JSON.stringify({ version: 1, base: "", draft: operation.base }) }, key))
+      )
+        return null;
+    }
     for (const item of d.items) {
       if (
         !item ||

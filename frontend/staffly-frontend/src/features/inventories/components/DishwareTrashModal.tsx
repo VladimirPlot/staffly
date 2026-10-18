@@ -22,6 +22,8 @@ export default function DishwareTrashModal({
   onDeleteFolder,
   onDeleteInventory,
   onDeleteAll,
+  notice,
+  onRetry,
 }: {
   open: boolean;
   folders: DishwareInventoryFolderDto[];
@@ -35,6 +37,8 @@ export default function DishwareTrashModal({
   onDeleteFolder: (folder: DishwareInventoryFolderDto) => void;
   onDeleteInventory: (inventory: DishwareInventorySummaryDto) => void;
   onDeleteAll: () => void;
+  notice?: string | null;
+  onRetry: () => void;
 }) {
   const trashedFolders = folders.filter((folder) => folder.trashedAt).sort(sortFolders);
   const items: Array<TrashModalItem<DishwareTrashObject["kind"], DishwareTrashObject>> = [
@@ -72,6 +76,8 @@ export default function DishwareTrashModal({
       loading={loading}
       error={error}
       actionLoading={actionLoading}
+      notice={notice}
+      onRetry={onRetry}
       onClose={onClose}
       onRestore={(item) => {
         if (item.value.kind === "folder") onRestoreFolder(item.value.value);

@@ -16,5 +16,6 @@ public record DishwareInventoryItemDto(
         Integer diffQty,
         Integer lossQty,
         Integer gainQty,
-        BigDecimal lossAmount
+        BigDecimal lossAmount,
+        String clientKey
 ) {}
