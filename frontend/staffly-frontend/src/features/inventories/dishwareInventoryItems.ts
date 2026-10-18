@@ -1,4 +1,5 @@
 import type { DishwareInventoryDto, DishwareInventoryItemDto, UpdateDishwareInventoryItemRequest } from "./api";
+import type { DishwarePendingPhoto } from "./dishwarePhotoDraft";
 import {
   normalizeDishwareCount,
   normalizeDishwareMoney,
@@ -11,6 +12,8 @@ export type DishwareInventoryEditableItem = {
   id?: number;
   name: string;
   photoUrl?: string | null;
+  pendingPhoto?: DishwarePendingPhoto;
+  removePhoto?: boolean;
   previousQty: number | string;
   incomingQty: number | string;
   currentQty: number | string;

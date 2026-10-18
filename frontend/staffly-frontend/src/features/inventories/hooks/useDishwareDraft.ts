@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
-import { updateDishwareInventory, type DishwareInventoryDto } from "../api";
+import {
+  deleteDishwareItemImage,
+  uploadDishwareItemImage,
+  updateDishwareInventory,
+  type DishwareInventoryDto,
+} from "../api";
+import { deleteDishwarePhoto, readDishwarePhoto, storeDishwarePhoto } from "../dishwarePhotoDraft";
 import { buildDishwareInventoryItemsPayload } from "../dishwareInventoryItems";
 import {
   dishwareDraftError,
@@ -43,6 +49,7 @@ export function useDishwareDraft(
   const [saveError, setSaveError] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [preparingPhoto, setPreparingPhoto] = useState<string | null>(null);
   const inFlight = useRef<Promise<DishwareInventoryDto> | null>(null);
   const pendingSave = useRef<PendingDishwareSave | null>(null);
   const discarded = useRef(false);
@@ -151,6 +158,13 @@ export function useDishwareDraft(
   const fingerprint = dishwareDraftFingerprint(draft);
   const dirty = base !== null && (fingerprint !== base || Boolean(pendingSave.current));
   const validationError = dishwareDraftError(draft);
+  const previousPhotoTokens = useRef(new Set<string>());
+  useEffect(() => {
+    const tokens = new Set(draft.items.flatMap((item) => (item.pendingPhoto ? [item.pendingPhoto.token] : [])));
+    for (const token of previousPhotoTokens.current)
+      if (!tokens.has(token)) void deleteDishwarePhoto(token).catch(() => undefined);
+    previousPhotoTokens.current = tokens;
+  }, [draft.items]);
   useEffect(() => {
     if (server && !recovery) persist(draft, base, needsReview || Boolean(conflict));
   }, [base, conflict, draft, needsReview, persist, recovery, server]);
@@ -263,6 +277,59 @@ export function useDishwareDraft(
     [send],
   );
 
+  const flushPhotos = useCallback(async (): Promise<DishwareInventoryDto> => {
+    while (inFlight.current) await inFlight.current;
+    const task = (async () => {
+      const loaded = serverRef.current;
+      if (!loaded || !restaurantId) throw new Error("Инвентаризация не загружена");
+      const queued = current.current.items.filter((item) => item.pendingPhoto || item.removePhoto);
+      if (!queued.length) return loaded;
+      setBusy(true);
+      setSaveError(null);
+      try {
+        for (const queuedItem of queued) {
+          let row = current.current.items.find((item) => item.clientId === queuedItem.clientId);
+          if (!row || (!row.pendingPhoto && !row.removePhoto)) continue;
+          if (!row.id) throw new Error("Не удалось сохранить позицию для загрузки фото. Повторите сохранение.");
+          const photo = row.pendingPhoto;
+          const file = photo ? await readDishwarePhoto(photo) : null;
+          row = current.current.items.find((item) => item.clientId === queuedItem.clientId);
+          if (!row?.id || row.pendingPhoto?.token !== photo?.token) continue;
+          const updated = file
+            ? await uploadDishwareItemImage(restaurantId, inventoryId, row.id, file, serverRef.current!.version)
+            : await deleteDishwareItemImage(restaurantId, inventoryId, row.id, serverRef.current!.version);
+          const serverRow = updated.items.find((item) => item.clientKey === row!.clientId || item.id === row!.id);
+          serverRef.current = updated;
+          baseDraft.current = dishwareDraftFromServer(updated);
+          baseRef.current = dishwareDraftFingerprint(baseDraft.current);
+          setDraft((previous) => ({
+            ...previous,
+            items: previous.items.map((item) =>
+              item.clientId === row!.clientId
+                ? { ...item, photoUrl: serverRow?.photoUrl ?? null, pendingPhoto: undefined, removePhoto: undefined }
+                : item,
+            ),
+          }));
+          setServer(updated);
+          setBase(baseRef.current);
+          persist(current.current, baseRef.current);
+        }
+        return serverRef.current!;
+      } catch (error) {
+        captureConflict(error);
+        throw error;
+      } finally {
+        if (mounted.current) setBusy(false);
+      }
+    })();
+    inFlight.current = task;
+    try {
+      return await task;
+    } finally {
+      inFlight.current = null;
+    }
+  }, [captureConflict, inventoryId, persist, restaurantId, setDraft]);
+
   const save = useCallback(async (): Promise<DishwareInventoryDto> => {
     while (inFlight.current) await inFlight.current;
     if (pendingSave.current) await enqueue(pendingSave.current);
@@ -278,20 +345,24 @@ export function useDishwareDraft(
     const snapshot = current.current,
       problem = dishwareDraftError(snapshot);
     if (problem) throw new Error(problem);
-    if (dishwareDraftFingerprint(snapshot) === baseRef.current) return loaded;
-    return enqueue({
-      requestId: crypto.randomUUID(),
-      expectedVersion: loaded.version,
-      folderId: loaded.folderId ?? null,
-      snapshot,
-      input: snapshot,
-      base: baseDraft.current,
-    });
-  }, [enqueue, updateConflict]);
+    if (dishwareDraftFingerprint(snapshot, false) !== dishwareDraftFingerprint(dishwareDraftFromServer(loaded), false))
+      await enqueue({
+        requestId: crypto.randomUUID(),
+        expectedVersion: loaded.version,
+        folderId: loaded.folderId ?? null,
+        snapshot,
+        input: snapshot,
+        base: baseDraft.current,
+      });
+    return flushPhotos();
+  }, [enqueue, flushPhotos, updateConflict]);
 
   const resolveConflict = async (mode: DishwareResolution) => {
     try {
-      if (pendingSave.current) return await enqueue(pendingSave.current);
+      if (pendingSave.current) {
+        await enqueue(pendingSave.current);
+        return await flushPhotos();
+      }
       const selected = conflictRef.current;
       if (!selected) return;
       if (selected.current.status !== "DRAFT")
@@ -299,7 +370,7 @@ export function useDishwareDraft(
       const snapshot = resolveDishwareConflict(selected, mode),
         problem = dishwareDraftError(snapshot);
       if (problem) throw new Error(problem);
-      return await enqueue({
+      await enqueue({
         requestId: crypto.randomUUID(),
         expectedVersion: selected.current.version,
         folderId: selected.current.folderId ?? null,
@@ -307,6 +378,7 @@ export function useDishwareDraft(
         input: current.current,
         base: selected.base,
       });
+      return await flushPhotos();
     } catch (error) {
       setSaveError(
         getFriendlyInventoryError(error, error instanceof Error ? error.message : "Не удалось сохранить результаты"),
@@ -332,7 +404,7 @@ export function useDishwareDraft(
   }, [conflict, dirty, fingerprint, needsReview, paused, recovery, save, server?.status, validationError]);
 
   useEffect(() => {
-    if (!dirty && !busy && !conflict && !recovery) return;
+    if (!dirty && !busy && !preparingPhoto && !conflict && !recovery) return;
     const handler = (event: BeforeUnloadEvent) => {
       if (!recovery) persist(current.current, baseRef.current, needsReview || Boolean(conflict));
       event.preventDefault();
@@ -340,9 +412,15 @@ export function useDishwareDraft(
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [busy, conflict, dirty, needsReview, persist, recovery]);
+  }, [busy, conflict, dirty, needsReview, persist, preparingPhoto, recovery]);
 
   const discard = useCallback(() => {
+    const tokens = new Set(
+      [...current.current.items, ...(recovery?.draft.items ?? [])].flatMap((item) =>
+        item.pendingPhoto ? [item.pendingPhoto.token] : [],
+      ),
+    );
+    tokens.forEach((token) => void deleteDishwarePhoto(token).catch(() => undefined));
     if (key) {
       try {
         localStorage.removeItem(key);
@@ -351,7 +429,44 @@ export function useDishwareDraft(
       }
     }
     discarded.current = true;
-  }, [key]);
+  }, [key, recovery]);
+
+  const stagePhoto = async (clientId: string, file: File) => {
+    if (!key || serverRef.current?.status !== "DRAFT") return;
+    setPreparingPhoto(clientId);
+    setSaveError(null);
+    try {
+      const photo = await storeDishwarePhoto(key, file);
+      if (!mounted.current || !current.current.items.some((item) => item.clientId === clientId)) {
+        void deleteDishwarePhoto(photo.token).catch(() => undefined);
+        return;
+      }
+      setDraft((previous) => ({
+        ...previous,
+        items: previous.items.map((item) =>
+          item.clientId === clientId ? { ...item, pendingPhoto: photo, removePhoto: undefined } : item,
+        ),
+      }));
+      persist(current.current, baseRef.current);
+    } catch (error) {
+      setSaveError(
+        getFriendlyInventoryError(error, error instanceof Error ? error.message : "Не удалось выбрать фото"),
+      );
+    } finally {
+      if (mounted.current) setPreparingPhoto(null);
+    }
+  };
+  const removeStagedPhoto = (clientId: string) => {
+    setDraft((previous) => ({
+      ...previous,
+      items: previous.items.map((item) =>
+        item.clientId === clientId
+          ? { ...item, pendingPhoto: undefined, removePhoto: Boolean(item.id) || undefined }
+          : item,
+      ),
+    }));
+    persist(current.current, baseRef.current);
+  };
 
   const resolveRecovery = (restore: boolean) => {
     if (restore && recovery && serverRef.current) {
@@ -362,6 +477,9 @@ export function useDishwareDraft(
       setNeedsReview(true);
       updateConflict({ base: recovery.baseDraft ?? null, local: recovery.draft, current: serverRef.current });
     } else if (key) {
+      recovery?.draft.items.forEach((item) => {
+        if (item.pendingPhoto) void deleteDishwarePhoto(item.pendingPhoto.token).catch(() => undefined);
+      });
       try {
         localStorage.removeItem(key);
       } catch {
@@ -405,7 +523,10 @@ export function useDishwareDraft(
     initialize,
     save,
     dirty,
-    busy,
+    busy: busy || preparingPhoto !== null,
+    preparingPhoto,
+    stagePhoto,
+    removeStagedPhoto,
     validationError,
     saveError,
     localError,

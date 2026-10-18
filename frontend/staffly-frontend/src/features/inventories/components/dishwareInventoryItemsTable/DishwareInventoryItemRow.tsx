@@ -37,8 +37,8 @@ type DishwareInventoryItemRowProps = {
   onChange: (clientId: string, patch: Partial<DishwareInventoryEditableItem>) => void;
   onRemove: (clientId: string) => void;
   onPhotoMenuOpenChange: (open: boolean) => void;
-  onUploadImage: (itemId: number, file: File) => void;
-  onDeleteImage: (itemId: number) => void;
+  onUploadImage: (clientId: string, file: File) => void;
+  onDeleteImage: (clientId: string) => void;
   onOpenNote: (clientId: string) => void;
 };
 

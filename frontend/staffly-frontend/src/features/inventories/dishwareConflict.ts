@@ -28,7 +28,7 @@ function value(item: Item, field: Field): string | number | null {
 }
 
 function changed(a: Item, b: Item) {
-  return fields.some((field) => value(a, field) !== value(b, field));
+  return Boolean(b.pendingPhoto || b.removePhoto) || fields.some((field) => value(a, field) !== value(b, field));
 }
 
 export function alignDishwareDraftKeys(draft: DishwareDraft, current: DishwareInventoryDto): DishwareDraft {
@@ -82,7 +82,7 @@ export function resolveDishwareConflict(conflict: DishwareConflict, mode: Dishwa
       continue;
     }
     if (!ours || !theirs) continue;
-    const row: Item = { ...theirs };
+    const row: Item = { ...theirs, pendingPhoto: ours.pendingPhoto, removePhoto: ours.removePhoto };
     for (const field of fields) {
       const oursChanged = !before || value(ours, field) !== value(before, field);
       const theirsChanged = !before || value(theirs, field) !== value(before, field);
@@ -129,6 +129,8 @@ export function summarizeDishwareConflict(conflict: DishwareConflict) {
       a = ours.get(key),
       b = theirs.get(key);
     const details: string[] = [];
+    if (a?.pendingPhoto) details.push("У вас выбрано новое фото; оно будет загружено после сведения результатов");
+    if (a?.removePhoto) details.push("Вы удаляете фото позиции");
     if (before && !a) details.push("Вы удалили позицию");
     if (before && !b)
       details.push(
