@@ -191,6 +191,7 @@ export function useDishwareDraft(
         const saved = await updateDishwareInventory(restaurantId, inventoryId, {
           expectedVersion: operation.expectedVersion,
           requestId: operation.requestId,
+          includeSurplus: operation.snapshot.includeSurplus,
           title: operation.snapshot.title,
           inventoryDate: operation.snapshot.inventoryDate,
           comment: operation.snapshot.comment,

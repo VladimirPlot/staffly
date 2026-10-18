@@ -24,5 +24,7 @@ public record DishwareInventoryDto(
         Instant completedAt,
         Instant trashedAt,
         List<DishwareInventoryItemDto> items,
-        long version
+        long version,
+        boolean includeSurplus,
+        boolean hasCorrections
 ) {}

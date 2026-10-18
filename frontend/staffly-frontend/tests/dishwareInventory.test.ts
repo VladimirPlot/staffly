@@ -142,3 +142,48 @@ test("canonical fingerprints do not treat formatting, row IDs or photo changes a
   draft.items[0].currentQty = "9";
   assert.notEqual(dishwareDraftFingerprint(draft), base);
 });
+
+test("surplus cannot offset shortages by default; explicit accounting permits a positive balance", async () => {
+  const { formatInventoryLossAmount, formatCompactInventoryMoney } = await import(
+    "../src/features/inventories/utils.ts"
+  );
+  const rows = [
+    { previousQty: 10, currentQty: 8, unitPrice: 50 },
+    { previousQty: 10, currentQty: 15, unitPrice: 30 },
+  ];
+  assert.equal(computeDishwareSummary(rows).totalLossAmount, 100);
+  assert.equal(computeDishwareSummary(rows, true).totalLossAmount, -50);
+  assert.match(formatInventoryLossAmount(-50), /50/);
+  assert.ok(!formatInventoryLossAmount(-50).includes("-"));
+  assert.ok(formatCompactInventoryMoney(100).includes("-"));
+  assert.ok(!formatCompactInventoryMoney(-50).includes("-"));
+});
+
+test("surplus option is durable and invalid local values cannot silently enable it", () => {
+  const base = dishwareDraftFromServer(inventory());
+  const selected = { ...base, includeSurplus: true };
+  assert.notEqual(dishwareDraftFingerprint(base), dishwareDraftFingerprint(selected));
+  const stored = (draft: unknown) => ({ getItem: () => JSON.stringify({ version: 1, base: "base", draft }) });
+  assert.equal(readDishwareDraft(stored(selected), "key")?.draft.includeSurplus, true);
+  assert.equal(readDishwareDraft(stored({ ...base, includeSurplus: "false" }), "key"), null);
+});
+
+test("history describes metadata, counts and deleted rows with their original values", async () => {
+  const { dishwareHistoryChanges } = await import("../src/features/inventories/dishwareHistory.ts");
+  const before = inventory();
+  const after = {
+    ...before,
+    status: "COMPLETED" as const,
+    includeSurplus: true,
+    items: before.items.map((row) => ({ ...row, currentQty: 7 })),
+  };
+  const changes = dishwareHistoryChanges(before, after);
+  assert.ok(changes.some((text) => text.includes("Стало: 10 → 7")));
+  assert.ok(changes.some((text) => text.includes("Черновик → Завершена")));
+  assert.ok(changes.some((text) => text.includes("выключен → включён")));
+  assert.ok(
+    dishwareHistoryChanges(before, { ...before, items: [] }).some(
+      (text) => text.includes("Удалена позиция:") && text.includes("Стало: 10"),
+    ),
+  );
+});

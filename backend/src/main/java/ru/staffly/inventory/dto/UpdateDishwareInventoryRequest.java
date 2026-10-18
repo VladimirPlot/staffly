@@ -16,5 +16,11 @@ public record UpdateDishwareInventoryRequest(
         @Size(max = 5000) String comment,
         @NotNull @Size(max = DishwareInventoryLimits.MAX_ITEMS_PER_INVENTORY) @Valid List<UpsertDishwareInventoryItemRequest> items,
         @NotNull @PositiveOrZero Long expectedVersion,
-        @NotNull java.util.UUID requestId
-) {}
+        @NotNull java.util.UUID requestId,
+        Boolean includeSurplus
+) {
+    public UpdateDishwareInventoryRequest(String title, LocalDate inventoryDate, Long folderId, String comment,
+            List<UpsertDishwareInventoryItemRequest> items, Long expectedVersion, java.util.UUID requestId) {
+        this(title, inventoryDate, folderId, comment, items, expectedVersion, requestId, null);
+    }
+}

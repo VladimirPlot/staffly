@@ -22,6 +22,8 @@ export type DishwareInventoryItemDto = {
 export type DishwareInventorySummaryDto = {
   id: number;
   version: number;
+  includeSurplus?: boolean;
+  hasCorrections?: boolean;
   restaurantId: number;
   title: string;
   inventoryDate: string;
@@ -77,6 +79,7 @@ export type UpdateDishwareInventoryItemRequest = {
 };
 
 export type UpdateDishwareInventoryRequest = {
+  includeSurplus?: boolean;
   expectedVersion: number;
   requestId: string;
   title?: string | null;
@@ -286,9 +289,10 @@ export async function reopenDishwareInventory(
   restaurantId: number,
   inventoryId: number,
   expectedVersion: number,
+  reason: string,
 ): Promise<DishwareInventoryDto> {
   return responseData(
-    api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "reopen"), { expectedVersion }),
+    api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "reopen"), { expectedVersion, reason }),
   );
 }
 
@@ -352,6 +356,29 @@ export async function deleteDishwareItemImage(
   return responseData(
     api.delete<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image"), {
       params: { expectedVersion },
+    }),
+  );
+}
+
+export type DishwareInventoryHistoryDto = {
+  id: number;
+  actorId: number;
+  actorName: string;
+  action: string;
+  reason?: string | null;
+  occurredAt: string;
+  before: DishwareInventoryDto | null;
+  after: DishwareInventoryDto | null;
+};
+
+export async function getDishwareInventoryHistory(
+  restaurantId: number,
+  inventoryId: number,
+  beforeId?: number,
+): Promise<DishwareInventoryHistoryDto[]> {
+  return responseData(
+    api.get<DishwareInventoryHistoryDto[]>(dishwarePath(restaurantId, inventoryId, "history"), {
+      params: { beforeId },
     }),
   );
 }

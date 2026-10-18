@@ -49,7 +49,9 @@ public interface DishwareInventoryService {
 
     DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion);
 
-    DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion);
+    DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion, String reason);
+
+    List<ru.staffly.inventory.dto.DishwareInventoryHistoryDto> history(Long restaurantId, Long currentUserId, Long inventoryId, Long beforeId);
 
     void delete(Long restaurantId, Long currentUserId, Long inventoryId);
 

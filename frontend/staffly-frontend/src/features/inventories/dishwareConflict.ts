@@ -112,6 +112,8 @@ export function resolveDishwareConflict(conflict: DishwareConflict, mode: Dishwa
         ? joinNotes(local[field], remote[field])
         : local[field];
   }
+  if (Boolean(local.includeSurplus) !== Boolean(base.includeSurplus))
+    result.includeSurplus = Boolean(local.includeSurplus);
   return result;
 }
 
@@ -152,9 +154,15 @@ export function summarizeDishwareConflict(conflict: DishwareConflict) {
       }
     if (details.length) rows.push({ key, name: a?.name || b?.name || before?.name || "Позиция", details });
   }
-  const metadata = (["title", "inventoryDate", "comment"] as const)
-    .filter((field) => local[field] !== remote[field])
-    .map((field) => ({ field, local: local[field], remote: remote[field] }));
+  const metadata = (["title", "inventoryDate", "comment", "includeSurplus"] as const)
+    .filter((field) =>
+      field === "includeSurplus" ? Boolean(local[field]) !== Boolean(remote[field]) : local[field] !== remote[field],
+    )
+    .map((field) => ({
+      field,
+      local: field === "includeSurplus" ? (local[field] ? "Включён" : "Выключен") : local[field],
+      remote: field === "includeSurplus" ? (remote[field] ? "Включён" : "Выключен") : remote[field],
+    }));
   return { rows, metadata };
 }
 

@@ -67,6 +67,12 @@ public class DishwareInventory {
     @Column(columnDefinition = "text")
     private String comment;
 
+    @Column(name = "include_surplus", nullable = false)
+    private boolean includeSurplus;
+
+    @Column(name = "has_corrections", nullable = false)
+    private boolean hasCorrections;
+
     @OneToMany(mappedBy = "inventory", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<DishwareInventoryItem> items = new ArrayList<>();

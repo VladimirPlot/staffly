@@ -14,6 +14,7 @@ import {
 import InfoPill from "./InfoPill";
 
 type InfoCellProps = {
+  includeSurplus: boolean;
   item: DishwareInventoryEditableItem;
   index: number;
   readOnly: boolean;
@@ -26,7 +27,7 @@ function getDiffDisplay(diff: number) {
     return {
       label: "недостача",
       tone: "loss" as const,
-      title: formatInventoryLossCount(diff),
+      title: formatInventoryLossCount(-diff),
       value: formatCompactInventoryNumber(diff),
     };
   }
@@ -48,8 +49,8 @@ function getDiffDisplay(diff: number) {
   };
 }
 
-export default function InfoCell({ item, index, readOnly, onOpenNote, onRemove }: InfoCellProps) {
-  const metrics = computeDishwareItemMetrics(item);
+export default function InfoCell({ includeSurplus, item, index, readOnly, onOpenNote, onRemove }: InfoCellProps) {
+  const metrics = computeDishwareItemMetrics(item, includeSurplus);
   const hasNote = Boolean(item.note?.trim());
   const diffDisplay = getDiffDisplay(metrics.diff);
 
@@ -67,7 +68,7 @@ export default function InfoCell({ item, index, readOnly, onOpenNote, onRemove }
               title={`${diffDisplay.label} ${diffDisplay.title}`}
             />
             <InfoPill
-              label="потери"
+              label={includeSurplus ? "баланс" : "потери"}
               value={formatCompactInventoryMoney(metrics.lossAmount)}
               tone={metrics.lossAmount > 0 ? "loss" : "default"}
               title={`потери ${formatInventoryLossAmount(metrics.lossAmount)}`}
