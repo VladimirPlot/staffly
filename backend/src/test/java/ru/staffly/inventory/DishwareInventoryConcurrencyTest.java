@@ -166,4 +166,91 @@ class DishwareInventoryConcurrencyTest {
         assertNull(removed.items().get(0).photoUrl());
         assertTrue(removed.version() > uploaded.version());
     }
+    @Test void completionAndCorrectionsAreAuditedAndRequireAReason() {
+        var initial = fixture();
+        var completed = service.complete(initial.restaurantId(), 1L, initial.id(), initial.version());
+        assertThrows(BadRequestException.class, () -> save(completed, request(completed, 50)));
+        assertThrows(BadRequestException.class, () -> service.reopen(initial.restaurantId(), 1L, initial.id(), completed.version(), "  "));
+        assertEquals(1, service.history(initial.restaurantId(), 1L, initial.id(), null).size());
+        var reopened = service.reopen(initial.restaurantId(), 2L, initial.id(), completed.version(), "Ошибка пересчёта");
+        var corrected = save(reopened, request(reopened, 90));
+        var finalVersion = service.complete(initial.restaurantId(), 1L, initial.id(), corrected.version());
+        var audit = service.history(initial.restaurantId(), 1L, initial.id(), null);
+        assertEquals(List.of("COMPLETED", "UPDATED", "REOPENED", "COMPLETED"), audit.stream().map(DishwareInventoryHistoryDto::action).toList());
+        assertEquals(100, audit.get(1).before().items().get(0).currentQty());
+        assertEquals(90, audit.get(1).after().items().get(0).currentQty());
+        assertEquals("Ошибка пересчёта", audit.get(2).reason());
+        assertEquals(2L, audit.get(2).actorId());
+        assertEquals("COMPLETED", finalVersion.status());
+        assertTrue(finalVersion.hasCorrections());
+        assertNotNull(audit.get(0).occurredAt());
+        assertTrue(service.history(initial.restaurantId() + 100000, 1L, initial.id(), null).isEmpty());
+    }
+
+    @Test void retriesAndRejectedChangesDoNotCreateDuplicateAuditEvents() {
+        var initial = fixture(); var operation = request(initial, 70);
+        var saved = save(initial, operation);
+        save(initial, operation);
+        assertThrows(ConflictException.class, () -> save(initial, request(initial, 80)));
+        var audit = service.history(initial.restaurantId(), 1L, initial.id(), null);
+        assertEquals(1, audit.size());
+        assertEquals(saved.version(), audit.get(0).after().version());
+        assertTrue(service.history(initial.restaurantId(), 1L, initial.id(), audit.get(0).id()).isEmpty());
+    }
+
+    @Test void nextPeriodUsesTheFinalCountAsOpeningBalanceWithoutPropagatingLaterCorrections() {
+        var initial = fixture();
+        var completed = service.complete(initial.restaurantId(), 1L, initial.id(), initial.version());
+        var next = service.create(initial.restaurantId(), 1L, new CreateDishwareInventoryRequest("Новый период", LocalDate.of(2026, 11, 1), null, completed.id(), null));
+        assertEquals(100, next.items().get(0).previousQty());
+        assertEquals(0, next.items().get(0).currentQty());
+        assertEquals(0, next.items().get(0).incomingQty());
+        assertFalse(next.includeSurplus());
+        var reopened = service.reopen(initial.restaurantId(), 1L, initial.id(), completed.version(), "Уточнение прошлого периода");
+        save(reopened, request(reopened, 90));
+        assertEquals(100, service.get(initial.restaurantId(), 1L, next.id()).items().get(0).previousQty());
+        var empty = service.create(initial.restaurantId(), 1L, new CreateDishwareInventoryRequest("С нуля", LocalDate.of(2026, 11, 1), null, null, null));
+        assertNull(empty.sourceInventoryId());
+        assertTrue(empty.items().isEmpty());
+    }
+
+    @Test void surplusOnlyCompensatesLossesWhenExplicitlyEnabled() {
+        var initial = fixture(); var row = initial.items().get(0);
+        var rows = List.of(new UpsertDishwareInventoryItemRequest(row.id(), "Тарелка", 10, 0, 8, new java.math.BigDecimal("50"), 0, null, row.clientKey()),
+                new UpsertDishwareInventoryItemRequest(null, "Бокал", 10, 0, 15, new java.math.BigDecimal("30"), 1, null, "glass"));
+        var normal = save(initial, new UpdateDishwareInventoryRequest(initial.title(), initial.inventoryDate(), null, null, rows, initial.version(), UUID.randomUUID(), false));
+        assertEquals(0, normal.totalLossAmount().compareTo(new java.math.BigDecimal("100")));
+        assertEquals(2, normal.totalLossQty());
+        var net = save(normal, new UpdateDishwareInventoryRequest(normal.title(), normal.inventoryDate(), null, null, rows, normal.version(), UUID.randomUUID(), true));
+        assertEquals(0, net.totalLossAmount().compareTo(new java.math.BigDecimal("-50")));
+        assertEquals(-3, net.totalLossQty());
+        assertEquals(0, net.items().get(1).lossAmount().compareTo(new java.math.BigDecimal("-150")));
+        var legacy = save(net, new UpdateDishwareInventoryRequest(net.title(), net.inventoryDate(), null, null, rows, net.version(), UUID.randomUUID()));
+        assertTrue(legacy.includeSurplus());
+    }
+
+    @Test void deletingInventoryDoesNotEraseItsAuditTrail() {
+        var initial = fixture();
+        save(initial, request(initial, 70));
+        service.trash(initial.restaurantId(), 1L, initial.id());
+        service.delete(initial.restaurantId(), 1L, initial.id());
+        var audit = service.history(initial.restaurantId(), 1L, initial.id(), null);
+        assertEquals(List.of("DELETED", "TRASHED", "UPDATED"), audit.stream().map(DishwareInventoryHistoryDto::action).toList());
+        assertNull(audit.get(0).after());
+        assertEquals(70, audit.get(0).before().items().get(0).currentQty());
+    }
+
+    @Test void historyPaginationRemainsStableWhenNewChangesArrive() {
+        var current = fixture();
+        for (int count = 1; count <= 33; count++) current = save(current, request(current, count));
+        var first = service.history(current.restaurantId(), 1L, current.id(), null);
+        assertEquals(30, first.size());
+        assertEquals(33, first.get(0).after().items().get(0).currentQty());
+        current = save(current, request(current, 34));
+        var second = service.history(current.restaurantId(), 1L, current.id(), first.get(29).id());
+        assertEquals(3, second.size());
+        assertEquals(3, second.get(0).after().items().get(0).currentQty());
+        assertEquals(1, second.get(2).after().items().get(0).currentQty());
+    }
+
 }

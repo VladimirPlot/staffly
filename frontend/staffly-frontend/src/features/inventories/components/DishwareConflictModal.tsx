@@ -119,7 +119,15 @@ export default function DishwareConflictModal({
           {summary.metadata.map((change) => (
             <div key={change.field} className="break-words">
               <span className="font-medium">
-                {{ title: "Название документа", inventoryDate: "Дата", comment: "Комментарий" }[change.field]}:
+                {
+                  {
+                    title: "Название документа",
+                    inventoryDate: "Дата",
+                    comment: "Комментарий",
+                    includeSurplus: "Учёт излишков",
+                  }[change.field]
+                }
+                :
               </span>
               <div>На сервере: {change.remote || "не указано"}</div>
               <div>У вас: {change.local || "не указано"}</div>

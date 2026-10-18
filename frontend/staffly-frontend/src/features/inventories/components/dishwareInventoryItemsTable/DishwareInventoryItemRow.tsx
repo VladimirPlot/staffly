@@ -27,6 +27,7 @@ const quantityColumns: QuantityColumnConfig[] = [
 ];
 
 type DishwareInventoryItemRowProps = {
+  includeSurplus: boolean;
   item: DishwareInventoryEditableItem;
   rowIndex: number;
   uploading: boolean;
@@ -43,6 +44,7 @@ type DishwareInventoryItemRowProps = {
 };
 
 export default function DishwareInventoryItemRow({
+  includeSurplus,
   item,
   rowIndex,
   uploading,
@@ -57,7 +59,7 @@ export default function DishwareInventoryItemRow({
   onDeleteImage,
   onOpenNote,
 }: DishwareInventoryItemRowProps) {
-  const metrics = computeDishwareItemMetrics(item);
+  const metrics = computeDishwareItemMetrics(item, includeSurplus);
 
   return (
     <tr className="group">
@@ -145,7 +147,14 @@ export default function DishwareInventoryItemRow({
         </div>
       </td>
       <td className="border-subtle group-hover:bg-app border-b align-middle">
-        <InfoCell item={item} index={rowIndex} readOnly={readOnly} onOpenNote={onOpenNote} onRemove={onRemove} />
+        <InfoCell
+          includeSurplus={includeSurplus}
+          item={item}
+          index={rowIndex}
+          readOnly={readOnly}
+          onOpenNote={onOpenNote}
+          onRemove={onRemove}
+        />
       </td>
     </tr>
   );

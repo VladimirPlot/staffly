@@ -19,6 +19,7 @@ import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
 import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
+import DishwareHistoryModal from "../components/DishwareHistoryModal";
 import DishwareConflictModal from "../components/DishwareConflictModal";
 import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
@@ -74,6 +75,9 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploadingClientId, setUploadingClientId] = useState<string | null>(null);
@@ -135,8 +139,8 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, [loadInventory]);
 
   const summary = useMemo(() => {
-    return computeDishwareSummary(items);
-  }, [items]);
+    return computeDishwareSummary(items, draft.includeSurplus);
+  }, [items, draft.includeSurplus]);
   const isCompleted = inventory?.status === "COMPLETED";
   const isEditingLocked = isCompleted || saving || exitPending || Boolean(editor.recovery) || Boolean(editor.conflict);
   const dishwareListPath = useMemo(() => getDishwareListPath(inventory?.folderId), [inventory?.folderId]);
@@ -186,7 +190,10 @@ function AuthorizedDishwareInventoryEditorPage() {
         await action(restaurantId, numericInventoryId);
       } catch (e) {
         console.error(logMessage, e);
-        if (captureConflict(e)) return;
+        if (captureConflict(e)) {
+          setReopenOpen(false);
+          return;
+        }
         setSaveError(getFriendlyInventoryError(e, e instanceof Error ? e.message : fallbackMessage));
       } finally {
         setSaving(false);
@@ -214,13 +221,20 @@ function AuthorizedDishwareInventoryEditorPage() {
   const handleReopen = useCallback(async () => {
     await runSaveAction(
       async (restaurantId, inventoryId) => {
-        const reopened = await reopenDishwareInventory(restaurantId, inventoryId, inventory!.version);
+        const reopened = await reopenDishwareInventory(
+          restaurantId,
+          inventoryId,
+          inventory!.version,
+          reopenReason.trim(),
+        );
         applyLoadedInventory(reopened);
+        setReopenOpen(false);
+        setReopenReason("");
       },
       "Failed to reopen inventory",
       "Не удалось вернуть документ в черновик",
     );
-  }, [applyLoadedInventory, inventory, runSaveAction]);
+  }, [applyLoadedInventory, inventory, reopenReason, runSaveAction]);
 
   const handleDownloadPrintForm = useCallback(async () => {
     if (!restaurantId || !inventoryId || saving || downloadingPrintForm) return;
@@ -331,7 +345,18 @@ function AuthorizedDishwareInventoryEditorPage() {
     actionButton("Распечатать", Printer, () => void handlePrintForm(), { isLoading: printingPrintForm }),
   ];
   const actionButtons: EditorActionButton[] = isCompleted
-    ? [...printFormButtons, actionButton("Вернуть в черновик", Undo2, () => void handleReopen(), { isLoading: saving })]
+    ? [
+        ...printFormButtons,
+        actionButton(
+          "Вернуть в черновик",
+          Undo2,
+          () => {
+            setSaveError(null);
+            setReopenOpen(true);
+          },
+          { isLoading: saving },
+        ),
+      ]
     : [
         actionButton("Сохранить", Save, () => void handleSave(), { isLoading: saving }),
         ...printFormButtons,
@@ -426,6 +451,33 @@ function AuthorizedDishwareInventoryEditorPage() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={draft.includeSurplus ?? false}
+              disabled={isEditingLocked}
+              onChange={(event) => setDraft((previous) => ({ ...previous, includeSurplus: event.target.checked }))}
+            />
+            Учёт излишков
+          </label>
+          <span className="text-muted text-xs">
+            {draft.includeSurplus ? "Излишки уменьшают сумму потерь" : "Излишки не компенсируют недостачу"}
+          </span>
+          <div className="text-muted flex flex-wrap items-center gap-2 text-xs">
+            <span>Последнее изменение: {new Date(inventory.updatedAt).toLocaleString("ru-RU")}</span>
+            <Button size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>
+              История изменений
+            </Button>
+          </div>
+        </div>
+
+        {inventory.hasCorrections && (
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            Документ открывали для исправления после завершения. Причины и изменения доступны в истории.
+          </p>
+        )}
+
         <details className="group border-subtle rounded-2xl border bg-[color:var(--staffly-control)]/30">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 transition outline-none hover:bg-[color:var(--staffly-control-hover)] focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] [&::-webkit-details-marker]:hidden">
             <span className="text-default flex min-w-0 items-center gap-2 text-sm font-medium">
@@ -450,12 +502,16 @@ function AuthorizedDishwareInventoryEditorPage() {
         </details>
 
         {inventory.sourceInventoryTitle ? (
-          <div className="text-muted text-xs">Источник: {inventory.sourceInventoryTitle}</div>
+          <div className="text-muted text-xs">
+            Источник: {inventory.sourceInventoryTitle}. Остатки скопированы при создании и не меняются автоматически при
+            исправлении источника.
+          </div>
         ) : null}
 
         {isCompleted ? (
           <div className="text-muted rounded-2xl bg-[color:var(--staffly-control)] px-3 py-2 text-sm">
-            Документ зафиксирован. Чтобы внести изменения, сначала верни его в черновик.
+            Документ зафиксирован. Исправления возможны после возврата в черновик с указанием причины. Смена статусов и
+            правки сохраняются в истории.
           </div>
         ) : null}
         <div className="text-muted text-xs" role="status" aria-live="polite">
@@ -482,11 +538,12 @@ function AuthorizedDishwareInventoryEditorPage() {
       {editor.validationError ? (
         <Card className="text-muted text-sm">Итоги будут доступны после исправления данных.</Card>
       ) : (
-        <DishwareInventorySummary summary={summary} />
+        <DishwareInventorySummary summary={summary} includeSurplus={draft.includeSurplus ?? false} />
       )}
 
       <DishwareInventoryItemsTable
         items={items}
+        includeSurplus={draft.includeSurplus ?? false}
         uploadingClientId={uploadingClientId ?? editor.preparingPhoto}
         readOnly={isEditingLocked}
         photosLocked={editor.busy || uploadingClientId !== null}
@@ -570,6 +627,47 @@ function AuthorizedDishwareInventoryEditorPage() {
           </div>
         }
       />
+
+      {historyOpen && restaurantId && (
+        <DishwareHistoryModal
+          restaurantId={restaurantId}
+          inventoryId={Number(inventoryId)}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
+
+      <Modal
+        open={reopenOpen}
+        title="Исправить завершённую инвентаризацию?"
+        description="Возврат в черновик, причина и все последующие правки будут видны в истории. Уже созданные на основе этого документа инвентаризации сохранят свои исходные остатки."
+        onClose={() => {
+          if (!saving) setReopenOpen(false);
+        }}
+        footer={
+          <div className="flex gap-2">
+            <Button disabled={saving || !reopenReason.trim()} isLoading={saving} onClick={() => void handleReopen()}>
+              Открыть для исправления
+            </Button>
+            <Button variant="outline" disabled={saving} onClick={() => setReopenOpen(false)}>
+              Отмена
+            </Button>
+          </div>
+        }
+      >
+        <Textarea
+          label="Причина исправления"
+          value={reopenReason}
+          maxLength={1000}
+          disabled={saving}
+          onChange={(event) => setReopenReason(event.target.value)}
+          placeholder="Например: обнаружена ошибка при подсчёте бокалов"
+        />
+        {saveError && (
+          <p role="alert" className="text-sm text-red-600">
+            {saveError}
+          </p>
+        )}
+      </Modal>
 
       <DishwareConflictModal
         conflict={editor.conflict}

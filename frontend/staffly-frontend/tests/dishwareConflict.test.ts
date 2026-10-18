@@ -191,3 +191,17 @@ test("hidden folder detection walks ancestors and treats missing ancestors as un
   assert.equal(isDishwareFolderHidden(999, folders), true);
   assert.equal(isDishwareFolderHidden(null, folders), false);
 });
+
+test("surplus choice participates in three-way merging and conflict summaries", () => {
+  const c = conflict();
+  c.local.includeSurplus = true;
+  assert.equal(resolveDishwareConflict(c, "sum").includeSurplus, true);
+  assert.ok(
+    summarizeDishwareConflict(c).metadata.some(
+      (change) => change.field === "includeSurplus" && change.local === "Включён",
+    ),
+  );
+  c.local.includeSurplus = false;
+  c.current.includeSurplus = true;
+  assert.equal(resolveDishwareConflict(c, "overwrite").includeSurplus, true);
+});

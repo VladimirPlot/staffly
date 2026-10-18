@@ -20,6 +20,7 @@ import {
 export type DishwareInventoryTableItem = DishwareInventoryEditableItem;
 
 type DishwareInventoryItemsTableProps = {
+  includeSurplus?: boolean;
   items: DishwareInventoryTableItem[];
   uploadingClientId: string | null;
   readOnly?: boolean;
@@ -34,6 +35,7 @@ type DishwareInventoryItemsTableProps = {
 
 export default function DishwareInventoryItemsTable({
   items,
+  includeSurplus = false,
   uploadingClientId,
   readOnly = false,
   saving = false,
@@ -190,6 +192,7 @@ export default function DishwareInventoryItemsTable({
 
               {items.map((item, rowIndex) => (
                 <DishwareInventoryItemRow
+                  includeSurplus={includeSurplus}
                   key={item.clientId}
                   item={item}
                   rowIndex={rowIndex}

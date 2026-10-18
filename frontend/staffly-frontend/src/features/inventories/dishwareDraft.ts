@@ -8,6 +8,7 @@ import { parseDishwareCountInput, parseDishwareMoneyInput } from "./utils.ts";
 import { isDishwarePendingPhoto } from "./dishwarePhotoDraft.ts";
 
 export type DishwareDraft = {
+  includeSurplus?: boolean;
   title: string;
   inventoryDate: string;
   comment: string;
@@ -33,6 +34,7 @@ export const emptyDishwareDraft: DishwareDraft = { title: "", inventoryDate: "",
 
 export function dishwareDraftFromServer(data: DishwareInventoryDto): DishwareDraft {
   return {
+    includeSurplus: data.includeSurplus ?? false,
     title: data.title,
     inventoryDate: data.inventoryDate,
     comment: data.comment ?? "",
@@ -54,6 +56,7 @@ export function dishwareDraftFingerprint(draft: DishwareDraft, includePhotoChang
     title: draft.title.trim(),
     inventoryDate: draft.inventoryDate,
     comment: draft.comment.trim(),
+    ...(draft.includeSurplus ? { includeSurplus: true } : {}),
     items: draft.items.map((item) => ({
       name: item.name.trim(),
       previousQty: canonicalNumber(item.previousQty),
@@ -109,6 +112,7 @@ export function readDishwareDraft(storage: Pick<Storage, "getItem">, key: string
       typeof d.title !== "string" ||
       typeof d.inventoryDate !== "string" ||
       typeof d.comment !== "string" ||
+      (d.includeSurplus !== undefined && typeof d.includeSurplus !== "boolean") ||
       !Array.isArray(d.items)
     )
       return null;

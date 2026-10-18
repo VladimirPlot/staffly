@@ -176,12 +176,20 @@ public class DishwareInventoryController {
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/{inventoryId}/history")
+    public List<ru.staffly.inventory.dto.DishwareInventoryHistoryDto> history(@PathVariable Long restaurantId,
+            @PathVariable Long inventoryId, @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Long beforeId) {
+        return service.history(restaurantId, principal.userId(), inventoryId, beforeId);
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/{inventoryId}/reopen")
     public DishwareInventoryDto reopen(@PathVariable Long restaurantId,
                                        @PathVariable Long inventoryId,
                                        @AuthenticationPrincipal UserPrincipal principal,
-                                       @Valid @RequestBody DishwareInventoryVersionRequest request) {
-        return service.reopen(restaurantId, principal.userId(), inventoryId, request.expectedVersion());
+                                       @Valid @RequestBody ru.staffly.inventory.dto.ReopenDishwareInventoryRequest request) {
+        return service.reopen(restaurantId, principal.userId(), inventoryId, request.expectedVersion(), request.reason());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

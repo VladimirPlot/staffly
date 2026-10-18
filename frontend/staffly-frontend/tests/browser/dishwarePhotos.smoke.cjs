@@ -226,6 +226,8 @@ async function eventually(check, message) {
   console.log("PASS: selected photo survives a version conflict and completion waits for all photos.");
 
   await page.getByRole("button", { name: "Вернуть в черновик", exact: true }).click();
+  await page.getByLabel("Причина исправления").fill("Проверка фото после завершения");
+  await page.getByRole("button", { name: "Открыть для исправления", exact: true }).click();
   await add();
   await pick(3);
   await preview(3).waitFor();

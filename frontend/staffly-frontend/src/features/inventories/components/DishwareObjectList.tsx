@@ -16,8 +16,7 @@ import DishwareInventoryObjectActionsMenu from "./DishwareInventoryObjectActions
 
 const objectCardClassName =
   "group hover:bg-app relative touch-manipulation select-none overflow-hidden rounded-[1.25rem] p-2.5 transition-[background,border-color,box-shadow,opacity,transform] duration-200 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[var(--staffly-ring)] motion-reduce:transition-none sm:p-3";
-const selectedCardClassName =
-  "bg-[color:var(--staffly-control)]/25 shadow-[0_14px_34px_rgba(15,23,42,0.08)]";
+const selectedCardClassName = "bg-[color:var(--staffly-control)]/25 shadow-[0_14px_34px_rgba(15,23,42,0.08)]";
 const selectedCardOverlayClassName =
   "pointer-events-none absolute inset-0 rounded-[1.25rem] border border-[color:var(--staffly-divider)] opacity-0 shadow-[0_0_0_2px_rgba(24,24,27,0.035)_inset] transition-opacity duration-200 ease-out motion-reduce:transition-none";
 
@@ -244,6 +243,9 @@ function InventoryCard({
                   <span className={getInventoryStatusBadgeClass(inventory.status)}>
                     {inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}
                   </span>
+                  {inventory.hasCorrections && (
+                    <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Были исправления</span>
+                  )}
                 </div>
                 <div className="text-muted mt-1 text-sm">
                   Дата: {formatDateFromIso(inventory.inventoryDate)}
@@ -256,7 +258,10 @@ function InventoryCard({
 
               <div className="grid grid-cols-[minmax(74px,0.85fr)_minmax(74px,0.85fr)_minmax(116px,1.3fr)] gap-2 lg:min-w-[336px]">
                 <InventoryMetric label="Позиции" value={inventory.itemsCount} />
-                <InventoryMetric label="Потери" value={formatInventoryLossCount(inventory.totalLossQty)} />
+                <InventoryMetric
+                  label={inventory.includeSurplus ? "Баланс" : "Потери"}
+                  value={formatInventoryLossCount(inventory.totalLossQty)}
+                />
                 <InventoryMetric label="Сумма" value={formatInventoryLossAmount(inventory.totalLossAmount)} />
               </div>
             </div>

@@ -83,12 +83,15 @@ export function formatDishwareMoneyInputValue(value: number | null | undefined) 
   return String(normalized);
 }
 
-export function computeDishwareItemMetrics(item: {
-  previousQty: string | number;
-  incomingQty?: string | number | null;
-  currentQty: string | number;
-  unitPrice?: string | number | null;
-}) {
+export function computeDishwareItemMetrics(
+  item: {
+    previousQty: string | number;
+    incomingQty?: string | number | null;
+    currentQty: string | number;
+    unitPrice?: string | number | null;
+  },
+  includeSurplus = false,
+) {
   let inputError: string | null = null;
   try {
     parseDishwareCountInput(String(item.previousQty));
@@ -124,7 +127,7 @@ export function computeDishwareItemMetrics(item: {
   const lossQty = Math.max(expectedQty - currentQty, 0);
   const gainQty = Math.max(currentQty - expectedQty, 0);
   const totalAmount = unitPrice !== null ? currentQty * unitPrice : 0;
-  const lossAmount = unitPrice !== null ? lossQty * unitPrice : 0;
+  const lossAmount = unitPrice !== null ? (lossQty - (includeSurplus ? gainQty : 0)) * unitPrice : 0;
 
   return {
     inputError,
@@ -148,10 +151,11 @@ export function computeDishwareSummary(
     currentQty: string | number;
     unitPrice?: string | number | null;
   }>,
+  includeSurplus = false,
 ): DishwareInventorySummary {
   return items.reduce<DishwareInventorySummary>(
     (acc, item) => {
-      const metrics = computeDishwareItemMetrics(item);
+      const metrics = computeDishwareItemMetrics(item, includeSurplus);
       acc.itemCount += 1;
       acc.previousQty += metrics.previousQty;
       acc.incomingQty += metrics.incomingQty;
@@ -180,10 +184,11 @@ export function computeDishwareSummary(
 }
 
 export function formatInventoryLossAmount(value: number) {
-  const normalized = value === 0 ? 0 : -Math.abs(value);
+  const normalized = value === 0 ? 0 : -value;
 
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
+    signDisplay: "exceptZero",
     currency: "RUB",
     maximumFractionDigits: 2,
   }).format(normalized);
@@ -207,19 +212,20 @@ export function formatCompactInventoryNumber(value: number) {
 }
 
 export function formatCompactInventoryMoney(value: number) {
-  const normalized = value === 0 ? 0 : -Math.abs(Number.isFinite(value) ? value : 0);
+  const normalized = value === 0 ? 0 : -(Number.isFinite(value) ? value : 0);
   if (Math.abs(normalized) < 1_000_000) {
-    return formatInventoryLossAmount(normalized);
+    return formatInventoryLossAmount(value);
   }
   return `${new Intl.NumberFormat("ru-RU", {
     notation: "compact",
+    signDisplay: "exceptZero",
     maximumFractionDigits: 1,
   }).format(normalized)} ₽`;
 }
 
 export function formatInventoryLossCount(value: number) {
-  const normalized = value === 0 ? 0 : -Math.abs(value);
-  return formatInventoryCount(normalized);
+  const normalized = value === 0 ? 0 : -value;
+  return `${normalized > 0 ? "+" : ""}${formatInventoryCount(normalized)}`;
 }
 
 export function getInventoryStatusBadgeClass(
