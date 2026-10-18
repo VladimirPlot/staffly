@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 import { numericCellInputClassName } from "./tableConstants";
 
-type NumericCellProps<TValue extends number | null> = {
-  value: TValue;
+type NumericCellProps = {
+  value: number | string | null;
   disabled: boolean;
   inputMode: "numeric" | "decimal";
   placeholder?: string;
@@ -16,12 +15,11 @@ type NumericCellProps<TValue extends number | null> = {
     event: KeyboardEvent<HTMLElement>,
     cell: { rowIndex: number; colIndex: number; cellId: string },
   ) => void;
-  formatValue: (value: TValue) => string;
-  parseValue: (value: string) => TValue;
-  onCommit: (value: TValue) => void;
+  parseValue: (value: string) => number | null;
+  onCommit: (value: string) => void;
 };
 
-export default function NumericCell<TValue extends number | null>({
+export default function NumericCell({
   value,
   disabled,
   inputMode,
@@ -31,39 +29,38 @@ export default function NumericCell<TValue extends number | null>({
   colIndex,
   registerCellRef,
   onCellKeyDown,
-  formatValue,
   parseValue,
   onCommit,
-}: NumericCellProps<TValue>) {
-  const [focused, setFocused] = useState(false);
-  const [localValue, setLocalValue] = useState(() => formatValue(value));
-
-  useEffect(() => {
-    if (!focused) {
-      setLocalValue(formatValue(value));
-    }
-  }, [focused, formatValue, value]);
-
-  const commitValue = () => {
-    const parsed = parseValue(localValue);
-    setFocused(false);
-    setLocalValue(formatValue(parsed));
-    onCommit(parsed);
-  };
+}: NumericCellProps) {
+  const text = String(value ?? "");
+  let error: string | null = null;
+  try {
+    parseValue(text);
+  } catch (e) {
+    error = (e as Error).message;
+  }
 
   return (
-    <input
-      className={numericCellInputClassName}
-      type="text"
-      inputMode={inputMode}
-      value={localValue}
-      disabled={disabled}
-      placeholder={placeholder}
-      ref={registerCellRef(cellId)}
-      onFocus={() => setFocused(true)}
-      onBlur={commitValue}
-      onKeyDown={(event) => onCellKeyDown(event, { rowIndex, colIndex, cellId })}
-      onChange={(event) => setLocalValue(event.target.value)}
-    />
+    <div>
+      <input
+        className={numericCellInputClassName}
+        type="text"
+        inputMode={inputMode}
+        value={text}
+        disabled={disabled}
+        placeholder={placeholder}
+        ref={registerCellRef(cellId)}
+        aria-label={`${colIndex === 4 ? "Цена" : ["", "Было", "Приход", "Стало"][colIndex]}, позиция ${rowIndex + 1}`}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${cellId}-error` : undefined}
+        onKeyDown={(event) => onCellKeyDown(event, { rowIndex, colIndex, cellId })}
+        onChange={(event) => onCommit(event.target.value)}
+      />
+      {error ? (
+        <p id={`${cellId}-error`} className="px-2 pb-1 text-xs text-red-600">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

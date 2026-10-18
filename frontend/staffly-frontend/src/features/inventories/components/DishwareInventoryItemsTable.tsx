@@ -24,6 +24,7 @@ type DishwareInventoryItemsTableProps = {
   uploadingItemId: number | null;
   readOnly?: boolean;
   saving?: boolean;
+  photosLocked?: boolean;
   onAddItem: () => string;
   onChange: (clientId: string, patch: Partial<DishwareInventoryTableItem>) => void;
   onRemove: (clientId: string) => void;
@@ -36,6 +37,7 @@ export default function DishwareInventoryItemsTable({
   uploadingItemId,
   readOnly = false,
   saving = false,
+  photosLocked = false,
   onAddItem,
   onChange,
   onRemove,
@@ -193,6 +195,7 @@ export default function DishwareInventoryItemsTable({
                   rowIndex={rowIndex}
                   uploading={uploadingItemId === item.id}
                   readOnly={readOnly}
+                  photosLocked={photosLocked}
                   photoMenuOpen={openPhotoMenuItemId === item.clientId}
                   navigation={navigation}
                   onChange={onChange}
