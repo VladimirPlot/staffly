@@ -16,5 +16,5 @@ public record UpsertDishwareInventoryItemRequest(
         @PositiveOrZero @Max(DishwareInventoryLimits.MAX_ITEM_QUANTITY) Integer currentQty,
         @PositiveOrZero BigDecimal unitPrice,
         Integer sortOrder,
-        @Size(max = 2000) String note
+        @Size(max = 5000) String note
 ) {}

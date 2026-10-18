@@ -1,15 +1,20 @@
 import type { DishwareInventoryDto, DishwareInventoryItemDto, UpdateDishwareInventoryItemRequest } from "./api";
-import { normalizeDishwareCount, normalizeDishwareMoney } from "./utils";
+import {
+  normalizeDishwareCount,
+  normalizeDishwareMoney,
+  parseDishwareCountInput,
+  parseDishwareMoneyInput,
+} from "./utils";
 
 export type DishwareInventoryEditableItem = {
   clientId: string;
   id?: number;
   name: string;
   photoUrl?: string | null;
-  previousQty: number;
-  incomingQty: number;
-  currentQty: number;
-  unitPrice?: number | null;
+  previousQty: number | string;
+  incomingQty: number | string;
+  currentQty: number | string;
+  unitPrice?: number | string | null;
   sortOrder?: number;
   note?: string | null;
 };
@@ -53,10 +58,10 @@ export function buildDishwareInventoryItemsPayload(
   return items.map((item, index) => ({
     id: item.id,
     name: item.name,
-    previousQty: normalizeDishwareCount(item.previousQty),
-    incomingQty: normalizeDishwareCount(item.incomingQty),
-    currentQty: normalizeDishwareCount(item.currentQty),
-    unitPrice: normalizeDishwareMoney(item.unitPrice ?? null),
+    previousQty: parseDishwareCountInput(String(item.previousQty)),
+    incomingQty: parseDishwareCountInput(String(item.incomingQty)),
+    currentQty: parseDishwareCountInput(String(item.currentQty)),
+    unitPrice: parseDishwareMoneyInput(String(item.unitPrice ?? "")),
     sortOrder: index,
     note: item.note ?? null,
   }));

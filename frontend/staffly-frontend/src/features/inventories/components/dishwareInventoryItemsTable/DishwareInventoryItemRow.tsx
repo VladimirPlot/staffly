@@ -4,8 +4,6 @@ import type { DishwareInventoryEditableItem } from "../../dishwareInventoryItems
 import {
   computeDishwareItemMetrics,
   formatCompactInventoryMoney,
-  formatDishwareCountInputValue,
-  formatDishwareMoneyInputValue,
   formatInventoryLossAmount,
   parseDishwareCountInput,
   parseDishwareMoneyInput,
@@ -33,6 +31,7 @@ type DishwareInventoryItemRowProps = {
   rowIndex: number;
   uploading: boolean;
   readOnly: boolean;
+  photosLocked: boolean;
   photoMenuOpen: boolean;
   navigation: Pick<GridNavigationHandlers, "registerCellRef" | "onCellKeyDown">;
   onChange: (clientId: string, patch: Partial<DishwareInventoryEditableItem>) => void;
@@ -48,6 +47,7 @@ export default function DishwareInventoryItemRow({
   rowIndex,
   uploading,
   readOnly,
+  photosLocked,
   photoMenuOpen,
   navigation,
   onChange,
@@ -69,7 +69,7 @@ export default function DishwareInventoryItemRow({
           item={item}
           index={rowIndex}
           uploading={uploading}
-          readOnly={readOnly}
+          readOnly={readOnly || photosLocked}
           photoMenuOpen={photoMenuOpen}
           onPhotoMenuOpenChange={onPhotoMenuOpenChange}
           onUploadImage={onUploadImage}
@@ -81,6 +81,7 @@ export default function DishwareInventoryItemRow({
           <input
             className={cn(cellInputClassName, "text-default font-medium")}
             value={item.name}
+            maxLength={200}
             disabled={readOnly}
             placeholder="Название позиции"
             ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[0]))}
@@ -107,7 +108,6 @@ export default function DishwareInventoryItemRow({
             colIndex={colIndex}
             registerCellRef={navigation.registerCellRef}
             onCellKeyDown={navigation.onCellKeyDown}
-            formatValue={formatDishwareCountInputValue}
             parseValue={parseDishwareCountInput}
             onCommit={(value) => onChange(item.clientId, { [field]: value })}
           />
@@ -125,7 +125,6 @@ export default function DishwareInventoryItemRow({
           colIndex={4}
           registerCellRef={navigation.registerCellRef}
           onCellKeyDown={navigation.onCellKeyDown}
-          formatValue={formatDishwareMoneyInputValue}
           parseValue={parseDishwareMoneyInput}
           onCommit={(unitPrice) => onChange(item.clientId, { unitPrice })}
         />
@@ -140,7 +139,9 @@ export default function DishwareInventoryItemRow({
               : "text-default",
           )}
         >
-          <span className="min-w-0 truncate">{formatCompactInventoryMoney(metrics.lossAmount)}</span>
+          <span className="min-w-0 truncate">
+            {metrics.inputError ? "—" : formatCompactInventoryMoney(metrics.lossAmount)}
+          </span>
         </div>
       </td>
       <td className="border-subtle group-hover:bg-app border-b align-middle">

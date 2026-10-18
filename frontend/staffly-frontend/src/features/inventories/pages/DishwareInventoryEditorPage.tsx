@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useBlocker, useNavigate, useParams } from "react-router-dom";
 import {
   Check,
   Download,
@@ -23,6 +23,9 @@ import DishwareInventorySummary from "../components/DishwareInventorySummary";
 import Icon from "../../../shared/ui/Icon";
 import Input from "../../../shared/ui/Input";
 import Textarea from "../../../shared/ui/Textarea";
+import Modal from "../../../shared/ui/Modal";
+import { useDishwareDraft } from "../hooks/useDishwareDraft";
+import { dishwareDraftKey } from "../dishwareDraft";
 import DishwareInventoryItemsTable from "../components/DishwareInventoryItemsTable";
 import {
   completeDishwareInventory,
@@ -32,15 +35,12 @@ import {
   getDishwareInventoryPrintFormHtml,
   reopenDishwareInventory,
   trashDishwareInventory,
-  updateDishwareInventory,
   uploadDishwareItemImage,
   type DishwareInventoryDto,
 } from "../api";
 import {
-  buildDishwareInventoryItemsPayload,
   createEmptyDishwareInventoryItem,
   findDishwareServerItemById,
-  toEditableDishwareInventoryItems,
   type DishwareInventoryEditableItem,
 } from "../dishwareInventoryItems";
 import { downloadDishwareFile } from "../downloadDishwareFile";
@@ -75,10 +75,6 @@ function AuthorizedDishwareInventoryEditorPage() {
   const restaurantId = user?.restaurantId ?? null;
 
   const [inventory, setInventory] = useState<DishwareInventoryDto | null>(null);
-  const [title, setTitle] = useState("");
-  const [inventoryDate, setInventoryDate] = useState("");
-  const [comment, setComment] = useState("");
-  const [items, setItems] = useState<DishwareInventoryEditableItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -88,6 +84,35 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [uploadingItemId, setUploadingItemId] = useState<number | null>(null);
   const [downloadingPrintForm, setDownloadingPrintForm] = useState(false);
   const [printingPrintForm, setPrintingPrintForm] = useState(false);
+  const [exitPending, setExitPending] = useState(false);
+  const leaving = useRef(false);
+  const draftKey =
+    user && restaurantId && inventoryId ? dishwareDraftKey(user.id, restaurantId, Number(inventoryId)) : null;
+  const editor = useDishwareDraft(
+    draftKey,
+    restaurantId,
+    Number(inventoryId),
+    saving || deleting || exitPending || uploadingItemId !== null,
+  );
+  const { draft, setDraft, initialize, discard } = editor;
+  const { title, inventoryDate, comment, items } = draft;
+  const setTitle = (value: string) => setDraft((prev) => ({ ...prev, title: value }));
+  const setInventoryDate = (value: string) => setDraft((prev) => ({ ...prev, inventoryDate: value }));
+  const setComment = (value: string) => setDraft((prev) => ({ ...prev, comment: value }));
+  const setItems = useCallback(
+    (action: (prev: DishwareInventoryEditableItem[]) => DishwareInventoryEditableItem[]) => {
+      setDraft((prev) => ({ ...prev, items: action(prev.items) }));
+    },
+    [setDraft],
+  );
+  const blocker = useBlocker(
+    () =>
+      !leaving.current &&
+      (editor.dirty || editor.busy || saving || uploadingItemId !== null || Boolean(editor.recovery)),
+  );
+  useEffect(() => {
+    setExitPending(blocker.state === "blocked");
+  }, [blocker.state]);
 
   const loadInventory = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -96,17 +121,14 @@ function AuthorizedDishwareInventoryEditorPage() {
     try {
       const data = await getDishwareInventory(restaurantId, Number(inventoryId));
       setInventory(data);
-      setTitle(data.title);
-      setInventoryDate(data.inventoryDate);
-      setComment(data.comment ?? "");
-      setItems(toEditableDishwareInventoryItems(data));
+      initialize(data);
     } catch (e) {
       console.error("Failed to load inventory", e);
       setError("Не удалось загрузить инвентаризацию");
     } finally {
       setLoading(false);
     }
-  }, [inventoryId, restaurantId]);
+  }, [initialize, inventoryId, restaurantId]);
 
   useEffect(() => {
     void loadInventory();
@@ -116,67 +138,62 @@ function AuthorizedDishwareInventoryEditorPage() {
     return computeDishwareSummary(items);
   }, [items]);
   const isCompleted = inventory?.status === "COMPLETED";
-  const isEditingLocked = isCompleted || saving;
+  const isEditingLocked = isCompleted || saving || exitPending || Boolean(editor.recovery);
   const dishwareListPath = useMemo(() => getDishwareListPath(inventory?.folderId), [inventory?.folderId]);
 
-  const updateItem = useCallback((clientId: string, patch: Partial<DishwareInventoryEditableItem>) => {
-    setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)));
-  }, []);
+  const updateItem = useCallback(
+    (clientId: string, patch: Partial<DishwareInventoryEditableItem>) => {
+      setItems((prev) => prev.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)));
+    },
+    [setItems],
+  );
 
   const addItem = useCallback(() => {
     const item = createEmptyDishwareInventoryItem(0);
     setItems((prev) => [...prev, { ...item, sortOrder: prev.length }]);
     return item.clientId;
-  }, []);
+  }, [setItems]);
 
-  const removeItem = useCallback((clientId: string) => {
-    setItems((prev) =>
-      prev.filter((item) => item.clientId !== clientId).map((item, index) => ({ ...item, sortOrder: index })),
-    );
-  }, []);
+  const removeItem = useCallback(
+    (clientId: string) => {
+      setItems((prev) =>
+        prev.filter((item) => item.clientId !== clientId).map((item, index) => ({ ...item, sortOrder: index })),
+      );
+    },
+    [setItems],
+  );
 
-  const mergeItemPhotoFromServer = useCallback((updatedInventory: DishwareInventoryDto, itemId: number) => {
-    const serverItem = findDishwareServerItemById(updatedInventory, itemId);
-    setInventory(updatedInventory);
-    if (!serverItem) {
-      return;
-    }
+  const mergeItemPhotoFromServer = useCallback(
+    (updatedInventory: DishwareInventoryDto, itemId: number) => {
+      const serverItem = findDishwareServerItemById(updatedInventory, itemId);
+      setInventory(updatedInventory);
+      if (!serverItem) {
+        return;
+      }
 
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === itemId
-          ? {
-              ...item,
-              photoUrl: serverItem.photoUrl ?? null,
-            }
-          : item,
-      ),
-    );
-  }, []);
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                photoUrl: serverItem.photoUrl ?? null,
+              }
+            : item,
+        ),
+      );
+    },
+    [setItems],
+  );
 
-  const applyLoadedInventory = useCallback((data: DishwareInventoryDto) => {
-    setInventory(data);
-    setTitle(data.title);
-    setInventoryDate(data.inventoryDate);
-    setComment(data.comment ?? "");
-    setItems(toEditableDishwareInventoryItems(data));
-  }, []);
+  const applyLoadedInventory = useCallback(
+    (data: DishwareInventoryDto) => {
+      setInventory(data);
+      initialize(data);
+    },
+    [initialize],
+  );
 
-  const saveDraft = useCallback(async () => {
-    if (!restaurantId || !inventoryId) {
-      return null;
-    }
-
-    const saved = await updateDishwareInventory(restaurantId, Number(inventoryId), {
-      title,
-      inventoryDate,
-      folderId: inventory?.folderId ?? null,
-      comment,
-      items: buildDishwareInventoryItemsPayload(items),
-    });
-    applyLoadedInventory(saved);
-    return saved;
-  }, [applyLoadedInventory, comment, inventory?.folderId, inventoryId, inventoryDate, items, restaurantId, title]);
+  const saveDraft = editor.save;
 
   const runSaveAction = useCallback(
     async (
@@ -192,7 +209,7 @@ function AuthorizedDishwareInventoryEditorPage() {
         await action(restaurantId, numericInventoryId);
       } catch (e) {
         console.error(logMessage, e);
-        setSaveError(getFriendlyInventoryError(e, fallbackMessage));
+        setSaveError(getFriendlyInventoryError(e, e instanceof Error ? e.message : fallbackMessage));
       } finally {
         setSaving(false);
       }
@@ -284,13 +301,15 @@ function AuthorizedDishwareInventoryEditorPage() {
     setDeleting(true);
     try {
       await trashDishwareInventory(restaurantId, Number(inventoryId));
+      discard();
+      leaving.current = true;
       navigate(dishwareListPath);
     } catch (e) {
       console.error("Failed to delete inventory", e);
     } finally {
       setDeleting(false);
     }
-  }, [dishwareListPath, inventoryId, navigate, restaurantId]);
+  }, [discard, dishwareListPath, inventoryId, navigate, restaurantId]);
 
   const handleUploadImage = useCallback(
     async (itemId: number, file: File) => {
@@ -411,7 +430,7 @@ function AuthorizedDishwareInventoryEditorPage() {
                 className={["min-h-11", className].filter(Boolean).join(" ")}
                 isLoading={isLoading}
                 leftIcon={<Icon icon={icon} size="sm" decorative />}
-                disabled={disabled}
+                disabled={disabled || saving || editor.busy || uploadingItemId !== null}
                 onClick={onClick}
               >
                 {label}
@@ -452,21 +471,117 @@ function AuthorizedDishwareInventoryEditorPage() {
             Документ зафиксирован. Чтобы внести изменения, сначала верни его в черновик.
           </div>
         ) : null}
-        {saveError ? <div className="text-sm text-red-600">{saveError}</div> : null}
+        <div className="text-muted text-xs" role="status" aria-live="polite">
+          {editor.busy ? "Сохраняем…" : editor.dirty ? "Есть несохранённые изменения" : "Все изменения сохранены"}
+        </div>
+        {editor.message ? <div className="text-muted text-sm">{editor.message}</div> : null}
+        {editor.validationError && editor.dirty ? (
+          <div className="text-sm text-red-600" role="alert">
+            {editor.validationError}. Исправьте данные для сохранения.
+          </div>
+        ) : null}
+        {editor.localError ? (
+          <div className="text-sm text-red-600" role="alert">
+            {editor.localError}
+          </div>
+        ) : null}
+        {saveError || editor.saveError ? (
+          <div className="text-sm text-red-600" role="alert">
+            {saveError ?? editor.saveError}
+          </div>
+        ) : null}
       </Card>
 
-      <DishwareInventorySummary summary={summary} />
+      {editor.validationError ? (
+        <Card className="text-muted text-sm">Итоги будут доступны после исправления данных.</Card>
+      ) : (
+        <DishwareInventorySummary summary={summary} />
+      )}
 
       <DishwareInventoryItemsTable
         items={items}
         uploadingItemId={uploadingItemId}
         readOnly={isEditingLocked}
+        photosLocked={editor.busy || uploadingItemId !== null}
         saving={saving}
         onAddItem={addItem}
         onChange={updateItem}
         onRemove={removeItem}
         onUploadImage={(itemId, file) => void handleUploadImage(itemId, file)}
         onDeleteImage={(itemId) => void handleDeleteImage(itemId)}
+      />
+
+      <Modal
+        open={blocker.state === "blocked"}
+        title="Выйти из инвентаризации?"
+        description="Можно сохранить последние изменения или выйти без их сохранения. Изменения, уже сохранённые автоматически, останутся в документе."
+        onClose={() => {
+          if (!saving && !editor.busy && uploadingItemId === null) blocker.reset?.();
+        }}
+        footer={
+          <div className="flex flex-col gap-2">
+            <Button
+              disabled={saving || editor.busy || uploadingItemId !== null || Boolean(editor.recovery)}
+              isLoading={saving}
+              onClick={() => {
+                setSaving(true);
+                setSaveError(null);
+                void saveDraft()
+                  .then(() => {
+                    leaving.current = true;
+                    blocker.proceed?.();
+                  })
+                  .catch((e) => {
+                    setSaveError(
+                      getFriendlyInventoryError(e, e instanceof Error ? e.message : "Не удалось сохранить документ"),
+                    );
+                  })
+                  .finally(() => setSaving(false));
+              }}
+            >
+              Выйти и сохранить данные
+            </Button>
+            <Button
+              variant="outline"
+              disabled={saving || editor.busy || uploadingItemId !== null}
+              onClick={() => {
+                discard();
+                leaving.current = true;
+                blocker.proceed?.();
+              }}
+            >
+              Выйти без сохранения
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={saving || editor.busy || uploadingItemId !== null}
+              onClick={() => blocker.reset?.()}
+            >
+              Остаться
+            </Button>
+          </div>
+        }
+      >
+        {saveError ? (
+          <p className="text-sm text-red-600" role="alert">
+            {saveError}
+          </p>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(editor.recovery) && blocker.state !== "blocked"}
+        title="Найдена локальная копия"
+        description="Документ на сервере изменился после создания локальной копии. Восстановите свои правки для проверки или используйте документ с сервера."
+        onClose={() => {}}
+        footer={
+          <div className="flex flex-col gap-2">
+            <Button onClick={() => editor.resolveRecovery(true)}>Восстановить мои изменения</Button>
+            <Button variant="outline" onClick={() => editor.resolveRecovery(false)}>
+              Использовать данные с сервера
+            </Button>
+          </div>
+        }
       />
 
       <ConfirmDialog
@@ -486,9 +601,11 @@ function AuthorizedDishwareInventoryEditorPage() {
 }
 
 export default function DishwareInventoryEditorPage() {
+  const { inventoryId } = useParams();
+  const { user } = useAuth();
   return (
     <InventoryAccessGuard>
-      <AuthorizedDishwareInventoryEditorPage />
+      <AuthorizedDishwareInventoryEditorPage key={`${user?.id}:${user?.restaurantId}:${inventoryId}`} />
     </InventoryAccessGuard>
   );
 }
