@@ -15,6 +15,7 @@ const assert = require("node:assert/strict");
   await context.addInitScript((t) => localStorage.setItem("accessToken", t), token);
   let inventory = {
     id: 3,
+    version: 0,
     restaurantId: 2,
     title: "Посуда",
     inventoryDate: "2026-10-18",
@@ -64,7 +65,12 @@ const assert = require("node:assert/strict");
           return;
         }
         const body = req.postDataJSON();
-        inventory = { ...inventory, ...body, items: body.items.map((i, index) => ({ ...i, id: i.id ?? 100 + index })) };
+        inventory = {
+          ...inventory,
+          ...body,
+          version: inventory.version + 1,
+          items: body.items.map((i, index) => ({ ...i, id: i.id ?? 100 + index })),
+        };
       }
       data = inventory;
     } else if (path.endsWith("/dishware")) data = [inventory];
@@ -165,10 +171,14 @@ const assert = require("node:assert/strict");
   await qty.fill("bad");
   await page.waitForTimeout(100);
   inventory.title = "Изменено другим менеджером";
+  inventory.version++;
   await page.reload();
   await page.getByRole("button", { name: "Восстановить мои изменения", exact: true }).click();
+  await page.getByRole("button", { name: "Отмена", exact: true }).click();
   assert.equal(await qty.inputValue(), "bad");
   await page.reload();
+  await page.getByRole("button", { name: "Восстановить мои изменения", exact: true }).click();
+  await page.getByRole("button", { name: "Отмена", exact: true }).click();
   await qty.waitFor();
   assert.equal(await qty.inputValue(), "bad");
   await qty.fill("1");
@@ -176,6 +186,7 @@ const assert = require("node:assert/strict");
   await page.waitForTimeout(2200);
   assert.equal(writes.length, beforeReview, "conflicting recovery must wait for manual review/save");
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await page.getByRole("button", { name: "Перезаписать результаты", exact: true }).click();
   await page.getByText("Все изменения сохранены", { exact: true }).waitFor();
   assert.equal(inventory.items[0].currentQty, 1);
   assert.deepEqual(errors, []);

@@ -12,10 +12,10 @@ class DishwareInventoryValidationTest {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var validator = factory.getValidator();
             for (int length : new int[] { 2001, 5000 }) {
-                var request = new UpsertDishwareInventoryItemRequest(null, "Тарелка", 10, 0, 8, null, 0, "я".repeat(length));
+                var request = new UpsertDishwareInventoryItemRequest(null, "Тарелка", 10, 0, 8, null, 0, "я".repeat(length), null);
                 assertTrue(validator.validate(request).isEmpty());
             }
-            var request = new UpsertDishwareInventoryItemRequest(null, "Тарелка", 10, 0, 8, null, 0, "я".repeat(5001));
+            var request = new UpsertDishwareInventoryItemRequest(null, "Тарелка", 10, 0, 8, null, 0, "я".repeat(5001), null);
             assertTrue(validator.validate(request).stream().anyMatch(v -> v.getPropertyPath().toString().equals("note")));
         }
     }

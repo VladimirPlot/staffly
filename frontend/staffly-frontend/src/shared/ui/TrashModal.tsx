@@ -38,6 +38,8 @@ type TrashModalProps<TKind extends string = string, TValue = unknown> = {
   onDelete: (item: TrashModalItem<TKind, TValue>) => void;
   onDeleteAll: () => void;
   showDeleteAll?: boolean;
+  notice?: string | null;
+  onRetry?: () => void;
 };
 
 export default function TrashModal<TKind extends string = string, TValue = unknown>({
@@ -56,6 +58,8 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
   onDelete,
   onDeleteAll,
   showDeleteAll = true,
+  notice,
+  onRetry,
 }: TrashModalProps<TKind, TValue>) {
   const [query, setQuery] = React.useState("");
   const [activeKind, setActiveKind] = React.useState<TKind | "all">("all");
@@ -149,6 +153,7 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
                   className="w-full text-red-600 sm:w-auto"
                   leftIcon={<Icon icon={Trash2} size="sm" decorative />}
                   onClick={onDeleteAll}
+                  disabled={loading || Boolean(actionLoading)}
                 >
                   Удалить все
                 </Button>
@@ -192,8 +197,24 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
         ) : null}
 
         {loading ? <div className="text-muted text-sm">{loadingText}</div> : null}
-        {error ? <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
-        {!loading && !hasItems ? <div className="text-muted text-sm">{emptyText}</div> : null}
+        {notice ? (
+          <div role="status" className="text-muted text-sm">
+            {notice}
+          </div>
+        ) : null}
+        {error ? (
+          <div role="alert" className="space-y-2 rounded-2xl bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+            {onRetry ? (
+              <div>
+                <Button size="sm" variant="outline" disabled={loading || Boolean(actionLoading)} onClick={onRetry}>
+                  Повторить загрузку
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {!loading && !error && !hasItems ? <div className="text-muted text-sm">{emptyText}</div> : null}
         {!loading && hasItems && !hasVisibleItems ? <div className="text-muted text-sm">{noResultsText}</div> : null}
 
         {!loading && hasVisibleItems
@@ -237,6 +258,7 @@ export default function TrashModal<TKind extends string = string, TValue = unkno
                             className="h-9 w-9 text-red-600"
                             title="Удалить навсегда"
                             aria-label={`Удалить ${item.title} навсегда`}
+                            disabled={Boolean(actionLoading)}
                             isLoading={actionLoading === item.deleteActionKey}
                             leftIcon={<Icon icon={Trash2} size="sm" decorative />}
                             onClick={() => onDelete(item)}

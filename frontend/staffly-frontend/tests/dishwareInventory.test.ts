@@ -18,6 +18,7 @@ const {
 function inventory(): DishwareInventoryDto {
   return {
     id: 3,
+    version: 0,
     restaurantId: 2,
     title: "Посуда",
     inventoryDate: "2026-10-18",

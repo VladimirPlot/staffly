@@ -38,7 +38,7 @@ import DishwareObjectList, { DishwareDragOverlayCard } from "../components/Dishw
 import DishwareSelectionToolbar from "../components/DishwareSelectionToolbar";
 import DishwareTrashModal from "../components/DishwareTrashModal";
 import InventoryAccessGuard from "../components/InventoryAccessGuard";
-import { buildFolderChain, descendantIds } from "../dishwareInventoryFolders";
+import { buildFolderChain, descendantIds, isDishwareFolderHidden } from "../dishwareInventoryFolders";
 import {
   centerDishwareDragOverlayOnCursor,
   dishwareCollisionDetection,
@@ -81,6 +81,13 @@ function AuthorizedDishwareInventoriesPage() {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [trashLoading, setTrashLoading] = useState(false);
+  const [trashError, setTrashError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<
+    | { kind: "folder"; folder: DishwareInventoryFolderDto }
+    | { kind: "inventory"; inventory: DishwareInventorySummaryDto }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -158,6 +165,7 @@ function AuthorizedDishwareInventoriesPage() {
   const loadTrash = useCallback(async () => {
     if (!restaurantId) return;
     setTrashLoading(true);
+    setTrashError(null);
     try {
       const [nextFolders, nextInventories] = await Promise.all([
         listDishwareInventoryFolders(restaurantId, true),
@@ -167,6 +175,11 @@ function AuthorizedDishwareInventoriesPage() {
       setTrashInventories(nextInventories);
     } catch (e) {
       console.error("Failed to load inventory trash", e);
+      setTrashFolders([]);
+      setTrashInventories([]);
+      setTrashError(
+        getFriendlyInventoryError(e, "Не удалось загрузить корзину. Проверьте соединение и повторите попытку."),
+      );
     } finally {
       setTrashLoading(false);
     }
@@ -559,7 +572,13 @@ function AuthorizedDishwareInventoriesPage() {
       setActionLoading(`restore-folder-${folder.id}`);
       setActionError(null);
       try {
-        await restoreDishwareInventoryFolder(restaurantId, folder.id);
+        const restored = await restoreDishwareInventoryFolder(restaurantId, folder.id);
+        setRestoreTarget(null);
+        setActionNotice(
+          restored.parentId == null && folder.parentId != null
+            ? "Папка восстановлена в корень. Теперь её можно переместить в удобное место."
+            : "Папка восстановлена.",
+        );
         setSelectedObjectId(null);
         await Promise.all([loadActive(), loadTrash()]);
       } catch (e) {
@@ -578,7 +597,13 @@ function AuthorizedDishwareInventoriesPage() {
       setActionLoading(`restore-inventory-${inventory.id}`);
       setActionError(null);
       try {
-        await restoreDishwareInventory(restaurantId, inventory.id);
+        const restored = await restoreDishwareInventory(restaurantId, inventory.id);
+        setRestoreTarget(null);
+        setActionNotice(
+          restored.folderId == null && inventory.folderId != null
+            ? "Инвентаризация восстановлена в корень. Теперь её можно переместить в удобное место."
+            : "Инвентаризация восстановлена.",
+        );
         setSelectedObjectId(null);
         await Promise.all([loadActive(), loadTrash()]);
       } catch (e) {
@@ -651,10 +676,12 @@ function AuthorizedDishwareInventoriesPage() {
           trashFolders,
           trashInventories,
         );
-        await Promise.all(folderRoots.map((folder) => deleteDishwareInventoryFolder(restaurantId, folder.id)));
-        await Promise.all(
-          inventoriesOutsideDeletedFolders.map((inventory) => deleteDishwareInventory(restaurantId, inventory.id)),
-        );
+        const results = await Promise.allSettled([
+          ...folderRoots.map((folder) => deleteDishwareInventoryFolder(restaurantId, folder.id)),
+          ...inventoriesOutsideDeletedFolders.map((inventory) => deleteDishwareInventory(restaurantId, inventory.id)),
+        ]);
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed?.status === "rejected") throw failed.reason;
       } else if (permanentDeleteTarget.kind === "folder") {
         await deleteDishwareInventoryFolder(restaurantId, permanentDeleteTarget.id);
       } else {
@@ -666,6 +693,7 @@ function AuthorizedDishwareInventoriesPage() {
     } catch (e) {
       console.error("Failed to permanently delete dishware object", e);
       setActionError(getFriendlyInventoryError(e, "Не удалось удалить навсегда"));
+      await Promise.all([loadActive(), loadTrash()]);
     } finally {
       setActionLoading(null);
     }
@@ -709,6 +737,7 @@ function AuthorizedDishwareInventoriesPage() {
             folder={currentFolder}
             onOpenTrash={() => {
               setActionError(null);
+              setActionNotice(null);
               setTrashOpen(true);
             }}
             onCreateFolder={() => {
@@ -733,7 +762,16 @@ function AuthorizedDishwareInventoriesPage() {
         {loading ? <Card className="text-muted text-sm">Загружаем инвентаризации...</Card> : null}
         {!loading && error ? <Card className="text-sm text-red-600">{error}</Card> : null}
         {dndError ? <Card className="text-sm text-red-600">{dndError}</Card> : null}
-        {actionError ? <Card className="text-sm text-red-600">{actionError}</Card> : null}
+        {actionError ? (
+          <Card role="alert" className="text-sm text-red-600">
+            {actionError}
+          </Card>
+        ) : null}
+        {actionNotice && !trashOpen ? (
+          <Card role="status" className="text-sm">
+            {actionNotice}
+          </Card>
+        ) : null}
 
         {!loading && !error && currentObjects.length === 0 ? <EmptyFolderState /> : null}
 
@@ -810,14 +848,28 @@ function AuthorizedDishwareInventoriesPage() {
         folders={trashFolders}
         inventories={trashInventories}
         loading={trashLoading}
-        error={trashOpen ? actionError : null}
+        error={trashOpen ? (trashError ?? actionError) : null}
+        notice={actionNotice}
+        onRetry={() => {
+          setActionError(null);
+          void loadTrash();
+        }}
         actionLoading={actionLoading}
         onClose={() => {
           setTrashOpen(false);
           setActionError(null);
         }}
-        onRestoreFolder={(folder) => void runRestoreFolder(folder)}
-        onRestoreInventory={(inventory) => void runRestoreInventory(inventory)}
+        onRestoreFolder={(folder) => {
+          setActionError(null);
+          if (isDishwareFolderHidden(folder.parentId, trashFolders)) setRestoreTarget({ kind: "folder", folder });
+          else void runRestoreFolder(folder);
+        }}
+        onRestoreInventory={(inventory) => {
+          setActionError(null);
+          if (isDishwareFolderHidden(inventory.folderId, trashFolders))
+            setRestoreTarget({ kind: "inventory", inventory });
+          else void runRestoreInventory(inventory);
+        }}
         onDeleteFolder={(folder) => {
           setActionError(null);
           setPermanentDeleteTarget({ kind: "folder", id: folder.id, title: folder.name });
@@ -829,6 +881,37 @@ function AuthorizedDishwareInventoriesPage() {
         onDeleteAll={() => {
           setActionError(null);
           setPermanentDeleteTarget({ kind: "all", title: "все элементы корзины" });
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(restoreTarget)}
+        title="Восстановить в корень?"
+        confirmText="Восстановить в корень"
+        description={
+          <div className="space-y-2">
+            <p>
+              {restoreTarget?.kind === "folder"
+                ? "Данная папка будет перемещена в корень, после вы можете переместить её куда удобно."
+                : "Данный файл будет перемещен в корень, после вы можете переместить его куда удобно"}
+            </p>
+            {actionError ? (
+              <p role="alert" className="text-red-600">
+                {actionError}
+              </p>
+            ) : null}
+          </div>
+        }
+        confirming={Boolean(actionLoading?.startsWith("restore-"))}
+        onCancel={() => {
+          if (!actionLoading) {
+            setRestoreTarget(null);
+            setActionError(null);
+          }
+        }}
+        onConfirm={() => {
+          if (restoreTarget?.kind === "folder") void runRestoreFolder(restoreTarget.folder);
+          else if (restoreTarget) void runRestoreInventory(restoreTarget.inventory);
         }}
       />
 
