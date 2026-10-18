@@ -21,20 +21,20 @@ export type DishwareInventoryTableItem = DishwareInventoryEditableItem;
 
 type DishwareInventoryItemsTableProps = {
   items: DishwareInventoryTableItem[];
-  uploadingItemId: number | null;
+  uploadingClientId: string | null;
   readOnly?: boolean;
   saving?: boolean;
   photosLocked?: boolean;
   onAddItem: () => string;
   onChange: (clientId: string, patch: Partial<DishwareInventoryTableItem>) => void;
   onRemove: (clientId: string) => void;
-  onUploadImage: (itemId: number, file: File) => void;
-  onDeleteImage: (itemId: number) => void;
+  onUploadImage: (clientId: string, file: File) => void;
+  onDeleteImage: (clientId: string) => void;
 };
 
 export default function DishwareInventoryItemsTable({
   items,
-  uploadingItemId,
+  uploadingClientId,
   readOnly = false,
   saving = false,
   photosLocked = false,
@@ -193,7 +193,7 @@ export default function DishwareInventoryItemsTable({
                   key={item.clientId}
                   item={item}
                   rowIndex={rowIndex}
-                  uploading={uploadingItemId === item.id}
+                  uploading={uploadingClientId === item.clientId}
                   readOnly={readOnly}
                   photosLocked={photosLocked}
                   photoMenuOpen={openPhotoMenuItemId === item.clientId}

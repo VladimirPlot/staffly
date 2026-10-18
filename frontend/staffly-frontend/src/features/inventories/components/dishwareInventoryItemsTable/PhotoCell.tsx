@@ -1,5 +1,6 @@
 import { ImagePlus, MoreVertical, Pencil, Trash2, type LucideIcon } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { readDishwarePhoto } from "../../dishwarePhotoDraft";
 
 import { cn } from "../../../../shared/lib/cn";
 import DropdownMenu from "../../../../shared/ui/DropdownMenu";
@@ -70,8 +71,8 @@ type PhotoCellProps = {
   readOnly: boolean;
   photoMenuOpen: boolean;
   onPhotoMenuOpenChange: (open: boolean) => void;
-  onUploadImage: (itemId: number, file: File) => void;
-  onDeleteImage: (itemId: number) => void;
+  onUploadImage: (clientId: string, file: File) => void;
+  onDeleteImage: (clientId: string) => void;
 };
 
 export default function PhotoCell({
@@ -85,8 +86,31 @@ export default function PhotoCell({
   onDeleteImage,
 }: PhotoCellProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const hasPhoto = Boolean(item.photoUrl);
-  const canChangePhoto = Boolean(item.id) && !readOnly && !uploading;
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    let url: string | null = null;
+    setPreview(null);
+    setPreviewError(null);
+    if (item.pendingPhoto)
+      void readDishwarePhoto(item.pendingPhoto)
+        .then((file) => {
+          if (!active) return;
+          url = URL.createObjectURL(file);
+          setPreview(url);
+        })
+        .catch((error: unknown) => {
+          if (active) setPreviewError(error instanceof Error ? error.message : "Выберите фото повторно");
+        });
+    return () => {
+      active = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [item.pendingPhoto]);
+  const photoSrc = item.pendingPhoto ? preview : item.removePhoto ? null : item.photoUrl;
+  const hasPhoto = Boolean(item.pendingPhoto || photoSrc);
+  const canChangePhoto = !readOnly && !uploading;
 
   const openFilePicker = () => {
     if (!canChangePhoto) return;
@@ -102,19 +126,28 @@ export default function PhotoCell({
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (!file || !item.id) return;
-          onUploadImage(item.id, file);
+          if (!file) return;
+          onUploadImage(item.clientId, file);
           event.target.value = "";
         }}
       />
 
       {hasPhoto ? (
         <div className="border-subtle bg-app relative h-16 w-16 overflow-hidden rounded-xl border sm:h-[68px] sm:w-[68px]">
-          <img
-            src={item.photoUrl!}
-            alt={item.name.trim() || `Фото позиции ${index + 1}`}
-            className="h-full w-full object-cover"
-          />
+          {photoSrc ? (
+            <img
+              src={photoSrc}
+              alt={item.name.trim() || `Фото позиции ${index + 1}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div
+              className="text-muted flex h-full items-center justify-center text-center text-[10px]"
+              title={previewError ?? undefined}
+            >
+              {previewError ? "Выберите фото повторно" : "Готовим фото…"}
+            </div>
+          )}
 
           {canChangePhoto ? (
             <DropdownMenu
@@ -159,7 +192,7 @@ export default function PhotoCell({
                       tone="danger"
                       onClick={() => {
                         close();
-                        if (item.id) onDeleteImage(item.id);
+                        onDeleteImage(item.clientId);
                       }}
                     >
                       Удалить фото
@@ -181,7 +214,7 @@ export default function PhotoCell({
                       tone="danger"
                       onClick={() => {
                         close();
-                        if (item.id) onDeleteImage(item.id);
+                        onDeleteImage(item.clientId);
                       }}
                     />
                   </div>
@@ -198,17 +231,17 @@ export default function PhotoCell({
             canChangePhoto ? "hover:bg-[color:var(--staffly-control-hover)]" : "cursor-default opacity-75",
           )}
           disabled={!canChangePhoto}
-          title={item.id ? "Добавить фото" : "Фото можно добавить после сохранения"}
-          aria-label={item.id ? `Добавить фото позиции ${index + 1}` : "Фото можно добавить после сохранения"}
+          title="Добавить фото"
+          aria-label={`Добавить фото позиции ${index + 1}`}
           onClick={openFilePicker}
         >
           <Icon icon={ImagePlus} size="sm" decorative />
         </button>
       )}
 
-      {uploading ? (
+      {uploading || item.pendingPhoto || item.removePhoto ? (
         <span className="text-muted absolute inset-x-2 bottom-0.5 rounded-full bg-[color:var(--staffly-surface)]/95 px-1 text-center text-[10px] font-medium shadow-sm">
-          Фото...
+          {uploading ? "Фото…" : item.removePhoto ? "Удаление…" : "Фото выбрано"}
         </span>
       ) : null}
     </div>

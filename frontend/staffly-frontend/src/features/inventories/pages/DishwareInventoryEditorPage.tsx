@@ -36,7 +36,6 @@ import {
   getDishwareInventoryPrintFormHtml,
   reopenDishwareInventory,
   trashDishwareInventory,
-  uploadDishwareItemImage,
   type DishwareInventoryDto,
 } from "../api";
 import { createEmptyDishwareInventoryItem, type DishwareInventoryEditableItem } from "../dishwareInventoryItems";
@@ -77,7 +76,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [uploadingItemId, setUploadingItemId] = useState<number | null>(null);
+  const [uploadingClientId, setUploadingClientId] = useState<string | null>(null);
   const [downloadingPrintForm, setDownloadingPrintForm] = useState(false);
   const [printingPrintForm, setPrintingPrintForm] = useState(false);
   const [exitPending, setExitPending] = useState(false);
@@ -88,9 +87,9 @@ function AuthorizedDishwareInventoryEditorPage() {
     draftKey,
     restaurantId,
     Number(inventoryId),
-    saving || deleting || exitPending || uploadingItemId !== null,
+    saving || deleting || exitPending || uploadingClientId !== null,
   );
-  const { draft, setDraft, initialize, discard, captureConflict, adoptPhoto } = editor;
+  const { draft, setDraft, initialize, discard, captureConflict, adoptPhoto, stagePhoto, removeStagedPhoto } = editor;
   const inventory = editor.server;
   const { title, inventoryDate, comment, items } = draft;
   const setTitle = (value: string) => setDraft((prev) => ({ ...prev, title: value }));
@@ -108,7 +107,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       (editor.dirty ||
         editor.busy ||
         saving ||
-        uploadingItemId !== null ||
+        uploadingClientId !== null ||
         Boolean(editor.recovery) ||
         Boolean(editor.conflict)),
   );
@@ -294,34 +293,24 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, [discard, dishwareListPath, inventoryId, navigate, restaurantId]);
 
   const handleUploadImage = useCallback(
-    async (itemId: number, file: File) => {
-      if (!restaurantId || !inventoryId) return;
-      setUploadingItemId(itemId);
+    async (clientId: string, file: File) => {
       setSaveError(null);
-      try {
-        const updated = await uploadDishwareItemImage(
-          restaurantId,
-          Number(inventoryId),
-          itemId,
-          file,
-          inventory!.version,
-        );
-        adoptPhoto(updated, itemId);
-      } catch (e) {
-        console.error("Failed to upload item image", e);
-        if (captureConflict(e)) return;
-        setSaveError(getFriendlyInventoryError(e, "Не удалось загрузить фото"));
-      } finally {
-        setUploadingItemId(null);
-      }
+      await stagePhoto(clientId, file);
     },
-    [adoptPhoto, captureConflict, inventory, inventoryId, restaurantId],
+    [stagePhoto],
   );
 
   const handleDeleteImage = useCallback(
-    async (itemId: number) => {
+    async (clientId: string) => {
       if (!restaurantId || !inventoryId) return;
-      setUploadingItemId(itemId);
+      const item = items.find((row) => row.clientId === clientId);
+      if (!item) return;
+      if (!item.id || item.pendingPhoto || item.removePhoto) {
+        removeStagedPhoto(clientId);
+        return;
+      }
+      const itemId = item.id;
+      setUploadingClientId(clientId);
       setSaveError(null);
       try {
         const updated = await deleteDishwareItemImage(restaurantId, Number(inventoryId), itemId, inventory!.version);
@@ -331,10 +320,10 @@ function AuthorizedDishwareInventoryEditorPage() {
         if (captureConflict(e)) return;
         setSaveError(getFriendlyInventoryError(e, "Не удалось удалить фото"));
       } finally {
-        setUploadingItemId(null);
+        setUploadingClientId(null);
       }
     },
-    [adoptPhoto, captureConflict, inventory, inventoryId, restaurantId],
+    [adoptPhoto, captureConflict, inventory, inventoryId, items, restaurantId, removeStagedPhoto],
   );
 
   const printFormButtons: EditorActionButton[] = [
@@ -428,7 +417,7 @@ function AuthorizedDishwareInventoryEditorPage() {
                 className={["min-h-11", className].filter(Boolean).join(" ")}
                 isLoading={isLoading}
                 leftIcon={<Icon icon={icon} size="sm" decorative />}
-                disabled={disabled || saving || editor.busy || uploadingItemId !== null || Boolean(editor.conflict)}
+                disabled={disabled || saving || editor.busy || uploadingClientId !== null || Boolean(editor.conflict)}
                 onClick={onClick}
               >
                 {label}
@@ -498,9 +487,9 @@ function AuthorizedDishwareInventoryEditorPage() {
 
       <DishwareInventoryItemsTable
         items={items}
-        uploadingItemId={uploadingItemId}
+        uploadingClientId={uploadingClientId ?? editor.preparingPhoto}
         readOnly={isEditingLocked}
-        photosLocked={editor.busy || uploadingItemId !== null}
+        photosLocked={editor.busy || uploadingClientId !== null}
         saving={saving}
         onAddItem={addItem}
         onChange={updateItem}
@@ -514,12 +503,12 @@ function AuthorizedDishwareInventoryEditorPage() {
         title="Выйти из инвентаризации?"
         description="Можно сохранить последние изменения или выйти без их сохранения. Изменения, уже сохранённые автоматически, останутся в документе."
         onClose={() => {
-          if (!saving && !editor.busy && uploadingItemId === null) blocker.reset?.();
+          if (!saving && !editor.busy && uploadingClientId === null) blocker.reset?.();
         }}
         footer={
           <div className="flex flex-col gap-2">
             <Button
-              disabled={saving || editor.busy || uploadingItemId !== null || Boolean(editor.recovery)}
+              disabled={saving || editor.busy || uploadingClientId !== null || Boolean(editor.recovery)}
               isLoading={saving}
               onClick={() => {
                 setSaving(true);
@@ -541,7 +530,7 @@ function AuthorizedDishwareInventoryEditorPage() {
             </Button>
             <Button
               variant="outline"
-              disabled={saving || editor.busy || uploadingItemId !== null}
+              disabled={saving || editor.busy || uploadingClientId !== null}
               onClick={() => {
                 discard();
                 leaving.current = true;
@@ -552,7 +541,7 @@ function AuthorizedDishwareInventoryEditorPage() {
             </Button>
             <Button
               variant="ghost"
-              disabled={saving || editor.busy || uploadingItemId !== null}
+              disabled={saving || editor.busy || uploadingClientId !== null}
               onClick={() => blocker.reset?.()}
             >
               Остаться

@@ -5,6 +5,7 @@ import {
   type DishwareInventoryEditableItem,
 } from "./dishwareInventoryItems.ts";
 import { parseDishwareCountInput, parseDishwareMoneyInput } from "./utils.ts";
+import { isDishwarePendingPhoto } from "./dishwarePhotoDraft.ts";
 
 export type DishwareDraft = {
   title: string;
@@ -48,7 +49,7 @@ function canonicalNumber(value: number | string | null | undefined, money = fals
 }
 
 // Photos are saved separately; client/server row IDs do not change the draft's contents.
-export function dishwareDraftFingerprint(draft: DishwareDraft): string {
+export function dishwareDraftFingerprint(draft: DishwareDraft, includePhotoChanges = true): string {
   return JSON.stringify({
     title: draft.title.trim(),
     inventoryDate: draft.inventoryDate,
@@ -60,6 +61,8 @@ export function dishwareDraftFingerprint(draft: DishwareDraft): string {
       currentQty: canonicalNumber(item.currentQty),
       unitPrice: canonicalNumber(item.unitPrice, true),
       note: item.note?.trim() ?? "",
+      ...(includePhotoChanges && item.pendingPhoto ? { pendingPhoto: item.pendingPhoto.token } : {}),
+      ...(includePhotoChanges && item.removePhoto ? { removePhoto: true } : {}),
     })),
   });
 }
@@ -144,6 +147,8 @@ export function readDishwareDraft(storage: Pick<Storage, "getItem">, key: string
         (item.unitPrice != null && typeof item.unitPrice !== "string" && typeof item.unitPrice !== "number") ||
         (item.note != null && typeof item.note !== "string") ||
         (item.photoUrl != null && typeof item.photoUrl !== "string") ||
+        (item.pendingPhoto !== undefined && !isDishwarePendingPhoto(item.pendingPhoto)) ||
+        (item.removePhoto !== undefined && typeof item.removePhoto !== "boolean") ||
         (item.id != null && (!Number.isSafeInteger(item.id) || item.id <= 0))
       )
         return null;
@@ -161,7 +166,10 @@ export function mergeDishwareSavedRows(
   sent: DishwareDraft,
   saved: DishwareInventoryDto,
 ): DishwareDraft {
-  const serverByClientId = new Map(sent.items.map((item, index) => [item.clientId, saved.items[index]]));
+  const byKey = new Map(saved.items.map((item) => [item.clientKey ?? String(item.id), item]));
+  const serverByClientId = new Map(
+    sent.items.map((item, index) => [item.clientId, byKey.get(item.clientId) ?? saved.items[index]]),
+  );
   return {
     ...current,
     items: current.items.map((item) => {
