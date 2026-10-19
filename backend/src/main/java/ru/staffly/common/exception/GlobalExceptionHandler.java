@@ -159,6 +159,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({ OptimisticLockException.class, ObjectOptimisticLockingFailureException.class })
     public ResponseEntity<ErrorResponse> handleOptimisticLock(Exception ex) {
+        if ((ex instanceof ObjectOptimisticLockingFailureException failure && failure.getPersistentClass() != null
+                && ru.staffly.inventory.model.DishwareInventory.class.isAssignableFrom(failure.getPersistentClass()))
+                || (ex instanceof OptimisticLockException jpaFailure && jpaFailure.getEntity() instanceof ru.staffly.inventory.model.DishwareInventory)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("DISHWARE_VERSION_CONFLICT",
+                    "Инвентаризация изменена другим менеджером. Ваши правки сохранены на устройстве; повторите сохранение для сравнения версий.", null));
+        }
         if (isTrainingExamOptimisticLock(ex)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
                     StaleExamRevisionException.ERROR_CODE,

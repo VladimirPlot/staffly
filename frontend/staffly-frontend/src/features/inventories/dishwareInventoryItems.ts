@@ -1,15 +1,24 @@
 import type { DishwareInventoryDto, DishwareInventoryItemDto, UpdateDishwareInventoryItemRequest } from "./api";
-import { normalizeDishwareCount, normalizeDishwareMoney } from "./utils";
+import type { DishwarePendingPhoto } from "./dishwarePhotoDraft";
+import {
+  normalizeDishwareCount,
+  normalizeDishwareMoney,
+  parseDishwareCountInput,
+  parseDishwareMoneyInput,
+} from "./utils";
 
 export type DishwareInventoryEditableItem = {
   clientId: string;
   id?: number;
   name: string;
   photoUrl?: string | null;
-  previousQty: number;
-  incomingQty: number;
-  currentQty: number;
-  unitPrice?: number | null;
+  originalPhotoUrl?: string | null;
+  pendingPhoto?: DishwarePendingPhoto;
+  removePhoto?: boolean;
+  previousQty: number | string;
+  incomingQty: number | string;
+  currentQty: number | string;
+  unitPrice?: number | string | null;
   sortOrder?: number;
   note?: string | null;
 };
@@ -34,10 +43,11 @@ export function createEmptyDishwareInventoryItem(sortOrder: number): DishwareInv
 
 export function toEditableDishwareInventoryItems(inventory: DishwareInventoryDto): DishwareInventoryEditableItem[] {
   return inventory.items.map((item, index) => ({
-    clientId: String(item.id ?? createDishwareInventoryClientId()),
+    clientId: item.clientKey ?? String(item.id ?? createDishwareInventoryClientId()),
     id: item.id,
     name: item.name,
     photoUrl: item.photoUrl ?? null,
+    originalPhotoUrl: item.originalPhotoUrl ?? null,
     previousQty: normalizeDishwareCount(item.previousQty),
     incomingQty: normalizeDishwareCount(item.incomingQty ?? 0),
     currentQty: normalizeDishwareCount(item.currentQty),
@@ -52,11 +62,12 @@ export function buildDishwareInventoryItemsPayload(
 ): UpdateDishwareInventoryItemRequest[] {
   return items.map((item, index) => ({
     id: item.id,
+    clientKey: item.clientId,
     name: item.name,
-    previousQty: normalizeDishwareCount(item.previousQty),
-    incomingQty: normalizeDishwareCount(item.incomingQty),
-    currentQty: normalizeDishwareCount(item.currentQty),
-    unitPrice: normalizeDishwareMoney(item.unitPrice ?? null),
+    previousQty: parseDishwareCountInput(String(item.previousQty)),
+    incomingQty: parseDishwareCountInput(String(item.incomingQty)),
+    currentQty: parseDishwareCountInput(String(item.currentQty)),
+    unitPrice: parseDishwareMoneyInput(String(item.unitPrice ?? "")),
     sortOrder: index,
     note: item.note ?? null,
   }));

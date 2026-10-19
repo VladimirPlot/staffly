@@ -21,5 +21,8 @@ public record DishwareInventorySummaryDto(
         Instant createdAt,
         Instant updatedAt,
         Instant completedAt,
-        Instant trashedAt
+        Instant trashedAt,
+        long version,
+        boolean includeSurplus,
+        boolean hasCorrections
 ) {}

@@ -14,6 +14,7 @@ import {
 import InfoPill from "./InfoPill";
 
 type InfoCellProps = {
+  includeSurplus: boolean;
   item: DishwareInventoryEditableItem;
   index: number;
   readOnly: boolean;
@@ -26,7 +27,7 @@ function getDiffDisplay(diff: number) {
     return {
       label: "недостача",
       tone: "loss" as const,
-      title: formatInventoryLossCount(diff),
+      title: formatInventoryLossCount(-diff),
       value: formatCompactInventoryNumber(diff),
     };
   }
@@ -48,31 +49,37 @@ function getDiffDisplay(diff: number) {
   };
 }
 
-export default function InfoCell({ item, index, readOnly, onOpenNote, onRemove }: InfoCellProps) {
-  const metrics = computeDishwareItemMetrics(item);
+export default function InfoCell({ includeSurplus, item, index, readOnly, onOpenNote, onRemove }: InfoCellProps) {
+  const metrics = computeDishwareItemMetrics(item, includeSurplus);
   const hasNote = Boolean(item.note?.trim());
   const diffDisplay = getDiffDisplay(metrics.diff);
 
   return (
     <div className="flex min-h-14 min-w-0 flex-col justify-center gap-1 px-2 py-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <InfoPill
-          label={diffDisplay.label}
-          value={diffDisplay.value}
-          tone={diffDisplay.tone}
-          title={`${diffDisplay.label} ${diffDisplay.title}`}
-        />
-        <InfoPill
-          label="потери"
-          value={formatCompactInventoryMoney(metrics.lossAmount)}
-          tone={metrics.lossAmount > 0 ? "loss" : "default"}
-          title={`потери ${formatInventoryLossAmount(metrics.lossAmount)}`}
-        />
-        <InfoPill
-          label="ожид."
-          value={formatCompactInventoryNumber(metrics.expectedQty)}
-          title={`ожид. ${formatInventoryCount(metrics.expectedQty)}`}
-        />
+        {metrics.inputError ? (
+          <span className="text-xs text-red-600">Исправьте числовые значения</span>
+        ) : (
+          <>
+            <InfoPill
+              label={diffDisplay.label}
+              value={diffDisplay.value}
+              tone={diffDisplay.tone}
+              title={`${diffDisplay.label} ${diffDisplay.title}`}
+            />
+            <InfoPill
+              label={includeSurplus ? "баланс" : "потери"}
+              value={formatCompactInventoryMoney(metrics.lossAmount)}
+              tone={metrics.lossAmount > 0 ? "loss" : "default"}
+              title={`потери ${formatInventoryLossAmount(metrics.lossAmount)}`}
+            />
+            <InfoPill
+              label="ожид."
+              value={formatCompactInventoryNumber(metrics.expectedQty)}
+              title={`ожид. ${formatInventoryCount(metrics.expectedQty)}`}
+            />
+          </>
+        )}
       </div>
       <div className="flex items-center justify-between gap-2">
         <button

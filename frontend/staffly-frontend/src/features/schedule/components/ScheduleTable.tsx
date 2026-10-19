@@ -891,6 +891,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
     <div className={["flex w-full items-center justify-center", scheduleZoomCss.timeSelectorGap].join(" ")}>
       <DropdownSelect
         aria-label="Часы"
+        showIndicator={false}
         value={selectedHour}
         onChange={(event) => {
           const rawValue = event.target.value;
@@ -908,6 +909,7 @@ function TimeSelector({ value, onHourChange, onMinuteChange, highlight }: TimeSe
 
       <DropdownSelect
         aria-label="Минуты"
+        showIndicator={false}
         value={selectedMinute}
         onChange={(event) => {
           const rawValue = event.target.value;

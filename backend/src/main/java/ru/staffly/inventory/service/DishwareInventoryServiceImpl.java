@@ -1,12 +1,20 @@
 package ru.staffly.inventory.service;
 
 import jakarta.transaction.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import ru.staffly.inventory.repository.DishwareInventoryHistoryRepository;
+import ru.staffly.inventory.model.DishwareInventoryHistory;
+import ru.staffly.user.repository.UserRepository;
+import ru.staffly.user.model.User;
+import org.springframework.data.domain.PageRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.common.exception.BadRequestException;
+import ru.staffly.common.exception.ConflictException;
 import ru.staffly.common.exception.NotFoundException;
 import ru.staffly.inventory.DishwareInventoryLimits;
 import ru.staffly.inventory.dto.*;
@@ -15,8 +23,9 @@ import ru.staffly.inventory.model.DishwareInventory;
 import ru.staffly.inventory.model.DishwareInventoryFolder;
 import ru.staffly.inventory.model.DishwareInventoryItem;
 import ru.staffly.inventory.model.DishwareInventoryStatus;
+import ru.staffly.inventory.model.DishwareInventorySaveReceipt;
+import ru.staffly.inventory.repository.DishwareInventorySaveReceiptRepository;
 import ru.staffly.inventory.repository.DishwareInventoryFolderRepository;
-import ru.staffly.inventory.repository.DishwareInventoryItemRepository;
 import ru.staffly.inventory.repository.DishwareInventoryRepository;
 import ru.staffly.media.DishwareInventoryImageStorage;
 import ru.staffly.restaurant.model.Restaurant;
@@ -39,9 +48,12 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     private static final long MAX_IMAGE_BYTES = 2 * 1024 * 1024;
     private static final DateTimeFormatter TITLE_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
+    private final DishwareInventoryHistoryRepository history;
+    private final UserRepository users;
+    private static final ObjectMapper AUDIT_JSON = new ObjectMapper().findAndRegisterModules();
     private final DishwareInventoryRepository inventories;
+    private final DishwareInventorySaveReceiptRepository receipts;
     private final DishwareInventoryFolderRepository folders;
-    private final DishwareInventoryItemRepository items;
     private final RestaurantRepository restaurants;
     private final DishwareInventoryMapper mapper;
     private final SecurityService security;
@@ -146,6 +158,10 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     public DishwareInventoryFolderDto restoreFolder(Long restaurantId, Long currentUserId, Long folderId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventoryFolder entity = requireFolder(restaurantId, folderId);
+        if (entity.getParent() != null && effectivelyTrashedFolderIds(restaurantId).contains(entity.getParent().getId())) {
+            entity.setParent(null);
+            entity.setSortOrder(nextSortOrder(restaurantId, null));
+        }
         entity.setTrashedAt(null);
         return toFolderDto(folders.save(entity));
     }
@@ -160,7 +176,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         }
         List<Long> folderIds = collectFolderIds(restaurantId, folderId);
         List<DishwareInventory> folderInventories = inventories.findByRestaurantIdAndFolderIdIn(restaurantId, folderIds);
-        deleteInventoriesPermanently(folderInventories);
+        deleteInventoriesPermanently(folderInventories, currentUserId);
         folders.deleteAllByIdInBatch(folderIds);
     }
 
@@ -248,7 +264,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                             .photoUrl(null)
                             .previousQty(sourceItem.getCurrentQty())
                             .incomingQty(0)
-                            .currentQty(sourceItem.getCurrentQty())
+                            .currentQty(0)
                             .unitPrice(sourceItem.getUnitPrice())
                             .note(sourceItem.getNote())
                             .build())
@@ -261,71 +277,92 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             copyClonedImages(sourceInventory, entity);
             entity = inventories.save(entity);
         }
-        return mapper.toDto(entity);
+        return recordChange(entity, currentUserId, "CREATED", null, null);
     }
 
     @Override
     @Transactional
     public DishwareInventoryDto update(Long restaurantId, Long currentUserId, Long inventoryId, UpdateDishwareInventoryRequest request) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
         requireNotTrashed(entity);
+        if (request.requestId() == null) throw new BadRequestException("Укажите идентификатор сохранения");
+        String payloadHash = requestHash(request);
+        var receipt = receipts.findByInventoryIdAndRequestId(inventoryId, request.requestId());
+        if (receipt.isPresent()) {
+            if (!receipt.get().getPayloadHash().equals(payloadHash)) throw new BadRequestException("Повторный запрос содержит другие данные");
+            if (receipt.get().getAppliedVersion() == entity.getVersion()) return mapper.toDto(entity);
+            throw new ConflictException("Ваше сохранение уже принято; после него документ снова изменился.",
+                    Map.of("type", "DISHWARE_VERSION_CONFLICT", "current", mapper.toDto(entity), "alreadyApplied", true,
+                            "appliedVersion", receipt.get().getAppliedVersion()));
+        }
+        requireVersion(entity, request.expectedVersion());
         requireDraft(entity, "Завершенную инвентаризацию нельзя редактировать");
 
+        DishwareInventoryDto before = mapper.toDto(entity);
         LocalDate inventoryDate = requireInventoryDate(request.inventoryDate());
 
         entity.setTitle(resolveTitle(request.title(), inventoryDate));
         entity.setInventoryDate(inventoryDate);
         entity.setFolder(resolveActiveFolder(restaurantId, request.folderId()));
         entity.setComment(normalizeComment(request.comment()));
+        if (request.includeSurplus() != null) entity.setIncludeSurplus(request.includeSurplus());
         syncItems(entity, request.items());
 
-        entity = inventories.save(entity);
-        return mapper.toDto(entity);
+        entity = saveChangedInventory(entity);
+        receipts.save(DishwareInventorySaveReceipt.builder().inventory(entity).requestId(request.requestId())
+                .payloadHash(payloadHash).appliedVersion(entity.getVersion()).build());
+        return recordChange(entity, currentUserId, "UPDATED", null, before);
     }
 
     @Override
     @Transactional
-    public DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId) {
-        security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
-        requireNotTrashed(entity);
-        requireDraft(entity, "Инвентаризация уже завершена");
-        requireCompletable(entity);
-
-        applyStatus(entity, DishwareInventoryStatus.COMPLETED);
-        return mapper.toDto(inventories.save(entity));
-    }
-
-    @Override
-    @Transactional
-    public DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId) {
+    public DishwareInventoryDto complete(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion) {
         security.assertAtLeastManager(currentUserId, restaurantId);
         DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
         requireNotTrashed(entity);
-        requireCompleted(entity, "Вернуть в черновик можно только завершенную инвентаризацию");
-        requireNoDerivedInventories(entity);
+        requireVersion(entity, expectedVersion);
+        requireDraft(entity, "Инвентаризация уже завершена");
+        requireCompletable(entity);
 
+        DishwareInventoryDto before = mapper.toDto(entity);
+        applyStatus(entity, DishwareInventoryStatus.COMPLETED);
+        return recordChange(saveChangedInventory(entity), currentUserId, "COMPLETED", null, before);
+    }
+
+    @Override
+    @Transactional
+    public DishwareInventoryDto reopen(Long restaurantId, Long currentUserId, Long inventoryId, Long expectedVersion, String reason) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
+        requireNotTrashed(entity);
+        requireVersion(entity, expectedVersion);
+        requireCompleted(entity, "Вернуть в черновик можно только завершенную инвентаризацию");
+        String explanation = normalizeText(reason, true);
+        if (explanation == null || explanation.length() > 1000) throw new BadRequestException("Укажите причину исправления (до 1000 символов)");
+        DishwareInventoryDto before = mapper.toDto(entity);
         applyStatus(entity, DishwareInventoryStatus.DRAFT);
-        return mapper.toDto(inventories.save(entity));
+        entity.setHasCorrections(true);
+        return recordChange(saveChangedInventory(entity), currentUserId, "REOPENED", explanation, before);
     }
 
     @Override
     @Transactional
     public void delete(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
         if (entity.getTrashedAt() == null && !isInTrashedFolder(entity, effectivelyTrashedFolderIds(restaurantId))) {
             throw new BadRequestException("Сначала переместите документ в корзину");
         }
-        deleteInventoriesPermanently(List.of(entity));
+        deleteInventoriesPermanently(List.of(entity), currentUserId);
     }
 
     @Override
     @Transactional
     public DishwareInventoryDto move(Long restaurantId, Long currentUserId, Long inventoryId, MoveDishwareInventoryRequest request) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
+        DishwareInventoryDto before = mapper.toDto(entity);
         requireNotTrashed(entity);
         entity.setFolder(resolveActiveFolder(restaurantId, request.folderId()));
         entity.setSortOrder(
@@ -333,7 +370,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                         ? nextSortOrder(restaurantId, request.folderId())
                         : normalizeSortOrder(request.sortOrder())
         );
-        return mapper.toDto(inventories.save(entity));
+        return recordChange(saveChangedInventory(entity), currentUserId, "MOVED", null, before);
     }
 
     @Override
@@ -342,7 +379,8 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         security.assertAtLeastManager(currentUserId, restaurantId);
         resolveActiveFolder(restaurantId, request.folderId());
 
-        for (ReorderDishwareInventoryObjectsRequest.ObjectOrder object : request.objects()) {
+        for (ReorderDishwareInventoryObjectsRequest.ObjectOrder object : request.objects().stream()
+                .sorted(Comparator.comparing(ReorderDishwareInventoryObjectsRequest.ObjectOrder::id)).toList()) {
             if ("folder".equals(object.kind())) {
                 DishwareInventoryFolder folder = requireFolder(restaurantId, object.id());
                 if (!Objects.equals(folder.getParent() == null ? null : folder.getParent().getId(), request.folderId())) {
@@ -350,7 +388,7 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 }
                 folder.setSortOrder(normalizeSortOrder(object.sortOrder()));
             } else if ("inventory".equals(object.kind())) {
-                DishwareInventory inventory = requireInventory(restaurantId, object.id());
+                DishwareInventory inventory = requireInventoryForUpdate(restaurantId, object.id());
                 requireNotTrashed(inventory);
                 if (!Objects.equals(inventory.getFolder() == null ? null : inventory.getFolder().getId(), request.folderId())) {
                     throw new BadRequestException("Документ не находится в выбранной папке");
@@ -366,20 +404,26 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     @Transactional
     public DishwareInventoryDto trash(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
+        DishwareInventoryDto before = mapper.toDto(entity);
         if (entity.getTrashedAt() == null) {
             entity.setTrashedAt(Instant.now());
         }
-        return mapper.toDto(inventories.save(entity));
+        return recordChange(saveChangedInventory(entity), currentUserId, "TRASHED", null, before);
     }
 
     @Override
     @Transactional
     public DishwareInventoryDto restore(Long restaurantId, Long currentUserId, Long inventoryId) {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventory entity = requireInventory(restaurantId, inventoryId);
+        DishwareInventory entity = requireInventoryForUpdate(restaurantId, inventoryId);
+        DishwareInventoryDto before = mapper.toDto(entity);
+        if (isInTrashedFolder(entity, effectivelyTrashedFolderIds(restaurantId))) {
+            entity.setFolder(null);
+            entity.setSortOrder(nextSortOrder(restaurantId, null));
+        }
         entity.setTrashedAt(null);
-        return mapper.toDto(inventories.save(entity));
+        return recordChange(saveChangedInventory(entity), currentUserId, "RESTORED", null, before);
     }
 
     private void deleteInventoryPermanently(DishwareInventory entity) {
@@ -388,13 +432,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .filter(Objects::nonNull)
                 .toList();
         List<String> photoUrls = entity.getItems().stream()
-                .map(DishwareInventoryItem::getPhotoUrl)
+                .flatMap(item -> java.util.stream.Stream.of(item.getPhotoUrl(), item.getOriginalPhotoUrl()))
                 .filter(Objects::nonNull)
                 .filter(url -> !url.isBlank())
                 .toList();
 
         for (DishwareInventoryItem item : entity.getItems()) {
             item.setPhotoUrl(null);
+            item.setOriginalPhotoUrl(null);
         }
         inventories.delete(entity);
 
@@ -405,8 +450,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     }
 
     @Override
-    @Transactional
-    public DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, MultipartFile file) throws IOException {
+    @Transactional(rollbackOn = IOException.class)
+    public DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file) throws IOException {
+        return uploadItemImage(restaurantId, currentUserId, inventoryId, itemId, expectedVersion, file, null);
+    }
+
+    @Override
+    @Transactional(rollbackOn = IOException.class)
+    public DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file, MultipartFile originalFile) throws IOException {
         security.assertAtLeastManager(currentUserId, restaurantId);
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Файл не выбран");
@@ -416,40 +467,129 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         }
 
         validateImage(file);
-        DishwareInventoryItem item = items.findByIdAndInventoryIdAndRestaurantId(itemId, inventoryId, restaurantId)
+        if (originalFile != null) {
+            if (originalFile.isEmpty() || originalFile.getSize() > MAX_IMAGE_BYTES) throw new BadRequestException("Полное фото должно быть непустым и не больше 2 МБ");
+            validateImage(originalFile);
+        }
+        DishwareInventory inventory = requireInventoryForUpdate(restaurantId, inventoryId);
+        requireNotTrashed(inventory);
+        requireVersion(inventory, expectedVersion);
+        DishwareInventoryItem item = inventory.getItems().stream()
+                .filter(candidate -> Objects.equals(candidate.getId(), itemId)).findFirst()
                 .orElseThrow(() -> new NotFoundException("Inventory item not found"));
         requireDraft(item.getInventory(), "В завершенной инвентаризации нельзя менять фото");
 
+        DishwareInventoryDto before = mapper.toDto(inventory);
         String previousPhotoUrl = item.getPhotoUrl();
+        String previousOriginalUrl = item.getOriginalPhotoUrl();
         String uploadedPhotoUrl = storage.saveForItem(itemId, file);
+        afterRollback(() -> storage.deleteByPublicUrl(uploadedPhotoUrl));
+        String uploadedOriginalUrl = originalFile == null ? null : storage.saveForItem(itemId, originalFile);
+        afterRollback(() -> storage.deleteByPublicUrl(uploadedOriginalUrl));
         item.setPhotoUrl(uploadedPhotoUrl);
+        item.setOriginalPhotoUrl(uploadedOriginalUrl);
 
         afterCommit(() -> {
             if (previousPhotoUrl != null && !previousPhotoUrl.equals(uploadedPhotoUrl)) {
                 storage.deleteByPublicUrl(previousPhotoUrl);
             }
+            if (previousOriginalUrl != null && !previousOriginalUrl.equals(uploadedOriginalUrl) && !previousOriginalUrl.equals(uploadedPhotoUrl)) storage.deleteByPublicUrl(previousOriginalUrl);
             storage.deleteItemFolderIfNoUrlMatch(item.getId(), uploadedPhotoUrl);
         });
-        afterRollback(() -> storage.deleteByPublicUrl(uploadedPhotoUrl));
-        return mapper.toDto(item.getInventory());
+        return recordChange(saveChangedInventory(inventory), currentUserId, "PHOTO_UPLOADED", null, before);
     }
 
     @Override
     @Transactional
-    public DishwareInventoryDto deleteItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId) throws IOException {
+    public DishwareInventoryDto deleteItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion) throws IOException {
         security.assertAtLeastManager(currentUserId, restaurantId);
-        DishwareInventoryItem item = items.findByIdAndInventoryIdAndRestaurantId(itemId, inventoryId, restaurantId)
+        DishwareInventory inventory = requireInventoryForUpdate(restaurantId, inventoryId);
+        requireNotTrashed(inventory);
+        requireVersion(inventory, expectedVersion);
+        DishwareInventoryItem item = inventory.getItems().stream()
+                .filter(candidate -> Objects.equals(candidate.getId(), itemId)).findFirst()
                 .orElseThrow(() -> new NotFoundException("Inventory item not found"));
         requireDraft(item.getInventory(), "В завершенной инвентаризации нельзя удалять фото");
 
+        DishwareInventoryDto before = mapper.toDto(inventory);
         String previousPhotoUrl = item.getPhotoUrl();
+        String previousOriginalUrl = item.getOriginalPhotoUrl();
         item.setPhotoUrl(null);
+        item.setOriginalPhotoUrl(null);
 
         afterCommit(() -> {
             storage.deleteByPublicUrl(previousPhotoUrl);
+            storage.deleteByPublicUrl(previousOriginalUrl);
             storage.deleteItemFolder(item.getId());
         });
-        return mapper.toDto(item.getInventory());
+        return recordChange(saveChangedInventory(inventory), currentUserId, "PHOTO_DELETED", null, before);
+    }
+
+    @Override
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public List<DishwareInventoryHistoryDto> history(Long restaurantId, Long currentUserId, Long inventoryId, Long beforeId) {
+        security.assertAtLeastManager(currentUserId, restaurantId);
+        return history.findByRestaurantIdAndInventoryIdAndIdLessThanOrderByIdDesc(restaurantId, inventoryId,
+                beforeId == null ? Long.MAX_VALUE : beforeId, PageRequest.of(0, 30)).stream()
+                .map(entry -> new DishwareInventoryHistoryDto(entry.getId(), entry.getActorId(), entry.getActorName(),
+                        entry.getAction(), entry.getReason(), entry.getOccurredAt(), readSnapshot(entry.getBeforeSnapshot()), readSnapshot(entry.getAfterSnapshot())))
+                .toList();
+    }
+
+    private DishwareInventoryDto recordChange(DishwareInventory entity, Long actorId, String action, String reason, DishwareInventoryDto before) {
+        DishwareInventoryDto after = mapper.toDto(entity);
+        writeHistory(entity, actorId, action, reason, before, after);
+        return after;
+    }
+
+    private void recordDeletion(DishwareInventory entity, Long actorId) {
+        writeHistory(entity, actorId, "DELETED", null, mapper.toDto(entity), null);
+    }
+
+    private void writeHistory(DishwareInventory entity, Long actorId, String action, String reason, DishwareInventoryDto before, DishwareInventoryDto after) {
+        String actorName = users.findById(actorId).map(User::getFullName)
+                .filter(name -> !name.isBlank()).orElse("Пользователь #" + actorId);
+        history.save(DishwareInventoryHistory.builder().inventoryId(entity.getId())
+                .restaurantId(entity.getRestaurant().getId()).actorId(actorId).actorName(actorName).action(action)
+                .reason(reason).occurredAt(Instant.now()).beforeSnapshot(snapshot(before)).afterSnapshot(snapshot(after)).build());
+    }
+
+    private String snapshot(DishwareInventoryDto dto) {
+        if (dto == null) return null;
+        try { return AUDIT_JSON.writeValueAsString(dto); }
+        catch (JsonProcessingException ex) { throw new IllegalStateException("Не удалось записать историю", ex); }
+    }
+
+    private DishwareInventoryDto readSnapshot(String json) {
+        if (json == null) return null;
+        try { return AUDIT_JSON.readValue(json, DishwareInventoryDto.class); }
+        catch (JsonProcessingException ex) { throw new IllegalStateException("Не удалось прочитать историю", ex); }
+    }
+
+    private DishwareInventory saveChangedInventory(DishwareInventory entity) {
+        entity.setUpdatedAt(Instant.now());
+        return inventories.saveAndFlush(entity);
+    }
+
+    private String requestHash(UpdateDishwareInventoryRequest request) {
+        try {
+            String payload = request.toString();
+            if (request.includeSurplus() == null) payload = payload.substring(0, payload.lastIndexOf(", includeSurplus=")) + "]";
+            return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(payload.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    private void requireVersion(DishwareInventory entity, Long expectedVersion) {
+        if (expectedVersion == null || expectedVersion < 0) {
+            throw new BadRequestException("Укажите версию инвентаризации. Обновите страницу.");
+        }
+        if (expectedVersion != entity.getVersion()) {
+            throw new ConflictException("Инвентаризацию изменил другой менеджер. Выберите, как объединить результаты.",
+                    Map.of("type", "DISHWARE_VERSION_CONFLICT", "current", mapper.toDto(entity)));
+        }
     }
 
     private Comparator<DishwareInventory> inventoryComparator() {
@@ -595,8 +735,9 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         return name;
     }
 
-    private void deleteInventoriesPermanently(List<DishwareInventory> entities) {
+    private void deleteInventoriesPermanently(List<DishwareInventory> entities, Long currentUserId) {
         for (DishwareInventory entity : entities) {
+            recordDeletion(entity, currentUserId);
             deleteInventoryPermanently(entity);
         }
     }
@@ -644,12 +785,6 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         }
     }
 
-    private void requireNoDerivedInventories(DishwareInventory entity) {
-        if (entity.getId() != null && inventories.existsBySourceInventoryId(entity.getId())) {
-            throw new BadRequestException("Нельзя вернуть в черновик документ, на основе которого уже создали новую инвентаризацию");
-        }
-    }
-
     private void syncItems(DishwareInventory entity, List<UpsertDishwareInventoryItemRequest> requests) {
         List<UpsertDishwareInventoryItemRequest> safeRequests = requests;
         validateInventoryItemCount(safeRequests.size());
@@ -657,6 +792,10 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .filter(item -> item.getId() != null)
                 .collect(Collectors.toMap(DishwareInventoryItem::getId, item -> item));
 
+        Map<String, DishwareInventoryItem> existingByKey = entity.getItems().stream()
+                .filter(item -> item.getClientKey() != null)
+                .collect(Collectors.toMap(DishwareInventoryItem::getClientKey, item -> item));
+        Set<String> usedKeys = new HashSet<>();
         List<DishwareInventoryItem> nextItems = new ArrayList<>();
         for (int index = 0; index < safeRequests.size(); index++) {
             UpsertDishwareInventoryItemRequest request = safeRequests.get(index);
@@ -667,7 +806,15 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                     throw new BadRequestException("Строка инвентаризации не найдена: " + request.id());
                 }
             } else {
-                item = DishwareInventoryItem.builder().inventory(entity).build();
+                item = request.clientKey() == null ? null : existingByKey.get(request.clientKey());
+                if (item != null) existingById.remove(item.getId());
+                else item = DishwareInventoryItem.builder().inventory(entity)
+                        .clientKey(request.clientKey() == null ? UUID.randomUUID().toString() : request.clientKey()).build();
+            }
+            if (item.getClientKey() == null) item.setClientKey(UUID.randomUUID().toString());
+            if (!usedKeys.add(item.getClientKey())) throw new BadRequestException("Позиция передана повторно");
+            if (request.clientKey() != null && !request.clientKey().equals(item.getClientKey())) {
+                throw new BadRequestException("Идентификатор позиции не совпадает");
             }
 
             applyItem(item, request, index);
@@ -679,13 +826,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .filter(Objects::nonNull)
                 .toList();
         List<String> removedPhotoUrls = existingById.values().stream()
-                .map(DishwareInventoryItem::getPhotoUrl)
+                .flatMap(item -> java.util.stream.Stream.of(item.getPhotoUrl(), item.getOriginalPhotoUrl()))
                 .filter(Objects::nonNull)
                 .filter(url -> !url.isBlank())
                 .toList();
 
         for (DishwareInventoryItem removedItem : existingById.values()) {
             removedItem.setPhotoUrl(null);
+            removedItem.setOriginalPhotoUrl(null);
         }
 
         entity.getItems().clear();
@@ -814,6 +962,12 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             }
             targetItem.setPhotoUrl(copiedUrl);
             afterRollback(() -> storage.deleteByPublicUrl(copiedUrl));
+            if (sourceItem.getOriginalPhotoUrl() != null) {
+                String originalCopy = storage.copyFromPublicUrlToItem(sourceItem.getOriginalPhotoUrl(), targetItem.getId());
+                if (originalCopy == null) throw new BadRequestException("Не удалось скопировать полное фото из прошлой инвентаризации");
+                targetItem.setOriginalPhotoUrl(originalCopy);
+                afterRollback(() -> storage.deleteByPublicUrl(originalCopy));
+            }
         }
     }
 

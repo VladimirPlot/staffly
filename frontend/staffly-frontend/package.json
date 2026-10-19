@@ -5,6 +5,13 @@
   "type": "module",
   "scripts": {
     "test": "node --test --experimental-strip-types tests/*.test.ts",
+    "test:inventory": "node --test --experimental-strip-types tests/dishwareInventory.test.ts tests/dishwareConflict.test.ts tests/dishwarePhotoDraft.test.ts",
+    "test:inventory:photos": "node tests/browser/dishwarePhotos.smoke.cjs",
+    "test:inventory:business": "node tests/browser/dishwareBusiness.smoke.cjs",
+    "test:inventory:mobile": "node tests/browser/dishwareMobile.smoke.cjs",
+    "test:inventory:safeguards": "node tests/browser/dishwareSafeguards.smoke.cjs",
+    "test:inventory:browser": "node tests/browser/dishwareInventory.smoke.cjs",
+    "test:inventory:concurrency": "node tests/browser/dishwareConcurrency.smoke.cjs",
     "test:task-assignment": "node --test --experimental-strip-types tests/taskAssignment.test.ts",
     "test:reminder-detached": "node --test --experimental-strip-types tests/reminderDetachedTarget.test.ts",
     "test:historical-rows": "node --test --experimental-strip-types tests/scheduleHistoricalRows.test.ts",

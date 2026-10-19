@@ -25,6 +25,9 @@ public class DishwareInventoryItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "client_key", nullable = false, length = 100)
+    private String clientKey;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "inventory_id", nullable = false)
     private DishwareInventory inventory;
@@ -38,6 +41,9 @@ public class DishwareInventoryItem {
 
     @Column(name = "photo_url", columnDefinition = "text")
     private String photoUrl;
+
+    @Column(name = "original_photo_url", columnDefinition = "text")
+    private String originalPhotoUrl;
 
     @Column(name = "previous_qty", nullable = false)
     @Builder.Default
@@ -67,6 +73,7 @@ public class DishwareInventoryItem {
 
     @PrePersist
     void prePersist() {
+        if (clientKey == null) clientKey = java.util.UUID.randomUUID().toString();
         if (createdAt == null) createdAt = TimeProvider.now();
         if (updatedAt == null) updatedAt = TimeProvider.now();
     }

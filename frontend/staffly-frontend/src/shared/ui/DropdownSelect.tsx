@@ -25,6 +25,7 @@ type Props = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children"> & {
   renderOption?: (option: Option, state: { selected: boolean; active: boolean }) => React.ReactNode;
   matchTriggerWidth?: boolean;
   triggerVariant?: "default" | "plain";
+  showIndicator?: boolean;
 };
 
 function getNodeText(node: React.ReactNode): string {
@@ -97,6 +98,7 @@ export default function DropdownSelect({
   style,
   matchTriggerWidth = true,
   triggerVariant = "default",
+  showIndicator = true,
   name,
   required,
 }: Props) {
@@ -128,19 +130,23 @@ export default function DropdownSelect({
           "disabled:cursor-not-allowed disabled:text-muted data-[placeholder]:text-muted",
         ].join(" ")
       : [
-          "border-subtle bg-surface focus:ring-default relative flex h-10 w-full items-center rounded-2xl border px-4 pr-10 text-left text-sm outline-none transition",
+          "border-subtle bg-surface focus:ring-default relative flex h-10 w-full items-center rounded-2xl border text-left text-sm outline-none transition",
+          showIndicator ? "px-4 pr-10" : "px-1",
           "disabled:cursor-not-allowed disabled:bg-app disabled:text-muted data-[placeholder]:text-muted focus:ring-2",
         ].join(" ");
 
-  const handleValueChange = React.useCallback((nextValue: string) => {
-    const nextRawValue = nextValue === EMPTY_OPTION_VALUE ? "" : nextValue;
+  const handleValueChange = React.useCallback(
+    (nextValue: string) => {
+      const nextRawValue = nextValue === EMPTY_OPTION_VALUE ? "" : nextValue;
 
-    if (!isControlled) {
-      setInternalValue(nextRawValue);
-    }
+      if (!isControlled) {
+        setInternalValue(nextRawValue);
+      }
 
-    onChange?.(createChangeEvent(nextRawValue));
-  }, [isControlled, onChange]);
+      onChange?.(createChangeEvent(nextRawValue));
+    },
+    [isControlled, onChange],
+  );
 
   React.useEffect(() => {
     if (!open) {
@@ -182,7 +188,7 @@ export default function DropdownSelect({
   return (
     <div className="block min-w-0">
       {label && (
-        <span id={labelId} className="mb-1 block text-sm font-medium text-muted">
+        <span id={labelId} className="text-muted mb-1 block text-sm font-medium">
           {label}
         </span>
       )}
@@ -211,9 +217,11 @@ export default function DropdownSelect({
             {renderedValue}
           </span>
 
-          <RadixSelect.Icon asChild>
-            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          </RadixSelect.Icon>
+          {showIndicator && (
+            <RadixSelect.Icon asChild>
+              <ChevronDown className="text-muted pointer-events-none absolute top-1/2 right-4 h-4 w-4 -translate-y-1/2" />
+            </RadixSelect.Icon>
+          )}
         </RadixSelect.Trigger>
 
         <RadixSelect.Portal>
@@ -237,8 +245,8 @@ export default function DropdownSelect({
                     maxWidth: "min(24rem, calc(100vw - 16px))",
                   }
                 : {
-                  maxHeight: "min(24rem, calc(100vh - 16px))",
-                }
+                    maxHeight: "min(24rem, calc(100vh - 16px))",
+                  }
             }
           >
             <RadixSelect.Viewport className="no-scrollbar max-h-[inherit] overflow-y-auto p-1">
@@ -254,7 +262,7 @@ export default function DropdownSelect({
                     textValue={option.textValue}
                     className={[
                       "text-default relative flex w-full cursor-default items-center justify-between rounded-xl px-3 py-2 text-left text-sm outline-none",
-                      "data-[disabled]:cursor-not-allowed data-[disabled]:text-muted/60",
+                      "data-[disabled]:text-muted/60 data-[disabled]:cursor-not-allowed",
                       "data-[highlighted]:bg-app",
                     ].join(" ")}
                     onFocus={() => setHighlightedValue(option.value)}
@@ -267,7 +275,7 @@ export default function DropdownSelect({
                     </RadixSelect.ItemText>
 
                     <RadixSelect.ItemIndicator asChild>
-                      <Check className="ml-3 h-4 w-4 shrink-0 text-default" />
+                      <Check className="text-default ml-3 h-4 w-4 shrink-0" />
                     </RadixSelect.ItemIndicator>
                   </RadixSelect.Item>
                 );

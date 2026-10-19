@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Card from "../../../shared/ui/Card";
 import {
   formatCompactInventoryMoney,
@@ -10,9 +11,15 @@ import {
 
 type DishwareInventorySummaryProps = {
   summary: DishwareInventorySummary;
+  includeSurplus?: boolean;
+  saveStatus?: ReactNode;
 };
 
-export default function DishwareInventorySummary({ summary }: DishwareInventorySummaryProps) {
+export default function DishwareInventorySummary({
+  summary,
+  includeSurplus = false,
+  saveStatus,
+}: DishwareInventorySummaryProps) {
   const hasLoss = summary.lossQty > 0;
   const hasGain = summary.gainQty > 0;
   const metrics = [
@@ -35,7 +42,7 @@ export default function DishwareInventorySummary({ summary }: DishwareInventoryS
       className: hasGain ? "text-[color:var(--staffly-gain-text)]" : "text-default",
     },
     {
-      label: "Потери",
+      label: includeSurplus ? "Итоговый баланс" : "Потери",
       value: formatCompactInventoryMoney(summary.totalLossAmount),
       fullValue: formatInventoryLossAmount(summary.totalLossAmount),
       className: summary.totalLossAmount > 0 ? "text-[color:var(--staffly-loss-text)]" : "text-default",
@@ -50,24 +57,29 @@ export default function DishwareInventorySummary({ summary }: DishwareInventoryS
   ];
 
   return (
-    <Card className="sticky top-2 z-50 border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/95 px-3 py-2 backdrop-blur">
-      <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+    <Card className="sticky top-2 z-40 border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/95 px-3 py-2 backdrop-blur">
+      {saveStatus}
+      <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4 [@media(max-height:500px)]:hidden">
         {metrics.map((metric) => (
           <div
             key={metric.label}
             title={`${metric.label}: ${metric.fullValue}`}
             className="border-subtle flex min-h-12 min-w-0 items-center justify-between gap-3 rounded-xl border bg-[color:var(--staffly-control)]/40 px-3 py-2"
           >
-            <dt className="text-muted shrink-0 text-[11px] font-medium">{metric.label}</dt>
+            <dt className="text-muted min-w-0 text-[11px] leading-tight font-medium">{metric.label}</dt>
             <dd className={`min-w-0 truncate text-base font-semibold tabular-nums ${metric.className}`}>
               {metric.value}
             </dd>
           </div>
         ))}
       </dl>
-      <div className="text-muted mt-1.5 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <div className="text-muted mt-1.5 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs [@media(max-height:500px)]:hidden">
         {detailMetrics.map((metric) => (
-          <span key={metric.label} className="min-w-0 truncate" title={`${metric.label}: ${formatInventoryCount(metric.value)}`}>
+          <span
+            key={metric.label}
+            className="min-w-0 truncate"
+            title={`${metric.label}: ${formatInventoryCount(metric.value)}`}
+          >
             {metric.label}: {formatCompactInventoryNumber(metric.value)}
           </span>
         ))}

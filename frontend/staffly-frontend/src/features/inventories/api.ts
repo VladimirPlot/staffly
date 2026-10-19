@@ -4,8 +4,10 @@ export type DishwareInventoryStatus = "DRAFT" | "COMPLETED";
 
 export type DishwareInventoryItemDto = {
   id: number;
+  clientKey?: string;
   name: string;
   photoUrl?: string | null;
+  originalPhotoUrl?: string | null;
   previousQty: number;
   incomingQty?: number | null;
   currentQty: number;
@@ -20,6 +22,9 @@ export type DishwareInventoryItemDto = {
 
 export type DishwareInventorySummaryDto = {
   id: number;
+  version: number;
+  includeSurplus?: boolean;
+  hasCorrections?: boolean;
   restaurantId: number;
   title: string;
   inventoryDate: string;
@@ -64,6 +69,7 @@ export type CreateDishwareInventoryRequest = {
 
 export type UpdateDishwareInventoryItemRequest = {
   id?: number;
+  clientKey?: string;
   name: string;
   previousQty: number;
   incomingQty?: number | null;
@@ -74,6 +80,9 @@ export type UpdateDishwareInventoryItemRequest = {
 };
 
 export type UpdateDishwareInventoryRequest = {
+  includeSurplus?: boolean;
+  expectedVersion: number;
+  requestId: string;
   title?: string | null;
   inventoryDate: string;
   folderId?: number | null;
@@ -270,15 +279,22 @@ export async function updateDishwareInventory(
 export async function completeDishwareInventory(
   restaurantId: number,
   inventoryId: number,
+  expectedVersion: number,
 ): Promise<DishwareInventoryDto> {
-  return responseData(api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "complete")));
+  return responseData(
+    api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "complete"), { expectedVersion }),
+  );
 }
 
 export async function reopenDishwareInventory(
   restaurantId: number,
   inventoryId: number,
+  expectedVersion: number,
+  reason: string,
 ): Promise<DishwareInventoryDto> {
-  return responseData(api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "reopen")));
+  return responseData(
+    api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "reopen"), { expectedVersion, reason }),
+  );
 }
 
 export async function moveDishwareInventory(
@@ -322,9 +338,13 @@ export async function uploadDishwareItemImage(
   inventoryId: number,
   itemId: number,
   file: File,
+  expectedVersion: number,
+  originalFile?: File,
 ): Promise<DishwareInventoryDto> {
   const formData = new FormData();
   formData.append("file", file);
+  if (originalFile) formData.append("originalFile", originalFile);
+  formData.append("expectedVersion", String(expectedVersion));
   return responseData(
     api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image"), formData),
   );
@@ -334,8 +354,34 @@ export async function deleteDishwareItemImage(
   restaurantId: number,
   inventoryId: number,
   itemId: number,
+  expectedVersion: number,
 ): Promise<DishwareInventoryDto> {
   return responseData(
-    api.delete<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image")),
+    api.delete<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image"), {
+      params: { expectedVersion },
+    }),
+  );
+}
+
+export type DishwareInventoryHistoryDto = {
+  id: number;
+  actorId: number;
+  actorName: string;
+  action: string;
+  reason?: string | null;
+  occurredAt: string;
+  before: DishwareInventoryDto | null;
+  after: DishwareInventoryDto | null;
+};
+
+export async function getDishwareInventoryHistory(
+  restaurantId: number,
+  inventoryId: number,
+  beforeId?: number,
+): Promise<DishwareInventoryHistoryDto[]> {
+  return responseData(
+    api.get<DishwareInventoryHistoryDto[]>(dishwarePath(restaurantId, inventoryId, "history"), {
+      params: { beforeId },
+    }),
   );
 }

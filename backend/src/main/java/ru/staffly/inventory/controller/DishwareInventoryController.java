@@ -11,6 +11,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.staffly.inventory.dto.CreateDishwareInventoryRequest;
+import ru.staffly.inventory.dto.DishwareInventoryVersionRequest;
 import ru.staffly.inventory.dto.CreateDishwareInventoryFolderRequest;
 import ru.staffly.inventory.dto.DishwareInventoryDto;
 import ru.staffly.inventory.dto.DishwareInventoryFolderDto;
@@ -169,16 +170,26 @@ public class DishwareInventoryController {
     @PostMapping("/{inventoryId}/complete")
     public DishwareInventoryDto complete(@PathVariable Long restaurantId,
                                          @PathVariable Long inventoryId,
-                                         @AuthenticationPrincipal UserPrincipal principal) {
-        return service.complete(restaurantId, principal.userId(), inventoryId);
+                                         @AuthenticationPrincipal UserPrincipal principal,
+                                       @Valid @RequestBody DishwareInventoryVersionRequest request) {
+        return service.complete(restaurantId, principal.userId(), inventoryId, request.expectedVersion());
+    }
+
+    @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
+    @GetMapping("/{inventoryId}/history")
+    public List<ru.staffly.inventory.dto.DishwareInventoryHistoryDto> history(@PathVariable Long restaurantId,
+            @PathVariable Long inventoryId, @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Long beforeId) {
+        return service.history(restaurantId, principal.userId(), inventoryId, beforeId);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
     @PostMapping("/{inventoryId}/reopen")
     public DishwareInventoryDto reopen(@PathVariable Long restaurantId,
                                        @PathVariable Long inventoryId,
-                                       @AuthenticationPrincipal UserPrincipal principal) {
-        return service.reopen(restaurantId, principal.userId(), inventoryId);
+                                       @AuthenticationPrincipal UserPrincipal principal,
+                                       @Valid @RequestBody ru.staffly.inventory.dto.ReopenDishwareInventoryRequest request) {
+        return service.reopen(restaurantId, principal.userId(), inventoryId, request.expectedVersion(), request.reason());
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -228,8 +239,10 @@ public class DishwareInventoryController {
                                                 @PathVariable Long inventoryId,
                                                 @PathVariable Long itemId,
                                                 @AuthenticationPrincipal UserPrincipal principal,
-                                                @RequestParam("file") MultipartFile file) throws IOException {
-        return service.uploadItemImage(restaurantId, principal.userId(), inventoryId, itemId, file);
+                                                @RequestParam("expectedVersion") Long expectedVersion,
+                                                @RequestParam("file") MultipartFile file,
+                                                @RequestParam(value = "originalFile", required = false) MultipartFile originalFile) throws IOException {
+        return service.uploadItemImage(restaurantId, principal.userId(), inventoryId, itemId, expectedVersion, file, originalFile);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")
@@ -237,7 +250,8 @@ public class DishwareInventoryController {
     public DishwareInventoryDto deleteItemImage(@PathVariable Long restaurantId,
                                                 @PathVariable Long inventoryId,
                                                 @PathVariable Long itemId,
-                                                @AuthenticationPrincipal UserPrincipal principal) throws IOException {
-        return service.deleteItemImage(restaurantId, principal.userId(), inventoryId, itemId);
+                                                @AuthenticationPrincipal UserPrincipal principal,
+                                                @RequestParam("expectedVersion") Long expectedVersion) throws IOException {
+        return service.deleteItemImage(restaurantId, principal.userId(), inventoryId, itemId, expectedVersion);
     }
 }

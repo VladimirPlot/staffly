@@ -12,7 +12,7 @@ export type DishwareInventorySummary = {
   positionsWithLoss: number;
 };
 
-export const DISHWARE_COUNT_MAX = 99_999;
+export const DISHWARE_COUNT_MAX = 1_000_000;
 export const DISHWARE_MONEY_MAX = 999_999.99;
 
 export function clampDishwareCount(value: number | null | undefined): number {
@@ -44,17 +44,33 @@ export function normalizeDishwareMoney(value: number | null | undefined): number
 }
 
 export function parseDishwareCountInput(value: string): number {
-  const normalized = value.replace(/\s+/g, "").replace(",", ".").trim();
+  const normalized = value.trim().replace(/[ \u00a0\u202f]/g, "");
   if (!normalized) return 0;
-  const parsed = Number(normalized);
-  return clampDishwareCount(parsed);
+  if (!/^\d+$/.test(normalized) || Number(normalized) > DISHWARE_COUNT_MAX) {
+    throw new Error(`Введите целое количество от 0 до ${DISHWARE_COUNT_MAX.toLocaleString("ru-RU")}`);
+  }
+  return Number(normalized);
 }
 
 export function parseDishwareMoneyInput(value: string): number | null {
-  const normalized = value.replace(/\s+/g, "").replace(",", ".").trim();
+  const normalized = value
+    .trim()
+    .replace(/[ \u00a0\u202f]/g, "")
+    .replace(",", ".");
   if (!normalized) return null;
-  const parsed = Number(normalized);
-  return clampDishwareMoney(parsed);
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized) || Number(normalized) > DISHWARE_MONEY_MAX) {
+    throw new Error("Введите цену от 0 до 999 999,99, не более двух знаков после запятой");
+  }
+  return Number(normalized);
+}
+
+// Invalid input stays visible in the editor; totals are hidden until it is corrected.
+function previewNumber<T>(parse: (value: string) => T, value: string, fallback: T): T {
+  try {
+    return parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 export function formatDishwareCountInputValue(value: number | null | undefined) {
@@ -67,41 +83,54 @@ export function formatDishwareMoneyInputValue(value: number | null | undefined) 
   return String(normalized);
 }
 
-export function computeDishwareItemMetrics(item: {
-  previousQty: string | number;
-  incomingQty?: string | number | null;
-  currentQty: string | number;
-  unitPrice?: string | number | null;
-}) {
+export function computeDishwareItemMetrics(
+  item: {
+    previousQty: string | number;
+    incomingQty?: string | number | null;
+    currentQty: string | number;
+    unitPrice?: string | number | null;
+  },
+  includeSurplus = false,
+) {
+  let inputError: string | null = null;
+  try {
+    parseDishwareCountInput(String(item.previousQty));
+    parseDishwareCountInput(String(item.incomingQty ?? 0));
+    parseDishwareCountInput(String(item.currentQty));
+    parseDishwareMoneyInput(String(item.unitPrice ?? ""));
+  } catch (e) {
+    inputError = (e as Error).message;
+  }
   const previousQty =
     typeof item.previousQty === "number"
       ? normalizeDishwareCount(item.previousQty)
-      : parseDishwareCountInput(item.previousQty);
+      : previewNumber(parseDishwareCountInput, item.previousQty, 0);
   const incomingQty =
     typeof item.incomingQty === "number"
       ? normalizeDishwareCount(item.incomingQty)
       : item.incomingQty === null || item.incomingQty === undefined
         ? 0
-        : parseDishwareCountInput(item.incomingQty);
+        : previewNumber(parseDishwareCountInput, item.incomingQty, 0);
   const currentQty =
     typeof item.currentQty === "number"
       ? normalizeDishwareCount(item.currentQty)
-      : parseDishwareCountInput(item.currentQty);
+      : previewNumber(parseDishwareCountInput, item.currentQty, 0);
   const unitPrice =
     typeof item.unitPrice === "number"
       ? normalizeDishwareMoney(item.unitPrice)
       : item.unitPrice === null || item.unitPrice === undefined
         ? null
-        : parseDishwareMoneyInput(item.unitPrice);
+        : previewNumber(parseDishwareMoneyInput, item.unitPrice, null);
 
   const expectedQty = previousQty + incomingQty;
   const diff = currentQty - expectedQty;
   const lossQty = Math.max(expectedQty - currentQty, 0);
   const gainQty = Math.max(currentQty - expectedQty, 0);
   const totalAmount = unitPrice !== null ? currentQty * unitPrice : 0;
-  const lossAmount = unitPrice !== null ? lossQty * unitPrice : 0;
+  const lossAmount = unitPrice !== null ? (lossQty - (includeSurplus ? gainQty : 0)) * unitPrice : 0;
 
   return {
+    inputError,
     previousQty,
     incomingQty,
     expectedQty,
@@ -122,10 +151,11 @@ export function computeDishwareSummary(
     currentQty: string | number;
     unitPrice?: string | number | null;
   }>,
+  includeSurplus = false,
 ): DishwareInventorySummary {
   return items.reduce<DishwareInventorySummary>(
     (acc, item) => {
-      const metrics = computeDishwareItemMetrics(item);
+      const metrics = computeDishwareItemMetrics(item, includeSurplus);
       acc.itemCount += 1;
       acc.previousQty += metrics.previousQty;
       acc.incomingQty += metrics.incomingQty;
@@ -154,10 +184,11 @@ export function computeDishwareSummary(
 }
 
 export function formatInventoryLossAmount(value: number) {
-  const normalized = value === 0 ? 0 : -Math.abs(value);
+  const normalized = value === 0 ? 0 : -value;
 
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
+    signDisplay: "exceptZero",
     currency: "RUB",
     maximumFractionDigits: 2,
   }).format(normalized);
@@ -181,19 +212,20 @@ export function formatCompactInventoryNumber(value: number) {
 }
 
 export function formatCompactInventoryMoney(value: number) {
-  const normalized = value === 0 ? 0 : -Math.abs(Number.isFinite(value) ? value : 0);
+  const normalized = value === 0 ? 0 : -(Number.isFinite(value) ? value : 0);
   if (Math.abs(normalized) < 1_000_000) {
-    return formatInventoryLossAmount(normalized);
+    return formatInventoryLossAmount(value);
   }
   return `${new Intl.NumberFormat("ru-RU", {
     notation: "compact",
+    signDisplay: "exceptZero",
     maximumFractionDigits: 1,
   }).format(normalized)} ₽`;
 }
 
 export function formatInventoryLossCount(value: number) {
-  const normalized = value === 0 ? 0 : -Math.abs(value);
-  return formatInventoryCount(normalized);
+  const normalized = value === 0 ? 0 : -value;
+  return `${normalized > 0 ? "+" : ""}${formatInventoryCount(normalized)}`;
 }
 
 export function getInventoryStatusBadgeClass(

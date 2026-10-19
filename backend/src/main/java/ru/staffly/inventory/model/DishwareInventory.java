@@ -31,6 +31,10 @@ public class DishwareInventory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Version
+    @Column(nullable = false)
+    private long version;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "restaurant_id", nullable = false)
     private Restaurant restaurant;
@@ -62,6 +66,12 @@ public class DishwareInventory {
 
     @Column(columnDefinition = "text")
     private String comment;
+
+    @Column(name = "include_surplus", nullable = false)
+    private boolean includeSurplus;
+
+    @Column(name = "has_corrections", nullable = false)
+    private boolean hasCorrections;
 
     @OneToMany(mappedBy = "inventory", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

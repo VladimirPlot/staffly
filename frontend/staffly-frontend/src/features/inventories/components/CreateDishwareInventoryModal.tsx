@@ -110,7 +110,7 @@ export default function CreateDishwareInventoryModal({
           onChange={(event) => setMode((event.target.value as Mode) || "empty")}
           renderOption={(option) => (
             <div className="min-w-0">
-              <div className="truncate text-sm text-default">{option.label}</div>
+              <div className="text-default truncate text-sm">{option.label}</div>
             </div>
           )}
         >
@@ -119,6 +119,12 @@ export default function CreateDishwareInventoryModal({
             По прошлой инвентаризации
           </option>
         </DropdownSelect>
+
+        <p className="text-muted text-xs">
+          {mode === "copy"
+            ? "Прошлое «Стало» перейдёт в «Было». Приход и новый пересчёт начнутся с нуля; данные прошлого документа останутся прежними."
+            : "Будет создан пустой документ без связи с прошлыми результатами."}
+        </p>
 
         {mode === "copy" && (
           <DropdownSelect
