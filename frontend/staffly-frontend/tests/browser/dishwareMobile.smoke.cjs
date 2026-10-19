@@ -153,6 +153,30 @@ async function eventually(check, message) {
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     assert.equal(await list.evaluate((node) => node.scrollWidth <= node.clientWidth), true);
+    const section = page.getByRole("region", { name: "Позиции инвентаризации", exact: true });
+    const headingBox = await section.getByRole("heading", { name: "Позиции", exact: true }).boundingBox();
+    const addBox = await section.getByRole("button", { name: "Добавить позицию", exact: true }).first().boundingBox();
+    assert.ok(
+      headingBox.x < addBox.x && headingBox.y < addBox.y + addBox.height && headingBox.y + headingBox.height > addBox.y,
+    );
+    assert.ok(addBox.x + addBox.width <= width);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const backToTop = page.getByRole("button", { name: "Вернуться наверх", exact: true });
+    await backToTop.waitFor();
+    const floatingAdd = section.getByRole("button", { name: "Добавить позицию", exact: true }).last();
+    await floatingAdd.waitFor();
+    const upBox = await backToTop.boundingBox(),
+      plusBox = await floatingAdd.boundingBox();
+    assert.ok(
+      upBox.x >= plusBox.x + plusBox.width ||
+        plusBox.x >= upBox.x + upBox.width ||
+        upBox.y >= plusBox.y + plusBox.height ||
+        plusBox.y >= upBox.y + upBox.height,
+    );
+    await backToTop.click();
+    await eventually(() => page.evaluate(() => window.scrollY < 2), "back-to-top returns to page start");
+    await eventually(() => backToTop.count().then((value) => value === 0), "back-to-top hides at page start");
+
     for (let index = 0; index < 2; index++) {
       const bounds = await count(index).boundingBox();
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width);

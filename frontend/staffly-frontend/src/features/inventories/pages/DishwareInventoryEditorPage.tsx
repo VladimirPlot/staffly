@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../../shared/providers/AuthProvider";
+import BackToTop from "../../../shared/ui/BackToTop";
 import BackToHome from "../../../shared/ui/BackToHome";
 import Button from "../../../shared/ui/Button";
 import Card from "../../../shared/ui/Card";
@@ -86,6 +87,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [printingPrintForm, setPrintingPrintForm] = useState(false);
   const [exitPending, setExitPending] = useState(false);
   const leaving = useRef(false);
+  const pageHeaderRef = useRef<HTMLDivElement>(null);
   const draftKey =
     user && restaurantId && inventoryId ? dishwareDraftKey(user.id, restaurantId, Number(inventoryId)) : null;
   const editor = useDishwareDraft(
@@ -408,7 +410,7 @@ function AuthorizedDishwareInventoryEditorPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-3">
-      <div className="flex items-center justify-between gap-3">
+      <div ref={pageHeaderRef} tabIndex={-1} className="flex items-center justify-between gap-3 outline-none">
         <BackToHome />
         <Button variant="outline" onClick={() => navigate(dishwareListPath)}>
           Назад к списку
@@ -719,6 +721,8 @@ function AuthorizedDishwareInventoryEditorPage() {
         onCancel={editor.cancelConflict}
         onAcceptCurrent={editor.acceptCurrent}
       />
+
+      <BackToTop headerRef={pageHeaderRef} />
 
       <ConfirmDialog
         open={deleteOpen}
