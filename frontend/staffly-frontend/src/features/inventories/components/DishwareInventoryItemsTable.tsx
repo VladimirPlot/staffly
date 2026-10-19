@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "../../../shared/lib/cn";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import Button from "../../../shared/ui/Button";
 import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavigation";
 import type { DishwareInventoryEditableItem } from "../dishwareInventoryItems";
@@ -65,6 +66,11 @@ export default function DishwareInventoryItemsTable({
     onDelete: onDeleteImage,
     onEditingChange: onPhotoEditingChange,
   });
+  const [removeItemId, setRemoveItemId] = useState<string | null>(null);
+  const requestRemove = (clientId: string) => setRemoveItemId(clientId);
+  useEffect(() => {
+    if (readOnly) setRemoveItemId(null);
+  }, [readOnly]);
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
   const [openPhotoMenuItemId, setOpenPhotoMenuItemId] = useState<string | null>(null);
   const [addDockProgress, setAddDockProgress] = useState(0);
@@ -210,7 +216,7 @@ export default function DishwareInventoryItemsTable({
               uploading={uploadingClientId === item.clientId}
               navigation={navigation}
               onChange={onChange}
-              onRemove={onRemove}
+              onRemove={requestRemove}
               onUploadImage={photos.selectPhoto}
               onViewImage={photos.viewPhoto}
               onDeleteImage={onDeleteImage}
@@ -259,7 +265,7 @@ export default function DishwareInventoryItemsTable({
                     photoMenuOpen={openPhotoMenuItemId === item.clientId}
                     navigation={navigation}
                     onChange={onChange}
-                    onRemove={onRemove}
+                    onRemove={requestRemove}
                     onPhotoMenuOpenChange={(open) => setOpenPhotoMenuItemId(open ? item.clientId : null)}
                     onUploadImage={photos.selectPhoto}
                     onViewImage={photos.viewPhoto}
@@ -276,6 +282,18 @@ export default function DishwareInventoryItemsTable({
 
       {!readOnly ? <FloatingAddButton progress={addDockProgress} saving={saving} onClick={handleAddItem} /> : null}
 
+      <ConfirmDialog
+        open={Boolean(removeItemId) && !readOnly}
+        title="Удалить позицию?"
+        description="Данная позиция навсегда будет удалена."
+        confirmText="Удалить"
+        tone="danger"
+        onCancel={() => setRemoveItemId(null)}
+        onConfirm={() => {
+          if (removeItemId && !readOnly) onRemove(removeItemId);
+          setRemoveItemId(null);
+        }}
+      />
       <NoteModal item={noteItem} readOnly={readOnly} onClose={() => setNoteItemId(null)} onChange={onChange} />
     </section>
   );

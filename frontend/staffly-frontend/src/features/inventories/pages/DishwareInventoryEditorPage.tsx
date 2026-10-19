@@ -408,6 +408,45 @@ function AuthorizedDishwareInventoryEditorPage() {
     );
   }
 
+  const statusError = !editor.conflict ? (editor.localError ?? saveError ?? editor.saveError) : null;
+  const statusBusy = editor.busy || saving;
+  const retrySave = Boolean(editor.saveError || editor.localError || (saveError && editor.dirty));
+  const saveStatus = (
+    <div className="mb-2 space-y-1" aria-label="Состояние сохранения">
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <span className="text-muted min-w-0 text-xs" role="status" aria-live="polite">
+          {statusBusy
+            ? "Сохраняем…"
+            : statusError && editor.dirty
+              ? "Не удалось сохранить"
+              : editor.dirty
+                ? "Есть несохранённые изменения"
+                : "Все изменения сохранены"}
+        </span>
+        {statusError && retrySave && !editor.validationError && !isCompleted && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={statusBusy || isEditingLocked}
+            onClick={() => void handleSave()}
+          >
+            Повторить сохранение
+          </Button>
+        )}
+      </div>
+      {editor.validationError && editor.dirty && (
+        <p role="alert" className="max-h-20 overflow-y-auto text-xs [overflow-wrap:anywhere] text-red-600">
+          {editor.validationError}. Исправьте данные для сохранения.
+        </p>
+      )}
+      {statusError && (
+        <p role="alert" className="max-h-20 overflow-y-auto text-xs [overflow-wrap:anywhere] text-red-600">
+          {statusError}
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-3">
       <div ref={pageHeaderRef} tabIndex={-1} className="flex items-center justify-between gap-3 outline-none">
@@ -553,31 +592,19 @@ function AuthorizedDishwareInventoryEditorPage() {
             правки сохраняются в истории.
           </div>
         ) : null}
-        <div className="text-muted text-xs" role="status" aria-live="polite">
-          {editor.busy ? "Сохраняем…" : editor.dirty ? "Есть несохранённые изменения" : "Все изменения сохранены"}
-        </div>
         {editor.message ? <div className="text-muted text-sm">{editor.message}</div> : null}
-        {editor.validationError && editor.dirty ? (
-          <div className="text-sm text-red-600" role="alert">
-            {editor.validationError}. Исправьте данные для сохранения.
-          </div>
-        ) : null}
-        {editor.localError ? (
-          <div className="text-sm text-red-600" role="alert">
-            {editor.localError}
-          </div>
-        ) : null}
-        {!editor.conflict && (saveError || editor.saveError) ? (
-          <div className="text-sm text-red-600" role="alert">
-            {saveError ?? editor.saveError}
-          </div>
-        ) : null}
       </Card>
 
       {editor.validationError ? (
-        <Card className="text-muted text-sm">Итоги будут доступны после исправления данных.</Card>
+        <Card className="text-muted sticky top-2 z-40 text-sm">
+          {saveStatus}Итоги будут доступны после исправления данных.
+        </Card>
       ) : (
-        <DishwareInventorySummary summary={summary} includeSurplus={draft.includeSurplus ?? false} />
+        <DishwareInventorySummary
+          summary={summary}
+          includeSurplus={draft.includeSurplus ?? false}
+          saveStatus={saveStatus}
+        />
       )}
 
       <DishwareInventoryItemsTable

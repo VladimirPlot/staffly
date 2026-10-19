@@ -190,6 +190,10 @@ async function eventually(check, message) {
   await qty(b).fill("20");
   await b.getByRole("button", { name: "Добавить позицию", exact: true }).first().click();
   await a.getByRole("button", { name: "Удалить позицию 1", exact: true }).click();
+  await a
+    .getByRole("dialog", { name: "Удалить позицию?", exact: true })
+    .getByRole("button", { name: "Удалить", exact: true })
+    .click();
   await a.getByRole("button", { name: "Сохранить", exact: true }).click();
   await eventually(() => inventory.items.length === 0, "remote deletion");
   await a.getByRole("button", { name: "Добавить позицию", exact: true }).first().click();

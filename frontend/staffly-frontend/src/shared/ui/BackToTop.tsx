@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import { useAnyModalOpen } from "./modalState";
 import { ArrowUp } from "lucide-react";
 
 export default function BackToTop({
@@ -8,6 +9,7 @@ export default function BackToTop({
   headerRef: RefObject<HTMLElement | null>;
   raised?: boolean;
 }) {
+  const modalOpen = useAnyModalOpen();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const header = headerRef.current;
@@ -26,7 +28,7 @@ export default function BackToTop({
       window.removeEventListener("resize", update);
     };
   }, [headerRef]);
-  if (!visible) return null;
+  if (!visible || modalOpen) return null;
   return (
     <button
       type="button"

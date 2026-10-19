@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Card from "../../../shared/ui/Card";
 import {
   formatCompactInventoryMoney,
@@ -11,9 +12,14 @@ import {
 type DishwareInventorySummaryProps = {
   summary: DishwareInventorySummary;
   includeSurplus?: boolean;
+  saveStatus?: ReactNode;
 };
 
-export default function DishwareInventorySummary({ summary, includeSurplus = false }: DishwareInventorySummaryProps) {
+export default function DishwareInventorySummary({
+  summary,
+  includeSurplus = false,
+  saveStatus,
+}: DishwareInventorySummaryProps) {
   const hasLoss = summary.lossQty > 0;
   const hasGain = summary.gainQty > 0;
   const metrics = [
@@ -51,8 +57,9 @@ export default function DishwareInventorySummary({ summary, includeSurplus = fal
   ];
 
   return (
-    <Card className="sticky top-2 z-50 border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/95 px-3 py-2 backdrop-blur">
-      <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+    <Card className="sticky top-2 z-40 border-[color:var(--staffly-border)] bg-[color:var(--staffly-surface)]/95 px-3 py-2 backdrop-blur">
+      {saveStatus}
+      <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4 [@media(max-height:500px)]:hidden">
         {metrics.map((metric) => (
           <div
             key={metric.label}
@@ -66,7 +73,7 @@ export default function DishwareInventorySummary({ summary, includeSurplus = fal
           </div>
         ))}
       </dl>
-      <div className="text-muted mt-1.5 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+      <div className="text-muted mt-1.5 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs [@media(max-height:500px)]:hidden">
         {detailMetrics.map((metric) => (
           <span
             key={metric.label}
