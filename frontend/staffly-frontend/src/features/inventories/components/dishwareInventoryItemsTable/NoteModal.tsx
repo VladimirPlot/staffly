@@ -16,7 +16,7 @@ export default function NoteModal({ item, readOnly, onClose, onChange }: NoteMod
       open={Boolean(item)}
       title={item?.name.trim() || "Заметка к позиции"}
       onClose={onClose}
-      className="max-w-xl"
+      className="max-w-xl [overflow-wrap:anywhere]"
       footer={
         <Button variant="outline" onClick={onClose}>
           Готово

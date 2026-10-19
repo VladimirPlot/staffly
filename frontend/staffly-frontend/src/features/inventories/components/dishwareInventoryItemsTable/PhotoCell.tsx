@@ -12,6 +12,7 @@ type PhotoCellProps = {
   uploading: boolean;
   readOnly: boolean;
   compact?: boolean;
+  stretch?: boolean;
   photoMenuOpen: boolean;
   onPhotoMenuOpenChange: (open: boolean) => void;
   onUploadImage: (clientId: string, file: File) => void;
@@ -25,6 +26,7 @@ export default function PhotoCell({
   uploading,
   readOnly,
   compact = false,
+  stretch = false,
   photoMenuOpen,
   onPhotoMenuOpenChange,
   onUploadImage,
@@ -60,12 +62,16 @@ export default function PhotoCell({
   const openPicker = () => {
     if (canChange) fileInputRef.current?.click();
   };
-  const size = compact ? "h-[88px] w-[88px] rounded-xl" : "h-16 w-16 rounded-xl sm:h-[68px] sm:w-[68px]";
+  const size = compact
+    ? stretch
+      ? "h-full w-full rounded-xl"
+      : "h-[88px] w-[88px] rounded-xl"
+    : "h-16 w-16 rounded-xl sm:h-[68px] sm:w-[68px]";
   return (
     <div
       className={cn(
         "group/photo relative flex items-center justify-center",
-        compact ? "min-h-[88px]" : "min-h-[80px] px-1 py-1.5 sm:min-h-[82px]",
+        compact ? (stretch ? "h-full min-h-0" : "min-h-[88px]") : "min-h-[80px] px-1 py-1.5 sm:min-h-[82px]",
       )}
     >
       <input

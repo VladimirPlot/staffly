@@ -159,7 +159,22 @@ async function eventually(check, message) {
     }
     const name = row(0).getByRole("button", { name: "Название, позиция 1", exact: true }).locator("span");
     assert.ok(
-      await name.evaluate((node) => node.clientHeight <= 60 && parseFloat(getComputedStyle(node).fontSize) >= 12),
+      await name.evaluate((node) => node.clientHeight <= 48 && parseFloat(getComputedStyle(node).fontSize) >= 12),
+    );
+    const photoBox = await row(0).getByRole("button", { name: "Открыть фото позиции 1", exact: true }).boundingBox();
+    const titleBox = await row(0).getByRole("button", { name: "Название, позиция 1", exact: true }).boundingBox();
+    const priceBox = await row(0).getByRole("textbox", { name: "Цена, позиция 1", exact: true }).boundingBox();
+    const quantityBoxes = await Promise.all(
+      ["Было", "Приход", "Стало"].map((label) =>
+        row(0)
+          .getByRole("textbox", { name: `${label}, позиция 1`, exact: true })
+          .boundingBox(),
+      ),
+    );
+    assert.ok(Math.abs(photoBox.y - titleBox.y) < 2);
+    assert.ok(photoBox.height > titleBox.height && photoBox.y + photoBox.height >= priceBox.y + priceBox.height - 2);
+    assert.ok(
+      quantityBoxes.every((box) => box.y > photoBox.y + photoBox.height && Math.abs(box.y - quantityBoxes[0].y) < 1),
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -175,14 +190,14 @@ async function eventually(check, message) {
   await row(0).getByRole("button", { name: "Название, позиция 1", exact: true }).click();
   const nameDialog = page.getByRole("dialog", { name: "Изменить название", exact: true });
   await nameDialog.getByLabel("Название позиции").fill("ДлинноеНазвание".repeat(14));
+  assert.equal((await nameDialog.getByLabel("Название позиции").inputValue()).length, 50);
   await nameDialog.getByRole("button", { name: "Готово", exact: true }).click();
   await eventually(() => inventory.items[0].name.startsWith("Длинное"), "name autosaves");
-  assert.equal(
+  assert.ok(
     await row(0)
       .getByRole("button", { name: "Название, позиция 1", exact: true })
       .locator("span")
-      .evaluate((node) => parseFloat(getComputedStyle(node).fontSize)),
-    12,
+      .evaluate((node) => node.clientHeight <= 48 && parseFloat(getComputedStyle(node).fontSize) >= 12),
   );
   assert.equal(originalRequests, 0, "full images are not downloaded for thumbnails");
   await row(0).getByRole("button", { name: "Открыть фото позиции 1", exact: true }).click();
@@ -224,12 +239,18 @@ async function eventually(check, message) {
   await eventually(async () => Number(await slider().inputValue()) > 1.5, "two-finger zoom works");
   await viewer.getByRole("button", { name: "Закрыть фото", exact: true }).click();
   assert.equal(await row(0).getByRole("button", { name: "Действия с фото позиции 1", exact: true }).count(), 0);
-  await row(0).getByRole("button", { name: "Детали", exact: false }).click();
   await row(0).getByRole("textbox", { name: "Цена, позиция 1", exact: true }).fill("55");
-  await eventually(() => inventory.items[0].unitPrice === 55, "price edit in details");
+  await eventually(() => inventory.items[0].unitPrice === 55, "price edit in third row");
+  await row(0).getByRole("button", { name: "Заметка позиции 1", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Заметка", { exact: true }).fill("Полка у кухни");
+  await page.getByRole("dialog").getByRole("button", { name: "Готово", exact: true }).click();
+  await eventually(() => inventory.items[0].note === "Полка у кухни", "note icon edits the same row");
+  await row(0).getByRole("button", { name: "Потери, позиция 1", exact: true }).click();
+  await page.getByRole("dialog", { name: "Потери по позиции", exact: true }).waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
   if (process.env.STAFFLY_TEST_SCREENSHOT) await list.screenshot({ path: process.env.STAFFLY_TEST_SCREENSHOT });
   console.log(
-    "PASS: 320/390px counting without horizontal scroll, bounded names, numeric next, details, lazy original and touch/trackpad zoom.",
+    "PASS: 320/390px four-row layout, photo spans three rows, bounded two-line names, numeric next, visible price/loss/note, lazy original and touch zoom.",
   );
 
   await page.getByRole("button", { name: "Добавить позицию", exact: true }).first().click();

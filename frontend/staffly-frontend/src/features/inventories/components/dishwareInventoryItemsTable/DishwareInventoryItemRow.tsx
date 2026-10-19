@@ -86,7 +86,7 @@ export default function DishwareInventoryItemRow({
           <input
             className={cn(cellInputClassName, "text-default font-medium")}
             value={item.name}
-            maxLength={200}
+            maxLength={50}
             disabled={readOnly}
             placeholder="Название позиции"
             ref={navigation.registerCellRef(getCellId(item, EDITABLE_COLUMNS[0]))}
