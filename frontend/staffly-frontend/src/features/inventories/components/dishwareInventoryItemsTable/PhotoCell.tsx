@@ -60,12 +60,12 @@ export default function PhotoCell({
   const openPicker = () => {
     if (canChange) fileInputRef.current?.click();
   };
-  const size = compact ? "h-11 w-11 rounded-lg" : "h-16 w-16 rounded-xl sm:h-[68px] sm:w-[68px]";
+  const size = compact ? "h-[88px] w-[88px] rounded-xl" : "h-16 w-16 rounded-xl sm:h-[68px] sm:w-[68px]";
   return (
     <div
       className={cn(
         "group/photo relative flex items-center justify-center",
-        compact ? "min-h-11" : "min-h-[80px] px-1 py-1.5 sm:min-h-[82px]",
+        compact ? "min-h-[88px]" : "min-h-[80px] px-1 py-1.5 sm:min-h-[82px]",
       )}
     >
       <input
@@ -170,11 +170,21 @@ export default function PhotoCell({
           <Icon icon={ImagePlus} size="sm" decorative />
         </button>
       )}
+      {compact && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1 left-1 z-10 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] leading-4 font-semibold text-white tabular-nums"
+        >
+          № {index + 1}
+        </span>
+      )}
       {(uploading || item.pendingPhoto || item.removePhoto) && (
         <span
           className={cn(
-            "text-muted absolute rounded bg-[color:var(--staffly-surface)]/95 text-center text-[9px] leading-tight",
-            compact ? "inset-x-0 -bottom-3" : "inset-x-2 bottom-0.5",
+            "absolute rounded text-center text-[9px] leading-tight",
+            compact
+              ? "inset-x-1 bottom-1 bg-black/70 text-white"
+              : "text-muted inset-x-2 bottom-0.5 bg-[color:var(--staffly-surface)]/95",
           )}
         >
           {uploading ? "Фото…" : item.removePhoto ? "Удаление…" : "Фото выбрано"}

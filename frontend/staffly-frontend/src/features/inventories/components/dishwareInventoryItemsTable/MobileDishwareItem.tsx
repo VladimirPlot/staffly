@@ -106,8 +106,7 @@ export default function MobileDishwareItem({
   return (
     <li className="border-subtle bg-surface rounded-2xl border p-3" aria-label={`Позиция ${index + 1}`}>
       <div className="flex items-center gap-2">
-        <div className="w-11 shrink-0 self-start pt-1">
-          <span className="text-muted mb-1 block text-center text-[10px] tabular-nums">№ {index + 1}</span>
+        <div className="w-[88px] shrink-0">
           <PhotoCell
             item={item}
             index={index}
