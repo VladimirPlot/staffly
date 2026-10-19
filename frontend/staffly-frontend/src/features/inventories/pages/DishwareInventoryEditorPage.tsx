@@ -356,32 +356,38 @@ function AuthorizedDishwareInventoryEditorPage() {
     actionButton("Скачать бланк", Download, () => void handleDownloadPrintForm(), { isLoading: downloadingPrintForm }),
     actionButton("Распечатать", Printer, () => void handlePrintForm(), { isLoading: printingPrintForm }),
   ];
-  const actionButtons: EditorActionButton[] = isCompleted
+  const actionGroups: EditorActionButton[][] = isCompleted
     ? [
-        ...printFormButtons,
-        actionButton(
-          "Вернуть в черновик",
-          Undo2,
-          () => {
-            setSaveError(null);
-            setReopenOpen(true);
-          },
-          { isLoading: saving },
-        ),
+        [
+          actionButton(
+            "Вернуть в черновик",
+            Undo2,
+            () => {
+              setSaveError(null);
+              setReopenOpen(true);
+            },
+            { isLoading: saving },
+          ),
+        ],
+        printFormButtons,
       ]
     : [
-        actionButton("Сохранить", Save, () => void handleSave(), { isLoading: saving }),
-        ...printFormButtons,
-        actionButton("Завершить", Check, () => void handleComplete(), { isLoading: saving }),
-        actionButton(
-          "В корзину",
-          Trash2,
-          () => {
-            setSaveError(null);
-            setDeleteOpen(true);
-          },
-          { disabled: saving, className: "text-red-600" },
-        ),
+        [
+          actionButton("Сохранить", Save, () => void handleSave(), { isLoading: saving }),
+          actionButton("Завершить", Check, () => void handleComplete(), { isLoading: saving }),
+        ],
+        printFormButtons,
+        [
+          actionButton(
+            "В корзину",
+            Trash2,
+            () => {
+              setSaveError(null);
+              setDeleteOpen(true);
+            },
+            { disabled: saving, className: "text-red-600" },
+          ),
+        ],
       ];
 
   if (loading) {
@@ -410,7 +416,7 @@ function AuthorizedDishwareInventoryEditorPage() {
       </div>
 
       <Card className="space-y-3 rounded-[1.5rem] p-3 sm:p-4">
-        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_170px_156px_auto] xl:items-end">
+        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_170px_auto_auto] xl:items-end">
           <Input
             label="Название"
             labelClassName="mb-0.5 text-xs font-medium"
@@ -429,36 +435,58 @@ function AuthorizedDishwareInventoryEditorPage() {
             disabled={isEditingLocked}
             onChange={(event) => setInventoryDate(event.target.value)}
           />
-          <div className="min-w-0">
-            <div className="text-muted mb-0.5 flex items-center gap-1.5 text-xs font-medium">
-              <Icon icon={SquareActivity} size="xs" decorative className="text-icon shrink-0 opacity-60" />
-              <span>Статус</span>
+          <div className="flex min-w-0 items-end justify-between gap-2">
+            <div className="shrink-0">
+              <div className="text-muted mb-0.5 flex items-center gap-1.5 text-xs font-medium">
+                <Icon icon={SquareActivity} size="xs" decorative className="text-icon shrink-0 opacity-60" />
+                <span>Статус</span>
+              </div>
+              <div className={getInventoryStatusBadgeClass(inventory.status) + " h-9 justify-start rounded-xl text-sm"}>
+                <Icon
+                  icon={inventory.status === "COMPLETED" ? Check : Pencil}
+                  size="xs"
+                  decorative
+                  className={inventory.status === "COMPLETED" ? "shrink-0 text-emerald-600" : "text-icon shrink-0"}
+                />
+                <span>{inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
+              </div>
             </div>
-            <div className={getInventoryStatusBadgeClass(inventory.status) + " h-9 justify-start rounded-xl text-sm"}>
-              <Icon
-                icon={inventory.status === "COMPLETED" ? Check : Pencil}
-                size="xs"
-                decorative
-                className={inventory.status === "COMPLETED" ? "shrink-0 text-emerald-600" : "text-icon shrink-0"}
-              />
-              <span>{inventory.status === "COMPLETED" ? "Завершена" : "Черновик"}</span>
-            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-w-0 px-2 [&>span]:whitespace-normal"
+              onClick={() => setHistoryOpen(true)}
+            >
+              История изменений
+            </Button>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap xl:justify-end">
-            {actionButtons.map(({ label, icon, onClick, isLoading, disabled, className }) => (
-              <Button
-                key={label}
-                size="sm"
-                variant={label === "Сохранить" ? "primary" : "outline"}
-                className={["min-h-11", className].filter(Boolean).join(" ")}
-                isLoading={isLoading}
-                leftIcon={<Icon icon={icon} size="sm" decorative />}
-                disabled={disabled || saving || editor.busy || uploadingClientId !== null || Boolean(editor.conflict)}
-                onClick={onClick}
-              >
-                {label}
-              </Button>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:justify-end">
+            {actionGroups.map((group, index) => (
+              <div key={index} className="col-span-2 grid grid-cols-2 gap-2 sm:contents">
+                {group.map(({ label, icon, onClick, isLoading, disabled, className }) => (
+                  <Button
+                    key={label}
+                    size="sm"
+                    variant={label === "Сохранить" ? "primary" : "outline"}
+                    className={[
+                      "min-h-11 min-w-0 max-sm:gap-1 max-sm:px-2 [&>span:last-child]:whitespace-normal",
+                      group.length === 1 && "col-span-2",
+                      className,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    isLoading={isLoading}
+                    leftIcon={<Icon icon={icon} size="sm" decorative />}
+                    disabled={
+                      disabled || saving || editor.busy || uploadingClientId !== null || Boolean(editor.conflict)
+                    }
+                    onClick={onClick}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
             ))}
           </div>
         </div>
@@ -478,9 +506,6 @@ function AuthorizedDishwareInventoryEditorPage() {
           </span>
           <div className="text-muted flex flex-wrap items-center gap-2 text-xs">
             <span>Последнее изменение: {new Date(inventory.updatedAt).toLocaleString("ru-RU")}</span>
-            <Button size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>
-              История изменений
-            </Button>
           </div>
         </div>
 
