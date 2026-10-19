@@ -12,6 +12,7 @@ export type DishwareInventoryEditableItem = {
   id?: number;
   name: string;
   photoUrl?: string | null;
+  originalPhotoUrl?: string | null;
   pendingPhoto?: DishwarePendingPhoto;
   removePhoto?: boolean;
   previousQty: number | string;
@@ -46,6 +47,7 @@ export function toEditableDishwareInventoryItems(inventory: DishwareInventoryDto
     id: item.id,
     name: item.name,
     photoUrl: item.photoUrl ?? null,
+    originalPhotoUrl: item.originalPhotoUrl ?? null,
     previousQty: normalizeDishwareCount(item.previousQty),
     incomingQty: normalizeDishwareCount(item.incomingQty ?? 0),
     currentQty: normalizeDishwareCount(item.currentQty),

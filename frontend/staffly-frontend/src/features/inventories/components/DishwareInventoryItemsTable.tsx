@@ -4,6 +4,8 @@ import { cn } from "../../../shared/lib/cn";
 import Button from "../../../shared/ui/Button";
 import { useGridNavigation } from "../../../shared/ui/gridNavigation/useGridNavigation";
 import type { DishwareInventoryEditableItem } from "../dishwareInventoryItems";
+import { useDishwarePhotoDialogs } from "../hooks/useDishwarePhotoDialogs";
+import MobileDishwareItem from "./dishwareInventoryItemsTable/MobileDishwareItem";
 import DishwareInventoryItemRow from "./dishwareInventoryItemsTable/DishwareInventoryItemRow";
 import FloatingAddButton from "./dishwareInventoryItemsTable/FloatingAddButton";
 import NoteModal from "./dishwareInventoryItemsTable/NoteModal";
@@ -29,7 +31,8 @@ type DishwareInventoryItemsTableProps = {
   onAddItem: () => string;
   onChange: (clientId: string, patch: Partial<DishwareInventoryTableItem>) => void;
   onRemove: (clientId: string) => void;
-  onUploadImage: (clientId: string, file: File) => void;
+  onPhotoEditingChange?: (editing: boolean) => void;
+  onUploadImage: (clientId: string, file: File, originalFile?: File) => Promise<boolean | void>;
   onDeleteImage: (clientId: string) => void;
 };
 
@@ -45,7 +48,23 @@ export default function DishwareInventoryItemsTable({
   onRemove,
   onUploadImage,
   onDeleteImage,
+  onPhotoEditingChange,
 }: DishwareInventoryItemsTableProps) {
+  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 639px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 639px)");
+    const update = () => setMobile(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  const photos = useDishwarePhotoDialogs({
+    items,
+    readOnly,
+    locked: photosLocked || saving,
+    onUpload: onUploadImage,
+    onDelete: onDeleteImage,
+    onEditingChange: onPhotoEditingChange,
+  });
   const [noteItemId, setNoteItemId] = useState<string | null>(null);
   const [openPhotoMenuItemId, setOpenPhotoMenuItemId] = useState<string | null>(null);
   const [addDockProgress, setAddDockProgress] = useState(0);
@@ -162,57 +181,93 @@ export default function DishwareInventoryItemsTable({
         ) : null}
       </div>
 
-      <div className="border-subtle bg-surface overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
-        <div
-          className="overflow-auto"
-          onScroll={() => {
-            if (openPhotoMenuItemId) {
-              setOpenPhotoMenuItemId(null);
-            }
-          }}
-        >
-          <table className="w-full min-w-[1308px] table-fixed border-separate border-spacing-0 text-sm">
-            <thead>
-              <tr className="text-left">
-                {INVENTORY_TABLE_HEADERS.map((header) => (
-                  <th key={header.label} className={header.className}>
-                    {header.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={INVENTORY_TABLE_COLUMN_COUNT} className="text-muted px-4 py-8 text-center text-sm">
-                    Позиции пока не добавлены.
-                  </td>
+      {photos.error && (
+        <p role="alert" className="text-sm text-red-600">
+          {photos.error}
+        </p>
+      )}
+      {mobile ? (
+        <ol className="space-y-2" aria-label="Мобильный подсчёт посуды">
+          {!items.length && (
+            <li className="text-muted rounded-2xl border border-dashed p-6 text-center text-sm">
+              Позиции пока не добавлены.
+            </li>
+          )}
+          {items.map((item, index) => (
+            <MobileDishwareItem
+              key={item.clientId}
+              item={item}
+              index={index}
+              nextClientId={items[index + 1]?.clientId}
+              includeSurplus={includeSurplus}
+              readOnly={readOnly}
+              photosLocked={photosLocked}
+              uploading={uploadingClientId === item.clientId}
+              navigation={navigation}
+              onChange={onChange}
+              onRemove={onRemove}
+              onUploadImage={photos.selectPhoto}
+              onViewImage={photos.viewPhoto}
+              onDeleteImage={onDeleteImage}
+              onOpenNote={setNoteItemId}
+            />
+          ))}
+        </ol>
+      ) : (
+        <div className="border-subtle bg-surface overflow-hidden rounded-[1.5rem] border shadow-[var(--staffly-shadow)]">
+          <div
+            className="overflow-auto"
+            onScroll={() => {
+              if (openPhotoMenuItemId) {
+                setOpenPhotoMenuItemId(null);
+              }
+            }}
+          >
+            <table className="w-full min-w-[1308px] table-fixed border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr className="text-left">
+                  {INVENTORY_TABLE_HEADERS.map((header) => (
+                    <th key={header.label} className={header.className}>
+                      {header.label}
+                    </th>
+                  ))}
                 </tr>
-              ) : null}
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={INVENTORY_TABLE_COLUMN_COUNT} className="text-muted px-4 py-8 text-center text-sm">
+                      Позиции пока не добавлены.
+                    </td>
+                  </tr>
+                ) : null}
 
-              {items.map((item, rowIndex) => (
-                <DishwareInventoryItemRow
-                  includeSurplus={includeSurplus}
-                  key={item.clientId}
-                  item={item}
-                  rowIndex={rowIndex}
-                  uploading={uploadingClientId === item.clientId}
-                  readOnly={readOnly}
-                  photosLocked={photosLocked}
-                  photoMenuOpen={openPhotoMenuItemId === item.clientId}
-                  navigation={navigation}
-                  onChange={onChange}
-                  onRemove={onRemove}
-                  onPhotoMenuOpenChange={(open) => setOpenPhotoMenuItemId(open ? item.clientId : null)}
-                  onUploadImage={onUploadImage}
-                  onDeleteImage={onDeleteImage}
-                  onOpenNote={setNoteItemId}
-                />
-              ))}
-            </tbody>
-          </table>
+                {items.map((item, rowIndex) => (
+                  <DishwareInventoryItemRow
+                    includeSurplus={includeSurplus}
+                    key={item.clientId}
+                    item={item}
+                    rowIndex={rowIndex}
+                    uploading={uploadingClientId === item.clientId}
+                    readOnly={readOnly}
+                    photosLocked={photosLocked}
+                    photoMenuOpen={openPhotoMenuItemId === item.clientId}
+                    navigation={navigation}
+                    onChange={onChange}
+                    onRemove={onRemove}
+                    onPhotoMenuOpenChange={(open) => setOpenPhotoMenuItemId(open ? item.clientId : null)}
+                    onUploadImage={photos.selectPhoto}
+                    onViewImage={photos.viewPhoto}
+                    onDeleteImage={onDeleteImage}
+                    onOpenNote={setNoteItemId}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+      {photos.dialogs}
 
       {!readOnly ? <FloatingAddButton progress={addDockProgress} saving={saving} onClick={handleAddItem} /> : null}
 

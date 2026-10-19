@@ -75,6 +75,7 @@ function AuthorizedDishwareInventoryEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [photoEditing, setPhotoEditing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
@@ -91,7 +92,7 @@ function AuthorizedDishwareInventoryEditorPage() {
     draftKey,
     restaurantId,
     Number(inventoryId),
-    saving || deleting || exitPending || uploadingClientId !== null,
+    saving || deleting || exitPending || photoEditing || uploadingClientId !== null,
   );
   const { draft, setDraft, initialize, discard, captureConflict, adoptPhoto, stagePhoto, removeStagedPhoto } = editor;
   const inventory = editor.server;
@@ -108,7 +109,8 @@ function AuthorizedDishwareInventoryEditorPage() {
   const blocker = useBlocker(
     () =>
       !leaving.current &&
-      (editor.dirty ||
+      (photoEditing ||
+        editor.dirty ||
         editor.busy ||
         saving ||
         uploadingClientId !== null ||
@@ -118,6 +120,16 @@ function AuthorizedDishwareInventoryEditorPage() {
   useEffect(() => {
     setExitPending(blocker.state === "blocked");
   }, [blocker.state]);
+
+  useEffect(() => {
+    if (!photoEditing) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [photoEditing]);
 
   const loadInventory = useCallback(async () => {
     if (!restaurantId || !inventoryId) return;
@@ -307,9 +319,9 @@ function AuthorizedDishwareInventoryEditorPage() {
   }, [discard, dishwareListPath, inventoryId, navigate, restaurantId]);
 
   const handleUploadImage = useCallback(
-    async (clientId: string, file: File) => {
+    async (clientId: string, file: File, originalFile?: File) => {
       setSaveError(null);
-      await stagePhoto(clientId, file);
+      return stagePhoto(clientId, file, originalFile);
     },
     [stagePhoto],
   );
@@ -551,7 +563,8 @@ function AuthorizedDishwareInventoryEditorPage() {
         onAddItem={addItem}
         onChange={updateItem}
         onRemove={removeItem}
-        onUploadImage={(itemId, file) => void handleUploadImage(itemId, file)}
+        onPhotoEditingChange={setPhotoEditing}
+        onUploadImage={handleUploadImage}
         onDeleteImage={(itemId) => void handleDeleteImage(itemId)}
       />
 

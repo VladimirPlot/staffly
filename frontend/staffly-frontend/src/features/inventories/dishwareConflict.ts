@@ -59,7 +59,12 @@ export function resolveDishwareConflict(conflict: DishwareConflict, mode: Dishwa
       ...local,
       items: local.items.map((row) => {
         const live = remoteRows.get(row.clientId);
-        return { ...row, id: live?.id, photoUrl: live?.photoUrl ?? null };
+        return {
+          ...row,
+          id: live?.id,
+          photoUrl: live?.photoUrl ?? null,
+          originalPhotoUrl: live?.originalPhotoUrl ?? null,
+        };
       }),
     };
   }
@@ -78,7 +83,8 @@ export function resolveDishwareConflict(conflict: DishwareConflict, mode: Dishwa
     }
     if (ours && !theirs) {
       // An unchanged row deleted remotely stays deleted; edited rows are explicitly recreated.
-      if (!before || changed(before, ours)) items.push({ ...ours, id: undefined, photoUrl: null });
+      if (!before || changed(before, ours))
+        items.push({ ...ours, id: undefined, photoUrl: null, originalPhotoUrl: null });
       continue;
     }
     if (!ours || !theirs) continue;

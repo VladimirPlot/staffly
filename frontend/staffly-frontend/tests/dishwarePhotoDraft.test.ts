@@ -110,3 +110,47 @@ test("conflict resolution keeps selected photos, including when another manager 
     assert.deepEqual(result.items[0].pendingPhoto, photo);
   }
 });
+
+test("original metadata survives recovery and rejects damaged pair descriptors", () => {
+  const pair = { ...photo, original: { name: "full.jpg", type: "image/jpeg", size: 900000 } };
+  assert.equal(isDishwarePendingPhoto(pair), true);
+  assert.equal(isDishwarePendingPhoto({ ...pair, original: null }), false);
+  assert.equal(
+    isDishwarePendingPhoto({ ...pair, original: { ...pair.original, size: DISHWARE_PHOTO_MAX_BYTES + 1 } }),
+    false,
+  );
+  const local = draft();
+  local.items[0].pendingPhoto = pair;
+  const stored = readDishwareDraft(
+    { getItem: () => JSON.stringify({ version: 1, base: "base", draft: local }) },
+    "key",
+  );
+  assert.deepEqual(stored?.draft.items[0].pendingPhoto?.original, pair.original);
+});
+
+test("camera source may exceed upload limit before processing but still has a source limit", async () => {
+  const bytes = new Uint8Array(DISHWARE_PHOTO_MAX_BYTES + 1);
+  bytes.set(pngHeader);
+  const camera = new File([bytes], "camera.png", { type: "image/png" });
+  await assert.rejects(validateDishwarePhoto(camera), /2 МБ/);
+  await validateDishwarePhoto(camera, 20 * 1024 * 1024);
+});
+
+test("saved and recreated rows retain originals without reusing a remotely deleted URL", () => {
+  const local = draft();
+  const withOriginal = {
+    ...inventory(),
+    items: inventory().items.map((row) => ({ ...row, photoUrl: "/preview", originalPhotoUrl: "/full" })),
+  };
+  const merged = mergeDishwareSavedRows(local, local, withOriginal);
+  assert.equal(merged.items[0].originalPhotoUrl, "/full");
+  const pair = { ...photo, original: { name: "full.jpg", type: "image/jpeg", size: 500 } };
+  const base = {
+    ...local,
+    items: local.items.map((row) => ({ ...row, pendingPhoto: undefined, originalPhotoUrl: "/old-full" })),
+  };
+  const changed = { ...base, items: base.items.map((row) => ({ ...row, pendingPhoto: pair })) };
+  const resolved = resolveDishwareConflict({ base, local: changed, current: { ...inventory(), items: [] } }, "sum");
+  assert.equal(resolved.items[0].originalPhotoUrl, null);
+  assert.deepEqual(resolved.items[0].pendingPhoto?.original, pair.original);
+});

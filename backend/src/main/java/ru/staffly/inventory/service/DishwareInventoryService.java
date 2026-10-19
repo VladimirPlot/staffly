@@ -65,5 +65,7 @@ public interface DishwareInventoryService {
 
     DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file) throws IOException;
 
+    DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file, MultipartFile originalFile) throws IOException;
+
     DishwareInventoryDto deleteItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion) throws IOException;
 }

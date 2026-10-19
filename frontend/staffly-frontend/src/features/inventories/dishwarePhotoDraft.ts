@@ -1,10 +1,16 @@
-export type DishwarePendingPhoto = { token: string; name: string; type: string; size: number };
+export type DishwarePendingPhoto = {
+  token: string;
+  name: string;
+  type: string;
+  size: number;
+  original?: { name: string; type: string; size: number };
+};
 export const DISHWARE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 const types = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-export async function validateDishwarePhoto(file: File): Promise<void> {
+export async function validateDishwarePhoto(file: File, maxBytes = DISHWARE_PHOTO_MAX_BYTES): Promise<void> {
   if (!types.has(file.type)) throw new Error("Выберите фото JPEG, PNG или WebP");
-  if (file.size > DISHWARE_PHOTO_MAX_BYTES) throw new Error("Фото не должно превышать 2 МБ");
+  if (file.size > maxBytes) throw new Error(`Фото не должно превышать ${maxBytes / (1024 * 1024)} МБ`);
   const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
   const png = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
@@ -60,18 +66,37 @@ async function photoTransaction<T>(
   }
 }
 
-export async function storeDishwarePhoto(scope: string, file: File): Promise<DishwarePendingPhoto> {
+export async function storeDishwarePhoto(
+  scope: string,
+  file: File,
+  originalFile?: File,
+): Promise<DishwarePendingPhoto> {
   await validateDishwarePhoto(file);
+  if (originalFile) await validateDishwarePhoto(originalFile);
   const token = `${scope}:${crypto.randomUUID()}`;
-  await photoTransaction("readwrite", (store) => store.put(file, token));
-  return { token, name: file.name, type: file.type, size: file.size };
+  await photoTransaction("readwrite", (store) =>
+    store.put(originalFile ? { preview: file, original: originalFile } : file, token),
+  );
+  return {
+    token,
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    ...(originalFile
+      ? { original: { name: originalFile.name, type: originalFile.type, size: originalFile.size } }
+      : {}),
+  };
 }
 
-export async function readDishwarePhoto(photo: DishwarePendingPhoto): Promise<File> {
-  const blob = await photoTransaction<Blob | undefined>("readonly", (store) => store.get(photo.token));
+export async function readDishwarePhoto(photo: DishwarePendingPhoto, original = false): Promise<File> {
+  const stored = await photoTransaction<Blob | { preview: Blob; original: Blob } | undefined>("readonly", (store) =>
+    store.get(photo.token),
+  );
+  const blob = stored instanceof Blob ? stored : original ? stored?.original : stored?.preview;
   if (!(blob instanceof Blob))
     throw new Error("Фото не найдено на устройстве. Выберите файл повторно или удалите его из позиции.");
-  return new File([blob], photo.name, { type: photo.type });
+  const metadata = original ? (photo.original ?? photo) : photo;
+  return new File([blob], metadata.name, { type: metadata.type });
 }
 
 export async function deleteDishwarePhoto(token: string): Promise<void> {
@@ -87,6 +112,14 @@ export function isDishwarePendingPhoto(value: unknown): value is DishwarePending
     types.has(photo.type) &&
     Number.isSafeInteger(photo.size) &&
     photo.size > 0 &&
-    photo.size <= DISHWARE_PHOTO_MAX_BYTES
+    photo.size <= DISHWARE_PHOTO_MAX_BYTES &&
+    (photo.original === undefined ||
+      (photo.original != null &&
+        typeof photo.original === "object" &&
+        typeof photo.original.name === "string" &&
+        types.has(photo.original.type) &&
+        Number.isSafeInteger(photo.original.size) &&
+        photo.original.size > 0 &&
+        photo.original.size <= DISHWARE_PHOTO_MAX_BYTES))
   );
 }

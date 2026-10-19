@@ -39,6 +39,7 @@ type DishwareInventoryItemRowProps = {
   onRemove: (clientId: string) => void;
   onPhotoMenuOpenChange: (open: boolean) => void;
   onUploadImage: (clientId: string, file: File) => void;
+  onViewImage: (clientId: string) => void;
   onDeleteImage: (clientId: string) => void;
   onOpenNote: (clientId: string) => void;
 };
@@ -56,6 +57,7 @@ export default function DishwareInventoryItemRow({
   onRemove,
   onPhotoMenuOpenChange,
   onUploadImage,
+  onViewImage,
   onDeleteImage,
   onOpenNote,
 }: DishwareInventoryItemRowProps) {
@@ -75,6 +77,7 @@ export default function DishwareInventoryItemRow({
           photoMenuOpen={photoMenuOpen}
           onPhotoMenuOpenChange={onPhotoMenuOpenChange}
           onUploadImage={onUploadImage}
+          onViewImage={onViewImage}
           onDeleteImage={onDeleteImage}
         />
       </td>

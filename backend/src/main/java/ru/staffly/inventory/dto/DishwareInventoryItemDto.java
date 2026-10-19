@@ -17,5 +17,6 @@ public record DishwareInventoryItemDto(
         Integer lossQty,
         Integer gainQty,
         BigDecimal lossAmount,
-        String clientKey
+        String clientKey,
+        String originalPhotoUrl
 ) {}

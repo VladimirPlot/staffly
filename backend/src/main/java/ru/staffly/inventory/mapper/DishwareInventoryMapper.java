@@ -96,7 +96,8 @@ public class DishwareInventoryMapper {
                 metrics.lossQty(),
                 metrics.gainQty(),
                 metrics.lossAmount(),
-                item.getClientKey()
+                item.getClientKey(),
+                item.getOriginalPhotoUrl()
         );
     }
 
