@@ -42,6 +42,9 @@ public class DishwareInventoryItem {
     @Column(name = "photo_url", columnDefinition = "text")
     private String photoUrl;
 
+    @Column(name = "original_photo_url", columnDefinition = "text")
+    private String originalPhotoUrl;
+
     @Column(name = "previous_qty", nullable = false)
     @Builder.Default
     private int previousQty = 0;

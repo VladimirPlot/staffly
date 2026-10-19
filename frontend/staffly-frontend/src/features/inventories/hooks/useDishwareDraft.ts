@@ -294,10 +294,18 @@ export function useDishwareDraft(
           if (!row.id) throw new Error("Не удалось сохранить позицию для загрузки фото. Повторите сохранение.");
           const photo = row.pendingPhoto;
           const file = photo ? await readDishwarePhoto(photo) : null;
+          const originalFile = photo?.original ? await readDishwarePhoto(photo, true) : undefined;
           row = current.current.items.find((item) => item.clientId === queuedItem.clientId);
           if (!row?.id || row.pendingPhoto?.token !== photo?.token) continue;
           const updated = file
-            ? await uploadDishwareItemImage(restaurantId, inventoryId, row.id, file, serverRef.current!.version)
+            ? await uploadDishwareItemImage(
+                restaurantId,
+                inventoryId,
+                row.id,
+                file,
+                serverRef.current!.version,
+                originalFile,
+              )
             : await deleteDishwareItemImage(restaurantId, inventoryId, row.id, serverRef.current!.version);
           const serverRow = updated.items.find((item) => item.clientKey === row!.clientId || item.id === row!.id);
           serverRef.current = updated;
@@ -307,7 +315,13 @@ export function useDishwareDraft(
             ...previous,
             items: previous.items.map((item) =>
               item.clientId === row!.clientId
-                ? { ...item, photoUrl: serverRow?.photoUrl ?? null, pendingPhoto: undefined, removePhoto: undefined }
+                ? {
+                    ...item,
+                    photoUrl: serverRow?.photoUrl ?? null,
+                    originalPhotoUrl: serverRow?.originalPhotoUrl ?? null,
+                    pendingPhoto: undefined,
+                    removePhoto: undefined,
+                  }
                 : item,
             ),
           }));
@@ -432,15 +446,15 @@ export function useDishwareDraft(
     discarded.current = true;
   }, [key, recovery]);
 
-  const stagePhoto = async (clientId: string, file: File) => {
-    if (!key || serverRef.current?.status !== "DRAFT") return;
+  const stagePhoto = async (clientId: string, file: File, originalFile?: File) => {
+    if (!key || serverRef.current?.status !== "DRAFT") return false;
     setPreparingPhoto(clientId);
     setSaveError(null);
     try {
-      const photo = await storeDishwarePhoto(key, file);
+      const photo = await storeDishwarePhoto(key, file, originalFile);
       if (!mounted.current || !current.current.items.some((item) => item.clientId === clientId)) {
         void deleteDishwarePhoto(photo.token).catch(() => undefined);
-        return;
+        return false;
       }
       setDraft((previous) => ({
         ...previous,
@@ -449,10 +463,12 @@ export function useDishwareDraft(
         ),
       }));
       persist(current.current, baseRef.current);
+      return true;
     } catch (error) {
       setSaveError(
         getFriendlyInventoryError(error, error instanceof Error ? error.message : "Не удалось выбрать фото"),
       );
+      return false;
     } finally {
       if (mounted.current) setPreparingPhoto(null);
     }
@@ -507,7 +523,15 @@ export function useDishwareDraft(
     const photo = updated.items.find((row) => row.id === itemId)?.photoUrl ?? null;
     setDraft((previous) => ({
       ...previous,
-      items: previous.items.map((row) => (row.id === itemId ? { ...row, photoUrl: photo } : row)),
+      items: previous.items.map((row) =>
+        row.id === itemId
+          ? {
+              ...row,
+              photoUrl: photo,
+              originalPhotoUrl: updated.items.find((item) => item.id === itemId)?.originalPhotoUrl ?? null,
+            }
+          : row,
+      ),
     }));
   };
   const acceptCurrent = () => {

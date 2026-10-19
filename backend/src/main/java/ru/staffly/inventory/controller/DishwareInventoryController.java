@@ -240,8 +240,9 @@ public class DishwareInventoryController {
                                                 @PathVariable Long itemId,
                                                 @AuthenticationPrincipal UserPrincipal principal,
                                                 @RequestParam("expectedVersion") Long expectedVersion,
-                                                @RequestParam("file") MultipartFile file) throws IOException {
-        return service.uploadItemImage(restaurantId, principal.userId(), inventoryId, itemId, expectedVersion, file);
+                                                @RequestParam("file") MultipartFile file,
+                                                @RequestParam(value = "originalFile", required = false) MultipartFile originalFile) throws IOException {
+        return service.uploadItemImage(restaurantId, principal.userId(), inventoryId, itemId, expectedVersion, file, originalFile);
     }
 
     @PreAuthorize("@securityService.hasAtLeastManager(principal.userId, #restaurantId)")

@@ -121,8 +121,13 @@ async function eventually(check, message) {
   await page.goto(`${baseUrl}/inventories/dishware/3`);
   const add = () => page.getByRole("button", { name: "Добавить позицию", exact: true }).first().click();
   const row = (index) => page.locator("tbody tr").nth(index);
-  const pick = (index, buffer = png, name = "plate.png", mimeType = "image/png") =>
-    row(index).locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
+  const pick = async (index, buffer = png, name = "plate.png", mimeType = "image/png") => {
+    await row(index).locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
+    if (mimeType === "image/gif" || buffer.length > 20 * 1024 * 1024) return;
+    const crop = page.getByRole("dialog", { name: "Подготовить фото позиции", exact: true });
+    await crop.getByRole("button", { name: "Сохранить", exact: true }).click();
+    await crop.waitFor({ state: "hidden" });
+  };
   const preview = (index) => row(index).locator('img[src^="blob:"]');
   const pending = () =>
     page.evaluate(() => JSON.parse(localStorage.getItem("staffly:dishware-draft:v1:1:2:3") || "null"));
@@ -166,8 +171,8 @@ async function eventually(check, message) {
   await pick(0, png, "wrong.gif", "image/gif");
   await page.getByRole("alert").filter({ hasText: "JPEG" }).waitFor();
   assert.equal((await pending()).draft.items[0].pendingPhoto.token, firstToken);
-  await pick(0, Buffer.alloc(2 * 1024 * 1024 + 1));
-  await page.getByRole("alert").filter({ hasText: "2 МБ" }).waitFor();
+  await pick(0, Buffer.alloc(20 * 1024 * 1024 + 1));
+  await page.getByRole("alert").filter({ hasText: "20 МБ" }).waitFor();
   assert.equal((await pending()).draft.items[0].pendingPhoto.token, firstToken);
   await pick(0);
   await eventually(

@@ -7,6 +7,7 @@ export type DishwareInventoryItemDto = {
   clientKey?: string;
   name: string;
   photoUrl?: string | null;
+  originalPhotoUrl?: string | null;
   previousQty: number;
   incomingQty?: number | null;
   currentQty: number;
@@ -338,9 +339,11 @@ export async function uploadDishwareItemImage(
   itemId: number,
   file: File,
   expectedVersion: number,
+  originalFile?: File,
 ): Promise<DishwareInventoryDto> {
   const formData = new FormData();
   formData.append("file", file);
+  if (originalFile) formData.append("originalFile", originalFile);
   formData.append("expectedVersion", String(expectedVersion));
   return responseData(
     api.post<DishwareInventoryDto>(dishwarePath(restaurantId, inventoryId, "items", itemId, "image"), formData),

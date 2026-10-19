@@ -253,4 +253,51 @@ class DishwareInventoryConcurrencyTest {
         assertEquals(1, second.get(2).after().items().get(0).currentQty());
     }
 
+    private org.springframework.mock.web.MockMultipartFile photo(String name) {
+        return new org.springframework.mock.web.MockMultipartFile("file", name, "image/png", new byte[]{(byte) 0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0});
+    }
+
+    @Test void photoPreviewAndOriginalShareOneVersionAndBothAreCopiedAndDeleted() throws Exception {
+        var initial = fixture(); var id = initial.items().get(0).id();
+        var preview = photo("preview.png"); var original = photo("original.png");
+        when(storage.saveForItem(id, preview)).thenReturn("/preview.png");
+        when(storage.saveForItem(id, original)).thenReturn("/original.png");
+        var saved = service.uploadItemImage(initial.restaurantId(), 1L, initial.id(), id, initial.version(), preview, original);
+        assertEquals(initial.version() + 1, saved.version());
+        assertEquals("/preview.png", saved.items().get(0).photoUrl());
+        assertEquals("/original.png", saved.items().get(0).originalPhotoUrl());
+        assertEquals("/original.png", service.history(initial.restaurantId(), 1L, initial.id(), null).get(0).after().items().get(0).originalPhotoUrl());
+        assertThrows(ConflictException.class, () -> service.uploadItemImage(initial.restaurantId(), 1L, initial.id(), id, initial.version(), preview, original));
+        var completed = service.complete(initial.restaurantId(), 1L, initial.id(), saved.version());
+        assertThrows(BadRequestException.class, () -> service.uploadItemImage(initial.restaurantId(), 1L, initial.id(), id, completed.version(), preview, original));
+        when(storage.copyFromPublicUrlToItem(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(call -> "/copy/" + call.getArgument(1) + call.getArgument(0));
+        var next = service.create(initial.restaurantId(), 1L, new CreateDishwareInventoryRequest("Период", LocalDate.of(2026,11,1), null, completed.id(), null));
+        assertEquals("/copy/" + next.items().get(0).id() + "/original.png", next.items().get(0).originalPhotoUrl());
+        var reopened = service.reopen(initial.restaurantId(), 1L, initial.id(), completed.version(), "Исправление фото");
+        var deleted = service.deleteItemImage(initial.restaurantId(), 1L, initial.id(), id, reopened.version());
+        assertNull(deleted.items().get(0).photoUrl()); assertNull(deleted.items().get(0).originalPhotoUrl());
+        org.mockito.Mockito.verify(storage).deleteByPublicUrl("/preview.png");
+        org.mockito.Mockito.verify(storage).deleteByPublicUrl("/original.png");
+    }
+
+    @Test void failedOriginalUploadRollsBackAndCleansTheAlreadyUploadedPreview() throws Exception {
+        var initial = fixture(); var id = initial.items().get(0).id();
+        var preview = photo("preview.png"); var original = photo("original.png");
+        when(storage.saveForItem(id, preview)).thenReturn("/new-preview.png");
+        when(storage.saveForItem(id, original)).thenThrow(new java.io.IOException("Storage error"));
+        assertThrows(java.io.IOException.class, () -> service.uploadItemImage(initial.restaurantId(), 1L, initial.id(), id, initial.version(), preview, original));
+        var unchanged = service.get(initial.restaurantId(), 1L, initial.id());
+        assertEquals(initial.version(), unchanged.version()); assertNull(unchanged.items().get(0).photoUrl());
+        assertTrue(service.history(initial.restaurantId(), 1L, initial.id(), null).isEmpty());
+        org.mockito.Mockito.verify(storage).deleteByPublicUrl("/new-preview.png");
+    }
+
+    @Test void invalidOriginalIsRejectedBeforeEitherFileIsWritten() throws Exception {
+        var initial = fixture(); var id = initial.items().get(0).id(); var preview = photo("preview.png");
+        var invalid = new org.springframework.mock.web.MockMultipartFile("originalFile", "original.png", "image/png", new byte[]{1, 2});
+        assertThrows(BadRequestException.class, () -> service.uploadItemImage(initial.restaurantId(), 1L, initial.id(), id, initial.version(), preview, invalid));
+        org.mockito.Mockito.verify(storage, org.mockito.Mockito.never()).saveForItem(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
+    }
+
 }

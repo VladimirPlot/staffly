@@ -151,6 +151,7 @@ export function readDishwareDraft(storage: Pick<Storage, "getItem">, key: string
         (item.unitPrice != null && typeof item.unitPrice !== "string" && typeof item.unitPrice !== "number") ||
         (item.note != null && typeof item.note !== "string") ||
         (item.photoUrl != null && typeof item.photoUrl !== "string") ||
+        (item.originalPhotoUrl != null && typeof item.originalPhotoUrl !== "string") ||
         (item.pendingPhoto !== undefined && !isDishwarePendingPhoto(item.pendingPhoto)) ||
         (item.removePhoto !== undefined && typeof item.removePhoto !== "boolean") ||
         (item.id != null && (!Number.isSafeInteger(item.id) || item.id <= 0))
@@ -178,7 +179,14 @@ export function mergeDishwareSavedRows(
     ...current,
     items: current.items.map((item) => {
       const server = serverByClientId.get(item.clientId);
-      return server ? { ...item, id: server.id, photoUrl: server.photoUrl ?? null } : item;
+      return server
+        ? {
+            ...item,
+            id: server.id,
+            photoUrl: server.photoUrl ?? null,
+            originalPhotoUrl: server.originalPhotoUrl ?? null,
+          }
+        : item;
     }),
   };
 }

@@ -432,13 +432,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .filter(Objects::nonNull)
                 .toList();
         List<String> photoUrls = entity.getItems().stream()
-                .map(DishwareInventoryItem::getPhotoUrl)
+                .flatMap(item -> java.util.stream.Stream.of(item.getPhotoUrl(), item.getOriginalPhotoUrl()))
                 .filter(Objects::nonNull)
                 .filter(url -> !url.isBlank())
                 .toList();
 
         for (DishwareInventoryItem item : entity.getItems()) {
             item.setPhotoUrl(null);
+            item.setOriginalPhotoUrl(null);
         }
         inventories.delete(entity);
 
@@ -449,8 +450,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackOn = IOException.class)
     public DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file) throws IOException {
+        return uploadItemImage(restaurantId, currentUserId, inventoryId, itemId, expectedVersion, file, null);
+    }
+
+    @Override
+    @Transactional(rollbackOn = IOException.class)
+    public DishwareInventoryDto uploadItemImage(Long restaurantId, Long currentUserId, Long inventoryId, Long itemId, Long expectedVersion, MultipartFile file, MultipartFile originalFile) throws IOException {
         security.assertAtLeastManager(currentUserId, restaurantId);
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Файл не выбран");
@@ -460,6 +467,10 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
         }
 
         validateImage(file);
+        if (originalFile != null) {
+            if (originalFile.isEmpty() || originalFile.getSize() > MAX_IMAGE_BYTES) throw new BadRequestException("Полное фото должно быть непустым и не больше 2 МБ");
+            validateImage(originalFile);
+        }
         DishwareInventory inventory = requireInventoryForUpdate(restaurantId, inventoryId);
         requireNotTrashed(inventory);
         requireVersion(inventory, expectedVersion);
@@ -470,16 +481,21 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
 
         DishwareInventoryDto before = mapper.toDto(inventory);
         String previousPhotoUrl = item.getPhotoUrl();
+        String previousOriginalUrl = item.getOriginalPhotoUrl();
         String uploadedPhotoUrl = storage.saveForItem(itemId, file);
+        afterRollback(() -> storage.deleteByPublicUrl(uploadedPhotoUrl));
+        String uploadedOriginalUrl = originalFile == null ? null : storage.saveForItem(itemId, originalFile);
+        afterRollback(() -> storage.deleteByPublicUrl(uploadedOriginalUrl));
         item.setPhotoUrl(uploadedPhotoUrl);
+        item.setOriginalPhotoUrl(uploadedOriginalUrl);
 
         afterCommit(() -> {
             if (previousPhotoUrl != null && !previousPhotoUrl.equals(uploadedPhotoUrl)) {
                 storage.deleteByPublicUrl(previousPhotoUrl);
             }
+            if (previousOriginalUrl != null && !previousOriginalUrl.equals(uploadedOriginalUrl) && !previousOriginalUrl.equals(uploadedPhotoUrl)) storage.deleteByPublicUrl(previousOriginalUrl);
             storage.deleteItemFolderIfNoUrlMatch(item.getId(), uploadedPhotoUrl);
         });
-        afterRollback(() -> storage.deleteByPublicUrl(uploadedPhotoUrl));
         return recordChange(saveChangedInventory(inventory), currentUserId, "PHOTO_UPLOADED", null, before);
     }
 
@@ -497,10 +513,13 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
 
         DishwareInventoryDto before = mapper.toDto(inventory);
         String previousPhotoUrl = item.getPhotoUrl();
+        String previousOriginalUrl = item.getOriginalPhotoUrl();
         item.setPhotoUrl(null);
+        item.setOriginalPhotoUrl(null);
 
         afterCommit(() -> {
             storage.deleteByPublicUrl(previousPhotoUrl);
+            storage.deleteByPublicUrl(previousOriginalUrl);
             storage.deleteItemFolder(item.getId());
         });
         return recordChange(saveChangedInventory(inventory), currentUserId, "PHOTO_DELETED", null, before);
@@ -807,13 +826,14 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
                 .filter(Objects::nonNull)
                 .toList();
         List<String> removedPhotoUrls = existingById.values().stream()
-                .map(DishwareInventoryItem::getPhotoUrl)
+                .flatMap(item -> java.util.stream.Stream.of(item.getPhotoUrl(), item.getOriginalPhotoUrl()))
                 .filter(Objects::nonNull)
                 .filter(url -> !url.isBlank())
                 .toList();
 
         for (DishwareInventoryItem removedItem : existingById.values()) {
             removedItem.setPhotoUrl(null);
+            removedItem.setOriginalPhotoUrl(null);
         }
 
         entity.getItems().clear();
@@ -942,6 +962,12 @@ public class DishwareInventoryServiceImpl implements DishwareInventoryService {
             }
             targetItem.setPhotoUrl(copiedUrl);
             afterRollback(() -> storage.deleteByPublicUrl(copiedUrl));
+            if (sourceItem.getOriginalPhotoUrl() != null) {
+                String originalCopy = storage.copyFromPublicUrlToItem(sourceItem.getOriginalPhotoUrl(), targetItem.getId());
+                if (originalCopy == null) throw new BadRequestException("Не удалось скопировать полное фото из прошлой инвентаризации");
+                targetItem.setOriginalPhotoUrl(originalCopy);
+                afterRollback(() -> storage.deleteByPublicUrl(originalCopy));
+            }
         }
     }
 
