@@ -167,14 +167,19 @@ export default function DishwareInventoryItemsTable({
 
   return (
     <section className={cn("space-y-3", !readOnly && "pb-[3.25rem]")} aria-label="Позиции инвентаризации">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex items-center justify-between gap-2 sm:items-end">
         <div className="min-w-0">
-          <h3 className="text-strong text-xl font-semibold">Позиции</h3>
-          <div className="text-muted text-sm">Было / Приход / Стало</div>
+          <h3 className="text-strong text-lg font-semibold sm:text-xl">Позиции</h3>
+          <div className="text-muted text-[11px] sm:text-sm">Было / Приход / Стало</div>
         </div>
         {!readOnly ? (
-          <div ref={topAddButtonRef} className="self-start sm:self-auto">
-            <Button size="sm" className="min-h-11" disabled={saving} onClick={handleAddItem}>
+          <div ref={topAddButtonRef} className="shrink-0">
+            <Button
+              size="sm"
+              className="min-h-11 px-2 text-xs sm:px-3 sm:text-sm"
+              disabled={saving}
+              onClick={handleAddItem}
+            >
               Добавить позицию
             </Button>
           </div>
