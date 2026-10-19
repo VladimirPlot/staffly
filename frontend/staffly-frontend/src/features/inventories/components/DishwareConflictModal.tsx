@@ -49,7 +49,7 @@ export default function DishwareConflictModal({
       className="max-w-3xl"
       description="Другой менеджер сохранил изменения. Ваши данные сохранены на устройстве. Выберите, как свести результаты."
       footer={
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full min-w-0 flex-col gap-2 [&_button]:h-auto [&_button]:min-h-11 [&_button]:w-full [&_button]:min-w-0 [&_button]:py-2 [&_button]:leading-snug [&_button]:whitespace-normal [&_button>span]:min-w-0 [&_button>span]:[overflow-wrap:anywhere] [&_button>span]:whitespace-normal">
           {pending ? (
             <Button disabled={busy} isLoading={busy} onClick={() => onResolve("overwrite")}>
               Повторить сохранение

@@ -1,6 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { registerOpenModal } from "./modalState";
 import CloseButton from "./CloseButton";
 import { getFocusableElements } from "./dialogUtils";
 
@@ -129,6 +130,7 @@ const Modal: React.FC<ModalProps> = ({
 
     lastActiveElementRef.current = document.activeElement as HTMLElement | null;
     modalStack.push(titleId);
+    const unregisterModal = registerOpenModal(titleId);
 
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape" && modalStack.at(-1) === titleId) {
@@ -151,6 +153,7 @@ const Modal: React.FC<ModalProps> = ({
       window.removeEventListener("keydown", handler);
       const index = modalStack.indexOf(titleId);
       if (index >= 0) modalStack.splice(index, 1);
+      unregisterModal();
       window.clearTimeout(focusTimer);
     };
   }, [open, titleId]);

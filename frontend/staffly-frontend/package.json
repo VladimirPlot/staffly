@@ -9,6 +9,7 @@
     "test:inventory:photos": "node tests/browser/dishwarePhotos.smoke.cjs",
     "test:inventory:business": "node tests/browser/dishwareBusiness.smoke.cjs",
     "test:inventory:mobile": "node tests/browser/dishwareMobile.smoke.cjs",
+    "test:inventory:safeguards": "node tests/browser/dishwareSafeguards.smoke.cjs",
     "test:inventory:browser": "node tests/browser/dishwareInventory.smoke.cjs",
     "test:inventory:concurrency": "node tests/browser/dishwareConcurrency.smoke.cjs",
     "test:task-assignment": "node --test --experimental-strip-types tests/taskAssignment.test.ts",
